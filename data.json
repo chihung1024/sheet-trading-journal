@@ -1,10 +1,10 @@
 {
-  "updated_at": "2025-12-31 12:57",
+  "updated_at": "2025-12-31 16:34",
   "summary": {
-    "total_value": 37508.0,
+    "total_value": 37759.98,
     "invested_capital": 16700.0,
-    "total_pnl": 20808.0,
-    "twr": 298.44,
+    "total_pnl": 21059.98,
+    "twr": 301.12,
     "realized_pnl": 11800.0
   },
   "holdings": [
@@ -12,10 +12,10 @@
       "symbol": "NVDA",
       "qty": 200.0,
       "avg_price": 142.5,
-      "current_price": 187.54,
-      "market_value": 37508.0,
-      "pnl": 9008.0,
-      "pnl_percent": 31.61
+      "current_price": 188.8,
+      "market_value": 37759.98,
+      "pnl": 9259.98,
+      "pnl_percent": 32.49
     }
   ],
   "closed_positions": [
@@ -118,7 +118,7 @@
     },
     {
       "date": "2024-02-13",
-      "total_value": 7208.78,
+      "total_value": 7208.79,
       "invested": 6200.0,
       "twr": 14.44,
       "benchmark_twr": 1.0
@@ -328,7 +328,7 @@
     },
     {
       "date": "2024-03-14",
-      "total_value": 8789.91,
+      "total_value": 8789.92,
       "invested": 6200.0,
       "twr": 39.54,
       "benchmark_twr": 5.26
@@ -552,7 +552,7 @@
     },
     {
       "date": "2024-04-15",
-      "total_value": 8595.72,
+      "total_value": 8595.71,
       "invested": 6200.0,
       "twr": 36.46,
       "benchmark_twr": 3.44
@@ -601,7 +601,7 @@
     },
     {
       "date": "2024-04-22",
-      "total_value": 7947.75,
+      "total_value": 7947.74,
       "invested": 6200.0,
       "twr": 26.17,
       "benchmark_twr": 2.47
@@ -720,7 +720,7 @@
     },
     {
       "date": "2024-05-09",
-      "total_value": 8870.18,
+      "total_value": 8870.17,
       "invested": 6200.0,
       "twr": 40.81,
       "benchmark_twr": 6.66
@@ -965,7 +965,7 @@
     },
     {
       "date": "2024-06-13",
-      "total_value": 12955.45,
+      "total_value": 12955.46,
       "invested": 6200.0,
       "twr": 105.67,
       "benchmark_twr": 11.23
@@ -1063,7 +1063,7 @@
     },
     {
       "date": "2024-06-27",
-      "total_value": 12393.7,
+      "total_value": 12393.69,
       "invested": 6200.0,
       "twr": 96.75,
       "benchmark_twr": 12.39
@@ -1217,21 +1217,21 @@
     },
     {
       "date": "2024-07-19",
-      "total_value": 11787.96,
+      "total_value": 11787.95,
       "invested": 6200.0,
       "twr": 87.13,
       "benchmark_twr": 12.93
     },
     {
       "date": "2024-07-20",
-      "total_value": 11787.96,
+      "total_value": 11787.95,
       "invested": 6200.0,
       "twr": 87.13,
       "benchmark_twr": 12.93
     },
     {
       "date": "2024-07-21",
-      "total_value": 11787.96,
+      "total_value": 11787.95,
       "invested": 6200.0,
       "twr": 87.13,
       "benchmark_twr": 12.93
@@ -1581,7 +1581,7 @@
     },
     {
       "date": "2024-09-09",
-      "total_value": 10642.44,
+      "total_value": 10642.45,
       "invested": 6200.0,
       "twr": 68.95,
       "benchmark_twr": 12.4
@@ -2197,21 +2197,21 @@
     },
     {
       "date": "2024-12-06",
-      "total_value": 14240.11,
+      "total_value": 14240.1,
       "invested": 6200.0,
       "twr": 126.06,
       "benchmark_twr": 25.42
     },
     {
       "date": "2024-12-07",
-      "total_value": 14240.11,
+      "total_value": 14240.1,
       "invested": 6200.0,
       "twr": 126.06,
       "benchmark_twr": 25.42
     },
     {
       "date": "2024-12-08",
-      "total_value": 14240.11,
+      "total_value": 14240.1,
       "invested": 6200.0,
       "twr": 126.06,
       "benchmark_twr": 25.42
@@ -2855,7 +2855,7 @@
     },
     {
       "date": "2025-03-10",
-      "total_value": 10695.07,
+      "total_value": 10695.08,
       "invested": 6200.0,
       "twr": 69.78,
       "benchmark_twr": 16.06
@@ -4927,10 +4927,10 @@
     },
     {
       "date": "2025-12-31",
-      "total_value": 37508.0,
+      "total_value": 37759.98,
       "invested": 16700.0,
-      "twr": 298.44,
-      "benchmark_twr": 43.91
+      "twr": 301.12,
+      "benchmark_twr": 43.45
     }
   ]
 }
