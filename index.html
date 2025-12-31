@@ -2,63 +2,163 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>投資組合績效分析</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>投資組合看板</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { background-color: #101014; color: #e0e0e0; margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding-bottom: 60px; }
+        /* --- 基礎設定 --- */
+        body { 
+            background-color: #101014; 
+            color: #e0e0e0; 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            padding-bottom: 60px;
+            -webkit-tap-highlight-color: transparent; /* 移除手機點擊藍框 */
+        }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid #2d2d30; padding-bottom: 10px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 30px; }
+        /* --- 標題列 --- */
+        .header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: flex-end; 
+            margin-bottom: 20px; 
+            border-bottom: 1px solid #2d2d30; 
+            padding-bottom: 10px; 
+        }
+        .header h2 { margin: 0; font-size: 1.5rem; }
+        .header .sub-title { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        .update-time { color: #666; font-size: 0.85rem; }
+
+        /* --- 卡片網格 (RWD) --- */
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* 手機上允許更小的卡片 */
+            gap: 12px; 
+            margin-bottom: 24px; 
+        }
         
-        .card { background: #18181c; padding: 24px; border-radius: 12px; border: 1px solid #2d2d30; }
-        .card-label { color: #9aa5b1; font-size: 0.9rem; margin-bottom: 8px; }
-        .card-value { font-size: 1.8rem; font-weight: 700; }
-        .card-sub { font-size: 0.9rem; margin-top: 8px; font-weight: 500; }
+        .card { 
+            background: #18181c; 
+            padding: 20px; 
+            border-radius: 12px; 
+            border: 1px solid #2d2d30; 
+        }
+        .card-label { color: #9aa5b1; font-size: 0.85rem; margin-bottom: 6px; }
+        .card-value { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5px; }
+        .card-sub { font-size: 0.8rem; margin-top: 6px; font-weight: 500; }
         
         .red { color: #ff5252; } .green { color: #4caf50; } .blue { color: #40a9ff; }
         
-        /* 圖表區塊 */
-        .chart-section { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 30px; }
+        /* --- 圖表區塊 --- */
+        .chart-section { 
+            background: #18181c; 
+            padding: 20px; 
+            border-radius: 12px; 
+            border: 1px solid #2d2d30; 
+            margin-bottom: 24px; 
+        }
         
-        /* 圖表控制列 (Flex RWD) */
-        .chart-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .chart-controls { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 15px; 
+            flex-wrap: wrap; 
+            gap: 12px; 
+        }
         .chart-title { margin: 0; color: #ddd; font-size: 1.1rem; }
         
-        .control-groups { display: flex; gap: 10px; flex-wrap: wrap; }
+        .control-groups { display: flex; gap: 8px; flex-wrap: wrap; }
 
-        .chart-container { position: relative; height: 400px; width: 100%; }
+        .chart-container { 
+            position: relative; 
+            width: 100%; 
+            height: 450px; /* 電腦版高度 */
+        }
         
-        /* 按鈕群組樣式 */
-        .btn-group { display: flex; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
+        /* --- 按鈕群組 (手機橫向滑動優化) --- */
+        .btn-group { 
+            display: flex; 
+            border-radius: 6px; 
+            overflow: hidden; 
+            border: 1px solid #333; 
+            background: #2d2d30;
+        }
         .btn-group button {
-            background: #2d2d30; border: none; border-right: 1px solid #333; 
-            color: #888; padding: 6px 12px; cursor: pointer; font-size: 0.85rem; transition: 0.2s;
+            background: transparent; 
+            border: none; 
+            border-right: 1px solid #333; 
+            color: #888; 
+            padding: 6px 12px; 
+            cursor: pointer; 
+            font-size: 0.85rem; 
+            transition: 0.2s;
+            white-space: nowrap; /* 防止文字換行 */
         }
         .btn-group button:last-child { border-right: none; }
-        .btn-group button:hover { background: #3a3a40; color: #ccc; }
         .btn-group button.active { background: #40a9ff; color: #fff; font-weight: bold; }
 
-        /* 表格 */
-        .table-card { background: #18181c; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 30px; overflow: hidden; }
-        .table-header { padding: 20px; border-bottom: 1px solid #2d2d30; background: #1f1f23; }
-        .table-responsive { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.95rem; white-space: nowrap; }
-        th, td { padding: 14px 16px; border-bottom: 1px solid #2d2d30; text-align: right; }
-        th:first-child, td:first-child { text-align: left; }
-        .symbol-tag { padding: 4px 10px; background: #2d2d30; border-radius: 6px; font-weight: 700; color: #fff; }
-        .type-tag { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; min-width: 50px; text-align: center; margin-right: 8px; }
+        /* --- 表格 --- */
+        .table-card { 
+            background: #18181c; 
+            border-radius: 12px; 
+            border: 1px solid #2d2d30; 
+            margin-bottom: 24px; 
+            overflow: hidden; 
+        }
+        .table-header { padding: 16px 20px; border-bottom: 1px solid #2d2d30; background: #1f1f23; }
+        .table-header h3 { margin: 0; font-size: 1rem; color: #eee; }
+        
+        .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; white-space: nowrap; }
+        th, td { padding: 12px 16px; border-bottom: 1px solid #2d2d30; text-align: right; }
+        th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #18181c; z-index: 2; } /* 固定首欄 */
+        th { color: #888; font-weight: 500; background: #1f1f23; }
+        
+        .symbol-tag { padding: 3px 8px; background: #2d2d30; border-radius: 4px; font-weight: 700; color: #fff; font-size: 0.8rem; }
+        .type-tag { padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; display: inline-block; min-width: 40px; text-align: center; margin-right: 6px; }
         .tag-div { background: #1a3a50; color: #40a9ff; } .tag-trade { background: #2d2d30; color: #aaa; }
         
-        .footer { text-align: center; margin-top: 40px; }
-        .footer a { color: #40a9ff; text-decoration: none; }
+        .footer { text-align: center; margin-top: 30px; font-size: 0.9rem; }
+        .footer a { color: #40a9ff; text-decoration: none; opacity: 0.8; }
 
-        @media (max-width: 600px) {
-            .chart-controls { flex-direction: column; align-items: flex-start; }
-            .control-groups { width: 100%; justify-content: space-between; }
-            .btn-group { flex: 1; justify-content: center; }
+        /* --- Mobile Breakpoint (手機版樣式) --- */
+        @media (max-width: 768px) {
+            .container { padding: 15px; }
+            
+            /* 標題與更新時間堆疊 */
+            .header { flex-direction: column; align-items: flex-start; gap: 5px; }
+            .update-time { align-self: flex-start; }
+
+            /* 卡片在手機上字體調整 */
+            .card { padding: 15px; }
+            .card-value { font-size: 1.3rem; }
+
+            /* 圖表控制列堆疊 */
+            .chart-controls { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .control-groups { 
+                width: 100%; 
+                display: flex; 
+                flex-direction: column; 
+                gap: 10px; 
+            }
+            
+            /* 讓按鈕群組可以橫向滑動 (像 App 選單) */
+            .btn-group { 
+                width: 100%; 
+                overflow-x: auto; 
+                display: flex; 
+                /* 隱藏捲軸 */
+                scrollbar-width: none; 
+                -ms-overflow-style: none; 
+            }
+            .btn-group::-webkit-scrollbar { display: none; }
+            .btn-group button { flex: 1; padding: 8px 10px; } /* 按鈕加大比較好按 */
+
+            /* 圖表高度縮小，避免佔滿整個手機畫面 */
+            .chart-container { height: 300px; }
         }
     </style>
 </head>
@@ -66,10 +166,10 @@
     <div id="app" class="container">
         <div class="header">
             <div>
-                <h2 style="margin:0">投資組合看板</h2>
-                <div style="font-size:0.8rem; color:#888; margin-top:4px;">TWR 績效 • SPY 比較 • 拆股修正</div>
+                <h2>投資組合看板</h2>
+                <div class="sub-title">TWR 績效 • SPY 比較 • 拆股修正</div>
             </div>
-            <span style="color:#666; font-size:0.9rem">更新: {{ updateTime }}</span>
+            <span class="update-time">更新: {{ updateTime }}</span>
         </div>
 
         <div class="grid">
@@ -82,7 +182,7 @@
                 <div class="card-value" :class="summary.twr >= 0 ? 'red' : 'green'">
                     {{ summary.twr >= 0 ? '+' : '' }}{{ summary.twr }}%
                 </div>
-                <div class="card-sub gray">vs SPY: {{ chartData.length > 0 ? chartData[chartData.length-1].benchmark_twr : 0 }}%</div>
+                <div class="card-sub" style="color:#888">vs SPY: {{ currentSpyTwr }}%</div>
             </div>
             <div class="card">
                 <div class="card-label">總帳面損益 (P&L)</div>
@@ -113,9 +213,9 @@
                         <button :class="{active: timeRange==='1M'}" @click="switchTimeRange('1M')">1M</button>
                         <button :class="{active: timeRange==='3M'}" @click="switchTimeRange('3M')">3M</button>
                         <button :class="{active: timeRange==='6M'}" @click="switchTimeRange('6M')">6M</button>
-                        <button :class="{active: timeRange==='YTD'}" @click="switchTimeRange('YTD')">YTD</button>
+                        <button :class="{active: timeRange==='YTD'}" @click="switchTimeRange('YTD')">今年</button>
                         <button :class="{active: timeRange==='1Y'}" @click="switchTimeRange('1Y')">1Y</button>
-                        <button :class="{active: timeRange==='ALL'}" @click="switchTimeRange('ALL')">ALL</button>
+                        <button :class="{active: timeRange==='ALL'}" @click="switchTimeRange('ALL')">全部</button>
                     </div>
                 </div>
             </div>
@@ -135,20 +235,20 @@
                         <tr v-for="s in holdings" :key="s.symbol">
                             <td><span class="symbol-tag">{{ s.symbol }}</span></td>
                             <td>{{ s.qty }}</td>
-                            <td style="color:#aaa">${{ s.avg_price }}</td>
+                            <td style="color:#888">${{ s.avg_price }}</td>
                             <td>${{ s.current_price }}</td>
                             <td style="font-weight:bold">${{ formatNumber(s.market_value) }}</td>
                             <td :class="s.pnl >= 0 ? 'red' : 'green'">{{ s.pnl >= 0 ? '+' : '' }}{{ formatNumber(s.pnl) }}</td>
                             <td :class="s.pnl >= 0 ? 'red' : 'green'">{{ s.pnl_percent }}%</td>
                         </tr>
-                        <tr v-if="holdings.length===0"><td colspan="7" style="text-align:center;padding:30px;color:#666">無持倉</td></tr>
+                        <tr v-if="holdings.length===0"><td colspan="7" style="text-align:center;padding:20px;color:#666">無持倉</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <div class="table-card">
-            <div class="table-header"><h3>歷史紀錄 (Closed & Dividends)</h3></div>
+            <div class="table-header"><h3>歷史紀錄 (History)</h3></div>
             <div class="table-responsive">
                 <table>
                     <thead>
@@ -158,13 +258,13 @@
                         <tr v-for="d in closedPositions" :key="d.symbol+d.close_date+d.type+d.pnl">
                             <td><span class="type-tag" :class="d.type==='DIVIDEND'?'tag-div':'tag-trade'">{{ d.type==='DIVIDEND'?'股息':'交易' }}</span></td>
                             <td><span class="symbol-tag">{{ d.symbol }}</span></td>
-                            <td style="color:#aaa">{{ d.close_date }}</td>
+                            <td style="color:#888">{{ d.close_date }}</td>
                             <td>{{ d.buy_price>0?'$'+d.buy_price:'-' }}</td>
                             <td>{{ d.sell_price>0?'$'+d.sell_price:'-' }}</td>
                             <td :class="d.pnl>=0?(d.type==='DIVIDEND'?'blue':'red'):'green'" style="font-weight:bold">{{ d.pnl>=0?'+':'' }}{{ formatNumber(d.pnl) }}</td>
                             <td>{{ d.type==='TRADE'?d.pnl_percent+'%':'-' }}</td>
                         </tr>
-                        <tr v-if="closedPositions.length===0"><td colspan="7" style="text-align:center;padding:30px;color:#666">無紀錄</td></tr>
+                        <tr v-if="closedPositions.length===0"><td colspan="7" style="text-align:center;padding:20px;color:#666">無紀錄</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -174,7 +274,7 @@
     </div>
 
     <script>
-        const { createApp, ref, onMounted, nextTick } = Vue
+        const { createApp, ref, computed, onMounted, nextTick } = Vue
         
         createApp({
             setup() {
@@ -182,21 +282,29 @@
                 const updateTime = ref('-')
                 const holdings = ref([])
                 const closedPositions = ref([])
-                const fullChartData = ref([]) // 原始完整數據
-                const displayedData = ref([]) // 篩選後數據
+                const fullChartData = ref([])
+                const displayedData = ref([])
                 
-                const chartType = ref('twr')
+                const chartType = ref('asset') // 預設顯示資產圖 (手機上比較直觀)
                 const timeRange = ref('ALL')
                 let myChart = null
 
                 const formatNumber = (num) => num ? Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'
+
+                // 計算最新的 SPY TWR 顯示在卡片上
+                const currentSpyTwr = computed(() => {
+                    if (fullChartData.value.length > 0) {
+                        return fullChartData.value[fullChartData.value.length - 1].benchmark_twr;
+                    }
+                    return 0;
+                })
 
                 // 篩選數據邏輯
                 const filterData = () => {
                     if (fullChartData.value.length === 0) return;
                     
                     const now = new Date();
-                    let startDate = new Date('2000-01-01'); // Default ALL
+                    let startDate = new Date('2000-01-01');
 
                     switch(timeRange.value) {
                         case '1M': startDate.setMonth(now.getMonth() - 1); break;
@@ -218,6 +326,11 @@
 
                     const dataPoints = displayedData.value;
                     const labels = dataPoints.map(d => d.date);
+                    
+                    // 偵測螢幕寬度，手機版減少 X 軸標籤
+                    const isMobile = window.innerWidth < 768;
+                    const maxTicks = isMobile ? 4 : 10; 
+
                     let datasets = [];
 
                     if (chartType.value === 'asset') {
@@ -231,7 +344,7 @@
                                 label: '總資產',
                                 data: dataPoints.map(d => d.total_value),
                                 borderColor: '#ff5252', backgroundColor: gradient,
-                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.4
+                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1 // 減少抖動
                             },
                             {
                                 label: '淨投入本金',
@@ -241,7 +354,7 @@
                             }
                         ];
                     } else if (chartType.value === 'pnl') {
-                        // 累積損益額圖
+                        // 累積損益額
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
@@ -251,21 +364,21 @@
                                 label: '累積損益 ($)',
                                 data: dataPoints.map(d => d.total_value - d.invested),
                                 borderColor: '#ffd700', backgroundColor: gradient,
-                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.4
+                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1
                             }
                         ];
                     } else {
-                        // TWR 比較圖
+                        // TWR 比較
                         datasets = [
                             {
-                                label: '我的組合 (TWR %)',
+                                label: '我的 TWR %',
                                 data: dataPoints.map(d => d.twr),
-                                borderColor: '#ff5252', borderWidth: 2, pointRadius: 0, tension: 0.4
+                                borderColor: '#ff5252', borderWidth: 2, pointRadius: 0, tension: 0.1
                             },
                             {
-                                label: 'S&P 500 (SPY %)',
+                                label: 'SPY %',
                                 data: dataPoints.map(d => d.benchmark_twr),
-                                borderColor: '#40a9ff', borderWidth: 2, pointRadius: 0, tension: 0.4
+                                borderColor: '#40a9ff', borderWidth: 2, pointRadius: 0, tension: 0.1
                             }
                         ];
                     }
@@ -274,13 +387,19 @@
                         type: 'line',
                         data: { labels, datasets },
                         options: {
-                            responsive: true, maintainAspectRatio: false,
+                            responsive: true, 
+                            maintainAspectRatio: false, // 關鍵：允許自適應高度
                             interaction: { mode: 'index', intersect: false },
                             plugins: {
-                                legend: { labels: { color: '#ccc' } },
+                                legend: { 
+                                    labels: { color: '#ccc', font: { size: 11 } },
+                                    position: 'top',
+                                    align: 'end'
+                                },
                                 tooltip: {
                                     backgroundColor: 'rgba(24, 24, 28, 0.9)',
                                     bodyColor: '#fff', borderColor: '#333', borderWidth: 1,
+                                    padding: 10,
                                     callbacks: {
                                         label: function(ctx) {
                                             let val = ctx.parsed.y.toLocaleString();
@@ -292,14 +411,24 @@
                                 }
                             },
                             scales: {
-                                x: { grid: { color: '#2d2d30' }, ticks: { color: '#666', maxTicksLimit: 8 } },
-                                y: { position: 'right', grid: { color: '#2d2d30' }, ticks: { color: '#666' } }
+                                x: { 
+                                    grid: { color: '#2d2d30' }, 
+                                    ticks: { 
+                                        color: '#666', 
+                                        maxTicksLimit: maxTicks, // RWD 關鍵
+                                        maxRotation: 0 
+                                    } 
+                                },
+                                y: { 
+                                    position: 'right', 
+                                    grid: { color: '#2d2d30' }, 
+                                    ticks: { color: '#666' } 
+                                }
                             }
                         }
                     });
                 }
 
-                // 切換事件
                 const switchChartType = (type) => {
                     chartType.value = type;
                     drawChart();
@@ -320,18 +449,25 @@
                         closedPositions.value = data.closed_positions
                         fullChartData.value = data.history
                         
-                        // 初始化顯示
+                        // 預設顯示
                         switchTimeRange('ALL');
                     } catch (e) { console.error(e) }
                 }
 
-                onMounted(fetchData)
+                onMounted(() => {
+                    fetchData();
+                    // 監聽視窗大小改變，重繪圖表以調整 X 軸密度
+                    window.addEventListener('resize', () => {
+                        if(myChart) drawChart();
+                    });
+                })
+
                 return { 
                     summary, updateTime, holdings, closedPositions, 
                     chartData: displayedData, 
                     chartType, switchChartType, 
                     timeRange, switchTimeRange,
-                    formatNumber 
+                    formatNumber, currentSpyTwr 
                 }
             }
         }).mount('#app')
