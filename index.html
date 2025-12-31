@@ -22,18 +22,24 @@
         
         /* 圖表區塊 */
         .chart-section { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 30px; }
-        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;}
+        
+        /* 圖表控制列 (Flex RWD) */
+        .chart-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .chart-title { margin: 0; color: #ddd; font-size: 1.1rem; }
+        
+        .control-groups { display: flex; gap: 10px; flex-wrap: wrap; }
+
         .chart-container { position: relative; height: 400px; width: 100%; }
         
-        /* 按鈕群組 */
-        .btn-group { display: flex; }
+        /* 按鈕群組樣式 */
+        .btn-group { display: flex; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
         .btn-group button {
-            background: #2d2d30; border: 1px solid #333; color: #888; padding: 6px 12px; cursor: pointer; font-size: 0.9rem; transition: 0.2s;
+            background: #2d2d30; border: none; border-right: 1px solid #333; 
+            color: #888; padding: 6px 12px; cursor: pointer; font-size: 0.85rem; transition: 0.2s;
         }
-        .btn-group button:first-child { border-radius: 4px 0 0 4px; }
-        .btn-group button:last-child { border-radius: 0 4px 4px 0; }
-        .btn-group button:not(:last-child) { border-right: none; }
-        .btn-group button.active { background: #40a9ff; color: #fff; border-color: #40a9ff; }
+        .btn-group button:last-child { border-right: none; }
+        .btn-group button:hover { background: #3a3a40; color: #ccc; }
+        .btn-group button.active { background: #40a9ff; color: #fff; font-weight: bold; }
 
         /* 表格 */
         .table-card { background: #18181c; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 30px; overflow: hidden; }
@@ -48,6 +54,12 @@
         
         .footer { text-align: center; margin-top: 40px; }
         .footer a { color: #40a9ff; text-decoration: none; }
+
+        @media (max-width: 600px) {
+            .chart-controls { flex-direction: column; align-items: flex-start; }
+            .control-groups { width: 100%; justify-content: space-between; }
+            .btn-group { flex: 1; justify-content: center; }
+        }
     </style>
 </head>
 <body>
@@ -55,7 +67,7 @@
         <div class="header">
             <div>
                 <h2 style="margin:0">投資組合看板</h2>
-                <div style="font-size:0.8rem; color:#888; margin-top:4px;">TWR 時間加權 • SPY 比較 • 拆股修正</div>
+                <div style="font-size:0.8rem; color:#888; margin-top:4px;">TWR 績效 • SPY 比較 • 拆股修正</div>
             </div>
             <span style="color:#666; font-size:0.9rem">更新: {{ updateTime }}</span>
         </div>
@@ -87,12 +99,24 @@
         </div>
 
         <div class="chart-section">
-            <div class="chart-header">
-                <h3 style="margin:0; color:#ddd">績效分析</h3>
-                <div class="btn-group">
-                    <button :class="{active: chartType==='asset'}" @click="switchChart('asset')">資產成長</button>
-                    <button :class="{active: chartType==='pnl_amount'}" @click="switchChart('pnl_amount')">累積損益 ($)</button>
-                    <button :class="{active: chartType==='twr'}" @click="switchChart('twr')">TWR 績效 %</button>
+            <div class="chart-controls">
+                <h3 class="chart-title">績效分析</h3>
+                
+                <div class="control-groups">
+                    <div class="btn-group">
+                        <button :class="{active: chartType==='asset'}" @click="switchChartType('asset')">資產</button>
+                        <button :class="{active: chartType==='pnl'}" @click="switchChartType('pnl')">損益$</button>
+                        <button :class="{active: chartType==='twr'}" @click="switchChartType('twr')">TWR%</button>
+                    </div>
+
+                    <div class="btn-group">
+                        <button :class="{active: timeRange==='1M'}" @click="switchTimeRange('1M')">1M</button>
+                        <button :class="{active: timeRange==='3M'}" @click="switchTimeRange('3M')">3M</button>
+                        <button :class="{active: timeRange==='6M'}" @click="switchTimeRange('6M')">6M</button>
+                        <button :class="{active: timeRange==='YTD'}" @click="switchTimeRange('YTD')">YTD</button>
+                        <button :class="{active: timeRange==='1Y'}" @click="switchTimeRange('1Y')">1Y</button>
+                        <button :class="{active: timeRange==='ALL'}" @click="switchTimeRange('ALL')">ALL</button>
+                    </div>
                 </div>
             </div>
             <div class="chart-container">
@@ -158,21 +182,46 @@
                 const updateTime = ref('-')
                 const holdings = ref([])
                 const closedPositions = ref([])
-                const chartData = ref([])
-                const chartType = ref('asset') // 預設顯示資產圖
+                const fullChartData = ref([]) // 原始完整數據
+                const displayedData = ref([]) // 篩選後數據
+                
+                const chartType = ref('twr')
+                const timeRange = ref('ALL')
                 let myChart = null
 
                 const formatNumber = (num) => num ? Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'
 
+                // 篩選數據邏輯
+                const filterData = () => {
+                    if (fullChartData.value.length === 0) return;
+                    
+                    const now = new Date();
+                    let startDate = new Date('2000-01-01'); // Default ALL
+
+                    switch(timeRange.value) {
+                        case '1M': startDate.setMonth(now.getMonth() - 1); break;
+                        case '3M': startDate.setMonth(now.getMonth() - 3); break;
+                        case '6M': startDate.setMonth(now.getMonth() - 6); break;
+                        case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
+                        case '1Y': startDate.setFullYear(now.getFullYear() - 1); break;
+                        case 'ALL': startDate = new Date('2000-01-01'); break;
+                    }
+
+                    displayedData.value = fullChartData.value.filter(d => new Date(d.date) >= startDate);
+                    drawChart();
+                }
+
+                // 畫圖邏輯
                 const drawChart = () => {
                     const ctx = document.getElementById('mainChart').getContext('2d');
                     if (myChart) myChart.destroy();
 
-                    const labels = chartData.value.map(d => d.date);
+                    const dataPoints = displayedData.value;
+                    const labels = dataPoints.map(d => d.date);
                     let datasets = [];
 
                     if (chartType.value === 'asset') {
-                        // 1. 資產成長圖
+                        // 資產圖
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
@@ -180,43 +229,42 @@
                         datasets = [
                             {
                                 label: '總資產',
-                                data: chartData.value.map(d => d.total_value),
+                                data: dataPoints.map(d => d.total_value),
                                 borderColor: '#ff5252', backgroundColor: gradient,
                                 borderWidth: 2, fill: true, pointRadius: 0, tension: 0.4
                             },
                             {
                                 label: '淨投入本金',
-                                data: chartData.value.map(d => d.invested),
+                                data: dataPoints.map(d => d.invested),
                                 borderColor: '#666', borderWidth: 2, borderDash: [5, 5],
                                 fill: false, pointRadius: 0, tension: 0
                             }
                         ];
-                    } else if (chartType.value === 'pnl_amount') {
-                        // 2. 累積損益金額圖 (Total Value - Invested)
+                    } else if (chartType.value === 'pnl') {
+                        // 累積損益額圖
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                        gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)'); // 金色
+                        gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
 
                         datasets = [
                             {
-                                label: '累積損益金額 ($)',
-                                data: chartData.value.map(d => d.total_value - d.invested),
-                                borderColor: '#ffd700', // 金色
-                                backgroundColor: gradient,
+                                label: '累積損益 ($)',
+                                data: dataPoints.map(d => d.total_value - d.invested),
+                                borderColor: '#ffd700', backgroundColor: gradient,
                                 borderWidth: 2, fill: true, pointRadius: 0, tension: 0.4
                             }
                         ];
                     } else {
-                        // 3. TWR 比較圖
+                        // TWR 比較圖
                         datasets = [
                             {
                                 label: '我的組合 (TWR %)',
-                                data: chartData.value.map(d => d.twr),
+                                data: dataPoints.map(d => d.twr),
                                 borderColor: '#ff5252', borderWidth: 2, pointRadius: 0, tension: 0.4
                             },
                             {
                                 label: 'S&P 500 (SPY %)',
-                                data: chartData.value.map(d => d.benchmark_twr),
+                                data: dataPoints.map(d => d.benchmark_twr),
                                 borderColor: '#40a9ff', borderWidth: 2, pointRadius: 0, tension: 0.4
                             }
                         ];
@@ -236,7 +284,6 @@
                                     callbacks: {
                                         label: function(ctx) {
                                             let val = ctx.parsed.y.toLocaleString();
-                                            // 根據圖表類型決定單位
                                             let suffix = (chartType.value === 'twr') ? '%' : '';
                                             let prefix = (chartType.value !== 'twr') ? '$' : '';
                                             return ctx.dataset.label + ': ' + prefix + val + suffix;
@@ -252,9 +299,15 @@
                     });
                 }
 
-                const switchChart = (type) => {
+                // 切換事件
+                const switchChartType = (type) => {
                     chartType.value = type;
                     drawChart();
+                }
+
+                const switchTimeRange = (range) => {
+                    timeRange.value = range;
+                    filterData();
                 }
 
                 const fetchData = async () => {
@@ -265,14 +318,21 @@
                         updateTime.value = data.updated_at
                         holdings.value = data.holdings
                         closedPositions.value = data.closed_positions
-                        chartData.value = data.history
+                        fullChartData.value = data.history
                         
-                        nextTick(() => { if (data.history.length > 0) drawChart() })
+                        // 初始化顯示
+                        switchTimeRange('ALL');
                     } catch (e) { console.error(e) }
                 }
 
                 onMounted(fetchData)
-                return { summary, updateTime, holdings, closedPositions, formatNumber, chartData, chartType, switchChart }
+                return { 
+                    summary, updateTime, holdings, closedPositions, 
+                    chartData: displayedData, 
+                    chartType, switchChartType, 
+                    timeRange, switchTimeRange,
+                    formatNumber 
+                }
             }
         }).mount('#app')
     </script>
