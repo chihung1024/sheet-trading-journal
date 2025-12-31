@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的交易儀表板</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/naive-ui"></script>
+    <style>
+        body { background-color: #101014; color: #fff; font-family: sans-serif; padding: 20px; }
+        .card { background: #18181c; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .green { color: #63e2b7; }
+        .red { color: #e88080; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #333; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <h1>📈 交易儀表板</h1>
+        <p style="color: #666">更新時間: {{ updateTime }}</p>
+
+        <div class="card">
+            <h2>總資產</h2>
+            <div style="font-size: 2em; font-weight: bold;">
+                ${{ totalValue }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>持倉明細</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>代碼</th>
+                        <th>股數</th>
+                        <th>現價</th>
+                        <th>損益</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="stock in holdings" :key="stock.symbol">
+                        <td><b style="font-size: 1.2em">{{ stock.symbol }}</b></td>
+                        <td>{{ stock.qty }}</td>
+                        <td>${{ stock.current_price }}</td>
+                        <td :class="stock.pnl >= 0 ? 'red' : 'green'">
+                            {{ stock.pnl >= 0 ? '+' : '' }}{{ stock.pnl }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
+            <a href="https://docs.google.com/spreadsheets" target="_blank" style="color: #63e2b7; text-decoration: none;">
+                📝 前往 Google Sheet 記帳
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue
+        
+        createApp({
+            setup() {
+                const totalValue = ref(0)
+                const updateTime = ref('')
+                const holdings = ref([])
+
+                const fetchData = async () => {
+                    // 讀取 GitHub 生成的 data.json
+                    try {
+                        const res = await fetch('data.json')
+                        const data = await res.json()
+                        totalValue.value = data.total_value
+                        updateTime.value = data.updated_at
+                        holdings.value = data.holdings
+                    } catch (e) {
+                        console.error("還沒生成 data.json，請等待 Action 執行")
+                    }
+                }
+
+                onMounted(fetchData)
+                return { totalValue, updateTime, holdings }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
