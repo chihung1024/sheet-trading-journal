@@ -1,11 +1,11 @@
 {
-  "updated_at": "2025-12-31 07:27",
+  "updated_at": "2025-12-31 08:07",
   "summary": {
     "total_value": 18754.0,
-    "total_cost": 15000.0,
-    "unrealized_pnl": 3754.0,
-    "realized_pnl": 4500.0,
-    "total_pnl": 8254.0
+    "invested_capital": 10500.0,
+    "total_pnl": 8254.0,
+    "pnl_percent": 78.61,
+    "realized_pnl": 4500.0
   },
   "holdings": [
     {
@@ -27,7 +27,8 @@
       "buy_price": 120.0,
       "sell_price": 180.0,
       "pnl": 3000.0,
-      "pnl_percent": 50.0
+      "pnl_percent": 50.0,
+      "type": "TRADE"
     },
     {
       "symbol": "NVDA",
@@ -37,8 +38,620 @@
       "buy_price": 150.0,
       "sell_price": 180.0,
       "pnl": 1500.0,
-      "pnl_percent": 20.0
+      "pnl_percent": 20.0,
+      "type": "TRADE"
     }
   ],
-  "history": []
+  "history": [
+    {
+      "date": "2025-09-01",
+      "total_value": 0.0,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-02",
+      "total_value": 8538.04,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-03",
+      "total_value": 8530.04,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-04",
+      "total_value": 8582.04,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-05",
+      "total_value": 8350.06,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-06",
+      "total_value": 8350.06,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-07",
+      "total_value": 8350.06,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-08",
+      "total_value": 8414.56,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-09",
+      "total_value": 8537.04,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-10",
+      "total_value": 8865.51,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-11",
+      "total_value": 8858.01,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-12",
+      "total_value": 8890.51,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-13",
+      "total_value": 8890.51,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-14",
+      "total_value": 8890.51,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-15",
+      "total_value": 8887.0,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-16",
+      "total_value": 8743.51,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-17",
+      "total_value": 8514.03,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-18",
+      "total_value": 8811.51,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-19",
+      "total_value": 8833.01,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-20",
+      "total_value": 8833.01,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-21",
+      "total_value": 8833.01,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-22",
+      "total_value": 9179.99,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-23",
+      "total_value": 8921.0,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-24",
+      "total_value": 8848.01,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-25",
+      "total_value": 8884.01,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-26",
+      "total_value": 8909.0,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-27",
+      "total_value": 8909.0,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-28",
+      "total_value": 8909.0,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-29",
+      "total_value": 9091.99,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-09-30",
+      "total_value": 9328.48,
+      "invested": 6000.0
+    },
+    {
+      "date": "2025-10-01",
+      "total_value": 18722.96,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-02",
+      "total_value": 18887.95,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-03",
+      "total_value": 18760.95,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-04",
+      "total_value": 18760.95,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-05",
+      "total_value": 18760.95,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-06",
+      "total_value": 18552.97,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-07",
+      "total_value": 18502.97,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-08",
+      "total_value": 18909.95,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-09",
+      "total_value": 19255.93,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-10",
+      "total_value": 18314.98,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-11",
+      "total_value": 18314.98,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-12",
+      "total_value": 18314.98,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-13",
+      "total_value": 18830.95,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-14",
+      "total_value": 18002.0,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-15",
+      "total_value": 17982.0,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-16",
+      "total_value": 18179.99,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-17",
+      "total_value": 18320.98,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-18",
+      "total_value": 18320.98,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-19",
+      "total_value": 18320.98,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-20",
+      "total_value": 18262.98,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-21",
+      "total_value": 18114.99,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-22",
+      "total_value": 18027.0,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-23",
+      "total_value": 18214.99,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-24",
+      "total_value": 18624.96,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-25",
+      "total_value": 18624.96,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-26",
+      "total_value": 18624.96,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-27",
+      "total_value": 19147.93,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-28",
+      "total_value": 20101.88,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-29",
+      "total_value": 20702.85,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-30",
+      "total_value": 20287.87,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-10-31",
+      "total_value": 20247.87,
+      "invested": 13500.0
+    },
+    {
+      "date": "2025-11-01",
+      "total_value": 30371.81,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-02",
+      "total_value": 30371.81,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-03",
+      "total_value": 31030.27,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-04",
+      "total_value": 29801.84,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-05",
+      "total_value": 29279.87,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-06",
+      "total_value": 28210.43,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-07",
+      "total_value": 28220.93,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-08",
+      "total_value": 28220.93,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-09",
+      "total_value": 28220.93,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-10",
+      "total_value": 29855.84,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-11",
+      "total_value": 28972.39,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-12",
+      "total_value": 29068.38,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-13",
+      "total_value": 28027.44,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-14",
+      "total_value": 28523.91,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-15",
+      "total_value": 28523.91,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-16",
+      "total_value": 28523.91,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-17",
+      "total_value": 27988.44,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-18",
+      "total_value": 27202.48,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-19",
+      "total_value": 27976.44,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-20",
+      "total_value": 27094.49,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-21",
+      "total_value": 26830.51,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-22",
+      "total_value": 26830.51,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-23",
+      "total_value": 26830.51,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-24",
+      "total_value": 27380.98,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-25",
+      "total_value": 26671.52,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-26",
+      "total_value": 27037.49,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-27",
+      "total_value": 27037.49,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-28",
+      "total_value": 26548.52,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-29",
+      "total_value": 26548.52,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-11-30",
+      "total_value": 26548.52,
+      "invested": 20500.0
+    },
+    {
+      "date": "2025-12-01",
+      "total_value": 35982.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-02",
+      "total_value": 36289.98,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-03",
+      "total_value": 35916.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-04",
+      "total_value": 36676.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-05",
+      "total_value": 36482.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-06",
+      "total_value": 36482.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-07",
+      "total_value": 36482.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-08",
+      "total_value": 37110.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-09",
+      "total_value": 36994.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-10",
+      "total_value": 36756.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-11",
+      "total_value": 36186.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-12",
+      "total_value": 35004.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-13",
+      "total_value": 35004.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-14",
+      "total_value": 35004.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-15",
+      "total_value": 35258.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-16",
+      "total_value": 35544.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-17",
+      "total_value": 34188.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-18",
+      "total_value": 34828.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-19",
+      "total_value": 36198.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-20",
+      "total_value": 36198.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-21",
+      "total_value": 36198.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-22",
+      "total_value": 36738.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-23",
+      "total_value": 37842.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-24",
+      "total_value": 37722.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-25",
+      "total_value": 37722.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-26",
+      "total_value": 38106.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-27",
+      "total_value": 38106.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-28",
+      "total_value": 38106.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-29",
+      "total_value": 37644.0,
+      "invested": 28500.0
+    },
+    {
+      "date": "2025-12-30",
+      "total_value": 18754.0,
+      "invested": 10500.0
+    },
+    {
+      "date": "2025-12-31",
+      "total_value": 18754.0,
+      "invested": 10500.0
+    }
+  ]
 }
