@@ -16,24 +16,25 @@ def get_market_data(tickers, start_date):
     """
     print(f"下載市場數據... 起始日: {start_date}")
     try:
-        # 下載包含 'actions' (股息與拆股)
+        # 轉換 tickers 列表為字串
         ticker_str = " ".join(tickers)
-        data = yf.Ticker(ticker_str) if len(tickers) == 1 else yf.download(tickers, start=start_date, actions=True, progress=False)
         
+        # 下載包含 'actions' (股息與拆股)
+        # 即使只有一支股票，用 Ticker 也比較保險能抓到 splits
         if len(tickers) == 1:
-            # 單支股票處理
-            hist = data.history(start=start_date, auto_adjust=True)
+            t = yf.Ticker(tickers[0])
+            hist = t.history(start=start_date, auto_adjust=True)
             return {tickers[0]: {'close': hist['Close'], 'splits': hist['Stock Splits']}}
         else:
-            # 多支股票處理 (yfinance 格式較複雜)
+            # 多支股票：yfinance download 返回格式較複雜，建議分別抓取以確保資料結構一致
             result = {}
-            # 這裡簡單處理：重新單獨下載以確保資料結構一致 (雖然慢一點但最穩)
             for t in tickers:
                 try:
-                    df = yf.Ticker(t).history(start=start_date, auto_adjust=True)
+                    ticker_obj = yf.Ticker(t)
+                    df = ticker_obj.history(start=start_date, auto_adjust=True)
                     result[t] = {'close': df['Close'], 'splits': df['Stock Splits']}
-                except:
-                    print(f"無法下載 {t}")
+                except Exception as e:
+                    print(f"無法下載 {t}: {e}")
             return result
     except Exception as e:
         print(f"下載失敗: {e}")
@@ -41,6 +42,8 @@ def get_market_data(tickers, start_date):
 
 def safe_float(val):
     try:
+        if pd.isna(val) or val == '':
+            return 0.0
         return float(val)
     except:
         return 0.0
@@ -54,13 +57,13 @@ def get_split_adjustment(symbol, tx_date, split_data):
     if split_data is None or split_data.empty:
         return multiplier
         
-    # 找出所有發生在交易日「之後」的拆股
-    # tx_date 必須轉為 timezone-naive 以便比較
+    # 確保 tx_date 為 timestamp 且無時區
     tx_date = pd.Timestamp(tx_date).tz_localize(None)
     
-    # 確保 split_data index 也是 naive
-    split_data.index = split_data.index.tz_localize(None)
+    # 確保 split_data index 為 timestamp 且無時區
+    split_data.index = pd.to_datetime(split_data.index).tz_localize(None)
     
+    # 找出所有發生在交易日「之後」的拆股
     relevant_splits = split_data[split_data.index > tx_date]
     
     for split_ratio in relevant_splits:
@@ -102,12 +105,13 @@ def update_portfolio():
     
     # 時間軸生成
     start_dt = df['Date'].min()
-    end_dt = datetime.now().normalize()
+    # [修正點] 使用 pd.Timestamp.now() 來支援 normalize()
+    end_dt = pd.Timestamp.now().normalize()
     all_dates = pd.date_range(start=start_dt, end=end_dt)
 
     # 狀態
     holdings = {t: 0.0 for t in tickers}
-    fifo_queue = {t: deque() for t in tickers} # 佇列存的是「調整後的股數與成本」
+    fifo_queue = {t: deque() for t in tickers} 
     
     net_invested = 0.0
     total_realized_pnl = 0.0
@@ -134,40 +138,32 @@ def update_portfolio():
                 comm = safe_float(tx['Comm'])
                 tax = safe_float(tx['Tax'])
                 
-                # --- 關鍵：計算拆股調整係數 ---
-                # 我們要將「原始交易」調整為「當前(復權)標準」
-                # 因為 yfinance 的價格是復權的 (Adjusted Close)
-                # 所以交易股數也要乘上係數，價格要除以係數
+                # --- 自動計算拆股係數 ---
                 split_ratio = 1.0
                 if symbol in market_data:
-                    # 這裡比較微妙：我們需要的係數是「從交易日到今天」累積了多少拆股
-                    # 但因為我們是逐日跑迴圈，其實只要計算「交易當下」的狀態，
-                    # 可是為了配合 yfinance 的歷史股價(它是全程復權的)，
-                    # 最好的做法是把所有交易都轉換成「今日股數標準」。
-                    
                     split_ratio = get_split_adjustment(symbol, current_date, market_data[symbol]['splits'])
                 
+                # 將「原始紀錄」轉換為「當前復權標準」
                 adj_qty = raw_qty * split_ratio
                 adj_price = raw_price / split_ratio if split_ratio > 0 else raw_price
                 
                 if action == 'BUY':
-                    # 成本 = (原始價 * 原始量) + 手續費
+                    # 總成本 = (原始價 * 原始量) + 手續費
                     total_cost = (raw_price * raw_qty) + comm
                     net_invested += total_cost
                     holdings[symbol] += adj_qty
                     
-                    # 計算調整後的單位成本 (含手續費)
+                    # 單位成本 (含稅費)
                     adj_unit_cost = total_cost / adj_qty if adj_qty > 0 else 0
                     
                     fifo_queue[symbol].append({
                         'qty': adj_qty,
                         'unit_cost': adj_unit_cost,
-                        'date': current_date,
                         'raw_date': current_date
                     })
                     
                 elif action == 'SELL':
-                    # 收入 = (原始價 * 原始量) - 手續費 - 稅
+                    # 淨收入 = (原始價 * 原始量) - 手續費 - 稅
                     proceeds = (raw_price * raw_qty) - comm - tax
                     net_invested -= proceeds
                     holdings[symbol] -= adj_qty
@@ -190,10 +186,10 @@ def update_portfolio():
                             'symbol': symbol,
                             'open_date': batch['raw_date'].strftime('%Y-%m-%d'),
                             'close_date': current_date.strftime('%Y-%m-%d'),
-                            'qty': round(sell_amount / split_ratio, 2), # 顯示原始股數較直觀? 不，顯示調整後較一致
-                            'adj_qty': round(sell_amount, 2),
+                            # 顯示調整後的股數比較符合現在股價
+                            'qty': round(sell_amount, 2), 
                             'buy_price': round(batch['unit_cost'], 2),
-                            'sell_price': round(revenue_portion/sell_amount, 2),
+                            'sell_price': round(revenue_portion/sell_amount, 2) if sell_amount > 0 else 0,
                             'pnl': round(pnl, 2),
                             'pnl_percent': round((pnl/cost_portion)*100, 2) if cost_portion!=0 else 0,
                             'type': 'TRADE'
@@ -206,16 +202,15 @@ def update_portfolio():
                             fifo_queue[symbol].popleft()
                             
                 elif action == 'DIVIDEND':
-                    # 股息 (Qty欄位填金額)
-                    income = raw_qty - tax # 稅後股息
-                    net_invested -= income # 視為回收本金
+                    income = raw_qty - tax
+                    net_invested -= income
                     total_realized_pnl += income
                     
                     closed_positions.append({
                         'symbol': symbol,
                         'open_date': current_date.strftime('%Y-%m-%d'),
                         'close_date': current_date.strftime('%Y-%m-%d'),
-                        'qty': 0, 'adj_qty': 0, 'buy_price': 0, 'sell_price': 0,
+                        'qty': 0, 'buy_price': 0, 'sell_price': 0,
                         'pnl': round(income, 2),
                         'pnl_percent': 0,
                         'type': 'DIVIDEND'
@@ -230,15 +225,19 @@ def update_portfolio():
                 if sym in market_data:
                     closes = market_data[sym]['close']
                     # 將索引時區移除以匹配
-                    closes.index = closes.index.tz_localize(None)
+                    closes.index = pd.to_datetime(closes.index).tz_localize(None)
                     
                     try:
                         if current_date in closes.index:
                             price = closes.loc[current_date]
                         else:
                             # 假日往前找
-                            price = closes.asof(current_date)
-                            if pd.isna(price): price = 0
+                            # 確保 Series 有排序
+                            closes = closes.sort_index()
+                            # 截取到當日為止的數據
+                            past_data = closes[closes.index <= current_date]
+                            if not past_data.empty:
+                                price = past_data.iloc[-1]
                     except: pass
                 
                 day_market_value += price * qty
@@ -254,26 +253,24 @@ def update_portfolio():
     
     for sym, qty in holdings.items():
         if qty > 0.001:
-            # 取得現價
             curr_price = 0
             if sym in market_data:
                 try:
                     curr_price = float(market_data[sym]['close'].iloc[-1])
                 except: pass
             
-            # 計算平均成本 (剩餘 FIFO)
+            # 平均成本
             batches = fifo_queue[sym]
             total_cost = sum(b['qty'] * b['unit_cost'] for b in batches)
-            avg_cost = total_cost / qty
+            avg_cost = total_cost / qty if qty > 0 else 0
             
-            # 若無現價，用成本價暫代
             if curr_price == 0: curr_price = avg_cost
             
             mkt_val = curr_price * qty
             
             final_holdings.append({
                 "symbol": sym,
-                "qty": round(qty, 2), # 這是調整後的股數
+                "qty": round(qty, 2),
                 "avg_price": round(avg_cost, 2),
                 "current_price": round(curr_price, 2),
                 "market_value": round(mkt_val, 2),
@@ -282,7 +279,6 @@ def update_portfolio():
             })
 
     curr_stats = history_data[-1] if history_data else {'total_value':0, 'invested':0}
-    total_unrealized = sum(h['pnl'] for h in final_holdings)
     
     final_output = {
         "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
