@@ -3,231 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的投資組合 (IB版)</title>
+    <title>投資組合績效分析</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
     <style>
-        /* --- 基礎設定 (深色模式) --- */
-        body { 
-            background-color: #101014; 
-            color: #e0e0e0; 
-            margin: 0; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
-            -webkit-font-smoothing: antialiased;
-            padding-bottom: 60px;
-        }
-
-        .container { 
-            max-width: 1200px; 
-            margin: 0 auto; 
-            padding: 20px; 
-        }
-
-        /* --- 頂部標題 --- */
-        .header { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 24px; 
-            padding-bottom: 10px;
-            border-bottom: 1px solid #2d2d30;
-        }
-        .header h2 { margin: 0; font-size: 1.5rem; color: #fff; }
-        .update-time { color: #666; font-size: 0.9rem; }
-
-        /* --- 網格佈局 (卡片區) --- */
-        .grid { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
-            gap: 16px; 
-            margin-bottom: 30px; 
-        }
-
-        /* --- 卡片樣式 --- */
-        .card { 
-            background: #18181c; 
-            padding: 24px; 
-            border-radius: 12px; 
-            border: 1px solid #2d2d30; 
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .card-label { color: #9aa5b1; font-size: 0.9rem; margin-bottom: 8px; font-weight: 500; }
-        .card-value { font-size: 1.8rem; font-weight: 700; letter-spacing: 0.5px; }
-        .card-sub { font-size: 0.9rem; margin-top: 8px; font-weight: 500; }
-
-        /* --- 顏色定義 (台股：紅漲綠跌) --- */
-        .red { color: #ff5252; }   /* 獲利 */
-        .green { color: #4caf50; } /* 虧損 */
-        .blue { color: #40a9ff; }  /* 股息/中性 */
-        .gray { color: #666; }
-
-        /* --- 圖表區塊 --- */
-        .chart-section {
-            background: #18181c;
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #2d2d30;
-            margin-bottom: 30px;
-        }
-        .chart-container { 
-            position: relative; 
-            height: 400px; 
-            width: 100%; 
-        }
-
-        /* --- 表格區塊 --- */
-        .table-card {
-            background: #18181c;
-            border-radius: 12px;
-            border: 1px solid #2d2d30;
-            margin-bottom: 30px;
-            overflow: hidden; /* 圓角 */
-        }
-        .table-header {
-            padding: 20px;
-            border-bottom: 1px solid #2d2d30;
-            background: #1f1f23;
-        }
-        .table-header h3 { margin: 0; font-size: 1.1rem; color: #fff; }
-
-        .table-responsive { overflow-x: auto; }
+        body { background-color: #101014; color: #e0e0e0; margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding-bottom: 60px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         
-        table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            font-size: 0.95rem; 
-            white-space: nowrap; /* 防止手機版換行太醜 */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid #2d2d30; padding-bottom: 10px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 30px; }
+        
+        .card { background: #18181c; padding: 24px; border-radius: 12px; border: 1px solid #2d2d30; }
+        .card-label { color: #9aa5b1; font-size: 0.9rem; margin-bottom: 8px; }
+        .card-value { font-size: 1.8rem; font-weight: 700; }
+        .card-sub { font-size: 0.9rem; margin-top: 8px; font-weight: 500; }
+        
+        .red { color: #ff5252; } .green { color: #4caf50; } .blue { color: #40a9ff; }
+        
+        /* 圖表區塊 */
+        .chart-section { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 30px; }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .chart-container { position: relative; height: 400px; width: 100%; }
+        
+        /* 按鈕群組 */
+        .btn-group button {
+            background: #2d2d30; border: none; color: #888; padding: 6px 12px; cursor: pointer; font-size: 0.9rem; transition: 0.2s;
         }
-        th { 
-            text-align: right; /* 數字靠右 */
-            color: #888; 
-            padding: 14px 16px; 
-            border-bottom: 1px solid #333; 
-            font-weight: 500; 
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 0.5px;
-        }
-        /* 第一欄代碼靠左 */
-        th:first-child, td:first-child { text-align: left; } 
-        /* 中間文字欄位靠左 (如日期) */
-        th:nth-child(2), td:nth-child(2), 
-        th:nth-child(3), td:nth-child(3) { text-align: left; }
+        .btn-group button:first-child { border-radius: 4px 0 0 4px; }
+        .btn-group button:last-child { border-radius: 0 4px 4px 0; }
+        .btn-group button.active { background: #40a9ff; color: #fff; }
 
-        td { 
-            padding: 14px 16px; 
-            border-bottom: 1px solid #2d2d30; 
-            text-align: right;
-        }
-        tr:last-child td { border-bottom: none; }
-        tr:hover { background-color: #232328; }
-
-        /* 標籤樣式 */
-        .symbol-tag { 
-            padding: 4px 10px; 
-            background: #2d2d30; 
-            border-radius: 6px; 
-            font-weight: 700; 
-            color: #fff;
-            letter-spacing: 0.5px;
-        }
-        .type-tag {
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            margin-right: 8px;
-            display: inline-block;
-            min-width: 50px;
-            text-align: center;
-        }
-        .tag-trade { background: #2d2d30; color: #aaa; border: 1px solid #444; }
-        .tag-div { background: #1a3a50; color: #40a9ff; border: 1px solid #205070; }
-
-        /* 頁尾連結 */
+        /* 表格 */
+        .table-card { background: #18181c; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 30px; overflow: hidden; }
+        .table-header { padding: 20px; border-bottom: 1px solid #2d2d30; background: #1f1f23; }
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.95rem; white-space: nowrap; }
+        th, td { padding: 14px 16px; border-bottom: 1px solid #2d2d30; text-align: right; }
+        th:first-child, td:first-child { text-align: left; }
+        .symbol-tag { padding: 4px 10px; background: #2d2d30; border-radius: 6px; font-weight: 700; color: #fff; }
+        .type-tag { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; min-width: 50px; text-align: center; margin-right: 8px; }
+        .tag-div { background: #1a3a50; color: #40a9ff; } .tag-trade { background: #2d2d30; color: #aaa; }
+        
         .footer { text-align: center; margin-top: 40px; }
-        .footer a { 
-            color: #40a9ff; 
-            text-decoration: none; 
-            font-size: 0.9rem; 
-            opacity: 0.7; 
-            transition: opacity 0.2s;
-        }
-        .footer a:hover { opacity: 1; }
-
-        /* RWD 調整 */
-        @media (max-width: 600px) {
-            .card-value { font-size: 1.5rem; }
-            .container { padding: 10px; }
-            th, td { padding: 10px; font-size: 0.85rem; }
-        }
+        .footer a { color: #40a9ff; text-decoration: none; }
     </style>
 </head>
 <body>
     <div id="app" class="container">
         <div class="header">
             <div>
-                <h2>投資組合看板</h2>
-                <div style="font-size:0.8rem; color:#888; margin-top:4px;">IB 格式 • 拆股自動調整 • 淨資金流法</div>
+                <h2 style="margin:0">投資組合看板</h2>
+                <div style="font-size:0.8rem; color:#888; margin-top:4px;">TWR 時間加權 • SPY 比較 • 拆股修正</div>
             </div>
-            <span class="update-time">更新: {{ updateTime }}</span>
+            <span style="color:#666; font-size:0.9rem">更新: {{ updateTime }}</span>
         </div>
 
         <div class="grid">
             <div class="card">
-                <div class="card-label">總持倉市值 (Market Value)</div>
+                <div class="card-label">總持倉市值 (Net Worth)</div>
                 <div class="card-value">${{ formatNumber(summary.total_value) }}</div>
             </div>
-
             <div class="card">
-                <div class="card-label">淨投入本金 (Net Invested)</div>
-                <div class="card-value">${{ formatNumber(summary.invested_capital) }}</div>
-                <div class="card-sub gray">買入總額 - (賣出 + 股息)</div>
+                <div class="card-label">累計報酬率 (TWR)</div>
+                <div class="card-value" :class="summary.twr >= 0 ? 'red' : 'green'">
+                    {{ summary.twr >= 0 ? '+' : '' }}{{ summary.twr }}%
+                </div>
+                <div class="card-sub gray">vs SPY: {{ chartData.length > 0 ? chartData[chartData.length-1].benchmark_twr : 0 }}%</div>
             </div>
-
             <div class="card">
-                <div class="card-label">總帳面損益 (Total P&L)</div>
+                <div class="card-label">總帳面損益 (P&L)</div>
                 <div class="card-value" :class="summary.total_pnl >= 0 ? 'red' : 'green'">
                     {{ summary.total_pnl >= 0 ? '+' : '' }}{{ formatNumber(summary.total_pnl) }}
                 </div>
-                <div class="card-sub" :class="summary.pnl_percent >= 0 ? 'red' : 'green'">
-                    {{ summary.pnl_percent }}% (總報酬率)
-                </div>
             </div>
-
             <div class="card">
-                <div class="card-label">已實現獲利 (Realized)</div>
+                <div class="card-label">已實現 (Realized)</div>
                 <div class="card-value" :class="summary.realized_pnl >= 0 ? 'red' : 'green'">
                     {{ formatNumber(summary.realized_pnl) }}
                 </div>
-                <div class="card-sub blue">包含交易獲利與股息</div>
             </div>
         </div>
 
         <div class="chart-section">
-            <h3 style="margin-top:0; margin-bottom:20px; color:#ddd; font-size:1.1rem;">資產成長 vs 本金投入</h3>
+            <div class="chart-header">
+                <h3 style="margin:0; color:#ddd">績效分析</h3>
+                <div class="btn-group">
+                    <button :class="{active: chartType==='asset'}" @click="switchChart('asset')">資產成長</button>
+                    <button :class="{active: chartType==='twr'}" @click="switchChart('twr')">TWR 績效比較</button>
+                </div>
+            </div>
             <div class="chart-container">
                 <canvas id="mainChart"></canvas>
             </div>
         </div>
 
         <div class="table-card">
-            <div class="table-header">
-                <h3>目前持倉 (Open Positions)</h3>
-            </div>
+            <div class="table-header"><h3>目前持倉 (Holdings)</h3></div>
             <div class="table-responsive">
                 <table>
                     <thead>
-                        <tr>
-                            <th>代碼</th>
-                            <th>持有股數</th>
-                            <th>成本均價</th>
-                            <th>現價</th>
-                            <th>市值</th>
-                            <th>未實現損益</th>
-                            <th>報酬率 %</th>
-                        </tr>
+                        <tr><th>代碼</th><th>股數</th><th>成本</th><th>現價</th><th>市值</th><th>損益</th><th>%</th></tr>
                     </thead>
                     <tbody>
                         <tr v-for="s in holdings" :key="s.symbol">
@@ -236,78 +111,39 @@
                             <td style="color:#aaa">${{ s.avg_price }}</td>
                             <td>${{ s.current_price }}</td>
                             <td style="font-weight:bold">${{ formatNumber(s.market_value) }}</td>
-                            <td :class="s.pnl >= 0 ? 'red' : 'green'">
-                                {{ s.pnl >= 0 ? '+' : '' }}{{ formatNumber(s.pnl) }}
-                            </td>
-                            <td :class="s.pnl >= 0 ? 'red' : 'green'">
-                                {{ s.pnl_percent }}%
-                            </td>
+                            <td :class="s.pnl >= 0 ? 'red' : 'green'">{{ s.pnl >= 0 ? '+' : '' }}{{ formatNumber(s.pnl) }}</td>
+                            <td :class="s.pnl >= 0 ? 'red' : 'green'">{{ s.pnl_percent }}%</td>
                         </tr>
-                        <tr v-if="holdings.length === 0">
-                            <td colspan="7" style="text-align:center; padding:30px; color:#666;">
-                                目前沒有持倉
-                            </td>
-                        </tr>
+                        <tr v-if="holdings.length===0"><td colspan="7" style="text-align:center;padding:30px;color:#666">無持倉</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <div class="table-card">
-            <div class="table-header">
-                <h3>歷史紀錄 (Closed Trades & Dividends)</h3>
-            </div>
+            <div class="table-header"><h3>歷史紀錄 (Closed & Dividends)</h3></div>
             <div class="table-responsive">
                 <table>
                     <thead>
-                        <tr>
-                            <th>代碼</th>
-                            <th>日期</th>
-                            <th>買入成本</th>
-                            <th>賣出/股息</th>
-                            <th>數量</th>
-                            <th>淨獲利 (含稅費)</th>
-                            <th>%</th>
-                        </tr>
+                        <tr><th>類型</th><th>代碼</th><th>日期</th><th>買入</th><th>賣出</th><th>淨利</th><th>%</th></tr>
                     </thead>
                     <tbody>
-                        <tr v-for="d in closedPositions" :key="d.symbol + d.close_date + d.type + d.pnl">
-                            <td>
-                                <span v-if="d.type === 'DIVIDEND'" class="type-tag tag-div">股息</span>
-                                <span v-else class="type-tag tag-trade">交易</span>
-                                <span class="symbol-tag">{{ d.symbol }}</span>
-                            </td>
+                        <tr v-for="d in closedPositions" :key="d.symbol+d.close_date+d.type+d.pnl">
+                            <td><span class="type-tag" :class="d.type==='DIVIDEND'?'tag-div':'tag-trade'">{{ d.type==='DIVIDEND'?'股息':'交易' }}</span></td>
+                            <td><span class="symbol-tag">{{ d.symbol }}</span></td>
                             <td style="color:#aaa">{{ d.close_date }}</td>
-                            
-                            <td>{{ d.buy_price > 0 ? '$' + d.buy_price : '-' }}</td>
-                            
-                            <td>{{ d.sell_price > 0 ? '$' + d.sell_price : '-' }}</td>
-                            
-                            <td>{{ d.qty > 0 ? d.qty : '-' }}</td>
-                            
-                            <td :class="getPnlColor(d)" style="font-weight:bold">
-                                {{ d.pnl >= 0 ? '+' : '' }}{{ formatNumber(d.pnl) }}
-                            </td>
-                            
-                            <td :class="getPnlColor(d)">
-                                {{ d.type === 'TRADE' ? d.pnl_percent + '%' : '-' }}
-                            </td>
+                            <td>{{ d.buy_price>0?'$'+d.buy_price:'-' }}</td>
+                            <td>{{ d.sell_price>0?'$'+d.sell_price:'-' }}</td>
+                            <td :class="d.pnl>=0?(d.type==='DIVIDEND'?'blue':'red'):'green'" style="font-weight:bold">{{ d.pnl>=0?'+':'' }}{{ formatNumber(d.pnl) }}</td>
+                            <td>{{ d.type==='TRADE'?d.pnl_percent+'%':'-' }}</td>
                         </tr>
-                        <tr v-if="closedPositions.length === 0">
-                            <td colspan="7" style="text-align:center; padding:30px; color:#666;">
-                                尚無已實現紀錄
-                            </td>
-                        </tr>
+                        <tr v-if="closedPositions.length===0"><td colspan="7" style="text-align:center;padding:30px;color:#666">無紀錄</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
-
-        <div class="footer">
-            <a href="https://docs.google.com/spreadsheets" target="_blank">
-                📝 編輯 Google Sheet 交易紀錄
-            </a>
-        </div>
+        
+        <div class="footer"><a href="https://docs.google.com/spreadsheets" target="_blank">編輯 Google Sheet</a></div>
     </div>
 
     <script>
@@ -315,144 +151,107 @@
         
         createApp({
             setup() {
-                // 狀態變數
-                const summary = ref({
-                    total_value: 0,
-                    invested_capital: 0,
-                    total_pnl: 0,
-                    pnl_percent: 0,
-                    realized_pnl: 0
-                })
-                const updateTime = ref('載入中...')
+                const summary = ref({})
+                const updateTime = ref('-')
                 const holdings = ref([])
                 const closedPositions = ref([])
+                const chartData = ref([])
+                const chartType = ref('twr') // 預設顯示 TWR
                 let myChart = null
 
-                // 數字格式化 (加千分位)
-                const formatNumber = (num) => {
-                    if (num === undefined || num === null) return '0.00'
-                    return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                }
+                const formatNumber = (num) => num ? Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'
 
-                // 判斷顏色 (交易用紅綠，股息用藍色)
-                const getPnlColor = (deal) => {
-                    if (deal.type === 'DIVIDEND') return 'blue'
-                    return deal.pnl >= 0 ? 'red' : 'green'
-                }
-
-                // 繪製圖表
-                const renderChart = (history) => {
+                const drawChart = () => {
                     const ctx = document.getElementById('mainChart').getContext('2d');
                     if (myChart) myChart.destroy();
 
-                    // 漸層背景設定
-                    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                    gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)'); // 紅色漸層
-                    gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
+                    const labels = chartData.value.map(d => d.date);
+                    let datasets = [];
+
+                    if (chartType.value === 'asset') {
+                        // 資產堆疊圖
+                        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                        gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)');
+                        gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
+                        
+                        datasets = [
+                            {
+                                label: '總資產',
+                                data: chartData.value.map(d => d.total_value),
+                                borderColor: '#ff5252', backgroundColor: gradient,
+                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.4
+                            },
+                            {
+                                label: '淨投入本金',
+                                data: chartData.value.map(d => d.invested),
+                                borderColor: '#666', borderWidth: 2, borderDash: [5, 5],
+                                fill: false, pointRadius: 0, tension: 0
+                            }
+                        ];
+                    } else {
+                        // TWR 比較圖
+                        datasets = [
+                            {
+                                label: '我的組合 (TWR %)',
+                                data: chartData.value.map(d => d.twr),
+                                borderColor: '#ff5252', borderWidth: 2, pointRadius: 0, tension: 0.4
+                            },
+                            {
+                                label: 'S&P 500 (SPY %)',
+                                data: chartData.value.map(d => d.benchmark_twr),
+                                borderColor: '#40a9ff', borderWidth: 2, pointRadius: 0, tension: 0.4
+                            }
+                        ];
+                    }
 
                     myChart = new Chart(ctx, {
                         type: 'line',
-                        data: {
-                            labels: history.map(d => d.date),
-                            datasets: [
-                                {
-                                    label: '總持倉市值 (Net Worth)',
-                                    data: history.map(d => d.total_value),
-                                    borderColor: '#ff5252', // 紅色主線
-                                    backgroundColor: gradient,
-                                    borderWidth: 2,
-                                    pointRadius: 0, // 不顯示點，只顯示線
-                                    pointHoverRadius: 6,
-                                    fill: true,
-                                    tension: 0.4 // 曲線平滑度
-                                },
-                                {
-                                    label: '淨投入本金 (Invested)',
-                                    data: history.map(d => d.invested),
-                                    borderColor: '#666', // 灰色虛線
-                                    borderWidth: 2,
-                                    borderDash: [5, 5],
-                                    fill: false,
-                                    pointRadius: 0,
-                                    pointHoverRadius: 0,
-                                    tension: 0
-                                }
-                            ]
-                        },
+                        data: { labels, datasets },
                         options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
+                            responsive: true, maintainAspectRatio: false,
                             interaction: { mode: 'index', intersect: false },
                             plugins: {
-                                legend: { 
-                                    labels: { color: '#ccc', font: { size: 12 } },
-                                    align: 'end'
-                                },
+                                legend: { labels: { color: '#ccc' } },
                                 tooltip: {
                                     backgroundColor: 'rgba(24, 24, 28, 0.9)',
-                                    titleColor: '#888',
-                                    bodyColor: '#fff',
-                                    borderColor: '#333',
-                                    borderWidth: 1,
-                                    padding: 10,
+                                    bodyColor: '#fff', borderColor: '#333', borderWidth: 1,
                                     callbacks: {
-                                        label: function(context) {
-                                            return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                                        label: function(ctx) {
+                                            let val = ctx.parsed.y.toLocaleString();
+                                            return ctx.dataset.label + ': ' + (chartType.value==='twr'? val+'%' : '$'+val);
                                         }
                                     }
                                 }
                             },
                             scales: {
-                                x: { 
-                                    grid: { color: '#2d2d30' }, 
-                                    ticks: { color: '#666', maxTicksLimit: 8 } 
-                                },
-                                y: { 
-                                    position: 'right', // Y軸在右側比較專業
-                                    grid: { color: '#2d2d30' }, 
-                                    ticks: { color: '#666' } 
-                                }
+                                x: { grid: { color: '#2d2d30' }, ticks: { color: '#666', maxTicksLimit: 8 } },
+                                y: { position: 'right', grid: { color: '#2d2d30' }, ticks: { color: '#666' } }
                             }
                         }
                     });
                 }
 
-                // 抓取資料
+                const switchChart = (type) => {
+                    chartType.value = type;
+                    drawChart();
+                }
+
                 const fetchData = async () => {
                     try {
-                        // 加時間戳參數避免瀏覽器快取舊資料
                         const res = await fetch('data.json?t=' + new Date().getTime())
-                        if (!res.ok) throw new Error("無法讀取 data.json")
-                        
                         const data = await res.json()
-                        
                         summary.value = data.summary
                         updateTime.value = data.updated_at
                         holdings.value = data.holdings
                         closedPositions.value = data.closed_positions
-
-                        // 等待 DOM 更新後畫圖
-                        nextTick(() => {
-                            if (data.history && data.history.length > 0) {
-                                renderChart(data.history)
-                            }
-                        })
-                    } catch (e) {
-                        console.error("Loading error:", e)
-                        updateTime.value = "讀取失敗，請稍後再試"
-                    }
+                        chartData.value = data.history
+                        
+                        nextTick(() => { if (data.history.length > 0) drawChart() })
+                    } catch (e) { console.error(e) }
                 }
 
                 onMounted(fetchData)
-
-                return { 
-                    summary, 
-                    updateTime, 
-                    holdings, 
-                    closedPositions, 
-                    formatNumber,
-                    getPnlColor 
-                }
+                return { summary, updateTime, holdings, closedPositions, formatNumber, chartData, chartType, switchChart }
             }
         }).mount('#app')
     </script>
