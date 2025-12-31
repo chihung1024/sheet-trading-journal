@@ -14,7 +14,7 @@
             margin: 0; 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             padding-bottom: 60px;
-            -webkit-tap-highlight-color: transparent; /* 移除手機點擊藍框 */
+            -webkit-tap-highlight-color: transparent;
         }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         
@@ -34,7 +34,7 @@
         /* --- 卡片網格 (RWD) --- */
         .grid { 
             display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* 手機上允許更小的卡片 */
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); 
             gap: 12px; 
             margin-bottom: 24px; 
         }
@@ -75,10 +75,10 @@
         .chart-container { 
             position: relative; 
             width: 100%; 
-            height: 450px; /* 電腦版高度 */
+            height: 450px; 
         }
         
-        /* --- 按鈕群組 (手機橫向滑動優化) --- */
+        /* --- 按鈕群組 --- */
         .btn-group { 
             display: flex; 
             border-radius: 6px; 
@@ -95,7 +95,7 @@
             cursor: pointer; 
             font-size: 0.85rem; 
             transition: 0.2s;
-            white-space: nowrap; /* 防止文字換行 */
+            white-space: nowrap; 
         }
         .btn-group button:last-child { border-right: none; }
         .btn-group button.active { background: #40a9ff; color: #fff; font-weight: bold; }
@@ -114,7 +114,7 @@
         .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: collapse; font-size: 0.9rem; white-space: nowrap; }
         th, td { padding: 12px 16px; border-bottom: 1px solid #2d2d30; text-align: right; }
-        th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #18181c; z-index: 2; } /* 固定首欄 */
+        th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #18181c; z-index: 2; }
         th { color: #888; font-weight: 500; background: #1f1f23; }
         
         .symbol-tag { padding: 3px 8px; background: #2d2d30; border-radius: 4px; font-weight: 700; color: #fff; font-size: 0.8rem; }
@@ -124,40 +124,18 @@
         .footer { text-align: center; margin-top: 30px; font-size: 0.9rem; }
         .footer a { color: #40a9ff; text-decoration: none; opacity: 0.8; }
 
-        /* --- Mobile Breakpoint (手機版樣式) --- */
+        /* --- Mobile Breakpoint --- */
         @media (max-width: 768px) {
             .container { padding: 15px; }
-            
-            /* 標題與更新時間堆疊 */
             .header { flex-direction: column; align-items: flex-start; gap: 5px; }
             .update-time { align-self: flex-start; }
-
-            /* 卡片在手機上字體調整 */
             .card { padding: 15px; }
             .card-value { font-size: 1.3rem; }
-
-            /* 圖表控制列堆疊 */
             .chart-controls { flex-direction: column; align-items: flex-start; gap: 15px; }
-            .control-groups { 
-                width: 100%; 
-                display: flex; 
-                flex-direction: column; 
-                gap: 10px; 
-            }
-            
-            /* 讓按鈕群組可以橫向滑動 (像 App 選單) */
-            .btn-group { 
-                width: 100%; 
-                overflow-x: auto; 
-                display: flex; 
-                /* 隱藏捲軸 */
-                scrollbar-width: none; 
-                -ms-overflow-style: none; 
-            }
+            .control-groups { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+            .btn-group { width: 100%; overflow-x: auto; display: flex; scrollbar-width: none; -ms-overflow-style: none; }
             .btn-group::-webkit-scrollbar { display: none; }
-            .btn-group button { flex: 1; padding: 8px 10px; } /* 按鈕加大比較好按 */
-
-            /* 圖表高度縮小，避免佔滿整個手機畫面 */
+            .btn-group button { flex: 1; padding: 8px 10px; }
             .chart-container { height: 300px; }
         }
     </style>
@@ -285,41 +263,58 @@
                 const fullChartData = ref([])
                 const displayedData = ref([])
                 
-                const chartType = ref('asset') // 預設顯示資產圖 (手機上比較直觀)
-                const timeRange = ref('ALL')
+                const chartType = ref('asset') 
+                const timeRange = ref('1Y') // 預設改為 1Y，比 ALL 更實用
                 let myChart = null
 
                 const formatNumber = (num) => num ? Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'
 
-                // 計算最新的 SPY TWR 顯示在卡片上
+                // 計算顯示在卡片上的 SPY TWR (需根據當前時間範圍連動，或顯示最後一筆)
                 const currentSpyTwr = computed(() => {
+                    // 這裡顯示的是「目前畫面上的」最後一筆資料的 TWR
+                    // 如果你想要「這段期間的漲幅」，需要 (End/Start) - 1 計算
+                    // 但簡單起見，我們顯示累積至今的總 TWR
                     if (fullChartData.value.length > 0) {
                         return fullChartData.value[fullChartData.value.length - 1].benchmark_twr;
                     }
                     return 0;
                 })
 
-                // 篩選數據邏輯
+                // --- 修正後的篩選邏輯 ---
                 const filterData = () => {
                     if (fullChartData.value.length === 0) return;
                     
                     const now = new Date();
-                    let startDate = new Date('2000-01-01');
+                    // 關鍵修正：以「現在 (now)」為基準，複製一份新的 Date 物件來計算起始日
+                    let startDate = new Date(now);
 
                     switch(timeRange.value) {
-                        case '1M': startDate.setMonth(now.getMonth() - 1); break;
-                        case '3M': startDate.setMonth(now.getMonth() - 3); break;
-                        case '6M': startDate.setMonth(now.getMonth() - 6); break;
-                        case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
-                        case '1Y': startDate.setFullYear(now.getFullYear() - 1); break;
-                        case 'ALL': startDate = new Date('2000-01-01'); break;
+                        case '1M': 
+                            startDate.setMonth(now.getMonth() - 1); 
+                            break;
+                        case '3M': 
+                            startDate.setMonth(now.getMonth() - 3); 
+                            break;
+                        case '6M': 
+                            startDate.setMonth(now.getMonth() - 6); 
+                            break;
+                        case 'YTD': 
+                            // 今年 1 月 1 日
+                            startDate = new Date(now.getFullYear(), 0, 1); 
+                            break;
+                        case '1Y': 
+                            startDate.setFullYear(now.getFullYear() - 1); 
+                            break;
+                        case 'ALL': 
+                            startDate = new Date('2000-01-01'); 
+                            break;
                     }
 
+                    // 過濾數據
                     displayedData.value = fullChartData.value.filter(d => new Date(d.date) >= startDate);
                     drawChart();
                 }
 
-                // 畫圖邏輯
                 const drawChart = () => {
                     const ctx = document.getElementById('mainChart').getContext('2d');
                     if (myChart) myChart.destroy();
@@ -327,14 +322,12 @@
                     const dataPoints = displayedData.value;
                     const labels = dataPoints.map(d => d.date);
                     
-                    // 偵測螢幕寬度，手機版減少 X 軸標籤
                     const isMobile = window.innerWidth < 768;
                     const maxTicks = isMobile ? 4 : 10; 
 
                     let datasets = [];
 
                     if (chartType.value === 'asset') {
-                        // 資產圖
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
@@ -344,7 +337,7 @@
                                 label: '總資產',
                                 data: dataPoints.map(d => d.total_value),
                                 borderColor: '#ff5252', backgroundColor: gradient,
-                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1 // 減少抖動
+                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1
                             },
                             {
                                 label: '淨投入本金',
@@ -354,7 +347,6 @@
                             }
                         ];
                     } else if (chartType.value === 'pnl') {
-                        // 累積損益額
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
@@ -368,7 +360,6 @@
                             }
                         ];
                     } else {
-                        // TWR 比較
                         datasets = [
                             {
                                 label: '我的 TWR %',
@@ -388,18 +379,16 @@
                         data: { labels, datasets },
                         options: {
                             responsive: true, 
-                            maintainAspectRatio: false, // 關鍵：允許自適應高度
+                            maintainAspectRatio: false, 
                             interaction: { mode: 'index', intersect: false },
                             plugins: {
                                 legend: { 
                                     labels: { color: '#ccc', font: { size: 11 } },
-                                    position: 'top',
-                                    align: 'end'
+                                    position: 'top', align: 'end'
                                 },
                                 tooltip: {
                                     backgroundColor: 'rgba(24, 24, 28, 0.9)',
-                                    bodyColor: '#fff', borderColor: '#333', borderWidth: 1,
-                                    padding: 10,
+                                    bodyColor: '#fff', borderColor: '#333', borderWidth: 1, padding: 10,
                                     callbacks: {
                                         label: function(ctx) {
                                             let val = ctx.parsed.y.toLocaleString();
@@ -413,11 +402,7 @@
                             scales: {
                                 x: { 
                                     grid: { color: '#2d2d30' }, 
-                                    ticks: { 
-                                        color: '#666', 
-                                        maxTicksLimit: maxTicks, // RWD 關鍵
-                                        maxRotation: 0 
-                                    } 
+                                    ticks: { color: '#666', maxTicksLimit: maxTicks, maxRotation: 0 } 
                                 },
                                 y: { 
                                     position: 'right', 
@@ -449,17 +434,14 @@
                         closedPositions.value = data.closed_positions
                         fullChartData.value = data.history
                         
-                        // 預設顯示
-                        switchTimeRange('ALL');
+                        // 預設載入 1Y
+                        switchTimeRange('1Y');
                     } catch (e) { console.error(e) }
                 }
 
                 onMounted(() => {
                     fetchData();
-                    // 監聽視窗大小改變，重繪圖表以調整 X 軸密度
-                    window.addEventListener('resize', () => {
-                        if(myChart) drawChart();
-                    });
+                    window.addEventListener('resize', () => { if(myChart) drawChart(); });
                 })
 
                 return { 
