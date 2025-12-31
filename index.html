@@ -3,23 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的交易日記</title>
+    <title>我的投資組合</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/naive-ui"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { background-color: #101014; color: #fff; margin: 0; font-family: sans-serif; padding-bottom: 50px; }
+        body { background-color: #101014; color: #fff; margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding-bottom: 50px; }
         .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
         .card { background: #18181c; padding: 20px; border-radius: 8px; border: 1px solid #2d2d30; margin-bottom: 20px; }
         .card-label { color: #888; font-size: 0.9em; margin-bottom: 5px; }
         .card-value { font-size: 1.6em; font-weight: bold; }
+        .card-sub { font-size: 0.9em; margin-top: 5px; color: #888; }
+        
         .green { color: #63e2b7; }
         .red { color: #e88080; }
-        .section-title { margin-bottom: 15px; color: #eee; border-left: 4px solid #63e2b7; padding-left: 10px; }
+        .chart-container { height: 400px; width: 100%; }
         
         /* 表格樣式 */
-        table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.95em; min-width: 600px; }
         th { text-align: left; color: #888; padding: 12px; border-bottom: 1px solid #333; font-weight: normal; }
         td { padding: 12px; border-bottom: 1px solid #2d2d30; }
         tr:hover { background-color: #1f1f23; }
@@ -29,29 +34,31 @@
 <body>
     <div id="app" class="container">
         <div class="header">
-            <h2>📈 投資組合看板</h2>
+            <h2>🚀 投資組合看板 (Net Invested)</h2>
             <span style="color: #666; font-size: 0.9em">更新: {{ updateTime }}</span>
         </div>
 
         <div class="grid">
             <div class="card">
-                <div class="card-label">總資產 (Net Worth)</div>
+                <div class="card-label">總持倉市值 (Market Value)</div>
                 <div class="card-value">${{ formatNumber(summary.total_value) }}</div>
             </div>
             <div class="card">
-                <div class="card-label">總損益 (Total P&L)</div>
+                <div class="card-label">淨投入本金 (Net Invested)</div>
+                <div class="card-value">${{ formatNumber(summary.invested_capital) }}</div>
+                <div class="card-sub">買入總額 - 賣出回收總額</div>
+            </div>
+            <div class="card">
+                <div class="card-label">總帳面損益 (Unrealized + Realized)</div>
                 <div class="card-value" :class="summary.total_pnl >= 0 ? 'red' : 'green'">
                     {{ summary.total_pnl >= 0 ? '+' : '' }}{{ formatNumber(summary.total_pnl) }}
                 </div>
-            </div>
-            <div class="card">
-                <div class="card-label">未實現損益 (Unrealized)</div>
-                <div class="card-value" :class="summary.unrealized_pnl >= 0 ? 'red' : 'green'">
-                    {{ formatNumber(summary.unrealized_pnl) }}
+                <div class="card-sub" :class="summary.pnl_percent >= 0 ? 'red' : 'green'">
+                    {{ summary.pnl_percent }}% (報酬率)
                 </div>
             </div>
             <div class="card">
-                <div class="card-label">已實現損益 (Realized)</div>
+                <div class="card-label">已實現獲利 (Realized P&L)</div>
                 <div class="card-value" :class="summary.realized_pnl >= 0 ? 'red' : 'green'">
                     {{ formatNumber(summary.realized_pnl) }}
                 </div>
@@ -59,96 +66,145 @@
         </div>
 
         <div class="card">
-            <h3 class="section-title">目前持倉 (Open Positions)</h3>
-            <div style="overflow-x: auto;">
+            <h3 style="margin-top:0; color:#eee">資產 vs 本金</h3>
+            <div class="chart-container">
+                <canvas id="mainChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top:0; color:#eee">目前持倉 (Holdings)</h3>
+            <div class="table-container">
                 <table>
                     <thead>
                         <tr>
                             <th>代碼</th>
                             <th>股數</th>
-                            <th>平均成本</th>
+                            <th>均價</th>
                             <th>現價</th>
                             <th>市值</th>
                             <th>未實現損益</th>
-                            <th>報酬率</th>
+                            <th>%</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="stock in holdings" :key="stock.symbol">
-                            <td><span class="tag">{{ stock.symbol }}</span></td>
-                            <td>{{ stock.qty }}</td>
-                            <td>${{ stock.avg_price }}</td>
-                            <td>${{ stock.current_price }}</td>
-                            <td>${{ formatNumber(stock.market_value) }}</td>
-                            <td :class="stock.pnl >= 0 ? 'red' : 'green'">
-                                {{ stock.pnl >= 0 ? '+' : '' }}{{ formatNumber(stock.pnl) }}
+                        <tr v-for="s in holdings" :key="s.symbol">
+                            <td><span class="tag">{{ s.symbol }}</span></td>
+                            <td>{{ s.qty }}</td>
+                            <td>${{ s.avg_price }}</td>
+                            <td>${{ s.current_price }}</td>
+                            <td>${{ formatNumber(s.market_value) }}</td>
+                            <td :class="s.pnl >= 0 ? 'red' : 'green'">
+                                {{ s.pnl >= 0 ? '+' : '' }}{{ formatNumber(s.pnl) }}
                             </td>
-                            <td :class="stock.pnl >= 0 ? 'red' : 'green'">
-                                {{ stock.pnl_percent }}%
-                            </td>
+                            <td :class="s.pnl >= 0 ? 'red' : 'green'">{{ s.pnl_percent }}%</td>
                         </tr>
-                        <tr v-if="holdings.length === 0">
-                            <td colspan="7" style="text-align: center; color: #666;">目前沒有持倉</td>
-                        </tr>
+                        <tr v-if="holdings.length === 0"><td colspan="7" style="text-align:center">無持倉</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <div class="card">
-            <h3 class="section-title">已平倉紀錄 (Closed Positions)</h3>
-            <div style="overflow-x: auto;">
+            <h3 style="margin-top:0; color:#eee">已平倉紀錄 (Closed)</h3>
+            <div class="table-container">
                 <table>
                     <thead>
                         <tr>
                             <th>代碼</th>
-                            <th>開倉日</th>
-                            <th>平倉日</th>
+                            <th>買入日期</th>
+                            <th>賣出日期</th>
                             <th>買入價</th>
                             <th>賣出價</th>
-                            <th>股數</th>
                             <th>獲利金額</th>
-                            <th>報酬率</th>
+                            <th>%</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="deal in closedPositions" :key="deal.symbol + deal.close_date">
-                            <td><span class="tag">{{ deal.symbol }}</span></td>
-                            <td style="color: #888">{{ deal.open_date }}</td>
-                            <td>{{ deal.close_date }}</td>
-                            <td>${{ deal.buy_price }}</td>
-                            <td>${{ deal.sell_price }}</td>
-                            <td>{{ deal.qty }}</td>
-                            <td :class="deal.pnl >= 0 ? 'red' : 'green'" style="font-weight: bold;">
-                                {{ deal.pnl >= 0 ? '+' : '' }}{{ formatNumber(deal.pnl) }}
+                        <tr v-for="d in closedPositions" :key="d.symbol + d.close_date">
+                            <td><span class="tag">{{ d.symbol }}</span></td>
+                            <td style="color:#888">{{ d.open_date }}</td>
+                            <td>{{ d.close_date }}</td>
+                            <td>${{ d.buy_price }}</td>
+                            <td>${{ d.sell_price }}</td>
+                            <td :class="d.pnl >= 0 ? 'red' : 'green'">
+                                {{ d.pnl >= 0 ? '+' : '' }}{{ formatNumber(d.pnl) }}
                             </td>
-                            <td :class="deal.pnl >= 0 ? 'red' : 'green'">
-                                {{ deal.pnl_percent }}%
-                            </td>
+                            <td :class="d.pnl >= 0 ? 'red' : 'green'">{{ d.pnl_percent }}%</td>
                         </tr>
-                        <tr v-if="closedPositions.length === 0">
-                            <td colspan="8" style="text-align: center; color: #666;">目前沒有平倉紀錄</td>
-                        </tr>
+                        <tr v-if="closedPositions.length === 0"><td colspan="7" style="text-align:center">無紀錄</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
-        
+
     </div>
 
     <script>
-        const { createApp, ref, onMounted } = Vue
+        const { createApp, ref, onMounted, nextTick } = Vue
         
         createApp({
             setup() {
-                const summary = ref({ total_value: 0, total_pnl: 0, unrealized_pnl: 0, realized_pnl: 0 })
+                const summary = ref({})
                 const updateTime = ref('-')
                 const holdings = ref([])
                 const closedPositions = ref([])
-                
+                let myChart = null
+
                 const formatNumber = (num) => {
                     if (num === undefined || num === null) return '0.00'
                     return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                }
+
+                const renderChart = (history) => {
+                    const ctx = document.getElementById('mainChart').getContext('2d');
+                    if (myChart) myChart.destroy();
+
+                    myChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: history.map(d => d.date),
+                            datasets: [
+                                {
+                                    label: '總持倉市值 (Market Value)',
+                                    data: history.map(d => d.total_value),
+                                    borderColor: '#63e2b7', 
+                                    backgroundColor: 'rgba(99, 226, 183, 0.1)',
+                                    borderWidth: 2,
+                                    fill: true,
+                                    tension: 0.4
+                                },
+                                {
+                                    label: '淨投入本金 (Net Invested)',
+                                    data: history.map(d => d.invested),
+                                    borderColor: '#666',
+                                    borderWidth: 2,
+                                    borderDash: [5, 5],
+                                    fill: false,
+                                    tension: 0
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
+                            plugins: {
+                                legend: { labels: { color: '#ccc' } },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { grid: { color: '#333' }, ticks: { color: '#888' } },
+                                y: { grid: { color: '#333' }, ticks: { color: '#888' } }
+                            }
+                        }
+                    });
                 }
 
                 const fetchData = async () => {
@@ -160,8 +216,14 @@
                         updateTime.value = data.updated_at
                         holdings.value = data.holdings
                         closedPositions.value = data.closed_positions
+
+                        nextTick(() => {
+                            if (data.history && data.history.length > 0) {
+                                renderChart(data.history)
+                            }
+                        })
                     } catch (e) {
-                        console.error("讀取中...", e)
+                        console.error("Loading...", e)
                     }
                 }
 
