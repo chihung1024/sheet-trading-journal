@@ -22,16 +22,18 @@
         
         /* 圖表區塊 */
         .chart-section { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 30px; }
-        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;}
         .chart-container { position: relative; height: 400px; width: 100%; }
         
         /* 按鈕群組 */
+        .btn-group { display: flex; }
         .btn-group button {
-            background: #2d2d30; border: none; color: #888; padding: 6px 12px; cursor: pointer; font-size: 0.9rem; transition: 0.2s;
+            background: #2d2d30; border: 1px solid #333; color: #888; padding: 6px 12px; cursor: pointer; font-size: 0.9rem; transition: 0.2s;
         }
         .btn-group button:first-child { border-radius: 4px 0 0 4px; }
         .btn-group button:last-child { border-radius: 0 4px 4px 0; }
-        .btn-group button.active { background: #40a9ff; color: #fff; }
+        .btn-group button:not(:last-child) { border-right: none; }
+        .btn-group button.active { background: #40a9ff; color: #fff; border-color: #40a9ff; }
 
         /* 表格 */
         .table-card { background: #18181c; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 30px; overflow: hidden; }
@@ -89,7 +91,8 @@
                 <h3 style="margin:0; color:#ddd">績效分析</h3>
                 <div class="btn-group">
                     <button :class="{active: chartType==='asset'}" @click="switchChart('asset')">資產成長</button>
-                    <button :class="{active: chartType==='twr'}" @click="switchChart('twr')">TWR 績效比較</button>
+                    <button :class="{active: chartType==='pnl_amount'}" @click="switchChart('pnl_amount')">累積損益 ($)</button>
+                    <button :class="{active: chartType==='twr'}" @click="switchChart('twr')">TWR 績效 %</button>
                 </div>
             </div>
             <div class="chart-container">
@@ -156,7 +159,7 @@
                 const holdings = ref([])
                 const closedPositions = ref([])
                 const chartData = ref([])
-                const chartType = ref('twr') // 預設顯示 TWR
+                const chartType = ref('asset') // 預設顯示資產圖
                 let myChart = null
 
                 const formatNumber = (num) => num ? Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'
@@ -169,7 +172,7 @@
                     let datasets = [];
 
                     if (chartType.value === 'asset') {
-                        // 資產堆疊圖
+                        // 1. 資產成長圖
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
@@ -188,8 +191,23 @@
                                 fill: false, pointRadius: 0, tension: 0
                             }
                         ];
+                    } else if (chartType.value === 'pnl_amount') {
+                        // 2. 累積損益金額圖 (Total Value - Invested)
+                        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                        gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)'); // 金色
+                        gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+
+                        datasets = [
+                            {
+                                label: '累積損益金額 ($)',
+                                data: chartData.value.map(d => d.total_value - d.invested),
+                                borderColor: '#ffd700', // 金色
+                                backgroundColor: gradient,
+                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.4
+                            }
+                        ];
                     } else {
-                        // TWR 比較圖
+                        // 3. TWR 比較圖
                         datasets = [
                             {
                                 label: '我的組合 (TWR %)',
@@ -218,7 +236,10 @@
                                     callbacks: {
                                         label: function(ctx) {
                                             let val = ctx.parsed.y.toLocaleString();
-                                            return ctx.dataset.label + ': ' + (chartType.value==='twr'? val+'%' : '$'+val);
+                                            // 根據圖表類型決定單位
+                                            let suffix = (chartType.value === 'twr') ? '%' : '';
+                                            let prefix = (chartType.value !== 'twr') ? '$' : '';
+                                            return ctx.dataset.label + ': ' + prefix + val + suffix;
                                         }
                                     }
                                 }
