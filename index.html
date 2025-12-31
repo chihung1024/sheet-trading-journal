@@ -124,7 +124,6 @@
         .footer { text-align: center; margin-top: 30px; font-size: 0.9rem; }
         .footer a { color: #40a9ff; text-decoration: none; opacity: 0.8; }
 
-        /* --- Mobile Breakpoint --- */
         @media (max-width: 768px) {
             .container { padding: 15px; }
             .header { flex-direction: column; align-items: flex-start; gap: 5px; }
@@ -263,55 +262,78 @@
                 const fullChartData = ref([])
                 const displayedData = ref([])
                 
-                const chartType = ref('asset') 
-                const timeRange = ref('1Y') // 預設改為 1Y，比 ALL 更實用
+                // 1. 預設改為損益圖 (pnl)
+                const chartType = ref('pnl') 
+                const timeRange = ref('ALL') // 預設全部
                 let myChart = null
 
                 const formatNumber = (num) => num ? Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'
 
-                // 計算顯示在卡片上的 SPY TWR (需根據當前時間範圍連動，或顯示最後一筆)
+                // 計算顯示在卡片上的 SPY TWR
                 const currentSpyTwr = computed(() => {
-                    // 這裡顯示的是「目前畫面上的」最後一筆資料的 TWR
-                    // 如果你想要「這段期間的漲幅」，需要 (End/Start) - 1 計算
-                    // 但簡單起見，我們顯示累積至今的總 TWR
                     if (fullChartData.value.length > 0) {
                         return fullChartData.value[fullChartData.value.length - 1].benchmark_twr;
                     }
                     return 0;
                 })
 
-                // --- 修正後的篩選邏輯 ---
+                // 2. 數據篩選與歸零邏輯
                 const filterData = () => {
                     if (fullChartData.value.length === 0) return;
                     
                     const now = new Date();
-                    // 關鍵修正：以「現在 (now)」為基準，複製一份新的 Date 物件來計算起始日
+                    // 使用 new Date(now) 避免修改原物件
                     let startDate = new Date(now);
 
                     switch(timeRange.value) {
-                        case '1M': 
-                            startDate.setMonth(now.getMonth() - 1); 
-                            break;
-                        case '3M': 
-                            startDate.setMonth(now.getMonth() - 3); 
-                            break;
-                        case '6M': 
-                            startDate.setMonth(now.getMonth() - 6); 
-                            break;
-                        case 'YTD': 
-                            // 今年 1 月 1 日
-                            startDate = new Date(now.getFullYear(), 0, 1); 
-                            break;
-                        case '1Y': 
-                            startDate.setFullYear(now.getFullYear() - 1); 
-                            break;
-                        case 'ALL': 
-                            startDate = new Date('2000-01-01'); 
-                            break;
+                        case '1M': startDate.setMonth(now.getMonth() - 1); break;
+                        case '3M': startDate.setMonth(now.getMonth() - 3); break;
+                        case '6M': startDate.setMonth(now.getMonth() - 6); break;
+                        case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
+                        case '1Y': startDate.setFullYear(now.getFullYear() - 1); break;
+                        case 'ALL': startDate = new Date('2000-01-01'); break;
                     }
 
-                    // 過濾數據
-                    displayedData.value = fullChartData.value.filter(d => new Date(d.date) >= startDate);
+                    // 找出符合時間的第一筆資料的 Index
+                    // 我們需要這個 Index "前一筆" 的累積損益來當作基準 (Baseline)
+                    const startIndex = fullChartData.value.findIndex(d => new Date(d.date) >= startDate);
+                    
+                    if (startIndex === -1) {
+                        displayedData.value = [];
+                    } else {
+                        // 取得基準點 (Anchor)
+                        // 如果是第一筆，基準就是 0；否則基準是前一天的累積數值
+                        let baselinePnl = 0;
+                        let anchorPoint = null;
+
+                        if (startIndex > 0) {
+                            anchorPoint = fullChartData.value[startIndex - 1];
+                            // 計算前一天的累積損益
+                            baselinePnl = anchorPoint.total_value - anchorPoint.invested;
+                        }
+
+                        // 截取資料
+                        const slicedData = fullChartData.value.slice(startIndex);
+
+                        // 計算「區間損益」：每一天的累積損益 - 基準損益
+                        const processedData = slicedData.map(d => ({
+                            ...d,
+                            // 新增一個欄位：Period P&L
+                            period_pnl: (d.total_value - d.invested) - baselinePnl
+                        }));
+
+                        // 如果有前一天的資料，把它加進來當作 "Day 0" (數值為 0)
+                        if (anchorPoint && timeRange.value !== 'ALL') {
+                            processedData.unshift({
+                                ...anchorPoint,
+                                period_pnl: 0, // 強制設為 0
+                                date: anchorPoint.date // 保留日期標籤
+                            });
+                        }
+
+                        displayedData.value = processedData;
+                    }
+                    
                     drawChart();
                 }
 
@@ -328,6 +350,7 @@
                     let datasets = [];
 
                     if (chartType.value === 'asset') {
+                        // 資產圖 (顯示絕對金額，不需要歸零)
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
@@ -347,19 +370,22 @@
                             }
                         ];
                     } else if (chartType.value === 'pnl') {
+                        // 累積損益圖 (使用計算好的 period_pnl)
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
 
                         datasets = [
                             {
-                                label: '累積損益 ($)',
-                                data: dataPoints.map(d => d.total_value - d.invested),
+                                label: '區間損益 ($)',
+                                // 使用我們剛剛算好的 period_pnl (已歸零)
+                                data: dataPoints.map(d => d.period_pnl !== undefined ? d.period_pnl : (d.total_value - d.invested)),
                                 borderColor: '#ffd700', backgroundColor: gradient,
                                 borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1
                             }
                         ];
                     } else {
+                        // TWR
                         datasets = [
                             {
                                 label: '我的 TWR %',
