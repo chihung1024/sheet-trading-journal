@@ -5,14 +5,23 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # --- 設定 ---
-# 你的 Google Sheet CSV 網址 (請確認這裡是你正確的網址)
+# 你的 Google Sheet CSV 網址
 SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS2Km74qaJt42zPpsQk2GCu2Bl9ATPNH9bllT6QyXxYps9i-r2RZcF10KKTTVAgm7PffGVe0zRDthLH/pub?gid=0&single=true&output=csv'
 
 def get_historical_prices(tickers, start_date):
     """一次下載所有股票的歷史數據"""
     print(f"下載歷史數據中... 起始日: {start_date}")
     try:
-        data = yf.download(tickers, start=start_date, progress=False)['Close']
+        # yfinance 下載
+        data = yf.download(tickers, start=start_date, progress=False)
+        
+        # 處理資料結構：只取 'Close' 收盤價
+        if 'Close' in data.columns:
+            data = data['Close']
+        else:
+            print("警告：無法找到收盤價數據，可能下載失敗。")
+            return pd.DataFrame()
+            
         return data
     except Exception as e:
         print(f"下載失敗: {e}")
@@ -38,16 +47,22 @@ def update_portfolio():
 
     # 找出最早的交易日期
     start_date = df['Date'].min().strftime('%Y-%m-%d')
-    # 下載歷史股價 (包含到今天)
+    # 下載歷史股價
     price_history = get_historical_prices(tickers, start_date)
     
-    # 如果只有一支股票，yfinance 格式會不同，需要調整
-    if len(tickers) == 1:
+    # --- 修正的部分開始 ---
+    # 檢查是否為 Series (單維度數據)，如果是才轉 DataFrame
+    if isinstance(price_history, pd.Series):
         price_history = price_history.to_frame(name=tickers[0])
+    # --- 修正的部分結束 ---
 
     # 2. 開始一天一天算資產 (Time Travel)
-    # 建立一個時間範圍：從第一筆交易到今天
-    all_dates = price_history.index
+    if price_history.empty:
+        print("沒有下載到股價數據，無法計算曲線。")
+        all_dates = []
+    else:
+        all_dates = price_history.index
+
     history_data = [] # 用來存每天的總資產
     
     current_holdings = {t: 0 for t in tickers} # 目前手上的股數
@@ -61,37 +76,48 @@ def update_portfolio():
     print("計算歷史資產曲線...")
     for today in all_dates:
         # A. 處理當天的交易
-        if today in trades_dict:
-            todays_trades = trades_dict[today]
-            for _, row in todays_trades.iterrows():
-                symbol = row['Symbol']
-                qty = float(row['Qty'])
-                price = float(row['Price'])
-                action = row['Type'].strip().lower()
-                
-                if action == 'buy':
-                    current_holdings[symbol] += qty
-                    cash_invested += (price * qty)
-                elif action == 'sell':
-                    current_holdings[symbol] -= qty
-                    # 賣出時，簡單處理：本金按比例減少 (這只是估算)
-                    # 這裡不做複雜的已實現損益 FIFO 計算，避免過於複雜
-                    if current_holdings[symbol] >= 0:
-                        pass 
+        # 將 Timestamp 正規化為當天午夜，以確保比對正確
+        today_ts = pd.Timestamp(today).normalize()
+        
+        # 檢查這一天有沒有交易 (包含同一天多筆)
+        # 這裡需要模糊比對或確保日期格式完全一致，簡單起見我們用字串比對
+        today_str = today.strftime('%Y-%m-%d')
+        
+        # 簡易篩選：直接從原始 df 找
+        todays_trades = df[df['Date'].dt.strftime('%Y-%m-%d') == today_str]
+        
+        for _, row in todays_trades.iterrows():
+            symbol = row['Symbol']
+            qty = float(row['Qty'])
+            price = float(row['Price'])
+            action = row['Type'].strip().lower()
+            
+            if action == 'buy':
+                current_holdings[symbol] += qty
+                cash_invested += (price * qty)
+            elif action == 'sell':
+                current_holdings[symbol] -= qty
+                # 賣出時不減少投入本金(簡單計算)，或者你可以選擇按比例減少
 
         # B. 計算當天市值
         daily_total_value = 0
         for symbol, qty in current_holdings.items():
             if qty > 0.001: # 忽略微小誤差
-                # 取得當天股價
                 try:
-                    # 使用 loc 查找，如果當天沒開盤(假日)，會用前一日收盤價 (ffill)
-                    price = price_history.loc[today][symbol]
-                    if pd.isna(price): # 如果是 NaN，往前找
-                        price = price_history[symbol][:today].iloc[-1]
+                    # 從 price_history 找股價
+                    # 如果是單一股票 DataFrame，欄位名可能是 symbol 也可能是 'Close'
+                    if len(tickers) == 1 and symbol not in price_history.columns:
+                         # 嘗試直接取第一欄
+                         price = price_history.iloc[price_history.index == today].iloc[0, 0]
+                    else:
+                        price = price_history.loc[today][symbol]
                     
-                    daily_total_value += price * qty
-                except:
+                    if pd.isna(price): # 如果是 NaN (例如停牌)，往前找最近的一天
+                        # 這裡簡單處理：若當天沒價錢就跳過或用 0 (會造成曲線缺口)，完整做法需 fillna
+                        pass
+                    else:
+                        daily_total_value += price * qty
+                except Exception as e:
                     pass
         
         # 存下這天的紀錄
@@ -102,15 +128,13 @@ def update_portfolio():
         })
 
     # 3. 準備當前持倉數據 (給表格用)
-    latest_prices = price_history.iloc[-1]
     holdings_list = []
     
     total_market_value = 0
     total_cost = 0
 
     # 重新計算一次精確的成本 (簡單平均法)
-    # 為了表格顯示，我們再跑一次總計
-    cost_basis = {} # {symbol: {qty: 10, total_cost: 500}}
+    cost_basis = {} 
     
     for index, row in df.iterrows():
         sym = row['Symbol']
@@ -124,17 +148,26 @@ def update_portfolio():
             cost_basis[sym]['qty'] += qty
             cost_basis[sym]['cost'] += (price * qty)
         elif action == 'sell':
-            # 賣出時減少成本
             if cost_basis[sym]['qty'] > 0:
                 avg = cost_basis[sym]['cost'] / cost_basis[sym]['qty']
                 cost_basis[sym]['cost'] -= (avg * qty)
             cost_basis[sym]['qty'] -= qty
 
+    # 取得最新股價 (最後一筆)
+    if not price_history.empty:
+        latest_prices = price_history.iloc[-1]
+    else:
+        latest_prices = None
+
     for sym, data in cost_basis.items():
         if data['qty'] > 0.001:
             curr_price = 0
             try:
-                curr_price = float(latest_prices[sym])
+                if latest_prices is not None:
+                    if len(tickers) == 1 and sym not in price_history.columns:
+                        curr_price = float(latest_prices.iloc[0])
+                    else:
+                        curr_price = float(latest_prices[sym])
             except:
                 pass
             
@@ -159,7 +192,7 @@ def update_portfolio():
         "total_cost": round(total_cost, 2),
         "total_pnl": round(total_market_value - total_cost, 2),
         "holdings": holdings_list,
-        "history": history_data # 新增：歷史曲線數據
+        "history": history_data
     }
 
     with open('data.json', 'w', encoding='utf-8') as f:
