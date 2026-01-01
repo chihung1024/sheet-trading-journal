@@ -72,9 +72,7 @@ def get_rate(date, fx_rates):
     except: return 32.0
 
 def update_portfolio():
-    print("開始計算 (含資料驗證)...")
-    
-    # 儲存驗證錯誤訊息
+    print("開始計算 (TWR 修正版)...")
     validation_messages = []
 
     try:
@@ -82,15 +80,11 @@ def update_portfolio():
         df.columns = df.columns.str.strip()
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.normalize()
         
-        # 檢查日期是否有格式錯誤 (NaT)
         invalid_dates = df[df['Date'].isna()]
         if not invalid_dates.empty:
             for idx, row in invalid_dates.iterrows():
-                msg = f"⚠️ 行號 {idx+2}: 日期格式錯誤或空白，已略過。"
-                print(msg)
-                validation_messages.append(msg)
+                validation_messages.append(f"⚠️ 行號 {idx+2}: 日期格式錯誤，已略過。")
         
-        # 移除日期錯誤的列並排序
         df = df.dropna(subset=['Date']).sort_values('Date')
         
         for col in ['Comm', 'Tax', 'Qty', 'Price']:
@@ -106,18 +100,15 @@ def update_portfolio():
     tickers = df['Symbol'].unique().tolist()
     if not tickers: return
 
-    # 1. 下載數據
     start_date = df['Date'].min().strftime('%Y-%m-%d')
     market_data, fx_rates = get_market_data(tickers, start_date)
 
-    # 2. 時間軸
     start_dt = df['Date'].min()
     end_dt = pd.Timestamp.now().normalize()
     all_dates = pd.date_range(start=start_dt, end=end_dt)
 
-    # 3. 狀態變數
     holdings = {t: 0.0 for t in tickers}
-    fifo_queue = {t: deque() for t in tickers}
+    fifo_queue = {t: deque() for t in tickers} # 用來存成本，萬一沒股價時備用
     symbol_tags = {} 
     
     net_invested_twd = 0.0
@@ -178,33 +169,24 @@ def update_portfolio():
                             'close_date': date_str, 'buy_price': 0, 'sell_price': 0, 'pnl_percent': 0
                         })
 
-        # --- B. 處理當日交易 ---
+        # --- B. 交易處理 ---
         if current_date in transactions_map:
             for tx in transactions_map[current_date]:
                 symbol = tx['Symbol']
                 action = tx['Type'].strip().upper()
                 
-                # --- [新增] 資料驗證防呆 ---
                 raw_qty = safe_float(tx['Qty'])
                 raw_price = safe_float(tx['Price'])
                 
-                # 1. 檢查股數是否 <= 0 (對於買賣來說是異常的)
-                if action in ['BUY', 'SELL'] and raw_qty <= 0:
-                    msg = f"❌ 資料異常: {date_str} {symbol} {action} 股數為 {raw_qty} (應大於 0)，已略過此筆交易。"
-                    print(msg)
-                    validation_messages.append(msg)
-                    continue # 跳過此筆，避免破壞計算
-                
-                # 2. 檢查價格是否 < 0
-                if action in ['BUY', 'SELL'] and raw_price < 0:
-                    msg = f"❌ 資料異常: {date_str} {symbol} {action} 價格為 {raw_price} (應非負數)，已略過此筆交易。"
-                    print(msg)
-                    validation_messages.append(msg)
-                    continue
+                if action in ['BUY', 'SELL']:
+                    if raw_qty <= 0:
+                        validation_messages.append(f"❌ 異常: {date_str} {symbol} {action} 股數<=0")
+                        continue
+                    if raw_price < 0:
+                        validation_messages.append(f"❌ 異常: {date_str} {symbol} {action} 價格<0")
+                        continue
 
-                # 3. 忽略非標準類型
-                if action not in ['BUY', 'SELL']:
-                    continue
+                if action not in ['BUY', 'SELL']: continue
 
                 symbol_tags[symbol] = safe_str(tx.get('Tag', 'Other'))
                 comm = safe_float(tx['Comm'])
@@ -228,6 +210,7 @@ def update_portfolio():
                     net_invested_twd += cost_twd
                     daily_cash_flow_twd += cost_twd
                     holdings[symbol] += adj_qty
+                    
                     unit_cost_origin = raw_cost_amt / adj_qty if adj_qty > 0 else 0
                     fifo_queue[symbol].append({'qty': adj_qty, 'unit_cost': unit_cost_origin, 'rate_at_buy': tx_rate, 'raw_date': current_date})
                     
@@ -249,9 +232,11 @@ def update_portfolio():
                     while qty_to_sell > 0.000001 and fifo_queue[symbol]:
                         batch = fifo_queue[symbol][0]
                         sell_amt = min(qty_to_sell, batch['qty'])
+                        
                         cost_twd_part = (batch['unit_cost'] * batch['rate_at_buy']) * sell_amt
                         revenue_origin_unit = (raw_proceeds_amt / adj_qty)
                         rev_twd_part = (revenue_origin_unit * tx_rate) * sell_amt
+                        
                         pnl_twd = rev_twd_part - cost_twd_part
                         realized_pnl_tx += pnl_twd
                         
@@ -278,7 +263,7 @@ def update_portfolio():
                         'tag': symbol_tags[symbol], 'note': f"獲利: {round(realized_pnl_tx,0)}"
                     })
 
-        # --- C. 市值 ---
+        # --- C. 市值計算 (含除錯修正) ---
         market_val_twd = 0.0
         for sym, qty in holdings.items():
             if qty > 0.001:
@@ -291,16 +276,26 @@ def update_portfolio():
                         if current_date in closes.index: price = closes.loc[current_date]
                         else: price = closes.asof(current_date)
                     except: pass
-                if pd.isna(price): price = 0
+                
+                # [修正]: 萬一抓不到股價 (NaN 或 0)，嘗試用平均成本估算，避免資產歸零導致 TWR 崩盤
+                if (pd.isna(price) or price == 0) and fifo_queue[sym]:
+                    # 暫用最後一批的成本價當作現價，避免曲線斷崖
+                    price = fifo_queue[sym][-1]['unit_cost']
                 
                 conversion = 1.0 if curr_sym_currency == 'TWD' else daily_rate
                 market_val_twd += (price * qty * conversion)
 
-        # --- D. TWR ---
-        if prev_total_value_twd > 0:
-            daily_return = (market_val_twd - daily_cash_flow_twd) / prev_total_value_twd - 1
+        # --- D. TWR 計算 (分母修正) ---
+        # 修正 TWR 公式：(今日市值 - 昨日市值 - 淨現金流) / (昨日市值 + 淨現金流)
+        # 假設現金流發生在期初，這樣大額入金不會稀釋報酬率
+        capital_at_risk = prev_total_value_twd + daily_cash_flow_twd
+        
+        if capital_at_risk > 0:
+            daily_profit = market_val_twd - (prev_total_value_twd + daily_cash_flow_twd)
+            daily_return = daily_profit / capital_at_risk
         else:
             daily_return = 0.0
+            
         twr_cumulative *= (1 + daily_return)
         
         bench_twr = 0.0
@@ -370,7 +365,7 @@ def update_portfolio():
             "twr": curr_stats.get('twr', 0),
             "realized_pnl": round(total_realized_pnl_twd, 0)
         },
-        "messages": validation_messages, # 新增錯誤訊息到 JSON
+        "messages": validation_messages,
         "holdings": final_holdings,
         "closed_positions": sorted(closed_positions, key=lambda x: x['close_date'], reverse=True),
         "ledger": sorted(ledger, key=lambda x: x['date'], reverse=True),
@@ -380,7 +375,7 @@ def update_portfolio():
 
     with open('data.json', 'w', encoding='utf-8') as f:
         json.dump(final_output, f, ensure_ascii=False, indent=2)
-    print("更新完成 (包含資料驗證)")
+    print("更新完成 (資料驗證 + TWR 公式優化)")
 
 if __name__ == "__main__":
     update_portfolio()
