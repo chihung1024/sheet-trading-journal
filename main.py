@@ -3,7 +3,7 @@ import yfinance as yf
 import json
 import numpy as np
 from datetime import datetime
-from collections import deque
+from collections import deque, defaultdict
 
 # --- 設定 ---
 SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS2Km74qaJt42zPpsQk2GCu2Bl9ATPNH9bllT6QyXxYps9i-r2RZcF10KKTTVAgm7PffGVe0zRDthLH/pub?gid=0&single=true&output=csv'
@@ -72,7 +72,7 @@ def get_rate(date, fx_rates):
     except: return 32.0
 
 def update_portfolio():
-    print("開始計算 (TWR 修正版)...")
+    print("開始計算 (支援 Tag 歷史分拆)...")
     validation_messages = []
 
     try:
@@ -108,23 +108,25 @@ def update_portfolio():
     all_dates = pd.date_range(start=start_dt, end=end_dt)
 
     holdings = {t: 0.0 for t in tickers}
-    fifo_queue = {t: deque() for t in tickers} # 用來存成本，萬一沒股價時備用
+    fifo_queue = {t: deque() for t in tickers}
     symbol_tags = {} 
     
+    # 總體累計投入 (Net Invested)
     net_invested_twd = 0.0
+    # 依 Tag 分類累計投入 (用於後續 TWR 計算)
+    invested_by_tag = defaultdict(float)
+
     total_realized_pnl_twd = 0.0
     
     closed_positions = [] 
     ledger = []           
-    history_data = []
+    history_data = [] # 這裡將存包含 breakdown 的詳細歷史
     
     transactions_map = {}
     for date, group in df.groupby('Date'):
         transactions_map[date] = group.to_dict('records')
 
-    prev_total_value_twd = 0.0
-    twr_cumulative = 1.0
-    
+    # SPY Benchmark 處理
     spy_start_price_twd = 0
     if 'SPY' in market_data:
         try:
@@ -133,10 +135,16 @@ def update_portfolio():
             if not pd.isna(p) and not pd.isna(r): spy_start_price_twd = p * r
         except: pass
 
+    # 前一日數據 (用於 TWR 鏈鎖計算 - 總體)
+    prev_total_value = 0.0
+    twr_cumulative = 1.0
+
     for current_date in all_dates:
         daily_rate = get_rate(current_date, fx_rates)
-        daily_cash_flow_twd = 0.0
         date_str = current_date.strftime('%Y-%m-%d')
+        
+        # 當日現金流 (總體)
+        daily_flow_total = 0.0
 
         # --- A. 自動配息 ---
         for sym, qty in holdings.items():
@@ -153,14 +161,17 @@ def update_portfolio():
                         conversion = 1.0 if stock_curr == 'TWD' else daily_rate
                         net_div_twd = net_div * conversion
                         
+                        tag = symbol_tags.get(sym, 'Other')
                         net_invested_twd -= net_div_twd
-                        daily_cash_flow_twd -= net_div_twd
+                        invested_by_tag[tag] -= net_div_twd # Tag 現金流出 (配息視為回本)
+                        daily_flow_total -= net_div_twd
+                        
                         total_realized_pnl_twd += net_div_twd
                         
                         entry = {
                             'date': date_str, 'symbol': sym, 'type': 'DIV_AUTO',
                             'qty': 0, 'price': 0, 'amount_twd': round(net_div_twd, 0),
-                            'tag': symbol_tags.get(sym, 'Other'),
+                            'tag': tag,
                             'note': f"自動配息 @ {round(div_per_share, 4)}"
                         }
                         ledger.append(entry)
@@ -174,24 +185,15 @@ def update_portfolio():
             for tx in transactions_map[current_date]:
                 symbol = tx['Symbol']
                 action = tx['Type'].strip().upper()
-                
-                raw_qty = safe_float(tx['Qty'])
-                raw_price = safe_float(tx['Price'])
-                
-                if action in ['BUY', 'SELL']:
-                    if raw_qty <= 0:
-                        validation_messages.append(f"❌ 異常: {date_str} {symbol} {action} 股數<=0")
-                        continue
-                    if raw_price < 0:
-                        validation_messages.append(f"❌ 異常: {date_str} {symbol} {action} 價格<0")
-                        continue
-
                 if action not in ['BUY', 'SELL']: continue
 
-                symbol_tags[symbol] = safe_str(tx.get('Tag', 'Other'))
+                raw_qty = safe_float(tx['Qty'])
+                raw_price = safe_float(tx['Price'])
                 comm = safe_float(tx['Comm'])
                 tax = safe_float(tx['Tax'])
-                
+                tag = safe_str(tx.get('Tag', 'Other'))
+                symbol_tags[symbol] = tag
+
                 stock_currency = 'USD'
                 if symbol in market_data: stock_currency = market_data[symbol]['currency']
                 elif symbol.endswith('.TW') or symbol.endswith('.TWO'): stock_currency = 'TWD'
@@ -202,31 +204,35 @@ def update_portfolio():
                     split_ratio = get_split_adjustment(current_date, market_data[symbol]['splits'])
                 
                 adj_qty = raw_qty * split_ratio
-                raw_cost_amt = (raw_price * raw_qty) + comm
-                raw_proceeds_amt = (raw_price * raw_qty) - comm - tax
                 
                 if action == 'BUY':
-                    cost_twd = raw_cost_amt * tx_rate
-                    net_invested_twd += cost_twd
-                    daily_cash_flow_twd += cost_twd
-                    holdings[symbol] += adj_qty
+                    cost_twd = ((raw_price * raw_qty) + comm) * tx_rate
                     
-                    unit_cost_origin = raw_cost_amt / adj_qty if adj_qty > 0 else 0
+                    net_invested_twd += cost_twd
+                    invested_by_tag[tag] += cost_twd # Tag 現金流入
+                    daily_flow_total += cost_twd
+                    
+                    holdings[symbol] += adj_qty
+                    unit_cost_origin = ((raw_price * raw_qty) + comm) / adj_qty if adj_qty > 0 else 0
                     fifo_queue[symbol].append({'qty': adj_qty, 'unit_cost': unit_cost_origin, 'rate_at_buy': tx_rate, 'raw_date': current_date})
                     
                     ledger.append({
                         'date': date_str, 'symbol': symbol, 'type': 'BUY',
                         'qty': round(adj_qty, 2), 'price': raw_price,
                         'amount_twd': round(-cost_twd, 0),
-                        'tag': symbol_tags[symbol], 'note': '買入'
+                        'tag': tag, 'note': '買入'
                     })
                     
                 elif action == 'SELL':
-                    proceeds_twd = raw_proceeds_amt * tx_rate
+                    proceeds_twd = ((raw_price * raw_qty) - comm - tax) * tx_rate
+                    
                     net_invested_twd -= proceeds_twd
-                    daily_cash_flow_twd -= proceeds_twd
+                    invested_by_tag[tag] -= proceeds_twd # Tag 現金流出
+                    daily_flow_total -= proceeds_twd
+                    
                     holdings[symbol] -= adj_qty
                     
+                    # 實現損益計算 (FIFO)
                     qty_to_sell = adj_qty
                     realized_pnl_tx = 0
                     while qty_to_sell > 0.000001 and fifo_queue[symbol]:
@@ -234,14 +240,14 @@ def update_portfolio():
                         sell_amt = min(qty_to_sell, batch['qty'])
                         
                         cost_twd_part = (batch['unit_cost'] * batch['rate_at_buy']) * sell_amt
-                        revenue_origin_unit = (raw_proceeds_amt / adj_qty)
+                        revenue_origin_unit = ((raw_price * raw_qty) - comm - tax) / raw_qty if raw_qty > 0 else 0
                         rev_twd_part = (revenue_origin_unit * tx_rate) * sell_amt
                         
                         pnl_twd = rev_twd_part - cost_twd_part
                         realized_pnl_tx += pnl_twd
                         
                         closed_positions.append({
-                            'symbol': symbol, 'tag': symbol_tags[symbol],
+                            'symbol': symbol, 'tag': tag,
                             'open_date': batch['raw_date'].strftime('%Y-%m-%d'),
                             'close_date': date_str,
                             'qty': round(sell_amt, 2),
@@ -260,63 +266,82 @@ def update_portfolio():
                         'date': date_str, 'symbol': symbol, 'type': 'SELL',
                         'qty': round(adj_qty, 2), 'price': raw_price,
                         'amount_twd': round(proceeds_twd, 0),
-                        'tag': symbol_tags[symbol], 'note': f"獲利: {round(realized_pnl_tx,0)}"
+                        'tag': tag, 'note': f"獲利: {round(realized_pnl_tx,0)}"
                     })
 
-        # --- C. 市值計算 (含除錯修正) ---
-        market_val_twd = 0.0
+        # --- C. 市值計算 (按 Tag 分拆) ---
+        total_market_val = 0.0
+        # 結構: {'AI': 10000, '長期': 50000}
+        current_mv_by_tag = defaultdict(float)
+        
         for sym, qty in holdings.items():
             if qty > 0.001:
                 price = 0
-                curr_sym_currency = 'USD'
+                sym_curr = 'USD'
                 if sym in market_data:
-                    curr_sym_currency = market_data[sym]['currency']
+                    sym_curr = market_data[sym]['currency']
                     closes = market_data[sym]['close']
                     try:
                         if current_date in closes.index: price = closes.loc[current_date]
                         else: price = closes.asof(current_date)
                     except: pass
                 
-                # [修正]: 萬一抓不到股價 (NaN 或 0)，嘗試用平均成本估算，避免資產歸零導致 TWR 崩盤
+                # 防呆: 無股價時用成本價
                 if (pd.isna(price) or price == 0) and fifo_queue[sym]:
-                    # 暫用最後一批的成本價當作現價，避免曲線斷崖
                     price = fifo_queue[sym][-1]['unit_cost']
                 
-                conversion = 1.0 if curr_sym_currency == 'TWD' else daily_rate
-                market_val_twd += (price * qty * conversion)
+                conversion = 1.0 if sym_curr == 'TWD' else daily_rate
+                val_twd = price * qty * conversion
+                
+                total_market_val += val_twd
+                tag = symbol_tags.get(sym, 'Other')
+                current_mv_by_tag[tag] += val_twd
 
-        # --- D. TWR 計算 (分母修正) ---
-        # 修正 TWR 公式：(今日市值 - 昨日市值 - 淨現金流) / (昨日市值 + 淨現金流)
-        # 假設現金流發生在期初，這樣大額入金不會稀釋報酬率
-        capital_at_risk = prev_total_value_twd + daily_cash_flow_twd
-        
-        if capital_at_risk > 0:
-            daily_profit = market_val_twd - (prev_total_value_twd + daily_cash_flow_twd)
-            daily_return = daily_profit / capital_at_risk
-        else:
-            daily_return = 0.0
+        # --- D. TWR 計算 (總體) ---
+        # 這裡只算總體的 TWR，個別 Tag 的 TWR 留給前端動態計算 (因為前端可任意組合 Tag)
+        # 公式: (End - Start - Flow) / (Start + Flow)
+        # Flow 假設期初發生 (Simple Dietz 近似)，分母用 Start + Flow
+        capital_base = prev_total_value + daily_flow_total
+        daily_return = 0.0
+        if capital_base > 0:
+            daily_profit = total_market_val - capital_base
+            daily_return = daily_profit / capital_base
             
         twr_cumulative *= (1 + daily_return)
         
+        # SPY Benchmark
         bench_twr = 0.0
         if spy_start_price_twd > 0 and 'SPY' in market_data:
             try:
                 p = market_data['SPY']['close'].asof(current_date)
                 if not pd.isna(p):
-                    curr_spy_twd = p * daily_rate
-                    bench_twr = (curr_spy_twd / spy_start_price_twd) - 1
+                    curr_spy = p * daily_rate
+                    bench_twr = (curr_spy / spy_start_price_twd) - 1
             except: pass
+
+        # --- E. 儲存當日數據 (含 Breakdown) ---
+        # 我們把每個 Tag 當下的 "Market Value" 和 "Invested Capital" 存下來
+        # 前端就可以做加總: Sum(Selected Tags MV), Sum(Selected Tags Invested) -> Recompute TWR
+        tags_snapshot = {}
+        all_active_tags = set(list(current_mv_by_tag.keys()) + list(invested_by_tag.keys()))
+        for t in all_active_tags:
+            tags_snapshot[t] = {
+                'mv': round(current_mv_by_tag[t], 0),
+                'inv': round(invested_by_tag[t], 0)
+            }
 
         history_data.append({
             "date": date_str,
-            "total_value": round(market_val_twd, 0),
+            "total_value": round(total_market_val, 0),
             "invested": round(net_invested_twd, 0),
             "twr": round((twr_cumulative - 1) * 100, 2),
-            "benchmark_twr": round(bench_twr * 100, 2)
+            "benchmark_twr": round(bench_twr * 100, 2),
+            "tags": tags_snapshot  # 關鍵新增欄位
         })
-        prev_total_value_twd = market_val_twd
+        
+        prev_total_value = total_market_val
 
-    # --- 整理 ---
+    # --- 整理最終輸出 ---
     final_holdings = []
     allocation_by_tag = {}
     allocation_by_currency = {'TWD': 0, 'USD': 0}
@@ -324,32 +349,33 @@ def update_portfolio():
     for sym, qty in holdings.items():
         if qty > 0.001:
             stock_cur = 'USD'
-            curr_p_origin = 0
+            curr_p = 0
             if sym in market_data:
                 stock_cur = market_data[sym]['currency']
-                try: curr_p_origin = float(market_data[sym]['close'].iloc[-1])
+                try: curr_p = float(market_data[sym]['close'].iloc[-1])
                 except: pass
             
             latest_rate = fx_rates.iloc[-1] if not fx_rates.empty else 32.0
             conversion = 1.0 if stock_cur == 'TWD' else latest_rate
             
-            batches = fifo_queue[sym]
-            total_cost_twd = sum((b['unit_cost'] * b['rate_at_buy']) * b['qty'] for b in batches)
-            
-            mkt_val_twd = curr_p_origin * qty * conversion
-            pnl_twd = mkt_val_twd - total_cost_twd
+            mkt_val = curr_p * qty * conversion
             tag = symbol_tags.get(sym, 'Other')
             
-            allocation_by_tag[tag] = allocation_by_tag.get(tag, 0) + mkt_val_twd
-            allocation_by_currency[stock_cur] = allocation_by_currency.get(stock_cur, 0) + mkt_val_twd
+            # 成本計算
+            batches = fifo_queue[sym]
+            cost_val = sum((b['unit_cost'] * b['rate_at_buy']) * b['qty'] for b in batches)
+            pnl = mkt_val - cost_val
+            
+            allocation_by_tag[tag] = allocation_by_tag.get(tag, 0) + mkt_val
+            allocation_by_currency[stock_cur] = allocation_by_currency.get(stock_cur, 0) + mkt_val
 
             final_holdings.append({
                 "symbol": sym, "tag": tag, "currency": stock_cur,
                 "qty": round(qty, 2),
-                "market_value_twd": round(mkt_val_twd, 0),
-                "pnl_twd": round(pnl_twd, 0),
-                "pnl_percent": round((pnl_twd/total_cost_twd)*100, 2) if total_cost_twd!=0 else 0,
-                "current_price_origin": round(curr_p_origin, 2)
+                "market_value_twd": round(mkt_val, 0),
+                "pnl_twd": round(pnl, 0),
+                "pnl_percent": round((pnl/cost_val)*100, 2) if cost_val!=0 else 0,
+                "current_price_origin": round(curr_p, 2)
             })
 
     curr_stats = history_data[-1] if history_data else {}
@@ -369,13 +395,13 @@ def update_portfolio():
         "holdings": final_holdings,
         "closed_positions": sorted(closed_positions, key=lambda x: x['close_date'], reverse=True),
         "ledger": sorted(ledger, key=lambda x: x['date'], reverse=True),
-        "history": history_data,
+        "history": history_data, # 這裡現在包含了 tags breakdown
         "allocation": { "tags": allocation_by_tag, "currency": allocation_by_currency }
     }
 
     with open('data.json', 'w', encoding='utf-8') as f:
         json.dump(final_output, f, ensure_ascii=False, indent=2)
-    print("更新完成 (資料驗證 + TWR 公式優化)")
+    print("更新完成 (含 Tag 歷史分拆)")
 
 if __name__ == "__main__":
     update_portfolio()
