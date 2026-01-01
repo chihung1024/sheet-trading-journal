@@ -3,111 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>投資組合看板</title>
+    <title>投資組合看板 (Pro)</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* --- 基礎設定 --- */
-        body { 
-            background-color: #101014; 
-            color: #e0e0e0; 
-            margin: 0; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            padding-bottom: 60px;
-            -webkit-tap-highlight-color: transparent;
-        }
+        body { background-color: #101014; color: #e0e0e0; margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding-bottom: 60px; -webkit-tap-highlight-color: transparent; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         
-        /* --- 標題列 --- */
-        .header { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: flex-end; 
-            margin-bottom: 20px; 
-            border-bottom: 1px solid #2d2d30; 
-            padding-bottom: 10px; 
-        }
+        .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; border-bottom: 1px solid #2d2d30; padding-bottom: 10px; }
         .header h2 { margin: 0; font-size: 1.5rem; }
         .header .sub-title { font-size: 0.8rem; color: #888; margin-top: 4px; }
         .update-time { color: #666; font-size: 0.85rem; }
 
-        /* --- 卡片網格 (RWD) --- */
-        .grid { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); 
-            gap: 12px; 
-            margin-bottom: 24px; 
-        }
-        
-        .card { 
-            background: #18181c; 
-            padding: 20px; 
-            border-radius: 12px; 
-            border: 1px solid #2d2d30; 
-        }
+        /* 卡片 */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .card { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; }
         .card-label { color: #9aa5b1; font-size: 0.85rem; margin-bottom: 6px; }
         .card-value { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5px; }
         .card-sub { font-size: 0.8rem; margin-top: 6px; font-weight: 500; }
         
         .red { color: #ff5252; } .green { color: #4caf50; } .blue { color: #40a9ff; }
         
-        /* --- 圖表區塊 --- */
-        .chart-section { 
-            background: #18181c; 
-            padding: 20px; 
-            border-radius: 12px; 
-            border: 1px solid #2d2d30; 
-            margin-bottom: 24px; 
-        }
-        
-        .chart-controls { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 15px; 
-            flex-wrap: wrap; 
-            gap: 12px; 
-        }
-        .chart-title { margin: 0; color: #ddd; font-size: 1.1rem; }
-        
-        .control-groups { display: flex; gap: 8px; flex-wrap: wrap; }
+        /* 雙欄佈局 (圖表區) */
+        .row { display: flex; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
+        .col-main { flex: 2; min-width: 300px; }
+        .col-side { flex: 1; min-width: 300px; }
 
-        .chart-container { 
-            position: relative; 
-            width: 100%; 
-            height: 450px; 
-        }
+        .chart-section { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; height: 100%; }
+        .chart-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 12px; }
+        .control-groups { display: flex; gap: 8px; flex-wrap: wrap; }
         
-        /* --- 按鈕群組 --- */
-        .btn-group { 
-            display: flex; 
-            border-radius: 6px; 
-            overflow: hidden; 
-            border: 1px solid #333; 
-            background: #2d2d30;
-        }
-        .btn-group button {
-            background: transparent; 
-            border: none; 
-            border-right: 1px solid #333; 
-            color: #888; 
-            padding: 6px 12px; 
-            cursor: pointer; 
-            font-size: 0.85rem; 
-            transition: 0.2s;
-            white-space: nowrap; 
-        }
+        .chart-container { position: relative; width: 100%; height: 350px; }
+        .pie-container { position: relative; width: 100%; height: 250px; }
+
+        /* 按鈕 */
+        .btn-group { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid #333; background: #2d2d30; }
+        .btn-group button { background: transparent; border: none; border-right: 1px solid #333; color: #888; padding: 6px 12px; cursor: pointer; font-size: 0.85rem; transition: 0.2s; white-space: nowrap; }
         .btn-group button:last-child { border-right: none; }
         .btn-group button.active { background: #40a9ff; color: #fff; font-weight: bold; }
 
-        /* --- 表格 --- */
-        .table-card { 
-            background: #18181c; 
-            border-radius: 12px; 
-            border: 1px solid #2d2d30; 
-            margin-bottom: 24px; 
-            overflow: hidden; 
-        }
+        /* 表格 */
+        .table-card { background: #18181c; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 24px; overflow: hidden; }
         .table-header { padding: 16px 20px; border-bottom: 1px solid #2d2d30; background: #1f1f23; }
         .table-header h3 { margin: 0; font-size: 1rem; color: #eee; }
         
@@ -117,25 +54,22 @@
         th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #18181c; z-index: 2; }
         th { color: #888; font-weight: 500; background: #1f1f23; }
         
+        /* 標籤 */
         .symbol-tag { padding: 3px 8px; background: #2d2d30; border-radius: 4px; font-weight: 700; color: #fff; font-size: 0.8rem; }
-        .type-tag { padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; display: inline-block; min-width: 40px; text-align: center; margin-right: 6px; }
-        .tag-div { background: #1a3a50; color: #40a9ff; } .tag-trade { background: #2d2d30; color: #aaa; }
-        
+        .tag-strategy { background: #394b59; color: #a0d3e8; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; border: 1px solid #4a657a; margin-right: 5px; }
+        .tag-usd { color: #4caf50; font-size: 0.75rem; font-weight: bold; border: 1px solid #4caf50; padding: 1px 4px; border-radius: 3px; }
+        .tag-twd { color: #ff5252; font-size: 0.75rem; font-weight: bold; border: 1px solid #ff5252; padding: 1px 4px; border-radius: 3px; }
+
         .footer { text-align: center; margin-top: 30px; font-size: 0.9rem; }
         .footer a { color: #40a9ff; text-decoration: none; opacity: 0.8; }
 
         @media (max-width: 768px) {
-            .container { padding: 15px; }
+            .row { flex-direction: column; }
             .header { flex-direction: column; align-items: flex-start; gap: 5px; }
             .update-time { align-self: flex-start; }
-            .card { padding: 15px; }
-            .card-value { font-size: 1.3rem; }
-            .chart-controls { flex-direction: column; align-items: flex-start; gap: 15px; }
-            .control-groups { width: 100%; display: flex; flex-direction: column; gap: 10px; }
-            .btn-group { width: 100%; overflow-x: auto; display: flex; scrollbar-width: none; -ms-overflow-style: none; }
-            .btn-group::-webkit-scrollbar { display: none; }
-            .btn-group button { flex: 1; padding: 8px 10px; }
-            .chart-container { height: 300px; }
+            .chart-controls { flex-direction: column; align-items: flex-start; }
+            .btn-group { width: 100%; overflow-x: auto; } 
+            .btn-group button { flex: 1; }
         }
     </style>
 </head>
@@ -143,15 +77,18 @@
     <div id="app" class="container">
         <div class="header">
             <div>
-                <h2>投資組合看板</h2>
-                <div class="sub-title">TWR 績效 • SPY 比較 • 拆股修正</div>
+                <h2>投資組合看板 (Pro)</h2>
+                <div class="sub-title">TWD 本位 • 多幣別整合 • 策略分組</div>
             </div>
-            <span class="update-time">更新: {{ updateTime }}</span>
+            <div style="text-align: right;">
+                <div class="update-time">更新: {{ updateTime }}</div>
+                <div class="update-time" style="color:#40a9ff">匯率: 1 USD ≈ {{ exchangeRate }} TWD</div>
+            </div>
         </div>
 
         <div class="grid">
             <div class="card">
-                <div class="card-label">總持倉市值 (Net Worth)</div>
+                <div class="card-label">總持倉市值 (NT$)</div>
                 <div class="card-value">${{ formatNumber(summary.total_value) }}</div>
             </div>
             <div class="card">
@@ -162,61 +99,78 @@
                 <div class="card-sub" style="color:#888">vs SPY: {{ currentSpyTwr }}%</div>
             </div>
             <div class="card">
-                <div class="card-label">總帳面損益 (P&L)</div>
+                <div class="card-label">總帳面損益 (NT$)</div>
                 <div class="card-value" :class="summary.total_pnl >= 0 ? 'red' : 'green'">
                     {{ summary.total_pnl >= 0 ? '+' : '' }}{{ formatNumber(summary.total_pnl) }}
                 </div>
             </div>
             <div class="card">
-                <div class="card-label">已實現 (Realized)</div>
+                <div class="card-label">已實現 (NT$)</div>
                 <div class="card-value" :class="summary.realized_pnl >= 0 ? 'red' : 'green'">
                     {{ formatNumber(summary.realized_pnl) }}
                 </div>
             </div>
         </div>
 
-        <div class="chart-section">
-            <div class="chart-controls">
-                <h3 class="chart-title">績效分析</h3>
-                
-                <div class="control-groups">
-                    <div class="btn-group">
-                        <button :class="{active: chartType==='pnl'}" @click="switchChartType('pnl')">損益$</button>
-                        <button :class="{active: chartType==='twr'}" @click="switchChartType('twr')">TWR%</button>
-                        <button :class="{active: chartType==='asset'}" @click="switchChartType('asset')">資產</button>
+        <div class="row">
+            <div class="col-main">
+                <div class="chart-section">
+                    <div class="chart-controls">
+                        <h3 style="margin:0; color:#ddd; font-size:1.1rem">趨勢分析</h3>
+                        <div class="control-groups">
+                            <div class="btn-group">
+                                <button :class="{active: chartType==='pnl'}" @click="switchChartType('pnl')">損益$</button>
+                                <button :class="{active: chartType==='twr'}" @click="switchChartType('twr')">TWR%</button>
+                                <button :class="{active: chartType==='asset'}" @click="switchChartType('asset')">資產</button>
+                            </div>
+                            <div class="btn-group">
+                                <button :class="{active: timeRange==='YTD'}" @click="switchTimeRange('YTD')">YTD</button>
+                                <button :class="{active: timeRange==='1Y'}" @click="switchTimeRange('1Y')">1Y</button>
+                                <button :class="{active: timeRange==='ALL'}" @click="switchTimeRange('ALL')">ALL</button>
+                            </div>
+                        </div>
                     </div>
-
-                    <div class="btn-group">
-                        <button :class="{active: timeRange==='1M'}" @click="switchTimeRange('1M')">1M</button>
-                        <button :class="{active: timeRange==='3M'}" @click="switchTimeRange('3M')">3M</button>
-                        <button :class="{active: timeRange==='6M'}" @click="switchTimeRange('6M')">6M</button>
-                        <button :class="{active: timeRange==='YTD'}" @click="switchTimeRange('YTD')">今年</button>
-                        <button :class="{active: timeRange==='1Y'}" @click="switchTimeRange('1Y')">1Y</button>
-                        <button :class="{active: timeRange==='ALL'}" @click="switchTimeRange('ALL')">全部</button>
+                    <div class="chart-container">
+                        <canvas id="mainChart"></canvas>
                     </div>
                 </div>
             </div>
-            <div class="chart-container">
-                <canvas id="mainChart"></canvas>
+
+            <div class="col-side">
+                <div class="chart-section">
+                    <div class="chart-controls">
+                        <h3 style="margin:0; color:#ddd; font-size:1.1rem">資產配置</h3>
+                        <div class="btn-group">
+                            <button :class="{active: pieType==='tags'}" @click="switchPieType('tags')">策略</button>
+                            <button :class="{active: pieType==='currency'}" @click="switchPieType('currency')">幣別</button>
+                        </div>
+                    </div>
+                    <div class="pie-container">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
 
         <div class="table-card">
-            <div class="table-header"><h3>目前持倉 (Holdings)</h3></div>
+            <div class="table-header"><h3>目前持倉 (Open Positions)</h3></div>
             <div class="table-responsive">
                 <table>
                     <thead>
-                        <tr><th>代碼</th><th>股數</th><th>成本</th><th>現價</th><th>市值</th><th>損益</th><th>%</th></tr>
+                        <tr><th>代碼</th><th>策略</th><th>原幣價</th><th>持有股數</th><th>市值(NT$)</th><th>損益(NT$)</th><th>%</th></tr>
                     </thead>
                     <tbody>
                         <tr v-for="s in holdings" :key="s.symbol">
-                            <td><span class="symbol-tag">{{ s.symbol }}</span></td>
+                            <td>
+                                <span :class="s.currency === 'USD' ? 'tag-usd' : 'tag-twd'">{{ s.currency }}</span>
+                                <span class="symbol-tag" style="margin-left:5px">{{ s.symbol }}</span>
+                            </td>
+                            <td style="text-align:center"><span class="tag-strategy">{{ s.tag }}</span></td>
+                            <td style="color:#aaa">{{ s.current_price_origin }}</td>
                             <td>{{ s.qty }}</td>
-                            <td style="color:#888">${{ s.avg_price }}</td>
-                            <td>${{ s.current_price }}</td>
-                            <td style="font-weight:bold">${{ formatNumber(s.market_value) }}</td>
-                            <td :class="s.pnl >= 0 ? 'red' : 'green'">{{ s.pnl >= 0 ? '+' : '' }}{{ formatNumber(s.pnl) }}</td>
-                            <td :class="s.pnl >= 0 ? 'red' : 'green'">{{ s.pnl_percent }}%</td>
+                            <td style="font-weight:bold">${{ formatNumber(s.market_value_twd) }}</td>
+                            <td :class="s.pnl_twd >= 0 ? 'red' : 'green'">{{ s.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(s.pnl_twd) }}</td>
+                            <td :class="s.pnl_percent >= 0 ? 'red' : 'green'">{{ s.pnl_percent }}%</td>
                         </tr>
                         <tr v-if="holdings.length===0"><td colspan="7" style="text-align:center;padding:20px;color:#666">無持倉</td></tr>
                     </tbody>
@@ -224,29 +178,6 @@
             </div>
         </div>
 
-        <div class="table-card">
-            <div class="table-header"><h3>歷史紀錄 (History)</h3></div>
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr><th>類型</th><th>代碼</th><th>日期</th><th>買入</th><th>賣出</th><th>淨利</th><th>%</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="d in closedPositions" :key="d.symbol+d.close_date+d.type+d.pnl">
-                            <td><span class="type-tag" :class="d.type==='DIVIDEND'?'tag-div':'tag-trade'">{{ d.type==='DIVIDEND'?'股息':'交易' }}</span></td>
-                            <td><span class="symbol-tag">{{ d.symbol }}</span></td>
-                            <td style="color:#888">{{ d.close_date }}</td>
-                            <td>{{ d.buy_price>0?'$'+d.buy_price:'-' }}</td>
-                            <td>{{ d.sell_price>0?'$'+d.sell_price:'-' }}</td>
-                            <td :class="d.pnl>=0?(d.type==='DIVIDEND'?'blue':'red'):'green'" style="font-weight:bold">{{ d.pnl>=0?'+':'' }}{{ formatNumber(d.pnl) }}</td>
-                            <td>{{ d.type==='TRADE'?d.pnl_percent+'%':'-' }}</td>
-                        </tr>
-                        <tr v-if="closedPositions.length===0"><td colspan="7" style="text-align:center;padding:20px;color:#666">無紀錄</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        
         <div class="footer"><a href="https://docs.google.com/spreadsheets" target="_blank">編輯 Google Sheet</a></div>
     </div>
 
@@ -257,102 +188,96 @@
             setup() {
                 const summary = ref({})
                 const updateTime = ref('-')
+                const exchangeRate = ref(0)
                 const holdings = ref([])
-                const closedPositions = ref([])
+                const allocation = ref({ tags: {}, currency: {} })
                 const fullChartData = ref([])
                 const displayedData = ref([])
                 
-                // 1. 預設改為 pnl (損益$)
                 const chartType = ref('pnl') 
                 const timeRange = ref('1Y') 
+                const pieType = ref('tags')
+                
                 let myChart = null
+                let myPieChart = null
 
-                const formatNumber = (num) => num ? Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'
+                const formatNumber = (num) => num ? Number(num).toLocaleString('en-US') : '0'
 
-                // 計算顯示在卡片上的 SPY TWR
                 const currentSpyTwr = computed(() => {
-                    if (fullChartData.value.length > 0) {
-                        return fullChartData.value[fullChartData.value.length - 1].benchmark_twr;
-                    }
+                    if (fullChartData.value.length > 0) return fullChartData.value[fullChartData.value.length - 1].benchmark_twr;
                     return 0;
                 })
 
-                // 2. 數據篩選與歸零邏輯 (含 TWR 幾何運算)
+                // --- 圓餅圖邏輯 ---
+                const drawPieChart = () => {
+                    const ctx = document.getElementById('pieChart').getContext('2d');
+                    if (myPieChart) myPieChart.destroy();
+
+                    const source = pieType.value === 'tags' ? allocation.value.tags : allocation.value.currency;
+                    const labels = Object.keys(source);
+                    const data = Object.values(source);
+                    
+                    // 顏色庫
+                    const colors = ['#40a9ff', '#ff5252', '#ffd700', '#69c0ff', '#ff85c0', '#95de64', '#5cdbd3'];
+
+                    myPieChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: data,
+                                backgroundColor: colors,
+                                borderColor: '#18181c',
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'right', labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } }
+                            }
+                        }
+                    });
+                }
+
+                // --- 趨勢圖邏輯 (含歸零) ---
                 const filterData = () => {
                     if (fullChartData.value.length === 0) return;
-                    
                     const now = new Date();
                     let startDate = new Date(now);
 
                     switch(timeRange.value) {
-                        case '1M': startDate.setMonth(now.getMonth() - 1); break;
-                        case '3M': startDate.setMonth(now.getMonth() - 3); break;
-                        case '6M': startDate.setMonth(now.getMonth() - 6); break;
                         case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
                         case '1Y': startDate.setFullYear(now.getFullYear() - 1); break;
                         case 'ALL': startDate = new Date('2000-01-01'); break;
                     }
 
-                    // 找出區間的第一筆資料索引
                     const startIndex = fullChartData.value.findIndex(d => new Date(d.date) >= startDate);
                     
                     if (startIndex === -1) {
                         displayedData.value = [];
                     } else {
-                        // 取得錨點 (前一筆資料)，用於歸零計算
-                        let anchorPoint = null;
-                        if (startIndex > 0) {
-                            anchorPoint = fullChartData.value[startIndex - 1];
-                        }
-
-                        // 截取資料
+                        let anchorPoint = (startIndex > 0) ? fullChartData.value[startIndex - 1] : null;
                         const slicedData = fullChartData.value.slice(startIndex);
 
-                        // 處理資料：根據錨點進行重算 (Re-indexing)
-                        const processedData = slicedData.map(d => {
+                        displayedData.value = slicedData.map(d => {
                             let pnl_val = d.total_value - d.invested;
                             let twr_val = d.twr;
                             let spy_val = d.benchmark_twr;
 
                             if (anchorPoint && timeRange.value !== 'ALL') {
-                                // 1. 損益歸零 (直接相減)
                                 const basePnl = anchorPoint.total_value - anchorPoint.invested;
-                                pnl_val = pnl_val - basePnl;
-
-                                // 2. TWR 歸零 (幾何連結 Geometric Linking)
-                                // 公式: (1 + Current) / (1 + Start) - 1
-                                const baseTwrFactor = 1 + (anchorPoint.twr / 100);
-                                const currentTwrFactor = 1 + (d.twr / 100);
-                                twr_val = ((currentTwrFactor / baseTwrFactor) - 1) * 100;
-
-                                // 3. SPY 歸零 (同 TWR)
-                                const baseSpyFactor = 1 + (anchorPoint.benchmark_twr / 100);
-                                const currentSpyFactor = 1 + (d.benchmark_twr / 100);
-                                spy_val = ((currentSpyFactor / baseSpyFactor) - 1) * 100;
+                                pnl_val -= basePnl;
+                                twr_val = (((1 + d.twr/100) / (1 + anchorPoint.twr/100)) - 1) * 100;
+                                spy_val = (((1 + d.benchmark_twr/100) / (1 + anchorPoint.benchmark_twr/100)) - 1) * 100;
                             }
-
-                            return { 
-                                ...d, 
-                                period_pnl: pnl_val, 
-                                period_twr: twr_val, 
-                                period_spy: spy_val 
-                            };
+                            return { ...d, period_pnl: pnl_val, period_twr: twr_val, period_spy: spy_val };
                         });
 
-                        // 補上「第0天」的點 (數值為0)，讓圖表從 X軸原點出發
                         if (anchorPoint && timeRange.value !== 'ALL') {
-                            processedData.unshift({
-                                ...anchorPoint,
-                                period_pnl: 0,
-                                period_twr: 0,
-                                period_spy: 0,
-                                date: anchorPoint.date
-                            });
+                            displayedData.value.unshift({ ...anchorPoint, period_pnl: 0, period_twr: 0, period_spy: 0, date: anchorPoint.date });
                         }
-
-                        displayedData.value = processedData;
                     }
-                    
                     drawChart();
                 }
 
@@ -362,67 +287,29 @@
 
                     const dataPoints = displayedData.value;
                     const labels = dataPoints.map(d => d.date);
-                    
                     const isMobile = window.innerWidth < 768;
-                    const maxTicks = isMobile ? 4 : 10; 
-
                     let datasets = [];
 
                     if (chartType.value === 'asset') {
-                        // 資產圖 (無需歸零，顯示絕對值)
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
-                        
                         datasets = [
-                            {
-                                label: '總資產',
-                                data: dataPoints.map(d => d.total_value),
-                                borderColor: '#ff5252', backgroundColor: gradient,
-                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1
-                            },
-                            {
-                                label: '淨投入本金',
-                                data: dataPoints.map(d => d.invested),
-                                borderColor: '#666', borderWidth: 2, borderDash: [5, 5],
-                                fill: false, pointRadius: 0, tension: 0
-                            }
+                            { label: '總資產', data: dataPoints.map(d => d.total_value), borderColor: '#ff5252', backgroundColor: gradient, borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1 },
+                            { label: '淨投入', data: dataPoints.map(d => d.invested), borderColor: '#666', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0 }
                         ];
                     } else if (chartType.value === 'pnl') {
-                        // 損益圖 (使用 period_pnl)
                         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
                         gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)');
                         gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
-
-                        // 如果選擇 ALL，使用原始累積損益；否則使用區間損益
-                        const dataMap = timeRange.value === 'ALL' 
-                            ? dataPoints.map(d => d.total_value - d.invested)
-                            : dataPoints.map(d => d.period_pnl);
-
-                        datasets = [
-                            {
-                                label: '累積損益 ($)',
-                                data: dataMap,
-                                borderColor: '#ffd700', backgroundColor: gradient,
-                                borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1
-                            }
-                        ];
+                        const dataMap = timeRange.value === 'ALL' ? dataPoints.map(d => d.total_value - d.invested) : dataPoints.map(d => d.period_pnl);
+                        datasets = [{ label: '累積損益 ($)', data: dataMap, borderColor: '#ffd700', backgroundColor: gradient, borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1 }];
                     } else {
-                        // TWR 圖 (使用 period_twr)
                         const twrMap = timeRange.value === 'ALL' ? dataPoints.map(d => d.twr) : dataPoints.map(d => d.period_twr);
                         const spyMap = timeRange.value === 'ALL' ? dataPoints.map(d => d.benchmark_twr) : dataPoints.map(d => d.period_spy);
-
                         datasets = [
-                            {
-                                label: '我的 TWR %',
-                                data: twrMap,
-                                borderColor: '#ff5252', borderWidth: 2, pointRadius: 0, tension: 0.1
-                            },
-                            {
-                                label: 'SPY %',
-                                data: spyMap,
-                                borderColor: '#40a9ff', borderWidth: 2, pointRadius: 0, tension: 0.1
-                            }
+                            { label: '我的 TWR %', data: twrMap, borderColor: '#ff5252', borderWidth: 2, pointRadius: 0, tension: 0.1 },
+                            { label: 'SPY %', data: spyMap, borderColor: '#40a9ff', borderWidth: 2, pointRadius: 0, tension: 0.1 }
                         ];
                     }
 
@@ -430,51 +317,26 @@
                         type: 'line',
                         data: { labels, datasets },
                         options: {
-                            responsive: true, 
-                            maintainAspectRatio: false, 
+                            responsive: true, maintainAspectRatio: false,
                             interaction: { mode: 'index', intersect: false },
                             plugins: {
-                                legend: { 
-                                    labels: { color: '#ccc', font: { size: 11 } },
-                                    position: 'top', align: 'end'
-                                },
-                                tooltip: {
-                                    backgroundColor: 'rgba(24, 24, 28, 0.9)',
-                                    bodyColor: '#fff', borderColor: '#333', borderWidth: 1, padding: 10,
-                                    callbacks: {
-                                        label: function(ctx) {
-                                            let val = ctx.parsed.y.toLocaleString();
-                                            let suffix = (chartType.value === 'twr') ? '%' : '';
-                                            let prefix = (chartType.value !== 'twr') ? '$' : '';
-                                            return ctx.dataset.label + ': ' + prefix + val + suffix;
-                                        }
-                                    }
+                                legend: { labels: { color: '#ccc' }, position: 'top', align: 'end' },
+                                tooltip: { 
+                                    backgroundColor: 'rgba(24, 24, 28, 0.9)', 
+                                    callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() }
                                 }
                             },
                             scales: {
-                                x: { 
-                                    grid: { color: '#2d2d30' }, 
-                                    ticks: { color: '#666', maxTicksLimit: maxTicks, maxRotation: 0 } 
-                                },
-                                y: { 
-                                    position: 'right', 
-                                    grid: { color: '#2d2d30' }, 
-                                    ticks: { color: '#666' } 
-                                }
+                                x: { grid: { color: '#2d2d30' }, ticks: { color: '#666', maxTicksLimit: isMobile?4:8 } },
+                                y: { position: 'right', grid: { color: '#2d2d30' }, ticks: { color: '#666' } }
                             }
                         }
                     });
                 }
 
-                const switchChartType = (type) => {
-                    chartType.value = type;
-                    drawChart();
-                }
-
-                const switchTimeRange = (range) => {
-                    timeRange.value = range;
-                    filterData();
-                }
+                const switchChartType = (type) => { chartType.value = type; drawChart(); }
+                const switchTimeRange = (range) => { timeRange.value = range; filterData(); }
+                const switchPieType = (type) => { pieType.value = type; drawPieChart(); }
 
                 const fetchData = async () => {
                     try {
@@ -482,12 +344,13 @@
                         const data = await res.json()
                         summary.value = data.summary
                         updateTime.value = data.updated_at
+                        exchangeRate.value = data.exchange_rate
                         holdings.value = data.holdings
-                        closedPositions.value = data.closed_positions
                         fullChartData.value = data.history
+                        allocation.value = data.allocation
                         
-                        // 預設載入 1Y
                         switchTimeRange('1Y');
+                        nextTick(() => drawPieChart());
                     } catch (e) { console.error(e) }
                 }
 
@@ -497,10 +360,9 @@
                 })
 
                 return { 
-                    summary, updateTime, holdings, closedPositions, 
-                    chartData: displayedData, 
-                    chartType, switchChartType, 
-                    timeRange, switchTimeRange,
+                    summary, updateTime, exchangeRate, holdings, 
+                    chartType, switchChartType, timeRange, switchTimeRange,
+                    pieType, switchPieType,
                     formatNumber, currentSpyTwr 
                 }
             }
