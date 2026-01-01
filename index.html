@@ -23,9 +23,9 @@
         .card-value { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5px; }
         .card-sub { font-size: 0.8rem; margin-top: 6px; font-weight: 500; }
         
-        .red { color: #ff5252; } .green { color: #4caf50; } .blue { color: #40a9ff; }
+        .red { color: #ff5252; } .green { color: #4caf50; } .blue { color: #40a9ff; } .yellow { color: #ffd700; }
         
-        /* 雙欄佈局 (圖表區) */
+        /* 雙欄 */
         .row { display: flex; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
         .col-main { flex: 2; min-width: 300px; }
         .col-side { flex: 1; min-width: 300px; }
@@ -56,9 +56,16 @@
         
         /* 標籤 */
         .symbol-tag { padding: 3px 8px; background: #2d2d30; border-radius: 4px; font-weight: 700; color: #fff; font-size: 0.8rem; }
-        .tag-strategy { background: #394b59; color: #a0d3e8; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; border: 1px solid #4a657a; margin-right: 5px; }
-        .tag-usd { color: #4caf50; font-size: 0.75rem; font-weight: bold; border: 1px solid #4caf50; padding: 1px 4px; border-radius: 3px; }
-        .tag-twd { color: #ff5252; font-size: 0.75rem; font-weight: bold; border: 1px solid #ff5252; padding: 1px 4px; border-radius: 3px; }
+        .tag-strategy { background: #394b59; color: #a0d3e8; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-right: 5px; }
+        .tag-usd { color: #4caf50; font-size: 0.75rem; border: 1px solid #4caf50; padding: 1px 4px; border-radius: 3px; }
+        .tag-twd { color: #ff5252; font-size: 0.75rem; border: 1px solid #ff5252; padding: 1px 4px; border-radius: 3px; }
+        
+        /* 交易類型標籤 */
+        .type-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; min-width: 60px; display: inline-block; text-align: center; }
+        .badge-buy { background: #1f3a30; color: #69f0ae; }
+        .badge-sell { background: #3a1f1f; color: #ff5252; }
+        .badge-div-auto { background: #1a3a50; color: #40a9ff; }
+        .badge-div-manual { background: #4a4a1a; color: #ffd700; }
 
         .footer { text-align: center; margin-top: 30px; font-size: 0.9rem; }
         .footer a { color: #40a9ff; text-decoration: none; opacity: 0.8; }
@@ -68,8 +75,7 @@
             .header { flex-direction: column; align-items: flex-start; gap: 5px; }
             .update-time { align-self: flex-start; }
             .chart-controls { flex-direction: column; align-items: flex-start; }
-            .btn-group { width: 100%; overflow-x: auto; } 
-            .btn-group button { flex: 1; }
+            .btn-group { width: 100%; overflow-x: auto; } .btn-group button { flex: 1; }
         }
     </style>
 </head>
@@ -78,7 +84,7 @@
         <div class="header">
             <div>
                 <h2>投資組合看板 (Pro)</h2>
-                <div class="sub-title">TWD 本位 • 多幣別整合 • 策略分組</div>
+                <div class="sub-title">TWD 本位 • 自動配息 • 流水帳</div>
             </div>
             <div style="text-align: right;">
                 <div class="update-time">更新: {{ updateTime }}</div>
@@ -157,7 +163,7 @@
             <div class="table-responsive">
                 <table>
                     <thead>
-                        <tr><th>代碼</th><th>策略</th><th>原幣價</th><th>持有股數</th><th>市值(NT$)</th><th>損益(NT$)</th><th>%</th></tr>
+                        <tr><th>代碼</th><th>策略</th><th>原幣現價</th><th>持有股數</th><th>市值(NT$)</th><th>損益(NT$)</th><th>%</th></tr>
                     </thead>
                     <tbody>
                         <tr v-for="s in holdings" :key="s.symbol">
@@ -178,6 +184,36 @@
             </div>
         </div>
 
+        <div class="table-card">
+            <div class="table-header"><h3>資金流水帳 (Transaction Ledger)</h3></div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr><th>日期</th><th>類型</th><th>代碼</th><th>原幣價格</th><th>股數</th><th>金額變動(NT$)</th><th>備註</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="tx in ledger" :key="tx.date + tx.symbol + tx.type">
+                            <td style="color:#aaa">{{ tx.date }}</td>
+                            <td>
+                                <span v-if="tx.type==='BUY'" class="type-badge badge-buy">買入</span>
+                                <span v-else-if="tx.type==='SELL'" class="type-badge badge-sell">賣出</span>
+                                <span v-else-if="tx.type==='DIV_AUTO'" class="type-badge badge-div-auto">自動配息</span>
+                                <span v-else class="type-badge badge-div-manual">手動配息</span>
+                            </td>
+                            <td><span class="symbol-tag">{{ tx.symbol }}</span></td>
+                            <td>{{ tx.price > 0 ? tx.price : '-' }}</td>
+                            <td>{{ tx.qty > 0 ? tx.qty : '-' }}</td>
+                            <td :class="tx.amount_twd >= 0 ? 'blue' : 'green'" style="font-weight:bold">
+                                {{ tx.amount_twd >= 0 ? '+' : '' }}{{ formatNumber(tx.amount_twd) }}
+                            </td>
+                            <td style="font-size:0.85rem; color:#888">{{ tx.note }}</td>
+                        </tr>
+                        <tr v-if="ledger.length===0"><td colspan="7" style="text-align:center;padding:20px;color:#666">無紀錄</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
         <div class="footer"><a href="https://docs.google.com/spreadsheets" target="_blank">編輯 Google Sheet</a></div>
     </div>
 
@@ -190,6 +226,7 @@
                 const updateTime = ref('-')
                 const exchangeRate = ref(0)
                 const holdings = ref([])
+                const ledger = ref([]) // 改用 ledger
                 const allocation = ref({ tags: {}, currency: {} })
                 const fullChartData = ref([])
                 const displayedData = ref([])
@@ -216,8 +253,6 @@
                     const source = pieType.value === 'tags' ? allocation.value.tags : allocation.value.currency;
                     const labels = Object.keys(source);
                     const data = Object.values(source);
-                    
-                    // 顏色庫
                     const colors = ['#40a9ff', '#ff5252', '#ffd700', '#69c0ff', '#ff85c0', '#95de64', '#5cdbd3'];
 
                     myPieChart = new Chart(ctx, {
@@ -233,20 +268,21 @@
                         },
                         options: {
                             responsive: true, maintainAspectRatio: false,
-                            plugins: {
-                                legend: { position: 'right', labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } }
-                            }
+                            plugins: { legend: { position: 'right', labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } } }
                         }
                     });
                 }
 
-                // --- 趨勢圖邏輯 (含歸零) ---
+                // --- 趨勢圖邏輯 ---
                 const filterData = () => {
                     if (fullChartData.value.length === 0) return;
                     const now = new Date();
                     let startDate = new Date(now);
 
                     switch(timeRange.value) {
+                        case '1M': startDate.setMonth(now.getMonth() - 1); break;
+                        case '3M': startDate.setMonth(now.getMonth() - 3); break;
+                        case '6M': startDate.setMonth(now.getMonth() - 6); break;
                         case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
                         case '1Y': startDate.setFullYear(now.getFullYear() - 1); break;
                         case 'ALL': startDate = new Date('2000-01-01'); break;
@@ -346,6 +382,7 @@
                         updateTime.value = data.updated_at
                         exchangeRate.value = data.exchange_rate
                         holdings.value = data.holdings
+                        ledger.value = data.ledger // 使用新的 ledger
                         fullChartData.value = data.history
                         allocation.value = data.allocation
                         
@@ -360,7 +397,7 @@
                 })
 
                 return { 
-                    summary, updateTime, exchangeRate, holdings, 
+                    summary, updateTime, exchangeRate, holdings, ledger, 
                     chartType, switchChartType, timeRange, switchTimeRange,
                     pieType, switchPieType,
                     formatNumber, currentSpyTwr 
