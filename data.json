@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-01-01 12:57",
+  "updated_at": "2026-01-01 16:35",
   "base_currency": "TWD",
   "exchange_rate": 31.27,
   "summary": {
@@ -1323,7 +1323,7 @@
     },
     {
       "date": "2024-04-09",
-      "total_value": 1543708.0,
+      "total_value": 1543707.0,
       "invested": 1812764.0,
       "twr": 20.76,
       "benchmark_twr": 9.31
@@ -1337,28 +1337,28 @@
     },
     {
       "date": "2024-04-11",
-      "total_value": 1576212.0,
+      "total_value": 1576211.0,
       "invested": 1812764.0,
       "twr": 23.3,
       "benchmark_twr": 9.4
     },
     {
       "date": "2024-04-12",
-      "total_value": 1551850.0,
+      "total_value": 1551851.0,
       "invested": 1812764.0,
       "twr": 21.39,
       "benchmark_twr": 8.03
     },
     {
       "date": "2024-04-13",
-      "total_value": 1551850.0,
+      "total_value": 1551851.0,
       "invested": 1812764.0,
       "twr": 21.39,
       "benchmark_twr": 8.03
     },
     {
       "date": "2024-04-14",
-      "total_value": 1551850.0,
+      "total_value": 1551851.0,
       "invested": 1812764.0,
       "twr": 21.39,
       "benchmark_twr": 8.03
@@ -1414,7 +1414,7 @@
     },
     {
       "date": "2024-04-22",
-      "total_value": 1487041.0,
+      "total_value": 1487040.0,
       "invested": 1812764.0,
       "twr": 16.32,
       "benchmark_twr": 6.6
@@ -1484,7 +1484,7 @@
     },
     {
       "date": "2024-05-02",
-      "total_value": 1529450.0,
+      "total_value": 1529451.0,
       "invested": 1799408.0,
       "twr": 20.7,
       "benchmark_twr": 7.64
@@ -1575,7 +1575,7 @@
     },
     {
       "date": "2024-05-15",
-      "total_value": 1602979.0,
+      "total_value": 1602980.0,
       "invested": 1799408.0,
       "twr": 26.51,
       "benchmark_twr": 12.35
@@ -1673,7 +1673,7 @@
     },
     {
       "date": "2024-05-29",
-      "total_value": 1666892.0,
+      "total_value": 1666893.0,
       "invested": 1785576.0,
       "twr": 32.69,
       "benchmark_twr": 11.08
@@ -1722,7 +1722,7 @@
     },
     {
       "date": "2024-06-05",
-      "total_value": 1715514.0,
+      "total_value": 1715515.0,
       "invested": 1785576.0,
       "twr": 36.56,
       "benchmark_twr": 13.44
@@ -1778,7 +1778,7 @@
     },
     {
       "date": "2024-06-13",
-      "total_value": 1753673.0,
+      "total_value": 1753674.0,
       "invested": 1785554.0,
       "twr": 39.6,
       "benchmark_twr": 14.63
@@ -1806,7 +1806,7 @@
     },
     {
       "date": "2024-06-17",
-      "total_value": 1774420.0,
+      "total_value": 1774419.0,
       "invested": 1785554.0,
       "twr": 41.25,
       "benchmark_twr": 16.15
@@ -1827,7 +1827,7 @@
     },
     {
       "date": "2024-06-20",
-      "total_value": 1771642.0,
+      "total_value": 1771643.0,
       "invested": 1785554.0,
       "twr": 41.03,
       "benchmark_twr": 16.24
@@ -1862,14 +1862,14 @@
     },
     {
       "date": "2024-06-25",
-      "total_value": 1753761.0,
+      "total_value": 1753762.0,
       "invested": 1785554.0,
       "twr": 39.61,
       "benchmark_twr": 15.94
     },
     {
       "date": "2024-06-26",
-      "total_value": 1764142.0,
+      "total_value": 1764143.0,
       "invested": 1771392.0,
       "twr": 41.58,
       "benchmark_twr": 16.63
@@ -1932,21 +1932,21 @@
     },
     {
       "date": "2024-07-05",
-      "total_value": 1794525.0,
+      "total_value": 1794526.0,
       "invested": 1771392.0,
       "twr": 44.02,
       "benchmark_twr": 18.7
     },
     {
       "date": "2024-07-06",
-      "total_value": 1794525.0,
+      "total_value": 1794526.0,
       "invested": 1771392.0,
       "twr": 44.02,
       "benchmark_twr": 18.7
     },
     {
       "date": "2024-07-07",
-      "total_value": 1794525.0,
+      "total_value": 1794526.0,
       "invested": 1771392.0,
       "twr": 44.02,
       "benchmark_twr": 18.7
@@ -2023,7 +2023,7 @@
     },
     {
       "date": "2024-07-18",
-      "total_value": 1749410.0,
+      "total_value": 1749411.0,
       "invested": 1771392.0,
       "twr": 40.4,
       "benchmark_twr": 18.22
@@ -2107,21 +2107,21 @@
     },
     {
       "date": "2024-07-30",
-      "total_value": 1659042.0,
+      "total_value": 1659041.0,
       "invested": 1757201.0,
       "twr": 34.22,
       "benchmark_twr": 17.22
     },
     {
       "date": "2024-07-31",
-      "total_value": 1733992.0,
+      "total_value": 1733993.0,
       "invested": 1757201.0,
       "twr": 40.28,
       "benchmark_twr": 18.81
     },
     {
       "date": "2024-08-01",
-      "total_value": 1671142.0,
+      "total_value": 1671143.0,
       "invested": 1757201.0,
       "twr": 35.2,
       "benchmark_twr": 16.45
@@ -2149,7 +2149,7 @@
     },
     {
       "date": "2024-08-05",
-      "total_value": 1578499.0,
+      "total_value": 1578498.0,
       "invested": 1757201.0,
       "twr": 27.7,
       "benchmark_twr": 11.01
@@ -2163,7 +2163,7 @@
     },
     {
       "date": "2024-08-07",
-      "total_value": 1583684.0,
+      "total_value": 1583683.0,
       "invested": 1757201.0,
       "twr": 28.12,
       "benchmark_twr": 11.93
@@ -2205,14 +2205,14 @@
     },
     {
       "date": "2024-08-13",
-      "total_value": 1686909.0,
+      "total_value": 1686910.0,
       "invested": 1757201.0,
       "twr": 36.47,
       "benchmark_twr": 15.05
     },
     {
       "date": "2024-08-14",
-      "total_value": 1699266.0,
+      "total_value": 1699267.0,
       "invested": 1757201.0,
       "twr": 37.47,
       "benchmark_twr": 15.65
@@ -2247,7 +2247,7 @@
     },
     {
       "date": "2024-08-19",
-      "total_value": 1770907.0,
+      "total_value": 1770906.0,
       "invested": 1757201.0,
       "twr": 43.27,
       "benchmark_twr": 18.4
@@ -2268,7 +2268,7 @@
     },
     {
       "date": "2024-08-22",
-      "total_value": 1711712.0,
+      "total_value": 1711713.0,
       "invested": 1742823.0,
       "twr": 39.63,
       "benchmark_twr": 16.07
@@ -2324,21 +2324,21 @@
     },
     {
       "date": "2024-08-30",
-      "total_value": 1717142.0,
+      "total_value": 1717141.0,
       "invested": 1742823.0,
       "twr": 40.07,
       "benchmark_twr": 18.23
     },
     {
       "date": "2024-08-31",
-      "total_value": 1717142.0,
+      "total_value": 1717141.0,
       "invested": 1742823.0,
       "twr": 40.07,
       "benchmark_twr": 18.23
     },
     {
       "date": "2024-09-01",
-      "total_value": 1717142.0,
+      "total_value": 1717141.0,
       "invested": 1742823.0,
       "twr": 40.07,
       "benchmark_twr": 18.23
@@ -2373,28 +2373,28 @@
     },
     {
       "date": "2024-09-06",
-      "total_value": 1607383.0,
+      "total_value": 1607382.0,
       "invested": 1742823.0,
       "twr": 31.12,
       "benchmark_twr": 13.87
     },
     {
       "date": "2024-09-07",
-      "total_value": 1607383.0,
+      "total_value": 1607382.0,
       "invested": 1742823.0,
       "twr": 31.12,
       "benchmark_twr": 13.87
     },
     {
       "date": "2024-09-08",
-      "total_value": 1607383.0,
+      "total_value": 1607382.0,
       "invested": 1742823.0,
       "twr": 31.12,
       "benchmark_twr": 13.87
     },
     {
       "date": "2024-09-09",
-      "total_value": 1633761.0,
+      "total_value": 1633762.0,
       "invested": 1742823.0,
       "twr": 33.27,
       "benchmark_twr": 15.21
@@ -2443,7 +2443,7 @@
     },
     {
       "date": "2024-09-16",
-      "total_value": 1707933.0,
+      "total_value": 1707932.0,
       "invested": 1742800.0,
       "twr": 39.32,
       "benchmark_twr": 18.35
@@ -2471,21 +2471,21 @@
     },
     {
       "date": "2024-09-20",
-      "total_value": 1717652.0,
+      "total_value": 1717653.0,
       "invested": 1742800.0,
       "twr": 40.11,
       "benchmark_twr": 19.22
     },
     {
       "date": "2024-09-21",
-      "total_value": 1717652.0,
+      "total_value": 1717653.0,
       "invested": 1742800.0,
       "twr": 40.11,
       "benchmark_twr": 19.22
     },
     {
       "date": "2024-09-22",
-      "total_value": 1717652.0,
+      "total_value": 1717653.0,
       "invested": 1742800.0,
       "twr": 40.11,
       "benchmark_twr": 19.22
@@ -2639,7 +2639,7 @@
     },
     {
       "date": "2024-10-14",
-      "total_value": 1845454.0,
+      "total_value": 1845455.0,
       "invested": 1729442.0,
       "twr": 51.7,
       "benchmark_twr": 23.99
@@ -2695,7 +2695,7 @@
     },
     {
       "date": "2024-10-22",
-      "total_value": 1860213.0,
+      "total_value": 1860212.0,
       "invested": 1729442.0,
       "twr": 52.91,
       "benchmark_twr": 23.47
@@ -2709,7 +2709,7 @@
     },
     {
       "date": "2024-10-24",
-      "total_value": 1840534.0,
+      "total_value": 1840535.0,
       "invested": 1715772.0,
       "twr": 52.41,
       "benchmark_twr": 22.43
@@ -2891,7 +2891,7 @@
     },
     {
       "date": "2024-11-19",
-      "total_value": 1919019.0,
+      "total_value": 1919018.0,
       "invested": 1715772.0,
       "twr": 58.91,
       "benchmark_twr": 26.47
@@ -2933,7 +2933,7 @@
     },
     {
       "date": "2024-11-25",
-      "total_value": 1899131.0,
+      "total_value": 1899132.0,
       "invested": 1701924.0,
       "twr": 58.41,
       "benchmark_twr": 28.52
@@ -3150,7 +3150,7 @@
     },
     {
       "date": "2024-12-26",
-      "total_value": 1976073.0,
+      "total_value": 1976074.0,
       "invested": 1687703.0,
       "twr": 66.03,
       "benchmark_twr": 30.33
@@ -3346,7 +3346,7 @@
     },
     {
       "date": "2025-01-23",
-      "total_value": 2009391.0,
+      "total_value": 2009390.0,
       "invested": 1673471.0,
       "twr": 70.07,
       "benchmark_twr": 31.64
@@ -3374,7 +3374,7 @@
     },
     {
       "date": "2025-01-27",
-      "total_value": 1885775.0,
+      "total_value": 1885774.0,
       "invested": 1673471.0,
       "twr": 59.61,
       "benchmark_twr": 30.0
@@ -3444,7 +3444,7 @@
     },
     {
       "date": "2025-02-06",
-      "total_value": 1963407.0,
+      "total_value": 1963406.0,
       "invested": 1673471.0,
       "twr": 66.18,
       "benchmark_twr": 31.87
@@ -3542,7 +3542,7 @@
     },
     {
       "date": "2025-02-20",
-      "total_value": 2017271.0,
+      "total_value": 2017272.0,
       "invested": 1673471.0,
       "twr": 70.74,
       "benchmark_twr": 32.44
@@ -3577,7 +3577,7 @@
     },
     {
       "date": "2025-02-25",
-      "total_value": 1916989.0,
+      "total_value": 1916988.0,
       "invested": 1673471.0,
       "twr": 62.25,
       "benchmark_twr": 28.76
@@ -3731,14 +3731,14 @@
     },
     {
       "date": "2025-03-19",
-      "total_value": 1825335.0,
+      "total_value": 1825334.0,
       "invested": 1659360.0,
       "twr": 55.64,
       "benchmark_twr": 23.93
     },
     {
       "date": "2025-03-20",
-      "total_value": 1825607.0,
+      "total_value": 1825608.0,
       "invested": 1659360.0,
       "twr": 55.66,
       "benchmark_twr": 23.67
@@ -3829,7 +3829,7 @@
     },
     {
       "date": "2025-04-02",
-      "total_value": 1798139.0,
+      "total_value": 1798140.0,
       "invested": 1645781.0,
       "twr": 54.44,
       "benchmark_twr": 24.58
@@ -3878,7 +3878,7 @@
     },
     {
       "date": "2025-04-09",
-      "total_value": 1777685.0,
+      "total_value": 1777684.0,
       "invested": 1645781.0,
       "twr": 52.68,
       "benchmark_twr": 20.62
@@ -3969,7 +3969,7 @@
     },
     {
       "date": "2025-04-22",
-      "total_value": 1641059.0,
+      "total_value": 1641060.0,
       "invested": 1645781.0,
       "twr": 40.95,
       "benchmark_twr": 13.68
@@ -4025,7 +4025,7 @@
     },
     {
       "date": "2025-04-30",
-      "total_value": 1751487.0,
+      "total_value": 1751486.0,
       "invested": 1633674.0,
       "twr": 51.55,
       "benchmark_twr": 19.12
@@ -4067,7 +4067,7 @@
     },
     {
       "date": "2025-05-06",
-      "total_value": 1607669.0,
+      "total_value": 1607670.0,
       "invested": 1633674.0,
       "twr": 39.1,
       "benchmark_twr": 8.3
@@ -4221,7 +4221,7 @@
     },
     {
       "date": "2025-05-28",
-      "total_value": 1790292.0,
+      "total_value": 1790291.0,
       "invested": 1620231.0,
       "twr": 56.07,
       "benchmark_twr": 17.05
@@ -4382,21 +4382,21 @@
     },
     {
       "date": "2025-06-20",
-      "total_value": 1814763.0,
+      "total_value": 1814764.0,
       "invested": 1620210.0,
       "twr": 58.21,
       "benchmark_twr": 17.14
     },
     {
       "date": "2025-06-21",
-      "total_value": 1814763.0,
+      "total_value": 1814764.0,
       "invested": 1620210.0,
       "twr": 58.21,
       "benchmark_twr": 17.14
     },
     {
       "date": "2025-06-22",
-      "total_value": 1814763.0,
+      "total_value": 1814764.0,
       "invested": 1620210.0,
       "twr": 58.21,
       "benchmark_twr": 17.14
@@ -4452,7 +4452,7 @@
     },
     {
       "date": "2025-06-30",
-      "total_value": 1869129.0,
+      "total_value": 1869130.0,
       "invested": 1607261.0,
       "twr": 64.09,
       "benchmark_twr": 19.83
@@ -4564,7 +4564,7 @@
     },
     {
       "date": "2025-07-16",
-      "total_value": 1942331.0,
+      "total_value": 1942332.0,
       "invested": 1607261.0,
       "twr": 70.52,
       "benchmark_twr": 22.28
@@ -4851,7 +4851,7 @@
     },
     {
       "date": "2025-08-26",
-      "total_value": 2088711.0,
+      "total_value": 2088710.0,
       "invested": 1580895.0,
       "twr": 85.83,
       "benchmark_twr": 30.93
@@ -4914,7 +4914,7 @@
     },
     {
       "date": "2025-09-04",
-      "total_value": 2348005.0,
+      "total_value": 2348006.0,
       "invested": 1764258.0,
       "twr": 91.86,
       "benchmark_twr": 32.93
@@ -5740,10 +5740,10 @@
     },
     {
       "date": "2025-12-31",
-      "total_value": 2850755.0,
+      "total_value": 2848167.0,
       "invested": 1839480.0,
-      "twr": 123.17,
-      "benchmark_twr": 42.96
+      "twr": 122.96,
+      "benchmark_twr": 42.83
     },
     {
       "date": "2026-01-01",
