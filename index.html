@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>投資組合看板 (Pro)</title>
+    <title>投資組合看板 (Pro+)</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -19,96 +19,96 @@
         /* 警告與卡片 */
         .alert-card { background: rgba(255, 82, 82, 0.1); border: 1px solid #ff5252; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #ff5252; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
-        .card { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; }
+        .card { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; transition: all 0.2s; }
         .card-label { color: #9aa5b1; font-size: 0.85rem; margin-bottom: 6px; }
         .card-value { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5px; }
         .card-sub { font-size: 0.8rem; margin-top: 6px; font-weight: 500; }
         
         .red { color: #ff5252; } .green { color: #4caf50; } .blue { color: #40a9ff; } .gray { color: #888; }
         
-        /* 雙欄圖表 */
-        .row { display: flex; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
-        .col-main { flex: 2; min-width: 300px; }
-        .col-side { flex: 1; min-width: 300px; }
-        .chart-section { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; height: 100%; }
-        .chart-controls { margin-bottom: 15px; }
-        .control-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
-        .chart-container { position: relative; width: 100%; height: 350px; }
-        .pie-container { position: relative; width: 100%; height: 250px; }
+        /* 多選下拉選單 (Multi-select) 樣式 */
+        .multi-select-container { position: relative; min-width: 250px; margin-bottom: 20px; }
+        .multi-select-trigger { 
+            background: #18181c; border: 1px solid #333; border-radius: 8px; 
+            padding: 8px 12px; min-height: 40px; cursor: pointer; 
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center; 
+            position: relative;
+        }
+        .multi-select-trigger:hover { border-color: #555; }
+        .placeholder-text { color: #666; font-size: 0.9rem; }
+        .tag-chip { 
+            background: #2d3e50; color: #a0d3e8; border-radius: 4px; 
+            padding: 2px 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 5px; 
+        }
+        .tag-remove { cursor: pointer; opacity: 0.7; font-weight: bold; }
+        .tag-remove:hover { opacity: 1; color: #fff; }
+        .dropdown-menu {
+            position: absolute; top: 100%; left: 0; width: 100%; 
+            background: #1f1f23; border: 1px solid #333; border-radius: 8px; 
+            margin-top: 5px; max-height: 250px; overflow-y: auto; z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            display: none;
+        }
+        .dropdown-menu.show { display: block; }
+        .dropdown-item { 
+            padding: 10px 15px; cursor: pointer; font-size: 0.9rem; color: #ccc; 
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .dropdown-item:hover { background: #2d2d30; color: #fff; }
+        .dropdown-item.selected { color: #40a9ff; background: rgba(64, 169, 255, 0.1); }
+        .dropdown-backdrop { position: fixed; inset: 0; z-index: 99; display: none; }
+        .dropdown-backdrop.show { display: block; }
 
-        /* 按鈕群組 */
+        /* 圖表與控制列 */
+        .chart-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; }
         .btn-group { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid #333; background: #2d2d30; }
         .btn-group button { background: transparent; border: none; border-right: 1px solid #333; color: #888; padding: 6px 12px; cursor: pointer; font-size: 0.85rem; transition: 0.2s; white-space: nowrap; }
         .btn-group button:last-child { border-right: none; }
         .btn-group button.active { background: #40a9ff; color: #fff; font-weight: bold; }
 
-        /* 日期選擇器 */
-        .date-picker-group { display: flex; align-items: center; gap: 5px; background: #2d2d30; padding: 3px 8px; border-radius: 6px; border: 1px solid #333; }
-        .date-input { background: transparent; border: none; color: #ccc; font-size: 0.85rem; font-family: inherit; width: 110px; }
-        .date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+        /* 雙欄佈局 */
+        .row { display: flex; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
+        .col-main { flex: 2; min-width: 300px; }
+        .col-side { flex: 1; min-width: 300px; }
+        .chart-section { background: #18181c; padding: 20px; border-radius: 12px; border: 1px solid #2d2d30; height: 100%; }
+        .chart-container { position: relative; width: 100%; height: 350px; }
+        .pie-container { position: relative; width: 100%; height: 250px; }
 
-        /* --- 資金流水帳專用樣式 --- */
-        .ledger-toolbar { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center; }
-        .search-input { background: #2d2d30; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 0.9rem; width: 120px; }
-        .filter-select { background: #2d2d30; border: 1px solid #333; color: #ccc; padding: 6px 30px 6px 12px; border-radius: 4px; font-size: 0.9rem; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 8px center; background-size: 12px; }
-        
-        /* 統計條樣式優化 */
-        .ledger-summary-bar {
-            margin-top: 10px;
-            padding: 10px 15px;
-            background: #1f1f23;
-            border-radius: 6px;
-            border: 1px solid #333;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 15px;
-            flex-wrap: wrap;
-            font-size: 0.9rem;
-        }
-        .summary-item { display: flex; align-items: center; gap: 5px; }
-        .summary-label { color: #888; }
-        .summary-val { font-weight: bold; font-family: monospace; font-size: 1rem; }
-        .summary-operator { color: #666; font-weight: bold; }
-
-        .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 15px; align-items: center; }
-        .page-btn { background: #2d2d30; border: 1px solid #333; color: #ccc; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
-        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .page-info { font-size: 0.85rem; color: #666; }
-
-        /* 表格 */
+        /* 表格與流水帳 */
         .table-card { background: #18181c; border-radius: 12px; border: 1px solid #2d2d30; margin-bottom: 24px; overflow: hidden; }
         .table-header { padding: 16px 20px; border-bottom: 1px solid #2d2d30; background: #1f1f23; }
         .table-header h3 { margin: 0; font-size: 1rem; color: #eee; }
-        .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .table-responsive { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 0.9rem; white-space: nowrap; }
         th, td { padding: 12px 16px; border-bottom: 1px solid #2d2d30; text-align: right; }
         th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #18181c; z-index: 2; }
         th { color: #888; font-weight: 500; background: #1f1f23; }
-        
-        /* 標籤 */
+
+        /* 流水帳工具列 */
+        .ledger-toolbar { padding: 15px 20px; border-bottom: 1px solid #2d2d30; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .search-input { background: #2d2d30; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px; }
+        .filter-select { background: #2d2d30; border: 1px solid #333; color: #ccc; padding: 6px 24px 6px 12px; border-radius: 4px; }
+        .ledger-summary-bar { padding: 10px 20px; background: #1f1f23; display: flex; justify-content: flex-end; gap: 15px; font-size: 0.9rem; flex-wrap: wrap; }
+        .summary-item { display: flex; align-items: center; gap: 5px; }
+        .summary-val { font-weight: bold; font-family: monospace; }
+
+        .pagination { display: flex; justify-content: center; gap: 10px; padding: 15px; align-items: center; }
+        .page-btn { background: #2d2d30; border: 1px solid #333; color: #ccc; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Badges */
         .symbol-tag { padding: 3px 8px; background: #2d2d30; border-radius: 4px; font-weight: 700; color: #fff; font-size: 0.8rem; }
-        .tag-strategy { background: #394b59; color: #a0d3e8; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-right: 5px; }
-        .tag-usd { color: #4caf50; font-size: 0.75rem; border: 1px solid #4caf50; padding: 1px 4px; border-radius: 3px; }
-        .tag-twd { color: #ff5252; font-size: 0.75rem; border: 1px solid #ff5252; padding: 1px 4px; border-radius: 3px; }
-        .type-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; min-width: 60px; display: inline-block; text-align: center; }
+        .type-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
         .badge-buy { background: #1f3a30; color: #69f0ae; }
         .badge-sell { background: #3a1f1f; color: #ff5252; }
-        .badge-div-auto { background: #1a3a50; color: #40a9ff; }
-        .badge-div-manual { background: #4a4a1a; color: #ffd700; }
+        .badge-div { background: #1a3a50; color: #40a9ff; }
 
-        .footer { text-align: center; margin-top: 30px; font-size: 0.9rem; }
-        .footer a { color: #40a9ff; text-decoration: none; opacity: 0.8; }
+        .footer { text-align: center; margin-top: 30px; font-size: 0.9rem; color: #666; }
+        .footer a { color: #40a9ff; text-decoration: none; }
 
         @media (max-width: 768px) {
             .row { flex-direction: column; }
-            .header { flex-direction: column; align-items: flex-start; gap: 5px; }
-            .update-time { align-self: flex-start; }
-            .control-row { flex-direction: column; align-items: flex-start; }
-            .btn-group { width: 100%; overflow-x: auto; scrollbar-width: none; }
-            .ledger-toolbar { flex-direction: column; align-items: stretch; }
-            .search-input, .filter-select { width: 100%; }
-            .ledger-summary-bar { flex-direction: column; align-items: flex-end; gap: 5px; }
+            .ledger-summary-bar { flex-direction: column; align-items: flex-end; }
         }
     </style>
 </head>
@@ -116,8 +116,8 @@
     <div id="app" class="container">
         <div class="header">
             <div>
-                <h2>投資組合看板 (Pro)</h2>
-                <div class="sub-title">TWD 本位 • 自動配息 • 流水帳</div>
+                <h2>投資組合看板 (Pro+)</h2>
+                <div class="sub-title">TWD 本位 • 支援多選策略分析</div>
             </div>
             <div style="text-align: right;">
                 <div class="update-time">更新: {{ updateTime }}</div>
@@ -125,35 +125,58 @@
             </div>
         </div>
 
+        <div class="multi-select-container">
+            <div v-if="dropdownOpen" class="dropdown-backdrop show" @click="dropdownOpen = false"></div>
+            <div class="multi-select-trigger" @click="dropdownOpen = !dropdownOpen">
+                <span v-if="selectedTags.length === 0" class="placeholder-text">篩選策略 (All Tags)</span>
+                <div v-for="tag in selectedTags" :key="tag" class="tag-chip" @click.stop>
+                    {{ tag }}
+                    <span class="tag-remove" @click.stop="toggleTag(tag)">×</span>
+                </div>
+                <div style="margin-left: auto; color: #666;">▼</div>
+            </div>
+            <div class="dropdown-menu" :class="{show: dropdownOpen}">
+                <div class="dropdown-item" @click="clearTags" style="color: #888; border-bottom: 1px solid #333;">
+                    <span>清除全部</span>
+                </div>
+                <div v-for="tag in availableTags" :key="tag" 
+                     class="dropdown-item" 
+                     :class="{selected: selectedTags.includes(tag)}"
+                     @click="toggleTag(tag)">
+                    <span>{{ tag }}</span>
+                    <span v-if="selectedTags.includes(tag)">✓</span>
+                </div>
+            </div>
+        </div>
+
         <div v-if="messages.length > 0" class="alert-card">
-            <div class="alert-title">⚠️ 資料異常警告 (請檢查 Google Sheet)</div>
-            <ul class="alert-list">
-                <li v-for="msg in messages">{{ msg }}</li>
-            </ul>
+            <ul><li v-for="msg in messages">{{ msg }}</li></ul>
         </div>
 
         <div class="grid">
             <div class="card">
-                <div class="card-label">總持倉市值 (NT$)</div>
-                <div class="card-value">${{ formatNumber(summary.total_value) }}</div>
+                <div class="card-label">持有市值 (NT$)</div>
+                <div class="card-value">${{ formatNumber(computedStats.total_value) }}</div>
             </div>
             <div class="card">
-                <div class="card-label">累計報酬率 (TWR)</div>
-                <div class="card-value" :class="summary.twr >= 0 ? 'red' : 'green'">
-                    {{ summary.twr >= 0 ? '+' : '' }}{{ summary.twr }}%
+                <div class="card-label">區間/策略 TWR</div>
+                <div class="card-value" :class="computedStats.twr >= 0 ? 'red' : 'green'">
+                    {{ computedStats.twr >= 0 ? '+' : '' }}{{ computedStats.twr }}%
                 </div>
-                <div class="card-sub" style="color:#888">vs SPY: {{ currentSpyTwr }}%</div>
-            </div>
-            <div class="card">
-                <div class="card-label">總帳面損益 (NT$)</div>
-                <div class="card-value" :class="summary.total_pnl >= 0 ? 'red' : 'green'">
-                    {{ summary.total_pnl >= 0 ? '+' : '' }}{{ formatNumber(summary.total_pnl) }}
+                <div class="card-sub" style="color:#888">
+                    {{ selectedTags.length > 0 ? '基於選定策略' : '整體投資組合' }}
                 </div>
             </div>
             <div class="card">
-                <div class="card-label">已實現 (NT$)</div>
-                <div class="card-value" :class="summary.realized_pnl >= 0 ? 'red' : 'green'">
-                    {{ formatNumber(summary.realized_pnl) }}
+                <div class="card-label">帳面損益 (NT$)</div>
+                <div class="card-value" :class="computedStats.unrealized_pnl >= 0 ? 'red' : 'green'">
+                    {{ computedStats.unrealized_pnl >= 0 ? '+' : '' }}{{ formatNumber(computedStats.unrealized_pnl) }}
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-label">已實現損益 (NT$)</div>
+                <div class="card-value" :class="computedStats.realized_pnl >= 0 ? 'red' : 'green'">
+                    {{ formatNumber(computedStats.realized_pnl) }}
                 </div>
             </div>
         </div>
@@ -162,28 +185,17 @@
             <div class="col-main">
                 <div class="chart-section">
                     <div class="chart-controls">
-                        <div class="control-row">
-                            <h3 style="margin:0; color:#ddd; font-size:1.1rem">趨勢分析</h3>
-                            <div class="btn-group">
-                                <button :class="{active: chartType==='pnl'}" @click="switchChartType('pnl')">損益$</button>
-                                <button :class="{active: chartType==='twr'}" @click="switchChartType('twr')">TWR%</button>
-                                <button :class="{active: chartType==='asset'}" @click="switchChartType('asset')">資產</button>
-                            </div>
+                        <h3 style="margin:0; color:#ddd; font-size:1.1rem">趨勢分析 {{ selectedTags.length > 0 ? '(Filtered)' : '' }}</h3>
+                        <div class="btn-group">
+                            <button :class="{active: chartType==='pnl'}" @click="switchChartType('pnl')">損益$</button>
+                            <button :class="{active: chartType==='twr'}" @click="switchChartType('twr')">TWR%</button>
+                            <button :class="{active: chartType==='asset'}" @click="switchChartType('asset')">資產</button>
                         </div>
-                        <div class="control-row">
-                            <div class="btn-group">
-                                <button :class="{active: timeRange==='1M'}" @click="switchTimeRange('1M')">1M</button>
-                                <button :class="{active: timeRange==='3M'}" @click="switchTimeRange('3M')">3M</button>
-                                <button :class="{active: timeRange==='6M'}" @click="switchTimeRange('6M')">6M</button>
-                                <button :class="{active: timeRange==='1Y'}" @click="switchTimeRange('1Y')">1Y</button>
-                                <button :class="{active: timeRange==='YTD'}" @click="switchTimeRange('YTD')">YTD</button>
-                                <button :class="{active: timeRange==='ALL'}" @click="switchTimeRange('ALL')">ALL</button>
-                            </div>
-                            <div class="date-picker-group">
-                                <input type="date" v-model="startDateStr" class="date-input" @change="onDateChange">
-                                <span style="color:#666;font-size:0.8rem">to</span>
-                                <input type="date" v-model="endDateStr" class="date-input" @change="onDateChange">
-                            </div>
+                        <div class="btn-group">
+                            <button :class="{active: timeRange==='1M'}" @click="switchTimeRange('1M')">1M</button>
+                            <button :class="{active: timeRange==='6M'}" @click="switchTimeRange('6M')">6M</button>
+                            <button :class="{active: timeRange==='1Y'}" @click="switchTimeRange('1Y')">1Y</button>
+                            <button :class="{active: timeRange==='ALL'}" @click="switchTimeRange('ALL')">ALL</button>
                         </div>
                     </div>
                     <div class="chart-container">
@@ -195,14 +207,13 @@
             <div class="col-side">
                 <div class="chart-section">
                     <div class="chart-controls">
-                        <h3 style="margin:0; color:#ddd; font-size:1.1rem">資產配置</h3>
-                        <div class="btn-group">
-                            <button :class="{active: pieType==='tags'}" @click="switchPieType('tags')">策略</button>
-                            <button :class="{active: pieType==='currency'}" @click="switchPieType('currency')">幣別</button>
-                        </div>
+                        <h3 style="margin:0; color:#ddd; font-size:1.1rem">配置佔比</h3>
                     </div>
                     <div class="pie-container">
                         <canvas id="pieChart"></canvas>
+                    </div>
+                    <div style="text-align:center; margin-top:10px; font-size:0.8rem; color:#888;">
+                        (顯示目前篩選範圍內的資產分佈)
                     </div>
                 </div>
             </div>
@@ -216,91 +227,74 @@
                         <tr><th>代碼</th><th>策略</th><th>原幣現價</th><th>持有股數</th><th>市值(NT$)</th><th>損益(NT$)</th><th>%</th></tr>
                     </thead>
                     <tbody>
-                        <tr v-for="s in holdings" :key="s.symbol">
-                            <td>
-                                <span :class="s.currency === 'USD' ? 'tag-usd' : 'tag-twd'">{{ s.currency }}</span>
-                                <span class="symbol-tag" style="margin-left:5px">{{ s.symbol }}</span>
-                            </td>
-                            <td style="text-align:center"><span class="tag-strategy">{{ s.tag }}</span></td>
+                        <tr v-for="s in filteredHoldings" :key="s.symbol">
+                            <td><span class="symbol-tag">{{ s.symbol }}</span></td>
+                            <td style="text-align:center"><span style="color:#a0d3e8; font-size:0.8rem;">{{ s.tag }}</span></td>
                             <td style="color:#aaa">{{ s.current_price_origin }}</td>
                             <td>{{ s.qty }}</td>
                             <td style="font-weight:bold">${{ formatNumber(s.market_value_twd) }}</td>
                             <td :class="s.pnl_twd >= 0 ? 'red' : 'green'">{{ s.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(s.pnl_twd) }}</td>
                             <td :class="s.pnl_percent >= 0 ? 'red' : 'green'">{{ s.pnl_percent }}%</td>
                         </tr>
-                        <tr v-if="holdings.length===0"><td colspan="7" style="text-align:center;padding:20px;color:#666">無持倉</td></tr>
+                        <tr v-if="filteredHoldings.length===0"><td colspan="7" style="text-align:center;padding:20px;color:#666">無符合篩選的持倉</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <div class="table-card">
-            <div class="table-header">
-                <h3>資金流水帳 (Ledger)</h3>
+            <div class="table-header"><h3>資金流水帳 (Ledger)</h3></div>
+            <div class="ledger-toolbar">
+                <input type="text" v-model="searchQuery" placeholder="🔍 搜尋代碼/備註" class="search-input">
+                <select v-model="filterType" class="filter-select">
+                    <option value="ALL">全部類型</option>
+                    <option value="BUY">買入</option>
+                    <option value="SELL">賣出</option>
+                    <option value="DIVIDEND">配息</option>
+                </select>
+                <select v-model="filterYear" class="filter-select">
+                    <option value="ALL">全部年份</option>
+                    <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+                </select>
             </div>
-            
-            <div style="padding: 15px 20px; border-bottom: 1px solid #2d2d30;">
-                <div class="ledger-toolbar">
-                    <input type="text" v-model="searchQuery" placeholder="🔍 搜尋代碼/備註" class="search-input">
-                    <select v-model="filterType" class="filter-select">
-                        <option value="ALL">全部類型</option>
-                        <option value="BUY">買入 (Buy)</option>
-                        <option value="SELL">賣出 (Sell)</option>
-                        <option value="DIVIDEND">配息 (Div)</option>
-                    </select>
-                    <select v-model="filterYear" class="filter-select">
-                        <option value="ALL">全部年份</option>
-                        <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
-                    </select>
+            <div class="ledger-summary-bar">
+                <div class="summary-item">
+                    <span style="color:#888">篩選區間淨流:</span>
+                    <span :class="ledgerStats.netFlow >= 0 ? 'blue' : 'green'" class="summary-val">{{ formatNumber(ledgerStats.netFlow) }}</span>
                 </div>
-
-                <div class="ledger-summary-bar">
-                    <div class="summary-item">
-                        <span class="summary-label">淨現金流:</span>
-                        <span :class="filteredTotal >= 0 ? 'blue' : 'green'" class="summary-val">{{ formatNumber(filteredTotal) }}</span>
-                    </div>
-                    <span class="summary-operator">+</span>
-                    <div class="summary-item">
-                        <span class="summary-label">相關持倉市值:</span>
-                        <span class="summary-val blue">{{ formatNumber(relatedMarketValue) }}</span>
-                    </div>
-                    <span class="summary-operator">=</span>
-                    <div class="summary-item">
-                        <span class="summary-label">總損益估算:</span>
-                        <span :class="grandTotal >= 0 ? 'red' : 'green'" class="summary-val">{{ grandTotal >= 0 ? '+' : '' }}{{ formatNumber(grandTotal) }}</span>
-                    </div>
+                <div class="summary-item" style="margin-left:15px;">
+                    <span style="color:#888">已實現損益:</span>
+                    <span :class="ledgerStats.realized >= 0 ? 'red' : 'green'" class="summary-val">{{ ledgerStats.realized >= 0 ? '+' : '' }}{{ formatNumber(ledgerStats.realized) }}</span>
                 </div>
             </div>
-
             <div class="table-responsive">
                 <table>
                     <thead>
-                        <tr><th>日期</th><th>類型</th><th>代碼</th><th>原幣價格</th><th>股數</th><th>金額變動(NT$)</th><th>備註</th></tr>
+                        <tr><th>日期</th><th>類型</th><th>代碼</th><th>Tag</th><th>價格</th><th>金額變動(NT$)</th><th>備註</th></tr>
                     </thead>
                     <tbody>
-                        <tr v-for="tx in paginatedLedger" :key="tx.date + tx.symbol + tx.type + tx.note">
+                        <tr v-for="tx in paginatedLedger" :key="tx.date + tx.symbol + tx.type + tx.amount_twd">
                             <td style="color:#aaa">{{ tx.date }}</td>
                             <td>
                                 <span v-if="tx.type==='BUY'" class="type-badge badge-buy">買入</span>
                                 <span v-else-if="tx.type==='SELL'" class="type-badge badge-sell">賣出</span>
-                                <span v-else class="type-badge badge-div-auto">配息</span>
+                                <span v-else class="type-badge badge-div">配息</span>
                             </td>
                             <td><span class="symbol-tag">{{ tx.symbol }}</span></td>
+                            <td><span style="color:#888;font-size:0.8rem">{{ tx.tag }}</span></td>
                             <td>{{ tx.price > 0 ? tx.price : '-' }}</td>
-                            <td>{{ tx.qty > 0 ? tx.qty : '-' }}</td>
                             <td :class="tx.amount_twd >= 0 ? 'blue' : 'green'" style="font-weight:bold">
                                 {{ tx.amount_twd >= 0 ? '+' : '' }}{{ formatNumber(tx.amount_twd) }}
                             </td>
                             <td style="font-size:0.85rem; color:#888">{{ tx.note }}</td>
                         </tr>
-                        <tr v-if="paginatedLedger.length===0"><td colspan="7" style="text-align:center;padding:30px;color:#666">無符合條件的紀錄</td></tr>
+                        <tr v-if="paginatedLedger.length===0"><td colspan="7" style="text-align:center;padding:30px;color:#666">無紀錄</td></tr>
                     </tbody>
                 </table>
             </div>
-
-            <div class="pagination" v-if="totalPages > 1" style="padding: 15px;">
+            <div class="pagination" v-if="totalPages > 1">
                 <button class="page-btn" @click="prevPage" :disabled="currentPage === 1">上一頁</button>
-                <span class="page-info">第 {{ currentPage }} 頁 / 共 {{ totalPages }} 頁</span>
+                <span style="font-size:0.85rem; color:#666">第 {{ currentPage }} / {{ totalPages }} 頁</span>
                 <button class="page-btn" @click="nextPage" :disabled="currentPage === totalPages">下一頁</button>
             </div>
         </div>
@@ -313,22 +307,23 @@
         
         createApp({
             setup() {
-                const summary = ref({})
-                const updateTime = ref('-')
-                const exchangeRate = ref(0)
+                // 資料狀態
+                const rawData = ref(null)
                 const holdings = ref([])
                 const ledger = ref([])
+                const history = ref([])
                 const messages = ref([])
-                const allocation = ref({ tags: {}, currency: {} })
-                const fullChartData = ref([])
-                const displayedData = ref([])
+                const updateTime = ref('-')
+                const exchangeRate = ref(0)
                 
+                // 篩選狀態
+                const selectedTags = ref([]) // 多選結果
+                const availableTags = ref([])
+                const dropdownOpen = ref(false)
+                
+                // UI 狀態
                 const chartType = ref('pnl') 
-                const timeRange = ref('1Y') 
-                const pieType = ref('tags')
-                const startDateStr = ref('')
-                const endDateStr = ref('')
-                
+                const timeRange = ref('1Y')
                 const searchQuery = ref('')
                 const filterType = ref('ALL')
                 const filterYear = ref('ALL')
@@ -339,22 +334,27 @@
                 let myPieChart = null
 
                 const formatNumber = (num) => num ? Number(num).toLocaleString('en-US') : '0'
-                const formatDate = (date) => date.toISOString().split('T')[0];
 
-                const currentSpyTwr = computed(() => {
-                    if (fullChartData.value.length > 0) return fullChartData.value[fullChartData.value.length - 1].benchmark_twr;
-                    return 0;
+                // --- 1. 核心過濾器：決定所有顯示資料 ---
+                // 當 selectedTags 為空時，視為 "ALL"
+                const isTagSelected = (tag) => {
+                    if (selectedTags.value.length === 0) return true;
+                    return selectedTags.value.includes(tag);
+                }
+
+                // 過濾持倉
+                const filteredHoldings = computed(() => {
+                    return holdings.value.filter(h => isTagSelected(h.tag));
                 })
 
-                // --- Ledger Logic (含市值計算) ---
-                const availableYears = computed(() => {
-                    const years = new Set(ledger.value.map(tx => tx.date.substring(0, 4)));
-                    return Array.from(years).sort().reverse();
-                })
-
+                // 過濾流水帳 (含搜尋)
                 const filteredLedger = computed(() => {
                     return ledger.value.filter(tx => {
-                        const searchContent = (tx.symbol + tx.note).toLowerCase();
+                        // Tag 篩選 (OR Logic)
+                        if (!isTagSelected(tx.tag)) return false;
+                        
+                        // 搜尋與下拉
+                        const searchContent = (tx.symbol + tx.note + tx.tag).toLowerCase();
                         if (searchQuery.value && !searchContent.includes(searchQuery.value.toLowerCase())) return false;
                         if (filterType.value !== 'ALL') {
                             if (filterType.value === 'DIVIDEND') { if (!tx.type.includes('DIV')) return false; }
@@ -365,168 +365,265 @@
                     });
                 })
 
-                const paginatedLedger = computed(() => {
-                    const start = (currentPage.value - 1) * itemsPerPage;
-                    return filteredLedger.value.slice(start, start + itemsPerPage);
-                })
-
-                const totalPages = computed(() => Math.ceil(filteredLedger.value.length / itemsPerPage) || 1)
-
-                // 1. 淨現金流
-                const filteredTotal = computed(() => {
-                    return filteredLedger.value.reduce((sum, tx) => sum + tx.amount_twd, 0);
-                })
-
-                // 2. 相關持倉市值 (計算目前還持有的股票價值)
-                const relatedMarketValue = computed(() => {
-                    // 找出目前篩選出的流水帳涉及哪些股票
-                    const relevantSymbols = new Set(filteredLedger.value.map(tx => tx.symbol));
-                    
-                    // 從 holdings 中加總這些股票的市值
-                    return holdings.value.reduce((sum, h) => {
-                        if (relevantSymbols.has(h.symbol)) {
-                            return sum + h.market_value_twd;
+                // --- 2. 統計計算 ---
+                // 上方卡片數據 (根據篩選結果重算)
+                const computedStats = computed(() => {
+                    // 如果是 ALL，直接用後端算好的 (比較準)
+                    if (selectedTags.value.length === 0 && rawData.value) {
+                        return {
+                            total_value: rawData.value.summary.total_value,
+                            realized_pnl: rawData.value.summary.realized_pnl,
+                            unrealized_pnl: rawData.value.summary.total_value - rawData.value.summary.invested_capital,
+                            twr: rawData.value.summary.twr
                         }
-                        return sum;
-                    }, 0);
+                    }
+                    
+                    // 多選時：手動加總
+                    const currentVal = filteredHoldings.value.reduce((sum, h) => sum + h.market_value_twd, 0);
+                    // 已實現損益：從流水帳加總 (注意：只算賣出獲利與配息)
+                    // 這邊簡單估算：賣出的 amount_twd (正數) - 成本 (比較難反推，暫用 ledger note 或 type)
+                    // 優化：後端 ledger 已有 realized note，或直接重新遍歷
+                    // 為了效能，這裡暫時只計算 "目前持倉的未實現" + "歷史紀錄的已實現"
+                    
+                    // 從 Ledger 撈出屬於選定 Tags 的 Realized PnL (Sell & Div)
+                    // 我們需要依賴 ledger 中的 amount_twd，但買入是負的。
+                    // 淨現金流 = Realized PnL + (Sell Cost Basis) - (Buy Cost)
+                    // 簡單做法：只顯示 "持有市值" 和 "未實現損益" 比較準確，TWR 則依賴 Chart 重算
+                    
+                    const unrealized = filteredHoldings.value.reduce((sum, h) => sum + h.pnl_twd, 0);
+                    
+                    // 嘗試從 Chart Data 的最後一天拿 TWR (最準)
+                    let chartTwr = 0;
+                    if (recalculatedHistory.value.length > 0) {
+                        chartTwr = recalculatedHistory.value[recalculatedHistory.value.length - 1].twr;
+                    }
+
+                    // 已實現 (從 filteredLedger 裡的 DIV 和 SELL 的獲利備註撈? 太慢)
+                    // 簡化：只顯示市值與 TWR
+                    return {
+                        total_value: currentVal,
+                        realized_pnl: 0, // 多選模式下較難精確計算已實現，暫時留 0 或隱藏
+                        unrealized_pnl: unrealized,
+                        twr: chartTwr
+                    }
                 })
 
-                // 3. 總損益估算
-                const grandTotal = computed(() => filteredTotal.value + relatedMarketValue.value)
-
-                watch([searchQuery, filterType, filterYear], () => { currentPage.value = 1; })
-                const prevPage = () => { if (currentPage.value > 1) currentPage.value--; }
-                const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.value++; }
-
-                // --- Chart Logic ---
-                const drawPieChart = () => {
-                    const ctx = document.getElementById('pieChart').getContext('2d');
-                    if (myPieChart) myPieChart.destroy();
-                    const source = pieType.value === 'tags' ? allocation.value.tags : allocation.value.currency;
-                    const labels = Object.keys(source);
-                    const data = Object.values(source);
-                    const colors = ['#40a9ff', '#ff5252', '#ffd700', '#69c0ff', '#ff85c0', '#95de64', '#5cdbd3'];
-                    myPieChart = new Chart(ctx, {
-                        type: 'doughnut',
-                        data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#18181c', borderWidth: 2 }] },
-                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } } } }
+                // 流水帳統計
+                const ledgerStats = computed(() => {
+                    let net = 0;
+                    let realized = 0;
+                    filteredLedger.value.forEach(tx => {
+                        net += tx.amount_twd;
+                        // 嘗試解析備註中的獲利
+                        if (tx.type === 'SELL' && tx.note.includes('獲利')) {
+                            const match = tx.note.match(/獲利: ([\d.-]+)/);
+                            if (match) realized += parseFloat(match[1]);
+                        } else if (tx.type.includes('DIV')) {
+                            realized += tx.amount_twd;
+                        }
                     });
-                }
+                    return { netFlow: net, realized: realized };
+                })
 
-                const filterData = () => {
-                    if (fullChartData.value.length === 0) return;
-                    const start = new Date(startDateStr.value);
-                    const end = new Date(endDateStr.value);
-                    end.setHours(23, 59, 59);
-                    const startIndex = fullChartData.value.findIndex(d => new Date(d.date) >= start);
+                // --- 3. 歷史數據重算 (TWR Engine) ---
+                const recalculatedHistory = computed(() => {
+                    if (!history.value || history.value.length === 0) return [];
                     
-                    if (startIndex === -1) displayedData.value = [];
-                    else {
-                        let anchorPoint = (startIndex > 0) ? fullChartData.value[startIndex - 1] : null;
-                        const slicedData = fullChartData.value.filter(d => {
-                            const dDate = new Date(d.date); return dDate >= start && dDate <= end;
-                        });
-                        displayedData.value = slicedData.map(d => {
-                            let pnl_val = d.total_value - d.invested;
-                            let twr_val = d.twr;
-                            let spy_val = d.benchmark_twr;
-                            if (anchorPoint) {
-                                pnl_val -= (anchorPoint.total_value - anchorPoint.invested);
-                                twr_val = (((1 + d.twr/100) / (1 + anchorPoint.twr/100)) - 1) * 100;
-                                spy_val = (((1 + d.benchmark_twr/100) / (1 + anchorPoint.benchmark_twr/100)) - 1) * 100;
+                    // 如果沒選 Tag，直接回傳原始總體 history
+                    if (selectedTags.value.length === 0) return history.value;
+
+                    // 有選 Tag：根據 history 中的 tags snapshot 重組數據
+                    // 結構: h.tags = {'AI': {mv: 100, inv: 50}, ...}
+                    let prev_mv = 0;
+                    let twr_cum = 1.0;
+                    
+                    return history.value.map(d => {
+                        // 1. 加總當日 Selected Tags 的 MV 與 Invested
+                        let day_mv = 0;
+                        let day_inv = 0;
+                        
+                        if (d.tags) {
+                            for (const tag of selectedTags.value) {
+                                if (d.tags[tag]) {
+                                    day_mv += d.tags[tag].mv;
+                                    day_inv += d.tags[tag].inv;
+                                }
                             }
-                            return { ...d, period_pnl: pnl_val, period_twr: twr_val, period_spy: spy_val };
-                        });
-                        if (anchorPoint) displayedData.value.unshift({ ...anchorPoint, period_pnl: 0, period_twr: 0, period_spy: 0, date: anchorPoint.date });
-                    }
-                    drawChart();
-                }
+                        }
+                        
+                        // 2. 計算 TWR
+                        // 公式: (End - Start - Flow) / (Start + Flow)
+                        // Flow = 今日累計投入 - 昨日累計投入
+                        // Start = 昨日市值
+                        const flow = day_inv - (d.prev_inv_ref || 0); // 這裡需要 prev_inv，下面處理
+                        
+                        let daily_ret = 0;
+                        const capital = prev_mv + flow;
+                        if (capital > 0) {
+                            daily_ret = (day_mv - capital) / capital;
+                        }
+                        twr_cum *= (1 + daily_ret);
 
-                const switchTimeRange = (range) => {
-                    timeRange.value = range;
-                    const now = new Date();
-                    let start = new Date(now);
-                    let end = new Date(now);
-                    switch(range) {
-                        case '1M': start.setMonth(now.getMonth() - 1); break;
-                        case '3M': start.setMonth(now.getMonth() - 3); break;
-                        case '6M': start.setMonth(now.getMonth() - 6); break;
-                        case 'YTD': start = new Date(now.getFullYear(), 0, 1); break;
-                        case '1Y': start.setFullYear(now.getFullYear() - 1); break;
-                        case 'ALL': start = new Date('2000-01-01'); break;
-                    }
-                    startDateStr.value = formatDate(start);
-                    endDateStr.value = formatDate(end);
-                    filterData();
-                }
-                const onDateChange = () => { timeRange.value = 'CUSTOM'; filterData(); }
+                        // 紀錄今日數據供明日使用
+                        const res = {
+                            date: d.date,
+                            total_value: day_mv,
+                            invested: day_inv,
+                            twr: parseFloat(((twr_cum - 1) * 100).toFixed(2)),
+                            benchmark_twr: d.benchmark_twr, // SPY 不變
+                            prev_inv_ref: day_inv // 輔助欄位
+                        };
+                        prev_mv = day_mv;
+                        return res;
+                    });
+                })
 
+                // --- UI 互動 ---
+                const toggleTag = (tag) => {
+                    if (selectedTags.value.includes(tag)) {
+                        selectedTags.value = selectedTags.value.filter(t => t !== tag);
+                    } else {
+                        selectedTags.value.push(tag);
+                    }
+                    drawChart(); // 資料變動重繪
+                    drawPieChart();
+                }
+                const clearTags = () => { selectedTags.value = []; drawChart(); drawPieChart(); dropdownOpen.value = false; }
+
+                // --- 圖表繪製 ---
                 const drawChart = () => {
                     const ctx = document.getElementById('mainChart').getContext('2d');
                     if (myChart) myChart.destroy();
-                    const dataPoints = displayedData.value;
+                    
+                    // 1. 根據時間範圍裁切
+                    const fullData = recalculatedHistory.value;
+                    if (fullData.length === 0) return;
+
+                    const now = new Date();
+                    let startDate = new Date('2000-01-01');
+                    if (timeRange.value === '1M') startDate.setMonth(now.getMonth() - 1);
+                    if (timeRange.value === '6M') startDate.setMonth(now.getMonth() - 6);
+                    if (timeRange.value === '1Y') startDate.setFullYear(now.getFullYear() - 1);
+
+                    const dataPoints = fullData.filter(d => new Date(d.date) >= startDate);
                     const labels = dataPoints.map(d => d.date);
-                    const isMobile = window.innerWidth < 768;
+
+                    // 2. 準備 Dataset
                     let datasets = [];
+                    // 為了讓曲線從 0 開始 (若非 ALL)，可以做 Normalize，這裡暫時直接顯示數值
+                    
                     if (chartType.value === 'asset') {
-                        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                        gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)'); gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
-                        datasets = [{ label: '總資產', data: dataPoints.map(d => d.total_value), borderColor: '#ff5252', backgroundColor: gradient, borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1 }, { label: '淨投入', data: dataPoints.map(d => d.invested), borderColor: '#666', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0 }];
+                        datasets = [
+                            { label: '持有市值', data: dataPoints.map(d => d.total_value), borderColor: '#ff5252', backgroundColor: 'rgba(255,82,82,0.1)', fill: true, borderWidth: 2, pointRadius: 0 },
+                            { label: '投入本金', data: dataPoints.map(d => d.invested), borderColor: '#666', borderDash: [5,5], borderWidth: 1, pointRadius: 0 }
+                        ];
                     } else if (chartType.value === 'pnl') {
-                        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                        gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)'); gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
-                        const dataMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.total_value - d.invested) : dataPoints.map(d => d.period_pnl);
-                        datasets = [{ label: '累積損益 ($)', data: dataMap, borderColor: '#ffd700', backgroundColor: gradient, borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1 }];
+                        datasets = [{ 
+                            label: '累計損益', 
+                            data: dataPoints.map(d => d.total_value - d.invested), 
+                            borderColor: '#ffd700', backgroundColor: 'rgba(255,215,0,0.1)', fill: true, borderWidth: 2, pointRadius: 0 
+                        }];
                     } else {
-                        const twrMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.twr) : dataPoints.map(d => d.period_twr);
-                        const spyMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.benchmark_twr) : dataPoints.map(d => d.period_spy);
-                        datasets = [{ label: '我的 TWR %', data: twrMap, borderColor: '#ff5252', borderWidth: 2, pointRadius: 0, tension: 0.1 }, { label: 'SPY %', data: spyMap, borderColor: '#40a9ff', borderWidth: 2, pointRadius: 0, tension: 0.1 }];
+                        // TWR
+                        datasets = [
+                            { label: '策略 TWR %', data: dataPoints.map(d => d.twr), borderColor: '#ff5252', borderWidth: 2, pointRadius: 0 },
+                            { label: 'SPY %', data: dataPoints.map(d => d.benchmark_twr), borderColor: '#40a9ff', borderWidth: 1, pointRadius: 0 }
+                        ];
                     }
+
                     myChart = new Chart(ctx, {
-                        type: 'line', data: { labels, datasets },
-                        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { labels: { color: '#ccc' }, position: 'top', align: 'end' }, tooltip: { backgroundColor: 'rgba(24, 24, 28, 0.9)', callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() } } }, scales: { x: { grid: { color: '#2d2d30' }, ticks: { color: '#666', maxTicksLimit: isMobile?4:8 } }, y: { position: 'right', grid: { color: '#2d2d30' }, ticks: { color: '#666' } } } }
+                        type: 'line',
+                        data: { labels, datasets },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
+                            plugins: { legend: { labels: { color: '#ccc' } }, tooltip: { backgroundColor: '#1f1f23' } },
+                            scales: { x: { grid: { color: '#333' } }, y: { grid: { color: '#333' }, position: 'right' } }
+                        }
                     });
                 }
 
-                const switchChartType = (type) => { chartType.value = type; drawChart(); }
-                const switchPieType = (type) => { pieType.value = type; drawPieChart(); }
+                const drawPieChart = () => {
+                    const ctx = document.getElementById('pieChart').getContext('2d');
+                    if (myPieChart) myPieChart.destroy();
+                    
+                    // Pie Chart 永遠顯示 "Filtered Holdings" 的分佈
+                    // 如果已經選了 AI，Pie Chart 就顯示 AI 裡面的股票佔比? 
+                    // 或者: 顯示 "Tag 分佈"? 但如果已經 Filter Tag，只會剩下選中的 Tag。
+                    // 調整策略：Pie Chart 顯示 "個股 (Symbol)" 的佔比 (在目前篩選範圍內)
+                    
+                    // 統計目前篩選範圍內的 Symbol 市值
+                    const dist = {};
+                    filteredHoldings.value.forEach(h => {
+                        dist[h.symbol] = h.market_value_twd;
+                    });
+                    
+                    const labels = Object.keys(dist);
+                    const data = Object.values(dist);
+                    const colors = ['#ff5252', '#40a9ff', '#ffd700', '#69c0ff', '#ff85c0', '#95de64', '#5cdbd3'];
 
+                    myPieChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+                        options: { 
+                            responsive: true, maintainAspectRatio: false, 
+                            plugins: { legend: { position: 'right', labels: { color: '#ccc', boxWidth: 10 } } } 
+                        }
+                    });
+                }
+
+                // --- 初始化 ---
                 const fetchData = async () => {
                     try {
                         const res = await fetch('data.json?t=' + new Date().getTime())
                         const data = await res.json()
-                        summary.value = data.summary
-                        updateTime.value = data.updated_at
-                        exchangeRate.value = data.exchange_rate
-                        holdings.value = data.holdings
-                        ledger.value = data.ledger 
-                        messages.value = data.messages || []
-                        fullChartData.value = data.history
-                        allocation.value = data.allocation
-                        
-                        const now = new Date();
-                        endDateStr.value = formatDate(now);
-                        const start = new Date(now); start.setFullYear(now.getFullYear() - 1);
-                        startDateStr.value = formatDate(start);
-                        
-                        switchTimeRange('1Y');
-                        nextTick(() => drawPieChart());
+                        rawData.value = data;
+                        holdings.value = data.holdings;
+                        ledger.value = data.ledger;
+                        history.value = data.history; // 這裡含有 tags breakdown
+                        messages.value = data.messages || [];
+                        updateTime.value = data.updated_at;
+                        exchangeRate.value = data.exchange_rate;
+
+                        // 提取所有可用 Tags
+                        const tagsSet = new Set();
+                        data.holdings.forEach(h => tagsSet.add(h.tag));
+                        data.ledger.forEach(tx => tagsSet.add(tx.tag));
+                        availableTags.value = Array.from(tagsSet).filter(t => t && t !== 'Other');
+
+                        nextTick(() => {
+                            drawChart();
+                            drawPieChart();
+                        });
                     } catch (e) { console.error(e) }
                 }
 
-                onMounted(() => {
-                    fetchData();
-                    window.addEventListener('resize', () => { if(myChart) drawChart(); });
+                const availableYears = computed(() => {
+                    const years = new Set(ledger.value.map(tx => tx.date.substring(0, 4)));
+                    return Array.from(years).sort().reverse();
                 })
+                const paginatedLedger = computed(() => {
+                    const start = (currentPage.value - 1) * itemsPerPage;
+                    return filteredLedger.value.slice(start, start + itemsPerPage);
+                })
+                const totalPages = computed(() => Math.ceil(filteredLedger.value.length / itemsPerPage) || 1)
+                const prevPage = () => { if (currentPage.value > 1) currentPage.value--; }
+                const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.value++; }
 
-                return { 
-                    summary, updateTime, exchangeRate, holdings, messages,
-                    paginatedLedger, searchQuery, filterType, filterYear, availableYears, 
-                    currentPage, totalPages, prevPage, nextPage, 
-                    filteredTotal, relatedMarketValue, grandTotal,
+                const switchChartType = (t) => { chartType.value = t; drawChart(); }
+                const switchTimeRange = (r) => { timeRange.value = r; drawChart(); }
+
+                onMounted(() => fetchData());
+
+                return {
+                    updateTime, exchangeRate, messages,
+                    selectedTags, availableTags, dropdownOpen, toggleTag, clearTags,
+                    computedStats, ledgerStats,
+                    filteredHoldings, paginatedLedger,
+                    searchQuery, filterType, filterYear, availableYears,
+                    currentPage, totalPages, prevPage, nextPage,
                     chartType, switchChartType, timeRange, switchTimeRange,
-                    pieType, switchPieType, startDateStr, endDateStr, onDateChange,
-                    formatNumber, currentSpyTwr 
+                    formatNumber
                 }
             }
         }).mount('#app')
