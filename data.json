@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-01-01 10:01",
+  "updated_at": "2026-01-01 10:06",
   "base_currency": "TWD",
   "exchange_rate": 31.27,
   "summary": {
@@ -9,6 +9,9 @@
     "twr": 296.73,
     "realized_pnl": 370219.0
   },
+  "messages": [
+    "❌ 資料異常: 2024-04-01 QQQI BUY 股數為 0.0 (應大於 0)，已略過此筆交易。"
+  ],
   "holdings": [
     {
       "symbol": "NVDA",
@@ -276,16 +279,6 @@
       "amount_twd": 23.0,
       "tag": "長線",
       "note": "自動配息 @ 0.01"
-    },
-    {
-      "date": "2024-04-01",
-      "symbol": "QQQI",
-      "type": "BUY",
-      "qty": 0.0,
-      "price": 50.7,
-      "amount_twd": -0.0,
-      "tag": "長線",
-      "note": "買入"
     },
     {
       "date": "2024-03-05",
@@ -1627,7 +1620,7 @@
     },
     {
       "date": "2024-08-07",
-      "total_value": 324068.0,
+      "total_value": 324069.0,
       "invested": 193688.0,
       "twr": 64.67,
       "benchmark_twr": 11.93
@@ -2161,7 +2154,7 @@
       "date": "2024-10-22",
       "total_value": 460063.0,
       "invested": 193665.0,
-      "twr": 133.78,
+      "twr": 133.79,
       "benchmark_twr": 23.47
     },
     {
