@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-01-01 09:56",
+  "updated_at": "2026-01-01 09:58",
   "base_currency": "TWD",
   "exchange_rate": 31.27,
   "summary": {
@@ -2067,11 +2067,11 @@
       "total_value": 506892.0,
       "invested": 350039.0,
       "twr": 59.09,
-      "benchmark_twr": 16.71
+      "benchmark_twr": 16.7
     },
     {
       "date": "2024-07-25",
-      "total_value": 498416.0,
+      "total_value": 498415.0,
       "invested": 350039.0,
       "twr": 56.43,
       "benchmark_twr": 15.97
@@ -2295,7 +2295,7 @@
     },
     {
       "date": "2024-08-26",
-      "total_value": 533953.0,
+      "total_value": 533954.0,
       "invested": 348601.0,
       "twr": 68.03,
       "benchmark_twr": 17.24
@@ -2351,7 +2351,7 @@
     },
     {
       "date": "2024-09-03",
-      "total_value": 475308.0,
+      "total_value": 475307.0,
       "invested": 348601.0,
       "twr": 49.57,
       "benchmark_twr": 16.06
@@ -5053,7 +5053,7 @@
     },
     {
       "date": "2025-09-24",
-      "total_value": 961070.0,
+      "total_value": 961071.0,
       "invested": 514301.0,
       "twr": 151.51,
       "benchmark_twr": 33.78
