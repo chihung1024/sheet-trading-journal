@@ -153,7 +153,7 @@ def update_portfolio():
                         conversion = 1.0 if stock_curr == 'TWD' else daily_rate
                         net_div_twd = net_div * conversion
                         
-                        net_invested_twd -= net_div_twd
+                        net_invested_twd -= net_div_twd # 視為回收本金
                         daily_cash_flow_twd -= net_div_twd
                         total_realized_pnl_twd += net_div_twd
                         
@@ -168,7 +168,16 @@ def update_portfolio():
                             'tag': symbol_tags.get(sym, 'Other'),
                             'note': f"自動配息 @ {round(div_per_share,4)}"
                         }
-                        closed_positions.append({**entry, 'pnl': entry['amount_twd'], 'type':'DIVIDEND'}) # 相容舊表格
+                        # 修正: 補上 close_date 以符合 closed_positions 的排序鍵值
+                        closed_positions.append({
+                            **entry, 
+                            'pnl': entry['amount_twd'], 
+                            'type': 'DIVIDEND',
+                            'close_date': date_str,
+                            'buy_price': 0,
+                            'sell_price': 0,
+                            'pnl_percent': 0
+                        }) 
                         ledger.append(entry)
 
         # --- B. 處理當日交易 ---
@@ -246,6 +255,8 @@ def update_portfolio():
                             'open_date': batch['raw_date'].strftime('%Y-%m-%d'),
                             'close_date': date_str,
                             'qty': round(sell_amt, 2),
+                            'buy_price': round(batch['unit_cost'], 2), # 原幣成本
+                            'sell_price': round(revenue_origin_unit, 2), # 原幣售價
                             'pnl': round(pnl_twd, 0),
                             'pnl_percent': round((pnl_twd/cost_twd_part)*100, 2) if cost_twd_part!=0 else 0,
                             'type': 'TRADE',
@@ -281,7 +292,16 @@ def update_portfolio():
                         'qty': 0, 'price': 0, 'amount_twd': round(income_twd, 0),
                         'tag': symbol_tags[symbol], 'note': '手動配息'
                     }
-                    closed_positions.append({**entry, 'pnl':entry['amount_twd'], 'type':'DIVIDEND'})
+                    # 修正: 補上 close_date
+                    closed_positions.append({
+                        **entry, 
+                        'pnl':entry['amount_twd'], 
+                        'type':'DIVIDEND', 
+                        'close_date': date_str,
+                        'buy_price': 0,
+                        'sell_price': 0,
+                        'pnl_percent': 0
+                    })
                     ledger.append(entry)
 
         # --- C. 計算市值 ---
@@ -377,9 +397,7 @@ def update_portfolio():
             "realized_pnl": round(total_realized_pnl_twd, 0)
         },
         "holdings": final_holdings,
-        # closed_positions 保留以相容舊版
         "closed_positions": sorted(closed_positions, key=lambda x: x['close_date'], reverse=True),
-        # ledger: 新增完整流水帳 (按日期倒序)
         "ledger": sorted(ledger, key=lambda x: x['date'], reverse=True),
         "history": history_data,
         "allocation": { "tags": allocation_by_tag, "currency": allocation_by_currency }
