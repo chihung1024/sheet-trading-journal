@@ -10,7 +10,6 @@ SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS2Km74qaJt42zPpsQk
 BASE_CURRENCY = 'TWD'
 EXCHANGE_SYMBOL = 'USDTWD=X'
 
-# 預設稅率 (美股 30%, 台股 0%)
 TAX_RATE_US = 0.30
 TAX_RATE_TW = 0.00
 
@@ -31,7 +30,6 @@ def get_market_data(tickers, start_date):
     for t in all_tickers:
         try:
             ticker_obj = yf.Ticker(t)
-            # actions=True 確保抓到股息
             hist = ticker_obj.history(start=start_date, auto_adjust=True, actions=True)
             hist.index = pd.to_datetime(hist.index).tz_localize(None)
             
@@ -50,7 +48,7 @@ def get_market_data(tickers, start_date):
 
 def safe_float(val):
     try:
-        if pd.isna(val) or val == '': return 0.0
+        if pd.isna(val) or str(val).strip() == '': return 0.0
         return float(val)
     except: return 0.0
 
@@ -74,12 +72,26 @@ def get_rate(date, fx_rates):
     except: return 32.0
 
 def update_portfolio():
-    print("開始計算 (僅處理 BUY/SELL，配息全自動)...")
+    print("開始計算 (含資料驗證)...")
+    
+    # 儲存驗證錯誤訊息
+    validation_messages = []
+
     try:
         df = pd.read_csv(SHEET_URL)
         df.columns = df.columns.str.strip()
-        df['Date'] = pd.to_datetime(df['Date']).dt.normalize()
-        df = df.sort_values('Date')
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.normalize()
+        
+        # 檢查日期是否有格式錯誤 (NaT)
+        invalid_dates = df[df['Date'].isna()]
+        if not invalid_dates.empty:
+            for idx, row in invalid_dates.iterrows():
+                msg = f"⚠️ 行號 {idx+2}: 日期格式錯誤或空白，已略過。"
+                print(msg)
+                validation_messages.append(msg)
+        
+        # 移除日期錯誤的列並排序
+        df = df.dropna(subset=['Date']).sort_values('Date')
         
         for col in ['Comm', 'Tax', 'Qty', 'Price']:
             if col not in df.columns: df[col] = 0
@@ -122,7 +134,6 @@ def update_portfolio():
     prev_total_value_twd = 0.0
     twr_cumulative = 1.0
     
-    # Benchmark
     spy_start_price_twd = 0
     if 'SPY' in market_data:
         try:
@@ -136,64 +147,66 @@ def update_portfolio():
         daily_cash_flow_twd = 0.0
         date_str = current_date.strftime('%Y-%m-%d')
 
-        # --- A. 自動配息處理 (Auto Dividend) ---
-        # 邏輯：檢查今日是否除息，若持有則發放
+        # --- A. 自動配息 ---
         for sym, qty in holdings.items():
             if qty > 0.001 and sym in market_data:
                 divs = market_data[sym]['dividends']
                 stock_curr = market_data[sym]['currency']
-                
                 if current_date in divs.index:
                     div_per_share = divs.loc[current_date]
                     if div_per_share > 0:
                         gross_div = div_per_share * qty
-                        
-                        # 稅務處理
                         tax_rate = TAX_RATE_TW if stock_curr == 'TWD' else TAX_RATE_US
                         net_div = gross_div * (1 - tax_rate)
                         
-                        # 換算 TWD
                         conversion = 1.0 if stock_curr == 'TWD' else daily_rate
                         net_div_twd = net_div * conversion
                         
-                        # 入帳
                         net_invested_twd -= net_div_twd
                         daily_cash_flow_twd -= net_div_twd
                         total_realized_pnl_twd += net_div_twd
                         
                         entry = {
-                            'date': date_str,
-                            'symbol': sym,
-                            'type': 'DIV_AUTO',
-                            'qty': 0, 'price': 0,
-                            'amount_twd': round(net_div_twd, 0),
+                            'date': date_str, 'symbol': sym, 'type': 'DIV_AUTO',
+                            'qty': 0, 'price': 0, 'amount_twd': round(net_div_twd, 0),
                             'tag': symbol_tags.get(sym, 'Other'),
                             'note': f"自動配息 @ {round(div_per_share, 4)}"
                         }
-                        # 加入紀錄
                         ledger.append(entry)
                         closed_positions.append({
-                            **entry,
-                            'pnl': entry['amount_twd'],
-                            'type': 'DIVIDEND',
-                            'close_date': date_str,
-                            'buy_price': 0, 'sell_price': 0, 'pnl_percent': 0
+                            **entry, 'pnl': entry['amount_twd'], 'type': 'DIVIDEND',
+                            'close_date': date_str, 'buy_price': 0, 'sell_price': 0, 'pnl_percent': 0
                         })
 
-        # --- B. 處理當日交易 (僅 BUY / SELL) ---
+        # --- B. 處理當日交易 ---
         if current_date in transactions_map:
             for tx in transactions_map[current_date]:
                 symbol = tx['Symbol']
                 action = tx['Type'].strip().upper()
                 
-                # 忽略非 BUY/SELL 的紀錄 (例如舊的手動配息)
+                # --- [新增] 資料驗證防呆 ---
+                raw_qty = safe_float(tx['Qty'])
+                raw_price = safe_float(tx['Price'])
+                
+                # 1. 檢查股數是否 <= 0 (對於買賣來說是異常的)
+                if action in ['BUY', 'SELL'] and raw_qty <= 0:
+                    msg = f"❌ 資料異常: {date_str} {symbol} {action} 股數為 {raw_qty} (應大於 0)，已略過此筆交易。"
+                    print(msg)
+                    validation_messages.append(msg)
+                    continue # 跳過此筆，避免破壞計算
+                
+                # 2. 檢查價格是否 < 0
+                if action in ['BUY', 'SELL'] and raw_price < 0:
+                    msg = f"❌ 資料異常: {date_str} {symbol} {action} 價格為 {raw_price} (應非負數)，已略過此筆交易。"
+                    print(msg)
+                    validation_messages.append(msg)
+                    continue
+
+                # 3. 忽略非標準類型
                 if action not in ['BUY', 'SELL']:
                     continue
 
                 symbol_tags[symbol] = safe_str(tx.get('Tag', 'Other'))
-                
-                raw_qty = safe_float(tx['Qty'])
-                raw_price = safe_float(tx['Price'])
                 comm = safe_float(tx['Comm'])
                 tax = safe_float(tx['Tax'])
                 
@@ -202,14 +215,11 @@ def update_portfolio():
                 elif symbol.endswith('.TW') or symbol.endswith('.TWO'): stock_currency = 'TWD'
                 
                 tx_rate = 1.0 if stock_currency == 'TWD' else daily_rate
-                
-                # 拆股調整
                 split_ratio = 1.0
                 if symbol in market_data:
                     split_ratio = get_split_adjustment(current_date, market_data[symbol]['splits'])
                 
                 adj_qty = raw_qty * split_ratio
-                
                 raw_cost_amt = (raw_price * raw_qty) + comm
                 raw_proceeds_amt = (raw_price * raw_qty) - comm - tax
                 
@@ -218,7 +228,6 @@ def update_portfolio():
                     net_invested_twd += cost_twd
                     daily_cash_flow_twd += cost_twd
                     holdings[symbol] += adj_qty
-                    
                     unit_cost_origin = raw_cost_amt / adj_qty if adj_qty > 0 else 0
                     fifo_queue[symbol].append({'qty': adj_qty, 'unit_cost': unit_cost_origin, 'rate_at_buy': tx_rate, 'raw_date': current_date})
                     
@@ -240,11 +249,9 @@ def update_portfolio():
                     while qty_to_sell > 0.000001 and fifo_queue[symbol]:
                         batch = fifo_queue[symbol][0]
                         sell_amt = min(qty_to_sell, batch['qty'])
-                        
                         cost_twd_part = (batch['unit_cost'] * batch['rate_at_buy']) * sell_amt
                         revenue_origin_unit = (raw_proceeds_amt / adj_qty)
                         rev_twd_part = (revenue_origin_unit * tx_rate) * sell_amt
-                        
                         pnl_twd = rev_twd_part - cost_twd_part
                         realized_pnl_tx += pnl_twd
                         
@@ -264,13 +271,11 @@ def update_portfolio():
                         if batch['qty'] < 0.000001: fifo_queue[symbol].popleft()
                     
                     total_realized_pnl_twd += realized_pnl_tx
-                    
                     ledger.append({
                         'date': date_str, 'symbol': symbol, 'type': 'SELL',
                         'qty': round(adj_qty, 2), 'price': raw_price,
                         'amount_twd': round(proceeds_twd, 0),
-                        'tag': symbol_tags[symbol],
-                        'note': f"獲利: {round(realized_pnl_tx,0)}"
+                        'tag': symbol_tags[symbol], 'note': f"獲利: {round(realized_pnl_tx,0)}"
                     })
 
         # --- C. 市值 ---
@@ -365,6 +370,7 @@ def update_portfolio():
             "twr": curr_stats.get('twr', 0),
             "realized_pnl": round(total_realized_pnl_twd, 0)
         },
+        "messages": validation_messages, # 新增錯誤訊息到 JSON
         "holdings": final_holdings,
         "closed_positions": sorted(closed_positions, key=lambda x: x['close_date'], reverse=True),
         "ledger": sorted(ledger, key=lambda x: x['date'], reverse=True),
@@ -374,7 +380,7 @@ def update_portfolio():
 
     with open('data.json', 'w', encoding='utf-8') as f:
         json.dump(final_output, f, ensure_ascii=False, indent=2)
-    print("更新完成 (配息全自動，手動DIV已忽略)")
+    print("更新完成 (包含資料驗證)")
 
 if __name__ == "__main__":
     update_portfolio()
