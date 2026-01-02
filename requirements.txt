@@ -2,3 +2,6 @@ pandas
 yfinance
 numpy
 requests
+fastapi
+uvicorn
+pydantic
