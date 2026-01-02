@@ -2,8 +2,11 @@ name: Update Portfolio Data
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 每天執行一次 (時間可自訂)
+    - cron: '0 0 * * *' # 每天早上 (UTC 0點) 執行
   workflow_dispatch:      # 允許手動執行
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -16,15 +19,16 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        # ⚠️ 修正重點：必須使用 3.10 或以上版本，才能支援 yfinance 的新語法
+        # ⚠️ 必須使用 3.10 或以上，解決 yfinance 報錯
         python-version: '3.10'
 
     - name: Install dependencies
       run: |
         pip install --upgrade pip
-        pip install pandas yfinance requests
+        pip install -r requirements.txt
 
     - name: Run calculation script
+      # 這一步會呼叫 Worker API 並更新 data.json
       run: python main.py
 
     - name: Commit and Push changes
@@ -37,7 +41,7 @@ jobs:
           git add data.json
           git commit -m "Auto-update portfolio data"
           git push
-          echo "✅ 資料已更新並推送。"
+          echo "✅ 資料已更新並推送，Cloudflare Pages 將自動部署。"
         else
           echo "⚠️ 資料無變動，跳過推送。"
         fi
