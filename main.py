@@ -8,7 +8,7 @@ from collections import deque
 
 # --- 設定區域 ---
 # ⚠️ 請將此網址換成您 Cloudflare Worker 的真實網址
-WORKER_API_URL = 'https://您的-Worker-專案名.您的帳號.workers.dev/api/records'
+WORKER_API_URL = 'https://journal-backend.chired.workers.dev/api/records'
 
 # 為了安全，建議您在 Worker 驗證 Google Token，但因為這是 Python 後端排程跑的，
 # 為了簡化，我們假設您的 GET /api/records 是公開可讀取的 (或您在 Worker 裡設定了一個特殊的 Header 密鑰)
