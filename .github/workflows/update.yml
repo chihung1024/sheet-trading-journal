@@ -2,10 +2,9 @@ name: Update Portfolio Data
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 每天早上 (UTC 0點, 台灣時間 8點) 執行
-  workflow_dispatch:      # 允許在 Actions 頁面手動點擊執行
+    - cron: '0 0 * * *' # 每天早上 (UTC 0點) 執行
+  workflow_dispatch:      # 允許手動執行
 
-# [重要] 賦予 GITHUB_TOKEN 寫入權限，才能 Commit & Push
 permissions:
   contents: write
 
@@ -28,7 +27,9 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run calculation script
-      # 這一步會呼叫 Worker API 撈交易紀錄，用 yfinance 算股價，最後產出 data.json
+      # [修改重點] 注入 Secret 到環境變數，讓 main.py 讀取
+      env:
+        API_KEY: ${{ secrets.API_KEY }}
       run: python main.py
 
     - name: Commit and Push changes
@@ -36,7 +37,7 @@ jobs:
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
         
-        # 強制加入 data.json (避免被 .gitignore 忽略)
+        # 強制加入 data.json (確保不被 ignore)
         git add -f data.json
         
         # 檢查是否有變動，有才 Commit
