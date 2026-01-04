@@ -9,11 +9,8 @@ from collections import deque
 
 # --- 設定區域 ---
 WORKER_API_URL = 'https://journal-backend.chired.workers.dev/api/records'
-
-# 讀取環境變數
 API_KEY = os.environ.get("API_KEY", "")
 
-# 設定 Header
 API_HEADERS = {
     "X-API-KEY": API_KEY,
     "Content-Type": "application/json"
@@ -84,17 +81,13 @@ def get_rate(date, fx_rates):
 
 def update_portfolio():
     print("開始計算 (來源: Cloudflare D1)...")
-    
-    # [除錯訊息]
     debug_key = API_KEY[:2] + "****" if API_KEY else "NONE"
     print(f"DEBUG: Using API Key: {debug_key}")
-    print(f"DEBUG: Headers: {API_HEADERS}")
 
     validation_messages = []
 
     try:
         print(f"正在連線至 API: {WORKER_API_URL}")
-        # 關鍵修正：這裡必須帶著 headers
         resp = requests.get(WORKER_API_URL, headers=API_HEADERS)
         
         if resp.status_code != 200:
@@ -368,6 +361,7 @@ def update_portfolio():
             final_holdings.append({
                 "symbol": sym, "tag": tag, "currency": stock_cur,
                 "qty": round(qty, 2),
+                "total_cost_twd": round(total_cost_twd, 0), # [新增] 明確輸出台幣成本
                 "market_value_twd": round(mkt_val_twd, 0),
                 "pnl_twd": round(pnl_twd, 0),
                 "pnl_percent": round((pnl_twd/total_cost_twd)*100, 2) if total_cost_twd!=0 else 0,
