@@ -2,9 +2,10 @@ name: Update Portfolio Data
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 每天早上 (UTC 0點) 執行
-  workflow_dispatch:      # 允許手動執行
+    - cron: '0 0 * * *' # 每天早上 (UTC 0點, 台灣時間 8點) 執行
+  workflow_dispatch:      # 允許在 Actions 頁面手動點擊執行
 
+# [重要] 賦予 GITHUB_TOKEN 寫入權限，才能 Commit & Push
 permissions:
   contents: write
 
@@ -19,7 +20,6 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        # ⚠️ 必須使用 3.10 或以上，解決 yfinance 報錯
         python-version: '3.10'
 
     - name: Install dependencies
@@ -28,7 +28,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run calculation script
-      # 這一步會呼叫 Worker API 並更新 data.json
+      # 這一步會呼叫 Worker API 撈交易紀錄，用 yfinance 算股價，最後產出 data.json
       run: python main.py
 
     - name: Commit and Push changes
@@ -36,12 +36,13 @@ jobs:
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
         
-        # 檢查 data.json 是否有變動
-        if [[ -n $(git status -s data.json) ]]; then
-          git add data.json
-          git commit -m "Auto-update portfolio data"
-          git push
-          echo "✅ 資料已更新並推送，Cloudflare Pages 將自動部署。"
+        # 強制加入 data.json (避免被 .gitignore 忽略)
+        git add -f data.json
+        
+        # 檢查是否有變動，有才 Commit
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
         else
-          echo "⚠️ 資料無變動，跳過推送。"
+          git commit -m "Auto-update portfolio data [skip ci]"
+          git push
         fi
