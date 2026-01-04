@@ -33,7 +33,7 @@ def get_market_data(tickers, start_date):
         print(f"匯率下載失敗: {e}")
 
     result = {}
-    all_tickers = list(set(tickers + ['SPY']))
+    all_tickers = list(set(tickers + ['SPY'])) # 加入 SPY 做 Benchmark
 
     for t in all_tickers:
         try:
@@ -81,8 +81,7 @@ def get_rate(date, fx_rates):
 
 def update_portfolio():
     print("開始計算 (來源: Cloudflare D1)...")
-    debug_key = API_KEY[:2] + "****" if API_KEY else "NONE"
-    print(f"DEBUG: Using API Key: {debug_key}")
+    print(f"DEBUG: Using API Key: {API_KEY[:2]}****" if API_KEY else "DEBUG: Key Empty")
 
     validation_messages = []
 
@@ -91,37 +90,26 @@ def update_portfolio():
         resp = requests.get(WORKER_API_URL, headers=API_HEADERS)
         
         if resp.status_code != 200:
-            print(f"API 連線失敗: {resp.status_code} {resp.text}")
+            print(f"API 連線失敗: {resp.status_code}")
             return
 
         api_json = resp.json()
-        if not api_json.get('success', False):
-            print(f"API 回傳錯誤: {api_json.get('error')}")
-            return
-            
         records = api_json.get('data', [])
         print(f"成功取得 {len(records)} 筆交易紀錄")
         
         if not records:
-            print("無交易紀錄，略過計算")
-            final_output = {
-                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "summary": {}, "holdings": [], "history": []
-            }
+            print("無交易紀錄，寫入空數據")
             with open('data.json', 'w', encoding='utf-8') as f:
-                json.dump(final_output, f, ensure_ascii=False, indent=2)
+                json.dump({"summary": {}, "holdings": [], "history": [], "allocation": {}}, f)
             return
 
         df = pd.DataFrame(records)
-        df = df.rename(columns={
-            'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type',
-            'qty': 'Qty', 'price': 'Price', 'fee': 'Comm'
-        })
+        df = df.rename(columns={'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type', 'qty': 'Qty', 'price': 'Price', 'fee': 'Comm', 'tag': 'Tag'})
         
         if 'Tax' not in df.columns: df['Tax'] = 0
         if 'Tag' not in df.columns: df['Tag'] = 'Stock'
 
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.normalize()
+        df['Date'] = pd.to_datetime(df['Date']).dt.normalize()
         df = df.dropna(subset=['Date']).sort_values('Date')
         
         for col in ['Comm', 'Tax', 'Qty', 'Price']:
@@ -133,8 +121,7 @@ def update_portfolio():
 
     df = df[df['Symbol'].str.upper() != 'CASH'].copy()
     tickers = df['Symbol'].unique().tolist()
-    if not tickers: return
-
+    
     start_date = df['Date'].min().strftime('%Y-%m-%d')
     market_data, fx_rates = get_market_data(tickers, start_date)
 
@@ -152,9 +139,7 @@ def update_portfolio():
     ledger = []           
     history_data = []
     
-    transactions_map = {}
-    for date, group in df.groupby('Date'):
-        transactions_map[date] = group.to_dict('records')
+    transactions_map = {date: group.to_dict('records') for date, group in df.groupby('Date')}
 
     prev_total_value_twd = 0.0
     twr_cumulative = 1.0
@@ -167,12 +152,13 @@ def update_portfolio():
             if not pd.isna(p) and not pd.isna(r): spy_start_price_twd = p * r
         except: pass
 
+    # --- 逐日回測核心 ---
     for current_date in all_dates:
         daily_rate = get_rate(current_date, fx_rates)
         daily_cash_flow_twd = 0.0
         date_str = current_date.strftime('%Y-%m-%d')
 
-        # 自動配息
+        # 1. 處理配息
         for sym, qty in holdings.items():
             if qty > 0.001 and sym in market_data:
                 divs = market_data[sym]['dividends']
@@ -190,19 +176,10 @@ def update_portfolio():
                         daily_cash_flow_twd -= net_div_twd
                         total_realized_pnl_twd += net_div_twd
                         
-                        entry = {
-                            'date': date_str, 'symbol': sym, 'type': 'DIV_AUTO',
-                            'qty': 0, 'price': 0, 'amount_twd': round(net_div_twd, 0),
-                            'tag': symbol_tags.get(sym, 'Stock'),
-                            'note': f"自動配息 @ {round(div_per_share, 4)}"
-                        }
+                        entry = {'date': date_str, 'symbol': sym, 'type': 'DIV_AUTO', 'amount_twd': round(net_div_twd, 0)}
                         ledger.append(entry)
-                        closed_positions.append({
-                            **entry, 'pnl': entry['amount_twd'], 'type': 'DIVIDEND',
-                            'close_date': date_str, 'buy_price': 0, 'sell_price': 0, 'pnl_percent': 0
-                        })
 
-        # 交易處理
+        # 2. 處理當日交易
         if current_date in transactions_map:
             for tx in transactions_map[current_date]:
                 symbol = tx['Symbol']
@@ -218,7 +195,7 @@ def update_portfolio():
                 
                 stock_currency = 'USD'
                 if symbol in market_data: stock_currency = market_data[symbol]['currency']
-                elif symbol.endswith('.TW') or symbol.endswith('.TWO'): stock_currency = 'TWD'
+                elif symbol.endswith('.TW'): stock_currency = 'TWD'
                 
                 tx_rate = 1.0 if stock_currency == 'TWD' else daily_rate
                 split_ratio = 1.0
@@ -236,14 +213,7 @@ def update_portfolio():
                     holdings[symbol] += adj_qty
                     
                     unit_cost_origin = raw_cost_amt / adj_qty if adj_qty > 0 else 0
-                    fifo_queue[symbol].append({'qty': adj_qty, 'unit_cost': unit_cost_origin, 'rate_at_buy': tx_rate, 'raw_date': current_date})
-                    
-                    ledger.append({
-                        'date': date_str, 'symbol': symbol, 'type': 'BUY',
-                        'qty': round(adj_qty, 2), 'price': raw_price,
-                        'amount_twd': round(-cost_twd, 0),
-                        'tag': symbol_tags[symbol], 'note': '買入'
-                    })
+                    fifo_queue[symbol].append({'qty': adj_qty, 'unit_cost': unit_cost_origin, 'rate_at_buy': tx_rate})
                     
                 elif action == 'SELL':
                     proceeds_twd = raw_proceeds_amt * tx_rate
@@ -256,38 +226,20 @@ def update_portfolio():
                     while qty_to_sell > 0.000001 and fifo_queue[symbol]:
                         batch = fifo_queue[symbol][0]
                         sell_amt = min(qty_to_sell, batch['qty'])
-                        
                         cost_twd_part = (batch['unit_cost'] * batch['rate_at_buy']) * sell_amt
                         revenue_origin_unit = (raw_proceeds_amt / adj_qty)
                         rev_twd_part = (revenue_origin_unit * tx_rate) * sell_amt
-                        
                         pnl_twd = rev_twd_part - cost_twd_part
                         realized_pnl_tx += pnl_twd
                         
-                        closed_positions.append({
-                            'symbol': symbol, 'tag': symbol_tags[symbol],
-                            'open_date': batch['raw_date'].strftime('%Y-%m-%d'),
-                            'close_date': date_str,
-                            'qty': round(sell_amt, 2),
-                            'buy_price': round(batch['unit_cost'], 2),
-                            'sell_price': round(revenue_origin_unit, 2),
-                            'pnl': round(pnl_twd, 0),
-                            'pnl_percent': round((pnl_twd/cost_twd_part)*100, 2) if cost_twd_part!=0 else 0,
-                            'type': 'TRADE', 'currency': stock_currency
-                        })
+                        closed_positions.append({'close_date': date_str, 'symbol': symbol, 'pnl': round(pnl_twd, 0)})
                         batch['qty'] -= sell_amt
                         qty_to_sell -= sell_amt
                         if batch['qty'] < 0.000001: fifo_queue[symbol].popleft()
                     
                     total_realized_pnl_twd += realized_pnl_tx
-                    ledger.append({
-                        'date': date_str, 'symbol': symbol, 'type': 'SELL',
-                        'qty': round(adj_qty, 2), 'price': raw_price,
-                        'amount_twd': round(proceeds_twd, 0),
-                        'tag': symbol_tags[symbol], 'note': f"獲利: {round(realized_pnl_tx,0)}"
-                    })
 
-        # 市值計算
+        # 3. 計算當日市值
         market_val_twd = 0.0
         for sym, qty in holdings.items():
             if qty > 0.001:
@@ -305,7 +257,7 @@ def update_portfolio():
                 conversion = 1.0 if market_data.get(sym, {}).get('currency') == 'TWD' else daily_rate
                 market_val_twd += (price * qty * conversion)
 
-        # TWR 計算
+        # 4. 計算 TWR
         capital_at_risk = prev_total_value_twd + daily_cash_flow_twd
         daily_return = 0.0
         if capital_at_risk > 0:
@@ -332,7 +284,7 @@ def update_portfolio():
         })
         prev_total_value_twd = market_val_twd
 
-    # 輸出結果
+    # --- 最終匯總 ---
     final_holdings = []
     allocation_by_tag = {}
     allocation_by_currency = {'TWD': 0, 'USD': 0}
@@ -361,7 +313,6 @@ def update_portfolio():
             final_holdings.append({
                 "symbol": sym, "tag": tag, "currency": stock_cur,
                 "qty": round(qty, 2),
-                "total_cost_twd": round(total_cost_twd, 0), # [新增] 明確輸出台幣成本
                 "market_value_twd": round(mkt_val_twd, 0),
                 "pnl_twd": round(pnl_twd, 0),
                 "pnl_percent": round((pnl_twd/total_cost_twd)*100, 2) if total_cost_twd!=0 else 0,
@@ -379,14 +330,12 @@ def update_portfolio():
             "invested_capital": curr_stats.get('invested', 0),
             "total_pnl": round(curr_stats.get('total_value', 0) - curr_stats.get('invested', 0), 0),
             "twr": curr_stats.get('twr', 0),
-            "realized_pnl": round(total_realized_pnl_twd, 0)
+            "realized_pnl": round(total_realized_pnl_twd, 0),
+            "benchmark_twr": curr_stats.get('benchmark_twr', 0)
         },
-        "messages": validation_messages,
         "holdings": final_holdings,
-        "closed_positions": sorted(closed_positions, key=lambda x: x['close_date'], reverse=True),
-        "ledger": sorted(ledger, key=lambda x: x['date'], reverse=True),
-        "history": history_data,
-        "allocation": { "tags": allocation_by_tag, "currency": allocation_by_currency }
+        "history": history_data, # 用於畫圖
+        "allocation": { "tags": allocation_by_tag, "currency": allocation_by_currency } # 用於圓餅圖
     }
 
     with open('data.json', 'w', encoding='utf-8') as f:
