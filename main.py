@@ -2,17 +2,13 @@ import pandas as pd
 import yfinance as yf
 import json
 import numpy as np
-import requests  # 新增
+import requests
 from datetime import datetime
 from collections import deque
 
 # --- 設定區域 ---
-# ⚠️ 請將此網址換成您 Cloudflare Worker 的真實網址
+# 這是您的 Cloudflare Worker 網址
 WORKER_API_URL = 'https://journal-backend.chired.workers.dev/api/records'
-
-# 為了安全，建議您在 Worker 驗證 Google Token，但因為這是 Python 後端排程跑的，
-# 為了簡化，我們假設您的 GET /api/records 是公開可讀取的 (或您在 Worker 裡設定了一個特殊的 Header 密鑰)
-# 如果您在 Worker 有設權限檢查，請在這裡的 headers 加入 {'Authorization': 'Bearer 您的密鑰'}
 API_HEADERS = {} 
 
 BASE_CURRENCY = 'TWD'
@@ -82,7 +78,6 @@ def update_portfolio():
     print("開始計算 (來源: Cloudflare D1)...")
     validation_messages = []
 
-    # --- [修改重點] 改為從 API 讀取 ---
     try:
         print(f"正在連線至 API: {WORKER_API_URL}")
         resp = requests.get(WORKER_API_URL, headers=API_HEADERS)
@@ -101,27 +96,20 @@ def update_portfolio():
         
         if not records:
             print("無交易紀錄，略過計算")
+            # 即使無紀錄，也建議生成一個空的 data.json 避免前端 404
+            with open('data.json', 'w', encoding='utf-8') as f:
+                json.dump({"summary": {}, "holdings": [], "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")}, f)
             return
 
-        # 將 JSON 轉為 DataFrame
         df = pd.DataFrame(records)
-        
-        # 欄位名稱映射 (D1 資料庫欄位 -> main.py 邏輯欄位)
-        # D1: txn_date, symbol, txn_type, qty, price, fee
         df = df.rename(columns={
-            'txn_date': 'Date',
-            'symbol': 'Symbol',
-            'txn_type': 'Type',
-            'qty': 'Qty',
-            'price': 'Price',
-            'fee': 'Comm' # 將 D1 的 fee 對應到 Comm (手續費)
+            'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type',
+            'qty': 'Qty', 'price': 'Price', 'fee': 'Comm'
         })
         
-        # 補充缺少的欄位
         if 'Tax' not in df.columns: df['Tax'] = 0
-        if 'Tag' not in df.columns: df['Tag'] = 'Stock' # D1 目前沒存 Tag，暫時預設 Stock
+        if 'Tag' not in df.columns: df['Tag'] = 'Stock'
 
-        # 資料清理
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.normalize()
         df = df.dropna(subset=['Date']).sort_values('Date')
         
@@ -131,7 +119,6 @@ def update_portfolio():
     except Exception as e:
         print(f"資料讀取失敗: {e}")
         return
-    # --------------------------------
 
     df = df[df['Symbol'].str.upper() != 'CASH'].copy()
     tickers = df['Symbol'].unique().tolist()
@@ -150,7 +137,6 @@ def update_portfolio():
     
     net_invested_twd = 0.0
     total_realized_pnl_twd = 0.0
-    
     closed_positions = [] 
     ledger = []           
     history_data = []
@@ -175,7 +161,7 @@ def update_portfolio():
         daily_cash_flow_twd = 0.0
         date_str = current_date.strftime('%Y-%m-%d')
 
-        # --- A. 自動配息 ---
+        # 自動配息
         for sym, qty in holdings.items():
             if qty > 0.001 and sym in market_data:
                 divs = market_data[sym]['dividends']
@@ -205,19 +191,14 @@ def update_portfolio():
                             'close_date': date_str, 'buy_price': 0, 'sell_price': 0, 'pnl_percent': 0
                         })
 
-        # --- B. 交易處理 ---
+        # 交易處理
         if current_date in transactions_map:
             for tx in transactions_map[current_date]:
                 symbol = tx['Symbol']
                 action = tx['Type'].strip().upper()
-                
                 raw_qty = safe_float(tx['Qty'])
                 raw_price = safe_float(tx['Price'])
                 
-                if action in ['BUY', 'SELL']:
-                    if raw_qty <= 0: continue
-                    if raw_price < 0: continue
-
                 if action not in ['BUY', 'SELL']: continue
 
                 symbol_tags[symbol] = safe_str(tx.get('Tag', 'Stock'))
@@ -295,7 +276,7 @@ def update_portfolio():
                         'tag': symbol_tags[symbol], 'note': f"獲利: {round(realized_pnl_tx,0)}"
                     })
 
-        # --- C. 市值計算 ---
+        # 市值計算
         market_val_twd = 0.0
         for sym, qty in holdings.items():
             if qty > 0.001:
@@ -313,13 +294,13 @@ def update_portfolio():
                 conversion = 1.0 if market_data.get(sym, {}).get('currency') == 'TWD' else daily_rate
                 market_val_twd += (price * qty * conversion)
 
-        # --- D. TWR ---
+        # TWR 計算
         capital_at_risk = prev_total_value_twd + daily_cash_flow_twd
+        daily_return = 0.0
         if capital_at_risk > 0:
             daily_profit = market_val_twd - capital_at_risk
             daily_return = daily_profit / capital_at_risk
-        else:
-            daily_return = 0.0
+        
         twr_cumulative *= (1 + daily_return)
         
         bench_twr = 0.0
@@ -340,7 +321,7 @@ def update_portfolio():
         })
         prev_total_value_twd = market_val_twd
 
-    # --- 輸出結果 ---
+    # 輸出結果
     final_holdings = []
     allocation_by_tag = {}
     allocation_by_currency = {'TWD': 0, 'USD': 0}
@@ -398,7 +379,7 @@ def update_portfolio():
 
     with open('data.json', 'w', encoding='utf-8') as f:
         json.dump(final_output, f, ensure_ascii=False, indent=2)
-    print("更新完成 (從 D1 讀取)")
+    print("更新完成 (data.json 已寫入)")
 
 if __name__ == "__main__":
     update_portfolio()
