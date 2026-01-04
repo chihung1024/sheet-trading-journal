@@ -3,13 +3,22 @@ import yfinance as yf
 import json
 import numpy as np
 import requests
+import os  # [新增] 用來讀取環境變數
 from datetime import datetime
 from collections import deque
 
 # --- 設定區域 ---
-# 這是您的 Cloudflare Worker 網址
+# ⚠️ 請確認這還是您的 Worker 網址
 WORKER_API_URL = 'https://journal-backend.chired.workers.dev/api/records'
-API_HEADERS = {} 
+
+# [修改重點] 讀取 GitHub Actions 傳入的 API Key
+API_KEY = os.environ.get("API_KEY", "")
+
+# 將 Key 放入 Header，讓 Worker 知道我們是管理員
+API_HEADERS = {
+    "X-API-KEY": API_KEY,
+    "Content-Type": "application/json"
+}
 
 BASE_CURRENCY = 'TWD'
 EXCHANGE_SYMBOL = 'USDTWD=X'
@@ -80,6 +89,7 @@ def update_portfolio():
 
     try:
         print(f"正在連線至 API: {WORKER_API_URL}")
+        # 這裡會帶著 X-API-KEY 發送請求
         resp = requests.get(WORKER_API_URL, headers=API_HEADERS)
         
         if resp.status_code != 200:
@@ -96,9 +106,13 @@ def update_portfolio():
         
         if not records:
             print("無交易紀錄，略過計算")
-            # 即使無紀錄，也建議生成一個空的 data.json 避免前端 404
+            # 若無紀錄仍產生空的 JSON 以免前端報錯
+            final_output = {
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "summary": {}, "holdings": [], "history": []
+            }
             with open('data.json', 'w', encoding='utf-8') as f:
-                json.dump({"summary": {}, "holdings": [], "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")}, f)
+                json.dump(final_output, f, ensure_ascii=False, indent=2)
             return
 
         df = pd.DataFrame(records)
