@@ -75,22 +75,16 @@ class PortfolioCalculator:
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.0001:
-                # [關鍵修正] 取得價格與該價格的日期
+                # 取得價格與該價格的日期
                 price, price_date = self.market.get_price_with_date(sym, date_ts)
                 
-                # 如果使用了過期價格 (Price Date < Current Date)，檢查中間是否有拆股
-                # 這是防止 "拆股日當天缺資料 -> 抓到昨天高價 -> 資產暴增" 的核心邏輯
+                # 若使用過期價格 (Price Date < Current Date)，檢查中間是否有拆股
                 if price_date < date_ts:
-                    # 檢查 gap 之間是否有拆股
                     check_range = pd.date_range(start=price_date + pd.Timedelta(days=1), end=date_ts)
                     for check_day in check_range:
                         ratio = self.market.get_split_ratio(sym, check_day)
                         if ratio != 1.0:
-                            # 發現舊價格是拆股前的，必須手動除以比例
-                            # 例如：昨天$1000，今天10拆1。今天缺資料抓到$1000。
-                            # 1000 / 10 = 100 (正確的今天估值)
                             price /= ratio
-                            # print(f"  [修正] {sym} 使用過期價格 ({price_date.date()}), 手動調整拆股影響 -> {price}")
 
                 total_mkt_val += h['qty'] * price * fx
                 current_holdings_cost += h['cost_basis_twd']
@@ -104,7 +98,10 @@ class PortfolioCalculator:
             
         bench_val = 0.0
         bench_twr = 0.0
-        spy_p = self.market.get_price(sym='SPY', date=date_ts)
+        
+        # [Fix] 修正錯誤的參數名稱：改用 positional arguments
+        spy_p = self.market.get_price('SPY', date_ts)
+        
         if spy_p > 0:
             bench_val = self.benchmark_units * spy_p * fx
             if self.benchmark_invested > 0:
@@ -133,7 +130,6 @@ class PortfolioCalculator:
                 pnl_pct = (pnl/cost*100) if cost>0 else 0
                 avg_cost_usd = h['cost_basis_usd'] / h['qty'] if h['qty']>0 else 0
                 
-                # 累加目前持倉的成本 (用於計算總損益)
                 current_holdings_cost_sum += cost
                 
                 final_holdings.append(HoldingPosition(
@@ -149,8 +145,6 @@ class PortfolioCalculator:
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
         curr_total_val = sum(x.market_value_twd for x in final_holdings)
-        
-        # [Fix] 使用計算好的 current_holdings_cost_sum，不再讀取不存在的屬性
         total_pnl = (curr_total_val - current_holdings_cost_sum) + self.total_realized_pnl_twd
         
         summary = PortfolioSummary(
@@ -171,7 +165,6 @@ class PortfolioCalculator:
             history=self.history_data
         )
 
-    # --- 以下函式保持不變，但為了完整性一併列出 ---
     def _process_implicit_dividends(self, date_ts, fx):
         date_str = date_ts.strftime('%Y-%m-%d')
         for sym, h_data in self.holdings.items():
@@ -184,7 +177,6 @@ class PortfolioCalculator:
                     self.total_realized_pnl_twd += net_div_twd
 
     def _process_transaction(self, row, fx, date_ts):
-        # 邏輯與之前相同，省略以節省篇幅 (請保留原本的代碼)
         sym = row['Symbol']; qty = row['Qty']; price = row['Price']
         comm = row['Commission']; tax = row['Tax']; txn_type = row['Type']; tag = row['Tag']
         
@@ -229,6 +221,7 @@ class PortfolioCalculator:
             self.total_realized_pnl_twd += (price - tax) * fx
 
     def _trade_benchmark(self, date_ts, amount_twd, fx, is_buy=True, realized_cost_twd=0.0):
+        # [Fix] 修正錯誤的參數名稱：改用 positional arguments
         spy_p = self.market.get_price('SPY', date_ts)
         if spy_p <= 0: return
         if is_buy:
