@@ -10,6 +10,7 @@
                 <th>平均成本 (USD)</th>
                 <th>現價 (USD)</th>
                 <th>市值 (TWD)</th>
+                <th>未平倉損益 (TWD)</th>
                 <th>報酬率</th>
             </tr>
         </thead>
@@ -21,6 +22,9 @@
                 <td>{{ formatNumber(h.avg_cost_usd, 2) }}</td>
                 <td>{{ formatNumber(h.current_price_origin, 2) }}</td>
                 <td>{{ formatNumber(h.market_value_twd, 0) }}</td>
+                <td :class="h.pnl_twd >= 0 ? 'text-green' : 'text-red'">
+                    {{ formatNumber(h.pnl_twd, 0) }}
+                </td>
                 <td :class="h.pnl_percent >= 0 ? 'text-green' : 'text-red'">
                     {{ h.pnl_percent }}%
                 </td>
