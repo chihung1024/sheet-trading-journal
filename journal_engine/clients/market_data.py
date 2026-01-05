@@ -11,16 +11,17 @@ class MarketDataClient:
     def download_data(self, tickers: list, start_date):
         """
         下載股價、匯率、配息與拆股資訊
-        修正：加入 .normalize() 確保日期比對時不會因為時間部分(00:00:00)而失敗
+        關鍵修正：使用 .normalize() 確保日期時間為 00:00:00，以便精確比對
         """
         print(f"正在下載市場數據，起始日期: {start_date}...")
         
         # 1. 下載匯率 (USD -> TWD)
         try:
             fx = yf.Ticker(EXCHANGE_SYMBOL)
+            # 增加緩衝天數以避免匯率空窗
             fx_hist = fx.history(start=start_date - timedelta(days=5))
             if not fx_hist.empty:
-                # [修正] 移除時區並正規化為午夜時間 (00:00:00)
+                # 移除時區並正規化時間至午夜
                 fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None).normalize()
                 self.fx_rates = fx_hist['Close']
                 print(f"匯率下載成功，最新匯率: {self.fx_rates.iloc[-1]:.2f}")
@@ -29,19 +30,26 @@ class MarketDataClient:
         except Exception as e:
             print(f"匯率下載失敗: {e}")
 
+        # 匯率防呆
         if self.fx_rates.empty:
+            print(f"嚴重警告: 無法取得匯率，全域使用 {DEFAULT_FX_RATE}")
             self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
 
-        # 2. 下載個股數據
+        # 2. 下載個股數據 (含 Benchmark SPY)
+        # 確保列表包含 SPY 且不重複，並移除空值
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
         
         for t in all_tickers:
             try:
                 ticker_obj = yf.Ticker(t)
+                
+                # [重要設定] 
+                # auto_adjust=False: 取得當下的原始股價 (Raw Price)
+                # actions=True: 包含 Dividends (股息) 與 Stock Splits (拆股)
                 hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
                 
                 if not hist.empty:
-                    # [修正] 這裡也要 normalize，這是拆股偵測失敗的主因
+                    # 正規化時間索引
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
                     self.market_data[t] = hist
                     print(f"[{t}] 數據下載成功 ({len(hist)} 筆)")
@@ -54,12 +62,14 @@ class MarketDataClient:
         return self.market_data, self.fx_rates
     
     def get_price(self, symbol, date):
+        """取得特定日期的收盤價 (Raw)，若無則取最近一日"""
         if symbol not in self.market_data:
             return 0.0
         try:
-            # 確保傳入的 date 也是 normalized 的 (由 calculator 傳入)
+            # 確保傳入的 date 與 index 格式一致 (Normalized)
             price = self.market_data[symbol]['Close'].asof(date)
             if pd.isna(price):
+                # 嘗試取最後一筆
                 return self.market_data[symbol]['Close'].iloc[-1]
             return price
         except:
