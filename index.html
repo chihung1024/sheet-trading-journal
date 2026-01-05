@@ -391,6 +391,15 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label>標籤 (Tag)</label>
+                        <input type="text" v-model="form.tag" list="tagOptions" placeholder="長線/短線">
+                        <datalist id="tagOptions">
+                            <option value="長線"></option>
+                            <option value="短線"></option>
+                            <option value="配息"></option>
+                        </datalist>
+                    </div>
+                    <div class="form-group">
                         <label>股數</label>
                         <input type="number" step="any" v-model="form.qty" @input="calcTotal">
                     </div>
@@ -414,7 +423,7 @@
                     <div class="form-group">
                         <label>&nbsp;</label>
                         <button class="btn btn-primary" @click="submitRecord" :disabled="submitting" style="width:100%">
-                            {{ submitting ? '處理中...' : (isEditing ? '更新' : '新增') }}
+                            {{ submitting ? '處理中...' : (isEditing ? '儲存修改' : '新增') }}
                         </button>
                     </div>
                 </div>
@@ -432,6 +441,7 @@
                             <th>平均成本</th>
                             <th>現價</th>
                             <th>市值 (TWD)</th>
+                            <th>未平倉損益</th>
                             <th>報酬率</th>
                         </tr>
                     </thead>
@@ -443,12 +453,15 @@
                             <td>{{ calculateAvgCost(h) }}</td>
                             <td>{{ h.current_price_origin }}</td>
                             <td>{{ formatNumber(h.market_value_twd) }}</td>
+                            <td :class="h.pnl_twd >= 0 ? 'text-green' : 'text-red'">
+                                {{ formatNumber(h.pnl_twd) }}
+                            </td>
                             <td :class="h.pnl_percent >= 0 ? 'text-green' : 'text-red'">
                                 {{ h.pnl_percent }}%
                             </td>
                         </tr>
                         <tr v-if="combinedHoldings.length === 0">
-                            <td colspan="7" style="text-align:center; padding:20px; color:#666">目前無持倉</td>
+                            <td colspan="8" style="text-align:center; padding:20px; color:#666">目前無持倉</td>
                         </tr>
                     </tbody>
                 </table>
@@ -464,7 +477,8 @@
                         <tr>
                             <th>日期</th>
                             <th>代碼</th>
-                            <th>動作</th>
+                            <th>類型</th>
+                            <th>標籤</th>
                             <th>股數</th>
                             <th>價格</th>
                             <th>操作</th>
@@ -479,6 +493,7 @@
                                     {{ r.txn_type }}
                                 </span>
                             </td>
+                            <td><span class="tag">{{ r.tag || '-' }}</span></td>
                             <td>{{ r.qty }}</td>
                             <td>{{ r.price }}</td>
                             <td>
@@ -487,7 +502,7 @@
                             </td>
                         </tr>
                         <tr v-if="records.length === 0">
-                            <td colspan="6" style="text-align:center; padding:20px; color:#666">無交易紀錄</td>
+                            <td colspan="7" style="text-align:center; padding:20px; color:#666">無交易紀錄</td>
                         </tr>
                     </tbody>
                 </table>
@@ -526,6 +541,7 @@
                     txn_date: new Date().toISOString().split('T')[0], 
                     symbol: '', 
                     txn_type: 'BUY', 
+                    tag: 'Stock',
                     qty: 0, 
                     price: 0, 
                     fee: 0, 
@@ -586,7 +602,7 @@
                     }
                 };
 
-                // --- 2. 表單連動邏輯 (修正版) ---
+                // --- 2. 表單連動邏輯 ---
                 const calcTotal = () => {
                     const base = (parseFloat(form.qty) || 0) * (parseFloat(form.price) || 0);
                     const fee = parseFloat(form.fee) || 0;
@@ -596,10 +612,7 @@
                         // 買入總成本 = 價金 + 費 + 稅
                         form.total_amount = parseFloat((base + fee + tax).toFixed(2));
                     } else {
-                        // 賣出淨入 = 價金 - 費 - 稅 (但通常輸入總額代表成交金額，這裡定義 Total 為「交割金額」絕對值)
-                        // 為了輸入直覺，我們假設 Total 是「發生金額」
-                        // Buy: 支出 Total
-                        // Sell: 收入 Total
+                        // 賣出/配息
                         if (form.txn_type === 'SELL') {
                             form.total_amount = parseFloat((base - fee - tax).toFixed(2));
                         } else {
@@ -617,10 +630,8 @@
                     
                     if (qty > 0) {
                         if (form.txn_type === 'BUY') {
-                            // Buy: Total = Qty*Price + Fee + Tax  =>  Price = (Total - Fee - Tax)/Qty
                             form.price = parseFloat(((total - fee - tax) / qty).toFixed(4));
                         } else if (form.txn_type === 'SELL') {
-                            // Sell: Total = Qty*Price - Fee - Tax => Price = (Total + Fee + Tax)/Qty
                             form.price = parseFloat(((total + fee + tax) / qty).toFixed(4));
                         } else {
                              form.price = parseFloat(((total + tax) / qty).toFixed(4));
@@ -703,8 +714,11 @@
                     Object.assign(form, r);
                     form.fee = r.fee || 0;
                     form.tax = r.tax || 0; 
+                    // 確保標籤有值
+                    if (!form.tag) form.tag = 'Stock';
+                    
                     calcTotal(); // 重算總額顯示
-                    // 滾動到表單
+                    // 滾動到表單 (直接在輸入區塊修改)
                     document.querySelector('.editor-form').scrollIntoView({ behavior: 'smooth' });
                 };
 
@@ -717,6 +731,7 @@
                     form.fee = 0;
                     form.tax = 0;
                     form.total_amount = 0;
+                    form.tag = 'Stock';
                 };
 
                 const triggerGitHubUpdate = async () => {
@@ -739,7 +754,6 @@
                 const loadPortfolioData = async () => {
                     calculating.value = true;
                     try {
-                        // 優先嘗試 API 讀取 (即時性)
                         const res = await fetch(`${WORKER_BASE_URL}/api/portfolio`);
                         const json = await res.json();
                         
@@ -747,7 +761,6 @@
                         if (json.success) {
                             data = json.data;
                         } else {
-                            // Fallback (若 API 失敗則讀舊檔，非必須)
                             throw new Error("API Load Failed");
                         }
 
@@ -757,7 +770,6 @@
                         lastUpdateTime.value = data.updated_at;
                         exchangeRate.value = data.exchange_rate || 32.0;
 
-                        // 初始化日期範圍
                         const today = new Date();
                         customEnd.value = today.toISOString().split('T')[0];
                         today.setFullYear(today.getFullYear() - 1);
@@ -769,13 +781,12 @@
                         });
                     } catch (e) {
                         console.error(e);
-                        // 如果 API 真的讀不到，可以在這裡處理錯誤 UI
                     } finally {
                         calculating.value = false;
                     }
                 };
 
-                // 資料篩選與歸零處理 (Day-0 Base)
+                // [修正] 圖表資料處理：ALL 模式不歸零，避免 Gap
                 const getProcessedChartData = () => {
                     let data = [...fullChartData.value];
                     if (data.length === 0) return [];
@@ -799,30 +810,37 @@
                     // 找出區間內的第一筆資料索引
                     let startIndex = data.findIndex(d => new Date(d.date) >= startDate);
                     
-                    if (startIndex === -1) return []; // 都在區間外
+                    if (startIndex === -1) return []; 
                     
-                    // 基準點 (Base) 設定為 StartIndex 的前一筆，讓圖表起點歸零
+                    // [關鍵修正]：如果選 ALL 或資料起點就是第一筆，則不使用 Rebase
+                    // 直接使用原始累積數據，避免前一天無數據造成的 0 -> 100% 跳躍
+                    let useZeroBase = true;
+                    if (timeRange.value === 'ALL' || (startIndex === 0 && timeRange.value === 'CUSTOM')) {
+                        useZeroBase = false;
+                    }
+
+                    // 如果需要 Rebase (例如 1M)，則以 StartIndex 的前一筆為基準
                     let baseIndex = (startIndex > 0) ? startIndex - 1 : 0;
                     const base = data[baseIndex];
                     
-                    // 擷取資料 (包含 StartIndex 之後的所有資料)
                     const filtered = data.slice(startIndex);
 
                     if (chartType.value === 'value') return filtered; 
 
                     return filtered.map(d => {
-                        let newTwr = 0;
-                        let newBench = 0;
+                        let newTwr = d.twr; // 預設使用原始值
+                        let newBench = d.benchmark_twr;
                         
-                        // TWR 歸零公式
-                        const baseTwrVal = (base.twr !== undefined) ? base.twr : 0;
-                        const curTwrVal = (d.twr !== undefined) ? d.twr : 0;
-                        newTwr = ((1 + curTwrVal/100) / (1 + baseTwrVal/100) - 1) * 100;
+                        // 只有在非 ALL 模式且有前一日資料時，才進行歸零運算
+                        if (useZeroBase) {
+                            const baseTwrVal = (base.twr !== undefined) ? base.twr : 0;
+                            const curTwrVal = (d.twr !== undefined) ? d.twr : 0;
+                            newTwr = ((1 + curTwrVal/100) / (1 + baseTwrVal/100) - 1) * 100;
 
-                        // Benchmark 歸零
-                        const baseBench = (base.benchmark_twr !== undefined) ? base.benchmark_twr : 0;
-                        const curBench = (d.benchmark_twr !== undefined) ? d.benchmark_twr : 0;
-                        newBench = ((1 + curBench/100) / (1 + baseBench/100) - 1) * 100;
+                            const baseBench = (base.benchmark_twr !== undefined) ? base.benchmark_twr : 0;
+                            const curBench = (d.benchmark_twr !== undefined) ? d.benchmark_twr : 0;
+                            newBench = ((1 + curBench/100) / (1 + baseBench/100) - 1) * 100;
+                        }
                         
                         return {
                             ...d,
@@ -843,7 +861,6 @@
                     let datasets = [];
                     let type = 'line';
                     
-                    // 共用樣式：無圓點、純折線
                     const commonOptions = {
                         pointRadius: 0,
                         pointHoverRadius: 4,
@@ -890,20 +907,19 @@
                         ];
                     } else if (chartType.value === 'pnl') {
                         type = 'bar';
-                        // 計算單日損益
                         const dailyPnl = processedData.map((d, i) => {
                             let prevTotal = 0;
                             let prevInvest = 0;
                             
-                            // 第一筆要跟 Base 比較 (fullChartData)
                             if (i === 0) {
-                                const idxInFull = fullChartData.value.findIndex(x => x.date === d.date);
-                                if (idxInFull > 0) {
-                                    const prev = fullChartData.value[idxInFull - 1];
-                                    prevTotal = prev.total_value;
-                                    prevInvest = prev.invested;
-                                } else {
-                                    return 0; // 無歷史數據
+                                // 嘗試找前一日
+                                if (timeRange.value !== 'ALL') {
+                                    const idxInFull = fullChartData.value.findIndex(x => x.date === d.date);
+                                    if (idxInFull > 0) {
+                                        const prev = fullChartData.value[idxInFull - 1];
+                                        prevTotal = prev.total_value;
+                                        prevInvest = prev.invested;
+                                    }
                                 }
                             } else {
                                 prevTotal = processedData[i-1].total_value;
@@ -1021,15 +1037,9 @@
                 };
 
                 onMounted(() => {
-                    // 掛載 Google 登入 callback
                     window.handleCredentialResponse = handleCredentialResponse;
-                    
-                    // 嘗試載入公開報價 (如果 Worker 有開放 public read)
                     loadPortfolioData();
-                    
-                    // 如果有 Token，則嘗試載入 User Data
                     if (userToken.value) fetchRecords();
-
                     window.addEventListener('resize', () => { 
                         if(mainChartInstance) drawChart(); 
                         if(pieChartInstance) drawPieChart();
