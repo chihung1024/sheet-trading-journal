@@ -210,12 +210,14 @@
         </div>
     </div>
 
-    <script>
+<script>
         const { createApp, ref, onMounted, computed, nextTick, watch } = Vue;
 
-        // 設定區域 (請替換為你的 Worker 網址)
-        const DB_API_URL = "https://journal-backend.chired.workers.dev/api"; 
-        const CLIENT_ID = "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com"; // 你的 Google Client ID
+        // --- 修正點 1: 移除網址尾端的 /api，改為指向 Worker 根目錄 ---
+        const WORKER_BASE_URL = "https://journal-backend.chired.workers.dev"; 
+        
+        // 請務必確認這裡填入的是您正確的 Google Client ID
+        const CLIENT_ID = "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com"; 
 
         createApp({
             setup() {
@@ -224,18 +226,18 @@
                 const userName = ref(localStorage.getItem('name') || '');
                 
                 // 數據狀態
-                const localStats = ref({}); // 來自 data.json 的摘要
-                const fullChartData = ref([]); // 來自 data.json 的歷史紀錄
-                const combinedHoldings = ref([]); // 持倉
-                const records = ref([]); // API 撈回來的紀錄
+                const localStats = ref({}); 
+                const fullChartData = ref([]); 
+                const combinedHoldings = ref([]); 
+                const records = ref([]); 
                 const lastUpdateTime = ref('');
                 const calculating = ref(true);
                 const isUpdating = ref(false);
 
                 // 圖表狀態
                 const timeRange = ref('1Y');
-                const chartType = ref('value'); // value, twr, pnl
-                const pieType = ref('asset');   // asset, currency, strategy
+                const chartType = ref('value'); 
+                const pieType = ref('asset');   
                 let mainChartInstance = null;
                 let pieChartInstance = null;
 
@@ -250,15 +252,20 @@
                     userName.value = '';
                     localStorage.removeItem('token');
                     localStorage.removeItem('name');
-                    location.reload();
+                    location.reload(); // 強制重整以重置 Google 按鈕
                 };
 
                 const handleCredentialResponse = async (response) => {
                     try {
-                        const res = await fetch(`${DB_API_URL}/auth/google`, {
+                        // --- 修正點 2: 登入路徑改為 /auth/google (不帶 /api) ---
+                        const res = await fetch(`${WORKER_BASE_URL}/auth/google`, {
                             method: "POST",
+                            headers: { "Content-Type": "application/json" }, // 建議加上 Content-Type
                             body: JSON.stringify({ id_token: response.credential })
                         });
+                        
+                        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                        
                         const data = await res.json();
                         if (data.success) {
                             userToken.value = data.token;
@@ -266,15 +273,21 @@
                             localStorage.setItem('token', data.token);
                             localStorage.setItem('name', data.user);
                             fetchRecords();
+                        } else {
+                            alert("登入失敗: " + (data.error || "未知錯誤"));
                         }
-                    } catch(e) { alert("登入失敗"); }
+                    } catch(e) { 
+                        console.error("Login Error:", e);
+                        alert("登入連線失敗，請檢查 F12 Console"); 
+                    }
                 };
 
                 // 取得後端交易紀錄
                 const fetchRecords = async () => {
                     if (!userToken.value) return;
                     try {
-                        const res = await fetch(`${DB_API_URL}/records`, {
+                        // --- 修正點 3: 資料路徑維持 /api/records ---
+                        const res = await fetch(`${WORKER_BASE_URL}/api/records`, {
                             headers: { 'Authorization': `Bearer ${userToken.value}` }
                         });
                         const json = await res.json();
@@ -289,7 +302,8 @@
                     
                     isUpdating.value = true;
                     try {
-                        const res = await fetch(`${DB_API_URL}/trigger-update`, {
+                        // --- 修正點 4: 觸發路徑維持 /api/trigger-update ---
+                        const res = await fetch(`${WORKER_BASE_URL}/api/trigger-update`, {
                             method: "POST",
                             headers: { 'Authorization': `Bearer ${userToken.value}` }
                         });
@@ -300,25 +314,20 @@
                     finally { isUpdating.value = false; }
                 };
 
-                // --- 數據載入與圖表邏輯 (移植核心) ---
+                // --- 數據載入與圖表邏輯 (維持不變) ---
                 const loadPortfolioData = async () => {
                     calculating.value = true;
                     try {
-                        // 讀取靜態生成的 data.json (由 GitHub Action 產出)
-                        // 注意：這裡假設 data.json 和 index.html 在同一層目錄
-                        // 加上 timestamp 防止快取
                         const res = await fetch(`data.json?t=${new Date().getTime()}`);
                         if (!res.ok) throw new Error("無法讀取 data.json");
                         
                         const data = await res.json();
                         
-                        // 1. 填入基礎數據
                         localStats.value = data.summary;
                         combinedHoldings.value = data.holdings;
-                        fullChartData.value = data.history || []; // 關鍵：取得歷史數據
+                        fullChartData.value = data.history || []; 
                         lastUpdateTime.value = data.updated_at;
 
-                        // 2. 初始化圖表
                         nextTick(() => {
                             drawChart();
                             drawPieChart();
@@ -331,9 +340,7 @@
                     }
                 };
 
-                // --- Chart.js 繪圖邏輯 ---
-
-                // 1. 主圖表 (折線/長條)
+                // --- Chart.js 繪圖邏輯 (維持不變) ---
                 const switchTimeRange = (range) => {
                     timeRange.value = range;
                     drawChart();
@@ -346,10 +353,8 @@
 
                 const filterDataByRange = (data) => {
                     if (timeRange.value === 'ALL') return data;
-                    
                     const now = new Date();
                     let startDate = new Date();
-                    
                     switch(timeRange.value) {
                         case '1M': startDate.setMonth(now.getMonth() - 1); break;
                         case '3M': startDate.setMonth(now.getMonth() - 3); break;
@@ -357,14 +362,12 @@
                         case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
                         case '1Y': startDate.setFullYear(now.getFullYear() - 1); break;
                     }
-                    
                     return data.filter(d => new Date(d.date) >= startDate);
                 };
 
                 const drawChart = () => {
                     const ctx = document.getElementById('mainChart');
                     if (!ctx || fullChartData.value.length === 0) return;
-
                     if (mainChartInstance) mainChartInstance.destroy();
 
                     const filtered = filterDataByRange(fullChartData.value);
@@ -403,7 +406,6 @@
                             fill: true,
                             tension: 0.4
                         }];
-                        // 嘗試加入 Benchmark
                         if (filtered[0].benchmark_twr !== undefined) {
                             datasets.push({
                                 label: 'SPY (%)',
@@ -415,10 +417,8 @@
                         }
                     } else if (chartType.value === 'pnl') {
                         type = 'bar';
-                        // 計算每日損益差額 (這是一個近似值)
                         const pnlData = filtered.map((d, i) => {
                             if (i === 0) return 0;
-                            // 簡單計算：今日淨值 - 昨日淨值 - (今日成本 - 昨日成本)
                             const valDiff = d.total_value - filtered[i-1].total_value;
                             const costDiff = d.invested - filtered[i-1].invested;
                             return valDiff - costDiff;
@@ -446,29 +446,20 @@
                                         label: function(context) {
                                             let label = context.dataset.label || '';
                                             if (label) label += ': ';
-                                            if (context.parsed.y !== null) {
-                                                label += formatNumber(context.parsed.y);
-                                            }
+                                            if (context.parsed.y !== null) label += formatNumber(context.parsed.y);
                                             return label;
                                         }
                                     }
                                 }
                             },
                             scales: {
-                                x: { 
-                                    grid: { color: '#2d2d30' },
-                                    ticks: { color: '#888', maxTicksLimit: 8 } 
-                                },
-                                y: { 
-                                    grid: { color: '#2d2d30' },
-                                    ticks: { color: '#888' } 
-                                }
+                                x: { grid: { color: '#2d2d30' }, ticks: { color: '#888', maxTicksLimit: 8 } },
+                                y: { grid: { color: '#2d2d30' }, ticks: { color: '#888' } }
                             }
                         }
                     });
                 };
 
-                // 2. 圓餅圖
                 const switchPieType = (type) => {
                     pieType.value = type;
                     drawPieChart();
@@ -477,23 +468,19 @@
                 const drawPieChart = () => {
                     const ctx = document.getElementById('pieChart');
                     if (!ctx || combinedHoldings.value.length === 0) return;
-                    
                     if (pieChartInstance) pieChartInstance.destroy();
 
                     let groupData = {};
-                    
                     combinedHoldings.value.forEach(h => {
                         let key;
                         if (pieType.value === 'asset') key = h.symbol;
                         else if (pieType.value === 'currency') key = h.currency;
                         else if (pieType.value === 'strategy') key = h.tag || 'Other';
                         
-                        // 計算該類別總市值
                         if (!groupData[key]) groupData[key] = 0;
                         groupData[key] += h.market_value_twd;
                     });
 
-                    // 排序並取前 8 名，其餘歸類 Others
                     let sorted = Object.entries(groupData).sort((a,b) => b[1] - a[1]);
                     if (sorted.length > 8) {
                         const others = sorted.slice(8).reduce((acc, curr) => acc + curr[1], 0);
@@ -501,11 +488,7 @@
                         sorted.push(['Others', others]);
                     }
 
-                    // 產生顏色
-                    const colors = [
-                        '#40a9ff', '#4caf50', '#ffc107', '#ff5252', '#9c27b0', 
-                        '#00bcd4', '#ff9800', '#795548', '#607d8b'
-                    ];
+                    const colors = ['#40a9ff', '#4caf50', '#ffc107', '#ff5252', '#9c27b0', '#00bcd4', '#ff9800', '#795548', '#607d8b'];
 
                     pieChartInstance = new Chart(ctx, {
                         type: 'doughnut',
@@ -528,24 +511,15 @@
                     });
                 };
 
-                // 工具函式
                 const formatNumber = (num, digits=0) => {
                     if (num === undefined || num === null) return '-';
                     return Number(num).toLocaleString('zh-TW', { minimumFractionDigits: digits, maximumFractionDigits: digits });
                 };
 
-                // 生命週期
                 onMounted(() => {
-                    // 將 handleCredentialResponse 掛載到 window 供 Google 回呼使用
                     window.handleCredentialResponse = handleCredentialResponse;
-                    
-                    // 載入資料
                     loadPortfolioData();
-                    
-                    // 如果有已存的 Token，嘗試自動登入後端
                     if (userToken.value) fetchRecords();
-
-                    // RWD 重繪
                     window.addEventListener('resize', () => { 
                         if(mainChartInstance) drawChart(); 
                         if(pieChartInstance) drawPieChart();
@@ -556,11 +530,7 @@
                     userToken, userName, googleClientId: CLIENT_ID, logout,
                     records, isUpdating, triggerGitHubUpdate,
                     localStats, combinedHoldings, unrealizedPnL, formatNumber, lastUpdateTime, calculating,
-                    // 圖表相關
-                    timeRange, switchTimeRange,
-                    chartType, switchChartType,
-                    pieType, switchPieType,
-                    fetchRecords
+                    timeRange, switchTimeRange, chartType, switchChartType, pieType, switchPieType, fetchRecords
                 };
             }
         }).mount('#app');
