@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 
 class TransactionRecord(BaseModel):
     id: Optional[int] = None
-    txn_date: date = Field(alias='Date') # 對應原始 pandas 轉換後的欄位
+    txn_date: date = Field(alias='Date')
     symbol: str = Field(alias='Symbol')
     txn_type: str = Field(alias='Type')
     qty: float = Field(alias='Qty')
@@ -33,6 +33,8 @@ class HoldingPosition(BaseModel):
     pnl_twd: float
     pnl_percent: float
     current_price_origin: float
+    # 新增欄位：平均成本 (USD)
+    avg_cost_usd: float = 0.0
 
 class PortfolioSnapshot(BaseModel):
     updated_at: str
