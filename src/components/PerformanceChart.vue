@@ -1,40 +1,41 @@
 <template>
-  <div class="chart-section">
-    <div class="chart-controls">
-      <div class="control-row">
-        <h3 class="chart-title">趨勢分析</h3>
-        <div class="btn-group">
-          <button :class="{active: chartType==='pnl'}" @click="chartType='pnl'">損益$</button>
-          <button :class="{active: chartType==='twr'}" @click="chartType='twr'">TWR%</button>
-          <button :class="{active: chartType==='asset'}" @click="chartType='asset'">資產</button>
+  <div class="chart-card">
+    <div class="chart-header">
+      <div class="header-row main-row">
+        <h3 class="title">趨勢分析</h3>
+        <div class="toggle-group">
+          <button :class="{active: chartType==='pnl'}" @click="chartType='pnl'">損益 $</button>
+          <button :class="{active: chartType==='twr'}" @click="chartType='twr'">TWR %</button>
+          <button :class="{active: chartType==='asset'}" @click="chartType='asset'">資產總值</button>
         </div>
       </div>
       
-      <div class="control-row">
-        <div class="btn-group">
-          <button v-for="range in ['1M','3M','6M','1Y','YTD','ALL']" 
+      <div class="header-row sub-row">
+        <div class="toggle-group sm">
+          <button v-for="range in ['1M','3M','6M','YTD','1Y','ALL']" 
                   :key="range" 
                   :class="{active: timeRange===range}" 
                   @click="switchTimeRange(range)">
             {{ range }}
           </button>
         </div>
-        <div class="date-picker-group">
+        
+        <div class="date-picker-wrapper">
           <input type="date" v-model="startDateStr" class="date-input" @change="onDateChange">
-          <span style="color:#666;font-size:0.8rem">to</span>
+          <span class="separator">to</span>
           <input type="date" v-model="endDateStr" class="date-input" @change="onDateChange">
         </div>
       </div>
     </div>
 
-    <div class="chart-container">
+    <div class="canvas-wrapper">
       <canvas ref="canvas"></canvas>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import Chart from 'chart.js/auto';
 import { usePortfolioStore } from '../stores/portfolio';
 
@@ -42,8 +43,7 @@ const store = usePortfolioStore();
 const canvas = ref(null);
 let myChart = null;
 
-// UI 狀態
-const chartType = ref('pnl'); // 'pnl', 'twr', 'asset'
+const chartType = ref('pnl');
 const timeRange = ref('1Y');
 const startDateStr = ref('');
 const endDateStr = ref('');
@@ -51,7 +51,6 @@ const displayedData = ref([]);
 
 const formatDate = (date) => date.toISOString().split('T')[0];
 
-// 切換時間範圍邏輯
 const switchTimeRange = (range) => {
     timeRange.value = range;
     const now = new Date();
@@ -76,42 +75,32 @@ const onDateChange = () => {
     filterData();
 };
 
-// 資料過濾與重算邏輯 (Re-anchoring)
 const filterData = () => {
-    const fullHistory = store.history;
-    if (!fullHistory || fullHistory.length === 0) return;
+    const fullHistory = store.history || [];
+    if (fullHistory.length === 0) return;
 
     const start = new Date(startDateStr.value);
     const end = new Date(endDateStr.value);
     end.setHours(23, 59, 59);
 
-    // 找出區間起始點
     const startIndex = fullHistory.findIndex(d => new Date(d.date) >= start);
     
     if (startIndex === -1) {
         displayedData.value = [];
     } else {
-        // 錨點 (Anchor Point)：用於歸零計算，通常取區間開始前一筆
         let anchorPoint = (startIndex > 0) ? fullHistory[startIndex - 1] : null;
-        
-        // 篩選範圍內的資料
         const slicedData = fullHistory.filter(d => {
             const dDate = new Date(d.date);
             return dDate >= start && dDate <= end;
         });
 
-        // 重算相對數值
         displayedData.value = slicedData.map(d => {
             let pnl_val = d.total_value - d.invested;
             let twr_val = d.twr;
             let spy_val = d.benchmark_twr;
 
             if (anchorPoint) {
-                // 累積損益扣除起始點損益
                 pnl_val -= (anchorPoint.total_value - anchorPoint.invested);
-                
-                // TWR 幾何連結重算
-                // Formula: (1 + Current) / (1 + Start) - 1
                 const baseTwr = (anchorPoint.twr || 0) / 100;
                 const curTwr = (d.twr || 0) / 100;
                 twr_val = ((1 + curTwr) / (1 + baseTwr) - 1) * 100;
@@ -121,22 +110,15 @@ const filterData = () => {
                 spy_val = ((1 + curSpy) / (1 + baseSpy) - 1) * 100;
             }
 
-            return { 
-                ...d, 
-                period_pnl: pnl_val, 
-                period_twr: twr_val, 
-                period_spy: spy_val 
-            };
+            return { ...d, period_pnl: pnl_val, period_twr: twr_val, period_spy: spy_val };
         });
-
-        // 如果有錨點，補上一個 (0,0) 的起始點讓圖表好看
+        
+        // 為了圖表美觀，補上起始零點
         if (anchorPoint && displayedData.value.length > 0) {
-            displayedData.value.unshift({ 
+             displayedData.value.unshift({ 
                 ...anchorPoint, 
-                date: anchorPoint.date, // 這裡或許可以用 startDateStr 但為了準確用 anchor date
-                period_pnl: 0, 
-                period_twr: 0, 
-                period_spy: 0 
+                date: anchorPoint.date,
+                period_pnl: 0, period_twr: 0, period_spy: 0 
             });
         }
     }
@@ -150,78 +132,34 @@ const drawChart = () => {
 
     const dataPoints = displayedData.value;
     const labels = dataPoints.map(d => d.date);
-    const isMobile = window.innerWidth < 768;
-    
     let datasets = [];
+
+    // 設定共同樣式
+    const commonOptions = { pointRadius: 0, pointHoverRadius: 4, borderWidth: 2, tension: 0.2 };
 
     if (chartType.value === 'asset') {
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(255, 82, 82, 0.2)');
+        gradient.addColorStop(0, 'rgba(255, 82, 82, 0.25)');
         gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
         
         datasets = [
-            { 
-                label: '總資產', 
-                data: dataPoints.map(d => d.total_value), 
-                borderColor: '#ff5252', 
-                backgroundColor: gradient, 
-                borderWidth: 2, 
-                fill: true, 
-                pointRadius: 0, 
-                tension: 0.1 
-            }, 
-            { 
-                label: '淨投入', 
-                data: dataPoints.map(d => d.invested), 
-                borderColor: '#666', 
-                borderWidth: 2, 
-                borderDash: [5, 5], 
-                fill: false, 
-                pointRadius: 0, 
-                tension: 0 
-            }
+            { label: '總資產', data: dataPoints.map(d => d.total_value), borderColor: '#ff5252', backgroundColor: gradient, fill: true, ...commonOptions },
+            { label: '淨投入', data: dataPoints.map(d => d.invested), borderColor: '#666', borderDash: [5, 5], fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0 }
         ];
     } else if (chartType.value === 'pnl') {
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(255, 215, 0, 0.2)');
+        gradient.addColorStop(0, 'rgba(255, 215, 0, 0.25)');
         gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
         
-        const dataMap = (timeRange.value === 'ALL') 
-            ? dataPoints.map(d => d.total_value - d.invested) // ALL 模式顯示絕對損益
-            : dataPoints.map(d => d.period_pnl);            // 其他模式顯示區間相對損益
-            
-        datasets = [{ 
-            label: '累積損益 ($)', 
-            data: dataMap, 
-            borderColor: '#ffd700', 
-            backgroundColor: gradient, 
-            borderWidth: 2, 
-            fill: true, 
-            pointRadius: 0, 
-            tension: 0.1 
-        }];
+        const dataMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.total_value - d.invested) : dataPoints.map(d => d.period_pnl);
+        datasets = [{ label: '累積損益 ($)', data: dataMap, borderColor: '#ffd700', backgroundColor: gradient, fill: true, ...commonOptions }];
     } else {
-        // TWR
         const twrMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.twr) : dataPoints.map(d => d.period_twr);
         const spyMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.benchmark_twr) : dataPoints.map(d => d.period_spy);
         
         datasets = [
-            { 
-                label: '我的 TWR %', 
-                data: twrMap, 
-                borderColor: '#ff5252', 
-                borderWidth: 2, 
-                pointRadius: 0, 
-                tension: 0.1 
-            }, 
-            { 
-                label: 'SPY %', 
-                data: spyMap, 
-                borderColor: '#40a9ff', 
-                borderWidth: 2, 
-                pointRadius: 0, 
-                tension: 0.1 
-            }
+            { label: '我的 TWR %', data: twrMap, borderColor: '#ff5252', ...commonOptions },
+            { label: 'SPY %', data: spyMap, borderColor: '#40a9ff', ...commonOptions }
         ];
     }
 
@@ -233,87 +171,132 @@ const drawChart = () => {
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { 
-                    labels: { color: '#ccc' }, 
-                    position: 'top', 
-                    align: 'end' 
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(24, 24, 28, 0.9)',
-                    callbacks: {
-                        label: (ctx) => {
-                            let val = ctx.parsed.y;
-                            return ctx.dataset.label + ': ' + (val ? val.toLocaleString() : '0');
-                        }
-                    }
+                legend: { labels: { color: '#ccc', boxWidth: 12, padding: 20 }, position: 'top', align: 'end' },
+                tooltip: { 
+                    backgroundColor: '#1f1f23', 
+                    titleColor: '#fff', 
+                    bodyColor: '#ccc', 
+                    borderColor: '#333', 
+                    borderWidth: 1,
+                    padding: 10,
+                    callbacks: { label: (c) => ` ${c.dataset.label}: ${Number(c.raw).toLocaleString()}` }
                 }
             },
             scales: {
-                x: { 
-                    grid: { color: '#2d2d30' }, 
-                    ticks: { color: '#666', maxTicksLimit: isMobile ? 4 : 8 } 
-                },
-                y: { 
-                    position: 'right', 
-                    grid: { color: '#2d2d30' }, 
-                    ticks: { color: '#666' } 
-                }
+                x: { grid: { color: '#2d2d30' }, ticks: { color: '#666', maxTicksLimit: 6 } },
+                y: { position: 'right', grid: { color: '#2d2d30' }, ticks: { color: '#666' } }
             }
         }
     });
 };
 
-watch(() => store.history, () => {
-    // 當資料載入後，預設顯示 1Y
-    if (store.history.length > 0) {
-        switchTimeRange('1Y');
-    }
-}, { immediate: true });
-
+watch(() => store.history, () => { if (store.history.length > 0) switchTimeRange('1Y'); }, { immediate: true });
 watch(chartType, drawChart);
-
-onMounted(() => {
-    window.addEventListener('resize', () => { if(myChart) drawChart(); });
-});
+onMounted(() => window.addEventListener('resize', () => { if(myChart) drawChart(); }));
 </script>
 
 <style scoped>
-.chart-section { 
-    background: #18181c; 
-    padding: 20px; 
-    border-radius: 12px; 
-    border: 1px solid #2d2d30; 
-    height: 100%; 
+/* 卡片容器：模擬 index.html 的 .chart-section */
+.chart-card {
+    background-color: #18181c;
+    border: 1px solid #2d2d30;
+    border-radius: 12px;
+    padding: 20px;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
 }
-.chart-controls { margin-bottom: 15px; }
-.chart-title { margin: 0; color: #ddd; font-size: 1.1rem; }
-.control-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
 
-/* 按鈕群組樣式 */
-.btn-group { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid #333; background: #2d2d30; }
-.btn-group button { 
-    background: transparent; 
-    border: none; 
-    border-right: 1px solid #333; 
-    color: #888; 
-    padding: 6px 12px; 
-    cursor: pointer; 
-    font-size: 0.85rem; 
-    transition: 0.2s; 
-    white-space: nowrap; 
+.chart-header { margin-bottom: 15px; }
+
+/* 標題與控制列的排版 */
+.header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
 }
-.btn-group button:last-child { border-right: none; }
-.btn-group button.active { background: #40a9ff; color: #fff; font-weight: bold; }
+.main-row { margin-bottom: 12px; }
+.sub-row { justify-content: flex-end; }
 
-/* 日期選擇器樣式 */
-.date-picker-group { display: flex; align-items: center; gap: 5px; background: #2d2d30; padding: 3px 8px; border-radius: 6px; border: 1px solid #333; }
-.date-input { background: transparent; border: none; color: #ccc; font-size: 0.85rem; font-family: inherit; width: 110px; }
-.date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+.title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #eee;
+    letter-spacing: 0.5px;
+}
 
-.chart-container { position: relative; width: 100%; height: 350px; }
+/* 按鈕群組 (Toggle Group) */
+.toggle-group {
+    display: flex;
+    background: #2d2d30;
+    border-radius: 6px;
+    padding: 2px;
+    border: 1px solid #333;
+}
 
-@media (max-width: 768px) {
-    .control-row { flex-direction: column; align-items: flex-start; }
-    .btn-group { width: 100%; overflow-x: auto; }
+.toggle-group button {
+    background: transparent;
+    border: none;
+    color: #888;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.toggle-group button:hover { color: #ccc; }
+.toggle-group button.active {
+    background: #40a9ff;
+    color: #fff;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.toggle-group.sm button { padding: 4px 10px; font-size: 0.8rem; }
+
+/* 日期選擇器美化 */
+.date-picker-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #2d2d30;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #333;
+}
+
+.date-input {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-family: inherit;
+    font-size: 0.85rem;
+    outline: none;
+}
+/* 讓日期 icon 反白 */
+.date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; opacity: 0.6; }
+.date-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+.separator { color: #666; font-size: 0.8rem; }
+
+.canvas-wrapper {
+    position: relative;
+    width: 100%;
+    height: 350px; /* 固定高度，確保圖表不會塌陷 */
+    flex-grow: 1;
+}
+
+@media (max-width: 600px) {
+    .header-row { flex-direction: column; align-items: stretch; }
+    .toggle-group { overflow-x: auto; }
+    .sub-row { flex-direction: row; flex-wrap: wrap; }
 }
 </style>
