@@ -1,105 +1,14 @@
 {
-  "updated_at": "2026-01-05 02:47",
+  "updated_at": "2026-01-05 03:05",
   "base_currency": "TWD",
-  "exchange_rate": 31.37,
+  "exchange_rate": 31.39,
   "summary": {
-    "total_value": 829659.0,
-    "invested_capital": 734763.0,
-    "total_pnl": 94896.0,
-    "twr": 12.92,
-    "realized_pnl": 0.0
+    "total_value": 0,
+    "invested_capital": 0,
+    "total_pnl": 0,
+    "twr": 0,
+    "realized_pnl": 0
   },
-  "messages": [],
-  "holdings": [
-    {
-      "symbol": "LABX",
-      "tag": "Stock",
-      "currency": "USD",
-      "qty": 1500.0,
-      "market_value_twd": 829659.0,
-      "pnl_twd": 94896.0,
-      "pnl_percent": 12.92,
-      "current_price_origin": 17.63
-    }
-  ],
-  "closed_positions": [],
-  "ledger": [
-    {
-      "date": "2025-12-29",
-      "symbol": "LABX",
-      "type": "BUY",
-      "qty": 1500.0,
-      "price": 15.61,
-      "amount_twd": -734763.0,
-      "tag": "Stock",
-      "note": "買入"
-    }
-  ],
-  "history": [
-    {
-      "date": "2025-12-29",
-      "total_value": 749825.0,
-      "invested": 734763.0,
-      "twr": 2.05,
-      "benchmark_twr": 0.0
-    },
-    {
-      "date": "2025-12-30",
-      "total_value": 756795.0,
-      "invested": 734763.0,
-      "twr": 3.0,
-      "benchmark_twr": -0.32
-    },
-    {
-      "date": "2025-12-31",
-      "total_value": 713994.0,
-      "invested": 734763.0,
-      "twr": -2.83,
-      "benchmark_twr": -1.29
-    },
-    {
-      "date": "2026-01-01",
-      "total_value": 713994.0,
-      "invested": 734763.0,
-      "twr": -2.83,
-      "benchmark_twr": -1.29
-    },
-    {
-      "date": "2026-01-02",
-      "total_value": 827821.0,
-      "invested": 734763.0,
-      "twr": 12.67,
-      "benchmark_twr": -0.92
-    },
-    {
-      "date": "2026-01-03",
-      "total_value": 827821.0,
-      "invested": 734763.0,
-      "twr": 12.67,
-      "benchmark_twr": -0.92
-    },
-    {
-      "date": "2026-01-04",
-      "total_value": 827821.0,
-      "invested": 734763.0,
-      "twr": 12.67,
-      "benchmark_twr": -0.92
-    },
-    {
-      "date": "2026-01-05",
-      "total_value": 829659.0,
-      "invested": 734763.0,
-      "twr": 12.92,
-      "benchmark_twr": -0.7
-    }
-  ],
-  "allocation": {
-    "tags": {
-      "Stock": 829658.9241196071
-    },
-    "currency": {
-      "TWD": 0,
-      "USD": 829658.9241196071
-    }
-  }
+  "holdings": [],
+  "history": []
 }
