@@ -1,397 +1,436 @@
-import pandas as pd
-import yfinance as yf
-import json
-import numpy as np
-import requests
-import os
-from datetime import datetime
-from collections import deque
-
-# --- 設定區域 ---
-WORKER_API_URL = 'https://journal-backend.chired.workers.dev/api/records'
-API_KEY = os.environ.get("API_KEY", "")
-
-API_HEADERS = {
-    "X-API-KEY": API_KEY,
-    "Content-Type": "application/json"
-}
-
-BASE_CURRENCY = 'TWD'
-EXCHANGE_SYMBOL = 'USDTWD=X'
-TAX_RATE_US = 0.30
-TAX_RATE_TW = 0.00
-
-def get_market_data(tickers, start_date):
-    print(f"下載市場數據 (含自動配息)...")
-    fx_rates = pd.Series(dtype=float)
-    try:
-        fx = yf.Ticker(EXCHANGE_SYMBOL)
-        fx_hist = fx.history(start=start_date)
-        fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None)
-        fx_rates = fx_hist['Close']
-    except Exception as e:
-        print(f"匯率下載失敗: {e}")
-
-    result = {}
-    all_tickers = list(set(tickers + ['SPY']))
-
-    for t in all_tickers:
-        try:
-            ticker_obj = yf.Ticker(t)
-            hist = ticker_obj.history(start=start_date, auto_adjust=True, actions=True)
-            hist.index = pd.to_datetime(hist.index).tz_localize(None)
-            
-            currency = 'TWD' if (t.endswith('.TW') or t.endswith('.TWO')) else 'USD'
-            
-            result[t] = {
-                'close': hist['Close'], 
-                'splits': hist['Stock Splits'],
-                'dividends': hist['Dividends'],
-                'currency': currency
-            }
-        except Exception as e:
-            print(f"無法下載 {t}: {e}")
-            
-    return result, fx_rates
-
-def safe_float(val):
-    try:
-        if pd.isna(val) or str(val).strip() == '': return 0.0
-        return float(val)
-    except: return 0.0
-
-def safe_str(val):
-    if pd.isna(val): return "Other"
-    return str(val).strip()
-
-def get_split_adjustment(tx_date, split_data):
-    multiplier = 1.0
-    if split_data is None or split_data.empty: return multiplier
-    tx_date = pd.Timestamp(tx_date).tz_localize(None)
-    relevant_splits = split_data[split_data.index > tx_date]
-    for split_ratio in relevant_splits:
-        if split_ratio > 0: multiplier *= split_ratio
-    return multiplier
-
-def get_rate(date, fx_rates):
-    try:
-        if date in fx_rates.index: return fx_rates.loc[date]
-        else: return fx_rates.asof(date)
-    except: return 32.0
-
-def update_portfolio():
-    print("開始計算 (來源: Cloudflare D1)...")
-    debug_key = API_KEY[:2] + "****" if API_KEY else "NONE"
-    print(f"DEBUG: Using API Key: {debug_key}")
-
-    validation_messages = []
-
-    try:
-        print(f"正在連線至 API: {WORKER_API_URL}")
-        resp = requests.get(WORKER_API_URL, headers=API_HEADERS)
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS 交易管理系統 (AI版)</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        :root { --bg: #101014; --card-bg: #18181c; --border: #2d2d30; --primary: #40a9ff; --text: #e0e0e0; --green: #4caf50; --red: #ff5252; --yellow: #ffc107; }
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
         
-        if resp.status_code != 200:
-            print(f"API 連線失敗: {resp.status_code} {resp.text}")
-            return
+        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000; flex-direction: column; backdrop-filter: blur(5px); }
+        .login-box { background: var(--card-bg); padding: 40px; border-radius: 16px; border: 1px solid var(--border); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
 
-        api_json = resp.json()
-        if not api_json.get('success', False):
-            print(f"API 回傳錯誤: {api_json.get('error')}")
-            return
-            
-        records = api_json.get('data', [])
-        print(f"成功取得 {len(records)} 筆交易紀錄")
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .btn { padding: 8px 16px; border-radius: 6px; cursor: pointer; border: none; font-weight: 600; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { filter: brightness(1.1); }
+        .btn-danger { background: rgba(255, 82, 82, 0.1); color: var(--red); border: 1px solid var(--red); }
+        .btn-success { background: var(--green); color: white; }
+        .btn-icon { background: transparent; color: #888; padding: 4px; border-radius: 4px; border: none; cursor: pointer; }
+        .btn-icon:hover { background: #333; color: white; }
+
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
+        .stat-item { background: #222; padding: 20px; border-radius: 12px; border: 1px solid #333; position: relative; overflow: hidden; }
+        .stat-item::after { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--primary); }
+        .stat-item.profit::after { background: var(--red); }
+        .stat-item.loss::after { background: var(--green); }
         
-        if not records:
-            print("無交易紀錄，略過計算")
-            final_output = {
-                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "summary": {}, "holdings": [], "history": []
-            }
-            with open('data.json', 'w', encoding='utf-8') as f:
-                json.dump(final_output, f, ensure_ascii=False, indent=2)
-            return
-
-        df = pd.DataFrame(records)
-        df = df.rename(columns={
-            'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type',
-            'qty': 'Qty', 'price': 'Price', 'fee': 'Comm'
-        })
+        .stat-label { color: #888; font-size: 0.9rem; margin-bottom: 8px; display: flex; justify-content: space-between; }
+        .stat-val { font-size: 1.6rem; font-weight: 700; letter-spacing: 0.5px; }
+        .stat-sub { font-size: 0.85rem; margin-top: 5px; opacity: 0.7; }
         
-        if 'Tax' not in df.columns: df['Tax'] = 0
-        if 'Tag' not in df.columns: df['Tag'] = 'Stock'
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.95rem; }
+        th { text-align: left; color: #888; border-bottom: 1px solid var(--border); padding: 12px; font-weight: 500; }
+        td { padding: 12px; border-bottom: 1px solid #222; color: #ddd; }
+        tr:last-child td { border-bottom: none; }
+        .red { color: var(--red); } .green { color: var(--green); }
 
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.normalize()
-        df = df.dropna(subset=['Date']).sort_values('Date')
+        .editor-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; align-items: end; background: #1f1f23; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; }
+        input, select { background: #2d2d30; border: 1px solid #444; color: white; padding: 10px; border-radius: 6px; width: 100%; box-sizing: border-box; outline: none; }
+        input:focus { border-color: var(--primary); }
+        label { font-size: 0.8rem; color: #aaa; display: block; margin-bottom: 6px; }
+
+        .spinner { width: 16px; height: 16px; border: 2px solid #ffffff3d; border-top: 2px solid #fff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        for col in ['Comm', 'Tax', 'Qty', 'Price']:
-            df[col] = df[col].apply(safe_float)
-            
-    except Exception as e:
-        print(f"資料讀取失敗: {e}")
-        return
+        .badge { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: #333; color: #aaa; margin-left: 5px; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <div v-if="!userToken" class="login-overlay">
+            <div class="login-box">
+                <h2 style="margin-bottom: 10px;">SaaS 交易管理系統</h2>
+                <p style="color:#888; margin-bottom:30px; font-size: 0.95rem;">安全的雲端投資組合追蹤工具</p>
+                <div id="g_id_onload" :data-client_id="googleClientId" data-callback="handleCredentialResponse" data-auto_select="false"></div>
+                <div class="g_id_signin" data-type="standard" data-shape="pill" data-size="large" data-theme="filled_black"></div>
+            </div>
+        </div>
 
-    df = df[df['Symbol'].str.upper() != 'CASH'].copy()
-    tickers = df['Symbol'].unique().tolist()
-    if not tickers: return
+        <div v-else>
+            <div class="header">
+                <div>
+                    <h2 style="margin:0; display:flex; align-items:center; gap:10px;">
+                        投資組合看板 
+                        <span v-if="calculating || isUpdating" class="spinner" style="border-color:var(--primary) transparent var(--primary) transparent"></span>
+                    </h2>
+                    <div style="color:#888; font-size:0.9rem; margin-top:5px;">
+                        👤 {{ userName }} <span class="badge">PRO</span>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" @click="triggerGitHubUpdate" :disabled="isUpdating || calculating">
+                        <span v-if="!isUpdating">🚀 強制更新報價</span>
+                        <span v-else>請求發送中...</span>
+                    </button>
+                    <button class="btn btn-success" @click="refreshData" :disabled="calculating">
+                        <span v-if="!calculating">🔄 重新讀取數據</span>
+                        <span v-else>載入中...</span>
+                    </button>
+                    <button class="btn btn-danger" @click="logout">登出</button>
+                </div>
+            </div>
 
-    start_date = df['Date'].min().strftime('%Y-%m-%d')
-    market_data, fx_rates = get_market_data(tickers, start_date)
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">
+                        總投入成本 (Cost)
+                        <span style="font-size:0.8rem; color:#666;">TWD</span>
+                    </div>
+                    <div class="stat-val">${{ formatNumber(marketStats.invested_capital || 0) }}</div>
+                    <div class="stat-sub">
+                        交易筆數: {{ records.length }}
+                    </div>
+                </div>
 
-    start_dt = df['Date'].min()
-    end_dt = pd.Timestamp.now().normalize()
-    all_dates = pd.date_range(start=start_dt, end=end_dt)
+                <div class="stat-item">
+                    <div class="stat-label">
+                        即時總市值 (Market Value)
+                        <span style="font-size:0.8rem; color:#666;">TWD</span>
+                    </div>
+                    <div class="stat-val" style="color:var(--primary)">
+                        ${{ formatNumber(marketStats.total_value || 0) }}
+                    </div>
+                    <div class="stat-sub" v-if="marketStats.exchange_rate">
+                        USD/TWD: {{ marketStats.exchange_rate }}
+                    </div>
+                    <div class="stat-sub" v-else>等待數據載入...</div>
+                </div>
 
-    holdings = {t: 0.0 for t in tickers}
-    fifo_queue = {t: deque() for t in tickers}
-    symbol_tags = {} 
-    
-    net_invested_twd = 0.0
-    total_realized_pnl_twd = 0.0
-    closed_positions = [] 
-    ledger = []           
-    history_data = []
-    
-    transactions_map = {}
-    for date, group in df.groupby('Date'):
-        transactions_map[date] = group.to_dict('records')
+                <div class="stat-item" :class="unrealizedPnL >= 0 ? 'profit' : 'loss'">
+                    <div class="stat-label">未實現損益 (Unrealized P/L)</div>
+                    <div class="stat-val" :class="unrealizedPnL >= 0 ? 'red' : 'green'">
+                        {{ unrealizedPnL >= 0 ? '+' : '' }}{{ formatNumber(unrealizedPnL) }}
+                    </div>
+                    <div class="stat-sub" v-if="marketStats.total_value">
+                        報酬率: {{ getReturnRate(unrealizedPnL, marketStats.invested_capital) }}%
+                    </div>
+                </div>
+            </div>
 
-    prev_total_value_twd = 0.0
-    twr_cumulative = 1.0
-    
-    spy_start_price_twd = 0
-    if 'SPY' in market_data:
-        try:
-            p = market_data['SPY']['close'].asof(start_dt)
-            r = get_rate(start_dt, fx_rates)
-            if not pd.isna(p) and not pd.isna(r): spy_start_price_twd = p * r
-        except: pass
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                    <h3 style="margin:0; color:var(--primary); font-size:1.1rem;">
+                        {{ isEditing ? '✏️ 修改交易' : '➕ 新增交易' }}
+                    </h3>
+                    <button v-if="isEditing" @click="resetForm" style="background:none; border:none; color:#888; cursor:pointer;">✕ 取消</button>
+                </div>
+                
+                <div class="editor-form">
+                    <div><label>日期</label><input type="date" v-model="form.txn_date"></div>
+                    <div><label>代碼</label><input type="text" v-model="form.symbol" placeholder="e.g. AAPL" @input="form.symbol = form.symbol.toUpperCase()"></div>
+                    <div>
+                        <label>類別</label>
+                        <select v-model="form.txn_type">
+                            <option value="BUY">買入 (Buy)</option>
+                            <option value="SELL">賣出 (Sell)</option>
+                            <option value="DIV">配息 (Div)</option>
+                        </select>
+                    </div>
+                    <div><label>股數</label><input type="number" v-model="form.qty" placeholder="0" step="0.01"></div>
+                    <div><label>成交價格</label><input type="number" v-model="form.price" placeholder="0.00" step="0.01"></div>
+                    <div><label>手續費/稅</label><input type="number" v-model="form.fee" placeholder="0"></div>
+                    <div>
+                        <label>&nbsp;</label>
+                        <button class="btn btn-primary" style="width:100%" @click="submitRecord" :disabled="loading">
+                            <span v-if="loading" class="spinner"></span>
+                            <span v-else>{{ isEditing ? '保存' : '新增' }}</span>
+                        </button>
+                    </div>
+                </div>
+                <div style="font-size: 0.8rem; color: #666; margin-top: 10px;">
+                    💡 提示：新增交易後，因涉及歷史匯率計算，請務必點擊「強制更新報價」以獲得正確的成本與損益數字。
+                </div>
+            </div>
 
-    for current_date in all_dates:
-        daily_rate = get_rate(current_date, fx_rates)
-        daily_cash_flow_twd = 0.0
-        date_str = current_date.strftime('%Y-%m-%d')
+            <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                <div class="card" style="flex:2; min-width:400px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h3 style="margin:0;">📊 持倉損益 (Holdings)</h3>
+                        <span style="font-size:0.8rem; color:#666;" v-if="lastUpdateTime">
+                            數據更新於: {{ lastUpdateTime }}
+                        </span>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>代碼</th>
+                                    <th>股數</th>
+                                    <th>平均成本 (原幣)</th>
+                                    <th>現價 (原幣)</th>
+                                    <th>市值 (TWD)</th>
+                                    <th>損益 (TWD)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="h in combinedHoldings" :key="h.symbol">
+                                    <td style="font-weight:bold; color:white;">
+                                        {{ h.symbol }}
+                                        <span class="badge" v-if="h.currency">{{ h.currency }}</span>
+                                    </td>
+                                    <td>{{ formatNumber(h.qty) }}</td>
+                                    <td>{{ formatNumber(h.avgCost) }}</td>
+                                    <td style="color:var(--primary)">
+                                        {{ h.marketPrice ? formatNumber(h.marketPrice) : '-' }}
+                                    </td>
+                                    <td style="font-weight:bold;">
+                                        {{ h.marketValue ? formatNumber(h.marketValue) : '-' }}
+                                    </td>
+                                    <td :class="(h.pnl || 0) >= 0 ? 'red' : 'green'">
+                                        {{ h.pnl != null ? ((h.pnl >= 0 ? '+' : '') + formatNumber(h.pnl)) : '-' }}
+                                    </td>
+                                </tr>
+                                <tr v-if="combinedHoldings.length === 0">
+                                    <td colspan="6" style="text-align:center; color:#666; padding:30px;">
+                                        尚無持倉或數據尚未載入
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
-        # 自動配息
-        for sym, qty in holdings.items():
-            if qty > 0.001 and sym in market_data:
-                divs = market_data[sym]['dividends']
-                stock_curr = market_data[sym]['currency']
-                if current_date in divs.index:
-                    div_per_share = divs.loc[current_date]
-                    if div_per_share > 0:
-                        gross_div = div_per_share * qty
-                        tax_rate = TAX_RATE_TW if stock_curr == 'TWD' else TAX_RATE_US
-                        net_div = gross_div * (1 - tax_rate)
-                        conversion = 1.0 if stock_curr == 'TWD' else daily_rate
-                        net_div_twd = net_div * conversion
+                <div class="card" style="flex:1; min-width:300px;">
+                    <h3 style="margin-top:0; margin-bottom:15px;">📝 交易紀錄 (Ledger)</h3>
+                    <div style="overflow-x:auto; max-height:500px; overflow-y:auto;">
+                        <table>
+                            <thead><tr><th>日期</th><th>代碼</th><th>動作</th><th>價格</th><th></th></tr></thead>
+                            <tbody>
+                                <tr v-for="tx in records" :key="tx.id">
+                                    <td style="color:#888; font-size:0.85rem;">{{ tx.txn_date.slice(5) }}</td>
+                                    <td style="font-weight:bold;">{{ tx.symbol }}</td>
+                                    <td>
+                                        <span :style="{color: tx.txn_type==='BUY'?'#69f0ae':(tx.txn_type==='SELL'?'#ff5252':'#ffd700'), fontWeight:'bold', fontSize:'0.85rem'}">
+                                            {{ tx.txn_type }}
+                                        </span>
+                                        <small style="color:#666">x{{ tx.qty }}</small>
+                                    </td>
+                                    <td>{{ tx.price }}</td>
+                                    <td style="text-align:right;">
+                                        <button class="btn-icon" @click="editRecord(tx)">✎</button>
+                                        <button class="btn-icon" style="color:var(--red)" @click="deleteRecord(tx.id)">×</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+        
+        // ---------------- CONFIG ----------------
+        const DB_API_URL = "https://journal-backend.chired.workers.dev";
+        const CLIENT_ID = "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com";
+        // ----------------------------------------
+
+        createApp({
+            setup() {
+                const userToken = ref(localStorage.getItem('token') || '');
+                const userName = ref(localStorage.getItem('name') || '');
+                
+                const records = ref([]);
+                const marketStats = ref({}); 
+                const marketHoldings = ref([]); 
+                const lastUpdateTime = ref('');
+                
+                const loading = ref(false);
+                const calculating = ref(false); 
+                const isUpdating = ref(false); 
+                const isEditing = ref(false);
+                const form = ref({ id: null, txn_date: new Date().toISOString().split('T')[0], symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0 });
+
+                // --- 1. 本地運算 ---
+                // 注意：這裡算出來的 Cost 是「混合幣別」的，不能用於計算損益，只能用於顯示「平均買入單價」
+                const localHoldings = computed(() => {
+                    const map = {};
+                    const sorted = [...records.value].sort((a,b) => new Date(a.txn_date) - new Date(b.txn_date));
+                    
+                    sorted.forEach(tx => {
+                        const sym = tx.symbol;
+                        if (!map[sym]) map[sym] = { symbol: sym, qty: 0, totalCost: 0 };
                         
-                        net_invested_twd -= net_div_twd
-                        daily_cash_flow_twd -= net_div_twd
-                        total_realized_pnl_twd += net_div_twd
-                        
-                        entry = {
-                            'date': date_str, 'symbol': sym, 'type': 'DIV_AUTO',
-                            'qty': 0, 'price': 0, 'amount_twd': round(net_div_twd, 0),
-                            'tag': symbol_tags.get(sym, 'Stock'),
-                            'note': f"自動配息 @ {round(div_per_share, 4)}"
+                        const qty = parseFloat(tx.qty);
+                        const price = parseFloat(tx.price);
+                        const fee = parseFloat(tx.fee) || 0;
+
+                        if (tx.txn_type === 'BUY') {
+                            map[sym].totalCost += (qty * price) + fee;
+                            map[sym].qty += qty;
+                        } else if (tx.txn_type === 'SELL') {
+                            const costPerShare = map[sym].qty > 0 ? map[sym].totalCost / map[sym].qty : 0;
+                            map[sym].totalCost -= (costPerShare * qty); 
+                            map[sym].qty -= qty;
                         }
-                        ledger.append(entry)
-                        closed_positions.append({
-                            **entry, 'pnl': entry['amount_twd'], 'type': 'DIVIDEND',
-                            'close_date': date_str, 'buy_price': 0, 'sell_price': 0, 'pnl_percent': 0
-                        })
+                    });
+                    return Object.values(map).filter(h => h.qty > 0.001);
+                });
 
-        # 交易處理
-        if current_date in transactions_map:
-            for tx in transactions_map[current_date]:
-                symbol = tx['Symbol']
-                action = tx['Type'].strip().upper()
-                raw_qty = safe_float(tx['Qty'])
-                raw_price = safe_float(tx['Price'])
-                
-                if action not in ['BUY', 'SELL']: continue
-
-                symbol_tags[symbol] = safe_str(tx.get('Tag', 'Stock'))
-                comm = safe_float(tx['Comm'])
-                tax = safe_float(tx['Tax'])
-                
-                stock_currency = 'USD'
-                if symbol in market_data: stock_currency = market_data[symbol]['currency']
-                elif symbol.endswith('.TW') or symbol.endswith('.TWO'): stock_currency = 'TWD'
-                
-                tx_rate = 1.0 if stock_currency == 'TWD' else daily_rate
-                split_ratio = 1.0
-                if symbol in market_data:
-                    split_ratio = get_split_adjustment(current_date, market_data[symbol]['splits'])
-                
-                adj_qty = raw_qty * split_ratio
-                raw_cost_amt = (raw_price * raw_qty) + comm
-                raw_proceeds_amt = (raw_price * raw_qty) - comm - tax
-                
-                if action == 'BUY':
-                    cost_twd = raw_cost_amt * tx_rate
-                    net_invested_twd += cost_twd
-                    daily_cash_flow_twd += cost_twd
-                    holdings[symbol] += adj_qty
-                    
-                    unit_cost_origin = raw_cost_amt / adj_qty if adj_qty > 0 else 0
-                    fifo_queue[symbol].append({'qty': adj_qty, 'unit_cost': unit_cost_origin, 'rate_at_buy': tx_rate, 'raw_date': current_date})
-                    
-                    ledger.append({
-                        'date': date_str, 'symbol': symbol, 'type': 'BUY',
-                        'qty': round(adj_qty, 2), 'price': raw_price,
-                        'amount_twd': round(-cost_twd, 0),
-                        'tag': symbol_tags[symbol], 'note': '買入'
-                    })
-                    
-                elif action == 'SELL':
-                    proceeds_twd = raw_proceeds_amt * tx_rate
-                    net_invested_twd -= proceeds_twd
-                    daily_cash_flow_twd -= proceeds_twd
-                    holdings[symbol] -= adj_qty
-                    
-                    qty_to_sell = adj_qty
-                    realized_pnl_tx = 0
-                    while qty_to_sell > 0.000001 and fifo_queue[symbol]:
-                        batch = fifo_queue[symbol][0]
-                        sell_amt = min(qty_to_sell, batch['qty'])
+                // --- 2. 混合運算 ---
+                const combinedHoldings = computed(() => {
+                    return localHoldings.value.map(local => {
+                        // 比對 data.json 裡的 holding 資料
+                        const remote = marketHoldings.value.find(r => r.symbol === local.symbol) || {};
+                        const avgCost = local.qty > 0 ? local.totalCost / local.qty : 0;
+                        const marketValue = remote.market_value_twd || null; 
                         
-                        cost_twd_part = (batch['unit_cost'] * batch['rate_at_buy']) * sell_amt
-                        revenue_origin_unit = (raw_proceeds_amt / adj_qty)
-                        rev_twd_part = (revenue_origin_unit * tx_rate) * sell_amt
-                        
-                        pnl_twd = rev_twd_part - cost_twd_part
-                        realized_pnl_tx += pnl_twd
-                        
-                        closed_positions.append({
-                            'symbol': symbol, 'tag': symbol_tags[symbol],
-                            'open_date': batch['raw_date'].strftime('%Y-%m-%d'),
-                            'close_date': date_str,
-                            'qty': round(sell_amt, 2),
-                            'buy_price': round(batch['unit_cost'], 2),
-                            'sell_price': round(revenue_origin_unit, 2),
-                            'pnl': round(pnl_twd, 0),
-                            'pnl_percent': round((pnl_twd/cost_twd_part)*100, 2) if cost_twd_part!=0 else 0,
-                            'type': 'TRADE', 'currency': stock_currency
-                        })
-                        batch['qty'] -= sell_amt
-                        qty_to_sell -= sell_amt
-                        if batch['qty'] < 0.000001: fifo_queue[symbol].popleft()
-                    
-                    total_realized_pnl_twd += realized_pnl_tx
-                    ledger.append({
-                        'date': date_str, 'symbol': symbol, 'type': 'SELL',
-                        'qty': round(adj_qty, 2), 'price': raw_price,
-                        'amount_twd': round(proceeds_twd, 0),
-                        'tag': symbol_tags[symbol], 'note': f"獲利: {round(realized_pnl_tx,0)}"
-                    })
+                        // [修正重點] PnL 必須直接使用後端的數據 (TWD)，不能用 marketValue(TWD) - local.totalCost(USD)
+                        const pnl = remote.pnl_twd !== undefined ? remote.pnl_twd : null;
 
-        # 市值計算
-        market_val_twd = 0.0
-        for sym, qty in holdings.items():
-            if qty > 0.001:
-                price = 0
-                if sym in market_data:
-                    closes = market_data[sym]['close']
-                    try:
-                        if current_date in closes.index: price = closes.loc[current_date]
-                        else: price = closes.asof(current_date)
-                    except: pass
+                        return {
+                            ...local,
+                            avgCost: avgCost,
+                            marketPrice: remote.current_price_origin || null, 
+                            marketValue: marketValue,
+                            currency: remote.currency || '',
+                            pnl: pnl
+                        };
+                    });
+                });
+
+                // [修正] 未實現損益：改為使用後端算好的 市值總和 - 成本總和
+                const unrealizedPnL = computed(() => {
+                    const mktVal = marketStats.value.total_value || 0;
+                    const invested = marketStats.value.invested_capital || 0; // 這也是後端算好的 TWD 總成本
+                    if (mktVal === 0) return 0;
+                    return mktVal - invested;
+                });
+
+                // --- 3. API 互動 ---
+                const fetchRecords = async () => {
+                    if (!userToken.value) return;
+                    try {
+                        const res = await fetch(`${DB_API_URL}/api/records`, {
+                            headers: { "Authorization": `Bearer ${userToken.value}` }
+                        });
+                        const json = await res.json();
+                        if (json.success) {
+                            records.value = json.data;
+                        }
+                    } catch(e) { console.error("Fetch records error", e); }
+                };
+
+                const calculatePortfolio = async () => {
+                    calculating.value = true;
+                    try {
+                        const res = await fetch(`data.json?t=${new Date().getTime()}`);
+                        if(res.ok) {
+                            const json = await res.json();
+                            marketStats.value = json.summary || {};
+                            marketHoldings.value = json.holdings || [];
+                            lastUpdateTime.value = json.updated_at || '';
+                        }
+                    } catch(e) {
+                        console.error("Load data error", e);
+                    }
+                    calculating.value = false;
+                };
+
+                const triggerGitHubUpdate = async () => {
+                    if(!confirm("確定要強制更新報價嗎？\n\n這會通知 GitHub 開始運算，約需 1-2 分鐘完成。")) return;
+                    isUpdating.value = true;
+                    try {
+                        const res = await fetch(`${DB_API_URL}/api/trigger-update`, {
+                            method: 'POST',
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${userToken.value}` }
+                        });
+                        const json = await res.json();
+                        if (json.success) alert("✅ 已成功觸發更新！\n\nGitHub 正在背景計算，請約 2 分鐘後重新讀取數據。");
+                        else alert("❌ 觸發失敗：" + (json.error || '未知錯誤'));
+                    } catch (e) { alert("連線錯誤"); }
+                    isUpdating.value = false;
+                };
+
+                const refreshData = async () => {
+                    await calculatePortfolio();
+                    alert("數據讀取完成。");
+                };
+
+                const submitRecord = async () => {
+                    loading.value = true;
+                    const method = isEditing.value ? "PUT" : "POST";
+                    const payload = { ...form.value };
+                    try {
+                        const res = await fetch(`${DB_API_URL}/api/records`, {
+                            method,
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${userToken.value}` },
+                            body: JSON.stringify(payload)
+                        });
+                        if(res.ok) { resetForm(); await fetchRecords(); } 
+                        else alert("儲存失敗");
+                    } catch(e) { alert("連線錯誤"); }
+                    loading.value = false;
+                };
+
+                const deleteRecord = async (id) => {
+                    if(!confirm("確定刪除?")) return;
+                    await fetch(`${DB_API_URL}/api/records`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${userToken.value}` },
+                        body: JSON.stringify({ id })
+                    });
+                    fetchRecords();
+                };
+
+                const editRecord = (tx) => { isEditing.value = true; form.value = { ...tx }; };
+                const resetForm = () => { isEditing.value = false; form.value = { id: null, txn_date: new Date().toISOString().split('T')[0], symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0 }; };
+                const formatNumber = (num) => num ? Number(num).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '0';
+                const getReturnRate = (pnl, cost) => cost > 0 ? ((pnl / cost) * 100).toFixed(2) : 0;
                 
-                if (pd.isna(price) or price == 0) and fifo_queue[sym]:
-                    price = fifo_queue[sym][-1]['unit_cost']
-                
-                conversion = 1.0 if market_data.get(sym, {}).get('currency') == 'TWD' else daily_rate
-                market_val_twd += (price * qty * conversion)
+                const logout = () => { localStorage.clear(); userToken.value = ''; records.value = []; marketStats.value = {}; marketHoldings.value = []; };
 
-        # TWR 計算
-        capital_at_risk = prev_total_value_twd + daily_cash_flow_twd
-        daily_return = 0.0
-        if capital_at_risk > 0:
-            daily_profit = market_val_twd - capital_at_risk
-            daily_return = daily_profit / capital_at_risk
-        
-        twr_cumulative *= (1 + daily_return)
-        
-        bench_twr = 0.0
-        if spy_start_price_twd > 0 and 'SPY' in market_data:
-            try:
-                p = market_data['SPY']['close'].asof(current_date)
-                if not pd.isna(p):
-                    curr_spy_twd = p * daily_rate
-                    bench_twr = (curr_spy_twd / spy_start_price_twd) - 1
-            except: pass
+                window.handleCredentialResponse = async (response) => {
+                    try {
+                        const res = await fetch(`${DB_API_URL}/auth/google`, {
+                            method: "POST",
+                            body: JSON.stringify({ id_token: response.credential })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            userToken.value = data.token;
+                            userName.value = data.user;
+                            localStorage.setItem('token', data.token);
+                            localStorage.setItem('name', data.user);
+                            fetchRecords();
+                        }
+                    } catch(e) { alert("登入失敗"); }
+                };
 
-        history_data.append({
-            "date": date_str,
-            "total_value": round(market_val_twd, 0),
-            "invested": round(net_invested_twd, 0),
-            "twr": round((twr_cumulative - 1) * 100, 2),
-            "benchmark_twr": round(bench_twr * 100, 2)
-        })
-        prev_total_value_twd = market_val_twd
+                onMounted(() => {
+                    calculatePortfolio(); 
+                    if (userToken.value) fetchRecords(); 
+                });
 
-    # 輸出結果
-    final_holdings = []
-    allocation_by_tag = {}
-    allocation_by_currency = {'TWD': 0, 'USD': 0}
-
-    for sym, qty in holdings.items():
-        if qty > 0.001:
-            stock_cur = 'USD'
-            curr_p_origin = 0
-            if sym in market_data:
-                stock_cur = market_data[sym]['currency']
-                try: curr_p_origin = float(market_data[sym]['close'].iloc[-1])
-                except: pass
-            
-            latest_rate = fx_rates.iloc[-1] if not fx_rates.empty else 32.0
-            conversion = 1.0 if stock_cur == 'TWD' else latest_rate
-            
-            batches = fifo_queue[sym]
-            total_cost_twd = sum((b['unit_cost'] * b['rate_at_buy']) * b['qty'] for b in batches)
-            mkt_val_twd = curr_p_origin * qty * conversion
-            pnl_twd = mkt_val_twd - total_cost_twd
-            tag = symbol_tags.get(sym, 'Stock')
-            
-            allocation_by_tag[tag] = allocation_by_tag.get(tag, 0) + mkt_val_twd
-            allocation_by_currency[stock_cur] = allocation_by_currency.get(stock_cur, 0) + mkt_val_twd
-
-            final_holdings.append({
-                "symbol": sym, "tag": tag, "currency": stock_cur,
-                "qty": round(qty, 2),
-                "total_cost_twd": round(total_cost_twd, 0), # [新增] 明確輸出台幣成本
-                "market_value_twd": round(mkt_val_twd, 0),
-                "pnl_twd": round(pnl_twd, 0),
-                "pnl_percent": round((pnl_twd/total_cost_twd)*100, 2) if total_cost_twd!=0 else 0,
-                "current_price_origin": round(curr_p_origin, 2)
-            })
-
-    curr_stats = history_data[-1] if history_data else {}
-    
-    final_output = {
-        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "base_currency": BASE_CURRENCY,
-        "exchange_rate": round(fx_rates.iloc[-1], 2) if not fx_rates.empty else 32.0,
-        "summary": {
-            "total_value": curr_stats.get('total_value', 0),
-            "invested_capital": curr_stats.get('invested', 0),
-            "total_pnl": round(curr_stats.get('total_value', 0) - curr_stats.get('invested', 0), 0),
-            "twr": curr_stats.get('twr', 0),
-            "realized_pnl": round(total_realized_pnl_twd, 0)
-        },
-        "messages": validation_messages,
-        "holdings": final_holdings,
-        "closed_positions": sorted(closed_positions, key=lambda x: x['close_date'], reverse=True),
-        "ledger": sorted(ledger, key=lambda x: x['date'], reverse=True),
-        "history": history_data,
-        "allocation": { "tags": allocation_by_tag, "currency": allocation_by_currency }
-    }
-
-    with open('data.json', 'w', encoding='utf-8') as f:
-        json.dump(final_output, f, ensure_ascii=False, indent=2)
-    print("更新完成 (data.json 已寫入)")
-
-if __name__ == "__main__":
-    update_portfolio()
+                return {
+                    userToken, userName, googleClientId: CLIENT_ID, logout,
+                    records, form, loading, calculating, isUpdating, isEditing,
+                    submitRecord, deleteRecord, editRecord, resetForm, 
+                    refreshData, triggerGitHubUpdate,
+                    marketStats, combinedHoldings, unrealizedPnL, // localStats 已移除
+                    formatNumber, getReturnRate, lastUpdateTime
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
