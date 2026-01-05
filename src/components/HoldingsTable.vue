@@ -1,42 +1,50 @@
 <template>
   <div class="card">
-    <h3>Current Holdings</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Symbol</th>
-          <th>Qty</th>
-          <th>Price</th>
-          <th>Market Val</th>
-          <th>PnL</th>
-          <th>%</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="h in store.holdings" :key="h.symbol">
-          <td style="font-weight:bold">{{ h.symbol }}</td>
-          <td>{{ n(h.qty, 2) }}</td>
-          <td>{{ n(h.current_price_origin, 2) }}</td>
-          <td>{{ n(h.market_value_twd) }}</td>
-          <td :class="color(h.pnl_twd)">{{ n(h.pnl_twd) }}</td>
-          <td :class="color(h.pnl_percent)">{{ h.pnl_percent }}%</td>
-        </tr>
-      </tbody>
+    <h3>持倉明細 (Live)</h3>
+    <table v-if="store.holdings.length > 0">
+        <thead>
+            <tr>
+                <th>代碼</th>
+                <th>標籤</th>
+                <th>股數</th>
+                <th>平均成本 (USD)</th>
+                <th>現價 (USD)</th>
+                <th>市值 (TWD)</th>
+                <th>報酬率</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr v-for="h in store.holdings" :key="h.symbol">
+                <td><strong>{{ h.symbol }}</strong></td>
+                <td><span class="tag">{{ h.tag || 'Stock' }}</span></td>
+                <td>{{ formatNumber(h.qty, 2) }}</td>
+                <td>{{ calcAvgCost(h) }}</td>
+                <td>{{ formatNumber(h.current_price_origin, 2) }}</td>
+                <td>{{ formatNumber(h.market_value_twd, 0) }}</td>
+                <td :class="h.pnl_percent >= 0 ? 'text-green' : 'text-red'">
+                    {{ h.pnl_percent }}%
+                </td>
+            </tr>
+        </tbody>
     </table>
+    <div v-else class="empty">目前無持倉</div>
   </div>
 </template>
 
 <script setup>
 import { usePortfolioStore } from '../stores/portfolio';
 const store = usePortfolioStore();
-const n = (v, d=0) => Number(v||0).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
-const color = (v) => v >= 0 ? 'text-green' : 'text-red';
+
+const formatNumber = (num, d=0) => Number(num||0).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const calcAvgCost = (h) => {
+    if (!h.qty || !store.stats.exchange_rate) return 0;
+    const costTwd = h.market_value_twd - h.pnl_twd;
+    const avg = (costTwd / store.stats.exchange_rate) / h.qty;
+    return formatNumber(avg, 2);
+};
 </script>
 
 <style scoped>
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: right; padding: 10px; border-bottom: 1px solid #333; }
-th:first-child, td:first-child { text-align: left; }
-.text-green { color: #00e676; }
-.text-red { color: #ff5252; }
+.empty { text-align: center; padding: 20px; color: #666; }
 </style>
