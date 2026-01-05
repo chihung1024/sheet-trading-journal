@@ -30,7 +30,7 @@ class PortfolioCalculator:
             self.confirmed_dividends.add(key)
 
     def run(self):
-        print("=== 開始執行投資組合計算 (Smart Fill Enabled) ===")
+        print("=== 開始執行投資組合計算 (Stale Price Fix) ===")
         
         start_date = self.df['Date'].min()
         end_date = datetime.now()
@@ -44,18 +44,13 @@ class PortfolioCalculator:
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
             except: fx = DEFAULT_FX_RATE
             
-            # 1. 處理拆股 (股數變更)
             self._process_splits(d, current_date)
             
-            # 2. 處理交易
             daily_txns = self.df[self.df['Date'].dt.date == current_date]
             for _, row in daily_txns.iterrows():
                 self._process_transaction(row, fx, d)
             
-            # 3. 自動配息
             self._process_implicit_dividends(d, fx)
-                
-            # 4. 每日估值
             self._daily_valuation(d, fx)
             
         return self._generate_final_output(fx)
@@ -66,110 +61,13 @@ class PortfolioCalculator:
                 split_ratio = self.market.get_split_ratio(sym, date_ts)
                 
                 if split_ratio != 1.0:
-                    old_qty = h_data['qty']
+                    print(f"[{date_obj}] {sym} 拆股: {split_ratio}倍")
                     h_data['qty'] *= split_ratio
                     
-                    print(f"[{date_obj}] {sym} 拆股執行: {split_ratio}倍. 持倉: {old_qty:.2f} -> {h_data['qty']:.2f}")
-                    
-                    # 調整 FIFO 佇列 (價格除以比例，數量乘以比例)
                     if sym in self.fifo_queues:
                         for batch in self.fifo_queues[sym]:
                             batch['qty'] *= split_ratio
                             batch['price'] /= split_ratio 
-
-    def _process_implicit_dividends(self, date_ts, fx):
-        date_str = date_ts.strftime('%Y-%m-%d')
-        for sym, h_data in self.holdings.items():
-            qty = h_data['qty']
-            if qty > 0:
-                if f"{sym}_{date_str}" in self.confirmed_dividends: continue
-                
-                div_per_share = self.market.get_dividend(sym, date_ts)
-                if div_per_share > 0:
-                    total_div_usd = qty * div_per_share
-                    net_div_usd = total_div_usd * 0.7 
-                    net_div_twd = net_div_usd * fx
-                    self.total_realized_pnl_twd += net_div_twd
-
-    def _process_transaction(self, row, fx, date_ts):
-        sym = row['Symbol']
-        qty = row['Qty']
-        price = row['Price']
-        comm = row['Commission']
-        tax = row['Tax']
-        txn_type = row['Type']
-        tag = row['Tag']
-        
-        if sym not in self.holdings:
-            self.holdings[sym] = {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': tag}
-            self.fifo_queues[sym] = deque()
-        if tag: self.holdings[sym]['tag'] = tag
-
-        if txn_type == 'BUY':
-            cost_usd = (qty * price) + comm + tax
-            cost_twd = cost_usd * fx
-            self.holdings[sym]['qty'] += qty
-            self.holdings[sym]['cost_basis_usd'] += cost_usd
-            self.holdings[sym]['cost_basis_twd'] += cost_twd
-            self.fifo_queues[sym].append({
-                'qty': qty, 'price': price, 
-                'cost_total_usd': cost_usd, 'cost_total_twd': cost_twd,
-                'date': date_ts
-            })
-            self.invested_capital += cost_twd
-            self._trade_benchmark(date_ts, cost_twd, fx, is_buy=True)
-
-        elif txn_type == 'SELL':
-            proceeds_twd = ((qty * price) - comm - tax) * fx
-            self.holdings[sym]['qty'] -= qty
-            
-            remaining = qty
-            cost_sold_twd = 0.0
-            cost_sold_usd = 0.0
-            
-            while remaining > 0 and self.fifo_queues[sym]:
-                batch = self.fifo_queues[sym][0]
-                take = min(remaining, batch['qty'])
-                frac = take / batch['qty']
-                
-                part_cost_usd = batch['cost_total_usd'] * frac
-                part_cost_twd = batch['cost_total_twd'] * frac
-                
-                cost_sold_usd += part_cost_usd
-                cost_sold_twd += part_cost_twd
-                
-                batch['qty'] -= take
-                batch['cost_total_usd'] -= part_cost_usd
-                batch['cost_total_twd'] -= part_cost_twd
-                remaining -= take
-                
-                if batch['qty'] < 1e-9: self.fifo_queues[sym].popleft()
-            
-            self.holdings[sym]['cost_basis_usd'] -= cost_sold_usd
-            self.holdings[sym]['cost_basis_twd'] -= cost_sold_twd
-            
-            self.invested_capital -= cost_sold_twd
-            self.total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
-            
-            self._trade_benchmark(date_ts, proceeds_twd, fx, is_buy=False, realized_cost_twd=cost_sold_twd)
-
-        elif txn_type == 'DIV':
-            self.total_realized_pnl_twd += (price - tax) * fx
-
-    def _trade_benchmark(self, date_ts, amount_twd, fx, is_buy=True, realized_cost_twd=0.0):
-        spy_p = self.market.get_price('SPY', date_ts)
-        if spy_p <= 0: return
-        if is_buy:
-            self.benchmark_units += (amount_twd / fx) / spy_p
-            self.benchmark_invested += amount_twd
-        else:
-            if self.benchmark_units > 0:
-                # 這裡的邏輯是模擬：當你賣出股票，你也賣出等比例的 Benchmark
-                # 這樣才能公平比較 "資金若投在 SPY 會怎樣"
-                ratio = realized_cost_twd / self.benchmark_invested if self.benchmark_invested > 0 else 0
-                units_to_sell = self.benchmark_units * ratio
-                self.benchmark_units -= units_to_sell
-                self.benchmark_invested -= realized_cost_twd
 
     def _daily_valuation(self, date_ts, fx):
         total_mkt_val = 0.0
@@ -177,23 +75,36 @@ class PortfolioCalculator:
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.0001:
-                # 這裡會用到 Smart Fill 後的正確價格
-                price = self.market.get_price(sym, date_ts)
+                # [關鍵修正] 取得價格與該價格的日期
+                price, price_date = self.market.get_price_with_date(sym, date_ts)
+                
+                # 如果使用了過期價格 (Price Date < Current Date)，檢查中間是否有拆股
+                # 這是防止 "拆股日當天缺資料 -> 抓到昨天高價 -> 資產暴增" 的核心邏輯
+                if price_date < date_ts:
+                    # 檢查 gap 之間是否有拆股
+                    check_range = pd.date_range(start=price_date + pd.Timedelta(days=1), end=date_ts)
+                    for check_day in check_range:
+                        ratio = self.market.get_split_ratio(sym, check_day)
+                        if ratio != 1.0:
+                            # 發現舊價格是拆股前的，必須手動除以比例
+                            # 例如：昨天$1000，今天10拆1。今天缺資料抓到$1000。
+                            # 1000 / 10 = 100 (正確的今天估值)
+                            price /= ratio
+                            # print(f"  [修正] {sym} 使用過期價格 ({price_date.date()}), 手動調整拆股影響 -> {price}")
+
                 total_mkt_val += h['qty'] * price * fx
                 current_holdings_cost += h['cost_basis_twd']
         
         unrealized_pnl = total_mkt_val - current_holdings_cost
         total_pnl = unrealized_pnl + self.total_realized_pnl_twd
         
-        # TWR
         twr = 0.0
         if current_holdings_cost > 0:
             twr = (total_pnl / current_holdings_cost) * 100
             
-        # Benchmark TWR
         bench_val = 0.0
         bench_twr = 0.0
-        spy_p = self.market.get_price('SPY', date_ts)
+        spy_p = self.market.get_price(sym='SPY', date=date_ts)
         if spy_p > 0:
             bench_val = self.benchmark_units * spy_p * fx
             if self.benchmark_invested > 0:
@@ -211,6 +122,8 @@ class PortfolioCalculator:
     def _generate_final_output(self, current_fx):
         print("整理最終報表...")
         final_holdings = []
+        current_holdings_cost_sum = 0.0
+        
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
                 curr_p = self.market.get_price(sym, datetime.now())
@@ -219,6 +132,9 @@ class PortfolioCalculator:
                 pnl = mkt_val - cost
                 pnl_pct = (pnl/cost*100) if cost>0 else 0
                 avg_cost_usd = h['cost_basis_usd'] / h['qty'] if h['qty']>0 else 0
+                
+                # 累加目前持倉的成本 (用於計算總損益)
+                current_holdings_cost_sum += cost
                 
                 final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency="USD",
@@ -233,12 +149,13 @@ class PortfolioCalculator:
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
         curr_total_val = sum(x.market_value_twd for x in final_holdings)
-        # 注意：這裡的 total_pnl 包含已實現 + 未實現
-        total_pnl = (curr_total_val - sum(h.cost_basis_twd for h in final_holdings)) + self.total_realized_pnl_twd
+        
+        # [Fix] 使用計算好的 current_holdings_cost_sum，不再讀取不存在的屬性
+        total_pnl = (curr_total_val - current_holdings_cost_sum) + self.total_realized_pnl_twd
         
         summary = PortfolioSummary(
             total_value=round(curr_total_val, 0),
-            invested_capital=round(sum(h.cost_basis_twd for h in final_holdings), 0),
+            invested_capital=round(current_holdings_cost_sum, 0),
             total_pnl=round(total_pnl, 0),
             twr=self.history_data[-1]['twr'] if self.history_data else 0,
             realized_pnl=round(self.total_realized_pnl_twd, 0),
@@ -253,3 +170,72 @@ class PortfolioCalculator:
             holdings=final_holdings,
             history=self.history_data
         )
+
+    # --- 以下函式保持不變，但為了完整性一併列出 ---
+    def _process_implicit_dividends(self, date_ts, fx):
+        date_str = date_ts.strftime('%Y-%m-%d')
+        for sym, h_data in self.holdings.items():
+            qty = h_data['qty']
+            if qty > 0:
+                if f"{sym}_{date_str}" in self.confirmed_dividends: continue
+                div_per_share = self.market.get_dividend(sym, date_ts)
+                if div_per_share > 0:
+                    net_div_twd = (qty * div_per_share * 0.7) * fx
+                    self.total_realized_pnl_twd += net_div_twd
+
+    def _process_transaction(self, row, fx, date_ts):
+        # 邏輯與之前相同，省略以節省篇幅 (請保留原本的代碼)
+        sym = row['Symbol']; qty = row['Qty']; price = row['Price']
+        comm = row['Commission']; tax = row['Tax']; txn_type = row['Type']; tag = row['Tag']
+        
+        if sym not in self.holdings:
+            self.holdings[sym] = {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': tag}
+            self.fifo_queues[sym] = deque()
+        if tag: self.holdings[sym]['tag'] = tag
+
+        if txn_type == 'BUY':
+            cost_usd = (qty * price) + comm + tax
+            cost_twd = cost_usd * fx
+            self.holdings[sym]['qty'] += qty
+            self.holdings[sym]['cost_basis_usd'] += cost_usd
+            self.holdings[sym]['cost_basis_twd'] += cost_twd
+            self.fifo_queues[sym].append({'qty': qty, 'price': price, 'cost_total_usd': cost_usd, 'cost_total_twd': cost_twd, 'date': date_ts})
+            self.invested_capital += cost_twd
+            self._trade_benchmark(date_ts, cost_twd, fx, is_buy=True)
+
+        elif txn_type == 'SELL':
+            proceeds_twd = ((qty * price) - comm - tax) * fx
+            self.holdings[sym]['qty'] -= qty
+            remaining = qty; cost_sold_twd = 0.0; cost_sold_usd = 0.0
+            while remaining > 0 and self.fifo_queues[sym]:
+                batch = self.fifo_queues[sym][0]
+                take = min(remaining, batch['qty'])
+                frac = take / batch['qty']
+                cost_sold_usd += batch['cost_total_usd'] * frac
+                cost_sold_twd += batch['cost_total_twd'] * frac
+                batch['qty'] -= take
+                batch['cost_total_usd'] -= batch['cost_total_usd'] * frac
+                batch['cost_total_twd'] -= batch['cost_total_twd'] * frac
+                remaining -= take
+                if batch['qty'] < 1e-9: self.fifo_queues[sym].popleft()
+            
+            self.holdings[sym]['cost_basis_usd'] -= cost_sold_usd
+            self.holdings[sym]['cost_basis_twd'] -= cost_sold_twd
+            self.invested_capital -= cost_sold_twd
+            self.total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
+            self._trade_benchmark(date_ts, proceeds_twd, fx, is_buy=False, realized_cost_twd=cost_sold_twd)
+
+        elif txn_type == 'DIV':
+            self.total_realized_pnl_twd += (price - tax) * fx
+
+    def _trade_benchmark(self, date_ts, amount_twd, fx, is_buy=True, realized_cost_twd=0.0):
+        spy_p = self.market.get_price('SPY', date_ts)
+        if spy_p <= 0: return
+        if is_buy:
+            self.benchmark_units += (amount_twd / fx) / spy_p
+            self.benchmark_invested += amount_twd
+        else:
+            if self.benchmark_units > 0:
+                ratio = realized_cost_twd / self.benchmark_invested if self.benchmark_invested > 0 else 0
+                self.benchmark_units -= self.benchmark_units * ratio
+                self.benchmark_invested -= realized_cost_twd
