@@ -35,7 +35,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, nextTick } from 'vue';
 import Chart from 'chart.js/auto';
 import { usePortfolioStore } from '../stores/portfolio';
 
@@ -101,6 +101,7 @@ const filterData = () => {
 
             if (anchorPoint) {
                 pnl_val -= (anchorPoint.total_value - anchorPoint.invested);
+                
                 const baseTwr = (anchorPoint.twr || 0) / 100;
                 const curTwr = (d.twr || 0) / 100;
                 twr_val = ((1 + curTwr) / (1 + baseTwr) - 1) * 100;
@@ -113,7 +114,6 @@ const filterData = () => {
             return { ...d, period_pnl: pnl_val, period_twr: twr_val, period_spy: spy_val };
         });
         
-        // 為了圖表美觀，補上起始零點
         if (anchorPoint && displayedData.value.length > 0) {
              displayedData.value.unshift({ 
                 ...anchorPoint, 
@@ -134,7 +134,6 @@ const drawChart = () => {
     const labels = dataPoints.map(d => d.date);
     let datasets = [];
 
-    // 設定共同樣式
     const commonOptions = { pointRadius: 0, pointHoverRadius: 4, borderWidth: 2, tension: 0.2 };
 
     if (chartType.value === 'asset') {
@@ -190,13 +189,31 @@ const drawChart = () => {
     });
 };
 
-watch(() => store.history, () => { if (store.history.length > 0) switchTimeRange('1Y'); }, { immediate: true });
+const initChart = () => {
+    // 只有當資料存在且 Canvas 已掛載時才繪圖
+    if (store.history && store.history.length > 0 && canvas.value) {
+        switchTimeRange('1Y');
+    }
+};
+
+// 資料更新時重繪 (非立即，等待 DOM)
+watch(() => store.history, async () => {
+    await nextTick();
+    initChart();
+});
+
+// 類型切換時重繪
 watch(chartType, drawChart);
-onMounted(() => window.addEventListener('resize', () => { if(myChart) drawChart(); }));
+
+// 組件掛載時，若已有資料則繪圖
+onMounted(async () => {
+    await nextTick();
+    initChart();
+    window.addEventListener('resize', () => { if(myChart) drawChart(); });
+});
 </script>
 
 <style scoped>
-/* 卡片容器：模擬 index.html 的 .chart-section */
 .chart-card {
     background-color: #18181c;
     border: 1px solid #2d2d30;
@@ -212,7 +229,6 @@ onMounted(() => window.addEventListener('resize', () => { if(myChart) drawChart(
 
 .chart-header { margin-bottom: 15px; }
 
-/* 標題與控制列的排版 */
 .header-row {
     display: flex;
     justify-content: space-between;
@@ -231,7 +247,6 @@ onMounted(() => window.addEventListener('resize', () => { if(myChart) drawChart(
     letter-spacing: 0.5px;
 }
 
-/* 按鈕群組 (Toggle Group) */
 .toggle-group {
     display: flex;
     background: #2d2d30;
@@ -262,7 +277,6 @@ onMounted(() => window.addEventListener('resize', () => { if(myChart) drawChart(
 
 .toggle-group.sm button { padding: 4px 10px; font-size: 0.8rem; }
 
-/* 日期選擇器美化 */
 .date-picker-wrapper {
     display: flex;
     align-items: center;
@@ -281,7 +295,6 @@ onMounted(() => window.addEventListener('resize', () => { if(myChart) drawChart(
     font-size: 0.85rem;
     outline: none;
 }
-/* 讓日期 icon 反白 */
 .date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; opacity: 0.6; }
 .date-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
@@ -290,7 +303,7 @@ onMounted(() => window.addEventListener('resize', () => { if(myChart) drawChart(
 .canvas-wrapper {
     position: relative;
     width: 100%;
-    height: 350px; /* 固定高度，確保圖表不會塌陷 */
+    height: 350px;
     flex-grow: 1;
 }
 
