@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SaaS 交易管理系統 (Pro)</title>
+    <title>SaaS 交易管理系統 (Pro Plus)</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -18,15 +18,15 @@
         body { background-color: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; padding-bottom: 60px; }
         
-        /* 元件樣式 */
+        /* 基礎元件 */
         .card { background: var(--card-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; }
         .flex-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
-        .btn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
+        .btn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; transition: opacity 0.2s; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-primary:hover { opacity: 0.9; }
         .btn-danger { background: var(--red); color: white; }
         .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-        .btn-outline:hover, .btn-outline.active { background: var(--border); border-color: var(--text-muted); color: white; }
+        .btn-outline:hover, .btn-outline.active { background: #333; color: white; border-color: var(--text); }
         .btn-sm { padding: 4px 8px; font-size: 0.8rem; }
         
         .text-green { color: var(--green); }
@@ -35,20 +35,28 @@
         /* 登入遮罩 */
         .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000; flex-direction: column; gap: 20px; }
         
-        /* 表單 */
-        .editor-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; background: #222; padding: 15px; border-radius: 8px; border: 1px solid var(--primary); margin-bottom: 20px; }
-        .form-group { display: flex; flex-direction: column; gap: 5px; }
-        .form-group label { font-size: 0.8rem; color: #888; }
-        .form-group input, .form-group select { background: #333; border: 1px solid #444; color: white; padding: 8px; border-radius: 4px; }
+        /* 0.00 風格 Header 數據塊 */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: var(--card-bg); padding: 15px; border-radius: 10px; border: 1px solid var(--border); text-align: center; }
+        .stat-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+        .stat-value { font-size: 1.4rem; font-weight: bold; }
+        .stat-sub { font-size: 0.9rem; margin-top: 5px; }
+
+        /* 表單 (還原 0.00 自動計算功能) */
+        .editor-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; align-items: end; background: #222; padding: 20px; border-radius: 8px; border: 1px solid #444; margin-bottom: 20px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group label { font-size: 0.8rem; color: #aaa; }
+        .form-group input, .form-group select { background: #111; border: 1px solid #333; color: white; padding: 8px; border-radius: 4px; font-size: 0.95rem; }
+        .form-group input:focus { border-color: var(--primary); outline: none; }
         
-        /* 圖表控制區 */
+        /* 圖表區 */
         .chart-section { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px; }
         @media (max-width: 768px) { .chart-section { grid-template-columns: 1fr; } }
         
         .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
-        .chart-controls { display: flex; gap: 5px; background: #222; padding: 3px; border-radius: 8px; }
-        .chart-controls button { background: transparent; border: none; color: #888; padding: 4px 10px; font-size: 0.8rem; cursor: pointer; border-radius: 5px; }
-        .chart-controls button.active { background: #333; color: #fff; font-weight: bold; }
+        .chart-controls { display: flex; gap: 5px; background: #222; padding: 4px; border-radius: 8px; }
+        .chart-controls button { background: transparent; border: none; color: #888; padding: 4px 12px; font-size: 0.85rem; cursor: pointer; border-radius: 6px; }
+        .chart-controls button.active { background: #444; color: #fff; font-weight: bold; }
         .date-picker-group { display: flex; gap: 5px; align-items: center; }
         .date-picker-group input { background: #222; border: 1px solid #444; color: #ccc; padding: 4px; border-radius: 4px; font-size: 0.8rem; }
         
@@ -56,12 +64,12 @@
         
         /* 表格 */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: right; padding: 12px; border-bottom: 1px solid var(--border); }
+        th, td { text-align: right; padding: 12px 8px; border-bottom: 1px solid var(--border); }
         th:first-child, td:first-child { text-align: left; }
         th { color: var(--text-muted); font-weight: normal; font-size: 0.9rem; }
         .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; background: #333; color: #ccc; }
         
-        /* Header */
+        /* Header Bar */
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
         .user-info { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
         .avatar { width: 32px; height: 32px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
@@ -78,7 +86,7 @@
         <div v-else>
             <div class="header-bar">
                 <div>
-                    <h2 style="margin:0">Dashboard <span style="font-size:0.8rem; color:#666">v0.01 Pro</span></h2>
+                    <h2 style="margin:0">Dashboard <span style="font-size:0.8rem; color:#666">v0.01 Pro Plus</span></h2>
                     <small style="color:var(--text-muted)">最後更新: {{ lastUpdateTime }}</small>
                 </div>
                 <div class="user-info">
@@ -91,23 +99,33 @@
                 </div>
             </div>
 
-            <div class="flex-row" style="margin-bottom: 20px;">
-                <div class="card" style="flex:1; text-align:center">
-                    <div style="font-size:0.9rem; color:#888">總淨值 (TWD)</div>
-                    <div style="font-size:1.8rem; font-weight:bold; margin: 10px 0;">{{ formatNumber(localStats.total_value) }}</div>
-                    <div :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">總淨值 (TWD)</div>
+                    <div class="stat-value" style="color:var(--primary)">{{ formatNumber(localStats.total_value) }}</div>
+                    <div class="stat-sub" style="color:#888">成本: {{ formatNumber(localStats.invested_capital) }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">未實踐損益</div>
+                    <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
                         {{ unrealizedPnL >= 0 ? '+' : '' }}{{ formatNumber(unrealizedPnL) }}
                     </div>
+                    <div class="stat-sub">
+                        {{ localStats.invested_capital ? ((unrealizedPnL/localStats.invested_capital)*100).toFixed(2) : 0 }}%
+                    </div>
                 </div>
-                <div class="card" style="flex:1; text-align:center">
-                    <div style="font-size:0.9rem; color:#888">投入成本</div>
-                    <div style="font-size:1.5rem; margin: 10px 0;">{{ formatNumber(localStats.invested_capital) }}</div>
+                <div class="stat-card">
+                    <div class="stat-label">今日損益 (估計)</div>
+                    <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
+                        {{ dailyPnL >= 0 ? '+' : '' }}{{ formatNumber(dailyPnL) }}
+                    </div>
                 </div>
-                <div class="card" style="flex:1; text-align:center">
-                    <div style="font-size:0.9rem; color:#888">TWR 報酬率 (All-Time)</div>
-                    <div style="font-size:1.5rem; margin: 10px 0;" :class="localStats.twr >= 100 ? 'text-green' : 'text-red'">
+                <div class="stat-card">
+                    <div class="stat-label">TWR 總報酬率</div>
+                    <div class="stat-value" :class="localStats.twr >= 0 ? 'text-green' : 'text-red'">
                         {{ localStats.twr }}%
                     </div>
+                    <div class="stat-sub" style="color:var(--yellow)">SPY: {{ localStats.benchmark_twr || '-' }}%</div>
                 </div>
             </div>
 
@@ -115,8 +133,8 @@
                 <div class="card">
                     <div class="chart-header">
                         <div class="chart-controls">
-                            <button @click="switchChartType('value')" :class="{active: chartType==='value'}">淨值</button>
                             <button @click="switchChartType('twr')" :class="{active: chartType==='twr'}">績效 %</button>
+                            <button @click="switchChartType('value')" :class="{active: chartType==='value'}">淨值</button>
                             <button @click="switchChartType('pnl')" :class="{active: chartType==='pnl'}">日損益</button>
                         </div>
                         <div class="chart-controls">
@@ -131,10 +149,8 @@
                     
                     <div class="chart-header" v-if="timeRange === 'CUSTOM'" style="justify-content: flex-end; margin-top:-10px;">
                         <div class="date-picker-group">
-                            <label>From:</label>
-                            <input type="date" v-model="customStart" @change="drawChart">
-                            <label>To:</label>
-                            <input type="date" v-model="customEnd" @change="drawChart">
+                            <label>From:</label><input type="date" v-model="customStart" @change="drawChart">
+                            <label>To:</label><input type="date" v-model="customEnd" @change="drawChart">
                         </div>
                     </div>
 
@@ -172,8 +188,16 @@
                             <option value="WITHDRAW">出金</option>
                         </select>
                     </div>
-                    <div class="form-group"><label>數量</label><input type="number" step="any" v-model="form.qty"></div>
-                    <div class="form-group"><label>單價</label><input type="number" step="any" v-model="form.price"></div>
+                    <div class="form-group"><label>股數 (Qty)</label>
+                        <input type="number" step="any" v-model="form.qty" @input="onQtyChange">
+                    </div>
+                    <div class="form-group"><label>單價 (Price)</label>
+                        <input type="number" step="any" v-model="form.price" @input="onPriceChange">
+                    </div>
+                    <div class="form-group"><label>交易總額 (Total)</label>
+                        <input type="number" step="any" v-model="form.total_amount" @input="onTotalChange" placeholder="自動計算">
+                    </div>
+                    
                     <div class="form-group"><label>手續費</label><input type="number" step="any" v-model="form.fee"></div>
                     <div class="form-group"><label>&nbsp;</label>
                         <button class="btn btn-primary" @click="submitRecord" :disabled="submitting">
@@ -231,7 +255,7 @@
 
         createApp({
             setup() {
-                // --- 狀態變數 ---
+                // --- 狀態 ---
                 const userToken = ref(localStorage.getItem('token') || '');
                 const userName = ref(localStorage.getItem('name') || '');
                 
@@ -247,9 +271,12 @@
                 // 表單
                 const isEditing = ref(false);
                 const editingId = ref(null);
-                const form = reactive({ txn_date: new Date().toISOString().split('T')[0], symbol: '', txn_type: 'BUY', qty: 0, price: 0, fee: 0 });
+                const form = reactive({ 
+                    txn_date: new Date().toISOString().split('T')[0], 
+                    symbol: '', txn_type: 'BUY', qty: 0, price: 0, total_amount: 0, fee: 0 
+                });
 
-                // 圖表設定
+                // 圖表
                 const timeRange = ref('1Y');
                 const customStart = ref('');
                 const customEnd = ref('');
@@ -258,9 +285,18 @@
                 let mainChartInstance = null;
                 let pieChartInstance = null;
 
+                // 計算屬性
                 const unrealizedPnL = computed(() => (localStats.value.total_value || 0) - (localStats.value.invested_capital || 0));
+                
+                // 估算今日損益 (最後一筆歷史 - 倒數第二筆歷史的損益差)
+                const dailyPnL = computed(() => {
+                    if (fullChartData.value.length < 2) return 0;
+                    const last = fullChartData.value[fullChartData.value.length - 1];
+                    const prev = fullChartData.value[fullChartData.value.length - 2];
+                    return (last.total_value - last.invested) - (prev.total_value - prev.invested);
+                });
 
-                // --- 登入與 API ---
+                // --- 1. 登入 (含修復圖表載入問題) ---
                 const logout = () => { localStorage.removeItem('token'); localStorage.removeItem('name'); location.reload(); };
                 
                 const handleCredentialResponse = async (res) => {
@@ -271,8 +307,17 @@
                             userToken.value = d.token; userName.value = d.user; 
                             localStorage.setItem('token', d.token); localStorage.setItem('name', d.user);
                             fetchRecords(); 
+                            // 修正：登入成功後立即載入圖表，不需重新整理
+                            loadPortfolioData();
                         }
                     } catch(e) { console.error(e); }
+                };
+
+                // --- 2. 表單連動邏輯 (0.00 功能還原) ---
+                const onQtyChange = () => { form.total_amount = parseFloat((form.qty * form.price).toFixed(2)); };
+                const onPriceChange = () => { form.total_amount = parseFloat((form.qty * form.price).toFixed(2)); };
+                const onTotalChange = () => { 
+                    if (form.qty > 0) form.price = parseFloat((form.total_amount / form.qty).toFixed(4)); 
                 };
 
                 const fetchRecords = async () => {
@@ -301,8 +346,16 @@
                     fetchRecords();
                 };
 
-                const editRecord = (r) => { isEditing.value = true; editingId.value = r.id; Object.assign(form, r); };
-                const resetForm = () => { isEditing.value = false; editingId.value = null; form.symbol = ''; form.qty = 0; form.price = 0; };
+                const editRecord = (r) => { 
+                    isEditing.value = true; editingId.value = r.id; 
+                    Object.assign(form, r);
+                    // 補算總額
+                    form.total_amount = parseFloat((r.qty * r.price).toFixed(2));
+                };
+                const resetForm = () => { 
+                    isEditing.value = false; editingId.value = null; 
+                    form.symbol = ''; form.qty = 0; form.price = 0; form.total_amount = 0; 
+                };
                 
                 const triggerGitHubUpdate = async () => {
                     if(!confirm("觸發更新？")) return; isUpdating.value = true;
@@ -310,7 +363,7 @@
                     isUpdating.value = false; alert("已觸發，請稍待片刻。");
                 };
 
-                // --- 資料與圖表核心 ---
+                // --- 3. 圖表核心邏輯 (Day-1 Base 修正) ---
                 const loadPortfolioData = async () => {
                     calculating.value = true;
                     try {
@@ -321,7 +374,7 @@
                         fullChartData.value = data.history || [];
                         lastUpdateTime.value = data.updated_at;
                         
-                        // 初始化自訂日期為最近一年
+                        // 初始化自訂日期
                         const today = new Date();
                         customEnd.value = today.toISOString().split('T')[0];
                         today.setFullYear(today.getFullYear() - 1);
@@ -331,18 +384,16 @@
                     } catch (e) { console.error(e); } finally { calculating.value = false; }
                 };
 
-                // --- 關鍵：資料篩選與標準化 (Re-indexing) ---
                 const getProcessedChartData = () => {
                     let data = [...fullChartData.value];
                     if (data.length === 0) return [];
 
-                    // 1. 篩選日期
+                    // 1. 決定開始日期
                     let startDate = new Date();
                     const now = new Date();
                     
                     if (timeRange.value === 'CUSTOM') {
                         startDate = new Date(customStart.value);
-                        // 自訂區間可以包含結束日
                     } else {
                         switch(timeRange.value) {
                             case '1M': startDate.setMonth(now.getMonth() - 1); break;
@@ -354,38 +405,34 @@
                         }
                     }
 
-                    // 過濾數據
-                    let filtered = data.filter(d => {
-                        const dDate = new Date(d.date);
-                        if (timeRange.value === 'CUSTOM') {
-                             return dDate >= startDate && dDate <= new Date(customEnd.value);
-                        }
-                        return dDate >= startDate;
-                    });
-
-                    if (filtered.length === 0) return [];
-
-                    // 2. 數據歸零重算 (Re-indexing)
-                    // 為了比較績效，我們將區間第一筆數據視為基準 (Base 0)
-                    // 如果是 'value' (淨值)，通常不歸零，直接顯示金額
-                    // 如果是 'twr' (績效) 或 'pnl' (損益)，需要計算「區間內的變化」
-
-                    if (chartType.value === 'value') return filtered; // 淨值圖不需歸零
-
-                    const base = filtered[0]; 
-                    // TWR 原始數據是累計 % (例如 120.5 代表 +20.5%)，公式轉換：
-                    // Normalized TWR = ((1 + Current/100) / (1 + Base/100) - 1) * 100
+                    // 2. 尋找「基準點 (Day-1)」
+                    // 我們需要找出 startDate「之前」的那一筆資料作為 0 值
+                    let startIndex = data.findIndex(d => new Date(d.date) >= startDate);
                     
+                    if (startIndex === -1) return []; // 區間外
+                    
+                    // 如果選的區間起點是歷史第一天，那就只能從第一天算
+                    // 如果不是，基準點就是 startIndex - 1
+                    let baseIndex = (startIndex > 0) ? startIndex - 1 : 0;
+                    const base = data[baseIndex];
+
+                    // 3. 擷取資料 (從基準點開始，這樣圖表第一點就是 0%)
+                    // 或者：擷取從 startIndex 開始的資料，但計算時參考 base
+                    // 您的要求：第一天的當日損益也要算。所以圖表應該從 startDate 開始畫，但數值是相對於 base 的變化。
+                    
+                    const filtered = data.slice(startIndex);
+
+                    if (chartType.value === 'value') return filtered; 
+
                     return filtered.map(d => {
                         let newTwr = 0;
                         let newBench = 0;
                         
-                        // 安全處理 TWR
+                        // TWR 歸零公式：((1+當前)/(1+基準) - 1) * 100
                         const baseTwrVal = (base.twr !== undefined) ? base.twr : 0;
                         const curTwrVal = (d.twr !== undefined) ? d.twr : 0;
                         newTwr = ((1 + curTwrVal/100) / (1 + baseTwrVal/100) - 1) * 100;
 
-                        // 安全處理 Benchmark
                         const baseBench = (base.benchmark_twr !== undefined) ? base.benchmark_twr : 0;
                         const curBench = (d.benchmark_twr !== undefined) ? d.benchmark_twr : 0;
                         newBench = ((1 + curBench/100) / (1 + baseBench/100) - 1) * 100;
@@ -394,9 +441,6 @@
                             ...d,
                             twr: newTwr,
                             benchmark_twr: newBench,
-                            // 區間累積損益 = 當前總損益 - 基期總損益 (近似解)
-                            // 0.00 原版是用 (市值 - 投入) 的差額比較
-                            period_pnl: (d.total_value - d.invested) - (base.total_value - base.invested)
                         };
                     });
                 };
@@ -418,18 +462,52 @@
                             { label: '投入成本', data: processedData.map(d => d.invested), borderColor: '#888', borderDash: [5, 5], borderWidth: 1, pointRadius: 0 }
                         ];
                     } else if (chartType.value === 'twr') {
+                        // 績效圖美化：純折線，無填充，類似 Benchmark
                         datasets = [
-                            { label: '區間 TWR (%)', data: processedData.map(d => d.twr), borderColor: '#4caf50', backgroundColor: 'rgba(76, 175, 80, 0.1)', borderWidth: 2, fill: true, tension: 0.1 },
-                            { label: 'SPY (%)', data: processedData.map(d => d.benchmark_twr), borderColor: '#ffc107', borderWidth: 1.5, pointRadius: 0 }
+                            { 
+                                label: 'TWR (%)', 
+                                data: processedData.map(d => d.twr), 
+                                borderColor: '#4caf50', 
+                                borderWidth: 2, 
+                                fill: false, // 不填充
+                                tension: 0.2,
+                                pointRadius: 2,
+                                pointHoverRadius: 5
+                            },
+                            { 
+                                label: 'SPY (%)', 
+                                data: processedData.map(d => d.benchmark_twr), 
+                                borderColor: '#ffc107', 
+                                borderWidth: 1.5, 
+                                fill: false,
+                                pointRadius: 0, // Benchmark 不顯示點
+                                borderDash: [2, 2] // 虛線
+                            }
                         ];
                     } else if (chartType.value === 'pnl') {
                         type = 'bar';
-                        // 計算「每日」損益變化，而非累積
                         const dailyPnl = processedData.map((d, i) => {
-                            if (i === 0) return 0;
-                            // 今日淨值變化 - 今日成本變化 = 純利潤變化
-                            const valDiff = d.total_value - processedData[i-1].total_value;
-                            const costDiff = d.invested - processedData[i-1].invested;
+                            // 若是第一筆，需跟 base 比較
+                            let prevTotal = 0;
+                            let prevInvest = 0;
+                            
+                            if (i === 0) {
+                                // 嘗試找 fullData 裡的前一筆
+                                const idxInFull = fullChartData.value.findIndex(x => x.date === d.date);
+                                if (idxInFull > 0) {
+                                    const prev = fullChartData.value[idxInFull - 1];
+                                    prevTotal = prev.total_value;
+                                    prevInvest = prev.invested;
+                                } else {
+                                    return 0; // 真.第一天
+                                }
+                            } else {
+                                prevTotal = processedData[i-1].total_value;
+                                prevInvest = processedData[i-1].invested;
+                            }
+                            
+                            const valDiff = d.total_value - prevTotal;
+                            const costDiff = d.invested - prevInvest;
                             return valDiff - costDiff;
                         });
                         datasets = [{ label: '單日損益 (TWD)', data: dailyPnl, backgroundColor: dailyPnl.map(v => v >= 0 ? '#4caf50' : '#ff5252') }];
@@ -479,7 +557,7 @@
                         let key;
                         if (pieType.value === 'asset') key = h.symbol;
                         else if (pieType.value === 'currency') key = h.currency;
-                        else if (pieType.value === 'strategy') key = h.tag || 'Other'; // 支援 Tag 策略分類
+                        else if (pieType.value === 'strategy') key = h.tag || 'Other';
                         
                         if (!groupData[key]) groupData[key] = 0;
                         groupData[key] += h.market_value_twd;
@@ -507,7 +585,7 @@
 
                 onMounted(() => {
                     window.handleCredentialResponse = handleCredentialResponse;
-                    loadPortfolioData();
+                    loadPortfolioData(); // 嘗試載入公開資料
                     if (userToken.value) fetchRecords();
                     window.addEventListener('resize', () => { if(mainChartInstance) drawChart(); if(pieChartInstance) drawPieChart(); });
                 });
@@ -515,10 +593,11 @@
                 return {
                     userToken, userName, googleClientId: CLIENT_ID, logout,
                     records, isUpdating, triggerGitHubUpdate,
-                    localStats, combinedHoldings, unrealizedPnL, formatNumber, lastUpdateTime, calculating,
+                    localStats, combinedHoldings, unrealizedPnL, dailyPnL, formatNumber, lastUpdateTime, calculating,
                     timeRange, switchTimeRange, chartType, switchChartType, pieType, switchPieType, fetchRecords,
                     form, submitRecord, deleteRecord, editRecord, resetForm, isEditing, submitting,
-                    customStart, customEnd, drawChart // 導出供 template 使用
+                    customStart, customEnd, drawChart,
+                    onQtyChange, onPriceChange, onTotalChange // 匯出連動函式
                 };
             }
         }).mount('#app');
