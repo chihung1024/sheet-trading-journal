@@ -9,7 +9,7 @@ class MarketDataClient:
         self.fx_rates = pd.Series(dtype=float)
 
     def download_data(self, tickers: list, start_date):
-        print(f"正在下載市場數據,起始日期: {start_date}...")
+        print(f"正在下載市場數據，起始日期: {start_date}...")
         
         # 1. 下載匯率
         try:
@@ -29,13 +29,13 @@ class MarketDataClient:
         for t in all_tickers:
             try:
                 ticker_obj = yf.Ticker(t)
-                # ✅ 使用 auto_adjust=False 獲取完整數據
+                # 使用 auto_adjust=False 獲取完整數據
                 hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
                 
                 if not hist.empty:
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
                     
-                    # ✅ 直接使用 yfinance 的 Adj Close (已包含拆股+股息調整)
+                    # 準備數據：使用 Adj Close
                     hist_adj = self._prepare_data(t, hist)
                     
                     self.market_data[t] = hist_adj
@@ -50,12 +50,12 @@ class MarketDataClient:
 
     def _prepare_data(self, symbol, df):
         """
-        準備數據：使用 Total Return 價格（配息復權）
-        Adj Close 已經將配息「加回」股價，形成平滑曲線
+        準備數據：使用 Adj Close（包含拆股+配息調整）
+        形成平滑的總回報曲線，消除拆股和配息的斷層
         """
         df = df.copy()
         
-        # ✅ 使用 Adj Close 作為主要價格（包含配息+拆股調整）
+        # 使用 Adj Close 作為主要價格（已包含所有調整）
         df['Close_Adjusted'] = df['Adj Close']
         
         # 保留原始 Close 用於參考
@@ -66,22 +66,28 @@ class MarketDataClient:
             df['Stock Splits'] = 0.0
         
         splits = df['Stock Splits'].replace(0, 1.0)
+        
+        # 反向累積計算拆股因子
         splits_reversed = splits.iloc[::-1]
         cum_splits_reversed = splits_reversed.cumprod()
         cum_splits = cum_splits_reversed.iloc[::-1]
+        
         df['Split_Factor'] = cum_splits.shift(-1).fillna(1.0)
         
-        # 計算每日的股息調整因子（用於追蹤配息貢獻）
-        # Dividend Adjustment Factor = Adj Close / Close
+        # 計算配息調整因子（Adj Close / Close）
+        # 這個因子反映了配息對價格的累積影響
         df['Dividend_Adj_Factor'] = df['Adj Close'] / df['Close']
         
         return df
 
-
     def get_price(self, symbol, date):
-        """回傳調整後的平滑價格 (來自 Adj Close)"""
+        """
+        回傳調整後的價格（來自 Adj Close）
+        這個價格已經包含拆股和配息的所有調整
+        """
         if symbol not in self.market_data:
             return 0.0
+        
         try:
             df = self.market_data[symbol]
             
@@ -100,58 +106,64 @@ class MarketDataClient:
 
     def get_transaction_multiplier(self, symbol, date):
         """
-        取得交易日的復權因子
+        取得交易日的拆股復權因子
         用來將「原始交易股數」轉換為「當前等價股數」
         """
         if symbol not in self.market_data:
             return 1.0
+        
         try:
             df = self.market_data[symbol]
             
             if date in df.index:
                 return float(df.loc[date, 'Split_Factor'])
             
-            # 若交易日在數據範圍外(太早),用最早的因子
+            # 若交易日在數據範圍外（太早），用最早的因子
             if date < df.index.min():
                 return float(df.iloc[0]['Split_Factor'])
             
-            # 若交易日在未來,用最新的因子
+            # 若交易日在未來，用最新的因子
             return float(df.iloc[-1]['Split_Factor'])
+        except:
+            return 1.0
+
+    def get_dividend_adjustment_factor(self, symbol, date):
+        """
+        取得配息調整因子
+        用於將交易價格調整到 Adj Close 的基準
+        這樣買入成本就會對應到總回報價格體系
+        """
+        if symbol not in self.market_data:
+            return 1.0
+        
+        try:
+            df = self.market_data[symbol]
+            
+            if date in df.index:
+                return float(df.loc[date, 'Dividend_Adj_Factor'])
+            
+            # 向前填補
+            idx = df.index.get_indexer([date], method='pad')[0]
+            if idx != -1:
+                return float(df.iloc[idx]['Dividend_Adj_Factor'])
+            
+            return 1.0
         except:
             return 1.0
     
     def get_dividend(self, symbol, date):
-        """獲取股息 (無需調整)"""
+        """
+        獲取除息日的每股配息金額
+        用於配息明細記錄（非市值計算）
+        """
         if symbol not in self.market_data:
             return 0.0
+        
         try:
             df = self.market_data[symbol]
             if date in df.index:
                 return float(df.loc[date, 'Dividends'])
         except:
             pass
+        
         return 0.0
-
-    def get_dividend_adjustment_factor(self, symbol, date):
-    """
-    取得配息調整因子
-    用於將交易價格轉換為 Adj Close 基準
-    """
-    if symbol not in self.market_data:
-        return 1.0
-    
-    try:
-        df = self.market_data[symbol]
-        
-        if date in df.index:
-            return float(df.loc[date, 'Dividend_Adj_Factor'])
-        
-        # 向前填補
-        idx = df.index.get_indexer([date], method='pad')[0]
-        if idx != -1:
-            return float(df.iloc[idx]['Dividend_Adj_Factor'])
-        
-        return 1.0
-    except:
-        return 1.0
-
