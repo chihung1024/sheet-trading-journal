@@ -131,3 +131,27 @@ class MarketDataClient:
         except:
             pass
         return 0.0
+
+    def get_dividend_adjustment_factor(self, symbol, date):
+    """
+    取得配息調整因子
+    用於將交易價格轉換為 Adj Close 基準
+    """
+    if symbol not in self.market_data:
+        return 1.0
+    
+    try:
+        df = self.market_data[symbol]
+        
+        if date in df.index:
+            return float(df.loc[date, 'Dividend_Adj_Factor'])
+        
+        # 向前填補
+        idx = df.index.get_indexer([date], method='pad')[0]
+        if idx != -1:
+            return float(df.iloc[idx]['Dividend_Adj_Factor'])
+        
+        return 1.0
+    except:
+        return 1.0
+
