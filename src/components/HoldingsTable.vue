@@ -18,7 +18,7 @@
                 <td><strong>{{ h.symbol }}</strong></td>
                 <td><span class="tag">{{ h.tag || 'Stock' }}</span></td>
                 <td>{{ formatNumber(h.qty, 2) }}</td>
-                <td>{{ calcAvgCost(h) }}</td>
+                <td>{{ formatNumber(h.avg_cost_usd, 2) }}</td>
                 <td>{{ formatNumber(h.current_price_origin, 2) }}</td>
                 <td>{{ formatNumber(h.market_value_twd, 0) }}</td>
                 <td :class="h.pnl_percent >= 0 ? 'text-green' : 'text-red'">
@@ -36,13 +36,6 @@ import { usePortfolioStore } from '../stores/portfolio';
 const store = usePortfolioStore();
 
 const formatNumber = (num, d=0) => Number(num||0).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
-
-const calcAvgCost = (h) => {
-    if (!h.qty || !store.stats.exchange_rate) return 0;
-    const costTwd = h.market_value_twd - h.pnl_twd;
-    const avg = (costTwd / store.stats.exchange_rate) / h.qty;
-    return formatNumber(avg, 2);
-};
 </script>
 
 <style scoped>
