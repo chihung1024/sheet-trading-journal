@@ -36,6 +36,7 @@ EXCHANGE_SYMBOL = 'USDTWD=X'
 def get_market_data(tickers, start_date):
     """
     下載股價、匯率、配息與拆股資訊
+    關鍵修正：使用 auto_adjust=False 以取得歷史原始價格 (Raw Price)
     """
     print(f"正在下載市場數據，起始日期: {start_date}...")
     
@@ -43,7 +44,8 @@ def get_market_data(tickers, start_date):
     fx_rates = pd.Series(dtype=float)
     try:
         fx = yf.Ticker(EXCHANGE_SYMBOL)
-        fx_hist = fx.history(start=start_date)
+        # 增加緩衝天數以避免匯率空窗
+        fx_hist = fx.history(start=start_date - timedelta(days=5))
         if not fx_hist.empty:
             # 移除時區資訊，避免與交易日期格式衝突
             fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None)
@@ -56,16 +58,17 @@ def get_market_data(tickers, start_date):
 
     # 2. 下載個股數據 (含 Benchmark SPY)
     result = {}
-    # 確保列表包含 SPY 且不重複
-    all_tickers = list(set(tickers + ['SPY']))
+    # 確保列表包含 SPY 且不重複，並移除空值
+    all_tickers = list(set([t for t in tickers if t] + ['SPY']))
     
     for t in all_tickers:
-        if not t: continue
         try:
             ticker_obj = yf.Ticker(t)
-            # auto_adjust=True: 修正收盤價 (Adjusted Close)
+            
+            # [重要設定] 
+            # auto_adjust=False: 取得當下的原始股價 (Raw Price)，這樣拆股前的價格才是當時的高價
             # actions=True: 包含 Dividends (股息) 與 Stock Splits (拆股)
-            hist = ticker_obj.history(start=start_date, auto_adjust=True, actions=True)
+            hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
             
             if not hist.empty:
                 hist.index = pd.to_datetime(hist.index).tz_localize(None)
@@ -114,7 +117,6 @@ def update_portfolio():
     df = pd.DataFrame(records)
     
     # 映射欄位名稱 (DB欄位 -> 程式內部邏輯欄位)
-    # DB: txn_date, symbol, txn_type, qty, price, fee, tax, tag
     df.rename(columns={
         'txn_date': 'Date', 
         'symbol': 'Symbol', 
@@ -126,20 +128,20 @@ def update_portfolio():
         'tag': 'Tag'
     }, inplace=True)
     
-    # 型別轉換
+    # 型別轉換與空值填充
     df['Date'] = pd.to_datetime(df['Date'])
     df['Qty'] = pd.to_numeric(df['Qty'])
     df['Price'] = pd.to_numeric(df['Price'])
     df['Commission'] = pd.to_numeric(df['Commission'].fillna(0))
-    df['Tax'] = pd.to_numeric(df['Tax'].fillna(0)) # 交易稅
+    df['Tax'] = pd.to_numeric(df['Tax'].fillna(0)) 
     
     # 依日期排序 (FIFO 計算的關鍵)
     df = df.sort_values('Date')
 
     # --- C. 準備市場數據 ---
     start_date = df['Date'].min()
-    # 稍微多抓幾天緩衝
-    fetch_start_date = start_date - timedelta(days=5)
+    # 稍微多抓幾天緩衝，避免第一天就缺資料
+    fetch_start_date = start_date - timedelta(days=7)
     
     market_data, fx_rates = get_market_data(df['Symbol'].unique().tolist(), fetch_start_date)
     
@@ -153,17 +155,18 @@ def update_portfolio():
     date_range = pd.date_range(start=start_date, end=end_date, freq='D')
 
     # --- D. 初始化狀態變數 ---
+    
     # 持倉狀態: {symbol: {'qty': 0, 'cost_basis': 0, 'tag': ''}}
     holdings = {} 
     
-    # FIFO 佇列: {symbol: deque([ {'qty':..., 'price':..., 'cost_total':..., 'date':...} ])}
+    # FIFO 佇列 (先進先出法): {symbol: deque([ {'qty':..., 'price':..., 'cost_total':..., 'date':...} ])}
     fifo_queues = {} 
     
     # 資金狀態
-    invested_capital = 0.0      # 總投入本金 (TWD)
+    invested_capital = 0.0      # 總投入本金 (TWD) - 隨買入增加，賣出減少
     total_realized_pnl_twd = 0.0 # 累積已實現損益 (TWD)
     
-    # 歷史趨勢紀錄
+    # 歷史趨勢紀錄 (用於畫圖)
     history_data = []
     
     # Benchmark (SPY) 狀態
@@ -183,9 +186,9 @@ def update_portfolio():
         except: fx = 32.0
 
         # ==========================================
-        # [核心] 處理拆股 (Stock Splits)
+        # [核心邏輯] 優先處理拆股 (Stock Splits)
         # ==========================================
-        # 在處理當日交易前，先檢查當日是否有拆股事件，調整現有持倉
+        # 在處理當日交易前，必須先檢查當日是否有拆股事件，並調整手上的持倉
         for sym, h_data in holdings.items():
             if h_data['qty'] > 0 and sym in market_data:
                 actions = market_data[sym]
@@ -201,12 +204,12 @@ def update_portfolio():
                         # 1. 調整總持倉股數 (總成本不變，單位成本下降)
                         h_data['qty'] *= split_ratio
                         
-                        # 2. 調整 FIFO 佇列中的每一批次
+                        # 2. 調整 FIFO 佇列中的每一批次 (確保未來賣出時成本計算正確)
                         if sym in fifo_queues:
                             for batch in fifo_queues[sym]:
                                 batch['qty'] *= split_ratio
-                                batch['price'] /= split_ratio # 買入單價相應降低
-                                # batch['cost_total'] 維持不變
+                                batch['price'] /= split_ratio # 原始買入單價也要除以比例
+                                # batch['cost_total'] 維持不變 (總投入金額沒變)
 
         # ==========================================
         # 處理當日交易 (Transactions)
@@ -218,7 +221,7 @@ def update_portfolio():
             qty = row['Qty']
             price = row['Price']
             comm = row['Commission'] # 手續費
-            tax = row['Tax']         # 交易稅
+            tax = row['Tax']         # 交易稅 (Transaction Tax)
             txn_type = row['Type']
             tag = row['Tag']
             
@@ -269,6 +272,7 @@ def update_portfolio():
                 holdings[sym]['qty'] -= qty
                 
                 # FIFO 計算已實現損益 (Realized P&L)
+                # 從最早買入的那批開始扣
                 remaining_qty_to_sell = qty
                 cost_of_sold_shares = 0.0
                 
@@ -320,7 +324,7 @@ def update_portfolio():
                 # 注意：這裡 Price 欄位通常填入股息總金額
                 net_div = price - tax
                 total_realized_pnl_twd += (net_div * fx)
-                # 股息不影響投入本金，直接算入獲利
+                # 股息視為純獲利，不影響投入本金
 
         # ==========================================
         # 每日結算 (Valuation)
@@ -338,7 +342,7 @@ def update_portfolio():
                 curr_price = 0.0
                 if sym in market_data:
                     try:
-                        # 取得當日收盤價
+                        # 取得當日收盤價 (Raw Price)
                         curr_price = market_data[sym]['Close'].asof(d)
                         # 若當日無報價(假日)，取最近一天
                         if pd.isna(curr_price): 
@@ -352,13 +356,14 @@ def update_portfolio():
         # ==========================================
         # 計算績效 (TWR / ROI)
         # ==========================================
-        # 總獲利 = (期末市值 - 持倉成本) + 已實現損益
+        # 未實現損益 = 市值 - 成本
         unrealized_pnl = total_market_value_twd - current_cost_basis_twd
+        # 總獲利 = 未實現 + 已實現
         total_profit = unrealized_pnl + total_realized_pnl_twd
         
         twr_pct = 0.0
-        # 簡單回報率 = 總獲利 / 當前持倉成本 (作為分母的近似值)
-        # 註：這是一個簡化的 ROI 計算，若要嚴謹 TWR 需處理每日現金流
+        # 簡單回報率計算: 總獲利 / 當前持倉成本
+        # (當全部清倉時，分母為0，改用 Invested Capital 或顯示已實現報酬)
         if current_cost_basis_twd > 0:
             twr_pct = (total_profit / current_cost_basis_twd) * 100
         elif total_market_value_twd == 0 and total_realized_pnl_twd != 0 and invested_capital > 0:
@@ -379,7 +384,7 @@ def update_portfolio():
             bench_profit = bench_val_twd - benchmark_invested
             bench_twr = (bench_profit / benchmark_invested) * 100
 
-        # 寫入歷史紀錄
+        # 寫入歷史紀錄 (Append to History)
         history_data.append({
             "date": d.strftime("%Y-%m-%d"),
             "total_value": round(total_market_value_twd, 0),
@@ -425,7 +430,6 @@ def update_portfolio():
     final_holdings.sort(key=lambda x: x['market_value_twd'], reverse=True)
     
     # 計算當前摘要 (Summary)
-    # 注意：Summary 應反映「最新狀態」，而非歷史迴圈的最後一天 (雖然通常相同)
     curr_total_val = sum(h['market_value_twd'] for h in final_holdings)
     curr_invested = sum((holdings[h['symbol']]['cost_basis'] * current_fx) for h in final_holdings)
     curr_unrealized = curr_total_val - curr_invested
