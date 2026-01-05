@@ -23,7 +23,6 @@
         .btn-primary:hover { filter: brightness(1.1); }
         .btn-danger { background: rgba(255, 82, 82, 0.1); color: var(--red); border: 1px solid var(--red); }
         .btn-success { background: var(--green); color: white; }
-        .btn-warning { background: var(--yellow); color: #000; }
         .btn-icon { background: transparent; color: #888; padding: 4px; border-radius: 4px; border: none; cursor: pointer; }
         .btn-icon:hover { background: #333; color: white; }
 
@@ -33,7 +32,7 @@
         .stat-item { background: #222; padding: 20px; border-radius: 12px; border: 1px solid #333; position: relative; overflow: hidden; }
         .stat-item::after { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--primary); }
         .stat-item.profit::after { background: var(--red); }
-        .stat-item.loss::after { background: var(--green); }
+        .stat-item.loss::after { background: var(--green); } /* 台股紅漲綠跌 */
         
         .stat-label { color: #888; font-size: 0.9rem; margin-bottom: 8px; display: flex; justify-content: space-between; }
         .stat-val { font-size: 1.6rem; font-weight: 700; letter-spacing: 0.5px; }
@@ -74,23 +73,17 @@
                 <div>
                     <h2 style="margin:0; display:flex; align-items:center; gap:10px;">
                         投資組合看板 
-                        <span v-if="calculating || isUpdating" class="spinner" style="border-color:var(--primary) transparent var(--primary) transparent"></span>
+                        <span v-if="calculating" class="spinner" style="border-color:var(--primary) transparent var(--primary) transparent"></span>
                     </h2>
                     <div style="color:#888; font-size:0.9rem; margin-top:5px;">
                         👤 {{ userName }} <span class="badge">PRO</span>
                     </div>
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap: wrap;">
-                    <button class="btn btn-primary" @click="triggerGitHubUpdate" :disabled="isUpdating || calculating">
-                        <span v-if="!isUpdating">🚀 強制更新報價</span>
-                        <span v-else>請求發送中...</span>
-                    </button>
-
-                    <button class="btn btn-success" @click="refreshData" :disabled="calculating">
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-success" @click="calculatePortfolio" :disabled="calculating">
                         <span v-if="!calculating">🔄 重新讀取數據</span>
                         <span v-else>載入中...</span>
                     </button>
-                    
                     <button class="btn btn-danger" @click="logout">登出</button>
                 </div>
             </div>
@@ -158,7 +151,7 @@
                     </div>
                 </div>
                 <div style="font-size: 0.8rem; color: #666; margin-top: 10px;">
-                    💡 提示：新增交易後，請點擊上方「強制更新報價」或等待每日自動更新。
+                    💡 提示：新增交易後，市值數據將於每日早上 8 點自動更新 (或手動觸發 GitHub Action)。
                 </div>
             </div>
 
@@ -177,7 +170,7 @@
                                     <th>代碼</th>
                                     <th>股數</th>
                                     <th>平均成本</th>
-                                    <th>現價 (Origin)</th>
+                                    <th>現價 (Yahoo)</th>
                                     <th>市值 (TWD)</th>
                                     <th>損益</th>
                                 </tr>
@@ -202,7 +195,7 @@
                                 </tr>
                                 <tr v-if="combinedHoldings.length === 0">
                                     <td colspan="6" style="text-align:center; color:#666; padding:30px;">
-                                        尚無持倉或數據尚未載入
+                                        尚無持倉，請新增交易或等待數據更新
                                     </td>
                                 </tr>
                             </tbody>
@@ -243,7 +236,7 @@
         const { createApp, ref, computed, onMounted } = Vue;
         
         // ---------------- CONFIG ----------------
-        // 這裡填入您的 Worker 網址
+        // DB Worker (JS) - 維持不變，用於讀寫交易紀錄
         const DB_API_URL = "https://journal-backend.chired.workers.dev";
         const CLIENT_ID = "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com";
         // ----------------------------------------
@@ -259,12 +252,11 @@
                 const lastUpdateTime = ref('');
                 
                 const loading = ref(false);
-                const calculating = ref(false); // 控制讀取 json 的 loading
-                const isUpdating = ref(false);  // 控制觸發 GitHub 更新的 loading
+                const calculating = ref(false);
                 const isEditing = ref(false);
                 const form = ref({ id: null, txn_date: new Date().toISOString().split('T')[0], symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0 });
 
-                // --- 1. 本地運算 (即時反應新增的交易) ---
+                // --- 1. 本地運算 ---
                 const localHoldings = computed(() => {
                     const map = {};
                     const sorted = [...records.value].sort((a,b) => new Date(a.txn_date) - new Date(b.txn_date));
@@ -295,19 +287,19 @@
                     };
                 });
 
-                // --- 2. 混合運算 (結合本地交易紀錄 + 遠端報價) ---
+                // --- 2. 混合運算 ---
                 const combinedHoldings = computed(() => {
                     return localHoldings.value.map(local => {
-                        // 比對 data.json 裡的 holding 資料
+                        // 比對 Python 算好的 marketHoldings (來自 data.json)
                         const remote = marketHoldings.value.find(r => r.symbol === local.symbol) || {};
                         const avgCost = local.qty > 0 ? local.totalCost / local.qty : 0;
-                        const marketValue = remote.market_value_twd || null; 
+                        const marketValue = remote.market_value_twd || null; // 注意 data.json 欄位名稱
                         const pnl = marketValue ? (marketValue - local.totalCost) : null;
 
                         return {
                             ...local,
                             avgCost: avgCost,
-                            marketPrice: remote.current_price_origin || null, 
+                            marketPrice: remote.current_price_origin || null, // 原幣現價
                             marketValue: marketValue,
                             currency: remote.currency || '',
                             pnl: pnl
@@ -335,17 +327,19 @@
                     } catch(e) { console.error("Fetch records error", e); }
                 };
 
-                // 讀取靜態 data.json
+                // [修正] 改為讀取靜態 data.json
                 const calculatePortfolio = async () => {
                     calculating.value = true;
                     try {
-                        // 加上 timestamp 避免瀏覽器快取舊資料
+                        // 加上時間戳記避免快取
                         const res = await fetch(`data.json?t=${new Date().getTime()}`);
                         if(res.ok) {
                             const json = await res.json();
-                            marketStats.value = json.summary || {};
-                            marketHoldings.value = json.holdings || [];
+                            marketStats.value = json.summary;
+                            marketHoldings.value = json.holdings;
                             lastUpdateTime.value = json.updated_at || '';
+                        } else {
+                            console.warn("尚未生成 data.json 或讀取失敗");
                         }
                     } catch(e) {
                         console.error("Load data error", e);
@@ -353,40 +347,6 @@
                     calculating.value = false;
                 };
 
-                // [新增] 觸發 GitHub Actions 更新
-                const triggerGitHubUpdate = async () => {
-                    if(!confirm("確定要強制更新報價嗎？\n\n這會通知 GitHub 開始運算，約需 1-2 分鐘完成。")) return;
-                    
-                    isUpdating.value = true;
-                    try {
-                        const res = await fetch(`${DB_API_URL}/api/trigger-update`, {
-                            method: 'POST',
-                            headers: { 
-                                "Content-Type": "application/json",
-                                "Authorization": `Bearer ${userToken.value}` 
-                            }
-                        });
-                        
-                        const json = await res.json();
-                        
-                        if (json.success) {
-                            alert("✅ 已成功觸發更新！\n\nGitHub 正在背景計算最新股價，請休息一下，約 2 分鐘後點擊「重新讀取數據」按鈕查看結果。");
-                        } else {
-                            alert("❌ 觸發失敗：" + (json.error || '未知錯誤'));
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        alert("連線錯誤，無法觸發更新。");
-                    }
-                    isUpdating.value = false;
-                };
-
-                const refreshData = async () => {
-                    await calculatePortfolio();
-                    alert("數據讀取完成。若數值未變，代表 GitHub 還在計算中，請稍後再試。");
-                };
-
-                // --- 4. CRUD 與工具函式 ---
                 const submitRecord = async () => {
                     loading.value = true;
                     const method = isEditing.value ? "PUT" : "POST";
@@ -404,6 +364,8 @@
                         if(res.ok) {
                             resetForm();
                             await fetchRecords(); 
+                            // 這裡不需自動呼叫 calculatePortfolio，因為 data.json 不會馬上變
+                            // 提示用戶等待更新
                         } else {
                             alert("儲存失敗");
                         }
@@ -421,6 +383,7 @@
                     fetchRecords();
                 };
 
+                // --- 4. 工具 ---
                 const editRecord = (tx) => { isEditing.value = true; form.value = { ...tx }; };
                 const resetForm = () => { isEditing.value = false; form.value = { id: null, txn_date: new Date().toISOString().split('T')[0], symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0 }; };
                 const formatNumber = (num) => num ? Number(num).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '0';
@@ -452,15 +415,15 @@
                 };
 
                 onMounted(() => {
-                    calculatePortfolio(); // 先載入公開報價
-                    if (userToken.value) fetchRecords(); // 有登入則載入交易紀錄
+                    // 無論是否登入，先嘗試載入公開的報價數據 (data.json)
+                    calculatePortfolio();
+                    if (userToken.value) fetchRecords();
                 });
 
                 return {
                     userToken, userName, googleClientId: CLIENT_ID, logout,
-                    records, form, loading, calculating, isUpdating, isEditing,
-                    submitRecord, deleteRecord, editRecord, resetForm, 
-                    refreshData, triggerGitHubUpdate,
+                    records, form, loading, calculating, isEditing,
+                    submitRecord, deleteRecord, editRecord, resetForm, calculatePortfolio,
                     localStats, marketStats, combinedHoldings, unrealizedPnL,
                     formatNumber, getReturnRate, lastUpdateTime
                 };
