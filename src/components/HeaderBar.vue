@@ -1,15 +1,16 @@
 <template>
-  <div class="header">
-    <div class="brand">
-      <h2>Dashboard <span class="badge">PRO</span></h2>
-      <small>Last Update: {{ portfolioStore.lastUpdate }}</small>
+  <div class="header-bar">
+    <div>
+      <h2 style="margin:0">Dashboard <span style="font-size:0.8rem; color:#666">Pro Plus</span></h2>
+      <small style="color:var(--text-muted)">最後更新: {{ portfolioStore.lastUpdate || 'N/A' }}</small>
     </div>
-    <div class="actions">
-      <button class="btn btn-primary" @click="portfolioStore.triggerUpdate">
-        ⟳ Update Prices
+    <div class="user-info">
+      <div class="avatar">{{ authStore.user.name ? authStore.user.name.charAt(0).toUpperCase() : 'U' }}</div>
+      <span>{{ authStore.user.name }}</span>
+      <button @click="authStore.logout" class="btn btn-outline btn-sm">登出</button>
+      <button @click="portfolioStore.triggerUpdate" class="btn btn-primary btn-sm">
+        刷新報價
       </button>
-      <div class="avatar">{{ authStore.user.name.charAt(0) }}</div>
-      <button class="btn btn-outline" @click="authStore.logout">Logout</button>
     </div>
   </div>
 </template>
@@ -23,13 +24,29 @@ const portfolioStore = usePortfolioStore();
 </script>
 
 <style scoped>
-.header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #333; margin-bottom: 20px; }
-.brand h2 { margin: 0; display: flex; align-items: center; gap: 10px; }
-.badge { font-size: 0.7rem; background: #333; padding: 2px 6px; border-radius: 4px; color: #888; }
-.brand small { color: #888; }
-.actions { display: flex; gap: 10px; align-items: center; }
-.avatar { width: 32px; height: 32px; background: #2979ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-.btn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; color: white; }
-.btn-primary { background: #2979ff; }
-.btn-outline { background: transparent; border: 1px solid #555; }
+.header-bar { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: 20px; 
+    border-bottom: 1px solid var(--border); 
+    padding-bottom: 15px; 
+}
+.user-info { 
+    display: flex; 
+    align-items: center; 
+    gap: 12px; 
+    font-size: 0.9rem; 
+}
+.avatar { 
+    width: 32px; 
+    height: 32px; 
+    background: var(--primary); 
+    border-radius: 50%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    color: white; 
+    font-weight: bold; 
+}
 </style>
