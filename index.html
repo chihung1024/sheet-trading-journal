@@ -35,18 +35,28 @@
         /* 登入遮罩 */
         .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000; flex-direction: column; gap: 20px; }
         
-        /* 0.00 風格 Header 數據塊 */
+        /* Header 數據塊 */
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
         .stat-card { background: var(--card-bg); padding: 15px; border-radius: 10px; border: 1px solid var(--border); text-align: center; }
         .stat-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
         .stat-value { font-size: 1.4rem; font-weight: bold; }
         .stat-sub { font-size: 0.9rem; margin-top: 5px; }
 
-        /* 表單 (還原 0.00 自動計算功能) */
-        .editor-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; align-items: end; background: #222; padding: 20px; border-radius: 8px; border: 1px solid #444; margin-bottom: 20px; }
+        /* 表單樣式 (Grid 優化) */
+        .editor-form { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); 
+            gap: 12px; 
+            align-items: end; 
+            background: #222; 
+            padding: 20px; 
+            border-radius: 8px; 
+            border: 1px solid #444; 
+            margin-bottom: 20px; 
+        }
         .form-group { display: flex; flex-direction: column; gap: 6px; }
-        .form-group label { font-size: 0.8rem; color: #aaa; }
-        .form-group input, .form-group select { background: #111; border: 1px solid #333; color: white; padding: 8px; border-radius: 4px; font-size: 0.95rem; }
+        .form-group label { font-size: 0.8rem; color: #aaa; white-space: nowrap; }
+        .form-group input, .form-group select { background: #111; border: 1px solid #333; color: white; padding: 8px; border-radius: 4px; font-size: 0.95rem; width: 100%; box-sizing: border-box; }
         .form-group input:focus { border-color: var(--primary); outline: none; }
         
         /* 圖表區 */
@@ -183,25 +193,30 @@
                     <div class="form-group"><label>代碼</label><input type="text" v-model="form.symbol" placeholder="e.g. NVDA"></div>
                     <div class="form-group"><label>類型</label>
                         <select v-model="form.txn_type">
-                            <option value="BUY">買入</option><option value="SELL">賣出</option>
-                            <option value="DIV">股息</option><option value="DEPOSIT">入金</option>
-                            <option value="WITHDRAW">出金</option>
+                            <option value="BUY">買入</option>
+                            <option value="SELL">賣出</option>
+                            <option value="DIV">股息</option>
                         </select>
                     </div>
-                    <div class="form-group"><label>股數 (Qty)</label>
-                        <input type="number" step="any" v-model="form.qty" @input="onQtyChange">
+                    <div class="form-group"><label>股數</label>
+                        <input type="number" step="any" v-model="form.qty" @input="calcTotal">
                     </div>
-                    <div class="form-group"><label>單價 (Price)</label>
-                        <input type="number" step="any" v-model="form.price" @input="onPriceChange">
+                    <div class="form-group"><label>單價 (平均成本)</label>
+                        <input type="number" step="any" v-model="form.price" @input="calcTotal">
+                    </div>
+                    <div class="form-group"><label>手續費</label>
+                        <input type="number" step="any" v-model="form.fee" @input="calcTotal">
+                    </div>
+                    <div class="form-group"><label>預扣稅</label>
+                        <input type="number" step="any" v-model="form.tax" @input="calcTotal">
                     </div>
                     <div class="form-group"><label>交易總額 (Total)</label>
-                        <input type="number" step="any" v-model="form.total_amount" @input="onTotalChange" placeholder="自動計算">
+                        <input type="number" step="any" v-model="form.total_amount" @input="calcPrice" placeholder="含費稅">
                     </div>
                     
-                    <div class="form-group"><label>手續費</label><input type="number" step="any" v-model="form.fee"></div>
                     <div class="form-group"><label>&nbsp;</label>
-                        <button class="btn btn-primary" @click="submitRecord" :disabled="submitting">
-                            {{ submitting ? '處理中...' : (isEditing ? '更新' : '新增') }}
+                        <button class="btn btn-primary" @click="submitRecord" :disabled="submitting" style="width:100%">
+                            {{ submitting ? '...' : (isEditing ? '送出' : '新增') }}
                         </button>
                     </div>
                 </div>
@@ -211,13 +226,19 @@
                 <h3>持倉明細 (Live)</h3>
                 <div v-if="calculating" style="text-align:center; padding:20px; color:#888">載入中...</div>
                 <table v-else>
-                    <thead><tr><th>代碼</th><th>標籤</th><th>股數</th><th>現價</th><th>市值 (TWD)</th><th>未實損益</th><th>報酬率</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>代碼</th><th>標籤</th><th>股數</th><th>平均成本</th><th>現價</th><th>市值 (TWD)</th><th>報酬率</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         <tr v-for="h in combinedHoldings" :key="h.symbol">
-                            <td><strong>{{ h.symbol }}</strong></td><td><span class="tag">{{ h.tag }}</span></td>
-                            <td>{{ formatNumber(h.qty, 1) }}</td><td>{{ h.current_price_origin }}</td>
+                            <td><strong>{{ h.symbol }}</strong></td>
+                            <td><span class="tag">{{ h.tag }}</span></td>
+                            <td>{{ formatNumber(h.qty, 1) }}</td>
+                            <td>{{ calculateAvgCost(h) }}</td>
+                            <td>{{ h.current_price_origin }}</td>
                             <td>{{ formatNumber(h.market_value_twd) }}</td>
-                            <td :class="h.pnl_twd >= 0 ? 'text-green' : 'text-red'">{{ formatNumber(h.pnl_twd) }}</td>
                             <td :class="h.pnl_percent >= 0 ? 'text-green' : 'text-red'">{{ h.pnl_percent }}%</td>
                         </tr>
                     </tbody>
@@ -255,7 +276,6 @@
 
         createApp({
             setup() {
-                // --- 狀態 ---
                 const userToken = ref(localStorage.getItem('token') || '');
                 const userName = ref(localStorage.getItem('name') || '');
                 
@@ -264,6 +284,7 @@
                 const combinedHoldings = ref([]);
                 const records = ref([]);
                 const lastUpdateTime = ref('');
+                const exchangeRate = ref(32.0); // 預設匯率
                 const calculating = ref(true);
                 const isUpdating = ref(false);
                 const submitting = ref(false);
@@ -273,22 +294,21 @@
                 const editingId = ref(null);
                 const form = reactive({ 
                     txn_date: new Date().toISOString().split('T')[0], 
-                    symbol: '', txn_type: 'BUY', qty: 0, price: 0, total_amount: 0, fee: 0 
+                    symbol: '', txn_type: 'BUY', 
+                    qty: 0, price: 0, fee: 0, tax: 0, total_amount: 0 
                 });
 
                 // 圖表
                 const timeRange = ref('1Y');
                 const customStart = ref('');
                 const customEnd = ref('');
-                const chartType = ref('twr'); // 預設顯示績效
+                const chartType = ref('twr');
                 const pieType = ref('asset');
                 let mainChartInstance = null;
                 let pieChartInstance = null;
 
-                // 計算屬性
                 const unrealizedPnL = computed(() => (localStats.value.total_value || 0) - (localStats.value.invested_capital || 0));
                 
-                // 估算今日損益 (最後一筆歷史 - 倒數第二筆歷史的損益差)
                 const dailyPnL = computed(() => {
                     if (fullChartData.value.length < 2) return 0;
                     const last = fullChartData.value[fullChartData.value.length - 1];
@@ -296,9 +316,8 @@
                     return (last.total_value - last.invested) - (prev.total_value - prev.invested);
                 });
 
-                // --- 1. 登入 (含修復圖表載入問題) ---
+                // --- 1. 登入 ---
                 const logout = () => { localStorage.removeItem('token'); localStorage.removeItem('name'); location.reload(); };
-                
                 const handleCredentialResponse = async (res) => {
                     try {
                         const r = await fetch(`${WORKER_BASE_URL}/auth/google`, { method: "POST", body: JSON.stringify({ id_token: res.credential }) });
@@ -306,20 +325,41 @@
                         if (d.success) { 
                             userToken.value = d.token; userName.value = d.user; 
                             localStorage.setItem('token', d.token); localStorage.setItem('name', d.user);
-                            fetchRecords(); 
-                            // 修正：登入成功後立即載入圖表，不需重新整理
-                            loadPortfolioData();
+                            fetchRecords(); loadPortfolioData();
                         }
                     } catch(e) { console.error(e); }
                 };
 
-                // --- 2. 表單連動邏輯 (0.00 功能還原) ---
-                const onQtyChange = () => { form.total_amount = parseFloat((form.qty * form.price).toFixed(2)); };
-                const onPriceChange = () => { form.total_amount = parseFloat((form.qty * form.price).toFixed(2)); };
-                const onTotalChange = () => { 
-                    if (form.qty > 0) form.price = parseFloat((form.total_amount / form.qty).toFixed(4)); 
+                // --- 2. 表單連動 (Total = Qty*Price + Fee + Tax) ---
+                const calcTotal = () => {
+                    const base = (parseFloat(form.qty) || 0) * (parseFloat(form.price) || 0);
+                    const fee = parseFloat(form.fee) || 0;
+                    const tax = parseFloat(form.tax) || 0;
+                    form.total_amount = parseFloat((base + fee + tax).toFixed(2));
+                };
+                const calcPrice = () => {
+                    // Reverse: Price = (Total - Fee - Tax) / Qty
+                    const qty = parseFloat(form.qty) || 0;
+                    const fee = parseFloat(form.fee) || 0;
+                    const tax = parseFloat(form.tax) || 0;
+                    const total = parseFloat(form.total_amount) || 0;
+                    if (qty > 0) {
+                        form.price = parseFloat(((total - fee - tax) / qty).toFixed(4));
+                    }
                 };
 
+                // --- 3. 持倉平均成本計算 ---
+                const calculateAvgCost = (h) => {
+                    if (!h.qty) return 0;
+                    // TWD Cost = MarketVal_TWD - PnL_TWD
+                    const costTwd = h.market_value_twd - h.pnl_twd;
+                    // Estimated USD Cost = CostTwd / ExchangeRate / Qty
+                    const ex = exchangeRate.value || 32;
+                    const avg = (costTwd / ex) / h.qty;
+                    return avg.toFixed(2);
+                };
+
+                // --- 4. API & CRUD ---
                 const fetchRecords = async () => {
                     if (!userToken.value) return;
                     const r = await fetch(`${WORKER_BASE_URL}/api/records`, { headers: { 'Authorization': `Bearer ${userToken.value}` } });
@@ -349,21 +389,22 @@
                 const editRecord = (r) => { 
                     isEditing.value = true; editingId.value = r.id; 
                     Object.assign(form, r);
-                    // 補算總額
-                    form.total_amount = parseFloat((r.qty * r.price).toFixed(2));
+                    form.fee = r.fee || 0;
+                    form.tax = r.tax || 0; // 假設 API 有回傳 tax，若無則為 0
+                    calcTotal(); // 重算總額顯示
                 };
                 const resetForm = () => { 
                     isEditing.value = false; editingId.value = null; 
-                    form.symbol = ''; form.qty = 0; form.price = 0; form.total_amount = 0; 
+                    form.symbol = ''; form.qty = 0; form.price = 0; form.fee = 0; form.tax = 0; form.total_amount = 0; 
                 };
-                
+
                 const triggerGitHubUpdate = async () => {
                     if(!confirm("觸發更新？")) return; isUpdating.value = true;
                     await fetch(`${WORKER_BASE_URL}/api/trigger-update`, { method: "POST", headers: { 'Authorization': `Bearer ${userToken.value}` } });
                     isUpdating.value = false; alert("已觸發，請稍待片刻。");
                 };
 
-                // --- 3. 圖表核心邏輯 (Day-1 Base 修正) ---
+                // --- 5. 圖表邏輯 (純折線版) ---
                 const loadPortfolioData = async () => {
                     calculating.value = true;
                     try {
@@ -373,8 +414,8 @@
                         combinedHoldings.value = data.holdings;
                         fullChartData.value = data.history || [];
                         lastUpdateTime.value = data.updated_at;
-                        
-                        // 初始化自訂日期
+                        exchangeRate.value = data.exchange_rate || 32.0;
+
                         const today = new Date();
                         customEnd.value = today.toISOString().split('T')[0];
                         today.setFullYear(today.getFullYear() - 1);
@@ -387,14 +428,11 @@
                 const getProcessedChartData = () => {
                     let data = [...fullChartData.value];
                     if (data.length === 0) return [];
-
-                    // 1. 決定開始日期
                     let startDate = new Date();
                     const now = new Date();
                     
-                    if (timeRange.value === 'CUSTOM') {
-                        startDate = new Date(customStart.value);
-                    } else {
+                    if (timeRange.value === 'CUSTOM') startDate = new Date(customStart.value);
+                    else {
                         switch(timeRange.value) {
                             case '1M': startDate.setMonth(now.getMonth() - 1); break;
                             case '3M': startDate.setMonth(now.getMonth() - 3); break;
@@ -405,43 +443,23 @@
                         }
                     }
 
-                    // 2. 尋找「基準點 (Day-1)」
-                    // 我們需要找出 startDate「之前」的那一筆資料作為 0 值
                     let startIndex = data.findIndex(d => new Date(d.date) >= startDate);
-                    
-                    if (startIndex === -1) return []; // 區間外
-                    
-                    // 如果選的區間起點是歷史第一天，那就只能從第一天算
-                    // 如果不是，基準點就是 startIndex - 1
+                    if (startIndex === -1) return [];
                     let baseIndex = (startIndex > 0) ? startIndex - 1 : 0;
                     const base = data[baseIndex];
-
-                    // 3. 擷取資料 (從基準點開始，這樣圖表第一點就是 0%)
-                    // 或者：擷取從 startIndex 開始的資料，但計算時參考 base
-                    // 您的要求：第一天的當日損益也要算。所以圖表應該從 startDate 開始畫，但數值是相對於 base 的變化。
-                    
                     const filtered = data.slice(startIndex);
 
                     if (chartType.value === 'value') return filtered; 
 
                     return filtered.map(d => {
-                        let newTwr = 0;
-                        let newBench = 0;
-                        
-                        // TWR 歸零公式：((1+當前)/(1+基準) - 1) * 100
-                        const baseTwrVal = (base.twr !== undefined) ? base.twr : 0;
-                        const curTwrVal = (d.twr !== undefined) ? d.twr : 0;
+                        let newTwr = 0, newBench = 0;
+                        const baseTwrVal = base.twr || 0; const curTwrVal = d.twr || 0;
                         newTwr = ((1 + curTwrVal/100) / (1 + baseTwrVal/100) - 1) * 100;
 
-                        const baseBench = (base.benchmark_twr !== undefined) ? base.benchmark_twr : 0;
-                        const curBench = (d.benchmark_twr !== undefined) ? d.benchmark_twr : 0;
+                        const baseBench = base.benchmark_twr || 0; const curBench = d.benchmark_twr || 0;
                         newBench = ((1 + curBench/100) / (1 + baseBench/100) - 1) * 100;
                         
-                        return {
-                            ...d,
-                            twr: newTwr,
-                            benchmark_twr: newBench,
-                        };
+                        return { ...d, twr: newTwr, benchmark_twr: newBench };
                     });
                 };
 
@@ -452,65 +470,44 @@
 
                     const processedData = getProcessedChartData();
                     const labels = processedData.map(d => d.date);
-                    
                     let datasets = [];
                     let type = 'line';
                     
+                    // --- 共用設定：無點、純折線 ---
+                    const commonOptions = {
+                        pointRadius: 0,        // 不顯示點
+                        pointHoverRadius: 4,   // 滑鼠移上去才顯示小點
+                        fill: false,
+                        tension: 0.1,          // 線條略微平滑，但不圓弧
+                        borderWidth: 2
+                    };
+
                     if (chartType.value === 'value') {
                         datasets = [
-                            { label: '總淨值', data: processedData.map(d => d.total_value), borderColor: '#40a9ff', backgroundColor: 'rgba(64, 169, 255, 0.1)', borderWidth: 2, fill: true, tension: 0.1 },
-                            { label: '投入成本', data: processedData.map(d => d.invested), borderColor: '#888', borderDash: [5, 5], borderWidth: 1, pointRadius: 0 }
+                            { label: '總淨值', data: processedData.map(d => d.total_value), borderColor: '#40a9ff', ...commonOptions },
+                            { label: '成本', data: processedData.map(d => d.invested), borderColor: '#888', borderDash: [5, 5], pointRadius: 0, borderWidth: 1 }
                         ];
                     } else if (chartType.value === 'twr') {
-                        // 績效圖美化：純折線，無填充，類似 Benchmark
                         datasets = [
-                            { 
-                                label: 'TWR (%)', 
-                                data: processedData.map(d => d.twr), 
-                                borderColor: '#4caf50', 
-                                borderWidth: 2, 
-                                fill: false, // 不填充
-                                tension: 0.2,
-                                pointRadius: 2,
-                                pointHoverRadius: 5
-                            },
-                            { 
-                                label: 'SPY (%)', 
-                                data: processedData.map(d => d.benchmark_twr), 
-                                borderColor: '#ffc107', 
-                                borderWidth: 1.5, 
-                                fill: false,
-                                pointRadius: 0, // Benchmark 不顯示點
-                                borderDash: [2, 2] // 虛線
-                            }
+                            { label: 'TWR (%)', data: processedData.map(d => d.twr), borderColor: '#4caf50', ...commonOptions },
+                            { label: 'SPY (%)', data: processedData.map(d => d.benchmark_twr), borderColor: '#ffc107', borderWidth: 1.5, pointRadius: 0, borderDash: [2, 2], fill: false }
                         ];
                     } else if (chartType.value === 'pnl') {
                         type = 'bar';
                         const dailyPnl = processedData.map((d, i) => {
-                            // 若是第一筆，需跟 base 比較
-                            let prevTotal = 0;
-                            let prevInvest = 0;
-                            
+                            let prevTotal = 0, prevInvest = 0;
                             if (i === 0) {
-                                // 嘗試找 fullData 裡的前一筆
                                 const idxInFull = fullChartData.value.findIndex(x => x.date === d.date);
                                 if (idxInFull > 0) {
                                     const prev = fullChartData.value[idxInFull - 1];
-                                    prevTotal = prev.total_value;
-                                    prevInvest = prev.invested;
-                                } else {
-                                    return 0; // 真.第一天
-                                }
+                                    prevTotal = prev.total_value; prevInvest = prev.invested;
+                                } else return 0;
                             } else {
-                                prevTotal = processedData[i-1].total_value;
-                                prevInvest = processedData[i-1].invested;
+                                prevTotal = processedData[i-1].total_value; prevInvest = processedData[i-1].invested;
                             }
-                            
-                            const valDiff = d.total_value - prevTotal;
-                            const costDiff = d.invested - prevInvest;
-                            return valDiff - costDiff;
+                            return (d.total_value - prevTotal) - (d.invested - prevInvest);
                         });
-                        datasets = [{ label: '單日損益 (TWD)', data: dailyPnl, backgroundColor: dailyPnl.map(v => v >= 0 ? '#4caf50' : '#ff5252') }];
+                        datasets = [{ label: '單日損益', data: dailyPnl, backgroundColor: dailyPnl.map(v => v >= 0 ? '#4caf50' : '#ff5252') }];
                     }
 
                     mainChartInstance = new Chart(ctx, {
@@ -551,25 +548,21 @@
                     const ctx = document.getElementById('pieChart');
                     if (!ctx || combinedHoldings.value.length === 0) return;
                     if (pieChartInstance) pieChartInstance.destroy();
-
                     let groupData = {};
                     combinedHoldings.value.forEach(h => {
                         let key;
                         if (pieType.value === 'asset') key = h.symbol;
                         else if (pieType.value === 'currency') key = h.currency;
                         else if (pieType.value === 'strategy') key = h.tag || 'Other';
-                        
                         if (!groupData[key]) groupData[key] = 0;
                         groupData[key] += h.market_value_twd;
                     });
-
                     let sorted = Object.entries(groupData).sort((a,b) => b[1] - a[1]);
                     if (sorted.length > 8) {
                         const others = sorted.slice(8).reduce((acc, curr) => acc + curr[1], 0);
                         sorted = sorted.slice(0, 8);
                         sorted.push(['Others', others]);
                     }
-
                     const colors = ['#40a9ff', '#4caf50', '#ffc107', '#ff5252', '#9c27b0', '#00bcd4', '#ff9800', '#795548', '#607d8b'];
                     pieChartInstance = new Chart(ctx, {
                         type: 'doughnut',
@@ -585,7 +578,7 @@
 
                 onMounted(() => {
                     window.handleCredentialResponse = handleCredentialResponse;
-                    loadPortfolioData(); // 嘗試載入公開資料
+                    loadPortfolioData();
                     if (userToken.value) fetchRecords();
                     window.addEventListener('resize', () => { if(mainChartInstance) drawChart(); if(pieChartInstance) drawPieChart(); });
                 });
@@ -597,7 +590,7 @@
                     timeRange, switchTimeRange, chartType, switchChartType, pieType, switchPieType, fetchRecords,
                     form, submitRecord, deleteRecord, editRecord, resetForm, isEditing, submitting,
                     customStart, customEnd, drawChart,
-                    onQtyChange, onPriceChange, onTotalChange // 匯出連動函式
+                    calcTotal, calcPrice, calculateAvgCost
                 };
             }
         }).mount('#app');
