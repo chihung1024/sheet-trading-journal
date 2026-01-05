@@ -31,21 +31,24 @@ export default {
             return addCors(await handleGitHubTrigger(request, env));
         }
 
-        // 3. 投資組合報價資料 (Portfolio Data)
+        // [新的] 3. 投資組合報價資料 (Portfolio Data) - 已修正為隔離版
         if (url.pathname === "/api/portfolio") {
-            // GET: 前端讀取
-            if (request.method === "GET") {
-                return addCors(await handleGetPortfolio(env));
-            }
-            // POST: Python 上傳 (需 API Key)
-            if (request.method === "POST") {
-                const user = await authenticate(request, env);
-                // 只有 System Admin (API Key) 可以上傳
-                if (!user || user.name !== "System Admin") {
-                    return addCors(jsonResponse({ error: "Unauthorized: Admin only" }, 401));
-                }
-                return addCors(await handleUploadPortfolio(request, env));
-            }
+          // 先驗證身分，因為不管是讀取還是上傳，都需要知道 "是誰"
+          const user = await authenticate(request, env);
+          
+          // 如果驗證失敗 (沒登入)，直接回傳 401
+          if (!user) return addCors(jsonResponse({ error: "Unauthorized" }, 401));
+
+          // GET: 讀取 (傳入 user，只讀取該使用者的資料)
+          if (request.method === "GET") {
+              return addCors(await handleGetPortfolio(env, user)); 
+          }
+          
+          // POST: 上傳 (傳入 user，寫入該使用者的資料)
+          // 這裡改為允許一般使用者上傳自己的 Portfolio
+          if (request.method === "POST") {
+              return addCors(await handleUploadPortfolio(request, env, user));
+          }
         }
 
         // 4. 交易紀錄 CRUD
@@ -124,10 +127,14 @@ async function authenticate(request, env) {
   } catch (e) { return null; }
 }
 
-// 取得 Portfolio (GET)
-async function handleGetPortfolio(env) {
+// 修改版：取得 "目前登入者" 的 Portfolio
+async function handleGetPortfolio(env, user) { // 注意：多傳入 user 參數
   try {
-    const result = await env.DB.prepare("SELECT json_data FROM portfolio_snapshots ORDER BY id DESC LIMIT 1").first();
+    // 加上 WHERE user_id = ?
+    const result = await env.DB.prepare(
+      "SELECT json_data FROM portfolio_snapshots WHERE user_id = ? ORDER BY id DESC LIMIT 1"
+    ).bind(user.email).first();
+
     if (!result) {
       return jsonResponse({ success: true, data: { summary: {}, holdings: [], history: [] } });
     }
@@ -138,15 +145,21 @@ async function handleGetPortfolio(env) {
   }
 }
 
-// 上傳 Portfolio (POST)
-async function handleUploadPortfolio(request, env) {
+// 修改版：上傳 Portfolio (現在會綁定 user_id)
+async function handleUploadPortfolio(request, env, user) {
   try {
     const data = await request.json();
     const jsonString = JSON.stringify(data);
-    await env.DB.prepare("INSERT INTO portfolio_snapshots (json_data) VALUES (?)").bind(jsonString).run();
     
-    // 清理舊資料 (保留最新的 10 筆)
-    await env.DB.prepare("DELETE FROM portfolio_snapshots WHERE id NOT IN (SELECT id FROM portfolio_snapshots ORDER BY id DESC LIMIT 10)").run();
+    // 寫入時加上 user_id
+    await env.DB.prepare(
+      "INSERT INTO portfolio_snapshots (user_id, json_data, updated_at) VALUES (?, ?, datetime('now'))"
+    ).bind(user.email, jsonString).run(); // 綁定 user.email
+    
+    // 清理舊資料 (只刪除該使用者的舊資料)
+    await env.DB.prepare(
+      "DELETE FROM portfolio_snapshots WHERE user_id = ? AND id NOT IN (SELECT id FROM portfolio_snapshots WHERE user_id = ? ORDER BY id DESC LIMIT 10)"
+    ).bind(user.email, user.email).run();
 
     return jsonResponse({ success: true, message: "Upload success" });
   } catch (e) {
