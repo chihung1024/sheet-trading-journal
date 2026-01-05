@@ -67,58 +67,83 @@ class PortfolioCalculator:
 
     def _back_adjust_transactions(self):
         """
-        將所有交易紀錄依據 Split Factor 調整為「當前等價股數」。
-        這確保了持倉數量與 MarketDataClient 提供的 Adj Close 價格是對齊的。
+        調整交易記錄以匹配 Adj Close 價格基準
+        關鍵：買入價格需要對應當時的 Adj Close，而不是實際成交價
         """
         print("正在進行交易數據復權處理...")
+        
         for index, row in self.df.iterrows():
             sym = row['Symbol']
             date = row['Date']
+            tx_type = row['Type']
             
+            # 只調整 BUY/SELL 交易的價格
+            if tx_type not in ['BUY', 'SELL']:
+                continue
+            
+            # 取得該日的價格調整因子
             factor = self.market.get_transaction_multiplier(sym, date)
             
-            if factor != 1.0:
+            # 取得配息調整因子
+            div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
+            
+            if factor != 1.0 or div_adj_factor != 1.0:
                 old_qty = row['Qty']
                 old_price = row['Price']
                 
-                # 股數變多，價格變低，總成本不變
-                self.df.at[index, 'Qty'] = old_qty * factor
-                self.df.at[index, 'Price'] = old_price / factor
+                # 調整股數（拆股）
+                new_qty = old_qty * factor
+                
+                # 調整價格（拆股 + 配息）
+                # 使價格對應到 Adj Close 的水平
+                new_price = (old_price / factor) * div_adj_factor
+                
+                self.df.at[index, 'Qty'] = new_qty
+                self.df.at[index, 'Price'] = new_price
+                
+                print(f"  [復權] {sym} {date.date()}: {old_qty}股@${old_price:.2f} → {new_qty:.2f}股@${new_price:.2f}")
+
 
     def _process_implicit_dividends(self, date_ts, fx):
         """
-        處理隱式股息 (yfinance 記錄但用戶未手動輸入的)
-        - 邏輯：在除息日 (Ex-Date) 當天承認收入，以抵銷股價下跌的影響
-        - 稅務：自動預扣 30% 美股股息稅
+        ⚠️ 當使用 Adj Close 時，配息已經包含在價格調整中
+        不應該再額外計算配息，否則會雙重計算！
+        
+        此方法改為僅用於「追蹤配息明細」，不影響總資產計算
         """
         date_str = date_ts.strftime('%Y-%m-%d')
         
         for sym, h_data in self.holdings.items():
-            qty = h_data['qty'] # 這是已經復權後的股數 (例如 1000 股)
+            qty = h_data['qty']
             
             if qty > 0:
-                # 檢查是否已由使用者手動輸入 (避免重複)
                 if f"{sym}_{date_str}" in self.confirmed_dividends:
                     continue
                 
-                # 從 MarketDataClient 獲取每股配息
-                # 假設 yfinance 的 Dividends 配合 Adj Close 也是調整後的
                 div_per_share_gross = self.market.get_dividend(sym, date_ts)
                 
                 if div_per_share_gross > 0:
-                    # 計算總配息 (稅前 USD) = 持股數 * 每股配息
-                    total_div_gross_usd = qty * div_per_share_gross
-                    
-                    # 自動扣除 30% 稅 (Net USD)
-                    total_div_net_usd = total_div_gross_usd * 0.7
-                    
-                    # 轉換為台幣
+                    # 計算配息金額（稅後）
+                    total_div_net_usd = qty * div_per_share_gross * 0.7
                     total_div_net_twd = total_div_net_usd * fx
                     
-                    # 加入已實現損益
-                    self.total_realized_pnl_twd += total_div_net_twd
+                    # ⚠️ 重要：使用 Adj Close 時不累加到 realized_pnl
+                    # 因為配息效果已經反映在持倉市值的增長中
+                    # self.total_realized_pnl_twd += total_div_net_twd  # ❌ 註解掉
                     
-                    # print(f"  [自動配息] {date_str} {sym}: 持有{qty:.0f}股 * ${div_per_share_gross:.3f} * 70% = ${total_div_net_usd:.2f}")
+                    # ✅ 僅記錄配息事件（用於報表顯示）
+                    if not hasattr(self, 'dividend_history'):
+                        self.dividend_history = []
+                    
+                    self.dividend_history.append({
+                        'date': date_str,
+                        'symbol': sym,
+                        'shares': qty,
+                        'div_per_share': div_per_share_gross,
+                        'total_gross': qty * div_per_share_gross,
+                        'total_net': total_div_net_usd,
+                        'total_net_twd': total_div_net_twd
+                    })
 
     def _process_transaction(self, row, fx, date_ts):
         sym = row['Symbol']; qty = row['Qty']; price = row['Price']
@@ -176,15 +201,20 @@ class PortfolioCalculator:
             self.confirmed_dividends.add(f"{sym}_{date_str}")
 
     def _daily_valuation(self, date_ts, fx):
+        """
+        每日估值：使用配息復權後的價格
+        這樣圖表就會平滑，不會因除息而斷層
+        """
         total_mkt_val = 0.0
         current_holdings_cost = 0.0
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.0001:
-                # 使用 MarketDataClient 提供的 Adj Close
-                price = self.market.get_price(sym, date_ts)
+                # ✅ 使用 Adj Close（已包含配息再投資效果）
+                price_adjusted = self.market.get_price(sym, date_ts)
                 
-                total_mkt_val += h['qty'] * price * fx
+                # 市值 = 股數 × 復權價格
+                total_mkt_val += h['qty'] * price_adjusted * fx
                 current_holdings_cost += h['cost_basis_twd']
         
         unrealized_pnl = total_mkt_val - current_holdings_cost
@@ -197,12 +227,11 @@ class PortfolioCalculator:
         bench_val = 0.0
         bench_twr = 0.0
         spy_p = self.market.get_price('SPY', date_ts)
-        
         if spy_p > 0:
             bench_val = self.benchmark_units * spy_p * fx
             if self.benchmark_invested > 0:
                 bench_twr = ((bench_val - self.benchmark_invested) / self.benchmark_invested) * 100
-
+    
         self.history_data.append({
             "date": date_ts.strftime("%Y-%m-%d"),
             "total_value": round(total_mkt_val, 0),
