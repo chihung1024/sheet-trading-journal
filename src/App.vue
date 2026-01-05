@@ -17,9 +17,9 @@
            <PieChart />
         </div>
 
-        <TradeForm ref="tradeFormRef" />
-        
         <HoldingsTable />
+
+        <TradeForm ref="tradeFormRef" />
         
         <RecordList @edit="handleEditRecord" />
       </div>
