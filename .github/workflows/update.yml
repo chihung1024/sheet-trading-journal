@@ -2,9 +2,10 @@ name: Update Portfolio Data
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 每天早上 (UTC 0點) 執行
-  workflow_dispatch:      # 允許手動執行
+    - cron: '0 0 * * *' # 每天早上 (UTC 0點, 台灣時間 8點) 執行
+  workflow_dispatch:      # 允許在 Actions 頁面手動點擊執行
 
+# [重要] 賦予 GITHUB_TOKEN 寫入權限，才能 Commit & Push
 permissions:
   contents: write
 
@@ -15,8 +16,6 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v3
-      with:
-        fetch-depth: 0 # [新增] 抓取完整歷史紀錄，有助於合併
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -29,8 +28,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run calculation script
-      env:
-        API_KEY: ${{ secrets.API_KEY }}
+      # 這一步會呼叫 Worker API 撈交易紀錄，用 yfinance 算股價，最後產出 data.json
       run: python main.py
 
     - name: Commit and Push changes
@@ -38,16 +36,13 @@ jobs:
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
         
+        # 強制加入 data.json (避免被 .gitignore 忽略)
         git add -f data.json
         
-        # 檢查是否有變動
+        # 檢查是否有變動，有才 Commit
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
           git commit -m "Auto-update portfolio data [skip ci]"
-          
-          # [修正重點] 推送前先抓取遠端最新變更，並將本地變更接在後面 (Rebase)
-          git pull --rebase origin main
-          
           git push
         fi
