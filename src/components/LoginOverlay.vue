@@ -1,7 +1,7 @@
 <template>
-  <div class="overlay">
-    <h2>SaaS Trading Journal</h2>
-    <p>Please sign in to continue</p>
+  <div class="login-overlay">
+    <h2 style="font-size: 1.8rem; color: white;">SaaS 交易管理系統</h2>
+    <p style="color:#888; margin-bottom: 20px;">請使用 Google 帳號登入以存取您的投資組合</p>
     <div ref="googleBtn"></div>
   </div>
 </template>
@@ -35,11 +35,17 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.overlay {
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0,0,0,0.9); z-index: 999;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+.login-overlay { 
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    background: rgba(0,0,0,0.92); 
+    display: flex; 
+    flex-direction: column; 
+    justify-content: center; 
+    align-items: center; 
+    z-index: 9999; 
 }
-h2 { color: white; margin-bottom: 10px; }
-p { color: #888; margin-bottom: 20px; }
 </style>
