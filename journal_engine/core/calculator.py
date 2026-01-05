@@ -30,7 +30,8 @@ class PortfolioCalculator:
         
         start_date = self.df['Date'].min()
         end_date = datetime.now()
-        date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+        # [修正] 正規化日期範圍，確保時間為 00:00:00
+        date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
         print("開始逐日回測計算...")
         
@@ -59,18 +60,23 @@ class PortfolioCalculator:
     def _process_splits(self, date_ts, date_obj):
         for sym, h_data in self.holdings.items():
             if h_data['qty'] > 0:
+                # 這裡 date_ts 已經是 normalized timestamp
                 split_ratio = self.market.get_split_ratio(sym, date_ts)
                 
                 if split_ratio != 1.0:
-                    print(f"[{date_obj}] 偵測到 {sym} 拆股，比例: {split_ratio}")
+                    print(f"[{date_obj}] ⚡ 偵測到 {sym} 拆股，比例: {split_ratio}")
+                    print(f"    - 拆股前: {h_data['qty']} 股")
                     
                     # 1. 調整總持倉股數
                     h_data['qty'] *= split_ratio
                     # 注意：總成本 (USD/TWD) 不變，所以 cost_basis 不用動，但單位成本會自然下降
                     
+                    print(f"    - 拆股後: {h_data['qty']} 股")
+                    
                     # 2. 調整 FIFO 佇列
                     if sym in self.fifo_queues:
                         for batch in self.fifo_queues[sym]:
+                            # old_price = batch['price']
                             batch['qty'] *= split_ratio
                             batch['price'] /= split_ratio
                             # batch['cost_total_usd'] 不變
