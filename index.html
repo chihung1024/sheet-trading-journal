@@ -11,9 +11,11 @@
         body { background-color: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         
+        /* 登入遮罩 */
         .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000; flex-direction: column; backdrop-filter: blur(5px); }
         .login-box { background: var(--card-bg); padding: 40px; border-radius: 16px; border: 1px solid var(--border); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
 
+        /* 版面 */
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
         .btn { padding: 8px 16px; border-radius: 6px; cursor: pointer; border: none; font-weight: 600; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -21,9 +23,11 @@
         .btn-primary:hover { filter: brightness(1.1); }
         .btn-danger { background: rgba(255, 82, 82, 0.1); color: var(--red); border: 1px solid var(--red); }
         .btn-success { background: var(--green); color: white; }
+        .btn-warning { background: var(--yellow); color: #000; }
         .btn-icon { background: transparent; color: #888; padding: 4px; border-radius: 4px; border: none; cursor: pointer; }
         .btn-icon:hover { background: #333; color: white; }
 
+        /* 卡片與表格 */
         .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
         .stat-item { background: #222; padding: 20px; border-radius: 12px; border: 1px solid #333; position: relative; overflow: hidden; }
@@ -41,11 +45,13 @@
         tr:last-child td { border-bottom: none; }
         .red { color: var(--red); } .green { color: var(--green); }
 
+        /* 編輯表單 */
         .editor-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; align-items: end; background: #1f1f23; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; }
         input, select { background: #2d2d30; border: 1px solid #444; color: white; padding: 10px; border-radius: 6px; width: 100%; box-sizing: border-box; outline: none; }
         input:focus { border-color: var(--primary); }
         label { font-size: 0.8rem; color: #aaa; display: block; margin-bottom: 6px; }
 
+        /* Loading 動畫 */
         .spinner { width: 16px; height: 16px; border: 2px solid #ffffff3d; border-top: 2px solid #fff; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
@@ -79,24 +85,21 @@
                         <span v-if="!isUpdating">🚀 強制更新報價</span>
                         <span v-else>請求發送中...</span>
                     </button>
+
                     <button class="btn btn-success" @click="refreshData" :disabled="calculating">
                         <span v-if="!calculating">🔄 重新讀取數據</span>
                         <span v-else>載入中...</span>
                     </button>
+                    
                     <button class="btn btn-danger" @click="logout">登出</button>
                 </div>
             </div>
 
             <div class="stats-grid">
                 <div class="stat-item">
-                    <div class="stat-label">
-                        總投入成本 (Cost)
-                        <span style="font-size:0.8rem; color:#666;">TWD</span>
-                    </div>
-                    <div class="stat-val">${{ formatNumber(marketStats.invested_capital || 0) }}</div>
-                    <div class="stat-sub">
-                        交易筆數: {{ records.length }}
-                    </div>
+                    <div class="stat-label">總投入成本 (Cost)</div>
+                    <div class="stat-val">${{ formatNumber(localStats.totalCost) }}</div>
+                    <div class="stat-sub">交易筆數: {{ records.length }}</div>
                 </div>
 
                 <div class="stat-item">
@@ -105,7 +108,7 @@
                         <span style="font-size:0.8rem; color:#666;">TWD</span>
                     </div>
                     <div class="stat-val" style="color:var(--primary)">
-                        ${{ formatNumber(marketStats.total_value || 0) }}
+                        ${{ formatNumber(marketStats.total_value || localStats.totalCost) }}
                     </div>
                     <div class="stat-sub" v-if="marketStats.exchange_rate">
                         USD/TWD: {{ marketStats.exchange_rate }}
@@ -119,7 +122,7 @@
                         {{ unrealizedPnL >= 0 ? '+' : '' }}{{ formatNumber(unrealizedPnL) }}
                     </div>
                     <div class="stat-sub" v-if="marketStats.total_value">
-                        報酬率: {{ getReturnRate(unrealizedPnL, marketStats.invested_capital) }}%
+                        報酬率: {{ getReturnRate(unrealizedPnL, localStats.totalCost) }}%
                     </div>
                 </div>
             </div>
@@ -134,7 +137,7 @@
                 
                 <div class="editor-form">
                     <div><label>日期</label><input type="date" v-model="form.txn_date"></div>
-                    <div><label>代碼</label><input type="text" v-model="form.symbol" placeholder="e.g. AAPL" @input="form.symbol = form.symbol.toUpperCase()"></div>
+                    <div><label>代碼 (e.g. AAPL, 2330.TW)</label><input type="text" v-model="form.symbol" placeholder="輸入代碼" @input="form.symbol = form.symbol.toUpperCase()"></div>
                     <div>
                         <label>類別</label>
                         <select v-model="form.txn_type">
@@ -155,7 +158,7 @@
                     </div>
                 </div>
                 <div style="font-size: 0.8rem; color: #666; margin-top: 10px;">
-                    💡 提示：新增交易後，因涉及歷史匯率計算，請務必點擊「強制更新報價」以獲得正確的成本與損益數字。
+                    💡 提示：新增交易後，請點擊上方「強制更新報價」或等待每日自動更新。
                 </div>
             </div>
 
@@ -173,10 +176,10 @@
                                 <tr>
                                     <th>代碼</th>
                                     <th>股數</th>
-                                    <th>平均成本 (原幣)</th>
-                                    <th>現價 (原幣)</th>
+                                    <th>平均成本</th>
+                                    <th>現價 (Origin)</th>
                                     <th>市值 (TWD)</th>
-                                    <th>損益 (TWD)</th>
+                                    <th>損益</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -193,8 +196,8 @@
                                     <td style="font-weight:bold;">
                                         {{ h.marketValue ? formatNumber(h.marketValue) : '-' }}
                                     </td>
-                                    <td :class="(h.pnl || 0) >= 0 ? 'red' : 'green'">
-                                        {{ h.pnl != null ? ((h.pnl >= 0 ? '+' : '') + formatNumber(h.pnl)) : '-' }}
+                                    <td :class="h.pnl >= 0 ? 'red' : 'green'">
+                                        {{ h.pnl ? (h.pnl >= 0 ? '+' : '') + formatNumber(h.pnl) : '-' }}
                                     </td>
                                 </tr>
                                 <tr v-if="combinedHoldings.length === 0">
@@ -240,6 +243,7 @@
         const { createApp, ref, computed, onMounted } = Vue;
         
         // ---------------- CONFIG ----------------
+        // 這裡填入您的 Worker 網址
         const DB_API_URL = "https://journal-backend.chired.workers.dev";
         const CLIENT_ID = "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com";
         // ----------------------------------------
@@ -255,13 +259,12 @@
                 const lastUpdateTime = ref('');
                 
                 const loading = ref(false);
-                const calculating = ref(false); 
-                const isUpdating = ref(false); 
+                const calculating = ref(false); // 控制讀取 json 的 loading
+                const isUpdating = ref(false);  // 控制觸發 GitHub 更新的 loading
                 const isEditing = ref(false);
                 const form = ref({ id: null, txn_date: new Date().toISOString().split('T')[0], symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0 });
 
-                // --- 1. 本地運算 ---
-                // 注意：這裡算出來的 Cost 是「混合幣別」的，不能用於計算損益，只能用於顯示「平均買入單價」
+                // --- 1. 本地運算 (即時反應新增的交易) ---
                 const localHoldings = computed(() => {
                     const map = {};
                     const sorted = [...records.value].sort((a,b) => new Date(a.txn_date) - new Date(b.txn_date));
@@ -286,16 +289,20 @@
                     return Object.values(map).filter(h => h.qty > 0.001);
                 });
 
-                // --- 2. 混合運算 ---
+                const localStats = computed(() => {
+                    return {
+                        totalCost: localHoldings.value.reduce((sum, h) => sum + h.totalCost, 0)
+                    };
+                });
+
+                // --- 2. 混合運算 (結合本地交易紀錄 + 遠端報價) ---
                 const combinedHoldings = computed(() => {
                     return localHoldings.value.map(local => {
                         // 比對 data.json 裡的 holding 資料
                         const remote = marketHoldings.value.find(r => r.symbol === local.symbol) || {};
                         const avgCost = local.qty > 0 ? local.totalCost / local.qty : 0;
                         const marketValue = remote.market_value_twd || null; 
-                        
-                        // [修正重點] PnL 必須直接使用後端的數據 (TWD)，不能用 marketValue(TWD) - local.totalCost(USD)
-                        const pnl = remote.pnl_twd !== undefined ? remote.pnl_twd : null;
+                        const pnl = marketValue ? (marketValue - local.totalCost) : null;
 
                         return {
                             ...local,
@@ -308,12 +315,10 @@
                     });
                 });
 
-                // [修正] 未實現損益：改為使用後端算好的 市值總和 - 成本總和
                 const unrealizedPnL = computed(() => {
                     const mktVal = marketStats.value.total_value || 0;
-                    const invested = marketStats.value.invested_capital || 0; // 這也是後端算好的 TWD 總成本
                     if (mktVal === 0) return 0;
-                    return mktVal - invested;
+                    return mktVal - localStats.value.totalCost;
                 });
 
                 // --- 3. API 互動 ---
@@ -330,9 +335,11 @@
                     } catch(e) { console.error("Fetch records error", e); }
                 };
 
+                // 讀取靜態 data.json
                 const calculatePortfolio = async () => {
                     calculating.value = true;
                     try {
+                        // 加上 timestamp 避免瀏覽器快取舊資料
                         const res = await fetch(`data.json?t=${new Date().getTime()}`);
                         if(res.ok) {
                             const json = await res.json();
@@ -346,38 +353,60 @@
                     calculating.value = false;
                 };
 
+                // [新增] 觸發 GitHub Actions 更新
                 const triggerGitHubUpdate = async () => {
                     if(!confirm("確定要強制更新報價嗎？\n\n這會通知 GitHub 開始運算，約需 1-2 分鐘完成。")) return;
+                    
                     isUpdating.value = true;
                     try {
                         const res = await fetch(`${DB_API_URL}/api/trigger-update`, {
                             method: 'POST',
-                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${userToken.value}` }
+                            headers: { 
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${userToken.value}` 
+                            }
                         });
+                        
                         const json = await res.json();
-                        if (json.success) alert("✅ 已成功觸發更新！\n\nGitHub 正在背景計算，請約 2 分鐘後重新讀取數據。");
-                        else alert("❌ 觸發失敗：" + (json.error || '未知錯誤'));
-                    } catch (e) { alert("連線錯誤"); }
+                        
+                        if (json.success) {
+                            alert("✅ 已成功觸發更新！\n\nGitHub 正在背景計算最新股價，請休息一下，約 2 分鐘後點擊「重新讀取數據」按鈕查看結果。");
+                        } else {
+                            alert("❌ 觸發失敗：" + (json.error || '未知錯誤'));
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alert("連線錯誤，無法觸發更新。");
+                    }
                     isUpdating.value = false;
                 };
 
                 const refreshData = async () => {
                     await calculatePortfolio();
-                    alert("數據讀取完成。");
+                    alert("數據讀取完成。若數值未變，代表 GitHub 還在計算中，請稍後再試。");
                 };
 
+                // --- 4. CRUD 與工具函式 ---
                 const submitRecord = async () => {
                     loading.value = true;
                     const method = isEditing.value ? "PUT" : "POST";
                     const payload = { ...form.value };
+                    
                     try {
                         const res = await fetch(`${DB_API_URL}/api/records`, {
                             method,
-                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${userToken.value}` },
+                            headers: { 
+                                "Content-Type": "application/json", 
+                                "Authorization": `Bearer ${userToken.value}` 
+                            },
                             body: JSON.stringify(payload)
                         });
-                        if(res.ok) { resetForm(); await fetchRecords(); } 
-                        else alert("儲存失敗");
+                        if(res.ok) {
+                            resetForm();
+                            await fetchRecords(); 
+                        } else {
+                            alert("儲存失敗");
+                        }
                     } catch(e) { alert("連線錯誤"); }
                     loading.value = false;
                 };
@@ -397,7 +426,13 @@
                 const formatNumber = (num) => num ? Number(num).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '0';
                 const getReturnRate = (pnl, cost) => cost > 0 ? ((pnl / cost) * 100).toFixed(2) : 0;
                 
-                const logout = () => { localStorage.clear(); userToken.value = ''; records.value = []; marketStats.value = {}; marketHoldings.value = []; };
+                const logout = () => {
+                    localStorage.clear();
+                    userToken.value = '';
+                    records.value = [];
+                    marketStats.value = {};
+                    marketHoldings.value = [];
+                };
 
                 window.handleCredentialResponse = async (response) => {
                     try {
@@ -417,8 +452,8 @@
                 };
 
                 onMounted(() => {
-                    calculatePortfolio(); 
-                    if (userToken.value) fetchRecords(); 
+                    calculatePortfolio(); // 先載入公開報價
+                    if (userToken.value) fetchRecords(); // 有登入則載入交易紀錄
                 });
 
                 return {
@@ -426,7 +461,7 @@
                     records, form, loading, calculating, isUpdating, isEditing,
                     submitRecord, deleteRecord, editRecord, resetForm, 
                     refreshData, triggerGitHubUpdate,
-                    marketStats, combinedHoldings, unrealizedPnL, // localStats 已移除
+                    localStats, marketStats, combinedHoldings, unrealizedPnL,
                     formatNumber, getReturnRate, lastUpdateTime
                 };
             }
