@@ -1,19 +1,31 @@
 <template>
-  <div class="grid">
-    <div class="stat">
-      <div class="label">Total Value (TWD)</div>
-      <div class="val text-primary">{{ format(stats.total_value) }}</div>
-      <div class="sub">Cost: {{ format(stats.invested_capital) }}</div>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">總淨值 (TWD)</div>
+      <div class="stat-value" style="color:var(--primary)">{{ formatNumber(stats.total_value) }}</div>
+      <div class="stat-sub" style="color:#888">成本: {{ formatNumber(stats.invested_capital) }}</div>
     </div>
-    <div class="stat">
-      <div class="label">Unrealized PnL</div>
-      <div class="val" :class="pnlClass">{{ format(pnl) }}</div>
-      <div class="sub">{{ roi }}%</div>
+    <div class="stat-card">
+      <div class="stat-label">未實現損益</div>
+      <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
+        {{ unrealizedPnL >= 0 ? '+' : '' }}{{ formatNumber(unrealizedPnL) }}
+      </div>
+      <div class="stat-sub">
+        {{ roi }}%
+      </div>
     </div>
-    <div class="stat">
-      <div class="label">TWR Return</div>
-      <div class="val" :class="stats.twr >= 0 ? 'text-green' : 'text-red'">{{ stats.twr }}%</div>
-      <div class="sub text-yellow">SPY: {{ stats.benchmark_twr }}%</div>
+    <div class="stat-card">
+      <div class="stat-label">今日損益 (估計)</div>
+      <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
+        {{ dailyPnL >= 0 ? '+' : '' }}{{ formatNumber(dailyPnL) }}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">TWR 總報酬率</div>
+      <div class="stat-value" :class="stats.twr >= 0 ? 'text-green' : 'text-red'">
+        {{ stats.twr }}%
+      </div>
+      <div class="stat-sub" style="color:var(--yellow)">SPY: {{ stats.benchmark_twr || '-' }}%</div>
     </div>
   </div>
 </template>
@@ -23,26 +35,48 @@ import { computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
-const stats = computed(() => store.stats);
-const pnl = computed(() => store.unrealizedPnL);
+const stats = computed(() => store.stats || {});
+const history = computed(() => store.history || []);
 
+// 未實現損益 = 市值 - 投入成本
+const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+
+// ROI %
 const roi = computed(() => {
-  if(!stats.value.invested_capital) return 0;
-  return ((pnl.value / stats.value.invested_capital) * 100).toFixed(2);
+  if (!stats.value.invested_capital) return 0;
+  return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
 });
 
-const pnlClass = computed(() => pnl.value >= 0 ? 'text-green' : 'text-red');
-const format = (n) => Number(n || 0).toLocaleString();
+// 單日損益計算邏輯 (移植自 index.html)
+const dailyPnL = computed(() => {
+  if (history.value.length < 2) return 0;
+  const last = history.value[history.value.length - 1];
+  const prev = history.value[history.value.length - 2];
+  // 今日淨值變動 - 今日入金變動 = 純交易損益
+  return (last.total_value - last.invested) - (prev.total_value - prev.invested);
+});
+
+const formatNumber = (num) => {
+  if (num === undefined || num === null) return '-';
+  return Number(num).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+};
 </script>
 
 <style scoped>
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
-.stat { background: #1e1e24; padding: 20px; border-radius: 12px; text-align: center; border: 1px solid transparent; }
-.label { color: #888; font-size: 0.9rem; margin-bottom: 5px; }
-.val { font-size: 1.8rem; font-weight: bold; }
-.sub { font-size: 0.8rem; color: #666; margin-top: 5px; }
-.text-primary { color: #2979ff; }
-.text-green { color: #00e676; }
-.text-red { color: #ff5252; }
-.text-yellow { color: #ffc400; }
+.stats-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); 
+    gap: 15px; 
+    margin-bottom: 20px; 
+}
+.stat-card { 
+    background: var(--card-bg); 
+    padding: 20px; 
+    border-radius: 12px; 
+    border: 1px solid var(--border); 
+    text-align: center; 
+}
+.stat-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+.stat-value { font-size: 1.6rem; font-weight: bold; line-height: 1.2; }
+.stat-sub { font-size: 0.85rem; margin-top: 6px; color: #888; }
 </style>
