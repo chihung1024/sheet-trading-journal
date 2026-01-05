@@ -178,32 +178,26 @@ class PortfolioCalculator:
         )
 
     def _process_implicit_dividends(self, date_ts, fx):
-        # 股息計算邏輯不變
+        """處理隱式股息 (yfinance 記錄但用戶未手動輸入的)"""
         date_str = date_ts.strftime('%Y-%m-%d')
+        
         for sym, h_data in self.holdings.items():
             qty = h_data['qty']
             if qty > 0:
-                if f"{sym}_{date_str}" in self.confirmed_dividends: continue
-                # 這裡的 qty 是復權後的高股數，div_per_share 也是對應的(通常拆股後配息也會變少)
-                # 不過要注意 yfinance 的 dividends 是否也需要復權？
-                # yfinance 的 dividends 通常是當時實際發放的金額。
-                # 如果我們持有 1000 股 (復權後)，但當時實際只有 100 股，配息是 $0.04 (拆股後標準) 還是 $0.4 (拆股前)?
-                # 通常 yfinance 的 actions=True 拿到的 Dividends 也是配合 Auto Adjust 的嗎？
-                # 如果 auto_adjust=False，Dividends 是原始金額 ($0.4)。
-                # 我們的 Qty 是復權後的 (1000)。
-                # 1000 * 0.4 = 400. 實際應該是 100 * 0.4 = 40.
-                # 所以：如果 Qty 復權了，Dividends 也必須「除以因子」才能匹配。
+                if f"{sym}_{date_str}" in self.confirmed_dividends:
+                    continue
                 
-                # 修正：
-                raw_div = self.market.get_dividend(sym, date_ts)
-                if raw_div > 0:
-                    # 取得當天的復權因子
-                    factor = self.market.get_transaction_multiplier(sym, date_ts)
-                    # 將原始股息除以因子，轉換為「復權後每股配息」
-                    adj_div = raw_div / factor
-                    
-                    net_div_twd = (qty * adj_div * 0.7) * fx
+                # ✅ 獲取股息 (yfinance 的 Dividends 已經是拆股調整後的每股配息)
+                div_per_share = self.market.get_dividend(sym, date_ts)
+                
+                if div_per_share > 0:
+                    # ✅ 不需要除以 factor,因為:
+                    # - qty 是調整後的股數 (例如 1000)
+                    # - div_per_share 是調整後的每股配息 (例如 $0.04)
+                    # - 兩者直接相乘即可
+                    net_div_twd = (qty * div_per_share * 0.7) * fx
                     self.total_realized_pnl_twd += net_div_twd
+
 
     def _process_transaction(self, row, fx, date_ts):
         # 邏輯與之前完全相同，只差在傳進來的 row['Qty'] 和 row['Price'] 已經是復權後的了
