@@ -10,22 +10,35 @@ class PortfolioCalculator:
         self.df = transactions_df
         self.market = market_client
         
+        # 系統狀態
         self.holdings = {} 
         self.fifo_queues = {} 
         
+        # 績效指標
         self.invested_capital = 0.0      
         self.total_realized_pnl_twd = 0.0 
         self.history_data = []
         
+        # Benchmark 狀態
         self.benchmark_units = 0.0
         self.benchmark_invested = 0.0
+        
+        # [新增] 記錄使用者已確認的股息 (Symbol_Date)，避免重複計算
+        self.confirmed_dividends = set()
+        self._pre_scan_dividends()
+
+    def _pre_scan_dividends(self):
+        """預掃描所有使用者手動輸入的股息紀錄"""
+        div_txs = self.df[self.df['Type'] == 'DIV']
+        for _, row in div_txs.iterrows():
+            key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
+            self.confirmed_dividends.add(key)
 
     def run(self):
-        print("=== 開始執行投資組合計算 (嚴格台幣本位) ===")
+        print("=== 開始執行投資組合計算 (v2.0 增強版) ===")
         
         start_date = self.df['Date'].min()
         end_date = datetime.now()
-        # 正規化日期
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
         print("開始逐日回測計算...")
@@ -33,34 +46,74 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
+            # 1. 取得當日匯率
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
             except: fx = DEFAULT_FX_RATE
             
+            # 2. 處理拆股 (Splits) - 優先權最高
             self._process_splits(d, current_date)
             
+            # 3. 處理使用者交易 (Buy/Sell/Confirmed Div)
             daily_txns = self.df[self.df['Date'].dt.date == current_date]
             for _, row in daily_txns.iterrows():
                 self._process_transaction(row, fx, d)
+            
+            # 4. [新增] 處理自動配息 (Implicit Dividends)
+            # 參考 portfolio-journal 邏輯：如果當天市場有配息，且使用者沒紀錄，則自動計算
+            self._process_implicit_dividends(d, fx)
                 
+            # 5. 每日結算與快照
             self._daily_valuation(d, fx)
             
         return self._generate_final_output(fx)
 
     def _process_splits(self, date_ts, date_obj):
+        """處理拆股事件，調整持倉數量與成本"""
         for sym, h_data in self.holdings.items():
             if h_data['qty'] > 0:
                 split_ratio = self.market.get_split_ratio(sym, date_ts)
                 
                 if split_ratio != 1.0:
-                    print(f"[{date_obj}] 偵測到 {sym} 拆股，比例: {split_ratio}")
+                    # h_data['qty'] *= split_ratio  <-- 修正：這裡只是一個暫存，真正要改的是 queue
+                    # 但為了計算方便，我們這裡也同步更新暫存
+                    old_qty = h_data['qty']
                     h_data['qty'] *= split_ratio
                     
+                    print(f"[{date_obj}] {sym} 拆股 {split_ratio}倍 (持倉: {old_qty:.2f} -> {h_data['qty']:.2f})")
+                    
+                    # 關鍵：調整 FIFO 佇列中的每一筆成本與數量
                     if sym in self.fifo_queues:
                         for batch in self.fifo_queues[sym]:
                             batch['qty'] *= split_ratio
-                            batch['price'] /= split_ratio
+                            batch['price'] /= split_ratio 
+                            # cost_total_usd/twd 不變，因為總成本沒變，只是股數變多
+
+    def _process_implicit_dividends(self, date_ts, fx):
+        """自動計算市場配息"""
+        date_str = date_ts.strftime('%Y-%m-%d')
+        
+        for sym, h_data in self.holdings.items():
+            qty = h_data['qty']
+            if qty > 0:
+                # 檢查是否已由使用者手動輸入 (避免重複)
+                key = f"{sym}_{date_str}"
+                if key in self.confirmed_dividends:
+                    continue
+                
+                # 查詢市場數據是否有配息
+                div_per_share = self.market.get_dividend(sym, date_ts)
+                if div_per_share > 0:
+                    total_div_usd = qty * div_per_share
+                    # 預扣 30% 稅 (美股預設)
+                    net_div_usd = total_div_usd * 0.7 
+                    net_div_twd = net_div_usd * fx
+                    
+                    print(f"[{date_str}] {sym} 自動配息: {div_per_share}/股, 持有{qty}股, 淨領 ${net_div_usd:.2f}")
+                    
+                    self.total_realized_pnl_twd += net_div_twd
+                    # 同步增加現金流到投資組合 (視為已實現獲利)
 
     def _process_transaction(self, row, fx, date_ts):
         sym = row['Symbol']
@@ -208,6 +261,7 @@ class PortfolioCalculator:
         
         for sym, h_data in self.holdings.items():
             qty = h_data['qty']
+            # 過濾掉極小數值的殘渣 (浮點數誤差)
             if qty > 0.001:
                 curr_p = self.market.get_price(sym, datetime.now())
                 mkt_val_twd = qty * curr_p * current_fx
@@ -215,7 +269,6 @@ class PortfolioCalculator:
                 cost_twd = h_data['cost_basis_twd']
                 cost_usd = h_data['cost_basis_usd']
                 
-                # 計算真實的歷史平均成本 (USD)
                 avg_cost_usd = cost_usd / qty if qty > 0 else 0
                 
                 pnl_twd = mkt_val_twd - cost_twd
@@ -230,7 +283,6 @@ class PortfolioCalculator:
                     pnl_twd=round(pnl_twd, 0),
                     pnl_percent=round(pnl_pct, 2),
                     current_price_origin=round(curr_p, 2),
-                    # 填入計算後的平均成本
                     avg_cost_usd=round(avg_cost_usd, 2)
                 ))
         
