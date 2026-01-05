@@ -50,30 +50,33 @@ class MarketDataClient:
 
     def _prepare_data(self, symbol, df):
         """
-        準備數據：使用 yfinance 的 Adj Close
-        不需要手動計算調整因子,yfinance 已經處理好了
+        準備數據：使用 Total Return 價格（配息復權）
+        Adj Close 已經將配息「加回」股價，形成平滑曲線
         """
         df = df.copy()
         
-        # ✅ 直接使用 Adj Close (已包含拆股和股息調整)
+        # ✅ 使用 Adj Close 作為主要價格（包含配息+拆股調整）
         df['Close_Adjusted'] = df['Adj Close']
         
-        # 計算累積拆股因子 (僅用於調整交易股數顯示)
+        # 保留原始 Close 用於參考
+        df['Close_Raw'] = df['Close']
+        
+        # 計算累積拆股因子（用於股數調整）
         if 'Stock Splits' not in df.columns:
             df['Stock Splits'] = 0.0
         
-        # 計算從開始到現在的累積拆股倍數
         splits = df['Stock Splits'].replace(0, 1.0)
-        
-        # 反向累積計算拆股因子
         splits_reversed = splits.iloc[::-1]
         cum_splits_reversed = splits_reversed.cumprod()
         cum_splits = cum_splits_reversed.iloc[::-1]
-        
-        # 調整因子 (用於將歷史交易股數轉換為當前等價股數)
         df['Split_Factor'] = cum_splits.shift(-1).fillna(1.0)
         
+        # 計算每日的股息調整因子（用於追蹤配息貢獻）
+        # Dividend Adjustment Factor = Adj Close / Close
+        df['Dividend_Adj_Factor'] = df['Adj Close'] / df['Close']
+        
         return df
+
 
     def get_price(self, symbol, date):
         """回傳調整後的平滑價格 (來自 Adj Close)"""
