@@ -23,18 +23,34 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         loading.value = false;
     };
 
-    const fetchSnapshot = async () => {
-        try {
-            const res = await fetch(`${CONFIG.API_BASE_URL}/api/portfolio`);
-            const json = await res.json();
-            if (json.success && json.data) {
-                stats.value = json.data.summary || {};
-                holdings.value = json.data.holdings || [];
-                history.value = json.data.history || [];
-                lastUpdate.value = json.data.updated_at;
-            }
-        } catch (e) { console.error("Snapshot Error", e); }
-    };
+        const fetchSnapshot = async () => {
+                // 1. 獲取 Token (關鍵修正)
+                const token = getToken();
+                
+                // 若沒有 Token (未登入)，則不發送請求，避免 401 錯誤
+                if (!token) return;
+        
+                try {
+                    // 2. 在請求中加入 Authorization Header
+                    const res = await fetch(`${CONFIG.API_BASE_URL}/api/portfolio`, {
+                        headers: { 
+                            'Authorization': `Bearer ${token}` 
+                        }
+                    });
+        
+                    const json = await res.json();
+                    if (json.success && json.data) {
+                        stats.value = json.data.summary || {};
+                        holdings.value = json.data.holdings || [];
+                        history.value = json.data.history || [];
+                        lastUpdate.value = json.data.updated_at;
+                    } else {
+                        console.warn("Fetch Snapshot Failed:", json.error);
+                    }
+                } catch (e) { 
+                    console.error("Snapshot Error", e); 
+                }
+            };
 
     const fetchRecords = async () => {
         const token = getToken();
