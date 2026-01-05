@@ -1,5 +1,8 @@
-pandas
-yfinance
-numpy
+fastapi
+uvicorn
+python-multipart
 requests
+pandas
+numpy
+yfinance
 pydantic
