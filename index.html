@@ -408,21 +408,39 @@
                 const loadPortfolioData = async () => {
                     calculating.value = true;
                     try {
-                        const res = await fetch(`data.json?t=${new Date().getTime()}`);
-                        const data = await res.json();
+                        // [修改點] 改為從 Worker API 讀取即時數據
+                        // 不需要加時間戳記了，因為 DB 讀取不會被 CDN 快取
+                        const res = await fetch(`${WORKER_BASE_URL}/api/portfolio`);
+                        
+                        const json = await res.json();
+                        
+                        if (!json.success) {
+                            throw new Error(json.error || "API returned failure");
+                        }
+                
+                        // 取得 DB 裡的 data 物件
+                        const data = json.data;
+                        
+                        // 後續邏輯完全不用變
                         localStats.value = data.summary;
                         combinedHoldings.value = data.holdings;
                         fullChartData.value = data.history || [];
                         lastUpdateTime.value = data.updated_at;
                         exchangeRate.value = data.exchange_rate || 32.0;
-
+                
+                        // 初始化日期
                         const today = new Date();
                         customEnd.value = today.toISOString().split('T')[0];
                         today.setFullYear(today.getFullYear() - 1);
                         customStart.value = today.toISOString().split('T')[0];
-
+                
                         nextTick(() => { drawChart(); drawPieChart(); });
-                    } catch (e) { console.error(e); } finally { calculating.value = false; }
+                    } catch (e) { 
+                        console.error("載入報價失敗:", e); 
+                        alert("無法讀取最新報價，請稍後再試。");
+                    } finally { 
+                        calculating.value = false; 
+                    }
                 };
 
                 const getProcessedChartData = () => {
