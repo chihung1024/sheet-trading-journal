@@ -7,22 +7,25 @@ class MarketDataClient:
     def __init__(self):
         self.market_data = {}
         self.fx_rates = pd.Series(dtype=float)
+        # [Fix] 新增: 專門儲存拆股資訊的字典，比 history['Stock Splits'] 更可靠
+        self.splits_map = {}
 
     def download_data(self, tickers: list, start_date):
         """
         下載股價、匯率、配息與拆股資訊
-        關鍵修正：使用 .normalize() 確保日期時間為 00:00:00，以便精確比對
         """
         print(f"正在下載市場數據，起始日期: {start_date}...")
         
         # 1. 下載匯率 (USD -> TWD)
         try:
             fx = yf.Ticker(EXCHANGE_SYMBOL)
-            # 增加緩衝天數以避免匯率空窗
             fx_hist = fx.history(start=start_date - timedelta(days=5))
             if not fx_hist.empty:
-                # 移除時區並正規化時間至午夜
-                fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None).normalize()
+                # 處理匯率時區
+                idx = pd.to_datetime(fx_hist.index)
+                if idx.tz is not None: idx = idx.tz_localize(None)
+                fx_hist.index = idx.normalize()
+                
                 self.fx_rates = fx_hist['Close']
                 print(f"匯率下載成功，最新匯率: {self.fx_rates.iloc[-1]:.2f}")
             else:
@@ -36,23 +39,38 @@ class MarketDataClient:
             self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
 
         # 2. 下載個股數據 (含 Benchmark SPY)
-        # 確保列表包含 SPY 且不重複，並移除空值
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
         
         for t in all_tickers:
             try:
                 ticker_obj = yf.Ticker(t)
                 
-                # [重要設定] 
-                # auto_adjust=False: 取得當下的原始股價 (Raw Price)
-                # actions=True: 包含 Dividends (股息) 與 Stock Splits (拆股)
+                # 下載歷史價格 (Raw Price: auto_adjust=False)
                 hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
                 
                 if not hist.empty:
-                    # 正規化時間索引
-                    hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
+                    # 標準化歷史數據的索引
+                    idx = pd.to_datetime(hist.index)
+                    if idx.tz is not None: idx = idx.tz_localize(None)
+                    hist.index = idx.normalize()
+                    
                     self.market_data[t] = hist
                     print(f"[{t}] 數據下載成功 ({len(hist)} 筆)")
+                    
+                    # [Fix] 額外獲取拆股數據 (解決 NVDA 拆股漏失問題)
+                    try:
+                        splits = ticker_obj.splits
+                        if not splits.empty:
+                            # 處理拆股數據的時區與格式
+                            s_idx = pd.to_datetime(splits.index)
+                            if s_idx.tz is not None: s_idx = s_idx.tz_localize(None)
+                            splits.index = s_idx.normalize()
+                            
+                            self.splits_map[t] = splits
+                            print(f"[{t}] 額外拆股資訊已載入: {len(splits)} 筆")
+                    except Exception as e:
+                        print(f"[{t}] 額外拆股資訊獲取失敗 (非致命): {e}")
+
                 else:
                     print(f"[{t}] 警告: 無法取得歷史數據")
                     
@@ -66,10 +84,9 @@ class MarketDataClient:
         if symbol not in self.market_data:
             return 0.0
         try:
-            # 確保傳入的 date 與 index 格式一致 (Normalized)
+            # 使用 asof 查找最近的價格 (因為 index 已經 normalize，這裡會很準)
             price = self.market_data[symbol]['Close'].asof(date)
             if pd.isna(price):
-                # 嘗試取最後一筆
                 return self.market_data[symbol]['Close'].iloc[-1]
             return price
         except:
@@ -77,17 +94,25 @@ class MarketDataClient:
     
     def get_split_ratio(self, symbol, date):
         """檢查當日是否有拆股"""
-        if symbol not in self.market_data:
-            return 1.0
         
-        actions = self.market_data[symbol]
-        # 直接使用 index 查找，因已 normalize，匹配率大幅提升
-        if date in actions.index and 'Stock Splits' in actions.columns:
-            split = actions.loc[date]['Stock Splits']
-            # yfinance 的 split 有時會回傳 Series (如果當天有多筆資料)，需轉為 float
-            if isinstance(split, pd.Series):
-                split = split.iloc[0]
-                
-            if split > 0 and split != 1:
-                return float(split)
+        # [Fix Priority 1] 優先檢查 splits_map (最可靠)
+        if symbol in self.splits_map:
+            s_data = self.splits_map[symbol]
+            if date in s_data.index:
+                ratio = float(s_data.loc[date])
+                if ratio > 0 and ratio != 1:
+                    return ratio
+
+        # [Priority 2] 若沒找到，才檢查 history 欄位 (Fallback)
+        if symbol in self.market_data:
+            actions = self.market_data[symbol]
+            if date in actions.index and 'Stock Splits' in actions.columns:
+                split = actions.loc[date]['Stock Splits']
+                # 處理 Series 格式 (若當天有多筆資料)
+                if isinstance(split, pd.Series):
+                    split = split.iloc[0]
+                    
+                if split > 0 and split != 1:
+                    return float(split)
+        
         return 1.0
