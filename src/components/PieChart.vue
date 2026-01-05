@@ -15,7 +15,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, watch, computed, nextTick } from 'vue';
 import Chart from 'chart.js/auto';
 import { usePortfolioStore } from '../stores/portfolio';
 
@@ -24,12 +24,14 @@ const canvas = ref(null);
 let myPieChart = null;
 const pieType = ref('tags'); 
 
+// 根據 holdings 即時計算配置
 const allocation = computed(() => {
     const holdings = store.holdings || [];
     const result = { tags: {}, currency: {} };
 
     holdings.forEach(h => {
-        const tag = h.tag || '未分類';
+        // 若無 tag 則歸類為 Uncategorized
+        const tag = h.tag || 'Uncategorized';
         result.tags[tag] = (result.tags[tag] || 0) + h.market_value_twd;
 
         const curr = h.currency || 'USD';
@@ -41,13 +43,18 @@ const allocation = computed(() => {
 const drawPieChart = () => {
     if (!canvas.value) return;
     const ctx = canvas.value.getContext('2d');
+    
+    // 銷毀舊圖表以防重複繪製
     if (myPieChart) myPieChart.destroy();
 
     const source = pieType.value === 'tags' ? allocation.value.tags : allocation.value.currency;
     const labels = Object.keys(source);
     const data = Object.values(source);
 
-    // 0.00 版配色：鮮明對比
+    // 若無數據則不繪製
+    if (labels.length === 0) return;
+
+    // 0.00 版配色
     const colors = ['#40a9ff', '#ff5252', '#ffd700', '#69c0ff', '#ff85c0', '#95de64', '#5cdbd3'];
 
     myPieChart = new Chart(ctx, {
@@ -91,12 +98,29 @@ const drawPieChart = () => {
     });
 };
 
-watch([pieType, () => store.holdings], drawPieChart, { deep: true });
-onMounted(() => setTimeout(drawPieChart, 100));
+const initChart = () => {
+    if (store.holdings && store.holdings.length > 0 && canvas.value) {
+        drawPieChart();
+    }
+};
+
+// 監聽類型切換
+watch(pieType, drawPieChart);
+
+// 監聽數據變化 (非同步載入)
+watch(() => store.holdings, async () => {
+    await nextTick();
+    initChart();
+}, { deep: true });
+
+// 組件掛載 (若已有數據)
+onMounted(async () => {
+    await nextTick();
+    initChart();
+});
 </script>
 
 <style scoped>
-/* 與 PerformanceChart 共用卡片風格 */
 .chart-card {
     background-color: #18181c;
     border: 1px solid #2d2d30;
@@ -107,7 +131,7 @@ onMounted(() => setTimeout(drawPieChart, 100));
     flex-direction: column;
     height: 100%;
     box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-    min-height: 300px; /* 防止過度壓縮 */
+    /* 0.00 版風格高度 */
 }
 
 .chart-header {
@@ -153,7 +177,7 @@ onMounted(() => setTimeout(drawPieChart, 100));
 .canvas-wrapper {
     position: relative;
     width: 100%;
+    height: 250px; /* 固定高度，對齊 0.00 版 */
     flex-grow: 1;
-    min-height: 200px;
 }
 </style>
