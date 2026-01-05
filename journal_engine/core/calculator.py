@@ -67,8 +67,8 @@ class PortfolioCalculator:
 
     def _back_adjust_transactions(self):
         """
-        調整交易記錄以匹配 Adj Close 價格基準
-        關鍵：買入價格需要對應當時的 Adj Close，而不是實際成交價
+        調整交易記錄以匹配拆股後的股數
+        配息不需要調整，因為 Adj Close 已經處理
         """
         print("正在進行交易數據復權處理...")
         
@@ -77,31 +77,28 @@ class PortfolioCalculator:
             date = row['Date']
             tx_type = row['Type']
             
-            # 只調整 BUY/SELL 交易的價格
+            # 只調整 BUY/SELL 交易
             if tx_type not in ['BUY', 'SELL']:
                 continue
             
-            # 取得該日的價格調整因子
-            factor = self.market.get_transaction_multiplier(sym, date)
+            # 取得拆股因子
+            split_factor = self.market.get_transaction_multiplier(sym, date)
             
-            # 取得配息調整因子
-            div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
-            
-            if factor != 1.0 or div_adj_factor != 1.0:
+            if split_factor != 1.0:
                 old_qty = row['Qty']
                 old_price = row['Price']
                 
                 # 調整股數（拆股）
-                new_qty = old_qty * factor
+                new_qty = old_qty * split_factor
                 
-                # 調整價格（拆股 + 配息）
-                # 使價格對應到 Adj Close 的水平
-                new_price = (old_price / factor) * div_adj_factor
+                # 調整價格（保持總成本不變）
+                new_price = old_price / split_factor
                 
                 self.df.at[index, 'Qty'] = new_qty
                 self.df.at[index, 'Price'] = new_price
                 
-                print(f"  [復權] {sym} {date.date()}: {old_qty}股@${old_price:.2f} → {new_qty:.2f}股@${new_price:.2f}")
+                print(f"  [拆股調整] {sym} {date.date()}: {old_qty}股@${old_price:.2f} → {new_qty:.2f}股@${new_price:.2f}")
+
 
 
     def _process_implicit_dividends(self, date_ts, fx):
