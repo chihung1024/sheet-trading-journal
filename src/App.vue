@@ -13,16 +13,8 @@
         <StatsGrid />
         
         <div class="chart-section">
-          <div class="card">
-            <PerformanceChart />
-          </div>
-
-          <div class="card">
-            <h3 style="margin-bottom:15px">資產配置</h3>
-            <div style="height: 300px; display:flex; align-items:center; justify-content:center;">
-               <PieChart />
-            </div>
-          </div>
+           <PerformanceChart />
+           <PieChart />
         </div>
 
         <TradeForm ref="tradeFormRef" />
