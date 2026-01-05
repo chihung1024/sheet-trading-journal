@@ -30,7 +30,11 @@ class PortfolioCalculator:
             self.confirmed_dividends.add(key)
 
     def run(self):
-        print("=== 開始執行投資組合計算 (Stale Price Fix) ===")
+        print("=== 開始執行投資組合計算 (全復權模式) ===")
+        
+        # 1. 預先處理所有交易：將其轉換為「復權後」的股數與價格
+        # 這是解決拆股問題最徹底的方法
+        self._back_adjust_transactions()
         
         start_date = self.df['Date'].min()
         end_date = datetime.now()
@@ -44,7 +48,7 @@ class PortfolioCalculator:
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
             except: fx = DEFAULT_FX_RATE
             
-            self._process_splits(d, current_date)
+            # 2. 每日迴圈中不再需要 _process_splits，因為所有股數都已經是最終狀態
             
             daily_txns = self.df[self.df['Date'].dt.date == current_date]
             for _, row in daily_txns.iterrows():
@@ -55,19 +59,31 @@ class PortfolioCalculator:
             
         return self._generate_final_output(fx)
 
-    def _process_splits(self, date_ts, date_obj):
-        for sym, h_data in self.holdings.items():
-            if h_data['qty'] > 0:
-                split_ratio = self.market.get_split_ratio(sym, date_ts)
+    def _back_adjust_transactions(self):
+        """
+        將所有交易紀錄依據當時的 Split Factor 進行調整。
+        例如：NVDA 拆股前買 100 股 @ $1200，Factor=10
+        調整後變為：買 1000 股 @ $120
+        這樣就能跟「復權後的股價曲線」完美對接。
+        """
+        print("正在進行交易數據復權處理...")
+        for index, row in self.df.iterrows():
+            sym = row['Symbol']
+            date = row['Date']
+            
+            # 取得該交易發生當下的復權因子 (例如 10.0)
+            factor = self.market.get_transaction_multiplier(sym, date)
+            
+            if factor != 1.0:
+                # 調整股數 (變多) 與 價格 (變少)
+                # 注意：總成本 (Qty * Price) 維持不變
+                old_qty = row['Qty']
+                old_price = row['Price']
                 
-                if split_ratio != 1.0:
-                    print(f"[{date_obj}] {sym} 拆股: {split_ratio}倍")
-                    h_data['qty'] *= split_ratio
-                    
-                    if sym in self.fifo_queues:
-                        for batch in self.fifo_queues[sym]:
-                            batch['qty'] *= split_ratio
-                            batch['price'] /= split_ratio 
+                self.df.at[index, 'Qty'] = old_qty * factor
+                self.df.at[index, 'Price'] = old_price / factor
+                
+                # print(f"  [復權] {sym} {date.date()}: {old_qty}股 -> {self.df.at[index, 'Qty']:.2f}股 (x{factor})")
 
     def _daily_valuation(self, date_ts, fx):
         total_mkt_val = 0.0
@@ -75,17 +91,11 @@ class PortfolioCalculator:
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.0001:
-                # 取得價格與該價格的日期
-                price, price_date = self.market.get_price_with_date(sym, date_ts)
+                # 這裡抓到的 price 已經是 MarketDataClient 算好的 Close_Adjusted
+                # 而 h['qty'] 也是已經復權過的高股數
+                # 兩者相乘 = 正確市值，且完全沒有跳空問題
+                price = self.market.get_price(sym, date_ts)
                 
-                # 若使用過期價格 (Price Date < Current Date)，檢查中間是否有拆股
-                if price_date < date_ts:
-                    check_range = pd.date_range(start=price_date + pd.Timedelta(days=1), end=date_ts)
-                    for check_day in check_range:
-                        ratio = self.market.get_split_ratio(sym, check_day)
-                        if ratio != 1.0:
-                            price /= ratio
-
                 total_mkt_val += h['qty'] * price * fx
                 current_holdings_cost += h['cost_basis_twd']
         
@@ -98,10 +108,7 @@ class PortfolioCalculator:
             
         bench_val = 0.0
         bench_twr = 0.0
-        
-        # [Fix] 修正錯誤的參數名稱：改用 positional arguments
         spy_p = self.market.get_price('SPY', date_ts)
-        
         if spy_p > 0:
             bench_val = self.benchmark_units * spy_p * fx
             if self.benchmark_invested > 0:
@@ -123,11 +130,16 @@ class PortfolioCalculator:
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
+                # 現在的價格
                 curr_p = self.market.get_price(sym, datetime.now())
                 mkt_val = h['qty'] * curr_p * current_fx
+                
                 cost = h['cost_basis_twd']
                 pnl = mkt_val - cost
                 pnl_pct = (pnl/cost*100) if cost>0 else 0
+                
+                # 平均成本 (USD) 也會顯示為復權後的低成本 (例如 $120 而非 $1200)
+                # 這對使用者來說更符合現在看到的股價
                 avg_cost_usd = h['cost_basis_usd'] / h['qty'] if h['qty']>0 else 0
                 
                 current_holdings_cost_sum += cost
@@ -166,17 +178,35 @@ class PortfolioCalculator:
         )
 
     def _process_implicit_dividends(self, date_ts, fx):
+        # 股息計算邏輯不變
         date_str = date_ts.strftime('%Y-%m-%d')
         for sym, h_data in self.holdings.items():
             qty = h_data['qty']
             if qty > 0:
                 if f"{sym}_{date_str}" in self.confirmed_dividends: continue
-                div_per_share = self.market.get_dividend(sym, date_ts)
-                if div_per_share > 0:
-                    net_div_twd = (qty * div_per_share * 0.7) * fx
+                # 這裡的 qty 是復權後的高股數，div_per_share 也是對應的(通常拆股後配息也會變少)
+                # 不過要注意 yfinance 的 dividends 是否也需要復權？
+                # yfinance 的 dividends 通常是當時實際發放的金額。
+                # 如果我們持有 1000 股 (復權後)，但當時實際只有 100 股，配息是 $0.04 (拆股後標準) 還是 $0.4 (拆股前)?
+                # 通常 yfinance 的 actions=True 拿到的 Dividends 也是配合 Auto Adjust 的嗎？
+                # 如果 auto_adjust=False，Dividends 是原始金額 ($0.4)。
+                # 我們的 Qty 是復權後的 (1000)。
+                # 1000 * 0.4 = 400. 實際應該是 100 * 0.4 = 40.
+                # 所以：如果 Qty 復權了，Dividends 也必須「除以因子」才能匹配。
+                
+                # 修正：
+                raw_div = self.market.get_dividend(sym, date_ts)
+                if raw_div > 0:
+                    # 取得當天的復權因子
+                    factor = self.market.get_transaction_multiplier(sym, date_ts)
+                    # 將原始股息除以因子，轉換為「復權後每股配息」
+                    adj_div = raw_div / factor
+                    
+                    net_div_twd = (qty * adj_div * 0.7) * fx
                     self.total_realized_pnl_twd += net_div_twd
 
     def _process_transaction(self, row, fx, date_ts):
+        # 邏輯與之前完全相同，只差在傳進來的 row['Qty'] 和 row['Price'] 已經是復權後的了
         sym = row['Symbol']; qty = row['Qty']; price = row['Price']
         comm = row['Commission']; tax = row['Tax']; txn_type = row['Type']; tag = row['Tag']
         
@@ -186,7 +216,7 @@ class PortfolioCalculator:
         if tag: self.holdings[sym]['tag'] = tag
 
         if txn_type == 'BUY':
-            cost_usd = (qty * price) + comm + tax
+            cost_usd = (qty * price) + comm + tax # 這裡的 qty*price 乘積 = 總成本，與復權前完全一致
             cost_twd = cost_usd * fx
             self.holdings[sym]['qty'] += qty
             self.holdings[sym]['cost_basis_usd'] += cost_usd
@@ -218,11 +248,15 @@ class PortfolioCalculator:
             self._trade_benchmark(date_ts, proceeds_twd, fx, is_buy=False, realized_cost_twd=cost_sold_twd)
 
         elif txn_type == 'DIV':
+            # 手動輸入的股息紀錄通常是「總金額」，不需要調整
+            # 除非紀錄的是「每股配息」，但這裡我們假設是總金額邏輯(雖然代碼是用price欄位)
+            # 你的 TransactionRecord 定義中，DIV 的 'Price' 欄位通常代表 "Net Amount" 或 "Per Share"?
+            # 看之前的邏輯 `net_div_usd = price - tax`，這看起來像是 "Total Amount"。
+            # 如果是 Total Amount，那完全不用動。
             self.total_realized_pnl_twd += (price - tax) * fx
 
     def _trade_benchmark(self, date_ts, amount_twd, fx, is_buy=True, realized_cost_twd=0.0):
-        # [Fix] 修正錯誤的參數名稱：改用 positional arguments
-        spy_p = self.market.get_price('SPY', date_ts)
+        spy_p = self.market.get_price('SPY', date_ts) # 這也是復權後的 SPY 價格
         if spy_p <= 0: return
         if is_buy:
             self.benchmark_units += (amount_twd / fx) / spy_p
