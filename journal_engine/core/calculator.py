@@ -254,18 +254,25 @@ class PortfolioCalculator:
         total_pnl = unrealized_pnl + self.total_realized_pnl_twd
         current_total_equity = self.invested_capital + total_pnl
         
-        # 3. 計算當日 TWR (每日連乘法)
+        # 3. 計算當日 TWR (修正版：處理首日回報)
         daily_return = 0.0
         
+        # 情況 A: 昨天有資產 (正常連乘)
         if self.prev_total_equity > 0:
             prev_pnl = self.history_data[-1]['net_profit'] if self.history_data else 0
             daily_pnl_change = total_pnl - prev_pnl
             daily_return = daily_pnl_change / self.prev_total_equity
             
+        # 情況 B: 昨天沒資產，但今天有投入 (第一天建倉或空手後重新入金)
+        # 使用當日投入本金作為分母，捕捉第一天的漲跌幅
+        elif self.invested_capital > 0:
+            daily_return = total_pnl / self.invested_capital
+            
+        # 4. 累乘 TWR
         self.cumulative_twr_factor *= (1 + daily_return)
         twr_percentage = (self.cumulative_twr_factor - 1) * 100
         
-        # 4. Benchmark TWR
+        # 5. Benchmark TWR
         bench_val = 0.0
         bench_twr = 0.0
         spy_p = self.market.get_price('SPY', date_ts)
@@ -274,7 +281,7 @@ class PortfolioCalculator:
             if self.benchmark_invested > 0:
                 bench_twr = ((bench_val - self.benchmark_invested) / self.benchmark_invested) * 100
 
-        # 5. 更新狀態
+        # 6. 更新狀態
         self.prev_total_equity = current_total_equity
         
         self.history_data.append({
@@ -285,6 +292,7 @@ class PortfolioCalculator:
             "twr": round(twr_percentage, 2),
             "benchmark_twr": round(bench_twr, 2)
         })
+
 
     def _trade_benchmark(self, date_ts, amount_twd, fx, is_buy=True, realized_cost_twd=0.0):
         spy_p = self.market.get_price('SPY', date_ts)
