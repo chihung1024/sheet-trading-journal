@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from collections import deque
 from datetime import datetime
+from scipy import optimize  # 新增引用
 from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 
@@ -27,6 +28,10 @@ class PortfolioCalculator:
         self.invested_capital = 0.0      # 當前投入資金（買入-賣出）
         self.total_realized_pnl_twd = 0.0  # 累計已實現損益（包含賣出盈虧+配息）
         
+        # XIRR 現金流記錄 List of (date, amount_twd)
+        # 負值代表資金流出(投資)，正值代表資金流入(回收)
+        self.xirr_flows = []
+
         # 歷史數據
         self.history_data = []  # 每日資產淨值記錄
         
@@ -147,12 +152,22 @@ class PortfolioCalculator:
                     raw_qty = qty / split_factor
                     total_gross = raw_qty * div_per_share_gross
                     
-                    # 稅後配息 (30% 稅)
+                    # 稅後配息 (30% 稅) - TODO: Phase 2 將優化此處稅務邏輯
                     total_div_net_usd = total_gross * 0.7
                     total_div_net_twd = total_div_net_usd * fx
                     
                     # 累加到已實現損益 (補償股價下跌)
                     self.total_realized_pnl_twd += total_div_net_twd
+                    
+                    # XIRR 現金流: 配息視為現金流入 (+)，但此處我們假設配息仍在帳戶中滾動
+                    # 在投資組合計算中，若配息未被取出，通常不視為 XIRR 的現金流出入。
+                    # 但為了計算 "資產本身的獲利能力"，我們將其視為資產增值的一部分。
+                    # 舊版邏輯：配息若未再投入，視為持有現金，計算 XIRR 時需注意。
+                    # 修正：XIRR 計算的是「外部資金投入 vs 最終資產價值」。
+                    # 配息是內部產生的，不應計入 XIRR 的 Cash Flow 列表，除非它被領出。
+                    # 但在此系統模型中，我們追蹤的是 "Invested Capital" (本金)。
+                    # 配息會增加 Total Equity 但不增加 Invested Capital。
+                    # 所以，配息不需要加入 self.xirr_flows，它會反映在最終的 Total Equity 中。
                     
                     # 記錄歷史
                     if not hasattr(self, 'dividend_history'):
@@ -205,6 +220,9 @@ class PortfolioCalculator:
             self.invested_capital += cost_twd
             self._trade_benchmark(date_ts, cost_twd, fx, is_buy=True)
 
+            # XIRR Flow: 買入 = 資金流出 (投資) = 負值
+            self.xirr_flows.append((date_ts, -cost_twd))
+
         elif txn_type == 'SELL':
             proceeds_twd = ((qty * price) - comm - tax) * fx
             self.holdings[sym]['qty'] -= qty
@@ -231,12 +249,19 @@ class PortfolioCalculator:
             self.total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
             self._trade_benchmark(date_ts, proceeds_twd, fx, is_buy=False, realized_cost_twd=cost_sold_twd)
 
+            # XIRR Flow: 賣出 = 資金流入 (回收) = 正值
+            self.xirr_flows.append((date_ts, proceeds_twd))
+
         elif txn_type == 'DIV':
             net_div_usd = price
             net_div_twd = net_div_usd * fx
             self.total_realized_pnl_twd += net_div_twd
             date_str = date_ts.strftime('%Y-%m-%d')
             self.confirmed_dividends.add(f"{sym}_{date_str}")
+            
+            # XIRR Flow: 現金配息入帳 = 資金流入 = 正值
+            # 注意：這裡假設 DIV 類型是直接給現金，類似賣出
+            self.xirr_flows.append((date_ts, net_div_twd))
 
     def _daily_valuation(self, date_ts, fx):
         total_mkt_val = 0.0
@@ -265,22 +290,16 @@ class PortfolioCalculator:
         daily_net_inflow = self.invested_capital - prev_invested
         
         # 計算調整後的起始權益 (分母)
-        # 昨天的權益 + 今天的資金流入
-        # 這能防止 "昨天資產極小 ($0.05) 但今天大額入金 ($87,500)" 導致回報率爆炸
         adjusted_start_equity = self.prev_total_equity + daily_net_inflow
         
         if adjusted_start_equity > 0:
-            # 分子：當日損益變動 (Today PnL - Yesterday PnL)
             daily_pnl_change = total_pnl - prev_pnl
             daily_return = daily_pnl_change / adjusted_start_equity
             
-        # 特殊情況：第一天 (昨天權益為0，且今天剛投入)
         elif self.invested_capital > 0 and self.prev_total_equity == 0:
              daily_return = total_pnl / self.invested_capital
              
-        # [安全閥] 防止極端異常值 (選用，避免髒數據破壞圖表)
-        if abs(daily_return) > 1.0: # 如果單日漲跌超過 100%
-             # print(f"Warning: Abnormal daily return {daily_return} on {date_ts}")
+        if abs(daily_return) > 1.0: 
              pass 
 
         # 4. 累乘 TWR
@@ -323,6 +342,51 @@ class PortfolioCalculator:
                 self.benchmark_units -= self.benchmark_units * ratio
                 self.benchmark_invested -= realized_cost_twd
 
+    def _calculate_xirr(self, current_total_value):
+        """
+        使用 Scipy 計算 XIRR
+        """
+        if not self.xirr_flows:
+            return None
+            
+        # 準備現金流：歷史流 + 最終資產價值 (視為當下變現)
+        # 格式：[(date, amount), ...]
+        flows = self.xirr_flows.copy()
+        
+        # 加入最終狀態 (Terminal Value)
+        # 注意：這是正值，代表如果你今天清倉可以拿回的錢
+        flows.append((datetime.now(), current_total_value))
+        
+        dates = [f[0] for f in flows]
+        amounts = [f[1] for f in flows]
+        
+        if not amounts or sum(amounts) == 0:
+            return None
+
+        # 必須同時有正負現金流才能計算
+        has_pos = any(a > 0 for a in amounts)
+        has_neg = any(a < 0 for a in amounts)
+        if not (has_pos and has_neg):
+            return 0.0
+
+        def xnpv(rate, dates, amounts):
+            if rate <= -1.0:
+                return float('inf')
+            min_date = min(dates)
+            return sum([a / ((1 + rate) ** ((d - min_date).days / 365.0)) for d, a in zip(dates, amounts)])
+
+        try:
+            # 使用 Newton-Raphson 法求解 NPV = 0
+            # guess=0.1 (10% return)
+            xirr = optimize.newton(lambda r: xnpv(r, dates, amounts), 0.1, tol=1e-4, maxiter=50)
+            return xirr * 100 # 轉為百分比
+        except RuntimeError:
+            # 如果無法收斂，回傳 None
+            return None
+        except Exception as e:
+            print(f"XIRR Calculation Error: {e}")
+            return None
+
     def _generate_final_output(self, current_fx):
         print("整理最終報表...")
         final_holdings = []
@@ -352,13 +416,20 @@ class PortfolioCalculator:
         curr_total_val = sum(x.market_value_twd for x in final_holdings)
         total_pnl = (curr_total_val - current_holdings_cost_sum) + self.total_realized_pnl_twd
         
+        # 計算 XIRR
+        # 注意：這裡傳入的 current_total_value 應該包含現有持倉市值 + 已經實現並落袋的現金(如果此系統有現金帳戶的概念)
+        # 但此系統假設 Sell 後資金就離開 (Invested Capital 減少)，所以 XIRR 的 Terminal Value 只需要是當前持倉市值。
+        # 因為已經在 Sell 時將 Proceeds 作為正現金流計入 flows 了。
+        xirr_val = self._calculate_xirr(curr_total_val)
+
         summary = PortfolioSummary(
             total_value=round(curr_total_val, 0),
             invested_capital=round(current_holdings_cost_sum, 0),
             total_pnl=round(total_pnl, 0),
             twr=self.history_data[-1]['twr'] if self.history_data else 0,
             realized_pnl=round(self.total_realized_pnl_twd, 0),
-            benchmark_twr=self.history_data[-1]['benchmark_twr'] if self.history_data else 0
+            benchmark_twr=self.history_data[-1]['benchmark_twr'] if self.history_data else 0,
+            xirr=round(xirr_val, 2) if xirr_val is not None else None
         )
         
         return PortfolioSnapshot(
