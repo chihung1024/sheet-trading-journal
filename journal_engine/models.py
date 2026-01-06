@@ -23,8 +23,6 @@ class PortfolioSummary(BaseModel):
     twr: float
     realized_pnl: float
     benchmark_twr: float
-    # 新增欄位：內部報酬率 (可能為 None，若交易不足以計算)
-    xirr: Optional[float] = None
 
 class HoldingPosition(BaseModel):
     symbol: str
@@ -35,6 +33,7 @@ class HoldingPosition(BaseModel):
     pnl_twd: float
     pnl_percent: float
     current_price_origin: float
+    # 新增欄位：平均成本 (USD)
     avg_cost_usd: float = 0.0
 
 class PortfolioSnapshot(BaseModel):
