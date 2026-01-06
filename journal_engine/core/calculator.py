@@ -371,7 +371,7 @@ class PortfolioCalculator:
             date_str = date_ts.strftime('%Y-%m-%d')
             self.confirmed_dividends.add(f"{sym}_{date_str}")
 
- def _daily_valuation(self, date_ts, fx):
+def _daily_valuation(self, date_ts, fx):
         total_mkt_val = 0.0
         current_holdings_cost = 0.0
         
