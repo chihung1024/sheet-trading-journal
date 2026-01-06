@@ -38,6 +38,10 @@ class PortfolioCalculator:
         self.benchmark_units = 0.0        # SPY 持有單位
         self.benchmark_invested = 0.0     # SPY 投入資金
 
+        # 新增 TWR 計算專用變數
+        self.cumulative_twr_factor = 1.0  # 用於累乘 TWR
+        self.prev_total_equity = 0.0      # 記錄前一日總權益
+
     def _pre_scan_dividends(self):
         """
         預先掃描使用者手動輸入的配息記錄
@@ -367,50 +371,47 @@ class PortfolioCalculator:
             date_str = date_ts.strftime('%Y-%m-%d')
             self.confirmed_dividends.add(f"{sym}_{date_str}")
 
-    def _daily_valuation(self, date_ts, fx):
-        """
-        每日資產估值
-        
-        計算項目：
-        1. 總市值：所有持倉的市場價值
-        2. 成本基礎：所有持倉的買入成本
-        3. 未實現損益：市值 - 成本
-        4. 總損益：未實現損益 + 已實現損益（賣出盈虧+配息）
-        5. TWR：時間加權報酬率
-        6. 基準對比：與 SPY 的表現比較
-        
-        關鍵：使用 Adj Close 計算市值
-        - Adj Close 已經包含配息再投資效果
-        - 形成平滑的總回報曲線
-        - 無配息除權造成的斷層
-        """
+ def _daily_valuation(self, date_ts, fx):
         total_mkt_val = 0.0
         current_holdings_cost = 0.0
         
+        # 1. 計算當日市值 (使用 Raw Price，除息日會跌)
         for sym, h in self.holdings.items():
             if h['qty'] > 0.0001:
-                # 使用 Adj Close（包含拆股+配息調整）
-                # 這是「總回報價格」，反映了持有股票的真實價值
-                price_adjusted = self.market.get_price(sym, date_ts)
-                
-                # 市值 = 股數 × 復權價格
-                # 此市值已經包含：
-                # 1. 股價變動
-                # 2. 配息再投資效果（Adj Close 自動處理）
-                # 3. 拆股調整（連續性）
-                total_mkt_val += h['qty'] * price_adjusted * fx
+                price = self.market.get_price(sym, date_ts)
+                total_mkt_val += h['qty'] * price * fx
                 current_holdings_cost += h['cost_basis_twd']
         
-        # 計算損益
-        unrealized_pnl = total_mkt_val - current_holdings_cost  # 未實現損益
-        total_pnl = unrealized_pnl + self.total_realized_pnl_twd  # 總損益
+        # 2. 計算總權益 (Total Equity)
+        # 總權益 = (股票市值) + (已實現損益 + 累計配息現金)
+        # 這裡的 total_realized_pnl_twd 已經包含了剛補進來的稅後配息
+        unrealized_pnl = total_mkt_val - current_holdings_cost
+        total_pnl = unrealized_pnl + self.total_realized_pnl_twd
         
-        # 計算時間加權報酬率（TWR）
-        twr = 0.0
-        if current_holdings_cost > 0:
-            twr = (total_pnl / current_holdings_cost) * 100
+        # 當前總資產價值 (投入本金 + 總損益)
+        current_total_equity = self.invested_capital + total_pnl
         
-        # 基準對比（SPY）
+        # 3. 計算當日 TWR (每日連乘法)
+        daily_return = 0.0
+        
+        # 只有在「昨天就有資產」的情況下，才能計算今天的報酬率
+        if self.prev_total_equity > 0:
+            # 簡化算法：當日權益變動 / 昨日權益
+            # 變動包含：股價漲跌 + 配息收入(已含在 total_pnl)
+            # 註：這裡假設當日沒有大額的出入金 (Deposit/Withdrawal)，
+            # 若有出入金，分母應該要調整 (Modified Dietz)，但日頻率下此誤差可接受
+            
+            # 當日損益變化量 (Today PnL - Yesterday PnL)
+            prev_pnl = self.history_data[-1]['net_profit'] if self.history_data else 0
+            daily_pnl_change = total_pnl - prev_pnl
+            
+            daily_return = daily_pnl_change / self.prev_total_equity
+            
+        # 4. 累乘 TWR
+        self.cumulative_twr_factor *= (1 + daily_return)
+        twr_percentage = (self.cumulative_twr_factor - 1) * 100
+        
+        # 5. Benchmark TWR (邏輯保持原本的簡單版，或依需求修正)
         bench_val = 0.0
         bench_twr = 0.0
         spy_p = self.market.get_price('SPY', date_ts)
@@ -418,14 +419,16 @@ class PortfolioCalculator:
             bench_val = self.benchmark_units * spy_p * fx
             if self.benchmark_invested > 0:
                 bench_twr = ((bench_val - self.benchmark_invested) / self.benchmark_invested) * 100
+
+        # 6. 更新狀態並記錄
+        self.prev_total_equity = current_total_equity
         
-        # 記錄歷史數據
         self.history_data.append({
             "date": date_ts.strftime("%Y-%m-%d"),
             "total_value": round(total_mkt_val, 0),
             "invested": round(self.invested_capital, 0),
             "net_profit": round(total_pnl, 0),
-            "twr": round(twr, 2),
+            "twr": round(twr_percentage, 2),  # 使用連乘算出的 TWR
             "benchmark_twr": round(bench_twr, 2)
         })
 
