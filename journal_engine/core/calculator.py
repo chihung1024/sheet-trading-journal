@@ -242,7 +242,7 @@ class PortfolioCalculator:
         total_mkt_val = 0.0
         current_holdings_cost = 0.0
         
-        # 1. 計算當日市值
+        # 1. 計算當日市值 (使用 Raw Price，除息日會跌)
         for sym, h in self.holdings.items():
             if h['qty'] > 0.0001:
                 price = self.market.get_price(sym, date_ts)
@@ -254,48 +254,40 @@ class PortfolioCalculator:
         total_pnl = unrealized_pnl + self.total_realized_pnl_twd
         current_total_equity = self.invested_capital + total_pnl
         
-        # 3. 計算當日 TWR (防禦性修正版)
+        # 3. 計算當日 TWR (修正版：Modified Dietz 簡易版，解決小基數問題)
         daily_return = 0.0
         
-        # 情況 A: 昨天有資產 (標準 TWR 連乘)
-        if self.prev_total_equity > 0:
-            # 取得昨天的累積損益
-            prev_pnl = self.history_data[-1]['net_profit'] if self.history_data else 0.0
-            
-            # 當日損益變動 = 今天總損益 - 昨天總損益
+        # 取得昨天的數據
+        prev_invested = self.history_data[-1]['invested'] if self.history_data else 0.0
+        prev_pnl = self.history_data[-1]['net_profit'] if self.history_data else 0.0
+        
+        # 計算當日淨資金流入 (New Money)
+        daily_net_inflow = self.invested_capital - prev_invested
+        
+        # 計算調整後的起始權益 (分母)
+        # 昨天的權益 + 今天的資金流入
+        # 這能防止 "昨天資產極小 ($0.05) 但今天大額入金 ($87,500)" 導致回報率爆炸
+        adjusted_start_equity = self.prev_total_equity + daily_net_inflow
+        
+        if adjusted_start_equity > 0:
+            # 分子：當日損益變動 (Today PnL - Yesterday PnL)
             daily_pnl_change = total_pnl - prev_pnl
+            daily_return = daily_pnl_change / adjusted_start_equity
             
-            # [重要] 這裡要處理 "當日大額出入金" 的邊際效應
-            # 如果當日有買入(成本增加)，daily_pnl_change 不受影響(因為成本和市值同時增加)
-            # 但 prev_equity 是昨天的，分母會偏小，造成回報率虛高？
-            # 不會，因為我們是用 PnL Change (純損益變動) 除以 Yesterday Equity。
-            # 這在 Modified Dietz 中是分子，分母應該是 (Start Equity + Weighted Cash Flow)。
-            # 簡化版直接除以 Start Equity，誤差在日頻率下可忽略。
-            
-            daily_return = daily_pnl_change / self.prev_total_equity
-            
-        # 情況 B: 昨天沒資產 (第一天或重新入金)
-        else:
-            # 只有當 "今天有投入本金" 時才計算
-            if self.invested_capital > 0:
-                # 第一天的回報 = 總損益 / 投入本金
-                # 這會捕捉到第一天的價格波動 (例如買入後收盤漲了)
-                daily_return = total_pnl / self.invested_capital
-            else:
-                daily_return = 0.0
-
-        # [安全閥] 防止極端異常值 (例如分母極小導致回報率 > 1000%)
-        # 如果單日回報超過 50% (對於指數投資極不合理)，進行截斷或檢查
-        if abs(daily_return) > 0.5: 
-             # 這裡可以選擇印出警告，或者暫時設為 0 以避免圖表爆炸
+        # 特殊情況：第一天 (昨天權益為0，且今天剛投入)
+        elif self.invested_capital > 0 and self.prev_total_equity == 0:
+             daily_return = total_pnl / self.invested_capital
+             
+        # [安全閥] 防止極端異常值 (選用，避免髒數據破壞圖表)
+        if abs(daily_return) > 1.0: # 如果單日漲跌超過 100%
              # print(f"Warning: Abnormal daily return {daily_return} on {date_ts}")
-             pass # 暫不處理，相信數據，但這通常是分母問題
+             pass 
 
         # 4. 累乘 TWR
         self.cumulative_twr_factor *= (1 + daily_return)
         twr_percentage = (self.cumulative_twr_factor - 1) * 100
         
-        # 5. Benchmark TWR (不變)
+        # 5. Benchmark TWR
         bench_val = 0.0
         bench_twr = 0.0
         spy_p = self.market.get_price('SPY', date_ts)
@@ -315,7 +307,6 @@ class PortfolioCalculator:
             "twr": round(twr_percentage, 2),
             "benchmark_twr": round(bench_twr, 2)
         })
-
 
 
     def _trade_benchmark(self, date_ts, amount_twd, fx, is_buy=True, realized_cost_twd=0.0):
