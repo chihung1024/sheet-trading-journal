@@ -110,16 +110,36 @@ class MarketDataClient:
         except: return 0.0
 
     def get_transaction_multiplier(self, symbol, date):
-        """取得拆股復權因子 (只調整股數)"""
+        """
+        取得交易日的拆股復權因子
+        必須使用向前/向後填補，防止交易日是非交易日導致查不到
+        """
         if symbol not in self.market_data: return 1.0
+        
         try:
             df = self.market_data[symbol]
+            
+            # 優先精確查找
             if date in df.index:
-                return float(df.loc[date]['Split_Factor'])
+                return float(df.loc[date, 'Split_Factor'])
+                
+            # 查不到時，使用最近的 "未來" 因子還是 "過去" 因子？
+            # Split Factor 是 "從該日往後的累積拆股倍數"。
+            # 如果我在週六買，應該用週五的因子還是週一的？
+            # 應該用 "該日期所處區間" 的因子。
+            # 使用 method='pad' (ffill) 向前查找最近的過去交易日
+            
+            idx = df.index.get_indexer([date], method='pad')[0]
+            if idx != -1:
+                return float(df.iloc[idx]['Split_Factor'])
+                
+            # 如果日期太早 (在數據開始前)，假設因子與第一天相同
             if date < df.index.min():
                 return float(df.iloc[0]['Split_Factor'])
-            return float(df.iloc[-1]['Split_Factor'])
-        except: return 1.0
+                
+            return 1.0
+        except:
+            return 1.0
     
     def get_dividend(self, symbol, date):
         """獲取原始配息 (Raw Dividend)"""
