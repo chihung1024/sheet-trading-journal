@@ -7,68 +7,134 @@ from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 
 class PortfolioCalculator:
     def __init__(self, transactions_df, market_client):
+        """
+        初始化投資組合計算器
+        
+        參數:
+            transactions_df: 交易記錄 DataFrame
+            market_client: MarketDataClient 實例
+        """
         self.df = transactions_df
         self.market = market_client
         
-        self.holdings = {} 
-        self.fifo_queues = {} 
+        # 當前持倉狀態
+        self.holdings = {}  # {symbol: {qty, cost_basis_usd, cost_basis_twd, tag}}
         
-        self.invested_capital = 0.0      
-        self.total_realized_pnl_twd = 0.0 
-        self.history_data = []
+        # FIFO 隊列（用於計算賣出時的成本基礎）
+        self.fifo_queues = {}  # {symbol: deque([{qty, price, cost_total_usd, cost_total_twd, date}])}
         
-        self.confirmed_dividends = set()
+        # 投資統計
+        self.invested_capital = 0.0      # 當前投入資金（買入-賣出）
+        self.total_realized_pnl_twd = 0.0  # 累計已實現損益（包含賣出盈虧+配息）
+        
+        # 歷史數據
+        self.history_data = []  # 每日資產淨值記錄
+        
+        # 配息去重
+        self.confirmed_dividends = set()  # 記錄已手動輸入的配息
         self._pre_scan_dividends()
         
-        self.benchmark_units = 0.0
-        self.benchmark_invested = 0.0
+        # 基準對比（SPY）
+        self.benchmark_units = 0.0        # SPY 持有單位
+        self.benchmark_invested = 0.0     # SPY 投入資金
 
     def _pre_scan_dividends(self):
         """
-        預先掃描使用者手動輸入的配息紀錄 (Type='DIV')
-        這些紀錄通常是使用者想要精確控制金額時輸入的
+        預先掃描使用者手動輸入的配息記錄
+        
+        用途：
+        - 使用者可能手動輸入配息交易（Type='DIV'）
+        - 這些手動記錄通常是為了精確控制稅務或特殊處理
+        - 需要防止自動邏輯重複計算這些配息
+        
+        邏輯：
+        - 建立 {Symbol}_{Date} 的唯一鍵
+        - 存入 confirmed_dividends 集合
+        - _process_implicit_dividends 會檢查此集合並跳過
         """
         div_txs = self.df[self.df['Type'] == 'DIV']
         for _, row in div_txs.iterrows():
-            # 建立去重鍵值: Symbol_Date
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             self.confirmed_dividends.add(key)
 
     def run(self):
-        print("=== 開始執行投資組合計算 (含自動配息與扣稅) ===")
+        """
+        執行投資組合計算主流程
         
-        # 1. 預先處理交易：全復權 (Split-Adjusted)
+        步驟：
+        1. 復權處理：調整交易記錄以匹配 Adj Close 價格體系
+        2. 日期迴圈：從第一筆交易到今天，逐日計算
+        3. 每日處理：交易處理 → 配息處理 → 估值計算
+        4. 產生報表：彙整最終持倉和績效數據
+        
+        返回:
+            PortfolioSnapshot: 完整的投資組合快照
+        """
+        print("=== 開始執行投資組合計算 (總回報模式) ===")
+        
+        # ==================== 步驟 1: 復權處理 ====================
+        # 將所有交易調整到 Adj Close 的價格基準
+        # 這樣成本基礎和市值才能使用同一個價格體系
         self._back_adjust_transactions()
         
+        # ==================== 步驟 2: 建立日期範圍 ====================
         start_date = self.df['Date'].min()
         end_date = datetime.now()
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
+        # ==================== 步驟 3: 逐日計算 ====================
         for d in date_range:
             current_date = d.date()
             
+            # 取得當日匯率
             try:
                 fx = self.market.fx_rates.asof(d)
-                if pd.isna(fx): fx = DEFAULT_FX_RATE
-            except: fx = DEFAULT_FX_RATE
+                if pd.isna(fx):
+                    fx = DEFAULT_FX_RATE
+            except:
+                fx = DEFAULT_FX_RATE
             
-            # 2. 處理當日交易
+            # 處理當日交易
             daily_txns = self.df[self.df['Date'].dt.date == current_date]
             for _, row in daily_txns.iterrows():
                 self._process_transaction(row, fx, d)
             
-            # 3. 處理自動配息 (Implicit Dividends)
+            # 處理自動配息（yfinance 記錄但使用者未手動輸入的）
             self._process_implicit_dividends(d, fx)
-                
-            # 4. 每日資產估值
-            self._daily_valuation(d, fx)
             
+            # 每日資產估值
+            self._daily_valuation(d, fx)
+        
+        # ==================== 步驟 4: 產生最終報表 ====================
         return self._generate_final_output(fx)
 
     def _back_adjust_transactions(self):
         """
-        調整交易記錄以匹配 Adj Close 價格基準
-        關鍵：買入價格需要對應當時的 Adj Close，而不是實際成交價
+        復權處理：調整交易記錄以匹配 Adj Close 價格體系
+        
+        為什麼需要？
+        - 你的交易記錄使用「實際成交價」（Close）
+        - 市值計算使用「調整價格」（Adj Close）
+        - 兩者的價格體系不同，會導致買入當天就出現虛假盈虧
+        
+        調整邏輯：
+        1. 拆股調整：股數增加，價格減少（總成本不變）
+        2. 配息調整：價格增加（對應 Adj Close 的追溯調整）
+        
+        範例 1 - 拆股：
+        - 原始: 100股 @ $492.44 = $49,244
+        - 拆股 10:1
+        - 調整後: 1000股 @ $49.24 = $49,244（總成本不變）
+        
+        範例 2 - 配息：
+        - 原始: 100股 @ $50.80（買入時的實際成交價）
+        - 之後累積配息 $4，Adj Close 追溯調整
+        - 買入日 Adj Close 從 $50.80 變成 $54.80
+        - 調整後: 100股 @ $54.80（對應 Adj Close）
+        
+        這樣調整後：
+        - 買入當天：成本 = 市值（TWR = 0%）✅
+        - 圖表平滑：無虛假盈虧斷層 ✅
         """
         print("正在進行交易數據復權處理...")
         
@@ -77,39 +143,72 @@ class PortfolioCalculator:
             date = row['Date']
             tx_type = row['Type']
             
-            # 只調整 BUY/SELL 交易的價格
+            # 只調整 BUY/SELL 交易
+            # DIV 類型不需要調整（已經是最終金額）
             if tx_type not in ['BUY', 'SELL']:
                 continue
             
-            # 取得該日的價格調整因子
-            factor = self.market.get_transaction_multiplier(sym, date)
+            # 取得拆股因子（如 10.0 代表 10-for-1 拆股）
+            split_factor = self.market.get_transaction_multiplier(sym, date)
             
-            # 取得配息調整因子
+            # 取得配息調整因子（Adj Close / Close）
             div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
             
-            if factor != 1.0 or div_adj_factor != 1.0:
+            # 只有在有拆股或配息時才需要調整
+            if split_factor != 1.0 or div_adj_factor != 1.0:
                 old_qty = row['Qty']
                 old_price = row['Price']
                 
                 # 調整股數（拆股）
-                new_qty = old_qty * factor
+                # 公式: new_qty = old_qty × split_factor
+                # 例如: 100股 × 10 = 1000股
+                new_qty = old_qty * split_factor
                 
                 # 調整價格（拆股 + 配息）
-                # 使價格對應到 Adj Close 的水平
-                new_price = (old_price / factor) * div_adj_factor
+                # 公式: new_price = (old_price / split_factor) × div_adj_factor
+                # 
+                # 步驟 1: 拆股調整
+                #   $492.44 / 10 = $49.24
+                # 
+                # 步驟 2: 配息調整
+                #   $49.24 × 1.078 = $53.08
+                # 
+                # 結果: 價格對應到當時的 Adj Close 水平
+                new_price = (old_price / split_factor) * div_adj_factor
                 
+                # 更新 DataFrame
                 self.df.at[index, 'Qty'] = new_qty
                 self.df.at[index, 'Price'] = new_price
                 
                 print(f"  [復權] {sym} {date.date()}: {old_qty}股@${old_price:.2f} → {new_qty:.2f}股@${new_price:.2f}")
 
-
     def _process_implicit_dividends(self, date_ts, fx):
         """
-        ⚠️ 當使用 Adj Close 時，配息已經包含在價格調整中
-        不應該再額外計算配息，否則會雙重計算！
+        處理隱式配息（自動記錄但不累加盈虧）
         
-        此方法改為僅用於「追蹤配息明細」，不影響總資產計算
+        重要觀念：
+        - 當使用 Adj Close 計算市值時，配息效果已經「內建」在價格中
+        - Adj Close 會自動反映配息再投資的效果
+        - 如果再額外累加配息到 realized_pnl，會造成「雙重計算」
+        
+        範例說明：
+        假設持有 1000股 QQQI @ $50.80
+        
+        除息日當天：
+        1. 配息 $0.50/股，股價從 $52.00 跌到 $51.50
+        2. 如果使用 Close 計算:
+           - 市值減少: 1000 × $0.50 = $500
+           - 需要加回配息: +$500 × 0.7 = +$350（扣稅）
+        
+        3. 如果使用 Adj Close 計算:
+           - Adj Close 自動「加回」配息效果
+           - 除息前: Adj Close = $52.00
+           - 除息後: Adj Close = $52.20（股價跌$0.50，但配息效果加回）
+           - 市值自動保持平滑，不需要額外加配息！
+        
+        因此：
+        - 此方法僅用於「記錄配息明細」（報表顯示）
+        - 不累加到 total_realized_pnl_twd（避免雙重計算）
         """
         date_str = date_ts.strftime('%Y-%m-%d')
         
@@ -117,21 +216,27 @@ class PortfolioCalculator:
             qty = h_data['qty']
             
             if qty > 0:
+                # 檢查是否已手動輸入此筆配息
                 if f"{sym}_{date_str}" in self.confirmed_dividends:
                     continue
                 
+                # 從 yfinance 獲取除息日的配息金額（每股，稅前）
                 div_per_share_gross = self.market.get_dividend(sym, date_ts)
                 
                 if div_per_share_gross > 0:
-                    # 計算配息金額（稅後）
+                    # 計算配息總額（稅後 70%，美股扣 30% 股息稅）
                     total_div_net_usd = qty * div_per_share_gross * 0.7
                     total_div_net_twd = total_div_net_usd * fx
                     
-                    # ⚠️ 重要：使用 Adj Close 時不累加到 realized_pnl
-                    # 因為配息效果已經反映在持倉市值的增長中
+                    # ⚠️ 關鍵：不累加到 realized_pnl
+                    # 原因：使用 Adj Close 時，配息效果已經反映在持倉市值的增長中
+                    # 如果再累加，會導致配息被計算兩次：
+                    #   1. 一次在市值增長中（Adj Close 自動處理）
+                    #   2. 一次在 realized_pnl 中（手動累加）
+                    # 
                     # self.total_realized_pnl_twd += total_div_net_twd  # ❌ 註解掉
                     
-                    # ✅ 僅記錄配息事件（用於報表顯示）
+                    # ✅ 僅記錄配息事件（用於產生配息明細報表）
                     if not hasattr(self, 'dividend_history'):
                         self.dividend_history = []
                     
@@ -146,84 +251,166 @@ class PortfolioCalculator:
                     })
 
     def _process_transaction(self, row, fx, date_ts):
-        sym = row['Symbol']; qty = row['Qty']; price = row['Price']
-        comm = row['Commission']; tax = row['Tax']; txn_type = row['Type']; tag = row['Tag']
+        """
+        處理單筆交易
         
+        支援的交易類型：
+        - BUY: 買入股票
+        - SELL: 賣出股票（使用 FIFO 計算成本）
+        - DIV: 手動輸入的配息（會累加到 realized_pnl）
+        """
+        sym = row['Symbol']
+        qty = row['Qty']
+        price = row['Price']
+        comm = row['Commission']
+        tax = row['Tax']
+        txn_type = row['Type']
+        tag = row['Tag']
+        
+        # 初始化持倉
         if sym not in self.holdings:
-            self.holdings[sym] = {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': tag}
+            self.holdings[sym] = {
+                'qty': 0.0,
+                'cost_basis_usd': 0.0,
+                'cost_basis_twd': 0.0,
+                'tag': tag
+            }
             self.fifo_queues[sym] = deque()
-        if tag: self.holdings[sym]['tag'] = tag
+        
+        if tag:
+            self.holdings[sym]['tag'] = tag
 
+        # ==================== 買入交易 ====================
         if txn_type == 'BUY':
+            # 計算總成本（包含手續費和稅）
             cost_usd = (qty * price) + comm + tax
             cost_twd = cost_usd * fx
+            
+            # 更新持倉
             self.holdings[sym]['qty'] += qty
             self.holdings[sym]['cost_basis_usd'] += cost_usd
             self.holdings[sym]['cost_basis_twd'] += cost_twd
-            self.fifo_queues[sym].append({'qty': qty, 'price': price, 'cost_total_usd': cost_usd, 'cost_total_twd': cost_twd, 'date': date_ts})
+            
+            # 加入 FIFO 隊列（用於未來賣出時計算成本）
+            self.fifo_queues[sym].append({
+                'qty': qty,
+                'price': price,
+                'cost_total_usd': cost_usd,
+                'cost_total_twd': cost_twd,
+                'date': date_ts
+            })
+            
+            # 更新投入資金
             self.invested_capital += cost_twd
+            
+            # 同步交易基準（SPY）
             self._trade_benchmark(date_ts, cost_twd, fx, is_buy=True)
 
+        # ==================== 賣出交易 ====================
         elif txn_type == 'SELL':
+            # 計算賣出收益（扣除手續費和稅）
             proceeds_twd = ((qty * price) - comm - tax) * fx
+            
+            # 更新持倉股數
             self.holdings[sym]['qty'] -= qty
-            remaining = qty; cost_sold_twd = 0.0; cost_sold_usd = 0.0
+            
+            # 使用 FIFO 計算賣出成本
+            remaining = qty
+            cost_sold_twd = 0.0
+            cost_sold_usd = 0.0
             
             while remaining > 0 and self.fifo_queues[sym]:
                 batch = self.fifo_queues[sym][0]
                 take = min(remaining, batch['qty'])
                 frac = take / batch['qty']
                 
+                # 從最早買入批次中取出成本
                 cost_sold_usd += batch['cost_total_usd'] * frac
                 cost_sold_twd += batch['cost_total_twd'] * frac
                 
+                # 更新批次剩餘股數
                 batch['qty'] -= take
                 batch['cost_total_usd'] -= batch['cost_total_usd'] * frac
                 batch['cost_total_twd'] -= batch['cost_total_twd'] * frac
+                
                 remaining -= take
                 
-                if batch['qty'] < 1e-9: self.fifo_queues[sym].popleft()
+                # 若批次用盡，移除
+                if batch['qty'] < 1e-9:
+                    self.fifo_queues[sym].popleft()
             
+            # 更新成本基礎
             self.holdings[sym]['cost_basis_usd'] -= cost_sold_usd
             self.holdings[sym]['cost_basis_twd'] -= cost_sold_twd
+            
+            # 更新投入資金
             self.invested_capital -= cost_sold_twd
-            self.total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
+            
+            # 計算已實現損益
+            realized_pnl = proceeds_twd - cost_sold_twd
+            self.total_realized_pnl_twd += realized_pnl
+            
+            # 同步交易基準（SPY）
             self._trade_benchmark(date_ts, proceeds_twd, fx, is_buy=False, realized_cost_twd=cost_sold_twd)
 
+        # ==================== 手動配息交易 ====================
         elif txn_type == 'DIV':
-            # 手動輸入的配息 (通常 Price 欄位代表已扣稅後的總金額 USD)
-            net_div_usd = price 
+            # 手動輸入的配息記錄
+            # Price 欄位存的是「稅後淨額」(USD)
+            net_div_usd = price
             net_div_twd = net_div_usd * fx
+            
+            # 累加到已實現損益
             self.total_realized_pnl_twd += net_div_twd
             
-            # [重要] 記錄此筆配息已手動處理，避免自動邏輯重複計算
+            # 標記為已處理（避免 _process_implicit_dividends 重複計算）
             date_str = date_ts.strftime('%Y-%m-%d')
             self.confirmed_dividends.add(f"{sym}_{date_str}")
 
     def _daily_valuation(self, date_ts, fx):
         """
-        每日估值：使用配息復權後的價格
-        這樣圖表就會平滑，不會因除息而斷層
+        每日資產估值
+        
+        計算項目：
+        1. 總市值：所有持倉的市場價值
+        2. 成本基礎：所有持倉的買入成本
+        3. 未實現損益：市值 - 成本
+        4. 總損益：未實現損益 + 已實現損益（賣出盈虧+配息）
+        5. TWR：時間加權報酬率
+        6. 基準對比：與 SPY 的表現比較
+        
+        關鍵：使用 Adj Close 計算市值
+        - Adj Close 已經包含配息再投資效果
+        - 形成平滑的總回報曲線
+        - 無配息除權造成的斷層
         """
         total_mkt_val = 0.0
         current_holdings_cost = 0.0
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.0001:
-                # ✅ 使用 Adj Close（已包含配息再投資效果）
+                # 使用 Adj Close（包含拆股+配息調整）
+                # 這是「總回報價格」，反映了持有股票的真實價值
                 price_adjusted = self.market.get_price(sym, date_ts)
                 
                 # 市值 = 股數 × 復權價格
+                # 此市值已經包含：
+                # 1. 股價變動
+                # 2. 配息再投資效果（Adj Close 自動處理）
+                # 3. 拆股調整（連續性）
                 total_mkt_val += h['qty'] * price_adjusted * fx
                 current_holdings_cost += h['cost_basis_twd']
         
-        unrealized_pnl = total_mkt_val - current_holdings_cost
-        total_pnl = unrealized_pnl + self.total_realized_pnl_twd
+        # 計算損益
+        unrealized_pnl = total_mkt_val - current_holdings_cost  # 未實現損益
+        total_pnl = unrealized_pnl + self.total_realized_pnl_twd  # 總損益
         
+        # 計算時間加權報酬率（TWR）
         twr = 0.0
         if current_holdings_cost > 0:
             twr = (total_pnl / current_holdings_cost) * 100
-            
+        
+        # 基準對比（SPY）
         bench_val = 0.0
         bench_twr = 0.0
         spy_p = self.market.get_price('SPY', date_ts)
@@ -231,7 +418,8 @@ class PortfolioCalculator:
             bench_val = self.benchmark_units * spy_p * fx
             if self.benchmark_invested > 0:
                 bench_twr = ((bench_val - self.benchmark_invested) / self.benchmark_invested) * 100
-    
+        
+        # 記錄歷史數據
         self.history_data.append({
             "date": date_ts.strftime("%Y-%m-%d"),
             "total_value": round(total_mkt_val, 0),
@@ -242,38 +430,61 @@ class PortfolioCalculator:
         })
 
     def _trade_benchmark(self, date_ts, amount_twd, fx, is_buy=True, realized_cost_twd=0.0):
+        """
+        同步交易基準（SPY）
+        
+        邏輯：每次買入/賣出時，用相同金額買入/賣出 SPY
+        用途：計算相對於市場基準的表現（Alpha）
+        """
         spy_p = self.market.get_price('SPY', date_ts)
-        if spy_p <= 0: return
+        if spy_p <= 0:
+            return
+        
         if is_buy:
+            # 買入 SPY
             self.benchmark_units += (amount_twd / fx) / spy_p
             self.benchmark_invested += amount_twd
         else:
+            # 賣出 SPY
             if self.benchmark_units > 0:
                 ratio = realized_cost_twd / self.benchmark_invested if self.benchmark_invested > 0 else 0
                 self.benchmark_units -= self.benchmark_units * ratio
                 self.benchmark_invested -= realized_cost_twd
 
     def _generate_final_output(self, current_fx):
+        """
+        產生最終投資組合報表
+        
+        包含：
+        1. 持倉明細：每個股票的數量、市值、盈虧
+        2. 績效摘要：總市值、總損益、TWR、基準對比
+        3. 歷史數據：每日資產淨值曲線
+        """
         print("整理最終報表...")
+        
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
+                # 取得當前價格
                 curr_p = self.market.get_price(sym, datetime.now())
                 mkt_val = h['qty'] * curr_p * current_fx
                 
+                # 計算盈虧
                 cost = h['cost_basis_twd']
                 pnl = mkt_val - cost
-                pnl_pct = (pnl/cost*100) if cost>0 else 0
+                pnl_pct = (pnl / cost * 100) if cost > 0 else 0
                 
-                # 平均成本顯示為復權後的每股成本
-                avg_cost_usd = h['cost_basis_usd'] / h['qty'] if h['qty']>0 else 0
+                # 平均成本（顯示為復權後的每股成本）
+                avg_cost_usd = h['cost_basis_usd'] / h['qty'] if h['qty'] > 0 else 0
                 
                 current_holdings_cost_sum += cost
                 
                 final_holdings.append(HoldingPosition(
-                    symbol=sym, tag=h['tag'], currency="USD",
+                    symbol=sym,
+                    tag=h['tag'],
+                    currency="USD",
                     qty=round(h['qty'], 2),
                     market_value_twd=round(mkt_val, 0),
                     pnl_twd=round(pnl, 0),
@@ -282,8 +493,10 @@ class PortfolioCalculator:
                     avg_cost_usd=round(avg_cost_usd, 2)
                 ))
         
+        # 按市值排序
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
+        # 計算總績效
         curr_total_val = sum(x.market_value_twd for x in final_holdings)
         total_pnl = (curr_total_val - current_holdings_cost_sum) + self.total_realized_pnl_twd
         
@@ -295,7 +508,7 @@ class PortfolioCalculator:
             realized_pnl=round(self.total_realized_pnl_twd, 0),
             benchmark_twr=self.history_data[-1]['benchmark_twr'] if self.history_data else 0
         )
-
+        
         return PortfolioSnapshot(
             updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
             base_currency=BASE_CURRENCY,
