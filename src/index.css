@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全局樣式：讓背景變成舒服的淺灰色 */
+body {
+  @apply bg-slate-50 text-slate-700;
+}
