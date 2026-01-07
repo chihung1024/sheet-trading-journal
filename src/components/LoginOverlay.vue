@@ -30,22 +30,22 @@ onMounted(() => {
     authStore.login(response.credential);
   };
 
-  // 確保 Google GSI script 已載入 (需在 index.html 引入)
+  // 確保 Google GSI script 已載入
   if (window.google && window.google.accounts) {
     window.google.accounts.id.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
       callback: window.handleCredentialResponse,
-      auto_select: false, // 建議關閉自動選擇，避免迴圈
+      auto_select: false,
       cancel_on_tap_outside: false
     });
     
-    // 渲染按鈕：使用 RWD 友善的設定
+    // 渲染按鈕：使用 "outline" (白底) 或 "filled_blue" (藍底) 以搭配明亮主題
     window.google.accounts.id.renderButton(
       googleBtn.value,
       { 
-        theme: "outline", 
+        theme: "outline",  // 明亮主題適合用 outline 或 filled_blue
         size: "large", 
-        width: 280, // 設定適中的寬度
+        width: 280, 
         shape: "rectangular",
         logo_alignment: "left"
       }
@@ -57,13 +57,14 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 明亮版背景 */
 .login-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: #f8f9fa;
+    background-color: #f3f4f6; /* 淺灰色背景 */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -72,13 +73,14 @@ onMounted(() => {
     box-sizing: border-box;
 }
 
+/* 明亮版卡片 */
 .login-card {
     background: white;
-    padding: 40px;
+    padding: 40px 30px;
     border-radius: 16px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
     width: 100%;
-    max-width: 380px;
+    max-width: 400px;
     text-align: center;
     border: 1px solid #e5e7eb;
 }
@@ -90,24 +92,25 @@ onMounted(() => {
 }
 
 h2 {
-    margin: 0 0 8px;
-    color: #111827;
+    margin: 0 0 12px;
+    color: #111827; /* 深色標題 */
     font-size: 1.5rem;
     font-weight: 700;
 }
 
 p {
-    color: #6b7280;
+    color: #6b7280; /* 灰色說明文字 */
     margin-bottom: 32px;
     font-size: 0.95rem;
+    line-height: 1.5;
 }
 
-/* 讓 Google 按鈕置中 */
+/* 按鈕容器置中 */
 .google-btn-container {
     display: flex;
     justify-content: center;
-    margin-bottom: 20px;
-    min-height: 50px; /* 預留高度避免跳動 */
+    margin-bottom: 24px;
+    min-height: 50px;
 }
 
 .footer-help {
@@ -119,10 +122,11 @@ p {
 /* 手機版優化 */
 @media (max-width: 480px) {
     .login-overlay {
-        align-items: center; 
+        align-items: center; /* 確保垂直置中 */
     }
     .login-card {
         padding: 30px 20px;
+        max-width: 90%;
     }
 }
 </style>
