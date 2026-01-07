@@ -169,18 +169,71 @@ const del = async (id) => {
 </script>
 
 <style scoped>
+/* 關鍵修正：確保所有元素使用 Border-Box */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
 .card-header { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
 .card-header h3 { margin: 0; padding-left: 12px; border-left: 4px solid var(--primary); }
 
-.toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); }
-.search-box { position: relative; flex: 1; min-width: 200px; }
-.search-box .icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 0.9rem; }
-.search-input { width: 100%; padding: 8px 8px 8px 32px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; }
+.toolbar { 
+    display: flex; 
+    gap: 12px; 
+    flex-wrap: wrap; /* 允許換行 */
+    align-items: center; 
+    background: #f8fafc; 
+    padding: 12px; 
+    border-radius: 8px; 
+    border: 1px solid var(--border-color); 
+}
 
-.filters { display: flex; gap: 8px; }
-.filter-select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: white; font-size: 0.9rem; color: var(--text-main); }
+.search-box { 
+    position: relative; 
+    flex: 1 1 200px; /* 允許伸縮，基本寬度 200px */
+    min-width: 180px; /* 防止縮太小 */
+}
 
-.btn-refresh { margin-left: auto; background: white; border: 1px solid var(--border-color); padding: 8px 16px; border-radius: 6px; cursor: pointer; color: var(--text-sub); font-size: 0.9rem; transition: 0.2s; }
+.search-box .icon { 
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%); 
+    color: #94a3b8; font-size: 0.9rem; 
+}
+
+.search-input { 
+    width: 100%; 
+    padding: 8px 8px 8px 32px; 
+    border: 1px solid var(--border-color); 
+    border-radius: 6px; 
+    font-size: 0.9rem; 
+    /* box-sizing 已在上方全域設定 */
+}
+
+.filters { 
+    display: flex; 
+    gap: 8px; 
+    flex-wrap: wrap; /* 允許篩選器內部換行 */
+}
+
+.filter-select { 
+    padding: 8px 12px; 
+    border: 1px solid var(--border-color); 
+    border-radius: 6px; 
+    background: white; 
+    font-size: 0.9rem; 
+    color: var(--text-main); 
+}
+
+.btn-refresh { 
+    margin-left: auto; 
+    background: white; 
+    border: 1px solid var(--border-color); 
+    padding: 8px 16px; 
+    border-radius: 6px; 
+    cursor: pointer; 
+    color: var(--text-sub); 
+    font-size: 0.9rem; 
+    transition: 0.2s; 
+}
 .btn-refresh:hover { color: var(--primary); border-color: var(--primary); }
 
 .table-container { overflow-x: auto; }
