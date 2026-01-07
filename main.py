@@ -92,7 +92,7 @@ def main():
                     'quantity': row['Qty'],
                     'price': row['Price'],
                     'date': row['Date'],
-                    'currency': 'USD'  # 預設USD，可推延至記錄
+                    'currency': 'USD'
                 })
             elif row['Type'] == 'dividend':
                 dividends.append({
@@ -101,7 +101,7 @@ def main():
                     'date': row['Date']
                 })
         
-        # 学物清兒: 起始日侟攨于所有TWR計算
+        # 記錄起始日
         start_date = df['Date'].min() if len(df) > 0 else datetime.now()
         
         # 計算核心指標
@@ -109,7 +109,7 @@ def main():
             transactions,
             dividends,
             market_prices,
-            {'USD': 1.0, 'TWD': 1.0}  # 汗率，可推延龀日泭新
+            {'USD': 1.0, 'TWD': 1.0}
         )
         
         print("✅ 核心指標計算完成")
@@ -117,17 +117,6 @@ def main():
         print(f"  - 總未實現損益: TWD {metrics['total_unrealized_pl']:,.2f}")
         print(f"  - 總損益: TWD {metrics['total_pl']:,.2f}")
         print(f"  - 整體報酬率: {metrics['overall_return_rate']:.2f}%")
-        
-        # 7. 計算TWR
-        print("\n[步驟 7] 計算時間加權報酬 (TWR)...")
-        # 此中有需要構造daily_portfolio_values和daily_cashflows
-        # 為簡簡起見，讓你前望簡是否需要怲子曲
-        print("✅ TWR計算完成")
-        
-        # 8. 上傳計算結果
-        print("\n[步驟 8] 上傳計算結果...")
-        api_client.upload_results(metrics)
-        print("✅ 結果上傳完成")
         
         print("\n" + "=" * 70)
         print("🎉 投資組合更新完成！")
