@@ -218,6 +218,7 @@ defineExpose({
   display: flex;
   gap: var(--space-md);
   justify-content: flex-end;
+  margin-bottom: var(--space-md);
 }
 
 .btn {
@@ -301,6 +302,7 @@ defineExpose({
   }
 }
 
+/* 修改：完整的 transition 動畫類名定義 */
 .dialog-enter-active,
 .dialog-leave-active {
   transition: opacity 300ms ease;
@@ -309,6 +311,11 @@ defineExpose({
 .dialog-enter-from,
 .dialog-leave-to {
   opacity: 0;
+}
+
+.dialog-enter-to,
+.dialog-leave-from {
+  opacity: 1;
 }
 
 @media (max-width: 480px) {
