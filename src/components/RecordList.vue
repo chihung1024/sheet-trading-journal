@@ -1,99 +1,137 @@
 <template>
   <div class="records-section card">
-    <div class="section-header">
-      <h2>交易紀錄</h2>
+    <div class="records-header">
+      <h3>交易記錄</h3>
       <div class="filter-controls">
-        <input
-          v-model="searchQuery"
+        <input 
+          v-model="filterSymbol"
           type="text"
-          placeholder="搜尋股票代碼..."
-          class="search-input"
-        />
-        <select v-model="filterType" class="filter-select">
-          <option value="">全部</option>
+          placeholder="搜索代碼..."
+          class="filter-input"
+          aria-label="搜索交易記錄"
+        >
+        <select 
+          v-model="filterType"
+          class="filter-select"
+          aria-label="篩選交易類型"
+        >
+          <option value="">全部類型</option>
           <option value="BUY">買入</option>
           <option value="SELL">賣出</option>
-          <option value="DIV">配息</option>
+          <option value="DIV">股息</option>
         </select>
       </div>
     </div>
 
-    <div v-if="filteredRecords.length > 0" class="records-list">
-      <div
-        v-for="(record, index) in filteredRecords"
-        :key="index"
+    <div v-if="filteredRecords.length === 0" class="empty-state">
+      <p>📭 暫無交易記錄</p>
+    </div>
+
+    <div v-else class="records-list">
+      <div 
+        v-for="record in paginatedRecords"
+        :key="record.id"
         class="record-item"
-        :style="{ animationDelay: `${index * 50}ms` }`"
       >
-        <div class="record-left">
-          <div class="record-type" :class="`type-${record.type?.toLowerCase()}`">
-            {{ getTypeLabel(record.type) }}
+        <div class="record-header">
+          <div class="record-symbol">
+            <strong>{{ record.symbol }}</strong>
+            <span class="record-type" :class="`type-${record.txn_type.toLowerCase()}`">
+              {{ getTypeLabel(record.txn_type) }}
+            </span>
           </div>
-          <div class="record-info">
-            <div class="record-ticker">{{ record.ticker }}</div>
-            <div class="record-date">{{ formatDate(record.date) }}</div>
+          <div class="record-date">{{ formatDate(record.txn_date) }}</div>
+        </div>
+
+        <div class="record-details">
+          <div class="detail-item">
+            <span class="detail-label">股數</span>
+            <span class="detail-value">{{ formatNumber(record.qty) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">單價</span>
+            <span class="detail-value">${{ formatPrice(record.price) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">總額</span>
+            <span class="detail-value">${{ formatCurrency(record.total_amount) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">手續費</span>
+            <span class="detail-value">${{ formatCurrency(record.fee || 0) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">交易稅</span>
+            <span class="detail-value">${{{ formatCurrency(record.tax || 0) }}</span>
           </div>
         </div>
 
-        <div class="record-middle">
-          <div class="record-detail">
-            <span class="label">股數:</span>
-            <span class="value">{{ record.quantity }}</span>
-          </div>
-          <div class="record-detail">
-            <span class="label">單價:</span>
-            <span class="value">{{ record.price }}</span>
-          </div>
-        </div>
-
-        <div class="record-right">
-          <div class="record-amount">
-            {{ formatCurrency(record.quantity * record.price) }}
-          </div>
-          <div class="record-actions">
-            <button
-              class="action-btn edit"
-              @click="handleEdit(record)"
-              title="編輯"
-            >
-              ✎
-            </button>
-            <button
-              class="action-btn delete"
-              @click="handleDelete(record)"
-              title="刪除"
-            >
-              🗑️
-            </button>
-          </div>
+        <div class="record-actions">
+          <button 
+            class="action-btn edit-btn"
+            @click="editRecord(record)"
+            aria-label="編輯記錄"
+            title="編輯"
+          >
+            ✎
+          </button>
+          <button 
+            class="action-btn delete-btn"
+            @click="deleteRecord(record)"
+            aria-label="刪除記錄"
+            title="刪除"
+          >
+            🗑️
+          </button>
         </div>
       </div>
     </div>
 
-    <div v-else class="empty-state">
-      <div class="empty-icon">📋</div>
-      <p>暫無交易紀錄</p>
-    </div>
-
     <!-- 分頁 -->
     <div v-if="totalPages > 1" class="pagination">
-      <button
+      <button 
+        class="page-btn"
+        @click="currentPage = Math.max(1, currentPage - 1)"
         :disabled="currentPage === 1"
-        @click="currentPage--"
-        class="pagination-btn"
+        aria-label="上一頁"
       >
-        ←
+        ← 上一頁
       </button>
-      <span class="pagination-info">
-        第 {{ currentPage }} / {{ totalPages }} 頁
-      </span>
-      <button
+
+      <div class="page-info">
+        第 {{ currentPage }} / {{ totalPages }} 頁 (共 {{ filteredRecords.length }} 筆)
+      </div>
+
+      <button 
+        class="page-btn"
+        @click="currentPage = Math.min(totalPages, currentPage + 1)"
         :disabled="currentPage === totalPages"
-        @click="currentPage++"
-        class="pagination-btn"
+        aria-label="下一頁"
       >
-        →
+        下一頁 →
       </button>
+    </div>
+
+    <!-- 刪除確認對話框 -->
+    <div v-if="showDeleteConfirm" class="confirm-overlay" @click="showDeleteConfirm = false">
+      <div class="confirm-dialog" @click.stop>
+        <h4>確認刪除</h4>
+        <p>確定要刪除此交易記錄嗎？此操作無法撤銷。</p>
+        <div class="confirm-actions">
+          <button 
+            class="btn btn-secondary"
+            @click="showDeleteConfirm = false"
+          >
+            取消
+          </button>
+          <button 
+            class="btn btn-danger"
+            @click="confirmDelete"
+          >
+            刪除
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -101,136 +139,135 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
-import { useDialogStore } from '../stores/dialog';
-import { useToastStore } from '../stores/toast';
 
 const store = usePortfolioStore();
-const dialogStore = useDialogStore();
-const toastStore = useToastStore();
 
-const searchQuery = ref('');
+const filterSymbol = ref('');
 const filterType = ref('');
 const currentPage = ref(1);
 const pageSize = ref(10);
+const showDeleteConfirm = ref(false);
+const selectedRecord = ref(null);
 
 const records = computed(() => store.records || []);
 
 const filteredRecords = computed(() => {
-  let result = records.value;
+  return records.value.filter(record => {
+    const matchSymbol = record.symbol.toUpperCase().includes(filterSymbol.value.toUpperCase());
+    const matchType = !filterType.value || record.txn_type === filterType.value;
+    return matchSymbol && matchType;
+  }).sort((a, b) => new Date(b.txn_date) - new Date(a.txn_date));
+});
 
-  if (searchQuery.value) {
-    result = result.filter((r) =>
-      r.ticker?.toLowerCase().includes(searchQuery.value.toLowerCase())
-    );
-  }
+const totalPages = computed(() => 
+  Math.ceil(filteredRecords.value.length / pageSize.value) || 1
+);
 
-  if (filterType.value) {
-    result = result.filter((r) => r.type === filterType.value);
-  }
-
-  // 反向排序（最新在前）
-  result = result.reverse();
-
-  // 分頁
+const paginatedRecords = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value;
-  return result.slice(start, start + pageSize.value);
+  const end = start + pageSize.value;
+  return filteredRecords.value.slice(start, end);
 });
 
-const totalPages = computed(() => {
-  let result = records.value;
-
-  if (searchQuery.value) {
-    result = result.filter((r) =>
-      r.ticker?.toLowerCase().includes(searchQuery.value.toLowerCase())
-    );
-  }
-
-  if (filterType.value) {
-    result = result.filter((r) => r.type === filterType.value);
-  }
-
-  return Math.ceil(result.length / pageSize.value) || 1;
-});
-
+// 格式化函數
 const getTypeLabel = (type) => {
   const labels = {
-    BUY: '買入',
-    SELL: '賣出',
-    DIV: '配息',
+    'BUY': '買入',
+    'SELL': '賣出',
+    'DIV': '股息'
   };
   return labels[type] || type;
 };
 
 const formatDate = (date) => {
-  if (!date) return '-';
-  const d = new Date(date);
-  return d.toLocaleDateString('zh-TW');
-};
-
-const formatCurrency = (num) => {
-  return Number(num).toLocaleString('zh-TW', {
-    style: 'currency',
-    currency: 'USD',
+  return new Date(date).toLocaleDateString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
   });
 };
 
-const handleEdit = (record) => {
-  emit('edit', record);
+const formatNumber = (value) => {
+  return new Intl.NumberFormat('zh-TW').format(value);
 };
 
-const handleDelete = (record) => {
-  dialogStore.openConfirm({
-    title: '刪除交易紀錄',
-    message: `確認刪除 ${record.ticker} 在 ${formatDate(record.date)} 的交易紀錄嗎？`,
-    confirmText: '刪除',
-    cancelText: '取消',
-    isDangerous: true,
-    onConfirm: async () => {
-      toastStore.success('交易紀錄已刪除');
-    },
-  });
+const formatPrice = (value) => {
+  return new Intl.NumberFormat('zh-TW', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4
+  }).format(value);
 };
 
-const emit = defineEmits(['edit']);
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('zh-TW', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
+};
+
+// 編輯和刪除
+const editRecord = (record) => {
+  console.log('編輯記錄:', record);
+  // 發出編輯事件或導航到編輯頁面
+};
+
+const deleteRecord = (record) => {
+  selectedRecord.value = record;
+  showDeleteConfirm.value = true;
+};
+
+const confirmDelete = async () => {
+  if (selectedRecord.value) {
+    try {
+      await store.deleteRecord(selectedRecord.value.id);
+      // 重新計算分頁
+      if (currentPage.value > totalPages.value && currentPage.value > 1) {
+        currentPage.value--;
+      }
+      showDeleteConfirm.value = false;
+      selectedRecord.value = null;
+    } catch (error) {
+      console.error('刪除失敗:', error);
+      alert('刪除失敗，請重試');
+    }
+  }
+};
 </script>
 
 <style scoped>
 .records-section {
-  animation: fadeInUp 500ms var(--easing-ease-out) 500ms both;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.section-header {
+.records-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: var(--space-md);
 }
 
-.section-header h2 {
-  margin: 0 0 12px 0;
-  font-size: 1.5rem;
+.records-header h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex: 1;
 }
 
 .filter-controls {
   display: flex;
   gap: var(--space-md);
+  flex-wrap: wrap;
 }
 
-@media (max-width: 768px) {
-  .filter-controls {
-    flex-wrap: wrap;
-  }
-}
-
-.search-input,
+.filter-input,
 .filter-select {
   padding: 8px 12px;
   border: 1px solid var(--border);
@@ -238,19 +275,29 @@ const emit = defineEmits(['edit']);
   background: var(--bg-secondary);
   color: var(--text);
   font-size: 0.9rem;
-  transition: all 200ms ease;
+  font-family: inherit;
 }
 
-.search-input:focus,
+.filter-input {
+  min-width: 180px;
+}
+
+.filter-input::placeholder {
+  color: var(--text-muted);
+}
+
+.filter-input:focus,
 .filter-select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(31, 110, 251, 0.1);
 }
 
-.search-input {
-  flex: 1;
-  min-width: 150px;
+.empty-state {
+  text-align: center;
+  padding: var(--space-2xl) var(--space-lg);
+  color: var(--text-muted);
+  font-size: 1rem;
 }
 
 .records-list {
@@ -261,74 +308,53 @@ const emit = defineEmits(['edit']);
 }
 
 .record-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-md);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  animation: slideInLeft 400ms var(--easing-ease-out) both;
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
   transition: all 200ms ease;
 }
 
-@keyframes slideInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 .record-item:hover {
-  background: var(--card-bg);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  background: var(--bg);
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(31, 110, 251, 0.1);
 }
 
-@media (max-width: 768px) {
-  .record-item {
-    flex-wrap: wrap;
-    gap: var(--space-md);
-  }
-
-  .record-left,
-  .record-middle,
-  .record-right {
-    width: 100%;
-  }
-
-  .record-middle,
-  .record-right {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
+.record-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border);
 }
 
-.record-left {
+.record-symbol {
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  flex: 1;
-  min-width: 0;
+}
+
+.record-symbol strong {
+  color: var(--primary);
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .record-type {
-  padding: 4px 12px;
-  border-radius: var(--radius-md);
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .record-type.type-buy {
-  background: rgba(38, 166, 65, 0.2);
-  color: var(--success-light);
+  background: rgba(76, 175, 80, 0.2);
+  color: #4cb050;
 }
 
 .record-type.type-sell {
@@ -337,121 +363,75 @@ const emit = defineEmits(['edit']);
 }
 
 .record-type.type-div {
-  background: rgba(255, 193, 7, 0.2);
-  color: var(--warning-light);
-}
-
-.record-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.record-ticker {
-  font-weight: 700;
-  font-size: 1rem;
+  background: rgba(31, 110, 251, 0.2);
   color: var(--primary);
 }
 
 .record-date {
-  font-size: 0.85rem;
   color: var(--text-muted);
-  margin-top: 4px;
+  font-size: 0.9rem;
+  white-space: nowrap;
 }
 
-.record-middle {
-  display: flex;
-  gap: var(--space-lg);
-  flex: 1;
+.record-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  padding: var(--space-md) 0;
 }
 
-@media (max-width: 768px) {
-  .record-middle {
-    gap: var(--space-md);
-  }
-}
-
-.record-detail {
+.detail-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.record-detail .label {
-  font-size: 0.8rem;
+.detail-label {
+  font-size: 0.75rem;
   color: var(--text-muted);
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.record-detail .value {
+.detail-value {
+  font-size: 0.95rem;
+  color: var(--text);
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
   font-weight: 600;
-  color: var(--text);
-}
-
-.record-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-sm);
-  flex: 0 0 auto;
-}
-
-@media (max-width: 768px) {
-  .record-right {
-    width: 100%;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-  }
-}
-
-.record-amount {
-  font-weight: 700;
-  font-size: 1.1rem;
-  color: var(--text);
 }
 
 .record-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-sm);
+  justify-content: flex-end;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
 }
 
 .action-btn {
   background: none;
   border: none;
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 1rem;
-  padding: 4px 8px;
-  transition: transform 200ms ease;
-  color: var(--text-secondary);
+  font-size: 1.1rem;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  transition: all 200ms ease;
 }
 
 .action-btn:hover {
-  transform: scale(1.2);
+  background: var(--border);
+  color: var(--text);
 }
 
-.action-btn.edit:hover {
+.edit-btn:hover {
   color: var(--primary);
 }
 
-.action-btn.delete:hover {
+.delete-btn:hover {
   color: var(--error-light);
-}
-
-.empty-state {
-  text-align: center;
-  padding: var(--space-2xl);
-  color: var(--text-muted);
-}
-
-.empty-icon {
-  font-size: 3rem;
-  margin-bottom: var(--space-md);
-}
-
-.empty-state p {
-  margin: 0;
-  font-size: 1.1rem;
 }
 
 .pagination {
@@ -463,31 +443,178 @@ const emit = defineEmits(['edit']);
   border-top: 1px solid var(--border);
 }
 
-.pagination-btn {
+.page-btn {
+  padding: 8px 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 8px 12px;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 200ms ease;
   font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 200ms ease;
 }
 
-.pagination-btn:hover:not(:disabled) {
+.page-btn:hover:not(:disabled) {
   background: var(--primary);
-  color: white;
   border-color: var(--primary);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(31, 110, 251, 0.3);
 }
 
-.pagination-btn:disabled {
+.page-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.page-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.pagination-info {
-  font-size: 0.9rem;
+.page-info {
   color: var(--text-muted);
+  font-size: 0.9rem;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-md);
+}
+
+.confirm-dialog {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  animation: slideUp 300ms ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.confirm-dialog h4 {
+  margin: 0 0 var(--space-md) 0;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.confirm-dialog p {
+  margin: 0 0 var(--space-lg) 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: var(--space-md);
+  justify-content: flex-end;
+}
+
+.btn {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 200ms ease;
+}
+
+.btn:hover {
+  background: var(--border);
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+}
+
+.btn-danger {
+  background: rgba(248, 81, 73, 0.1);
+  border-color: var(--error-light);
+  color: var(--error-light);
+}
+
+.btn-danger:hover {
+  background: rgba(248, 81, 73, 0.2);
+  border-color: var(--error-light);
+}
+
+@media (max-width: 768px) {
+  .records-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .records-header h3 {
+    flex: none;
+  }
+
+  .filter-controls {
+    flex-direction: column;
+  }
+
+  .filter-input {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .filter-select {
+    width: 100%;
+  }
+
+  .record-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-md);
+  }
+
+  .record-details {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+  }
+
+  .page-btn {
+    flex: 1;
+    min-width: 100px;
+  }
+
+  .page-info {
+    order: 3;
+    flex-basis: 100%;
+    text-align: center;
+  }
+
+  .confirm-dialog {
+    margin: var(--space-md);
+  }
 }
 </style>
