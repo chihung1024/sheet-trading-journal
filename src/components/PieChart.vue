@@ -24,16 +24,12 @@ const canvas = ref(null);
 let myPieChart = null;
 const pieType = ref('tags'); 
 
-// 根據 holdings 即時計算配置
 const allocation = computed(() => {
     const holdings = store.holdings || [];
     const result = { tags: {}, currency: {} };
-
     holdings.forEach(h => {
-        // 若無 tag 則歸類為 Uncategorized
-        const tag = h.tag || 'Uncategorized';
+        const tag = h.tag || 'Stock';
         result.tags[tag] = (result.tags[tag] || 0) + h.market_value_twd;
-
         const curr = h.currency || 'USD';
         result.currency[curr] = (result.currency[curr] || 0) + h.market_value_twd;
     });
@@ -43,19 +39,16 @@ const allocation = computed(() => {
 const drawPieChart = () => {
     if (!canvas.value) return;
     const ctx = canvas.value.getContext('2d');
-    
-    // 銷毀舊圖表以防重複繪製
     if (myPieChart) myPieChart.destroy();
 
     const source = pieType.value === 'tags' ? allocation.value.tags : allocation.value.currency;
     const labels = Object.keys(source);
     const data = Object.values(source);
 
-    // 若無數據則不繪製
     if (labels.length === 0) return;
 
-    // 0.00 版配色
-    const colors = ['#40a9ff', '#ff5252', '#ffd700', '#69c0ff', '#ff85c0', '#95de64', '#5cdbd3'];
+    // 明亮系配色 (Tailwind Colors: Blue, Emerald, Amber, Rose, Violet...)
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4', '#ec4899'];
 
     myPieChart = new Chart(ctx, {
         type: 'doughnut',
@@ -64,7 +57,7 @@ const drawPieChart = () => {
             datasets: [{ 
                 data, 
                 backgroundColor: colors, 
-                borderColor: '#18181c', 
+                borderColor: '#ffffff', // 切割線改為白色
                 borderWidth: 2,
                 hoverOffset: 4
             }] 
@@ -75,14 +68,15 @@ const drawPieChart = () => {
             plugins: { 
                 legend: { 
                     position: 'right', 
-                    labels: { color: '#ccc', font: { size: 12 }, boxWidth: 12, padding: 15 } 
+                    labels: { color: '#374151', font: { size: 12, family:'Inter' }, boxWidth: 12, padding: 15 } 
                 },
                 tooltip: {
-                    backgroundColor: '#1f1f23',
-                    titleColor: '#fff',
-                    bodyColor: '#ccc',
-                    borderColor: '#333',
+                    backgroundColor: '#ffffff',
+                    titleColor: '#111827',
+                    bodyColor: '#4b5563',
+                    borderColor: '#e5e7eb',
                     borderWidth: 1,
+                    padding: 10,
                     callbacks: {
                          label: (c) => {
                              const val = Number(c.raw);
@@ -98,40 +92,23 @@ const drawPieChart = () => {
     });
 };
 
-const initChart = () => {
-    if (store.holdings && store.holdings.length > 0 && canvas.value) {
-        drawPieChart();
-    }
-};
+const initChart = () => { if (store.holdings && store.holdings.length > 0 && canvas.value) drawPieChart(); };
 
-// 監聽類型切換
 watch(pieType, drawPieChart);
-
-// 監聽數據變化 (非同步載入)
-watch(() => store.holdings, async () => {
-    await nextTick();
-    initChart();
-}, { deep: true });
-
-// 組件掛載 (若已有數據)
-onMounted(async () => {
-    await nextTick();
-    initChart();
-});
+watch(() => store.holdings, async () => { await nextTick(); initChart(); }, { deep: true });
+onMounted(async () => { await nextTick(); initChart(); });
 </script>
 
 <style scoped>
 .chart-card {
-    background-color: #18181c;
-    border: 1px solid #2d2d30;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: 20px;
-    color: #e0e0e0;
+    color: var(--text-primary);
     display: flex;
     flex-direction: column;
     height: 100%;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-    /* 0.00 版風格高度 */
 }
 
 .chart-header {
@@ -145,39 +122,41 @@ onMounted(async () => {
     margin: 0;
     font-size: 1.1rem;
     font-weight: 600;
-    color: #eee;
+    color: var(--text-primary);
 }
 
 .toggle-group {
     display: flex;
-    background: #2d2d30;
+    background: var(--bg-body);
     border-radius: 6px;
     padding: 2px;
-    border: 1px solid #333;
+    border: 1px solid var(--border-color);
 }
 
 .toggle-group button {
     background: transparent;
     border: none;
-    color: #888;
+    color: var(--text-secondary);
     padding: 4px 12px;
     font-size: 0.85rem;
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.2s;
+    font-weight: 500;
 }
 
-.toggle-group button:hover { color: #ccc; }
+.toggle-group button:hover { color: var(--text-primary); }
 .toggle-group button.active {
-    background: #40a9ff;
-    color: #fff;
-    font-weight: 700;
+    background: #ffffff;
+    color: var(--primary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .canvas-wrapper {
     position: relative;
     width: 100%;
-    height: 250px; /* 固定高度，對齊 0.00 版 */
+    height: 250px;
     flex-grow: 1;
 }
 </style>
