@@ -129,7 +129,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
@@ -208,7 +208,13 @@ onMounted(() => {
   isDarkMode.value = savedTheme === 'dark';
   document.documentElement.setAttribute('data-theme', savedTheme);
   
+  // 添加事件監聽器
   document.addEventListener('click', handleClickOutside);
+});
+
+// 重要：添加卸載時清理事件監聽器
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
 });
 
 defineExpose({ addNotification });
