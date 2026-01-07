@@ -17,7 +17,10 @@
               :type="showPassword ? 'text' : 'password'"
               placeholder="輸入訪問密碼..."
               class="form-input"
-              :class="{ 'input-error': error }"
+              :class="{ 
+                'input-error': error,
+                'input-focused': inputFocused
+              }"
               @keyup.enter="handleLogin"
               @focus="inputFocused = true"
               @blur="inputFocused = false"
@@ -273,6 +276,12 @@ const handleLogin = async () => {
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(31, 110, 251, 0.1);
   background: var(--card-bg);
+}
+
+/* 新增：焦點樣式 */
+.form-input.input-focused {
+  background: var(--card-bg);
+  border-color: var(--primary);
 }
 
 .form-input.input-error {
