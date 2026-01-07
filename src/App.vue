@@ -15,6 +15,10 @@
             <div v-else class="status-indicator ready">
                 <span class="dot"></span> 系統連線正常
             </div>
+            <div class="user-profile" @click="logout" title="點擊登出">
+                <div class="avatar">U</div>
+                <span class="logout-text desktop-only">登出</span>
+            </div>
         </div>
       </header>
 
@@ -86,8 +90,18 @@ const handleEditRecord = (record) => {
   if (tradeFormRef.value) {
     tradeFormRef.value.setupForm(record);
     // 滾動到右側表單
-    document.querySelector('.side-column').scrollIntoView({ behavior: 'smooth' });
+    if (window.innerWidth < 1024) {
+        document.querySelector('.side-column').scrollIntoView({ behavior: 'smooth' });
+    }
   }
+};
+
+const logout = () => {
+    if (confirm("確定要登出並清除 API Token 嗎？")) {
+        // 清除 Token 並重新整理
+        authStore.setToken(''); 
+        window.location.reload();
+    }
 };
 
 onMounted(() => {
@@ -96,6 +110,193 @@ onMounted(() => {
 </script>
 
 <style>
-/* CSS 保持不變，或沿用上一版的設定 */
-/* ... (與上一版相同) ... */
+:root {
+    --bg-app: #f8f9fa;
+    --bg-card: #ffffff;
+    --border-color: #e2e8f0;
+    --primary: #2563eb;
+    --primary-dark: #1e40af;
+    --text-main: #0f172a;
+    --text-sub: #64748b;
+    --success: #10b981;
+    --danger: #ef4444;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --radius: 8px;
+}
+
+body {
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.main-wrapper { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Top Navigation */
+.top-nav {
+    background: #fff;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 32px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: var(--shadow-sm);
+    z-index: 100;
+}
+
+.nav-brand { display: flex; align-items: center; gap: 12px; }
+.nav-brand h1 { font-size: 1.25rem; font-weight: 700; margin: 0; color: var(--text-main); letter-spacing: -0.5px; }
+.badge { background: var(--text-main); color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; vertical-align: middle; margin-left: 8px; }
+.logo-icon { font-size: 1.5rem; }
+
+.nav-status { display: flex; align-items: center; gap: 24px; font-size: 0.9rem; font-weight: 500; }
+.status-indicator { display: flex; align-items: center; gap: 8px; }
+.status-indicator.ready { color: var(--success); }
+.status-indicator.loading { color: var(--primary); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.loading .dot { animation: pulse 1s infinite; }
+
+/* 登出區塊樣式 */
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 20px;
+    transition: background 0.2s;
+}
+.user-profile:hover {
+    background: rgba(0,0,0,0.05);
+}
+
+.avatar { 
+    width: 32px; height: 32px; background: var(--bg-app); 
+    border: 1px solid var(--border-color); border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center; 
+    font-weight: bold; color: var(--text-sub); flex-shrink: 0;
+}
+
+.logout-text {
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    font-weight: 500;
+}
+
+/* Layout Grid */
+.content-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 24px 32px;
+    display: grid;
+    /* 強制設定兩欄比例，minmax(0, ...) 防止內容撐開 */
+    grid-template-columns: minmax(0, 3fr) minmax(320px, 1fr);
+    gap: 24px;
+    width: 100%;
+    box-sizing: border-box;
+    align-items: start;
+}
+
+.main-column {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+}
+
+.section-charts {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 24px;
+    min-height: 400px; 
+}
+
+.chart-container {
+    height: 400px; 
+    width: 100%;
+    overflow: hidden;
+}
+
+.side-column {
+    min-width: 0;
+}
+
+.sticky-panel {
+    position: sticky;
+    top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    z-index: 10;
+}
+
+/* RWD 修正 */
+@media (max-width: 1280px) {
+    .content-container {
+        grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+        padding: 20px;
+    }
+    .section-charts {
+        grid-template-columns: 1fr;
+        min-height: auto;
+    }
+    .chart-container {
+        height: 350px;
+        margin-bottom: 24px;
+    }
+    .chart-container:last-child {
+        margin-bottom: 0;
+    }
+}
+
+@media (max-width: 1024px) {
+    .content-container {
+        display: flex;
+        flex-direction: column;
+    }
+    .sticky-panel {
+        position: static;
+    }
+    .side-column {
+        width: 100%;
+    }
+    /* 手機版隱藏部分文字 */
+    .desktop-only { display: none; }
+    .nav-status .status-indicator span { display: none; } /* 隱藏 loading 文字 */
+}
+
+/* Card Common */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+}
+.card h3 { 
+    font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin: 0 0 20px 0; 
+    border-left: 4px solid var(--primary); padding-left: 12px;
+}
+
+/* Toast */
+.toast-container { position: fixed; bottom: 32px; right: 32px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
+.toast { 
+    background: #fff; border: 1px solid var(--border-color); border-left: 4px solid transparent;
+    padding: 16px; border-radius: 4px; box-shadow: var(--shadow-md); 
+    display: flex; gap: 12px; min-width: 300px; cursor: pointer;
+}
+.toast.success { border-left-color: var(--success); }
+.toast.error { border-left-color: var(--danger); }
+.toast-icon { font-size: 1.2rem; font-weight: bold; }
+.toast.success .toast-icon { color: var(--success); }
+.toast.error .toast-icon { color: var(--danger); }
+.toast-msg { font-size: 0.85rem; color: var(--text-sub); }
+
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
+.toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translateX(30px); }
 </style>
