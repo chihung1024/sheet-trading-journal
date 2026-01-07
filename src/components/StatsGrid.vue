@@ -1,185 +1,162 @@
 <template>
   <div class="stats-grid">
-    <div 
+    <div
       v-for="stat in stats"
       :key="stat.id"
       class="stat-card"
-      :class="{ 
-        'stat-positive': stat.trend === 'up', 
-        'stat-negative': stat.trend === 'down',
-        'stat-neutral': stat.trend === 'neutral'
-      }"
+      :class="getStatClass(stat)"
     >
+      <!-- Card Header -->
       <div class="stat-header">
         <div class="stat-icon">{{ stat.icon }}</div>
-        <h4 class="stat-title">{{ stat.title }}</h4>
+        <h3 class="stat-title">{{ stat.title }}</h3>
       </div>
 
+      <!-- Card Body -->
       <div class="stat-body">
-        <p class="stat-value">{{ stat.value }}</p>
-        
+        <p class="stat-value">{{ formatValue(stat.value) }}</p>
+
+        <!-- Subtitle if available -->
         <div v-if="stat.subtitle" class="stat-subtitle">
           {{ stat.subtitle }}
         </div>
+      </div>
 
-        <div v-if="stat.change" class="stat-change" :class="{ positive: stat.trend === 'up', negative: stat.trend === 'down' }">
-          <span class="change-icon">{{ stat.trend === 'up' ? '↑' : stat.trend === 'down' ? '↓' : '—' }}</span>
-          <span class="change-value">{{ stat.change }}</span>
-        </div>
+      <!-- Change indicator -->
+      <div v-if="stat.change !== undefined" class="stat-change" :class="{
+        positive: stat.trend === 'up',
+        negative: stat.trend === 'down',
+        neutral: stat.trend === 'neutral'
+      }">
+        <span class="change-icon">{{ stat.trend === 'up' ? '↑' : stat.trend === 'down' ? '↓' : '→' }}</span>
+        <span class="change-value">{{ Math.abs(stat.change) }}%</span>
       </div>
     </div>
   </div>
 </template>
 
-<script setup>
+<script>
 import { computed } from 'vue';
-import { usePortfolioStore } from '../stores/portfolio';
+import { usePortfolioStore } from '@/stores/portfolio';
 
-const store = usePortfolioStore();
+export default {
+  name: 'StatsGrid',
+  setup() {
+    const portfolioStore = usePortfolioStore();
 
-const stats = computed(() => {
-  const portfolio = store.portfolio || {};
-  const records = store.records || [];
-  const holdings = store.holdings || [];
+    const stats = computed(() => [
+      {
+        id: 'total-value',
+        icon: '💰',
+        title: 'Total Value',
+        value: portfolioStore.totalValue,
+        change: portfolioStore.valueChange,
+        trend: portfolioStore.valueChange >= 0 ? 'up' : 'down',
+        subtitle: 'Portfolio worth'
+      },
+      {
+        id: 'total-return',
+        icon: '📈',
+        title: 'Total Return',
+        value: portfolioStore.totalReturn,
+        change: portfolioStore.returnChange,
+        trend: portfolioStore.returnChange >= 0 ? 'up' : 'down',
+        subtitle: 'YTD performance'
+      },
+      {
+        id: 'win-rate',
+        icon: '🎯',
+        title: 'Win Rate',
+        value: portfolioStore.winRate,
+        change: portfolioStore.winRateChange,
+        trend: portfolioStore.winRateChange >= 0 ? 'up' : 'down',
+        subtitle: 'Winning trades'
+      },
+      {
+        id: 'total-trades',
+        icon: '📊',
+        title: 'Total Trades',
+        value: portfolioStore.totalTrades,
+        change: portfolioStore.tradeChange,
+        trend: portfolioStore.tradeChange >= 0 ? 'up' : 'neutral',
+        subtitle: 'Executed trades'
+      }
+    ]);
 
-  // 計算本月交易次數
-  const today = new Date();
-  const currentMonth = today.getMonth();
-  const currentYear = today.getFullYear();
-  const monthlyTrades = records.filter(r => {
-    const date = new Date(r.txn_date);
-    return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-  });
+    const getStatClass = (stat) => {
+      return {
+        'stat-positive': stat.trend === 'up',
+        'stat-negative': stat.trend === 'down',
+        'stat-neutral': stat.trend === 'neutral'
+      };
+    };
 
-  // 計算平均單筆收益
-  const avgReturn = records.length > 0 
-    ? records.reduce((sum, r) => sum + (r.total_amount || 0), 0) / records.length
-    : 0;
+    const formatValue = (value) => {
+      if (typeof value === 'number') {
+        if (value >= 1000000) {
+          return (value / 1000000).toFixed(2) + 'M';
+        } else if (value >= 1000) {
+          return (value / 1000).toFixed(2) + 'K';
+        } else if (value < 1 && value > 0) {
+          return value.toFixed(4);
+        }
+        return value.toFixed(2);
+      }
+      return value;
+    };
 
-  // 計算持倉平均收益率
-  const avgHoldingReturn = holdings.length > 0
-    ? holdings.reduce((sum, h) => sum + (h.gainPercent || 0), 0) / holdings.length
-    : 0;
-
-  return [
-    {
-      id: 'total-value',
-      icon: '💰',
-      title: '投資組合總值',
-      value: formatCurrency(portfolio.totalValue || 0),
-      subtitle: holdings.length ? `${holdings.length} 檔持倉` : '暫無持倉',
-      trend: portfolio.totalReturn >= 0 ? 'up' : 'down',
-      change: portfolio.totalReturn >= 0 ? `+$${formatCurrency(portfolio.totalReturn || 0)}` : `-$${formatCurrency(Math.abs(portfolio.totalReturn || 0))}`
-    },
-    {
-      id: 'total-cost',
-      icon: '💸',
-      title: '總投入',
-      value: formatCurrency(portfolio.totalCost || 0),
-      subtitle: `平均成本 $${formatPrice((portfolio.totalCost || 0) / (portfolio.totalQty || 1))}`,
-      trend: 'neutral'
-    },
-    {
-      id: 'total-return',
-      icon: '📈',
-      title: '總收益率',
-      value: formatPercent(portfolio.totalReturnPercent || 0),
-      trend: portfolio.totalReturnPercent >= 0 ? 'up' : 'down',
-      change: portfolio.totalReturnPercent >= 0 ? `+${formatPercent(portfolio.totalReturnPercent || 0)}` : `${formatPercent(portfolio.totalReturnPercent || 0)}`
-    },
-    {
-      id: 'trade-count',
-      icon: '💹',
-      title: '交易次數',
-      value: records.length.toString(),
-      subtitle: `本月: ${monthlyTrades.length} 次`,
-      trend: monthlyTrades.length > 0 ? 'up' : 'neutral'
-    },
-    {
-      id: 'holding-count',
-      icon: '🎯',
-      title: '持倉數量',
-      value: holdings.length.toString(),
-      subtitle: `平均收益率 ${formatPercent(avgHoldingReturn)}`,
-      trend: avgHoldingReturn >= 0 ? 'up' : 'down'
-    },
-    {
-      id: 'avg-transaction',
-      icon: '📊',
-      title: '平均單筆',
-      value: formatCurrency(avgReturn),
-      subtitle: `基於 ${records.length} 筆交易`,
-      trend: avgReturn >= 0 ? 'up' : 'neutral'
-    },
-    {
-      id: 'best-performer',
-      icon: '⭐',
-      title: '最佳表現',
-      value: getBestPerformer().symbol || '—',
-      subtitle: getBestPerformer().symbol ? `+${formatPercent(getBestPerformer().gain)}` : '暫無數據',
-      trend: 'up'
-    },
-    {
-      id: 'worst-performer',
-      icon: '📉',
-      title: '最差表現',
-      value: getWorstPerformer().symbol || '—',
-      subtitle: getWorstPerformer().symbol ? `${formatPercent(getWorstPerformer().gain)}` : '暫無數據',
-      trend: 'down'
-    }
-  ];
-});
-
-// 格式化函數
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('zh-TW', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value);
-};
-
-const formatPrice = (value) => {
-  return new Intl.NumberFormat('zh-TW', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4
-  }).format(value);
-};
-
-const formatPercent = (value) => {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
-};
-
-const getBestPerformer = () => {
-  const holdings = store.holdings || [];
-  return holdings.length > 0
-    ? holdings.reduce((best, h) => (h.gainPercent || 0) > (best.gainPercent || 0) ? h : best)
-    : {};
-};
-
-const getWorstPerformer = () => {
-  const holdings = store.holdings || [];
-  return holdings.length > 0
-    ? holdings.reduce((worst, h) => (h.gainPercent || 0) < (worst.gainPercent || 0) ? h : worst)
-    : {};
+    return {
+      stats,
+      getStatClass,
+      formatValue
+    };
+  }
 };
 </script>
 
 <style scoped>
+:root {
+  --stat-bg: #f8f9fa;
+  --stat-border: #e0e0e0;
+  --stat-text: #1a1a1a;
+  --stat-icon-bg: #e3f2fd;
+  --stat-positive-color: #4caf50;
+  --stat-negative-color: #f44336;
+  --stat-neutral-color: #9e9e9e;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 20px;
+}
+
+[data-theme='dark'] {
+  --stat-bg: #2d2d2d;
+  --stat-border: #3d3d3d;
+  --stat-text: #ffffff;
+  --stat-icon-bg: #1a3a52;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-md);
-  margin-bottom: var(--space-lg);
+  gap: var(--spacing-lg);
+  width: 100%;
 }
 
 .stat-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-md);
-  transition: all 300ms ease;
+  background-color: var(--stat-bg);
+  border: 1px solid var(--stat-border);
+  border-radius: 12px;
+  padding: var(--spacing-md);
   position: relative;
   overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-color: #2196f3;
 }
 
 .stat-card::before {
@@ -189,86 +166,103 @@ const getWorstPerformer = () => {
   left: 0;
   right: 0;
   height: 3px;
-  background: var(--border);
-  transition: all 300ms ease;
+  background: linear-gradient(90deg, #2196f3, #4caf50);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.stat-card.stat-positive::before {
-  background: #4cb050;
-  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+.stat-card:hover::before {
+  transform: scaleX(1);
 }
 
-.stat-card.stat-negative::before {
-  background: var(--error-light);
-  box-shadow: 0 2px 8px rgba(248, 81, 73, 0.3);
+.stat-positive {
+  border-color: rgba(76, 175, 80, 0.3);
 }
 
-.stat-card:hover {
-  border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(31, 110, 251, 0.15);
-  transform: translateY(-2px);
+.stat-negative {
+  border-color: rgba(244, 67, 54, 0.3);
+}
+
+.stat-neutral {
+  border-color: rgba(158, 158, 158, 0.3);
 }
 
 .stat-header {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  margin-bottom: var(--space-md);
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
 }
 
 .stat-icon {
-  font-size: 1.8rem;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--stat-icon-bg);
+  border-radius: 8px;
+  font-size: 24px;
   flex-shrink: 0;
 }
 
 .stat-title {
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--stat-text);
+  line-height: 1.4;
 }
 
 .stat-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  margin-bottom: var(--spacing-md);
 }
 
 .stat-value {
   margin: 0;
-  color: var(--text);
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   font-weight: 700;
-  font-family: 'Monaco', 'Menlo', monospace;
-  word-break: break-word;
+  color: var(--stat-text);
+  letter-spacing: -0.5px;
+  line-height: 1.2;
 }
 
 .stat-subtitle {
-  color: var(--text-muted);
+  margin-top: 6px;
   font-size: 0.85rem;
-  margin: 0;
+  color: #999;
+  font-weight: 400;
 }
 
 .stat-change {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.9rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
   font-weight: 600;
-  width: fit-content;
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .stat-change.positive {
-  color: #4cb050;
+  color: var(--stat-positive-color);
+  background-color: rgba(76, 175, 80, 0.1);
 }
 
 .stat-change.negative {
-  color: var(--error-light);
+  color: var(--stat-negative-color);
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+.stat-change.neutral {
+  color: var(--stat-neutral-color);
+  background-color: rgba(158, 158, 158, 0.1);
 }
 
 .change-icon {
+  display: inline-block;
   font-size: 1rem;
 }
 
@@ -276,25 +270,52 @@ const getWorstPerformer = () => {
   font-family: 'Monaco', 'Menlo', monospace;
 }
 
-@media (max-width: 1024px) {
+/* Responsive adjustments */
+@media (max-width: 1200px) {
   .stats-grid {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-md);
   }
 }
 
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-md);
+  }
+
+  .stat-card {
+    padding: var(--spacing-sm);
   }
 
   .stat-value {
-    font-size: 1.2rem;
+    font-size: 1.5rem;
+  }
+
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
   }
 }
 
 @media (max-width: 480px) {
   .stats-grid {
     grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+
+  .stat-header {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+  }
+
+  .stat-title {
+    font-size: 0.9rem;
   }
 }
 </style>
