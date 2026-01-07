@@ -1,283 +1,288 @@
 <template>
   <header class="header-bar">
     <div class="header-container">
-      <!-- Logo 和品牌 -->
-      <div class="header-brand">
-        <button 
+      <!-- Left section: Logo and Menu Toggle -->
+      <div class="header-start">
+        <button
           class="menu-toggle"
           @click="toggleMenu"
-          aria-label="切換菜單"
+          aria-label="Toggle navigation menu"
           :aria-expanded="menuOpen"
+          :class="{ active: menuOpen }"
         >
-          <span></span>
-          <span></span>
-          <span></span>
+          <span />
+          <span />
+          <span />
         </button>
-        <h1 class="brand-title">📊 交易日誌</h1>
+        <h1 class="brand-title">📊 Trading Journal</h1>
       </div>
 
-      <!-- 導航菜單 -->
-      <nav 
+      <!-- Center section: Navigation -->
+      <nav
         class="header-nav"
         :class="{ open: menuOpen }"
         role="navigation"
-        aria-label="主導航"
+        aria-label="Main navigation"
       >
         <ul class="nav-list">
           <li class="nav-item">
-            <a href="#dashboard" class="nav-link" @click="closeMenu">
-              📈 儀表板
+            <a
+              href="#dashboard"
+              class="nav-link"
+              @click="closeMenu"
+            >
+              📈 Dashboard
             </a>
           </li>
           <li class="nav-item">
-            <a href="#trades" class="nav-link" @click="closeMenu">
-              💹 交易
+            <a
+              href="#trades"
+              class="nav-link"
+              @click="closeMenu"
+            >
+              💹 Trades
             </a>
           </li>
           <li class="nav-item">
-            <a href="#portfolio" class="nav-link" @click="closeMenu">
-              🎯 投資組合
+            <a
+              href="#analysis"
+              class="nav-link"
+              @click="closeMenu"
+            >
+              📊 Analysis
             </a>
           </li>
           <li class="nav-item">
-            <a href="#analytics" class="nav-link" @click="closeMenu">
-              📊 分析
+            <a
+              href="#settings"
+              class="nav-link"
+              @click="closeMenu"
+            >
+              ⚙️ Settings
             </a>
           </li>
         </ul>
       </nav>
 
-      <!-- 用戶菜單 -->
-      <div class="header-actions">
+      <!-- Right section: Actions and User Menu -->
+      <div class="header-end">
         <div class="search-box">
-          <input 
+          <input
             type="text"
-            placeholder="搜索..."
+            placeholder="Search..."
             class="search-input"
-            aria-label="搜索交易"
-            @keydown.enter="handleSearch"
-          >
-          <button 
-            class="search-btn"
-            aria-label="執行搜索"
-            @click="handleSearch"
-          >
-            🔍
-          </button>
+            aria-label="Search trades"
+          />
         </div>
-
-        <div class="user-menu">
-          <button 
-            class="user-btn"
+        <div class="header-actions">
+          <button
+            class="icon-button"
+            aria-label="Notifications"
+            title="Notifications"
+          >
+            🔔
+          </button>
+          <button
+            class="icon-button"
+            aria-label="Theme toggle"
+            @click="$emit('toggle-theme')"
+            title="Toggle dark mode"
+          >
+            🌓
+          </button>
+          <button
+            class="icon-button user-avatar"
+            aria-label="User menu"
             @click="toggleUserMenu"
-            :aria-expanded="userMenuOpen"
-            aria-label="用戶菜單"
+            title="User options"
           >
-            👤 {{ userName }}
+            👤
           </button>
-
-          <div 
-            v-if="userMenuOpen"
-            class="dropdown-menu user-dropdown"
-            role="menu"
-          >
-            <button class="dropdown-item" role="menuitem" @click="handleSettings">
-              ⚙️ 設置
-            </button>
-            <button class="dropdown-item" role="menuitem" @click="handleExport">
-              📥 匯出數據
-            </button>
-            <hr class="dropdown-divider">
-            <button class="dropdown-item danger" role="menuitem" @click="handleLogout">
-              🚪 登出
-            </button>
-          </div>
         </div>
-
-        <!-- 主題切換 -->
-        <button 
-          class="theme-toggle"
-          @click="toggleTheme"
-          :aria-label="`切換至${isDarkMode ? '亮色' : '暗色'}主題`"
-          :title="`當前: ${isDarkMode ? '暗色' : '亮色'}模式`"
-        >
-          {{ isDarkMode ? '☀️' : '🌙' }}
-        </button>
-      </div>
-    </div>
-
-    <!-- 通知欄 -->
-    <div v-if="notifications.length > 0" class="notification-bar">
-      <div 
-        v-for="(notification, index) in notifications"
-        :key="index"
-        class="notification-item"
-        :class="`notification-${notification.type}`"
-        role="status"
-      >
-        <span>{{ notification.message }}</span>
-        <button 
-          class="notification-close"
-          @click="removeNotification(index)"
-          aria-label="關閉通知"
-        >
-          ✕
-        </button>
+        <!-- User dropdown menu -->
+        <div v-if="userMenuOpen" class="user-dropdown">
+          <a href="#profile" class="dropdown-item">Profile</a>
+          <a href="#settings" class="dropdown-item">Settings</a>
+          <hr class="dropdown-divider" />
+          <button class="dropdown-item logout-btn" @click="handleLogout">
+            Logout
+          </button>
+        </div>
       </div>
     </div>
   </header>
 </template>
 
-<script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useAuthStore } from '../stores/auth';
+<script>
+import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { useAuthStore } from '@/stores/auth';
 
-const authStore = useAuthStore();
+export default {
+  name: 'HeaderBar',
+  emits: ['toggle-theme'],
+  setup(props, { emit }) {
+    const authStore = useAuthStore();
+    const menuOpen = ref(false);
+    const userMenuOpen = ref(false);
 
-const menuOpen = ref(false);
-const userMenuOpen = ref(false);
-const isDarkMode = ref(true);
-const notifications = ref([]);
-const searchQuery = ref('');
+    const toggleMenu = () => {
+      menuOpen.value = !menuOpen.value;
+    };
 
-const userName = computed(() => authStore.user?.name || '用戶');
+    const closeMenu = () => {
+      menuOpen.value = false;
+    };
 
-const toggleMenu = () => {
-  menuOpen.value = !menuOpen.value;
+    const toggleUserMenu = () => {
+      userMenuOpen.value = !userMenuOpen.value;
+    };
+
+    const handleLogout = async () => {
+      await authStore.logout();
+      userMenuOpen.value = false;
+    };
+
+    const handleClickOutside = (event) => {
+      const nav = document.querySelector('.header-nav');
+      const userDropdown = document.querySelector('.user-dropdown');
+      const menuToggle = document.querySelector('.menu-toggle');
+      const userBtn = document.querySelector('.user-avatar');
+
+      if (nav && !nav.contains(event.target) && !menuToggle.contains(event.target)) {
+        closeMenu();
+      }
+
+      if (userDropdown && !userDropdown.contains(event.target) && !userBtn.contains(event.target)) {
+        userMenuOpen.value = false;
+      }
+    };
+
+    onMounted(() => {
+      document.addEventListener('click', handleClickOutside);
+    });
+
+    onBeforeUnmount(() => {
+      document.removeEventListener('click', handleClickOutside);
+    });
+
+    return {
+      authStore,
+      menuOpen,
+      userMenuOpen,
+      toggleMenu,
+      closeMenu,
+      toggleUserMenu,
+      handleLogout,
+    };
+  },
 };
-
-const closeMenu = () => {
-  menuOpen.value = false;
-};
-
-const toggleUserMenu = () => {
-  userMenuOpen.value = !userMenuOpen.value;
-};
-
-const toggleTheme = () => {
-  isDarkMode.value = !isDarkMode.value;
-  document.documentElement.setAttribute(
-    'data-theme',
-    isDarkMode.value ? 'dark' : 'light'
-  );
-  localStorage.setItem('theme', isDarkMode.value ? 'dark' : 'light');
-};
-
-const handleSearch = () => {
-  if (searchQuery.value.trim()) {
-    // 發出搜索事件
-    console.log('搜索:', searchQuery.value);
-    searchQuery.value = '';
-  }
-};
-
-const handleSettings = () => {
-  userMenuOpen.value = false;
-  console.log('打開設置');
-};
-
-const handleExport = () => {
-  userMenuOpen.value = false;
-  console.log('匯出數據');
-};
-
-const handleLogout = async () => {
-  userMenuOpen.value = false;
-  await authStore.logout();
-};
-
-const removeNotification = (index) => {
-  notifications.value.splice(index, 1);
-};
-
-const addNotification = (message, type = 'info') => {
-  notifications.value.push({ message, type });
-  setTimeout(() => removeNotification(0), 5000);
-};
-
-// 監聽外部點擊
-const handleClickOutside = (event) => {
-  if (!event.target.closest('.user-menu')) {
-    userMenuOpen.value = false;
-  }
-};
-
-onMounted(() => {
-  // 恢復主題設置
-  const savedTheme = localStorage.getItem('theme') || 'dark';
-  isDarkMode.value = savedTheme === 'dark';
-  document.documentElement.setAttribute('data-theme', savedTheme);
-  
-  // 添加事件監聽器
-  document.addEventListener('click', handleClickOutside);
-});
-
-// 重要：添加卸載時清理事件監聽器
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
-});
-
-defineExpose({ addNotification });
 </script>
 
 <style scoped>
+:root {
+  --header-height: 64px;
+  --header-bg: #ffffff;
+  --header-text: #1a1a1a;
+  --header-border: #e0e0e0;
+  --header-hover: #f5f5f5;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --radius-md: 8px;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='dark'] {
+  --header-bg: #1a1a1a;
+  --header-text: #ffffff;
+  --header-border: #2d2d2d;
+  --header-hover: #2d2d2d;
+}
+
 .header-bar {
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: var(--header-height);
+  background-color: var(--header-bg);
+  border-bottom: 1px solid var(--header-border);
+  box-shadow: var(--shadow-sm);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .header-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: var(--space-md) var(--space-lg);
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-lg);
+  max-width: 100%;
+  padding: 0 var(--spacing-md);
+  gap: var(--spacing-lg);
 }
 
-.header-brand {
+.header-start {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
+  gap: var(--spacing-md);
   flex-shrink: 0;
 }
 
 .menu-toggle {
   display: none;
   flex-direction: column;
-  gap: 4px;
-  background: none;
+  justify-content: center;
+  align-items: center;
+  width: 40px;
+  height: 40px;
+  padding: var(--spacing-sm);
+  background: transparent;
   border: none;
   cursor: pointer;
-  padding: 8px;
+  border-radius: var(--radius-md);
+  transition: background-color 0.2s ease;
+}
+
+.menu-toggle:hover,
+.menu-toggle.active {
+  background-color: var(--header-hover);
 }
 
 .menu-toggle span {
-  width: 24px;
+  width: 20px;
   height: 2px;
-  background: var(--text);
-  transition: all 200ms ease;
+  background-color: var(--header-text);
+  margin: 3px 0;
   border-radius: 1px;
+  transition: all 0.3s ease;
+}
+
+.menu-toggle.active span:nth-child(1) {
+  transform: rotate(45deg) translate(8px, 8px);
+}
+
+.menu-toggle.active span:nth-child(2) {
+  opacity: 0;
+}
+
+.menu-toggle.active span:nth-child(3) {
+  transform: rotate(-45deg) translate(8px, -8px);
 }
 
 .brand-title {
   margin: 0;
-  font-size: 1.3rem;
-  color: var(--text);
+  padding: 0;
+  font-size: 1.25rem;
   font-weight: 700;
+  color: var(--header-text);
   white-space: nowrap;
+  letter-spacing: -0.5px;
 }
 
 .header-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-lg);
   flex: 1;
+  display: flex;
+  justify-content: center;
 }
 
 .nav-list {
@@ -285,7 +290,7 @@ defineExpose({ addNotification });
   list-style: none;
   margin: 0;
   padding: 0;
-  gap: var(--space-lg);
+  gap: var(--spacing-lg);
 }
 
 .nav-item {
@@ -293,95 +298,100 @@ defineExpose({ addNotification });
 }
 
 .nav-link {
-  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  padding: var(--spacing-sm) 0;
+  color: var(--header-text);
   text-decoration: none;
   font-weight: 500;
-  transition: color 200ms ease;
-  padding: 8px 0;
+  font-size: 0.95rem;
+  transition: color 0.2s ease;
   border-bottom: 2px solid transparent;
+  cursor: pointer;
+  gap: 4px;
 }
 
 .nav-link:hover {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  color: #2196f3;
+  border-bottom-color: #2196f3;
+}
+
+.header-end {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-shrink: 0;
+}
+
+.search-box {
+  position: relative;
+  display: none;
+  width: 220px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 6px 12px 6px 36px;
+  background-color: var(--header-hover);
+  border: 1px solid var(--header-border);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  color: var(--header-text);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.search-input::placeholder {
+  color: #999;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #2196f3;
+  background-color: var(--header-bg);
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  flex-shrink: 0;
+  gap: var(--spacing-md);
 }
 
-.search-box {
+.icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  font-size: 1.2rem;
   display: flex;
   align-items: center;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 6px 12px;
+  justify-content: center;
+  transition: background-color 0.2s ease;
 }
 
-.search-input {
-  background: none;
-  border: none;
-  color: var(--text);
-  font-size: 0.9rem;
-  outline: none;
-  width: 200px;
+.icon-button:hover {
+  background-color: var(--header-hover);
 }
 
-.search-input::placeholder {
-  color: var(--text-muted);
-}
-
-.search-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 4px 8px;
-  transition: color 200ms ease;
-}
-
-.search-btn:hover {
-  color: var(--primary);
-}
-
-.user-menu {
+.user-avatar {
   position: relative;
 }
 
-.user-btn {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: all 200ms ease;
-}
-
-.user-btn:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-.dropdown-menu {
+.user-dropdown {
   position: absolute;
   top: 100%;
   right: 0;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
+  margin-top: 4px;
+  min-width: 160px;
+  background-color: var(--header-bg);
+  border: 1px solid var(--header-border);
   border-radius: var(--radius-md);
-  min-width: 180px;
-  margin-top: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
   z-index: 1000;
-  animation: slideDown 200ms ease-out;
+  overflow: hidden;
+  animation: slideDown 0.2s ease;
 }
 
 @keyframes slideDown {
@@ -398,142 +408,128 @@ defineExpose({ addNotification });
 .dropdown-item {
   display: block;
   width: 100%;
-  padding: 10px 16px;
-  background: none;
+  padding: var(--spacing-md);
+  color: var(--header-text);
+  background: transparent;
   border: none;
-  color: var(--text);
   text-align: left;
   cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 200ms ease;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: background-color 0.2s ease;
 }
 
 .dropdown-item:hover {
-  background: var(--bg-secondary);
-  color: var(--primary);
+  background-color: var(--header-hover);
 }
 
-.dropdown-item.danger:hover {
-  background: rgba(248, 81, 73, 0.1);
-  color: var(--error-light);
+.logout-btn {
+  color: #f44336;
+  font-weight: 500;
+}
+
+.logout-btn:hover {
+  background-color: rgba(244, 67, 54, 0.1);
 }
 
 .dropdown-divider {
-  margin: 8px 0;
+  margin: 0;
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--header-border);
 }
 
-.theme-toggle {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2rem;
-  padding: 8px;
-  border-radius: var(--radius-md);
-  transition: all 200ms ease;
-}
+@media (max-width: 1024px) {
+  .header-container {
+    gap: var(--spacing-md);
+  }
 
-.theme-toggle:hover {
-  background: var(--bg-secondary);
-}
+  .nav-list {
+    gap: var(--spacing-md);
+  }
 
-.notification-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: var(--space-md) var(--space-lg);
-  border-top: 1px solid var(--border);
-}
-
-.notification-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  font-size: 0.9rem;
-  animation: slideDown 300ms ease-out;
-}
-
-.notification-info {
-  background: rgba(31, 110, 251, 0.1);
-  border: 1px solid rgba(31, 110, 251, 0.3);
-  color: rgba(31, 110, 251, 0.9);
-}
-
-.notification-success {
-  background: rgba(76, 175, 80, 0.1);
-  border: 1px solid rgba(76, 175, 80, 0.3);
-  color: rgba(76, 175, 80, 0.9);
-}
-
-.notification-error {
-  background: rgba(248, 81, 73, 0.1);
-  border: 1px solid rgba(248, 81, 73, 0.3);
-  color: rgba(248, 81, 73, 0.9);
-}
-
-.notification-close {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 4px;
-  opacity: 0.7;
-  transition: opacity 200ms ease;
-}
-
-.notification-close:hover {
-  opacity: 1;
+  .header-end {
+    gap: var(--spacing-sm);
+  }
 }
 
 @media (max-width: 768px) {
+  .header-bar {
+    --header-height: 56px;
+  }
+
+  .header-container {
+    padding: 0 var(--spacing-sm);
+  }
+
   .menu-toggle {
     display: flex;
   }
 
-  .header-container {
-    padding: var(--space-md);
-    gap: var(--space-md);
+  .brand-title {
+    font-size: 1.1rem;
   }
 
   .header-nav {
-    position: fixed;
+    position: absolute;
+    top: 100%;
     left: 0;
-    top: 60px;
     right: 0;
-    bottom: 0;
     flex-direction: column;
-    background: var(--card-bg);
-    border-top: 1px solid var(--border);
-    padding: var(--space-lg);
-    gap: var(--space-md);
-    transform: translateX(-100%);
-    transition: transform 300ms ease;
-    z-index: 99;
+    background-color: var(--header-bg);
+    border-bottom: 1px solid var(--header-border);
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
   }
 
   .header-nav.open {
-    transform: translateX(0);
+    max-height: 300px;
+    box-shadow: var(--shadow-md);
   }
 
   .nav-list {
     flex-direction: column;
-    gap: var(--space-md);
+    gap: 0;
+    padding: var(--spacing-md);
   }
 
-  .header-actions {
-    display: none;
+  .nav-link {
+    padding: var(--spacing-md);
+    border-bottom: none;
+    border-left: 2px solid transparent;
+  }
+
+  .nav-link:hover {
+    border-bottom: none;
+    border-left-color: #2196f3;
   }
 
   .search-box {
     display: none;
   }
+}
+
+@media (max-width: 480px) {
+  .header-container {
+    padding: 0 8px;
+  }
 
   .brand-title {
-    font-size: 1.1rem;
+    font-size: 1rem;
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-end {
+    gap: 4px;
+  }
+
+  .icon-button {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
   }
 }
 </style>
