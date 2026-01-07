@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 
-# === 基礎交易模型 (保持不變) ===
+# === 基礎交易模型 ===
 class TransactionRecord(BaseModel):
     id: Optional[int] = None
     txn_date: date = Field(alias='Date')
@@ -36,29 +36,29 @@ class HoldingPosition(BaseModel):
     current_price_origin: float
     avg_cost_usd: float = 0.0
 
-# === [移植新增] 平倉分析模型 ===
-# 對應舊專案 closed_positions.calculator.js 中的結構
+# === [階段 3 新增] 平倉分析模型 ===
 class ClosedLot(BaseModel):
-    open_date: str          # 開倉日期
-    close_date: str         # 平倉日期
-    qty: float              # 股數
-    entry_price: float      # 買入均價 (TWD)
-    exit_price: float       # 賣出均價 (TWD)
-    cost_basis: float       # 總成本 (TWD)
-    proceeds: float         # 總收入 (TWD)
-    realized_pnl: float     # 淨損益 (TWD)
-    holding_days: int       # 持倉天數
-    return_rate: float      # 報酬率 %
+    open_date: str          
+    close_date: str         
+    qty: float              
+    entry_price: float      
+    exit_price: float       
+    cost_basis: float       
+    proceeds: float         
+    realized_pnl: float     
+    holding_days: int       
+    return_rate: float      
+    dividends_collected: float = 0.0  # [新增] 該批次歸因的股息總額
 
 class ClosedPosition(BaseModel):
     symbol: str
-    total_realized_pnl: float # 該標的總已實現損益
-    win_rate: float           # 勝率
-    avg_holding_days: float   # 平均持倉天數
-    total_trades_count: int   # 總交易次數
-    lots: List[ClosedLot]     # 詳細交易批次清單
+    total_realized_pnl: float 
+    total_dividends: float    # [新增] 該標的平倉部分包含的總股息
+    win_rate: float           
+    avg_holding_days: float   
+    total_trades_count: int   
+    lots: List[ClosedLot]     
 
-# === [移植修改] 總表模型新增 closed_positions ===
 class PortfolioSnapshot(BaseModel):
     updated_at: str
     base_currency: str
@@ -66,4 +66,4 @@ class PortfolioSnapshot(BaseModel):
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
-    closed_positions: List[ClosedPosition] = [] # 新增此欄位
+    closed_positions: List[ClosedPosition] = []
