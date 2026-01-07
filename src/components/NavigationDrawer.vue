@@ -153,7 +153,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
@@ -188,11 +188,23 @@ const handleLogout = async () => {
   await authStore.logout();
 };
 
-// 監聽窗口大小變化
-window.addEventListener('resize', () => {
+// 重要：修改 resize 事件監聽器處理方式
+const handleResize = () => {
   if (window.innerWidth > 768 && isOpen.value) {
     closeDrawer();
   }
+};
+
+onMounted(() => {
+  // 添加 resize 事件監聽器
+  window.addEventListener('resize', handleResize);
+});
+
+// 重要：卸載時移除事件監聽器
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+  // 確保在卸載時還原 body overflow
+  document.body.style.overflow = '';
 });
 
 defineExpose({ openDrawer, closeDrawer });
