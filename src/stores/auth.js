@@ -1,65 +1,67 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { CONFIG } from '../config';
-import { usePortfolioStore } from './portfolio';
 
 export const useAuthStore = defineStore('auth', () => {
-    const token = ref('');
-    const user = ref({ name: '', email: '' });
-    // 注意：為了避免 Pinia 循環依賴，建議在函式內部呼叫 usePortfolioStore()，或在外部組件處理資料拉取
+  const token = ref(localStorage.getItem('access_token') || null);
+  const user = ref(JSON.parse(localStorage.getItem('user_info') || 'null'));
+  const error = ref(null);
 
-    const initAuth = () => {
-        const t = localStorage.getItem('token');
-        const n = localStorage.getItem('name');
-        const e = localStorage.getItem('email');
-        if (t) {
-            token.value = t;
-            user.value = { name: n, email: e };
-            
-            // 登入後自動觸發資料拉取
-            const portfolioStore = usePortfolioStore();
-            portfolioStore.fetchAll();
-        }
-    };
+  // 初始化：檢查 URL 是否有 callback token
+  const initAuth = () => {
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    
+    if (params.has('access_token')) {
+      const accessToken = params.get('access_token');
+      token.value = accessToken;
+      localStorage.setItem('access_token', accessToken);
+      
+      // 清除 URL hash，保持網址乾淨
+      window.history.replaceState(null, null, ' ');
+      
+      fetchUserInfo(accessToken);
+    } else if (token.value) {
+      // 如果已經有 token，檢查是否過期或有效
+      fetchUserInfo(token.value);
+    }
+  };
 
-    const login = async (googleCredential) => {
-        try {
-            const res = await fetch(`${CONFIG.API_BASE_URL}/auth/google`, {
-                method: "POST",
-                body: JSON.stringify({ id_token: googleCredential })
-            });
-            const data = await res.json();
-            
-            if (data.success) {
-                token.value = data.token;
-                user.value = { name: data.user, email: data.email };
-                
-                localStorage.setItem('token', data.token);
-                localStorage.setItem('name', data.user);
-                localStorage.setItem('email', data.email);
-                
-                const portfolioStore = usePortfolioStore();
-                portfolioStore.fetchAll();
-            } else {
-                alert("登入失敗: " + data.error);
-            }
-        } catch (e) {
-            console.error(e);
-            alert("登入連線錯誤，請檢查網路狀態");
-        }
-    };
+  const login = () => {
+    // Google OAuth 2.0 Implicit Flow
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CONFIG.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(CONFIG.REDIRECT_URI)}&response_type=token&scope=email%20profile`;
+    window.location.href = authUrl;
+  };
 
-    const logout = () => {
-        // 清除狀態
-        token.value = '';
-        user.value = {};
-        // 清除儲存
-        localStorage.removeItem('token');
-        localStorage.removeItem('name');
-        localStorage.removeItem('email');
+  const logout = () => {
+    token.value = null;
+    user.value = null;
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user_info');
+    window.location.reload();
+  };
+
+  const fetchUserInfo = async (accessToken) => {
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        // 簡單的白名單檢查 (可選)
+        // if (data.email !== 'your-email@gmail.com') throw new Error('Unauthorized');
         
-        // 不需要 location.reload()，App.vue 的 v-if="!authStore.token" 會自動切換回 LoginOverlay
-    };
+        user.value = data;
+        localStorage.setItem('user_info', JSON.stringify(data));
+      } else {
+        throw new Error('Token expired or invalid');
+      }
+    } catch (e) {
+      console.error('Auth Error:', e);
+      logout(); // Token 失效則登出
+    }
+  };
 
-    return { token, user, login, logout, initAuth };
+  return { token, user, login, logout, initAuth };
 });
