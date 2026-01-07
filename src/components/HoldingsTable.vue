@@ -122,11 +122,13 @@
       </div>
     </div>
 
-    <!-- 確認刪除對話框 -->
+    <!-- 確認刪除對話框 - 修改：確保 selectedHolding 正確顯示 -->
     <div v-if="showDeleteConfirm" class="confirm-dialog">
       <div class="dialog-content">
         <h4>確認刪除</h4>
-        <p>確定要刪除 {{ selectedHolding?.symbol }} 的持倉記錄嗎？</p>
+        <p v-if="selectedHolding">
+          確定要刪除 <strong>{{ selectedHolding.symbol }}</strong> 的持倉記錄嗎？此操作無法撤銷。
+        </p>
         <div class="dialog-actions">
           <button 
             class="btn btn-secondary"
@@ -236,9 +238,13 @@ const deleteHolding = (holding) => {
 // 確認刪除
 const confirmDelete = async () => {
   if (selectedHolding.value) {
-    await store.deleteHolding(selectedHolding.value.symbol);
-    showDeleteConfirm.value = false;
-    selectedHolding.value = null;
+    try {
+      await store.deleteHolding(selectedHolding.value.symbol);
+      showDeleteConfirm.value = false;
+      selectedHolding.value = null;
+    } catch (error) {
+      console.error('刪除失敗:', error);
+    }
   }
 };
 </script>
@@ -431,6 +437,7 @@ const confirmDelete = async () => {
   color: var(--error-light);
 }
 
+/* 修改：刪除確認對話框 */
 .confirm-dialog {
   position: fixed;
   top: 0;
