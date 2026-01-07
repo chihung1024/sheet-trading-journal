@@ -92,7 +92,9 @@
 <script setup>
 import { ref, reactive, onMounted, watch, computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
-import { Chart } from 'chart.js/auto';
+// 重要：確保已在 package.json 中安裝 chart.js
+// npm install chart.js
+import Chart from 'chart.js/auto';
 
 const store = usePortfolioStore();
 
@@ -139,6 +141,9 @@ const maxDrawdown = computed(() => {
   return maxDD;
 });
 
+// 重要：夏普比計算基於 252 個年交易日（美股標準）
+// 夏普比 = (年化平均收益) / (年化標準差)
+// 結果 > 1 表示較好的風險調整收益
 const sharpeRatio = computed(() => {
   if (!chartData.value) return 0;
   const values = chartData.value.values;
@@ -160,7 +165,8 @@ const sharpeRatio = computed(() => {
   
   if (stdDev === 0) return 0;
   
-  // 夏普比（假設無風險利率為0）
+  // 年化夏普比（假設無風險利率為0，252個交易日）
+  // 公式：(日平均收益 * 252) / (日標準差 * sqrt(252))
   return (meanReturn * 252) / (stdDev * Math.sqrt(252));
 });
 
@@ -384,7 +390,8 @@ onMounted(() => {
 }
 
 .loading-state,
-.error-state {
+.error-state,
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
