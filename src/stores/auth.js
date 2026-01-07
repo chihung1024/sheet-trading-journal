@@ -6,7 +6,7 @@ import { usePortfolioStore } from './portfolio';
 export const useAuthStore = defineStore('auth', () => {
     const token = ref('');
     const user = ref({ name: '', email: '' });
-    const portfolioStore = usePortfolioStore();
+    // 注意：為了避免 Pinia 循環依賴，建議在函式內部呼叫 usePortfolioStore()，或在外部組件處理資料拉取
 
     const initAuth = () => {
         const t = localStorage.getItem('token');
@@ -15,7 +15,9 @@ export const useAuthStore = defineStore('auth', () => {
         if (t) {
             token.value = t;
             user.value = { name: n, email: e };
-            // 登入成功後自動拉取資料
+            
+            // 登入後自動觸發資料拉取
+            const portfolioStore = usePortfolioStore();
             portfolioStore.fetchAll();
         }
     };
@@ -36,21 +38,27 @@ export const useAuthStore = defineStore('auth', () => {
                 localStorage.setItem('name', data.user);
                 localStorage.setItem('email', data.email);
                 
+                const portfolioStore = usePortfolioStore();
                 portfolioStore.fetchAll();
             } else {
-                alert("Login Failed: " + data.error);
+                alert("登入失敗: " + data.error);
             }
         } catch (e) {
             console.error(e);
-            alert("Login Network Error");
+            alert("登入連線錯誤，請檢查網路狀態");
         }
     };
 
     const logout = () => {
+        // 清除狀態
         token.value = '';
         user.value = {};
-        localStorage.clear();
-        location.reload();
+        // 清除儲存
+        localStorage.removeItem('token');
+        localStorage.removeItem('name');
+        localStorage.removeItem('email');
+        
+        // 不需要 location.reload()，App.vue 的 v-if="!authStore.token" 會自動切換回 LoginOverlay
     };
 
     return { token, user, login, logout, initAuth };
