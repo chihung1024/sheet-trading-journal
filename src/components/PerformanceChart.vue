@@ -1,453 +1,525 @@
 <template>
-  <div class="chart-card">
+  <div class="chart-container card">
     <div class="chart-header">
-      <div class="header-row main-row">
-        <h3 class="title">績效分析</h3>
-        <div class="toggle-group">
-          <button
-            :class="['toggle-btn', { active: chartType === 'pnl' }]"
-            @click="chartType = 'pnl'"
-            title="損益曲線"
-          >
-            📈 損益
-          </button>
-          <button
-            :class="['toggle-btn', { active: chartType === 'twr' }]"
-            @click="chartType = 'twr'"
-            title="時間加權報酬"
-          >
-            🎯 TWR
-          </button>
-          <button
-            :class="['toggle-btn', { active: chartType === 'asset' }]"
-            @click="chartType = 'asset'"
-            title="資產配置"
-          >
-            💰 資產
-          </button>
-        </div>
+      <h3>投資績效圖表</h3>
+      <div class="chart-controls">
+        <select 
+          v-model="selectedMetric" 
+          class="metric-select"
+          aria-label="選擇績效指標"
+        >
+          <option value="cumulative">累積收益</option>
+          <option value="monthly">月度收益</option>
+          <option value="allocation">資產配置</option>
+        </select>
+      </div>
+    </div>
+
+    <div v-if="isLoading" class="loading-state">
+      <div class="spinner"></div>
+      <p>載入圖表中...</p>
+    </div>
+
+    <div v-else-if="hasError" class="error-state">
+      <p>⚠️ {{ errorMessage }}</p>
+      <button @click="retryLoad" class="btn btn-sm btn-outline">
+        重試
+      </button>
+    </div>
+
+    <div v-else class="chart-content">
+      <!-- 圖表展示區域 -->
+      <div class="chart-area" ref="chartContainer">
+        anvas v-if="chartInstance" id="performance-chart"></canvas>
       </div>
 
-      <div class="header-row sub-row">
-        <div class="toggle-group sm">
-          <button
-            v-for="range in ['1M', '3M', '6M', 'YTD', '1Y', 'ALL']"
-            :key="range"
-            :class="['toggle-btn', 'sm', { active: timeRange === range }]"
-            @click="switchTimeRange(range)"
+      <!-- 統計摘要 -->
+      <div v-if="chartData" class="stats-summary">
+        <div class="stat-item">
+          <span class="stat-label">總收益</span>
+          <span 
+            class="stat-value"
+            :class="{ positive: totalReturn >= 0, negative: totalReturn < 0 }"
           >
-            {{ range }}
-          </button>
+            {{ formatCurrency(totalReturn) }}
+          </span>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-label">報酬率</span>
+          <span 
+            class="stat-value"
+            :class="{ positive: returnRate >= 0, negative: returnRate < 0 }"
+          >
+            {{ formatPercent(returnRate) }}
+          </span>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-label">最大回撤</span>
+          <span class="stat-value negative">
+            {{ formatPercent(maxDrawdown) }}
+          </span>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-label">夏普比</span>
+          <span class="stat-value">
+            {{ sharpeRatio.toFixed(2) }}
+          </span>
         </div>
       </div>
     </div>
 
-    <div class="chart-container">
-      anvas ref="chartCanvas" class="chart-canvas"></canvas>
-    </div>
-
-    <div class="chart-stats">
-      <div class="stat-item">
-        <span class="label">最高</span>
-        <span class="value">{{ maxValue }}</span>
+    <!-- 圖例 -->
+    <div v-if="chartData && !isLoading" class="chart-legend">
+      <div class="legend-item">
+        <span class="legend-color" style="background: rgba(31, 110, 251, 0.8)"></span>
+        <span>淨值曲線</span>
       </div>
-      <div class="stat-item">
-        <span class="label">最低</span>
-        <span class="value">{{ minValue }}</span>
+      <div class="legend-item">
+        <span class="legend-color" style="background: rgba(76, 175, 80, 0.8)"></span>
+        <span>正收益</span>
       </div>
-      <div class="stat-item">
-        <span class="label">平均</span>
-        <span class="value">{{ avgValue }}</span>
-      </div>
-      <div class="stat-item">
-        <span class="label">波動率</span>
-        <span class="value">{{ volatility }}</span>
+      <div class="legend-item">
+        <span class="legend-color" style="background: rgba(248, 81, 73, 0.8)"></span>
+        <span>負收益</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, reactive, onMounted, watch, computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
-import Chart from 'chart.js/auto';
+import { Chart } from 'chart.js/auto';
 
 const store = usePortfolioStore();
-const chartCanvas = ref(null);
-let chartInstance = null;
 
-const chartType = ref('pnl');
-const timeRange = ref('ALL');
+const selectedMetric = ref('cumulative');
+const isLoading = ref(true);
+const hasError = ref(false);
+const errorMessage = ref('');
+const chartInstance = ref(null);
+const chartContainer = ref(null);
 
-const history = computed(() => store.history || []);
+const chartData = ref(null);
 
-const filteredData = computed(() => {
-  const data = history.value;
-  if (timeRange.value === 'ALL') return data;
+// 計算統計指標
+const totalReturn = computed(() => {
+  if (!chartData.value) return 0;
+  const values = chartData.value.values;
+  return values[values.length - 1] - values[0];
+});
 
-  const now = new Date();
-  let cutoffDate;
+const returnRate = computed(() => {
+  if (!chartData.value) return 0;
+  const values = chartData.value.values;
+  const initial = values[0];
+  if (initial === 0) return 0;
+  return ((values[values.length - 1] - initial) / Math.abs(initial)) * 100;
+});
 
-  switch (timeRange.value) {
-    case '1M':
-      cutoffDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-      break;
-    case '3M':
-      cutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
-      break;
-    case '6M':
-      cutoffDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
-      break;
-    case 'YTD':
-      cutoffDate = new Date(now.getFullYear(), 0, 1);
-      break;
-    case '1Y':
-      cutoffDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-      break;
-    default:
-      return data;
+const maxDrawdown = computed(() => {
+  if (!chartData.value) return 0;
+  const values = chartData.value.values;
+  let maxVal = values[0];
+  let maxDD = 0;
+  
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] > maxVal) {
+      maxVal = values[i];
+    }
+    const dd = ((values[i] - maxVal) / maxVal) * 100;
+    if (dd < maxDD) {
+      maxDD = dd;
+    }
   }
-
-  return data.filter((item) => new Date(item.date) >= cutoffDate);
+  
+  return maxDD;
 });
 
-const maxValue = computed(() => {
-  if (filteredData.value.length === 0) return '-';
-  const values = filteredData.value.map((d) => d.total_value);
-  return Math.max(...values).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
-});
-
-const minValue = computed(() => {
-  if (filteredData.value.length === 0) return '-';
-  const values = filteredData.value.map((d) => d.total_value);
-  return Math.min(...values).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
-});
-
-const avgValue = computed(() => {
-  if (filteredData.value.length === 0) return '-';
-  const values = filteredData.value.map((d) => d.total_value);
-  const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  return avg.toLocaleString('zh-TW', { maximumFractionDigits: 0 });
-});
-
-const volatility = computed(() => {
-  if (filteredData.value.length < 2) return '-';
-  const values = filteredData.value.map((d) => d.total_value);
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+const sharpeRatio = computed(() => {
+  if (!chartData.value) return 0;
+  const values = chartData.value.values;
+  
+  // 計算日收益率
+  const returns = [];
+  for (let i = 1; i < values.length; i++) {
+    returns.push((values[i] - values[i - 1]) / values[i - 1]);
+  }
+  
+  if (returns.length === 0) return 0;
+  
+  // 計算平均收益
+  const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+  
+  // 計算標準差
+  const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - meanReturn, 2), 0) / returns.length;
   const stdDev = Math.sqrt(variance);
-  return ((stdDev / mean) * 100).toFixed(2) + '%';
+  
+  if (stdDev === 0) return 0;
+  
+  // 夏普比（假設無風險利率為0）
+  return (meanReturn * 252) / (stdDev * Math.sqrt(252));
 });
 
-const switchTimeRange = (range) => {
-  timeRange.value = range;
+// 格式化函數
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('zh-TW', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(value);
 };
 
-const updateChart = () => {
-  if (!chartCanvas.value) return;
+const formatPercent = (value) => {
+  return `${value.toFixed(2)}%`;
+};
 
-  const labels = filteredData.value.map((d) => d.date);
-  let datasets = [];
+// 載入圖表數據
+const loadChartData = async () => {
+  isLoading.value = true;
+  hasError.value = false;
+  errorMessage.value = '';
 
-  if (chartType.value === 'pnl') {
-    datasets = [
-      {
-        label: '淨值 (TWD)',
-        data: filteredData.value.map((d) => d.total_value),
-        borderColor: '#1f6feb',
+  try {
+    // 從 portfolio store 獲取數據
+    const records = store.records || [];
+    
+    if (records.length === 0) {
+      throw new Error('沒有交易數據可顯示');
+    }
+
+    // 構建圖表數據
+    const dates = [];
+    const values = [];
+    let cumulativeValue = 0;
+
+    // 按日期排序
+    const sortedRecords = [...records].sort((a, b) => 
+      new Date(a.txn_date) - new Date(b.txn_date)
+    );
+
+    sortedRecords.forEach(record => {
+      dates.push(record.txn_date);
+      
+      if (record.txn_type === 'BUY') {
+        cumulativeValue += record.total_amount;
+      } else if (record.txn_type === 'SELL') {
+        cumulativeValue -= record.total_amount;
+      } else if (record.txn_type === 'DIV') {
+        cumulativeValue += record.total_amount;
+      }
+      
+      values.push(cumulativeValue);
+    });
+
+    chartData.value = { dates, values };
+    renderChart();
+  } catch (error) {
+    hasError.value = true;
+    errorMessage.value = error.message || '載入圖表失敗';
+    console.error('Chart loading error:', error);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// 渲染圖表
+const renderChart = () => {
+  if (!chartData.value || !chartContainer.value) return;
+
+  // 銷毀舊圖表
+  if (chartInstance.value) {
+    chartInstance.value.destroy();
+  }
+
+  const ctx = document.getElementById('performance-chart');
+  if (!ctx) return;
+
+  const { dates, values } = chartData.value;
+
+  chartInstance.value = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [{
+        label: '投資淨值',
+        data: values,
+        borderColor: 'rgba(31, 110, 251, 0.8)',
         backgroundColor: 'rgba(31, 110, 251, 0.1)',
         borderWidth: 2,
-        tension: 0.4,
         fill: true,
-      },
-      {
-        label: 'SPY 基準',
-        data: filteredData.value.map((d) => d.benchmark_value || null),
-        borderColor: '#ffc107',
-        backgroundColor: 'rgba(255, 193, 7, 0.05)',
-        borderWidth: 1,
-        borderDash: [5, 5],
-        tension: 0.4,
-        fill: false,
-      },
-    ];
-  } else if (chartType.value === 'twr') {
-    datasets = [
-      {
-        label: 'TWR 報酬率',
-        data: filteredData.value.map((d, idx) => {
-          if (idx === 0) return 0;
-          const prev = filteredData.value[idx - 1].total_value;
-          const curr = filteredData.value[idx].total_value;
-          return ((curr - prev) / prev) * 100;
-        }),
-        borderColor: '#26a641',
-        backgroundColor: 'rgba(38, 166, 65, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true,
-      },
-    ];
-  } else if (chartType.value === 'asset') {
-    datasets = [
-      {
-        label: '投入資金',
-        data: filteredData.value.map((d) => d.invested),
-        borderColor: '#0969da',
-        backgroundColor: 'rgba(9, 105, 218, 0.3)',
-        borderWidth: 0,
-        fill: true,
-      },
-      {
-        label: '累計收益',
-        data: filteredData.value.map((d) => d.total_value - d.invested),
-        borderColor: '#26a641',
-        backgroundColor: 'rgba(38, 166, 65, 0.3)',
-        borderWidth: 0,
-        fill: true,
-      },
-    ];
-  }
-
-  const ctx = chartCanvas.value.getContext('2d');
-
-  if (chartInstance) {
-    chartInstance.destroy();
-  }
-
-  chartInstance = new Chart(ctx, {
-    type: chartType.value === 'pnl' || chartType.value === 'twr' ? 'line' : 'bar',
-    data: {
-      labels,
-      datasets,
+        tension: 0.3,
+        pointRadius: 3,
+        pointBackgroundColor: 'rgba(31, 110, 251, 0.8)',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1
+      }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: true,
-      interaction: {
-        intersect: false,
-        mode: 'index',
-      },
       plugins: {
         legend: {
           display: true,
-          position: 'top',
-          labels: {
-            color: 'var(--text-secondary)',
-            font: { size: 12, weight: '500' },
-            padding: 16,
-            boxWidth: 12,
-            usePointStyle: true,
-          },
+          position: 'top'
         },
-        tooltip: {
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          titleColor: '#fff',
-          bodyColor: '#fff',
-          borderColor: 'var(--primary)',
-          borderWidth: 1,
-          padding: 12,
-          cornerRadius: 8,
-          callbacks: {
-            label: (ctx) => {
-              const value = ctx.parsed.y;
-              if (chartType.value === 'twr') {
-                return `${ctx.dataset.label}: ${value.toFixed(2)}%`;
-              }
-              return `${ctx.dataset.label}: ${Number(value).toLocaleString('zh-TW', {
-                maximumFractionDigits: 0,
-              })}`;
-            },
-          },
-        },
+        title: {
+          display: false
+        }
       },
       scales: {
-        x: {
-          display: true,
-          grid: {
-            color: 'var(--border-light)',
-            drawBorder: false,
-          },
-          ticks: {
-            color: 'var(--text-muted)',
-            font: { size: 11 },
-            maxTicksLimit: 10,
-          },
-        },
         y: {
-          display: true,
-          grid: {
-            color: 'var(--border-light)',
-            drawBorder: false,
-          },
+          beginAtZero: false,
           ticks: {
             color: 'var(--text-muted)',
-            font: { size: 11 },
-            callback: (value) => {
-              if (chartType.value === 'twr') {
-                return value.toFixed(1) + '%';
-              }
-              return (value / 1000).toFixed(0) + 'K';
-            },
+            callback: function(value) {
+              return '$' + value.toLocaleString();
+            }
           },
+          grid: {
+            color: 'rgba(255, 255, 255, 0.1)'
+          }
         },
-      },
-    },
+        x: {
+          ticks: {
+            color: 'var(--text-muted)',
+            maxTicksLimit: 10
+          },
+          grid: {
+            display: false
+          }
+        }
+      }
+    }
   });
 };
 
-onMounted(() => {
-  updateChart();
+// 重試載入
+const retryLoad = () => {
+  loadChartData();
+};
+
+// 監聽指標變化
+watch(selectedMetric, () => {
+  // 這裡可以根據不同的指標重新渲染圖表
+  renderChart();
 });
 
-watch([chartType, filteredData], () => {
-  updateChart();
+// 監聽 store 數據變化
+watch(() => store.records, () => {
+  loadChartData();
+}, { deep: true });
+
+onMounted(() => {
+  loadChartData();
 });
 </script>
 
 <style scoped>
-.chart-card {
+.chart-container {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
-  box-shadow: var(--shadow-sm);
-  transition: all var(--duration-normal) var(--easing-ease-in-out);
-  animation: fadeInUp 500ms var(--easing-ease-out) 100ms both;
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (max-width: 768px) {
-  .chart-card {
-    padding: var(--space-md);
-  }
 }
 
 .chart-header {
-  margin-bottom: var(--space-lg);
-}
-
-.header-row {
   display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  margin-bottom: var(--space-md);
-}
-
-.header-row.main-row {
   justify-content: space-between;
-  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border);
 }
 
-@media (max-width: 768px) {
-  .header-row {
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-  }
-
-  .header-row.main-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-.title {
-  font-size: 1.25rem;
-  font-weight: 700;
+.chart-header h3 {
   margin: 0;
   color: var(--text);
+  font-size: 1.1rem;
 }
 
-.toggle-group {
+.chart-controls {
   display: flex;
-  gap: 8px;
-  background: var(--bg-secondary);
-  padding: 4px;
-  border-radius: var(--radius-md);
+  gap: var(--space-md);
 }
 
-.toggle-group.sm {
-  gap: 6px;
-  padding: 3px;
-}
-
-.toggle-btn {
+.metric-select {
   padding: 8px 12px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: all 200ms ease;
-  white-space: nowrap;
-}
-
-.toggle-btn.sm {
-  padding: 6px 10px;
-  font-size: 0.8rem;
-}
-
-.toggle-btn:hover {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
   color: var(--text);
-  background: rgba(31, 110, 251, 0.1);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 200ms ease;
 }
 
-.toggle-btn.active {
-  background: var(--gradient-primary);
-  color: white;
+.metric-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(31, 110, 251, 0.1);
 }
 
-.chart-container {
+.chart-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.chart-area {
   position: relative;
-  height: 400px;
-  margin-bottom: var(--space-lg);
+  min-height: 400px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
 }
 
-@media (max-width: 768px) {
-  .chart-container {
-    height: 300px;
+.chart-area canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+.loading-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: var(--space-md);
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-.chart-canvas {
-  max-height: 100%;
+.error-state {
+  color: var(--error-light);
 }
 
-.chart-stats {
+.error-state button {
+  margin-top: var(--space-md);
+}
+
+.stats-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--border);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  gap: 4px;
+  padding: var(--space-sm);
+  text-align: center;
 }
 
-.stat-item .label {
+.stat-label {
   font-size: 0.85rem;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  font-weight: 500;
 }
 
-.stat-item .value {
-  font-size: 1.1rem;
+.stat-value {
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--text);
+}
+
+.stat-value.positive {
+  color: #4cb050;
+}
+
+.stat-value.negative {
+  color: var(--error-light);
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chart-area {
+    min-height: 300px;
+  }
+
+  .stats-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 </style>
