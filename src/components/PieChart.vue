@@ -27,7 +27,7 @@
     <div v-else-if="chartData && chartData.length > 0" class="chart-content">
       <!-- 圖表容器 -->
       <div class="chart-wrapper">
-        anvas ref="chartCanvas" id="pie-chart"></canvas>
+        <canvas ref="chartCanvas" id="pie-chart"></canvas>
       </div>
 
       <!-- 圖例 -->
