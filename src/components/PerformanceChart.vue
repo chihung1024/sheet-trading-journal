@@ -136,7 +136,6 @@ const drawChart = () => {
 
     const commonOptions = { pointRadius: 0, pointHoverRadius: 4, borderWidth: 2, tension: 0.2 };
 
-    // 用於明亮主題的配置
     const gridColor = '#f3f4f6';
     const tickColor = '#9ca3af';
     const textColor = '#374151';
@@ -177,10 +176,10 @@ const drawChart = () => {
             plugins: {
                 legend: { labels: { color: textColor, boxWidth: 12, padding: 20, font: {family: 'Inter'} }, position: 'top', align: 'end' },
                 tooltip: { 
-                    backgroundColor: '#ffffff', // 白底
-                    titleColor: '#111827',      // 深色標題
-                    bodyColor: '#4b5563',       // 深灰內容
-                    borderColor: '#e5e7eb',     // 淺灰邊框
+                    backgroundColor: '#ffffff',
+                    titleColor: '#111827',
+                    bodyColor: '#4b5563',
+                    borderColor: '#e5e7eb',
                     borderWidth: 1,
                     padding: 10,
                     boxPadding: 4,
@@ -210,16 +209,18 @@ onMounted(async () => { await nextTick(); initChart(); window.addEventListener('
 
 <style scoped>
 .chart-card {
-    background-color: var(--bg-card); /* 改用變數 */
+    background-color: var(--bg-card); 
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: 8px; /* 統一圓角 */
     padding: 20px;
-    color: var(--text-primary);
+    color: var(--text-main);
     font-family: 'Inter', sans-serif;
     display: flex;
     flex-direction: column;
-    height: 100%;
-    /* box-shadow 交給 App.vue 的 .card 統一管理 */
+    height: 100%;       /* 填滿父容器 */
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;   /* 關鍵：防止內容溢出 */
 }
 
 .chart-header { margin-bottom: 15px; }
@@ -238,13 +239,13 @@ onMounted(async () => { await nextTick(); initChart(); window.addEventListener('
     margin: 0;
     font-size: 1.1rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-main);
     letter-spacing: 0.5px;
 }
 
 .toggle-group {
     display: flex;
-    background: var(--bg-body); /* 淺灰背景 */
+    background: var(--bg-app); 
     border-radius: 6px;
     padding: 2px;
     border: 1px solid var(--border-color);
@@ -253,7 +254,7 @@ onMounted(async () => { await nextTick(); initChart(); window.addEventListener('
 .toggle-group button {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text-sub);
     padding: 6px 14px;
     font-size: 0.85rem;
     cursor: pointer;
@@ -262,7 +263,7 @@ onMounted(async () => { await nextTick(); initChart(); window.addEventListener('
     font-weight: 500;
 }
 
-.toggle-group button:hover { color: var(--text-primary); }
+.toggle-group button:hover { color: var(--text-main); }
 .toggle-group button.active {
     background: #ffffff;
     color: var(--primary);
@@ -277,7 +278,7 @@ onMounted(async () => { await nextTick(); initChart(); window.addEventListener('
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--bg-body);
+    background: var(--bg-app);
     padding: 4px 10px;
     border-radius: 6px;
     border: 1px solid var(--border-color);
@@ -286,18 +287,18 @@ onMounted(async () => { await nextTick(); initChart(); window.addEventListener('
 .date-input {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--text-main);
     font-family: inherit;
     font-size: 0.85rem;
     outline: none;
 }
-.separator { color: var(--text-light); font-size: 0.8rem; }
+.separator { color: var(--text-sub); font-size: 0.8rem; }
 
 .canvas-wrapper {
     position: relative;
     width: 100%;
-    height: 350px;
     flex-grow: 1;
+    min-height: 0; /* Flexbox 巢狀滾動修復 */
 }
 
 @media (max-width: 600px) {
