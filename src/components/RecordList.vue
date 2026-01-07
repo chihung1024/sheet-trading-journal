@@ -1,18 +1,23 @@
 <template>
   <div class="card">
-    <div class="flex-row header-row">
-        <h3>交易紀錄 (API)</h3>
-        <button class="btn btn-outline btn-sm" @click="store.fetchRecords">重新整理</button>
+    <div class="header-row">
+        <h3>📄 交易紀錄 <span class="badge">{{ filteredRecords.length }}</span></h3>
+        <button class="btn btn-outline btn-sm" @click="store.fetchRecords" :disabled="isRefreshing">
+          {{ isRefreshing ? '更新中...' : '↻ 重新整理' }}
+        </button>
     </div>
 
     <div class="ledger-toolbar">
-        <input type="text" v-model="searchQuery" placeholder="🔍 搜尋代碼/標籤" class="search-input">
+        <div class="search-wrapper">
+            <span class="icon">🔍</span>
+            <input type="text" v-model="searchQuery" placeholder="搜尋代碼..." class="search-input">
+        </div>
         
         <select v-model="filterType" class="filter-select">
             <option value="ALL">全部類型</option>
-            <option value="BUY">買入 (Buy)</option>
-            <option value="SELL">賣出 (Sell)</option>
-            <option value="DIV">配息 (Div)</option>
+            <option value="BUY">買入</option>
+            <option value="SELL">賣出</option>
+            <option value="DIV">配息</option>
         </select>
         
         <select v-model="filterYear" class="filter-select">
@@ -21,61 +26,50 @@
         </select>
     </div>
 
-    <div class="ledger-summary-bar">
-        <div class="summary-item">
-            <span class="summary-label">篩選筆數:</span>
-            <span class="summary-val">{{ filteredRecords.length }}</span>
+    <div class="table-container">
+        <div class="table-header desktop-only">
+            <div class="col date">日期</div>
+            <div class="col symbol">代碼</div>
+            <div class="col type">類型</div>
+            <div class="col tag">策略標籤</div>
+            <div class="col num">股數</div>
+            <div class="col num">價格 (USD)</div>
+            <div class="col action">操作</div>
         </div>
-        <div class="summary-item" v-if="filteredRecords.length > 0">
-            <span class="summary-label">淨現金流 (Est. USD):</span>
-            <span :class="filteredCashFlow >= 0 ? 'text-blue' : 'text-green'" class="summary-val">
-                {{ filteredCashFlow >= 0 ? '+' : '' }}{{ formatNumber(filteredCashFlow, 2) }}
-            </span>
-        </div>
-    </div>
 
-    <div class="table-responsive">
-        <table v-if="store.records.length > 0">
-            <thead>
-                <tr>
-                    <th>日期</th>
-                    <th>代碼</th>
-                    <th>類型</th>
-                    <th>標籤</th>
-                    <th>股數</th>
-                    <th>價格 (USD)</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="r in paginatedRecords" :key="r.id">
-                    <td class="text-muted">{{ r.txn_date }}</td>
-                    <td><strong>{{ r.symbol }}</strong></td>
-                    <td>
-                        <span :class="getTypeBadgeClass(r.txn_type)" class="type-badge">
-                            {{ r.txn_type }}
-                        </span>
-                    </td>
-                    <td><span class="tag-strategy" v-if="r.tag">{{ r.tag }}</span></td>
-                    <td>{{ r.qty > 0 ? r.qty : '-' }}</td>
-                    <td>{{ formatNumber(r.price, 2) }}</td>
-                    <td>
-                        <button class="btn btn-outline btn-sm" @click="$emit('edit', r)">修</button>
-                        <button class="btn btn-danger btn-sm" @click="del(r.id)" style="margin-left:5px">刪</button>
-                    </td>
-                </tr>
-                <tr v-if="paginatedRecords.length === 0">
-                    <td colspan="7" class="empty">無符合條件的紀錄</td>
-                </tr>
-            </tbody>
-        </table>
-        <div v-else class="empty">尚無任何交易紀錄</div>
+        <div v-if="filteredRecords.length === 0" class="empty-state">
+            無符合條件的紀錄
+        </div>
+
+        <TransitionGroup name="list" tag="div" class="list-wrapper">
+            <div v-for="r in paginatedRecords" :key="r.id" class="list-item">
+                <div class="col date" data-label="日期">{{ r.txn_date }}</div>
+                <div class="col symbol" data-label="代碼">
+                    <strong>{{ r.symbol }}</strong>
+                </div>
+                <div class="col type" data-label="類型">
+                    <span :class="getTypeBadgeClass(r.txn_type)" class="type-badge">
+                        {{ r.txn_type }}
+                    </span>
+                </div>
+                <div class="col tag" data-label="標籤">
+                    <span class="tag-pill" v-if="r.tag">{{ r.tag }}</span>
+                    <span class="text-muted" v-else>-</span>
+                </div>
+                <div class="col num" data-label="股數">{{ r.qty > 0 ? r.qty : '-' }}</div>
+                <div class="col num" data-label="價格">{{ formatNumber(r.price, 2) }}</div>
+                <div class="col action" data-label="操作">
+                    <button class="btn-icon edit" @click="$emit('edit', r)">✏️</button>
+                    <button class="btn-icon delete" @click="del(r.id)">🗑️</button>
+                </div>
+            </div>
+        </TransitionGroup>
     </div>
 
     <div class="pagination" v-if="totalPages > 1">
-        <button class="page-btn" @click="prevPage" :disabled="currentPage === 1">上一頁</button>
-        <span class="page-info">第 {{ currentPage }} 頁 / 共 {{ totalPages }} 頁</span>
-        <button class="page-btn" @click="nextPage" :disabled="currentPage === totalPages">下一頁</button>
+        <button class="page-btn" @click="prevPage" :disabled="currentPage === 1">←</button>
+        <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+        <button class="page-btn" @click="nextPage" :disabled="currentPage === totalPages">→</button>
     </div>
   </div>
 </template>
@@ -84,56 +78,45 @@
 import { ref, computed, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
+import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
 
 const store = usePortfolioStore();
 const auth = useAuthStore();
+const { addToast } = useToast();
 const emit = defineEmits(['edit']);
 
-// --- 狀態與設定 ---
 const searchQuery = ref('');
 const filterType = ref('ALL');
 const filterYear = ref('ALL');
 const currentPage = ref(1);
 const itemsPerPage = 10;
+const isRefreshing = ref(false);
 
-// --- 格式化工具 ---
 const formatNumber = (num, d=0) => Number(num||0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 const getTypeBadgeClass = (t) => {
     if (t === 'BUY') return 'badge-buy';
     if (t === 'SELL') return 'badge-sell';
     if (t === 'DIV') return 'badge-div';
-    return 'badge-default';
+    return '';
 };
 
-// --- 計算屬性 ---
-
-// 1. 取得所有可用年份
 const availableYears = computed(() => {
     const years = new Set(store.records.map(r => r.txn_date.substring(0, 4)));
     return Array.from(years).sort().reverse();
 });
 
-// 2. 篩選邏輯
 const filteredRecords = computed(() => {
     return store.records.filter(r => {
-        // 關鍵字搜尋 (代碼 或 標籤)
         const content = (r.symbol + (r.tag || '')).toLowerCase();
         if (searchQuery.value && !content.includes(searchQuery.value.toLowerCase())) return false;
-        
-        // 類型篩選
         if (filterType.value !== 'ALL' && r.txn_type !== filterType.value) return false;
-        
-        // 年份篩選
         if (filterYear.value !== 'ALL' && !r.txn_date.startsWith(filterYear.value)) return false;
-        
         return true;
-    // 預設依日期降序排列 (新到舊)
     }).sort((a, b) => new Date(b.txn_date) - new Date(a.txn_date));
 });
 
-// 3. 分頁邏輯
 const paginatedRecords = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage;
     return filteredRecords.value.slice(start, start + itemsPerPage);
@@ -141,19 +124,7 @@ const paginatedRecords = computed(() => {
 
 const totalPages = computed(() => Math.ceil(filteredRecords.value.length / itemsPerPage) || 1);
 
-// 4. 現金流估算 (USD)
-const filteredCashFlow = computed(() => {
-    return filteredRecords.value.reduce((sum, r) => {
-        const amt = r.price * r.qty; // 簡易估算 (未含手續費)
-        if (r.txn_type === 'BUY') return sum - amt;
-        if (r.txn_type === 'SELL') return sum + amt;
-        if (r.txn_type === 'DIV') return sum + r.price; // 配息通常 Price 為總額
-        return sum;
-    }, 0);
-});
-
-// --- 事件處理 ---
-watch([searchQuery, filterType, filterYear], () => { currentPage.value = 1; }); // 篩選條件改變時回第一頁
+watch([searchQuery, filterType, filterYear], () => { currentPage.value = 1; });
 
 const prevPage = () => { if (currentPage.value > 1) currentPage.value--; };
 const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.value++; };
@@ -166,64 +137,103 @@ const del = async (id) => {
             headers: { 'Authorization': `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ id })
         });
+        addToast("刪除成功", "success");
         store.fetchRecords();
-    } catch(e) { alert("刪除失敗"); }
+    } catch(e) { addToast("刪除失敗", "error"); }
 };
 </script>
 
 <style scoped>
-/* 佈局與通用 */
-.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #2d2d30; }
-.empty { text-align: center; padding: 30px; color: #666; font-style: italic; }
-.text-muted { color: #888; font-size: 0.9rem; }
-.text-green { color: #4caf50; }
-.text-blue { color: #40a9ff; }
+.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.badge { background: #333; font-size: 0.8rem; padding: 2px 8px; border-radius: 10px; color: #888; margin-left: 8px; vertical-align: middle; }
 
-/* 表格樣式優化 */
-.table-responsive { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 0.95rem; }
-th, td { text-align: right; padding: 10px 8px; border-bottom: 1px solid #2d2d30; }
-th:first-child, td:first-child { text-align: left; }
-th { color: #888; font-weight: 500; font-size: 0.85rem; }
-tr:hover { background: #1f1f23; }
-
-/* 標籤與徽章 */
-.type-badge { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; min-width: 50px; display: inline-block; text-align: center; }
-.badge-buy { background: rgba(255, 82, 82, 0.15); color: #ff5252; }
-.badge-sell { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
-.badge-div { background: rgba(64, 169, 255, 0.15); color: #40a9ff; }
-.tag-strategy { background: #333; color: #ccc; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; border: 1px solid #444; }
-
-/* 工具列 (Toolbar) */
-.ledger-toolbar { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+/* 工具列 */
+.ledger-toolbar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.search-wrapper { position: relative; flex-grow: 1; max-width: 300px; }
+.search-wrapper .icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); opacity: 0.5; font-size: 0.9rem; }
 .search-input, .filter-select { 
-    background: #2d2d30; border: 1px solid #333; color: #ccc; 
-    padding: 6px 12px; border-radius: 6px; font-size: 0.9rem; outline: none; 
+    background: rgba(0,0,0,0.2); border: 1px solid var(--card-border); color: #ccc; 
+    padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; outline: none; transition: 0.2s;
+    width: 100%; box-sizing: border-box;
 }
-.search-input { width: 150px; }
-.search-input:focus, .filter-select:focus { border-color: #40a9ff; }
+.search-input { padding-left: 32px; }
+.search-input:focus, .filter-select:focus { border-color: var(--primary); background: rgba(0,0,0,0.4); }
 
-/* 統計條 (Summary Bar) */
-.ledger-summary-bar {
-    background: #1f1f23; border: 1px solid #333; border-radius: 6px;
-    padding: 8px 15px; margin-bottom: 15px;
-    display: flex; gap: 20px; align-items: center; justify-content: flex-end;
-    font-size: 0.9rem;
+/* 模擬表格佈局 (Flexbox) */
+.table-header { display: flex; padding: 0 16px 10px 16px; border-bottom: 1px solid var(--card-border); color: var(--text-muted); font-size: 0.85rem; font-weight: 600; }
+.list-item { 
+    display: flex; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.03); 
+    align-items: center; transition: background 0.2s; 
 }
-.summary-item { display: flex; align-items: center; gap: 6px; }
-.summary-label { color: #888; }
-.summary-val { font-weight: bold; font-family: monospace; }
+.list-item:hover { background: rgba(255,255,255,0.02); }
 
-/* 分頁 (Pagination) */
-.pagination { display: flex; justify-content: center; gap: 10px; margin-top: 20px; align-items: center; }
-.page-btn { background: #2d2d30; border: 1px solid #333; color: #ccc; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
-.page-btn:hover:not(:disabled) { background: #333; border-color: #555; }
-.page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.page-info { font-size: 0.85rem; color: #666; }
+.col { flex: 1; }
+.col.date { flex: 0 0 110px; color: #888; font-size: 0.9rem; }
+.col.symbol { flex: 0 0 90px; }
+.col.type { flex: 0 0 80px; }
+.col.tag { flex: 1.2; }
+.col.num { flex: 1; text-align: right; font-family: 'JetBrains Mono', monospace; }
+.col.action { flex: 0 0 80px; display: flex; justify-content: flex-end; gap: 8px; }
 
-@media (max-width: 600px) {
-    .ledger-toolbar { flex-direction: column; }
-    .search-input, .filter-select { width: 100%; }
-    .ledger-summary-bar { justify-content: space-between; }
+/* 標籤樣式 */
+.type-badge { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+.badge-buy { background: rgba(255, 82, 82, 0.1); color: #ff7875; }
+.badge-sell { background: rgba(76, 175, 80, 0.1); color: #52c41a; }
+.badge-div { background: rgba(64, 169, 255, 0.1); color: #40a9ff; }
+.tag-pill { background: #262626; color: #a0a0a0; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #333; }
+
+.btn-icon { background: none; border: none; font-size: 1rem; opacity: 0.6; padding: 4px; transition: 0.2s; }
+.btn-icon:hover { opacity: 1; transform: scale(1.1); background: rgba(255,255,255,0.1); border-radius: 4px; }
+.btn-icon.delete:hover { color: #ff4d4f; }
+
+/* 分頁 */
+.pagination { display: flex; justify-content: center; gap: 15px; margin-top: 20px; align-items: center; }
+.page-btn { background: rgba(255,255,255,0.05); border: none; color: #ccc; width: 32px; height: 32px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+.page-btn:hover:not(:disabled) { background: var(--primary); color: white; }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-info { font-size: 0.9rem; color: var(--text-muted); font-family: monospace; }
+
+.empty-state { padding: 40px; text-align: center; color: var(--text-muted); font-style: italic; }
+
+/* List Animation */
+.list-enter-active, .list-leave-active { transition: all 0.3s ease; }
+.list-enter-from, .list-leave-to { opacity: 0; transform: translateX(-10px); }
+
+/* --- Mobile RWD: Card View Mode --- */
+@media (max-width: 768px) {
+    .desktop-only { display: none; }
+    
+    .list-item { 
+        flex-direction: column; 
+        align-items: stretch; 
+        background: rgba(255,255,255,0.03); 
+        margin-bottom: 12px; 
+        border-radius: 8px; 
+        border: 1px solid rgba(255,255,255,0.05);
+        padding: 16px;
+    }
+
+    .col { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        padding: 6px 0; 
+        text-align: right;
+    }
+    
+    .col::before {
+        content: attr(data-label);
+        color: var(--text-muted);
+        font-size: 0.85rem;
+    }
+
+    .col.action { 
+        margin-top: 10px; 
+        padding-top: 12px; 
+        border-top: 1px solid rgba(255,255,255,0.1); 
+        justify-content: flex-end; 
+    }
+    
+    .search-wrapper { max-width: 100%; }
 }
 </style>
