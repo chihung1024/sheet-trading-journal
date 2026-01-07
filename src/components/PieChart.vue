@@ -47,7 +47,7 @@ const drawPieChart = () => {
 
     if (labels.length === 0) return;
 
-    // 明亮系配色 (Tailwind Colors: Blue, Emerald, Amber, Rose, Violet...)
+    // 明亮系配色 (Tailwind Colors)
     const colors = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4', '#ec4899'];
 
     myPieChart = new Chart(ctx, {
@@ -103,12 +103,15 @@ onMounted(async () => { await nextTick(); initChart(); });
 .chart-card {
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: 8px; /* 統一圓角 */
     padding: 20px;
-    color: var(--text-primary);
+    color: var(--text-main);
     display: flex;
     flex-direction: column;
     height: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;   /* 關鍵：防止內容溢出 */
 }
 
 .chart-header {
@@ -122,12 +125,12 @@ onMounted(async () => { await nextTick(); initChart(); });
     margin: 0;
     font-size: 1.1rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-main);
 }
 
 .toggle-group {
     display: flex;
-    background: var(--bg-body);
+    background: var(--bg-app);
     border-radius: 6px;
     padding: 2px;
     border: 1px solid var(--border-color);
@@ -136,7 +139,7 @@ onMounted(async () => { await nextTick(); initChart(); });
 .toggle-group button {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text-sub);
     padding: 4px 12px;
     font-size: 0.85rem;
     cursor: pointer;
@@ -145,7 +148,7 @@ onMounted(async () => { await nextTick(); initChart(); });
     font-weight: 500;
 }
 
-.toggle-group button:hover { color: var(--text-primary); }
+.toggle-group button:hover { color: var(--text-main); }
 .toggle-group button.active {
     background: #ffffff;
     color: var(--primary);
@@ -156,7 +159,7 @@ onMounted(async () => { await nextTick(); initChart(); });
 .canvas-wrapper {
     position: relative;
     width: 100%;
-    height: 250px;
     flex-grow: 1;
+    min-height: 0;
 }
 </style>
