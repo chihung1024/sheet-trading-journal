@@ -5,9 +5,15 @@ import { CONFIG } from '../config';
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('access_token') || null);
   const user = ref(JSON.parse(localStorage.getItem('user_info') || 'null'));
-  const error = ref(null);
 
-  // 初始化：檢查 URL 是否有 callback token
+  // 登入：直接導向 Google
+  const login = () => {
+    // 移除 response_type=token 以外的多餘參數，保持最簡
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CONFIG.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(CONFIG.REDIRECT_URI)}&response_type=token&scope=email%20profile`;
+    window.location.href = authUrl;
+  };
+
+  // 初始化：處理 Google 導回來的網址
   const initAuth = () => {
     const hash = window.location.hash.substring(1);
     const params = new URLSearchParams(hash);
@@ -17,20 +23,14 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = accessToken;
       localStorage.setItem('access_token', accessToken);
       
-      // 清除 URL hash，保持網址乾淨
+      // 網址列清乾淨
       window.history.replaceState(null, null, ' ');
       
       fetchUserInfo(accessToken);
     } else if (token.value) {
-      // 如果已經有 token，檢查是否過期或有效
+      // 本地有 token 就檢查一下
       fetchUserInfo(token.value);
     }
-  };
-
-  const login = () => {
-    // Google OAuth 2.0 Implicit Flow
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CONFIG.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(CONFIG.REDIRECT_URI)}&response_type=token&scope=email%20profile`;
-    window.location.href = authUrl;
   };
 
   const logout = () => {
@@ -52,19 +52,13 @@ export const useAuthStore = defineStore('auth', () => {
         user.value = data;
         localStorage.setItem('user_info', JSON.stringify(data));
       } else {
-        throw new Error('Token expired or invalid');
+        // Token 失效就登出
+        logout();
       }
     } catch (e) {
-      console.error('Auth Error:', e);
-      logout(); // Token 失效則登出
+      logout();
     }
   };
-  
-  // 為了相容之前的 API Token 模式，這裡保留 setToken 介面，但內部邏輯改為處理 OAuth Token
-  const setToken = (newToken) => {
-      token.value = newToken;
-      localStorage.setItem('access_token', newToken);
-  };
 
-  return { token, user, login, logout, initAuth, setToken };
+  return { token, user, login, logout, initAuth };
 });
