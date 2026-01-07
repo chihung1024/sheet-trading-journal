@@ -25,12 +25,12 @@ const googleBtn = ref(null);
 const authStore = useAuthStore();
 
 onMounted(() => {
-  // 定義全域 callback，讓 Google Script 呼叫
+  // 定義全域 callback
   window.handleCredentialResponse = (response) => {
     authStore.login(response.credential);
   };
 
-  // 確保 Google GSI script 已載入
+  // 載入 Google 按鈕
   if (window.google && window.google.accounts) {
     window.google.accounts.id.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
@@ -39,11 +39,11 @@ onMounted(() => {
       cancel_on_tap_outside: false
     });
     
-    // 渲染按鈕：使用 "outline" (白底) 或 "filled_blue" (藍底) 以搭配明亮主題
+    // 渲染按鈕：使用 outline (白底) 風格
     window.google.accounts.id.renderButton(
       googleBtn.value,
       { 
-        theme: "outline",  // 明亮主題適合用 outline 或 filled_blue
+        theme: "outline", 
         size: "large", 
         width: 280, 
         shape: "rectangular",
@@ -51,13 +51,13 @@ onMounted(() => {
       }
     );
   } else {
-    console.error("Google GSI script not loaded!");
+    console.error("Google GSI script not loaded. Check index.html");
   }
 });
 </script>
 
 <style scoped>
-/* 明亮版背景 */
+/* 這裡確保背景是淺色的，絕不會是黑色 */
 .login-overlay {
     position: fixed;
     top: 0;
@@ -73,12 +73,11 @@ onMounted(() => {
     box-sizing: border-box;
 }
 
-/* 明亮版卡片 */
 .login-card {
-    background: white;
+    background: white; /* 白色卡片 */
     padding: 40px 30px;
     border-radius: 16px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
     width: 100%;
     max-width: 400px;
     text-align: center;
@@ -93,7 +92,7 @@ onMounted(() => {
 
 h2 {
     margin: 0 0 12px;
-    color: #111827; /* 深色標題 */
+    color: #111827; /* 深黑色文字 */
     font-size: 1.5rem;
     font-weight: 700;
 }
@@ -105,7 +104,6 @@ p {
     line-height: 1.5;
 }
 
-/* 按鈕容器置中 */
 .google-btn-container {
     display: flex;
     justify-content: center;
@@ -119,14 +117,9 @@ p {
     font-size: 0.8rem;
 }
 
-/* 手機版優化 */
 @media (max-width: 480px) {
     .login-overlay {
-        align-items: center; /* 確保垂直置中 */
-    }
-    .login-card {
-        padding: 30px 20px;
-        max-width: 90%;
+        align-items: center;
     }
 }
 </style>
