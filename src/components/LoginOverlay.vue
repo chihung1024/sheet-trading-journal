@@ -5,60 +5,13 @@
         <div class="app-icon">📊</div>
         <h1>交易日誌</h1>
         <p>股票交易組合管理系統</p>
+        <p class="subtitle">使用 Google 帳號登入</p>
       </div>
-
-      <form @submit.prevent="handleLogin" class="login-form" novalidate>
-        <div class="form-group">
-          <label for="password">訪問密碼</label>
-          <div class="password-input-wrapper">
-            <input
-              id="password"
-              v-model="password"
-              :type="showPassword ? 'text' : 'password'"
-              placeholder="輸入訪問密碼..."
-              class="form-input"
-              :class="{ 
-                'input-error': error,
-                'input-focused': inputFocused
-              }"
-              @keyup.enter="handleLogin"
-              @focus="inputFocused = true"
-              @blur="inputFocused = false"
-              autocomplete="current-password"
-              aria-label="訪問密碼"
-              aria-describedby="password-error"
-            />
-            <button
-              type="button"
-              class="password-toggle"
-              @click="showPassword = !showPassword"
-              :aria-label="showPassword ? '隱藏密碼' : '顯示密碼'"
-            >
-              {{ showPassword ? '🙈' : '👁️' }}
-            </button>
-          </div>
-          <span v-if="error" id="password-error" class="error-text">{{ error }}</span>
-        </div>
-
-        <button
-          type="submit"
-          class="btn btn-primary btn-large"
-          :disabled="isLoading || !password.trim()"
-          :aria-busy="isLoading"
-        >
-          <span v-if="!isLoading" class="button-content">進入系統</span>
-          <span v-else class="loading-spinner">
-            <span class="spinner-icon">⟳</span>
-            <span>驗證中...</span>
-          </span>
-        </button>
-      </form>
-
+      <div ref="googleBtn" class="google-button-container"></div>
       <div class="login-footer">
-        <p class="footer-text">🔒 密碼已安全加密傳輸</p>
+        <p class="footer-text">🔒 使用 Google OAuth 安全認證</p>
       </div>
     </div>
-
     <!-- 背景動畫 -->
     <div class="background-animation" aria-hidden="true">
       <div
@@ -72,46 +25,31 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import { useToastStore } from '../stores/toast';
+import { CONFIG } from '../config';
 
+const googleBtn = ref(null);
 const authStore = useAuthStore();
-const toastStore = useToastStore();
 
-const password = ref('');
-const showPassword = ref(false);
-const isLoading = ref(false);
-const error = ref('');
-const inputFocused = ref(false);
+onMounted(() => {
+  // 定義全域 callback 供 Google Script 呼叫
+  window.handleCredentialResponse = (response) => {
+    authStore.login(response.credential);
+  };
 
-const handleLogin = async () => {
-  if (!password.value.trim()) {
-    error.value = '請輸入密碼';
-    return;
+  if (window.google) {
+    window.google.accounts.id.initialize({
+      client_id: CONFIG.GOOGLE_CLIENT_ID,
+      callback: window.handleCredentialResponse,
+      auto_select: false
+    });
+    window.google.accounts.id.renderButton(
+      googleBtn.value,
+      { theme: "filled_black", size: "large", width: 300 }
+    );
   }
-
-  isLoading.value = true;
-  error.value = '';
-
-  try {
-    // 模擬密碼驗證延遲
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    // 調用認證方法
-    await authStore.login(password.value);
-
-    toastStore.success('登入成功！');
-    password.value = '';
-    showPassword.value = false;
-  } catch (err) {
-    error.value = '密碼錯誤，請重試';
-    toastStore.error('登入失敗');
-    console.error('Login error:', err);
-  } finally {
-    isLoading.value = false;
-  }
-};
+});
 </script>
 
 <style scoped>
@@ -169,7 +107,7 @@ const handleLogin = async () => {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: var(--space-2xl);
-  max-width: 400px;
+  max-width: 450px;
   width: 90%;
   box-shadow: var(--shadow-xl);
   animation: slideInUp 500ms var(--easing-ease-out);
@@ -191,6 +129,8 @@ const handleLogin = async () => {
 @media (max-width: 480px) {
   .login-card {
     padding: var(--space-lg);
+    max-width: 100%;
+    margin: 0 16px;
   }
 }
 
@@ -225,171 +165,25 @@ const handleLogin = async () => {
 .login-header p {
   font-size: 0.95rem;
   color: var(--text-muted);
-  margin: 0;
+  margin: 8px 0 0 0;
 }
 
-.login-form {
+.login-header .subtitle {
+  font-size: 0.9rem;
+  color: var(--primary);
+  margin-top: 12px;
+  font-weight: 500;
+}
+
+.google-button-container {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-lg);
-  margin-bottom: var(--space-lg);
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-group label {
-  font-weight: 600;
-  color: var(--text);
-  font-size: 0.95rem;
-  display: block;
-}
-
-.password-input-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.form-input {
-  padding: 12px 16px;
-  padding-right: 44px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-secondary);
-  color: var(--text);
-  font-size: 0.95rem;
-  font-family: inherit;
-  transition: all 200ms ease;
-  flex: 1;
-}
-
-.form-input::placeholder {
-  color: var(--text-muted);
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(31, 110, 251, 0.1);
-  background: var(--card-bg);
-}
-
-/* 新增：焦點樣式 */
-.form-input.input-focused {
-  background: var(--card-bg);
-  border-color: var(--primary);
-}
-
-.form-input.input-error {
-  border-color: var(--error-light);
-  box-shadow: 0 0 0 4px rgba(248, 81, 73, 0.1);
-}
-
-.password-toggle {
-  position: absolute;
-  right: 12px;
-  background: none;
-  border: none;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 4px 8px;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  transition: opacity 200ms ease;
-  color: var(--text-muted);
+  margin: var(--space-xl) 0;
 }
 
-.password-toggle:hover {
-  opacity: 0.8;
-}
-
-.password-toggle:active {
-  transform: scale(0.95);
-}
-
-.error-text {
-  color: var(--error-light);
-  font-size: 0.85rem;
-  animation: slideDown 200ms ease-out;
-  display: block;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.btn {
-  padding: 12px 24px;
-  border: none;
+.google-button-container :deep(> div) {
   border-radius: var(--radius-lg);
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 200ms ease;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.btn-primary {
-  background: var(--primary);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--primary-dark, var(--primary));
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(31, 110, 251, 0.3);
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(31, 110, 251, 0.2);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-large {
-  padding: 14px 24px;
-  font-size: 1rem;
-  width: 100%;
-}
-
-.button-content {
-  display: inline-block;
-}
-
-.loading-spinner {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.spinner-icon {
-  display: inline-block;
-  animation: spin 1.5s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  overflow: hidden;
 }
 
 .login-footer {
@@ -402,5 +196,22 @@ const handleLogin = async () => {
   font-size: 0.85rem;
   color: var(--text-muted);
   margin: 0;
+}
+
+:root {
+  --primary: #1f6efb;
+  --bg: #0f0f0f;
+  --card-bg: #1a1a1a;
+  --border: #333;
+  --text: #fff;
+  --text-muted: #999;
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  --radius-xl: 16px;
+  --radius-lg: 12px;
+  --space-2xl: 32px;
+  --space-xl: 24px;
+  --space-lg: 16px;
+  --space-md: 12px;
+  --easing-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 </style>
