@@ -60,7 +60,6 @@ const dailyPnL = computed(() => {
   return (last.total_value - last.invested) - (prev.total_value - prev.invested);
 });
 
-// 數字動畫 (簡化版)
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -80,21 +79,20 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 <style scoped>
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); /* 自動適應寬度 */
+    gap: 20px;
 }
 
 .stat-block {
     background: #fff;
-    padding: 24px;
+    padding: 20px;
     border-radius: 8px;
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 120px;
-    transition: transform 0.2s;
+    min-height: 110px;
 }
 
 .stat-block.primary {
@@ -102,32 +100,36 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     color: white;
     border: none;
 }
-.stat-block.primary .stat-label { color: rgba(255,255,255,0.8); }
+.stat-block.primary .stat-label { color: rgba(255,255,255,0.85); }
 .stat-block.primary .stat-value { color: #fff; }
-.stat-block.primary .stat-footer { color: rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.2); }
+.stat-block.primary .stat-footer { color: rgba(255,255,255,0.8); border-top-color: rgba(255,255,255,0.2); }
 
-.stat-label { font-size: 0.9rem; color: var(--text-sub); font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-.stat-value { font-size: 2rem; font-weight: 700; color: var(--text-main); line-height: 1.1; margin-bottom: 12px; }
-.stat-value.big { font-size: 2.4rem; }
-.unit { font-size: 1.2rem; margin-left: 4px; color: var(--text-sub); font-weight: 500; }
+.stat-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* 響應式字體大小：手機版小一點，電腦版大一點 */
+.stat-value { 
+    font-size: clamp(1.5rem, 2.5vw, 1.8rem); 
+    font-weight: 700; 
+    color: var(--text-main); 
+    line-height: 1.1; 
+    margin-bottom: 10px; 
+}
+.stat-value.big { 
+    font-size: clamp(1.8rem, 3vw, 2.2rem); 
+}
+
+.unit { font-size: 1rem; margin-left: 2px; font-weight: 500; }
 
 .stat-footer { 
-    margin-top: auto; padding-top: 12px; border-top: 1px solid #f1f5f9; 
-    font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; 
+    margin-top: auto; padding-top: 10px; border-top: 1px solid #f1f5f9; 
+    font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; 
 }
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
 .text-sub { color: var(--text-sub); }
 
-.tag { padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.8rem; }
+.tag { padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 0.75rem; }
 .tag-green { background: #d1fae5; color: #065f46; }
 .tag-red { background: #fee2e2; color: #991b1b; }
-
-@media (max-width: 1024px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 640px) {
-    .stats-grid { grid-template-columns: 1fr; }
-}
 </style>
