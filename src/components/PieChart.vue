@@ -1,14 +1,14 @@
 <template>
-  <div class="chart-card">
+  <div class="inner-chart-layout">
     <div class="chart-header">
-      <h3 class="title">資產配置</h3>
-      <div class="toggle-group">
-        <button :class="{active: pieType==='tags'}" @click="pieType='tags'">策略</button>
-        <button :class="{active: pieType==='currency'}" @click="pieType='currency'">幣別</button>
+      <h3 class="chart-title">資產配置</h3>
+      <div class="toggle-pills">
+        <button :class="{active: type==='tags'}" @click="type='tags'">策略</button>
+        <button :class="{active: type==='currency'}" @click="type='currency'">幣別</button>
       </div>
     </div>
     
-    <div class="canvas-wrapper">
+    <div class="canvas-box">
       <canvas ref="canvas"></canvas>
     </div>
   </div>
@@ -21,145 +21,69 @@ import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
 const canvas = ref(null);
-let myPieChart = null;
-const pieType = ref('tags'); 
+let myChart = null;
+const type = ref('tags');
 
-const allocation = computed(() => {
-    const holdings = store.holdings || [];
-    const result = { tags: {}, currency: {} };
-    holdings.forEach(h => {
-        const tag = h.tag || 'Stock';
-        result.tags[tag] = (result.tags[tag] || 0) + h.market_value_twd;
-        const curr = h.currency || 'USD';
-        result.currency[curr] = (result.currency[curr] || 0) + h.market_value_twd;
-    });
-    return result;
-});
-
-const drawPieChart = () => {
+const drawChart = () => {
     if (!canvas.value) return;
     const ctx = canvas.value.getContext('2d');
-    if (myPieChart) myPieChart.destroy();
+    if (myChart) myChart.destroy();
 
-    const source = pieType.value === 'tags' ? allocation.value.tags : allocation.value.currency;
-    const labels = Object.keys(source);
-    const data = Object.values(source);
+    const dataMap = {};
+    store.holdings.forEach(h => {
+        const key = type.value === 'tags' ? (h.tag || 'Stock') : (h.currency || 'USD');
+        dataMap[key] = (dataMap[key] || 0) + h.market_value_twd;
+    });
 
-    if (labels.length === 0) return;
-
-    // 明亮系配色 (Tailwind Colors)
-    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4', '#ec4899'];
-
-    myPieChart = new Chart(ctx, {
+    myChart = new Chart(ctx, {
         type: 'doughnut',
-        data: { 
-            labels, 
-            datasets: [{ 
-                data, 
-                backgroundColor: colors, 
-                borderColor: '#ffffff', // 切割線改為白色
+        data: {
+            labels: Object.keys(dataMap),
+            datasets: [{
+                data: Object.values(dataMap),
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
                 borderWidth: 2,
-                hoverOffset: 4
-            }] 
+                borderColor: '#ffffff'
+            }]
         },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            plugins: { 
-                legend: { 
-                    position: 'right', 
-                    labels: { color: '#374151', font: { size: 12, family:'Inter' }, boxWidth: 12, padding: 15 } 
-                },
-                tooltip: {
-                    backgroundColor: '#ffffff',
-                    titleColor: '#111827',
-                    bodyColor: '#4b5563',
-                    borderColor: '#e5e7eb',
-                    borderWidth: 1,
-                    padding: 10,
-                    callbacks: {
-                         label: (c) => {
-                             const val = Number(c.raw);
-                             const total = c.dataset.data.reduce((a,b)=>a+b, 0);
-                             const pct = ((val/total)*100).toFixed(1) + '%';
-                             return ` ${c.label}: ${pct} ($${val.toLocaleString()})`;
-                         }
-                    }
-                }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } }
             },
             layout: { padding: 10 }
         }
     });
 };
 
-const initChart = () => { if (store.holdings && store.holdings.length > 0 && canvas.value) drawPieChart(); };
-
-watch(pieType, drawPieChart);
-watch(() => store.holdings, async () => { await nextTick(); initChart(); }, { deep: true });
-onMounted(async () => { await nextTick(); initChart(); });
+watch(type, drawChart);
+watch(() => store.holdings, async () => { await nextTick(); drawChart(); }, { deep: true });
+onMounted(async () => { await nextTick(); drawChart(); });
 </script>
 
 <style scoped>
-.chart-card {
-    background-color: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 8px; /* 統一圓角 */
-    padding: 20px;
-    color: var(--text-main);
+.inner-chart-layout {
     display: flex;
     flex-direction: column;
     height: 100%;
-    width: 100%;
+    padding: 16px;
     box-sizing: border-box;
-    overflow: hidden;   /* 關鍵：防止內容溢出 */
 }
+.chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.chart-title { margin: 0; font-size: 1rem; color: #374151; }
 
-.chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
+.toggle-pills { display: flex; background: #f3f4f6; border-radius: 6px; padding: 2px; }
+.toggle-pills button {
+    border: none; background: transparent; padding: 4px 10px; font-size: 0.75rem; 
+    border-radius: 4px; color: #6b7280; cursor: pointer; transition: 0.2s;
 }
+.toggle-pills button.active { background: white; color: #2563eb; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 
-.title {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-main);
-}
-
-.toggle-group {
-    display: flex;
-    background: var(--bg-app);
-    border-radius: 6px;
-    padding: 2px;
-    border: 1px solid var(--border-color);
-}
-
-.toggle-group button {
-    background: transparent;
-    border: none;
-    color: var(--text-sub);
-    padding: 4px 12px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.2s;
-    font-weight: 500;
-}
-
-.toggle-group button:hover { color: var(--text-main); }
-.toggle-group button.active {
-    background: #ffffff;
-    color: var(--primary);
-    font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-
-.canvas-wrapper {
+.canvas-box {
+    flex-grow: 1;
     position: relative;
     width: 100%;
-    flex-grow: 1;
     min-height: 0;
 }
 </style>
