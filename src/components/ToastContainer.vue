@@ -15,7 +15,7 @@
           <p class="toast-message">{{ toast.message }}</p>
         </div>
 
-        <!-- 進度條 -->
+        <!-- 進度條 - 修改：動畫時間與 duration 同步 -->
         <div 
           v-if="toast.duration"
           class="toast-progress"
@@ -232,6 +232,7 @@ defineExpose({
   color: var(--primary);
 }
 
+/* 修改：進度條動畫時間與消息持續時間相同 */
 .toast-progress {
   position: absolute;
   bottom: 0;
