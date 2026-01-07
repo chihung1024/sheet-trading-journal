@@ -22,6 +22,7 @@
             v-model="form.txn_date" 
             type="date"
             required
+            @blur="validateField('txn_date')"
             :aria-invalid="errors.txn_date ? 'true' : 'false'"
             aria-describedby="txn-date-error"
           >
@@ -38,6 +39,7 @@
             placeholder="例：NVDA、TSLA"
             :disabled="isEditing"
             required
+            @blur="validateField('symbol')"
             :aria-invalid="errors.symbol ? 'true' : 'false'"
             aria-describedby="symbol-error"
           >
@@ -72,6 +74,7 @@
             min="0"
             placeholder="0.00"
             @input="calcTotal"
+            @blur="validateField('qty')"
             required
             :aria-invalid="errors.qty ? 'true' : 'false'"
             aria-describedby="qty-error"
@@ -90,6 +93,7 @@
             min="0"
             placeholder="0.00"
             @input="calcTotal"
+            @blur="validateField('price')"
             required
             :aria-invalid="errors.price ? 'true' : 'false'"
             aria-describedby="price-error"
@@ -198,37 +202,57 @@ const errors = reactive({
   price: ''
 });
 
-// 表單驗證
+// 表單驗證函數
+const validateField = (fieldName) => {
+  switch(fieldName) {
+    case 'txn_date':
+      errors.txn_date = !form.txn_date ? '請選擇日期' : '';
+      break;
+      
+    case 'symbol':
+      if (!form.symbol || form.symbol.trim() === '') {
+        errors.symbol = '請輸入股票代碼';
+      } else if (form.symbol.length > 10) {
+        errors.symbol = '股票代碼不超過10個字符';
+      } else {
+        errors.symbol = '';
+      }
+      break;
+      
+    case 'txn_type':
+      errors.txn_type = !form.txn_type ? '請選擇交易類型' : '';
+      break;
+      
+    case 'qty':
+      const qty = parseFloat(form.qty);
+      if (!form.qty || isNaN(qty) || qty <= 0) {
+        errors.qty = '請輸入有效的股數 (必須大於0)';
+      } else {
+        errors.qty = '';
+      }
+      break;
+      
+    case 'price':
+      const price = parseFloat(form.price);
+      if (!form.price || isNaN(price) || price <= 0) {
+        errors.price = '請輸入有效的單價 (必須大於0)';
+      } else {
+        errors.price = '';
+      }
+      break;
+      
+    default:
+      break;
+  }
+};
+
+// 完整表單驗證
 const validateForm = () => {
-  errors.txn_date = '';
-  errors.symbol = '';
-  errors.txn_type = '';
-  errors.qty = '';
-  errors.price = '';
-
-  if (!form.txn_date) {
-    errors.txn_date = '請選擇日期';
-  }
-
-  if (!form.symbol || form.symbol.trim() === '') {
-    errors.symbol = '請輸入股票代碼';
-  } else if (form.symbol.length > 10) {
-    errors.symbol = '股票代碼不超過10個字符';
-  }
-
-  if (!form.txn_type) {
-    errors.txn_type = '請選擇交易類型';
-  }
-
-  const qty = parseFloat(form.qty);
-  if (!form.qty || isNaN(qty) || qty <= 0) {
-    errors.qty = '請輸入有效的股數 (必須大於0)';
-  }
-
-  const price = parseFloat(form.price);
-  if (!form.price || isNaN(price) || price <= 0) {
-    errors.price = '請輸入有效的單價 (必須大於0)';
-  }
+  validateField('txn_date');
+  validateField('symbol');
+  validateField('txn_type');
+  validateField('qty');
+  validateField('price');
 
   return Object.values(errors).every(e => e === '');
 };
