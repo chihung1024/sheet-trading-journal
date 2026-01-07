@@ -1,32 +1,26 @@
 <template>
   <div class="app-container" :data-theme="themeStore.isDark ? 'dark' : 'light'">
     <LoginOverlay v-if="!authStore.token" />
-
     <div v-else>
       <HeaderBar ref="headerRef" />
-
       <main class="main-content">
         <div v-if="portfolioStore.loading" class="loading-wrapper">
           <div class="skeleton-grid">
             <div v-for="i in 4" :key="i" class="skeleton-card" />
           </div>
         </div>
-
         <div v-else>
           <StatsGrid />
-
           <div class="chart-section">
             <PerformanceChart />
             <PieChart />
           </div>
-
           <HoldingsTable />
           <TradeForm ref="tradeFormRef" id="trade-form-anchor" @success="handleTradeSuccess" />
           <RecordList @edit="handleEditRecord" />
         </div>
       </main>
     </div>
-
     <!-- 全局組件 -->
     <ToastContainer />
     <ConfirmDialog />
@@ -99,11 +93,9 @@ defineExpose({ drawerRef, headerRef });
   --card-bg: #0d1117;
   --border: #30363d;
   --border-light: rgba(48, 54, 61, 0.5);
-
   --primary: #1f6feb;
   --primary-dark: #1a5ba0;
   --primary-light: #3b8bff;
-
   --success: #238636;
   --success-light: #26a641;
   --warning: #9e6a03;
@@ -112,17 +104,14 @@ defineExpose({ drawerRef, headerRef });
   --error-light: #f85149;
   --info: #0969da;
   --info-light: #2884e8;
-
   --text: #e6edf3;
   --text-secondary: #c9d1d9;
   --text-tertiary: #8b949e;
   --text-muted: #6e7681;
-
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.6);
-
   --gradient-primary: linear-gradient(135deg, #1f6feb 0%, #0969da 100%);
   --gradient-success: linear-gradient(135deg, #238636 0%, #26a641 100%);
   --gradient-error: linear-gradient(135deg, #da3633 0%, #f85149 100%);
@@ -134,11 +123,9 @@ defineExpose({ drawerRef, headerRef });
   --card-bg: #ffffff;
   --border: #d0d7de;
   --border-light: rgba(208, 215, 222, 0.5);
-
   --primary: #0969da;
   --primary-dark: #0860ca;
   --primary-light: #2884e8;
-
   --success: #1a7f37;
   --success-light: #238636;
   --warning: #9e6a03;
@@ -147,17 +134,14 @@ defineExpose({ drawerRef, headerRef });
   --error-light: #da3633;
   --info: #0969da;
   --info-light: #2884e8;
-
   --text: #24292f;
   --text-secondary: #424a53;
   --text-tertiary: #57606a;
   --text-muted: #768390;
-
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
   --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.25);
-
   --gradient-primary: linear-gradient(135deg, #0969da 0%, #033d8b 100%);
   --gradient-success: linear-gradient(135deg, #1a7f37 0%, #238636 100%);
   --gradient-error: linear-gradient(135deg, #cf222e 0%, #da3633 100%);
@@ -254,4 +238,62 @@ body {
   transition: all var(--duration-normal) var(--easing-ease-in-out);
 }
 
-.
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* ========== 加載狀態 ========== */
+.loading-wrapper {
+  width: 100%;
+  padding: var(--space-lg);
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-lg);
+}
+
+.skeleton-card {
+  height: 200px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 0%,
+    var(--border) 50%,
+    var(--bg-secondary) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-lg);
+  animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ========== 圖表部分 ========== */
+.chart-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+@media (max-width: 1024px) {
+  .chart-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========== 響應式調整 ========== */
+@media (max-width: 768px) {
+  .app-container {
+    min-height: 100vh;
+  }
+}
+</style>
