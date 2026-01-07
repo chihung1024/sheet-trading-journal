@@ -2,314 +2,452 @@
   <div class="chart-card">
     <div class="chart-header">
       <div class="header-row main-row">
-        <h3 class="title">趨勢分析</h3>
+        <h3 class="title">績效分析</h3>
         <div class="toggle-group">
-          <button :class="{active: chartType==='pnl'}" @click="chartType='pnl'">損益 $</button>
-          <button :class="{active: chartType==='twr'}" @click="chartType='twr'">TWR %</button>
-          <button :class="{active: chartType==='asset'}" @click="chartType='asset'">資產總值</button>
-        </div>
-      </div>
-      
-      <div class="header-row sub-row">
-        <div class="toggle-group sm">
-          <button v-for="range in ['1M','3M','6M','YTD','1Y','ALL']" 
-                  :key="range" 
-                  :class="{active: timeRange===range}" 
-                  @click="switchTimeRange(range)">
-            {{ range }}
+          <button
+            :class="['toggle-btn', { active: chartType === 'pnl' }]"
+            @click="chartType = 'pnl'"
+            title="損益曲線"
+          >
+            📈 損益
+          </button>
+          <button
+            :class="['toggle-btn', { active: chartType === 'twr' }]"
+            @click="chartType = 'twr'"
+            title="時間加權報酬"
+          >
+            🎯 TWR
+          </button>
+          <button
+            :class="['toggle-btn', { active: chartType === 'asset' }]"
+            @click="chartType = 'asset'"
+            title="資產配置"
+          >
+            💰 資產
           </button>
         </div>
-        
-        <div class="date-picker-wrapper">
-          <input type="date" v-model="startDateStr" class="date-input" @change="onDateChange">
-          <span class="separator">to</span>
-          <input type="date" v-model="endDateStr" class="date-input" @change="onDateChange">
+      </div>
+
+      <div class="header-row sub-row">
+        <div class="toggle-group sm">
+          <button
+            v-for="range in ['1M', '3M', '6M', 'YTD', '1Y', 'ALL']"
+            :key="range"
+            :class="['toggle-btn', 'sm', { active: timeRange === range }]"
+            @click="switchTimeRange(range)"
+          >
+            {{ range }}
+          </button>
         </div>
       </div>
     </div>
 
-    <div class="canvas-wrapper">
-      <canvas ref="canvas"></canvas>
+    <div class="chart-container">
+      anvas ref="chartCanvas" class="chart-canvas"></canvas>
+    </div>
+
+    <div class="chart-stats">
+      <div class="stat-item">
+        <span class="label">最高</span>
+        <span class="value">{{ maxValue }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="label">最低</span>
+        <span class="value">{{ minValue }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="label">平均</span>
+        <span class="value">{{ avgValue }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="label">波動率</span>
+        <span class="value">{{ volatility }}</span>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick } from 'vue';
-import Chart from 'chart.js/auto';
+import { ref, computed, onMounted, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import Chart from 'chart.js/auto';
 
 const store = usePortfolioStore();
-const canvas = ref(null);
-let myChart = null;
+const chartCanvas = ref(null);
+let chartInstance = null;
 
 const chartType = ref('pnl');
-const timeRange = ref('1Y');
-const startDateStr = ref('');
-const endDateStr = ref('');
-const displayedData = ref([]);
+const timeRange = ref('ALL');
 
-const formatDate = (date) => date.toISOString().split('T')[0];
+const history = computed(() => store.history || []);
 
-const switchTimeRange = (range) => {
-    timeRange.value = range;
-    const now = new Date();
-    let start = new Date(now);
-    let end = new Date(now);
-    
-    switch(range) {
-        case '1M': start.setMonth(now.getMonth() - 1); break;
-        case '3M': start.setMonth(now.getMonth() - 3); break;
-        case '6M': start.setMonth(now.getMonth() - 6); break;
-        case 'YTD': start = new Date(now.getFullYear(), 0, 1); break;
-        case '1Y': start.setFullYear(now.getFullYear() - 1); break;
-        case 'ALL': start = new Date('2000-01-01'); break;
-    }
-    startDateStr.value = formatDate(start);
-    endDateStr.value = formatDate(end);
-    filterData();
-};
+const filteredData = computed(() => {
+  const data = history.value;
+  if (timeRange.value === 'ALL') return data;
 
-const onDateChange = () => {
-    timeRange.value = 'CUSTOM';
-    filterData();
-};
+  const now = new Date();
+  let cutoffDate;
 
-const filterData = () => {
-    const fullHistory = store.history || [];
-    if (fullHistory.length === 0) return;
+  switch (timeRange.value) {
+    case '1M':
+      cutoffDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+      break;
+    case '3M':
+      cutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+      break;
+    case '6M':
+      cutoffDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+      break;
+    case 'YTD':
+      cutoffDate = new Date(now.getFullYear(), 0, 1);
+      break;
+    case '1Y':
+      cutoffDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      break;
+    default:
+      return data;
+  }
 
-    const start = new Date(startDateStr.value);
-    const end = new Date(endDateStr.value);
-    end.setHours(23, 59, 59);
-
-    const startIndex = fullHistory.findIndex(d => new Date(d.date) >= start);
-    
-    if (startIndex === -1) {
-        displayedData.value = [];
-    } else {
-        let anchorPoint = (startIndex > 0) ? fullHistory[startIndex - 1] : null;
-        const slicedData = fullHistory.filter(d => {
-            const dDate = new Date(d.date);
-            return dDate >= start && dDate <= end;
-        });
-
-        displayedData.value = slicedData.map(d => {
-            let pnl_val = d.total_value - d.invested;
-            let twr_val = d.twr;
-            let spy_val = d.benchmark_twr;
-
-            if (anchorPoint) {
-                pnl_val -= (anchorPoint.total_value - anchorPoint.invested);
-                
-                const baseTwr = (anchorPoint.twr || 0) / 100;
-                const curTwr = (d.twr || 0) / 100;
-                twr_val = ((1 + curTwr) / (1 + baseTwr) - 1) * 100;
-
-                const baseSpy = (anchorPoint.benchmark_twr || 0) / 100;
-                const curSpy = (d.benchmark_twr || 0) / 100;
-                spy_val = ((1 + curSpy) / (1 + baseSpy) - 1) * 100;
-            }
-
-            return { ...d, period_pnl: pnl_val, period_twr: twr_val, period_spy: spy_val };
-        });
-        
-        if (anchorPoint && displayedData.value.length > 0) {
-             displayedData.value.unshift({ 
-                ...anchorPoint, 
-                date: anchorPoint.date,
-                period_pnl: 0, period_twr: 0, period_spy: 0 
-            });
-        }
-    }
-    drawChart();
-};
-
-const drawChart = () => {
-    if (!canvas.value) return;
-    const ctx = canvas.value.getContext('2d');
-    if (myChart) myChart.destroy();
-
-    const dataPoints = displayedData.value;
-    const labels = dataPoints.map(d => d.date);
-    let datasets = [];
-
-    const commonOptions = { pointRadius: 0, pointHoverRadius: 4, borderWidth: 2, tension: 0.2 };
-
-    if (chartType.value === 'asset') {
-        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(255, 82, 82, 0.25)');
-        gradient.addColorStop(1, 'rgba(255, 82, 82, 0)');
-        
-        datasets = [
-            { label: '總資產', data: dataPoints.map(d => d.total_value), borderColor: '#ff5252', backgroundColor: gradient, fill: true, ...commonOptions },
-            { label: '淨投入', data: dataPoints.map(d => d.invested), borderColor: '#666', borderDash: [5, 5], fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0 }
-        ];
-    } else if (chartType.value === 'pnl') {
-        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(255, 215, 0, 0.25)');
-        gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
-        
-        const dataMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.total_value - d.invested) : dataPoints.map(d => d.period_pnl);
-        datasets = [{ label: '累積損益 ($)', data: dataMap, borderColor: '#ffd700', backgroundColor: gradient, fill: true, ...commonOptions }];
-    } else {
-        const twrMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.twr) : dataPoints.map(d => d.period_twr);
-        const spyMap = (timeRange.value === 'ALL') ? dataPoints.map(d => d.benchmark_twr) : dataPoints.map(d => d.period_spy);
-        
-        datasets = [
-            { label: '我的 TWR %', data: twrMap, borderColor: '#ff5252', ...commonOptions },
-            { label: 'SPY %', data: spyMap, borderColor: '#40a9ff', ...commonOptions }
-        ];
-    }
-
-    myChart = new Chart(ctx, {
-        type: 'line',
-        data: { labels, datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-                legend: { labels: { color: '#ccc', boxWidth: 12, padding: 20 }, position: 'top', align: 'end' },
-                tooltip: { 
-                    backgroundColor: '#1f1f23', 
-                    titleColor: '#fff', 
-                    bodyColor: '#ccc', 
-                    borderColor: '#333', 
-                    borderWidth: 1,
-                    padding: 10,
-                    callbacks: { label: (c) => ` ${c.dataset.label}: ${Number(c.raw).toLocaleString()}` }
-                }
-            },
-            scales: {
-                x: { grid: { color: '#2d2d30' }, ticks: { color: '#666', maxTicksLimit: 6 } },
-                y: { position: 'right', grid: { color: '#2d2d30' }, ticks: { color: '#666' } }
-            }
-        }
-    });
-};
-
-const initChart = () => {
-    // 只有當資料存在且 Canvas 已掛載時才繪圖
-    if (store.history && store.history.length > 0 && canvas.value) {
-        switchTimeRange('1Y');
-    }
-};
-
-// 資料更新時重繪 (非立即，等待 DOM)
-watch(() => store.history, async () => {
-    await nextTick();
-    initChart();
+  return data.filter((item) => new Date(item.date) >= cutoffDate);
 });
 
-// 類型切換時重繪
-watch(chartType, drawChart);
+const maxValue = computed(() => {
+  if (filteredData.value.length === 0) return '-';
+  const values = filteredData.value.map((d) => d.total_value);
+  return Math.max(...values).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
+});
 
-// 組件掛載時，若已有資料則繪圖
-onMounted(async () => {
-    await nextTick();
-    initChart();
-    window.addEventListener('resize', () => { if(myChart) drawChart(); });
+const minValue = computed(() => {
+  if (filteredData.value.length === 0) return '-';
+  const values = filteredData.value.map((d) => d.total_value);
+  return Math.min(...values).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
+});
+
+const avgValue = computed(() => {
+  if (filteredData.value.length === 0) return '-';
+  const values = filteredData.value.map((d) => d.total_value);
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  return avg.toLocaleString('zh-TW', { maximumFractionDigits: 0 });
+});
+
+const volatility = computed(() => {
+  if (filteredData.value.length < 2) return '-';
+  const values = filteredData.value.map((d) => d.total_value);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  const stdDev = Math.sqrt(variance);
+  return ((stdDev / mean) * 100).toFixed(2) + '%';
+});
+
+const switchTimeRange = (range) => {
+  timeRange.value = range;
+};
+
+const updateChart = () => {
+  if (!chartCanvas.value) return;
+
+  const labels = filteredData.value.map((d) => d.date);
+  let datasets = [];
+
+  if (chartType.value === 'pnl') {
+    datasets = [
+      {
+        label: '淨值 (TWD)',
+        data: filteredData.value.map((d) => d.total_value),
+        borderColor: '#1f6feb',
+        backgroundColor: 'rgba(31, 110, 251, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+      },
+      {
+        label: 'SPY 基準',
+        data: filteredData.value.map((d) => d.benchmark_value || null),
+        borderColor: '#ffc107',
+        backgroundColor: 'rgba(255, 193, 7, 0.05)',
+        borderWidth: 1,
+        borderDash: [5, 5],
+        tension: 0.4,
+        fill: false,
+      },
+    ];
+  } else if (chartType.value === 'twr') {
+    datasets = [
+      {
+        label: 'TWR 報酬率',
+        data: filteredData.value.map((d, idx) => {
+          if (idx === 0) return 0;
+          const prev = filteredData.value[idx - 1].total_value;
+          const curr = filteredData.value[idx].total_value;
+          return ((curr - prev) / prev) * 100;
+        }),
+        borderColor: '#26a641',
+        backgroundColor: 'rgba(38, 166, 65, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+      },
+    ];
+  } else if (chartType.value === 'asset') {
+    datasets = [
+      {
+        label: '投入資金',
+        data: filteredData.value.map((d) => d.invested),
+        borderColor: '#0969da',
+        backgroundColor: 'rgba(9, 105, 218, 0.3)',
+        borderWidth: 0,
+        fill: true,
+      },
+      {
+        label: '累計收益',
+        data: filteredData.value.map((d) => d.total_value - d.invested),
+        borderColor: '#26a641',
+        backgroundColor: 'rgba(38, 166, 65, 0.3)',
+        borderWidth: 0,
+        fill: true,
+      },
+    ];
+  }
+
+  const ctx = chartCanvas.value.getContext('2d');
+
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
+
+  chartInstance = new Chart(ctx, {
+    type: chartType.value === 'pnl' || chartType.value === 'twr' ? 'line' : 'bar',
+    data: {
+      labels,
+      datasets,
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: {
+        intersect: false,
+        mode: 'index',
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            color: 'var(--text-secondary)',
+            font: { size: 12, weight: '500' },
+            padding: 16,
+            boxWidth: 12,
+            usePointStyle: true,
+          },
+        },
+        tooltip: {
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          titleColor: '#fff',
+          bodyColor: '#fff',
+          borderColor: 'var(--primary)',
+          borderWidth: 1,
+          padding: 12,
+          cornerRadius: 8,
+          callbacks: {
+            label: (ctx) => {
+              const value = ctx.parsed.y;
+              if (chartType.value === 'twr') {
+                return `${ctx.dataset.label}: ${value.toFixed(2)}%`;
+              }
+              return `${ctx.dataset.label}: ${Number(value).toLocaleString('zh-TW', {
+                maximumFractionDigits: 0,
+              })}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          display: true,
+          grid: {
+            color: 'var(--border-light)',
+            drawBorder: false,
+          },
+          ticks: {
+            color: 'var(--text-muted)',
+            font: { size: 11 },
+            maxTicksLimit: 10,
+          },
+        },
+        y: {
+          display: true,
+          grid: {
+            color: 'var(--border-light)',
+            drawBorder: false,
+          },
+          ticks: {
+            color: 'var(--text-muted)',
+            font: { size: 11 },
+            callback: (value) => {
+              if (chartType.value === 'twr') {
+                return value.toFixed(1) + '%';
+              }
+              return (value / 1000).toFixed(0) + 'K';
+            },
+          },
+        },
+      },
+    },
+  });
+};
+
+onMounted(() => {
+  updateChart();
+});
+
+watch([chartType, filteredData], () => {
+  updateChart();
 });
 </script>
 
 <style scoped>
 .chart-card {
-    background-color: #18181c;
-    border: 1px solid #2d2d30;
-    border-radius: 12px;
-    padding: 20px;
-    color: #e0e0e0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--easing-ease-in-out);
+  animation: fadeInUp 500ms var(--easing-ease-out) 100ms both;
 }
 
-.chart-header { margin-bottom: 15px; }
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .chart-card {
+    padding: var(--space-md);
+  }
+}
+
+.chart-header {
+  margin-bottom: var(--space-lg);
+}
 
 .header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
 }
-.main-row { margin-bottom: 12px; }
-.sub-row { justify-content: flex-end; }
+
+.header-row.main-row {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .header-row {
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+  }
+
+  .header-row.main-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 
 .title {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #eee;
-    letter-spacing: 0.5px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
 }
 
 .toggle-group {
-    display: flex;
-    background: #2d2d30;
-    border-radius: 6px;
-    padding: 2px;
-    border: 1px solid #333;
+  display: flex;
+  gap: 8px;
+  background: var(--bg-secondary);
+  padding: 4px;
+  border-radius: var(--radius-md);
 }
 
-.toggle-group button {
-    background: transparent;
-    border: none;
-    color: #888;
-    padding: 6px 14px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-    font-weight: 500;
+.toggle-group.sm {
+  gap: 6px;
+  padding: 3px;
 }
 
-.toggle-group button:hover { color: #ccc; }
-.toggle-group button.active {
-    background: #40a9ff;
-    color: #fff;
-    font-weight: 700;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+.toggle-btn {
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 200ms ease;
+  white-space: nowrap;
 }
 
-.toggle-group.sm button { padding: 4px 10px; font-size: 0.8rem; }
-
-.date-picker-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: #2d2d30;
-    padding: 4px 10px;
-    border-radius: 6px;
-    border: 1px solid #333;
+.toggle-btn.sm {
+  padding: 6px 10px;
+  font-size: 0.8rem;
 }
 
-.date-input {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-family: inherit;
-    font-size: 0.85rem;
-    outline: none;
-}
-.date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; opacity: 0.6; }
-.date-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
-
-.separator { color: #666; font-size: 0.8rem; }
-
-.canvas-wrapper {
-    position: relative;
-    width: 100%;
-    height: 350px;
-    flex-grow: 1;
+.toggle-btn:hover {
+  color: var(--text);
+  background: rgba(31, 110, 251, 0.1);
 }
 
-@media (max-width: 600px) {
-    .header-row { flex-direction: column; align-items: stretch; }
-    .toggle-group { overflow-x: auto; }
-    .sub-row { flex-direction: row; flex-wrap: wrap; }
+.toggle-btn.active {
+  background: var(--gradient-primary);
+  color: white;
+}
+
+.chart-container {
+  position: relative;
+  height: 400px;
+  margin-bottom: var(--space-lg);
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    height: 300px;
+  }
+}
+
+.chart-canvas {
+  max-height: 100%;
+}
+
+.chart-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-item .label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.stat-item .value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
 }
 </style>
