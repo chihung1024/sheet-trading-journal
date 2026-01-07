@@ -1,66 +1,57 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { CONFIG } from '../config' // 修正引用方式
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { CONFIG } from '../config';
+import { usePortfolioStore } from './portfolio';
 
 export const useAuthStore = defineStore('auth', () => {
-    // 1. 初始化時嘗試從 LocalStorage 讀取 Token
-    const token = ref(localStorage.getItem('auth_token') || '')
-    const user = ref(JSON.parse(localStorage.getItem('auth_user') || 'null'))
-    const loading = ref(false)
-    const error = ref(null)
+    const token = ref('');
+    const user = ref({ name: '', email: '' });
+    const portfolioStore = usePortfolioStore();
 
-    const isAuthenticated = computed(() => !!token.value)
+    const initAuth = () => {
+        const t = localStorage.getItem('token');
+        const n = localStorage.getItem('name');
+        const e = localStorage.getItem('email');
+        if (t) {
+            token.value = t;
+            user.value = { name: n, email: e };
+            // 登入成功後自動拉取資料
+            portfolioStore.fetchAll();
+        }
+    };
 
-    async function loginWithGoogle(credential) {
-        loading.value = true
-        error.value = null
+    const login = async (googleCredential) => {
         try {
-            // 發送 Token 到後端驗證
-            const res = await fetch(`${CONFIG.API_BASE_URL}/api/auth/google`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: credential })
-            })
-
-            const data = await res.json()
-
+            const res = await fetch(`${CONFIG.API_BASE_URL}/auth/google`, {
+                method: "POST",
+                body: JSON.stringify({ id_token: googleCredential })
+            });
+            const data = await res.json();
+            
             if (data.success) {
-                // 2. 登入成功，保存 Token 到 LocalStorage
-                token.value = data.token
-                user.value = data.user
+                token.value = data.token;
+                user.value = { name: data.user, email: data.email };
                 
-                localStorage.setItem('auth_token', data.token)
-                localStorage.setItem('auth_user', JSON.stringify(data.user))
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('name', data.user);
+                localStorage.setItem('email', data.email);
+                
+                portfolioStore.fetchAll();
             } else {
-                throw new Error(data.error || 'Login failed')
+                alert("Login Failed: " + data.error);
             }
         } catch (e) {
-            console.error(e)
-            error.value = e.message
-            throw e
-        } finally {
-            loading.value = false
+            console.error(e);
+            alert("Login Network Error");
         }
-    }
+    };
 
-    function logout() {
-        // 3. 登出時清除 LocalStorage
-        token.value = ''
-        user.value = null
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('auth_user')
-        
-        // 重新整理頁面以確保狀態乾淨
-        window.location.reload()
-    }
+    const logout = () => {
+        token.value = '';
+        user.value = {};
+        localStorage.clear();
+        location.reload();
+    };
 
-    return {
-        token,
-        user,
-        loading,
-        error,
-        isAuthenticated,
-        loginWithGoogle,
-        logout
-    }
-})
+    return { token, user, login, logout, initAuth };
+});

@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 
-# === 基礎交易模型 ===
 class TransactionRecord(BaseModel):
     id: Optional[int] = None
     txn_date: date = Field(alias='Date')
@@ -34,30 +33,8 @@ class HoldingPosition(BaseModel):
     pnl_twd: float
     pnl_percent: float
     current_price_origin: float
+    # 新增欄位：平均成本 (USD)
     avg_cost_usd: float = 0.0
-
-# === [階段 3 新增] 平倉分析模型 ===
-class ClosedLot(BaseModel):
-    open_date: str          
-    close_date: str         
-    qty: float              
-    entry_price: float      
-    exit_price: float       
-    cost_basis: float       
-    proceeds: float         
-    realized_pnl: float     
-    holding_days: int       
-    return_rate: float      
-    dividends_collected: float = 0.0  # [新增] 該批次歸因的股息總額
-
-class ClosedPosition(BaseModel):
-    symbol: str
-    total_realized_pnl: float 
-    total_dividends: float    # [新增] 該標的平倉部分包含的總股息
-    win_rate: float           
-    avg_holding_days: float   
-    total_trades_count: int   
-    lots: List[ClosedLot]     
 
 class PortfolioSnapshot(BaseModel):
     updated_at: str
@@ -66,4 +43,3 @@ class PortfolioSnapshot(BaseModel):
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
-    closed_positions: List[ClosedPosition] = []
