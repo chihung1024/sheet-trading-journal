@@ -30,7 +30,7 @@
     <div v-else class="chart-content">
       <!-- 圖表展示區域 -->
       <div class="chart-area" ref="chartContainer">
-        anvas v-if="chartInstance" id="performance-chart"></canvas>
+        canvas v-if="chartInstance" id="performance-chart"></ccanvas>
       </div>
 
       <!-- 統計摘要 -->
@@ -384,7 +384,7 @@ onMounted(() => {
   padding: var(--space-md);
 }
 
-.chart-area canvas {
+.chart-area ccanvas {
   max-width: 100%;
   height: auto;
 }
