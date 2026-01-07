@@ -1,64 +1,68 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { CONFIG } from '../config';
+import { usePortfolioStore } from './portfolio'; // 確保路徑正確
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(localStorage.getItem('access_token') || null);
-  const user = ref(JSON.parse(localStorage.getItem('user_info') || 'null'));
-
-  // 登入：直接導向 Google
-  const login = () => {
-    // 移除 response_type=token 以外的多餘參數，保持最簡
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CONFIG.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(CONFIG.REDIRECT_URI)}&response_type=token&scope=email%20profile`;
-    window.location.href = authUrl;
-  };
-
-  // 初始化：處理 Google 導回來的網址
-  const initAuth = () => {
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
+    const token = ref(localStorage.getItem('token') || '');
+    const user = ref({ 
+        name: localStorage.getItem('name') || '', 
+        email: localStorage.getItem('email') || '',
+        picture: localStorage.getItem('picture') || '' // 新增圖片欄位
+    });
     
-    if (params.has('access_token')) {
-      const accessToken = params.get('access_token');
-      token.value = accessToken;
-      localStorage.setItem('access_token', accessToken);
-      
-      // 網址列清乾淨
-      window.history.replaceState(null, null, ' ');
-      
-      fetchUserInfo(accessToken);
-    } else if (token.value) {
-      // 本地有 token 就檢查一下
-      fetchUserInfo(token.value);
-    }
-  };
+    // 初始化 Auth 並嘗試載入資料
+    const initAuth = async () => {
+        if (token.value) {
+            // 這裡可以選擇性地加入 token 有效性檢查
+            const portfolioStore = usePortfolioStore();
+            await portfolioStore.fetchAll();
+        }
+    };
 
-  const logout = () => {
-    token.value = null;
-    user.value = null;
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user_info');
-    window.location.reload();
-  };
+    const login = async (googleCredential) => {
+        try {
+            // 發送 ID Token 到您的後端進行驗證
+            const res = await fetch(`${CONFIG.API_BASE_URL}/auth/google`, {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id_token: googleCredential })
+            });
+            
+            const data = await res.json();
+            
+            if (data.success) {
+                // 更新狀態
+                token.value = data.token;
+                user.value = { 
+                    name: data.user, 
+                    email: data.email,
+                    picture: data.picture || '' // 如果後端有回傳圖片
+                };
+                
+                // 持久化儲存
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('name', data.user);
+                localStorage.setItem('email', data.email);
+                if (data.picture) localStorage.setItem('picture', data.picture);
+                
+                // 成功後重整頁面以觸發 App.vue 的重新渲染
+                window.location.reload(); 
+            } else {
+                alert("登入失敗: " + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            console.error("Login Error:", e);
+            alert("登入連線錯誤，請檢查網路或後端狀態");
+        }
+    };
 
-  const fetchUserInfo = async (accessToken) => {
-    try {
-      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        user.value = data;
-        localStorage.setItem('user_info', JSON.stringify(data));
-      } else {
-        // Token 失效就登出
-        logout();
-      }
-    } catch (e) {
-      logout();
-    }
-  };
+    const logout = () => {
+        token.value = '';
+        user.value = {};
+        localStorage.clear();
+        window.location.reload();
+    };
 
-  return { token, user, login, logout, initAuth };
+    return { token, user, login, logout, initAuth };
 });
