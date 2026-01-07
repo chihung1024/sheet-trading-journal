@@ -1,170 +1,218 @@
 <template>
-  <div class="chart-card">
+  <div class="chart-card card">
     <div class="chart-header">
-      <h3 class="title">資產配置</h3>
-      <div class="toggle-group">
-        <button
-          :class="['toggle-btn', { active: pieType === 'tags' }]"
-          @click="pieType = 'tags'"
-          title="按標籤分類"
+      <h3>資產配置</h3>
+      <div class="chart-legend-toggle">
+        <button 
+          class="legend-btn"
+          @click="showLegend = !showLegend"
+          :aria-expanded="showLegend"
+          aria-label="切換圖例顯示"
         >
-          🏷️ 標籤
-        </button>
-        <button
-          :class="['toggle-btn', { active: pieType === 'currency' }]"
-          @click="pieType = 'currency'"
-          title="按幣種分類"
-        >
-          💱 幣種
+          {{ showLegend ? '隱藏' : '顯示' }}圖例
         </button>
       </div>
     </div>
 
-    <div class="canvas-wrapper">
-      anvas ref="chartCanvas"></canvas>
+    <div v-if="isLoading" class="loading-state">
+      <div class="spinner"></div>
+      <p>載入圖表中...</p>
     </div>
 
-    <div class="legend-wrapper">
-      <div
-        v-for="(item, index) in legendData"
-        :key="index"
-        class="legend-item"
-        @mouseenter="hoverIndex = index"
-        @mouseleave="hoverIndex = null"
-      >
-        <div class="legend-color" :style="{ backgroundColor: item.color }"></div>
-        <div class="legend-content">
-          <div class="legend-name">{{ item.label }}</div>
-          <div class="legend-value">
-            {{ item.value }} ({{ item.percentage }}%)
+    <div v-else-if="hasError" class="error-state">
+      <p>⚠️ {{ errorMessage }}</p>
+      <button @click="retryLoad" class="btn btn-sm">重試</button>
+    </div>
+
+    <div v-else-if="chartData && chartData.length > 0" class="chart-content">
+      <!-- 圖表容器 -->
+      <div class="chart-wrapper">
+        anvas ref="chartCanvas" id="pie-chart"></canvas>
+      </div>
+
+      <!-- 圖例 -->
+      <div v-if="showLegend" class="chart-legend">
+        <div 
+          v-for="(item, index) in chartData"
+          :key="index"
+          class="legend-item"
+        >
+          <div 
+            class="legend-color"
+            :style="{ backgroundColor: item.backgroundColor }"
+          ></div>
+          <div class="legend-info">
+            <p class="legend-label">{{ item.label }}</p>
+            <p class="legend-value">
+              ${{ formatCurrency(item.value) }} 
+              ({{ formatPercent(item.percentage) }})
+            </p>
           </div>
         </div>
       </div>
+
+      <!-- 統計信息 -->
+      <div class="chart-stats">
+        <div class="stat">
+          <span class="stat-label">總資產</span>
+          <span class="stat-value">${{ formatCurrency(totalValue) }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">持倉數量</span>
+          <span class="stat-value">{{ chartData.length }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">最大配置</span>
+          <span class="stat-value">{{ maxPercentage.toFixed(1) }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="empty-state">
+      <p>📭 暫無資產配置數據</p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
-import Chart from 'chart.js/auto';
+import { ref, computed, onMounted, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import { Chart } from 'chart.js/auto';
 
 const store = usePortfolioStore();
+
 const chartCanvas = ref(null);
-let myPieChart = null;
-const pieType = ref('tags');
-const hoverIndex = ref(null);
+const chartInstance = ref(null);
+const isLoading = ref(true);
+const hasError = ref(false);
+const errorMessage = ref('');
+const showLegend = ref(true);
+const chartData = ref([]);
 
-const holdings = computed(() => store.holdings || []);
-
-const chartColors = [
-  '#1f6feb',
-  '#26a641',
-  '#da3633',
-  '#ffc107',
-  '#0969da',
-  '#fb8500',
-  '#8957e5',
-  '#00d9ff',
-  '#ff6b9d',
-  '#c1666b',
+// 配色方案
+const colors = [
+  'rgba(31, 110, 251, 0.8)',
+  'rgba(76, 175, 80, 0.8)',
+  'rgba(255, 152, 0, 0.8)',
+  'rgba(244, 67, 54, 0.8)',
+  'rgba(156, 39, 176, 0.8)',
+  'rgba(0, 188, 212, 0.8)',
+  'rgba(255, 193, 7, 0.8)',
+  'rgba(233, 30, 99, 0.8)'
 ];
 
-const allocation = computed(() => {
-  const result = { tags: {}, currency: {} };
-
-  holdings.value.forEach((h) => {
-    const value = (h.quantity || 0) * (h.current_price || 0);
-
-    // 按標籤分類
-    const tag = h.tag || '未分類';
-    result.tags[tag] = (result.tags[tag] || 0) + value;
-
-    // 按幣種分類
-    const curr = h.currency || 'USD';
-    result.currency[curr] = (result.currency[curr] || 0) + value;
-  });
-
-  return result;
-});
-
 const totalValue = computed(() => {
-  return Object.values(allocation.value[pieType.value]).reduce((a, b) => a + b, 0);
+  return chartData.value.reduce((sum, item) => sum + item.value, 0);
 });
 
-const legendData = computed(() => {
-  const data = allocation.value[pieType.value];
-  return Object.entries(data).map(([label, value], index) => ({
-    label,
-    value: value.toLocaleString('zh-TW', { maximumFractionDigits: 0 }),
-    percentage: totalValue.value > 0 ? ((value / totalValue.value) * 100).toFixed(1) : 0,
-    color: chartColors[index % chartColors.length],
-  }));
+const maxPercentage = computed(() => {
+  return Math.max(...chartData.value.map(item => item.percentage), 0);
 });
 
-const updateChart = () => {
-  if (!chartCanvas.value) return;
+// 格式化函數
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('zh-TW', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(value);
+};
 
-  const ctx = chartCanvas.value.getContext('2d');
-  const data = allocation.value[pieType.value];
-  const labels = Object.keys(data);
-  const values = Object.values(data);
+const formatPercent = (value) => {
+  return value.toFixed(2) + '%';
+};
 
-  if (myPieChart) {
-    myPieChart.destroy();
+// 載入圖表數據
+const loadChartData = async () => {
+  isLoading.value = true;
+  hasError.value = false;
+  errorMessage.value = '';
+
+  try {
+    const holdings = store.holdings || [];
+
+    if (holdings.length === 0) {
+      throw new Error('暫無持倉數據');
+    }
+
+    // 計算每個持倉的市場價值和百分比
+    const total = holdings.reduce((sum, h) => sum + h.currentValue, 0);
+
+    chartData.value = holdings
+      .map((holding, index) => ({
+        label: holding.symbol,
+        value: holding.currentValue,
+        percentage: (holding.currentValue / total) * 100,
+        backgroundColor: colors[index % colors.length],
+        borderColor: '#fff',
+        borderWidth: 2
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    renderChart();
+  } catch (error) {
+    hasError.value = true;
+    errorMessage.value = error.message || '載入圖表失敗';
+    console.error('Chart loading error:', error);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// 渲染圖表
+const renderChart = () => {
+  if (!chartCanvas.value || chartData.value.length === 0) return;
+
+  // 銷毀舊圖表
+  if (chartInstance.value) {
+    chartInstance.value.destroy();
   }
 
-  myPieChart = new Chart(ctx, {
+  const ctx = chartCanvas.value.getContext('2d');
+  if (!ctx) return;
+
+  chartInstance.value = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels,
-      datasets: [
-        {
-          data: values,
-          backgroundColor: chartColors.slice(0, labels.length),
-          borderColor: 'var(--card-bg)',
-          borderWidth: 2,
-        },
-      ],
+      labels: chartData.value.map(item => item.label),
+      datasets: [{
+        data: chartData.value.map(item => item.value),
+        backgroundColor: chartData.value.map(item => item.backgroundColor),
+        borderColor: chartData.value.map(item => item.borderColor),
+        borderWidth: chartData.value.map(item => item.borderWidth)
+      }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: true,
       plugins: {
         legend: {
-          display: false,
+          display: false
         },
         tooltip: {
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          titleColor: '#fff',
-          bodyColor: '#fff',
-          borderColor: 'var(--primary)',
-          borderWidth: 1,
-          padding: 12,
-          cornerRadius: 8,
           callbacks: {
-            label: (ctx) => {
-              const value = ctx.parsed;
-              const percentage = totalValue.value > 0
-                ? ((value / totalValue.value) * 100).toFixed(1)
-                : 0;
-              return `${Number(value).toLocaleString('zh-TW', {
-                maximumFractionDigits: 0,
-              })} (${percentage}%)`;
-            },
-          },
-        },
-      },
-    },
+            label: function(context) {
+              const item = chartData.value[context.dataIndex];
+              return `${item.label}: $${formatCurrency(item.value)} (${item.percentage.toFixed(2)}%)`;
+            }
+          }
+        }
+      }
+    }
   });
 };
 
-onMounted(() => {
-  updateChart();
-});
+// 重試載入
+const retryLoad = () => {
+  loadChartData();
+};
 
-watch([pieType, holdings], () => {
-  updateChart();
+// 監聽 store 數據變化
+watch(() => store.holdings, () => {
+  loadChartData();
+}, { deep: true });
+
+onMounted(() => {
+  loadChartData();
 });
 </script>
 
@@ -174,157 +222,206 @@ watch([pieType, holdings], () => {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
-  transition: all var(--duration-normal) var(--easing-ease-in-out);
-  animation: fadeInUp 500ms var(--easing-ease-out) 200ms both;
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (max-width: 768px) {
-  .chart-card {
-    padding: var(--space-md);
-  }
 }
 
 .chart-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: var(--space-lg);
-  flex-wrap: wrap;
-  gap: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border);
 }
 
-@media (max-width: 480px) {
-  .chart-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-.title {
-  font-size: 1.25rem;
-  font-weight: 700;
+.chart-header h3 {
   margin: 0;
   color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
 }
 
-.toggle-group {
+.chart-legend-toggle {
   display: flex;
-  gap: 8px;
-  background: var(--bg-secondary);
-  padding: 4px;
-  border-radius: var(--radius-md);
 }
 
-.toggle-btn {
-  padding: 8px 12px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
+.legend-btn {
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 500;
   transition: all 200ms ease;
-  white-space: nowrap;
 }
 
-.toggle-btn:hover {
-  color: var(--text);
-  background: rgba(31, 110, 251, 0.1);
+.legend-btn:hover {
+  background: var(--border);
 }
 
-.toggle-btn.active {
-  background: var(--gradient-primary);
-  color: white;
+.chart-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
 }
 
-.canvas-wrapper {
+.chart-wrapper {
   position: relative;
-  height: 300px;
-  margin-bottom: var(--space-lg);
+  min-height: 300px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-@media (max-width: 768px) {
-  .canvas-wrapper {
-    height: 250px;
+.chart-wrapper canvas {
+  max-width: 100%;
+  max-height: 400px;
+}
+
+.loading-state,
+.error-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: var(--space-md);
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-.legend-wrapper {
+.error-state {
+  color: var(--error-light);
+}
+
+.error-state button {
+  margin-top: var(--space-md);
+}
+
+.chart-legend {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--border);
-}
-
-@media (max-width: 480px) {
-  .legend-wrapper {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
 }
 
 .legend-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px;
-  border-radius: var(--radius-md);
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-
-.legend-item:hover {
-  background: var(--bg-secondary);
+  gap: var(--space-md);
 }
 
 .legend-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
   flex-shrink: 0;
   margin-top: 2px;
-  transition: transform 200ms ease;
 }
 
-.legend-item:hover .legend-color {
-  transform: scale(1.3);
-}
-
-.legend-content {
+.legend-info {
   flex: 1;
   min-width: 0;
 }
 
-.legend-name {
-  font-size: 0.9rem;
-  font-weight: 600;
+.legend-label {
+  margin: 0;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .legend-value {
+  margin: 4px 0 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.chart-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+
+.stat-label {
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin-top: 2px;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.btn {
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 200ms ease;
+}
+
+.btn:hover {
+  background: var(--border);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-md);
+  }
+
+  .chart-wrapper {
+    min-height: 250px;
+  }
+
+  .chart-legend {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 </style>
