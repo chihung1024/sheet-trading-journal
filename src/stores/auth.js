@@ -49,9 +49,6 @@ export const useAuthStore = defineStore('auth', () => {
       
       if (res.ok) {
         const data = await res.json();
-        // 簡單的白名單檢查 (可選)
-        // if (data.email !== 'your-email@gmail.com') throw new Error('Unauthorized');
-        
         user.value = data;
         localStorage.setItem('user_info', JSON.stringify(data));
       } else {
@@ -62,6 +59,12 @@ export const useAuthStore = defineStore('auth', () => {
       logout(); // Token 失效則登出
     }
   };
+  
+  // 為了相容之前的 API Token 模式，這裡保留 setToken 介面，但內部邏輯改為處理 OAuth Token
+  const setToken = (newToken) => {
+      token.value = newToken;
+      localStorage.setItem('access_token', newToken);
+  };
 
-  return { token, user, login, logout, initAuth };
+  return { token, user, login, logout, initAuth, setToken };
 });
