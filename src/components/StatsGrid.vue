@@ -1,37 +1,55 @@
 <template>
   <div class="stats-grid">
-    <div class="stat-card main-stat">
-      <div class="stat-icon">💰</div>
-      <div class="stat-content">
-        <div class="stat-label">總資產淨值 (TWD)</div>
-        <div class="stat-value highlight">{{ displayTotalValue }}</div>
-        <div class="stat-sub">投入成本: {{ formatNumber(stats.invested_capital) }}</div>
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="label">總資產淨值</span>
+        <div class="icon-bg bg-blue">💰</div>
+      </div>
+      <div class="stat-body">
+        <div class="value">{{ displayTotalValue }} <span class="unit">TWD</span></div>
+        <div class="sub-text">投入成本: {{ formatNumber(stats.invested_capital) }}</div>
       </div>
     </div>
     
     <div class="stat-card">
-      <div class="stat-label">未實現損益</div>
-      <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
-        {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
+      <div class="stat-header">
+        <span class="label">未實現損益</span>
+        <div class="icon-bg" :class="unrealizedPnL >= 0 ? 'bg-green' : 'bg-red'">
+            {{ unrealizedPnL >= 0 ? '📈' : '📉' }}
+        </div>
       </div>
-      <div class="stat-pill" :class="roi >= 0 ? 'pill-green' : 'pill-red'">
-        {{ roi }}% ROI
+      <div class="stat-body">
+        <div class="value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
+          {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
+        </div>
+        <div class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
+          {{ roi }}% ROI
+        </div>
       </div>
     </div>
     
     <div class="stat-card">
-      <div class="stat-label">今日損益 (Est.)</div>
-      <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
-        {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
+      <div class="stat-header">
+        <span class="label">今日損益 (預估)</span>
+        <div class="icon-bg bg-gray">📅</div>
+      </div>
+      <div class="stat-body">
+        <div class="value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
+          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
+        </div>
+        <div class="sub-text">與昨日收盤相比</div>
       </div>
     </div>
     
     <div class="stat-card">
-      <div class="stat-label">TWR 總報酬率</div>
-      <div class="stat-value" :class="stats.twr >= 0 ? 'text-green' : 'text-red'">
-        {{ stats.twr || 0 }}%
+      <div class="stat-header">
+        <span class="label">TWR 總報酬率</span>
+        <div class="icon-bg bg-orange">🏆</div>
       </div>
-      <div class="stat-sub">SPY Benchmark: {{ stats.benchmark_twr || '-' }}%</div>
+      <div class="stat-body">
+        <div class="value">{{ stats.twr || 0 }}%</div>
+        <div class="sub-text">SPY Benchmark: <strong>{{ stats.benchmark_twr || '-' }}%</strong></div>
+      </div>
     </div>
   </div>
 </template>
@@ -57,20 +75,16 @@ const dailyPnL = computed(() => {
   return (last.total_value - last.invested) - (prev.total_value - prev.invested);
 });
 
-// 簡易數字動畫邏輯
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
-    if (newVal === undefined || newVal === null) return;
-    const start = current.value;
+    if (newVal == null) return;
     const end = Number(newVal);
-    const duration = 1000;
+    const start = current.value;
     const startTime = performance.now();
-    
     const animate = (time) => {
-      const progress = Math.min((time - startTime) / duration, 1);
-      // EaseOutQuart function
-      const ease = 1 - Math.pow(1 - progress, 4);
+      const progress = Math.min((time - startTime) / 800, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
       current.value = start + (end - start) * ease;
       if (progress < 1) requestAnimationFrame(animate);
     };
@@ -83,7 +97,7 @@ const displayTotalValue = useAnimatedNumber(computed(() => stats.value.total_val
 const displayUnrealized = useAnimatedNumber(unrealizedPnL);
 const displayDaily = useAnimatedNumber(dailyPnL);
 
-const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 </script>
 
 <style scoped>
@@ -93,36 +107,33 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW', { minimumFr
     gap: 20px; 
 }
 .stat-card { 
-    background: var(--card-bg); 
-    backdrop-filter: blur(var(--backdrop-blur));
-    padding: 24px; 
+    background: var(--bg-card); 
+    border: 1px solid var(--border-color); 
     border-radius: var(--radius); 
-    border: 1px solid var(--card-border); 
-    display: flex; 
-    flex-direction: column; 
-    justify-content: center;
-    transition: transform 0.2s;
+    padding: 20px; 
+    box-shadow: var(--shadow-sm);
+    display: flex; flex-direction: column; justify-content: space-between;
+    height: 120px;
 }
-.stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.15); }
-
-.stat-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-.stat-value { font-size: 1.8rem; font-weight: 700; line-height: 1.2; font-family: 'Inter', sans-serif; }
-.highlight { color: var(--primary); text-shadow: 0 0 20px rgba(64, 169, 255, 0.2); }
-.stat-sub { font-size: 0.8rem; margin-top: 8px; color: #666; }
-
-.stat-pill {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-top: 6px;
-    width: fit-content;
+.stat-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; }
+.label { font-size: 0.85rem; color: var(--text-secondary); font-weight: 500; }
+.icon-bg { 
+    width: 36px; height: 36px; border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center; font-size: 1.2rem; 
 }
-.pill-green { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
-.pill-red { background: rgba(255, 82, 82, 0.15); color: #ff5252; }
+.bg-blue { background: #eff6ff; }
+.bg-green { background: #ecfdf5; }
+.bg-red { background: #fef2f2; }
+.bg-orange { background: #fff7ed; }
+.bg-gray { background: #f3f4f6; }
 
-/* 主卡片特別樣式 */
-.main-stat { grid-column: span 1; display: flex; flex-direction: row; align-items: center; gap: 15px; }
-.stat-icon { font-size: 2.5rem; background: rgba(255,255,255,0.03); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.value { font-size: 1.75rem; font-weight: 700; color: var(--text-primary); line-height: 1; margin-bottom: 4px; }
+.unit { font-size: 0.9rem; color: var(--text-secondary); font-weight: normal; }
+.sub-text { font-size: 0.8rem; color: var(--text-secondary); }
+
+.badge { 
+    display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; 
+}
+.badge-green { background: #d1fae5; color: #065f46; }
+.badge-red { background: #fee2e2; color: #991b1b; }
 </style>
