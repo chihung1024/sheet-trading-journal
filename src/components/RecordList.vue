@@ -62,8 +62,7 @@
           </div>
           <div class="detail-item">
             <span class="detail-label">交易稅</span>
-            <span class="detail-value">${{{ formatCurrency(record.tax || 0) }}</span>
-          </div>
+<span class="detail-value">{{ formatCurrency(record.tax || 0) }}</span>          </div>
         </div>
 
         <div class="record-actions">
