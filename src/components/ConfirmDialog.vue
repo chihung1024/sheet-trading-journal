@@ -1,33 +1,62 @@
 <template>
   <teleport to="body">
     <transition name="dialog">
-      <div v-if="dialogStore.isOpen" class="dialog-backdrop" @click.self="dialogStore.cancel()">
-        <div class="dialog-content" role="dialog" aria-modal="true">
-          <div class="dialog-header">
-            <h2 class="dialog-title">{{ dialogStore.title }}</h2>
-            <button
-              class="dialog-close"
-              @click="dialogStore.cancel()"
-              aria-label="Close dialog"
+      <div 
+        v-if="isOpen"
+        class="dialog-overlay"
+        @click="handleBackdropClick"
+        role="presentation"
+      >
+        <div 
+          class="dialog-container"
+          role="alertdialog"
+          :aria-labelledby="titleId"
+          :aria-describedby="descId"
+          @click.stop
+        >
+          <!-- 關閉按鈕 -->
+          <button 
+            class="dialog-close"
+            @click="handleCancel"
+            aria-label="關閉對話框"
+          >
+            ✕
+          </button>
+
+          <!-- 標題 -->
+          <h2 :id="titleId" class="dialog-title">{{ title }}</h2>
+
+          <!-- 內容 -->
+          <div :id="descId" class="dialog-content">
+            <slot>{{ message }}</slot>
+          </div>
+
+          <!-- 操作按鈕 -->
+          <div class="dialog-actions">
+            <button 
+              class="btn btn-secondary"
+              @click="handleCancel"
+              :disabled="isLoading"
             >
-              ✕
+              {{ cancelText }}
+            </button>
+            <button 
+              class="btn btn-primary"
+              @click="handleConfirm"
+              :disabled="isLoading"
+              :aria-busy="isLoading"
+            >
+              <span v-if="!isLoading">{{ confirmText }}</span>
+              <span v-else class="loading-spinner">
+                <span class="spinner-icon">⟳</span>
+                {{ loadingText }}
+              </span>
             </button>
           </div>
 
-          <div class="dialog-body">
-            <p>{{ dialogStore.message }}</p>
-          </div>
-
-          <div class="dialog-footer">
-            <button class="btn btn-secondary" @click="dialogStore.cancel()">
-              {{ dialogStore.cancelText }}
-            </button>
-            <button
-              :class="['btn', dialogStore.isDangerous ? 'btn-danger' : 'btn-primary']"
-              @click="dialogStore.confirm()"
-            >
-              {{ dialogStore.confirmText }}
-            </button>
+          <!-- 錯誤消息 -->
+          <div v-if="errorMessage" class="dialog-error" role="alert">
+            {{ errorMessage }}
           </div>
         </div>
       </div>
@@ -36,13 +65,85 @@
 </template>
 
 <script setup>
-import { useDialogStore } from '../stores/dialog';
+import { ref, computed } from 'vue';
 
-const dialogStore = useDialogStore();
+const props = defineProps({
+  isOpen: {
+    type: Boolean,
+    default: false
+  },
+  title: {
+    type: String,
+    default: '確認'
+  },
+  message: {
+    type: String,
+    default: ''
+  },
+  confirmText: {
+    type: String,
+    default: '確認'
+  },
+  cancelText: {
+    type: String,
+    default: '取消'
+  },
+  loadingText: {
+    type: String,
+    default: '處理中...'
+  },
+  isDangerous: {
+    type: Boolean,
+    default: false
+  },
+  onBackdropClick: {
+    type: String,
+    enum: ['close', 'ignore'],
+    default: 'close'
+  }
+});
+
+const emit = defineEmits(['confirm', 'cancel', 'update:isOpen']);
+
+const isLoading = ref(false);
+const errorMessage = ref('');
+const titleId = computed(() => `dialog-title-${Math.random()}`);
+const descId = computed(() => `dialog-desc-${Math.random()}`);
+
+const handleCancel = () => {
+  errorMessage.value = '';
+  emit('cancel');
+  emit('update:isOpen', false);
+};
+
+const handleConfirm = async () => {
+  isLoading.value = true;
+  errorMessage.value = '';
+
+  try {
+    await emit('confirm');
+    emit('update:isOpen', false);
+  } catch (error) {
+    errorMessage.value = error.message || '操作失敗，請重試';
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const handleBackdropClick = () => {
+  if (props.onBackdropClick === 'close') {
+    handleCancel();
+  }
+};
+
+defineExpose({
+  setLoading: (loading) => { isLoading.value = loading; },
+  setError: (error) => { errorMessage.value = error; }
+});
 </script>
 
 <style scoped>
-.dialog-backdrop {
+.dialog-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -52,71 +153,45 @@ const dialogStore = useDialogStore();
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
-  animation: fadeIn 300ms var(--easing-ease-out);
+  z-index: 1000;
+  padding: var(--space-md);
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.dialog-content {
+.dialog-container {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xl);
-  max-width: 90%;
-  width: 400px;
+  padding: var(--space-lg);
+  max-width: 450px;
+  width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  animation: scaleIn 300ms var(--easing-ease-out);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  position: relative;
+  animation: slideUp 300ms ease-out;
 }
 
-@keyframes scaleIn {
+@keyframes slideUp {
   from {
-    transform: scale(0.95);
     opacity: 0;
+    transform: translateY(20px);
   }
   to {
-    transform: scale(1);
     opacity: 1;
+    transform: translateY(0);
   }
-}
-
-@media (max-width: 480px) {
-  .dialog-content {
-    width: calc(100% - 32px);
-    margin: 16px;
-  }
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-lg);
-  border-bottom: 1px solid var(--border);
-}
-
-.dialog-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text);
-  margin: 0;
 }
 
 .dialog-close {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
   background: none;
   border: none;
   color: var(--text-muted);
-  cursor: pointer;
   font-size: 1.5rem;
-  padding: 4px 8px;
+  cursor: pointer;
+  padding: 4px;
   transition: color 200ms ease;
 }
 
@@ -124,39 +199,129 @@ const dialogStore = useDialogStore();
   color: var(--text);
 }
 
-.dialog-body {
-  padding: var(--space-lg);
-  color: var(--text-secondary);
+.dialog-title {
+  margin: 0 0 var(--space-md) 0;
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.dialog-content {
+  margin: 0 0 var(--space-lg) 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
   line-height: 1.6;
 }
 
-.dialog-body p {
-  margin: 0;
-}
-
-.dialog-footer {
+.dialog-actions {
   display: flex;
   gap: var(--space-md);
-  padding: var(--space-lg);
-  border-top: 1px solid var(--border);
   justify-content: flex-end;
 }
 
-@media (max-width: 480px) {
-  .dialog-footer {
-    gap: var(--space-sm);
-  }
+.btn {
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 100px;
+}
 
-  .dialog-footer .btn {
-    flex: 1;
+.btn:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+}
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark, var(--primary));
+  box-shadow: 0 4px 12px rgba(31, 110, 251, 0.3);
+}
+
+.loading-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.spinner-icon {
+  display: inline-block;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-/* 轉場動畫 */
+.dialog-error {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--error-light);
+  font-size: 0.9rem;
+  animation: slideDown 300ms ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .dialog-enter-active,
 .dialog-leave-active {
-  transition: opacity 300ms var(--easing-ease-in-out);
+  transition: opacity 300ms ease;
 }
 
 .dialog-enter-from,
 .dialog-leave-to {
+  opacity: 0;
+}
+
+@media (max-width: 480px) {
+  .dialog-container {
+    margin: var(--space-md);
+  }
+
+  .dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .btn {
+    width: 100%;
+  }
+}
+</style>
