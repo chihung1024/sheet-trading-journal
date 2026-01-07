@@ -1,65 +1,43 @@
 <template>
-  <div class="card">
-    <div class="header-row">
-        <h3>交易紀錄</h3>
-        <div class="filters">
-             <input type="text" v-model="searchQuery" placeholder="搜尋代碼..." class="search-input">
-             <select v-model="filterType" class="filter-select">
-                <option value="ALL">全部</option>
-                <option value="BUY">買入</option>
-                <option value="SELL">賣出</option>
-                <option value="DIV">配息</option>
-            </select>
+  <div class="card recent-activity">
+    <div class="header">
+        <h3>近期動態</h3>
+        <button class="btn-refresh" @click="store.fetchRecords">↺</button>
+    </div>
+
+    <div class="activity-list">
+        <div v-if="filteredRecords.length === 0" class="empty">尚無交易紀錄</div>
+        
+        <div v-for="r in filteredRecords.slice(0, 8)" :key="r.id" class="activity-item">
+            <div class="item-left">
+                <div class="date-badge">
+                    <span class="month">{{ getMonth(r.txn_date) }}</span>
+                    <span class="day">{{ getDay(r.txn_date) }}</span>
+                </div>
+            </div>
+            <div class="item-main">
+                <div class="row-top">
+                    <span class="symbol">{{ r.symbol }}</span>
+                    <span class="type-tag" :class="r.txn_type.toLowerCase()">{{ r.txn_type }}</span>
+                </div>
+                <div class="row-btm">
+                    {{ r.qty }} 股 @ {{ formatNumber(r.price) }}
+                </div>
+            </div>
+            <div class="item-right">
+                <div class="amount">{{ formatNumber(r.total_amount) }}</div>
+                <div class="actions">
+                    <button @click="$emit('edit', r)">✎</button>
+                    <button @click="del(r.id)" class="del">×</button>
+                </div>
+            </div>
         </div>
-    </div>
-
-    <div class="table-responsive">
-        <table>
-            <thead>
-                <tr>
-                    <th>日期</th>
-                    <th>代碼</th>
-                    <th>類型</th>
-                    <th class="text-right">股數</th>
-                    <th class="text-right">價格 (USD)</th>
-                    <th class="text-right">總額 (USD)</th>
-                    <th class="text-right">操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-if="paginatedRecords.length === 0">
-                    <td colspan="7" class="empty-state">無符合資料</td>
-                </tr>
-                <tr v-for="r in paginatedRecords" :key="r.id">
-                    <td>{{ r.txn_date }}</td>
-                    <td><span class="symbol-badge">{{ r.symbol }}</span></td>
-                    <td>
-                        <span class="type-badge" :class="r.txn_type.toLowerCase()">
-                            {{ r.txn_type }}
-                        </span>
-                    </td>
-                    <td class="text-right font-mono">{{ r.qty }}</td>
-                    <td class="text-right font-mono">{{ formatNumber(r.price, 2) }}</td>
-                    <td class="text-right font-mono">{{ formatNumber(r.total_amount, 2) }}</td>
-                    <td class="text-right">
-                        <button class="btn-icon" @click="$emit('edit', r)" title="編輯">✎</button>
-                        <button class="btn-icon delete" @click="del(r.id)" title="刪除">✕</button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="pagination" v-if="totalPages > 1">
-        <button class="btn btn-sm btn-outline" @click="prevPage" :disabled="currentPage === 1">上一頁</button>
-        <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-        <button class="btn btn-sm btn-outline" @click="nextPage" :disabled="currentPage === totalPages">下一頁</button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
@@ -68,62 +46,64 @@ import { CONFIG } from '../config';
 const store = usePortfolioStore();
 const auth = useAuthStore();
 const { addToast } = useToast();
-const emit = defineEmits(['edit']);
-
-const searchQuery = ref('');
-const filterType = ref('ALL');
-const currentPage = ref(1);
-const itemsPerPage = 8;
-
-const formatNumber = (num, d=0) => Number(num||0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 const filteredRecords = computed(() => {
-    return store.records.filter(r => {
-        if (searchQuery.value && !r.symbol.includes(searchQuery.value.toUpperCase())) return false;
-        if (filterType.value !== 'ALL' && r.txn_type !== filterType.value) return false;
-        return true;
-    }).sort((a, b) => new Date(b.txn_date) - new Date(a.txn_date));
+    return [...store.records].sort((a, b) => new Date(b.txn_date) - new Date(a.txn_date));
 });
 
-const paginatedRecords = computed(() => {
-    const start = (currentPage.value - 1) * itemsPerPage;
-    return filteredRecords.value.slice(start, start + itemsPerPage);
-});
-
-const totalPages = computed(() => Math.ceil(filteredRecords.value.length / itemsPerPage) || 1);
-const prevPage = () => { if (currentPage.value > 1) currentPage.value--; };
-const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.value++; };
+const formatNumber = (num) => Number(num).toLocaleString('en-US');
+const getMonth = (d) => new Date(d).toLocaleString('en-US', { month: 'short' });
+const getDay = (d) => new Date(d).getDate();
 
 const del = async (id) => {
-    if(!confirm("確定刪除?")) return;
+    if(!confirm("刪除此紀錄?")) return;
     try {
         await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
             method: 'DELETE', headers: { 'Authorization': `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ id })
         });
-        addToast("已刪除", "success"); store.fetchRecords();
-    } catch(e) { addToast("刪除失敗", "error"); }
+        addToast("刪除成功", "success"); store.fetchRecords();
+    } catch(e) { addToast("錯誤", "error"); }
 };
 </script>
 
 <style scoped>
-.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.filters { display: flex; gap: 8px; }
-.search-input, .filter-select { padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: white; }
-.table-responsive { overflow-x: auto; }
-.text-right { text-align: right; }
-.font-mono { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; }
+.recent-activity { padding: 0; overflow: hidden; border: none; background: transparent; box-shadow: none; }
+.header { display: flex; justify-content: space-between; align-items: center; padding: 0 4px 16px 4px; border-bottom: 2px solid var(--border-color); margin-bottom: 12px; }
+.header h3 { font-size: 1rem; margin: 0; border: none; padding: 0; color: var(--text-sub); text-transform: uppercase; letter-spacing: 1px; }
+.btn-refresh { background: none; border: none; cursor: pointer; font-size: 1.2rem; color: var(--text-sub); padding: 0; }
+.btn-refresh:hover { color: var(--primary); }
 
-.symbol-badge { font-weight: 600; color: var(--text-primary); }
-.type-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
-.type-badge.buy { background: #eff6ff; color: var(--primary); }
-.type-badge.sell { background: #ecfdf5; color: var(--success); }
-.type-badge.div { background: #fff7ed; color: var(--warning); }
+.activity-list { display: flex; flex-direction: column; gap: 12px; }
+.activity-item { 
+    background: #fff; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); 
+    display: flex; align-items: center; gap: 12px; transition: transform 0.1s;
+}
+.activity-item:hover { transform: translateX(2px); border-color: var(--primary); }
 
-.btn-icon { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px 8px; font-size: 1rem; transition: color 0.2s; }
-.btn-icon:hover { color: var(--primary); }
-.btn-icon.delete:hover { color: var(--danger); }
-.empty-state { text-align: center; color: var(--text-light); padding: 20px; font-style: italic; }
-.pagination { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 16px; }
-.page-info { font-size: 0.85rem; color: var(--text-secondary); }
+.date-badge { 
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #f1f5f9; width: 44px; height: 44px; border-radius: 8px; 
+    font-size: 0.75rem; color: var(--text-sub); font-weight: 600; line-height: 1.1;
+}
+.day { font-size: 1rem; color: var(--text-main); font-weight: 700; }
+
+.item-main { flex: 1; }
+.row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.symbol { font-weight: 700; font-size: 1rem; }
+.type-tag { font-size: 0.65rem; padding: 1px 4px; border-radius: 4px; font-weight: 700; text-transform: uppercase; }
+.type-tag.buy { color: var(--primary); background: #eff6ff; }
+.type-tag.sell { color: var(--success); background: #ecfdf5; }
+.type-tag.div { color: #d97706; background: #fff7ed; }
+.row-btm { font-size: 0.8rem; color: var(--text-sub); }
+
+.item-right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.amount { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 0.95rem; }
+.actions { display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s; }
+.activity-item:hover .actions { opacity: 1; }
+.actions button { border: none; background: none; cursor: pointer; color: var(--text-sub); font-size: 0.9rem; padding: 0; }
+.actions button:hover { color: var(--primary); }
+.actions button.del:hover { color: var(--danger); }
+
+.empty { text-align: center; padding: 20px; color: var(--text-sub); font-size: 0.9rem; }
 </style>
