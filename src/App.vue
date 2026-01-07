@@ -112,7 +112,7 @@ onMounted(() => {
     --danger: #ef4444;
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    --radius: 8px; /* 稍微減少圓角，更顯專業 */
+    --radius: 8px;
 }
 
 body {
@@ -120,7 +120,7 @@ body {
     color: var(--text-main);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     margin: 0;
-    font-size: 16px; /* 提升基礎字級 */
+    font-size: 16px;
     line-height: 1.6;
 }
 
@@ -152,40 +152,93 @@ body {
 .loading .dot { animation: pulse 1s infinite; }
 .avatar { width: 32px; height: 32px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text-sub); }
 
-/* Layout Grid */
+/* Layout Grid - 關鍵修正 */
 .content-container {
-    max-width: 1600px; /* 加寬版面 */
+    max-width: 1600px;
     margin: 0 auto;
     padding: 24px 32px;
     display: grid;
-    grid-template-columns: 3fr 1fr; /* 3:1 比例 */
+    /* 強制設定兩欄比例，minmax(0, ...) 防止內容撐開 */
+    grid-template-columns: minmax(0, 3fr) minmax(320px, 1fr);
     gap: 24px;
     width: 100%;
     box-sizing: border-box;
     align-items: start;
 }
 
-/* Main Column */
-.main-column { display: flex; flex-direction: column; gap: 24px; }
-.section-charts { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; height: 400px; }
-.chart-container { height: 100%; }
+/* 左側主欄位 */
+.main-column {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0; /* 防止 Flex 子元素溢出 */
+}
 
-/* Side Column */
-.side-column { min-width: 0; }
-.sticky-panel { position: sticky; top: 24px; display: flex; flex-direction: column; gap: 24px; }
+/* 圖表區塊修正：確保不重疊 */
+.section-charts {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); /* 強制限制寬度 */
+    gap: 24px;
+    /* 移除固定 height，改用 min-height */
+    min-height: 400px; 
+}
+
+/* 確保圖表容器有固定高度，讓 Canvas 正確渲染 */
+.chart-container {
+    height: 400px; 
+    width: 100%;
+    overflow: hidden; /* 防止內容溢出 */
+}
+
+/* 右側欄位 */
+.side-column {
+    min-width: 0;
+}
+
+.sticky-panel {
+    position: sticky;
+    top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    z-index: 10;
+}
+
 .spacer { height: 1px; background: var(--border-color); opacity: 0.5; }
 
-/* Responsive */
+/* RWD 修正 */
 @media (max-width: 1280px) {
-    .content-container { grid-template-columns: 2fr 1fr; padding: 20px; }
-    .section-charts { grid-template-columns: 1fr; height: auto; }
-    .main-chart { height: 350px; }
-    .sub-chart { height: 300px; }
+    .content-container {
+        grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+        padding: 20px;
+    }
+    .section-charts {
+        grid-template-columns: 1fr; /* 變為單欄 */
+        min-height: auto;
+    }
+    .chart-container {
+        height: 350px; /* 手機版高度 */
+        margin-bottom: 24px; /* 增加間距 */
+    }
+    /* 修復最後一個圖表的 margin */
+    .chart-container:last-child {
+        margin-bottom: 0;
+    }
 }
+
 @media (max-width: 1024px) {
-    .content-container { grid-template-columns: 1fr; }
-    .sticky-panel { position: static; }
-    .section-charts { grid-template-columns: 1fr; }
+    .content-container {
+        display: flex; /* 改用 Flex 垂直排列 */
+        flex-direction: column;
+    }
+    .sticky-panel {
+        position: static; /* 取消 sticky */
+    }
+    .side-column {
+        width: 100%;
+    }
+    .nav-status span { display: none; } /* 手機版隱藏文字 */
+    .nav-status .user-profile { display: flex; }
 }
 
 /* Card Common */
