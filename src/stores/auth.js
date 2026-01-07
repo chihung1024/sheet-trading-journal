@@ -1,28 +1,27 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { CONFIG } from '../config';
-import { usePortfolioStore } from './portfolio'; // 確保路徑正確
 
+// 注意：這裡移除了 usePortfolioStore 的引用，避免循環依賴導致網頁全黑崩潰
 export const useAuthStore = defineStore('auth', () => {
     const token = ref(localStorage.getItem('token') || '');
     const user = ref({ 
         name: localStorage.getItem('name') || '', 
         email: localStorage.getItem('email') || '',
-        picture: localStorage.getItem('picture') || '' // 新增圖片欄位
+        picture: localStorage.getItem('picture') || ''
     });
     
-    // 初始化 Auth 並嘗試載入資料
-    const initAuth = async () => {
+    // 單純初始化狀態
+    const initAuth = () => {
         if (token.value) {
-            // 這裡可以選擇性地加入 token 有效性檢查
-            const portfolioStore = usePortfolioStore();
-            await portfolioStore.fetchAll();
+            // Token 存在，狀態已就緒
+            // 資料拉取的工作交給 App.vue 處理
         }
     };
 
     const login = async (googleCredential) => {
         try {
-            // 發送 ID Token 到您的後端進行驗證
+            // 發送 ID Token 到後端驗證
             const res = await fetch(`${CONFIG.API_BASE_URL}/auth/google`, {
                 method: "POST",
                 headers: { 'Content-Type': 'application/json' },
@@ -37,23 +36,23 @@ export const useAuthStore = defineStore('auth', () => {
                 user.value = { 
                     name: data.user, 
                     email: data.email,
-                    picture: data.picture || '' // 如果後端有回傳圖片
+                    picture: data.picture || ''
                 };
                 
-                // 持久化儲存
+                // 寫入 LocalStorage
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('name', data.user);
                 localStorage.setItem('email', data.email);
                 if (data.picture) localStorage.setItem('picture', data.picture);
                 
-                // 成功後重整頁面以觸發 App.vue 的重新渲染
+                // 登入成功，重新整理頁面 (最穩定的做法)
                 window.location.reload(); 
             } else {
                 alert("登入失敗: " + (data.error || 'Unknown error'));
             }
         } catch (e) {
             console.error("Login Error:", e);
-            alert("登入連線錯誤，請檢查網路或後端狀態");
+            alert("登入連線錯誤");
         }
     };
 
