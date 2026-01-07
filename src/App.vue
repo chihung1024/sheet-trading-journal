@@ -1,269 +1,237 @@
 <template>
-  <div class="app-container" :data-theme="themeStore.isDark ? 'dark' : 'light'">
+  <div
+    class="app-container"
+    :data-theme="themeStore.isDark ? 'dark' : 'light'"
+  >
     <LoginOverlay v-if="!authStore.token" />
-    <div v-else>
-      <HeaderBar ref="headerRef" />
+    <div v-else class="app-wrapper">
+      <!-- Header with improved spacing -->
+      <HeaderBar ref="headerRef" class="app-header" />
+
       <main class="main-content">
-        <div v-if="portfolioStore.loading" class="loading-wrapper">
+        <!-- Loading state -->
+        <div v-if="portfolioStore.loading" class="loading-section">
           <div class="skeleton-grid">
-            <div v-for="i in 4" :key="i" class="skeleton-card" />
+            <div
+              v-for="i in 4"
+              :key="i"
+              class="skeleton-card"
+            />
           </div>
         </div>
-        <div v-else>
-          <StatsGrid />
-          <div class="chart-section">
-            <PerformanceChart />
-            <PieChart />
-          </div>
-          <HoldingsTable />
-          <TradeForm ref="tradeFormRef" id="trade-form-anchor" @success="handleTradeSuccess" />
-          <RecordList @edit="handleEditRecord" />
+
+        <!-- Main content wrapper with improved layout -->
+        <div v-else class="content-wrapper">
+          <!-- Stats section with better spacing -->
+          <section class="stats-section">
+            <div class="section-header">
+              <h2>Portfolio Overview</h2>
+            </div>
+            <div class="stats-container">
+              <StatsGrid />
+            </div>
+          </section>
+
+          <!-- Charts section with responsive grid -->
+          <section class="charts-section">
+            <div class="section-header">
+              <h2>Performance Analysis</h2>
+            </div>
+            <div class="charts-grid">
+              <div class="chart-wrapper">
+                <PerformanceChart />
+              </div>
+              <div class="chart-wrapper">
+                <PieChart />
+              </div>
+            </div>
+          </section>
+
+          <!-- Holdings section -->
+          <section class="holdings-section">
+            <div class="section-header">
+              <h2>Holdings</h2>
+            </div>
+            <HoldingsTable />
+          </section>
+
+          <!-- Trade form section -->
+          <section class="trade-form-section">
+            <div class="section-header">
+              <h2>Record Trade</h2>
+            </div>
+            <TradeForm
+              ref="tradeFormRef"
+              id="trade-form-anchor"
+              @success="handleTradeSuccess"
+            />
+          </section>
+
+          <!-- Records section -->
+          <section class="records-section">
+            <div class="section-header">
+              <h2>Trade History</h2>
+            </div>
+            <RecordList @edit="handleEditRecord" />
+          </section>
         </div>
       </main>
     </div>
-    <!-- 全局組件 -->
+
+    <!-- Global components -->
     <ToastContainer />
     <ConfirmDialog />
     <NavigationDrawer ref="drawerRef" />
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted, watch } from 'vue';
-import { useAuthStore } from './stores/auth';
-import { usePortfolioStore } from './stores/portfolio';
-import { useToastStore } from './stores/toast';
-import { useThemeStore } from './stores/theme';
+<script>
+import { ref } from 'vue';
+import { useAuthStore } from '@/stores/auth';
+import { useThemeStore } from '@/stores/theme';
+import { usePortfolioStore } from '@/stores/portfolio';
+import HeaderBar from '@/components/HeaderBar.vue';
+import LoginOverlay from '@/components/LoginOverlay.vue';
+import StatsGrid from '@/components/StatsGrid.vue';
+import PerformanceChart from '@/components/PerformanceChart.vue';
+import PieChart from '@/components/PieChart.vue';
+import HoldingsTable from '@/components/HoldingsTable.vue';
+import TradeForm from '@/components/TradeForm.vue';
+import RecordList from '@/components/RecordList.vue';
+import ToastContainer from '@/components/ToastContainer.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import NavigationDrawer from '@/components/NavigationDrawer.vue';
 
-// Components
-import LoginOverlay from './components/LoginOverlay.vue';
-import HeaderBar from './components/HeaderBar.vue';
-import StatsGrid from './components/StatsGrid.vue';
-import PerformanceChart from './components/PerformanceChart.vue';
-import PieChart from './components/PieChart.vue';
-import TradeForm from './components/TradeForm.vue';
-import HoldingsTable from './components/HoldingsTable.vue';
-import RecordList from './components/RecordList.vue';
-import ToastContainer from './components/ToastContainer.vue';
-import ConfirmDialog from './components/ConfirmDialog.vue';
-import NavigationDrawer from './components/NavigationDrawer.vue';
-
-const authStore = useAuthStore();
-const portfolioStore = usePortfolioStore();
-const toastStore = useToastStore();
-const themeStore = useThemeStore();
-
-const tradeFormRef = ref(null);
-const headerRef = ref(null);
-const drawerRef = ref(null);
-
-const handleEditRecord = (record) => {
-  if (tradeFormRef.value) {
-    tradeFormRef.value.setupForm(record);
-    document.getElementById('trade-form-anchor')?.scrollIntoView({ behavior: 'smooth' });
-  }
-};
-
-const handleTradeSuccess = (message) => {
-  toastStore.success(message || '操作成功！');
-};
-
-onMounted(() => {
-  authStore.initAuth();
-  themeStore.initTheme();
-});
-
-watch(
-  () => themeStore.isDark,
-  (isDark) => {
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+export default {
+  name: 'App',
+  components: {
+    HeaderBar,
+    LoginOverlay,
+    StatsGrid,
+    PerformanceChart,
+    PieChart,
+    HoldingsTable,
+    TradeForm,
+    RecordList,
+    ToastContainer,
+    ConfirmDialog,
+    NavigationDrawer,
   },
-  { immediate: true }
-);
+  setup() {
+    const authStore = useAuthStore();
+    const themeStore = useThemeStore();
+    const portfolioStore = usePortfolioStore();
+    const headerRef = ref(null);
+    const tradeFormRef = ref(null);
+    const drawerRef = ref(null);
 
-// 暴露方法供外部調用
-defineExpose({ drawerRef, headerRef });
+    const handleTradeSuccess = () => {
+      if (headerRef.value) {
+        headerRef.value.showSuccess?.('Trade recorded successfully');
+      }
+    };
+
+    const handleEditRecord = (record) => {
+      if (tradeFormRef.value) {
+        tradeFormRef.value.editRecord(record);
+        const tradeFormAnchor = document.getElementById('trade-form-anchor');
+        if (tradeFormAnchor) {
+          tradeFormAnchor.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+    };
+
+    return {
+      authStore,
+      themeStore,
+      portfolioStore,
+      headerRef,
+      tradeFormRef,
+      drawerRef,
+      handleTradeSuccess,
+      handleEditRecord,
+    };
+  },
+};
 </script>
 
-<style>
-/* ========== CSS 變數系統（支援亮/暗主題） ========== */
-:root[data-theme='dark'] {
-  --bg: #0f1117;
-  --bg-secondary: #161b22;
-  --card-bg: #0d1117;
-  --border: #30363d;
-  --border-light: rgba(48, 54, 61, 0.5);
-  --primary: #1f6feb;
-  --primary-dark: #1a5ba0;
-  --primary-light: #3b8bff;
-  --success: #238636;
-  --success-light: #26a641;
-  --warning: #9e6a03;
-  --warning-light: #d29922;
-  --error: #da3633;
-  --error-light: #f85149;
-  --info: #0969da;
-  --info-light: #2884e8;
-  --text: #e6edf3;
-  --text-secondary: #c9d1d9;
-  --text-tertiary: #8b949e;
-  --text-muted: #6e7681;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.6);
-  --gradient-primary: linear-gradient(135deg, #1f6feb 0%, #0969da 100%);
-  --gradient-success: linear-gradient(135deg, #238636 0%, #26a641 100%);
-  --gradient-error: linear-gradient(135deg, #da3633 0%, #f85149 100%);
-}
-
-:root[data-theme='light'] {
-  --bg: #ffffff;
-  --bg-secondary: #f6f8fa;
-  --card-bg: #ffffff;
-  --border: #d0d7de;
-  --border-light: rgba(208, 215, 222, 0.5);
-  --primary: #0969da;
-  --primary-dark: #0860ca;
-  --primary-light: #2884e8;
-  --success: #1a7f37;
-  --success-light: #238636;
-  --warning: #9e6a03;
-  --warning-light: #d29922;
-  --error: #cf222e;
-  --error-light: #da3633;
-  --info: #0969da;
-  --info-light: #2884e8;
-  --text: #24292f;
-  --text-secondary: #424a53;
-  --text-tertiary: #57606a;
-  --text-muted: #768390;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
-  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.25);
-  --gradient-primary: linear-gradient(135deg, #0969da 0%, #033d8b 100%);
-  --gradient-success: linear-gradient(135deg, #1a7f37 0%, #238636 100%);
-  --gradient-error: linear-gradient(135deg, #cf222e 0%, #da3633 100%);
-}
-
-/* ========== 全域重置與基礎樣式 ========== */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html {
-  scroll-behavior: smooth;
-}
-
-body {
-  background-color: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  letter-spacing: -0.5px;
-  transition: background-color 300ms ease, color 300ms ease;
-  overflow-x: hidden;
-}
-
-/* ========== 間距系統 ========== */
+<style scoped>
 :root {
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 64px;
-}
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
 
-/* ========== 圓角系統 ========== */
-:root {
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f8f9fa;
+  --color-border: #e0e0e0;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #666666;
+
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
 }
 
-/* ========== 過渡時間 ========== */
-:root {
-  --duration-fast: 150ms;
-  --duration-normal: 300ms;
-  --duration-slow: 500ms;
-  --easing-ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --easing-ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --easing-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+[data-theme='dark'] {
+  --color-bg-primary: #1a1a1a;
+  --color-bg-secondary: #2d2d2d;
+  --color-border: #404040;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #b0b0b0;
 }
 
-/* ========== 應用容器 ========== */
 .app-container {
   min-height: 100vh;
-  background-color: var(--bg);
-  transition: background-color 300ms ease;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.app-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
 }
 
 .main-content {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 16px;
-  padding-bottom: 80px;
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--color-bg-primary);
 }
 
-@media (max-width: 768px) {
-  .main-content {
-    padding: 12px;
-    padding-bottom: 100px;
-  }
-}
-
-@media (max-width: 480px) {
-  .main-content {
-    padding: 8px;
-    padding-bottom: 120px;
-  }
-}
-
-/* ========== 卡片樣式 ========== */
-.card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg);
-  margin-bottom: var(--space-lg);
-  box-shadow: var(--shadow-sm);
-  transition: all var(--duration-normal) var(--easing-ease-in-out);
-}
-
-.card:hover {
-  box-shadow: var(--shadow-md);
-}
-
-/* ========== 加載狀態 ========== */
-.loading-wrapper {
-  width: 100%;
-  padding: var(--space-lg);
+.loading-section {
+  padding: var(--spacing-xl);
 }
 
 .skeleton-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: var(--space-lg);
+  gap: var(--spacing-lg);
 }
 
 .skeleton-card {
-  height: 200px;
+  aspect-ratio: 1;
   background: linear-gradient(
     90deg,
-    var(--bg-secondary) 0%,
-    var(--border) 50%,
-    var(--bg-secondary) 100%
+    var(--color-bg-secondary) 0%,
+    var(--color-border) 50%,
+    var(--color-bg-secondary) 100%
   );
   background-size: 200% 100%;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   animation: skeleton-loading 1.5s infinite;
 }
 
@@ -276,24 +244,146 @@ body {
   }
 }
 
-/* ========== 圖表部分 ========== */
-.chart-section {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-lg);
-  margin-bottom: var(--space-lg);
+.content-wrapper {
+  padding: var(--spacing-xl);
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-@media (max-width: 1024px) {
-  .chart-section {
-    grid-template-columns: 1fr;
+/* Section styling with consistent spacing */
+section {
+  margin-bottom: var(--spacing-2xl);
+  animation: fadeInUp 0.4s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* ========== 響應式調整 ========== */
+.section-header {
+  margin-bottom: var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-header h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+  letter-spacing: -0.5px;
+}
+
+/* Stats section */
+.stats-section {
+  background-color: var(--color-bg-secondary);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.stats-container {
+  display: grid;
+  gap: var(--spacing-lg);
+}
+
+/* Charts section */
+.charts-section {
+  background-color: var(--color-bg-secondary);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.chart-wrapper {
+  background-color: var(--color-bg-primary);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  min-height: 350px;
+}
+
+/* Holdings section */
+.holdings-section {
+  background-color: var(--color-bg-secondary);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+/* Trade form section */
+.trade-form-section {
+  background-color: var(--color-bg-secondary);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+/* Records section */
+.records-section {
+  background-color: var(--color-bg-secondary);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .content-wrapper {
+    padding: var(--spacing-lg);
+  }
+
+  section {
+    margin-bottom: var(--spacing-xl);
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header h2 {
+    font-size: 1.25rem;
+  }
+}
+
 @media (max-width: 768px) {
-  .app-container {
-    min-height: 100vh;
+  .content-wrapper {
+    padding: var(--spacing-md);
+  }
+
+  section {
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .section-header h2 {
+    font-size: 1.125rem;
+  }
+
+  .skeleton-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
