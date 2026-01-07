@@ -1,325 +1,368 @@
 <template>
-  <div class="form-section card">
+  <div class="card form-section">
     <div class="form-header">
-      <h2>{{ isEditMode ? '編輯交易' : '新增交易' }}</h2>
-      <button
-        v-if="isEditMode"
+      <h3>{{ isEditing ? '修改交易紀錄' : '新增交易紀錄' }}</h3>
+      <button 
+        v-if="isEditing" 
+        @click="resetForm" 
         class="btn btn-secondary btn-sm"
-        @click="resetForm"
+        aria-label="取消編輯"
       >
-        新增
+        ✕ 取消修改
       </button>
     </div>
 
-    <form @submit.prevent="submitForm" class="trade-form">
+    <form @submit.prevent="submit" class="trade-form" novalidate>
       <div class="form-grid">
+        <!-- 日期 -->
         <div class="form-group">
-          <label for="ticker">股票代碼 <span class="required">*</span></label>
-          <input
-            id="ticker"
-            v-model="form.ticker"
-            type="text"
-            placeholder="例如: AAPL"
-            class="form-input"
-            :class="{ 'input-error': errors.ticker }"
-            @blur="validateField('ticker')"
-          />
-          <span v-if="errors.ticker" class="error-text">{{ errors.ticker }}</span>
-        </div>
-
-        <div class="form-group">
-          <label for="type">交易類型 <span class="required">*</span></label>
-          <select
-            id="type"
-            v-model="form.type"
-            class="form-input"
-            :class="{ 'input-error': errors.type }"
-            @change="validateField('type')"
-          >
-            <option value="">-- 選擇 --</option>
-            <option value="BUY">買入</option>
-            <option value="SELL">賣出</option>
-            <option value="DIV">配息</option>
-          </select>
-          <span v-if="errors.type" class="error-text">{{ errors.type }}</span>
-        </div>
-
-        <div class="form-group">
-          <label for="date">交易日期 <span class="required">*</span></label>
-          <input
-            id="date"
-            v-model="form.date"
+          <label for="txn-date">日期 <span class="required">*</span></label>
+          <input 
+            id="txn-date"
+            v-model="form.txn_date" 
             type="date"
-            class="form-input"
-            :class="{ 'input-error': errors.date }"
-            @change="validateField('date')"
-          />
-          <span v-if="errors.date" class="error-text">{{ errors.date }}</span>
+            required
+            :aria-invalid="errors.txn_date ? 'true' : 'false'"
+            aria-describedby="txn-date-error"
+          >
+          <span v-if="errors.txn_date" id="txn-date-error" class="error-text">{{ errors.txn_date }}</span>
         </div>
 
+        <!-- 股票代碼 -->
         <div class="form-group">
-          <label for="quantity">股數 <span class="required">*</span></label>
-          <input
-            id="quantity"
-            v-model.number="form.quantity"
-            type="number"
-            placeholder="0"
-            step="0.01"
-            class="form-input"
-            :class="{ 'input-error': errors.quantity }"
-            @blur="validateField('quantity')"
-          />
-          <span v-if="errors.quantity" class="error-text">{{ errors.quantity }}</span>
-        </div>
-
-        <div class="form-group">
-          <label for="price">單價 (USD) <span class="required">*</span></label>
-          <input
-            id="price"
-            v-model.number="form.price"
-            type="number"
-            placeholder="0.00"
-            step="0.01"
-            class="form-input"
-            :class="{ 'input-error': errors.price }"
-            @blur="validateField('price')"
-          />
-          <span v-if="errors.price" class="error-text">{{ errors.price }}</span>
-        </div>
-
-        <div class="form-group">
-          <label for="fee">費用 (USD)</label>
-          <input
-            id="fee"
-            v-model.number="form.fee"
-            type="number"
-            placeholder="0.00"
-            step="0.01"
-            class="form-input"
-          />
-        </div>
-
-        <div class="form-group">
-          <label for="tag">標籤</label>
-          <input
-            id="tag"
-            v-model="form.tag"
+          <label for="symbol">股票代碼 <span class="required">*</span></label>
+          <input 
+            id="symbol"
+            v-model="form.symbol" 
             type="text"
-            placeholder="例如: 科技股"
-            class="form-input"
-          />
+            placeholder="例：NVDA、TSLA"
+            :disabled="isEditing"
+            required
+            :aria-invalid="errors.symbol ? 'true' : 'false'"
+            aria-describedby="symbol-error"
+          >
+          <span v-if="errors.symbol" id="symbol-error" class="error-text">{{ errors.symbol }}</span>
+          <span v-if="isEditing" class="hint-text">編輯時無法變更股票代碼</span>
         </div>
 
-        <div class="form-group full-width">
-          <label for="note">備註</label>
-          <textarea
-            id="note"
-            v-model="form.note"
-            placeholder="輸入任何備註..."
-            class="form-input form-textarea"
-            rows="3"
-          ></textarea>
+        <!-- 交易類型 -->
+        <div class="form-group">
+          <label for="txn-type">交易類型 <span class="required">*</span></label>
+          <select 
+            id="txn-type"
+            v-model="form.txn_type" 
+            @change="calcTotal"
+            :aria-invalid="errors.txn_type ? 'true' : 'false'"
+          >
+            <option value="BUY">買入 (BUY)</option>
+            <option value="SELL">賣出 (SELL)</option>
+            <option value="DIV">股息 (DIV)</option>
+          </select>
+          <span v-if="errors.txn_type" class="error-text">{{ errors.txn_type }}</span>
+        </div>
+
+        <!-- 股數 -->
+        <div class="form-group">
+          <label for="qty">股數 <span class="required">*</span></label>
+          <input 
+            id="qty"
+            v-model="form.qty" 
+            type="number" 
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            @input="calcTotal"
+            required
+            :aria-invalid="errors.qty ? 'true' : 'false'"
+            aria-describedby="qty-error"
+          >
+          <span v-if="errors.qty" id="qty-error" class="error-text">{{ errors.qty }}</span>
+        </div>
+
+        <!-- 單價 -->
+        <div class="form-group">
+          <label for="price">單價 (平均成本) <span class="required">*</span></label>
+          <input 
+            id="price"
+            v-model="form.price" 
+            type="number" 
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            @input="calcTotal"
+            required
+            :aria-invalid="errors.price ? 'true' : 'false'"
+            aria-describedby="price-error"
+          >
+          <span v-if="errors.price" id="price-error" class="error-text">{{ errors.price }}</span>
+        </div>
+
+        <!-- 手續費 -->
+        <div class="form-group">
+          <label for="fee">手續費 (Fee)</label>
+          <input 
+            id="fee"
+            v-model="form.fee" 
+            type="number" 
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            @input="calcTotal"
+          >
+        </div>
+
+        <!-- 交易稅 -->
+        <div class="form-group">
+          <label for="tax">交易稅 (Tax)</label>
+          <input 
+            id="tax"
+            v-model="form.tax" 
+            type="number" 
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            @input="calcTotal"
+          >
+        </div>
+
+        <!-- 交易總額 -->
+        <div class="form-group">
+          <label for="total">交易總額 (Total)</label>
+          <input 
+            id="total"
+            v-model="form.total_amount" 
+            type="number" 
+            step="0.01"
+            placeholder="自動計算"
+            @input="calcPrice"
+            aria-describedby="total-hint"
+          >
+          <span id="total-hint" class="hint-text">輸入總額可反推單價</span>
         </div>
       </div>
 
-      <div v-if="showPreview" class="preview-box">
-        <h3>交易預覽</h3>
-        <div class="preview-items">
-          <div class="preview-item">
-            <span class="label">總成本 (USD)</span>
-            <span class="value">{{ (form.quantity * form.price + form.fee).toFixed(2) }}</span>
-          </div>
-          <div class="preview-item">
-            <span class="label">每股成本</span>
-            <span class="value">{{ form.quantity > 0 ? ((form.quantity * form.price + form.fee) / form.quantity).toFixed(2) : '0.00' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-footer">
-        <button
-          type="button"
-          class="btn btn-secondary"
-          @click="resetForm"
-          :disabled="isSubmitting"
+      <!-- 提交按鈕 -->
+      <div class="form-actions">
+        <button 
+          type="submit" 
+          class="btn btn-primary btn-lg"
+          :disabled="loading || !isFormValid"
+          :aria-busy="loading"
         >
-          清除
-        </button>
-        <button
-          type="submit"
-          class="btn btn-primary"
-          :disabled="isSubmitting"
-        >
-          <span v-if="!isSubmitting">
-            {{ isEditMode ? '更新' : '新增' }}交易
+          <span v-if="!loading">{{ isEditing ? '✓ 更新' : '+ 新增' }}</span>
+          <span v-else class="loading-spinner">
+            <span class="spinner-icon">⟳</span>
+            <span>處理中...</span>
           </span>
-          <span v-else class="loading-spinner">⟳ 提交中...</span>
         </button>
+      </div>
+
+      <!-- 成功/錯誤消息 -->
+      <div v-if="submitError" class="alert alert-error" role="alert">
+        {{ submitError }}
       </div>
     </form>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { useToastStore } from '../stores/toast';
+import { reactive, ref, computed } from 'vue';
+import { usePortfolioStore } from '../stores/portfolio';
+import { useAuthStore } from '../stores/auth';
+import { CONFIG } from '../config';
 
-const toastStore = useToastStore();
+const store = usePortfolioStore();
+const auth = useAuthStore();
 
-const form = ref({
-  ticker: '',
-  type: '',
-  date: new Date().toISOString().split('T')[0],
-  quantity: 0,
-  price: 0,
-  fee: 0,
-  tag: '',
-  note: '',
-});
-
-const errors = ref({});
-const isSubmitting = ref(false);
-const isEditMode = ref(false);
+const loading = ref(false);
+const isEditing = ref(false);
 const editingId = ref(null);
+const submitError = ref('');
 
-const showPreview = computed(() => {
-  return form.value.quantity > 0 && form.value.price > 0;
+const form = reactive({
+  txn_date: new Date().toISOString().split('T')[0],
+  symbol: '',
+  txn_type: 'BUY',
+  qty: '',
+  price: '',
+  fee: 0,
+  tax: 0,
+  total_amount: ''
 });
 
-const resetForm = () => {
-  form.value = {
-    ticker: '',
-    type: '',
-    date: new Date().toISOString().split('T')[0],
-    quantity: 0,
-    price: 0,
-    fee: 0,
-    tag: '',
-    note: '',
-  };
-  errors.value = {};
-  isEditMode.value = false;
-  editingId.value = null;
+const errors = reactive({
+  txn_date: '',
+  symbol: '',
+  txn_type: '',
+  qty: '',
+  price: ''
+});
+
+// 表單驗證
+const validateForm = () => {
+  errors.txn_date = '';
+  errors.symbol = '';
+  errors.txn_type = '';
+  errors.qty = '';
+  errors.price = '';
+
+  if (!form.txn_date) {
+    errors.txn_date = '請選擇日期';
+  }
+
+  if (!form.symbol || form.symbol.trim() === '') {
+    errors.symbol = '請輸入股票代碼';
+  } else if (form.symbol.length > 10) {
+    errors.symbol = '股票代碼不超過10個字符';
+  }
+
+  if (!form.txn_type) {
+    errors.txn_type = '請選擇交易類型';
+  }
+
+  const qty = parseFloat(form.qty);
+  if (!form.qty || isNaN(qty) || qty <= 0) {
+    errors.qty = '請輸入有效的股數 (必須大於0)';
+  }
+
+  const price = parseFloat(form.price);
+  if (!form.price || isNaN(price) || price <= 0) {
+    errors.price = '請輸入有效的單價 (必須大於0)';
+  }
+
+  return Object.values(errors).every(e => e === '');
 };
 
-const validateField = (fieldName) => {
-  const fieldValue = form.value[fieldName];
+const isFormValid = computed(() => {
+  return form.symbol && form.qty && form.price && 
+         !errors.symbol && !errors.qty && !errors.price;
+});
 
-  switch (fieldName) {
-    case 'ticker':
-      if (!fieldValue || fieldValue.trim() === '') {
-        errors.value.ticker = '股票代碼為必填';
-      } else if (!/^[A-Z]{1,5}$/.test(fieldValue.toUpperCase())) {
-        errors.value.ticker = '股票代碼格式不正確 (1-5 個大寫字母)';
-      } else {
-        delete errors.value.ticker;
-      }
-      break;
+// 計算邏輯：輸入股數/單價 -> 算總額
+const calcTotal = () => {
+  const qty = parseFloat(form.qty) || 0;
+  const price = parseFloat(form.price) || 0;
+  const fee = parseFloat(form.fee) || 0;
+  const tax = parseFloat(form.tax) || 0;
+  const base = qty * price;
 
-    case 'type':
-      if (!fieldValue) {
-        errors.value.type = '交易類型為必填';
-      } else {
-        delete errors.value.type;
-      }
-      break;
-
-    case 'date':
-      if (!fieldValue) {
-        errors.value.date = '交易日期為必填';
-      } else {
-        delete errors.value.date;
-      }
-      break;
-
-    case 'quantity':
-      if (fieldValue <= 0) {
-        errors.value.quantity = '股數必須大於 0';
-      } else {
-        delete errors.value.quantity;
-      }
-      break;
-
-    case 'price':
-      if (fieldValue <= 0) {
-        errors.value.price = '單價必須大於 0';
-      } else {
-        delete errors.value.price;
-      }
-      break;
+  if (form.txn_type === 'BUY') {
+    form.total_amount = parseFloat((base + fee + tax).toFixed(2));
+  } else if (form.txn_type === 'SELL') {
+    form.total_amount = parseFloat((base - fee - tax).toFixed(2));
+  } else if (form.txn_type === 'DIV') {
+    form.total_amount = parseFloat((base - tax).toFixed(2));
   }
 };
 
-const validateForm = () => {
-  errors.value = {};
-  validateField('ticker');
-  validateField('type');
-  validateField('date');
-  validateField('quantity');
-  validateField('price');
-  return Object.keys(errors.value).length === 0;
+// 計算邏輯：輸入總額 -> 反推單價
+const calcPrice = () => {
+  const qty = parseFloat(form.qty) || 0;
+  const total = parseFloat(form.total_amount) || 0;
+  const fee = parseFloat(form.fee) || 0;
+  const tax = parseFloat(form.tax) || 0;
+
+  if (qty <= 0) return;
+
+  if (form.txn_type === 'BUY') {
+    form.price = parseFloat(((total - fee - tax) / qty).toFixed(4));
+  } else if (form.txn_type === 'SELL') {
+    form.price = parseFloat(((total + fee + tax) / qty).toFixed(4));
+  } else {
+    form.price = parseFloat(((total + tax) / qty).toFixed(4));
+  }
 };
 
-const submitForm = async () => {
+// 提交表單
+const submit = async () => {
+  submitError.value = '';
+
   if (!validateForm()) {
-    toastStore.warning('請檢查表單內容');
+    submitError.value = '請修正表單中的錯誤';
     return;
   }
 
-  isSubmitting.value = true;
+  loading.value = true;
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    console.log('提交交易:', form.value);
+    const method = isEditing.value ? 'PUT' : 'POST';
+    const payload = {
+      ...form,
+      qty: parseFloat(form.qty),
+      price: parseFloat(form.price),
+      fee: parseFloat(form.fee || 0),
+      tax: parseFloat(form.tax || 0)
+    };
 
-    toastStore.success(
-      isEditMode.value ? '交易已更新！' : '交易已新增！'
-    );
+    if (isEditing.value) {
+      payload.id = editingId.value;
+    }
 
-    emit('success', isEditMode.value ? '交易已更新' : '交易已新增');
-    resetForm();
+    const response = await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${auth.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      resetForm();
+      await store.fetchRecords();
+    } else {
+      submitError.value = `操作失敗: ${data.error || '未知錯誤'}`;
+    }
   } catch (error) {
-    toastStore.error('提交失敗，請重試');
-    console.error('Submit error:', error);
+    submitError.value = `連線錯誤: ${error.message}`;
+    console.error('Form submission error:', error);
   } finally {
-    isSubmitting.value = false;
+    loading.value = false;
   }
 };
 
-const setupForm = (record) => {
-  isEditMode.value = true;
-  editingId.value = record.id;
-  form.value = {
-    ticker: record.ticker || '',
-    type: record.type || '',
-    date: record.date || '',
-    quantity: record.quantity || 0,
-    price: record.price || 0,
-    fee: record.fee || 0,
-    tag: record.tag || '',
-    note: record.note || '',
-  };
+// 重置表單
+const resetForm = () => {
+  isEditing.value = false;
+  editingId.value = null;
+  form.txn_date = new Date().toISOString().split('T')[0];
+  form.symbol = '';
+  form.qty = '';
+  form.price = '';
+  form.fee = 0;
+  form.tax = 0;
+  form.total_amount = '';
+  form.txn_type = 'BUY';
+  submitError.value = '';
+  Object.keys(errors).forEach(key => errors[key] = '');
 };
 
-defineExpose({ setupForm, resetForm });
+// 暴露給父組件的方法
+const setupForm = (record) => {
+  isEditing.value = true;
+  editingId.value = record.id;
+  form.txn_date = record.txn_date;
+  form.symbol = record.symbol;
+  form.txn_type = record.txn_type;
+  form.qty = record.qty;
+  form.price = record.price;
+  form.fee = record.fee || 0;
+  form.tax = record.tax || 0;
+  calcTotal();
+};
 
-const emit = defineEmits(['success']);
+defineExpose({ setupForm });
 </script>
 
 <style scoped>
 .form-section {
-  animation: fadeInUp 500ms var(--easing-ease-out) 400ms both;
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
 }
 
 .form-header {
@@ -327,61 +370,38 @@ const emit = defineEmits(['success']);
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--space-lg);
-  flex-wrap: wrap;
-  gap: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border);
 }
 
-@media (max-width: 480px) {
-  .form-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-.form-header h2 {
+.form-header h3 {
   margin: 0;
-  font-size: 1.5rem;
   color: var(--text);
+  font-size: 1.1rem;
 }
 
 .trade-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-md);
 }
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-md);
-}
-
-@media (max-width: 768px) {
-  .form-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 480px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.form-group.full-width {
-  grid-column: 1 / -1;
+  gap: 6px;
 }
 
 .form-group label {
   font-weight: 600;
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -389,12 +409,12 @@ const emit = defineEmits(['success']);
 
 .required {
   color: var(--error-light);
-  font-size: 1.2rem;
+  font-size: 1.2em;
   line-height: 1;
 }
 
-.form-input,
-.form-textarea {
+.form-group input,
+.form-group select {
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -405,54 +425,41 @@ const emit = defineEmits(['success']);
   transition: all 200ms ease;
 }
 
-.form-input::placeholder,
-.form-textarea::placeholder {
+.form-group input::placeholder,
+.form-group select::placeholder {
   color: var(--text-muted);
 }
 
-.form-input:focus,
-.form-textarea:focus {
+.form-group input:focus,
+.form-group select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(31, 110, 251, 0.1);
   background: var(--card-bg);
 }
 
-.form-input:disabled,
-.form-textarea:disabled {
-  opacity: 0.5;
+.form-group input:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
-  background: var(--bg-secondary);
+  background: var(--bg);
 }
 
-.form-input.input-error {
+.form-group input[aria-invalid="true"],
+.form-group select[aria-invalid="true"] {
   border-color: var(--error-light);
   box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.1);
 }
 
-.form-input.input-error:focus {
-  border-color: var(--error-light);
-  box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.1);
-}
-
-.form-textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.form-textarea.input-error {
-  border-color: var(--error-light);
-  box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.1);
+.hint-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .error-text {
-  color: var(--error-light);
   font-size: 0.85rem;
-  margin-top: -4px;
+  color: var(--error-light);
   animation: slideDown 200ms ease-out;
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 @keyframes slideDown {
@@ -466,80 +473,107 @@ const emit = defineEmits(['success']);
   }
 }
 
-.preview-box {
-  background: var(--bg-secondary);
-  border: 2px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-md);
-  animation: slideDown 200ms ease-out;
-}
-
-.preview-box h3 {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  margin: 0 0 12px 0;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 600;
-}
-
-.preview-items {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-}
-
-.preview-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.preview-item .label {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.preview-item .value {
-  font-weight: 700;
-  color: var(--primary);
-  font-size: 1.1rem;
-}
-
-.form-footer {
+.form-actions {
   display: flex;
   gap: var(--space-md);
-  justify-content: flex-end;
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--border);
+  margin-top: var(--space-lg);
 }
 
-@media (max-width: 480px) {
-  .form-footer {
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
 
-  .form-footer .btn {
-    width: 100%;
-  }
+.btn-primary {
+  background: var(--primary);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark, var(--primary));
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(31, 110, 251, 0.3);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(31, 110, 251, 0.2);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-lg {
+  padding: 12px 24px;
+  font-size: 1rem;
+  width: 100%;
+}
+
+.btn-secondary {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--text-muted);
+  color: white;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
 }
 
 .loading-spinner {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  animation: spin 1s linear infinite;
+}
+
+.spinner-icon {
+  display: inline-block;
+  animation: spin 1.5s linear infinite;
 }
 
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
   to {
     transform: rotate(360deg);
+  }
+}
+
+.alert {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-md);
+  animation: slideDown 200ms ease-out;
+}
+
+.alert-error {
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid var(--error-light);
+  color: var(--error-light);
+}
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-md);
   }
 }
 </style>
