@@ -90,7 +90,7 @@ const {
 } = usePWA();
 
 
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, nextTick } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
@@ -137,14 +137,25 @@ const handleLogout = () => {
 };
 
 onMounted(async () => {
+  // 先初始化認證狀態
   authStore.initAuth();
+  
+  // 等待下一個事件循環，確保 token 已經正確設置
+  await nextTick();
+  
   if (authStore.token) {
       isInitialLoading.value = true;
-      await portfolioStore.fetchAll();
-      // 模擬最小載入時間，讓骨架屏更自然
-      setTimeout(() => {
-        isInitialLoading.value = false;
-      }, 600);
+      try {
+        await portfolioStore.fetchAll();
+        console.log('📊 首次載入完成');
+      } catch (error) {
+        console.error('❌ 載入數據失敗:', error);
+      } finally {
+        // 模擬最小載入時間，讓骨架屏更自然
+        setTimeout(() => {
+          isInitialLoading.value = false;
+        }, 600);
+      }
   }
   
   // 移除載入畫面
@@ -155,6 +166,7 @@ onMounted(async () => {
   }
 });
 </script>
+
 
 <style>
 /* 引入現代字體 */
