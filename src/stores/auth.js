@@ -1,67 +1,53 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
 import { CONFIG } from '../config';
 
-// 注意：這裡移除了 usePortfolioStore 的引用，避免循環依賴導致網頁全黑崩潰
-export const useAuthStore = defineStore('auth', () => {
-    const token = ref(localStorage.getItem('token') || '');
-    const user = ref({ 
-        name: localStorage.getItem('name') || '', 
-        email: localStorage.getItem('email') || '',
-        picture: localStorage.getItem('picture') || ''
-    });
-    
-    // 單純初始化狀態
-    const initAuth = () => {
-        if (token.value) {
-            // Token 存在，狀態已就緒
-            // 資料拉取的工作交給 App.vue 處理
+export const useAuthStore = defineStore('auth', {
+  state: () => ({
+    token: localStorage.getItem('auth_token') || null,
+    user: JSON.parse(localStorage.getItem('user_info') || 'null')
+  }),
+
+  actions: {
+    async loginWithGoogle(credential) {
+      try {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/auth/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          this.token = data.token;
+          this.user = data.user;
+          localStorage.setItem('auth_token', data.token);
+          localStorage.setItem('user_info', JSON.stringify(data.user));
+        } else {
+          throw new Error(data.error || 'Login failed');
         }
-    };
+      } catch (error) {
+        console.error('Login error:', error);
+        throw error;
+      }
+    },
 
-    const login = async (googleCredential) => {
-        try {
-            // 發送 ID Token 到後端驗證
-            const res = await fetch(`${CONFIG.API_BASE_URL}/auth/google`, {
-                method: "POST",
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id_token: googleCredential })
-            });
-            
-            const data = await res.json();
-            
-            if (data.success) {
-                // 更新狀態
-                token.value = data.token;
-                user.value = { 
-                    name: data.user, 
-                    email: data.email,
-                    picture: data.picture || ''
-                };
-                
-                // 寫入 LocalStorage
-                localStorage.setItem('token', data.token);
-                localStorage.setItem('name', data.user);
-                localStorage.setItem('email', data.email);
-                if (data.picture) localStorage.setItem('picture', data.picture);
-                
-                // 登入成功，重新整理頁面 (最穩定的做法)
-                window.location.reload(); 
-            } else {
-                alert("登入失敗: " + (data.error || 'Unknown error'));
-            }
-        } catch (e) {
-            console.error("Login Error:", e);
-            alert("登入連線錯誤");
-        }
-    };
+    logout() {
+      this.token = null;
+      this.user = null;
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_info');
+      window.location.reload();
+    },
 
-    const logout = () => {
-        token.value = '';
-        user.value = {};
-        localStorage.clear();
-        window.location.reload();
-    };
-
-    return { token, user, login, logout, initAuth };
+    initAuth() {
+      const token = localStorage.getItem('auth_token');
+      const user = localStorage.getItem('user_info');
+      
+      if (token && user) {
+        this.token = token;
+        this.user = JSON.parse(user);
+      }
+    }
+  }
 });
