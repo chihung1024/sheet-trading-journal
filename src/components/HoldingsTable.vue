@@ -28,7 +28,6 @@
                     <td class="col-symbol">
                         <div class="symbol-wrapper">
                             <span class="symbol-text">{{ h.symbol }}</span>
-                            <span class="tag-badge">{{ h.tag || 'Stock' }}</span>
                         </div>
                     </td>
                     <td class="text-right font-num">{{ formatNumber(h.qty, 2) }}</td>
@@ -104,38 +103,33 @@ const getTrendClass = (val, isBg = false) => {
 </script>
 
 <style scoped>
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.summary-info { color: var(--text-sub); font-size: 0.95rem; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+.summary-info { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; background: #f1f5f9; padding: 6px 12px; border-radius: 8px; color: var(--text-main); }
 
 .table-container { overflow-x: auto; }
-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th { 
-    text-align: left; color: var(--text-sub); font-size: 0.85rem; font-weight: 600; 
-    padding: 12px 16px; border-bottom: 2px solid var(--border-color); white-space: nowrap;
-    cursor: pointer; transition: color 0.2s;
-}
-th:hover { color: var(--primary); }
+
+/* 表格樣式細節 */
 .sort-icon { font-size: 0.8rem; margin-left: 4px; opacity: 0.5; }
+th.sortable { cursor: pointer; transition: color 0.2s; }
+th.sortable:hover { color: var(--primary); }
 
-/* 修正：字級統一為 0.95rem，看起來不費力 */
-td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; color: var(--text-main); vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-tr:hover td { background-color: #f9fafb; }
-
-.col-symbol { width: 15%; min-width: 100px; }
-.symbol-wrapper { display: flex; flex-direction: column; }
-.symbol-text { font-weight: 700; font-size: 1rem; color: var(--text-main); } /* 稍微加強代碼顯示 */
-.tag-badge { font-size: 0.75rem; color: var(--text-sub); background: #f3f4f6; width: fit-content; padding: 2px 6px; border-radius: 4px; margin-top: 4px; }
+.col-symbol { width: 120px; }
+.symbol-text { 
+    font-weight: 700; font-size: 0.95rem; 
+    background: #eff6ff; color: #1e40af; 
+    padding: 4px 10px; border-radius: 6px; 
+    display: inline-block;
+}
 
 .text-right { text-align: right; }
-.text-sub { color: var(--text-sub); }
-.font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.01em; }
+.text-sub { color: #94a3b8; font-size: 0.85rem; }
+.font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
 .font-bold { font-weight: 700; }
 
-.text-green { color: #059669; }
-.text-red { color: #dc2626; }
-.roi-badge { padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 0.9rem; }
-.roi-badge.bg-green { background: #d1fae5; color: #065f46; }
+.text-green { color: #166534; }
+.text-red { color: #b91c1c; }
+.roi-badge { display: inline-block; width: 64px; text-align: center; padding: 4px 0; border-radius: 6px; font-weight: 600; font-size: 0.85rem; }
+.roi-badge.bg-green { background: #dcfce7; color: #166534; }
 .roi-badge.bg-red { background: #fee2e2; color: #991b1b; }
 
 .empty-state { text-align: center; padding: 60px; color: var(--text-sub); font-style: italic; }
