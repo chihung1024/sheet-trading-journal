@@ -3,7 +3,7 @@
 
 export const CONFIG = {
   // API 基础 URL - Cloudflare Workers 後端
-  API_BASE_URL: 'https://journal-backend.chihired.workers.dev',
+  API_BASE_URL: 'https://journal-backend.chired.workers.dev',
   
   // Google OAuth Client ID
   // tag 1.10 版本的實數值
