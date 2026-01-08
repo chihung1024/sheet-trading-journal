@@ -10,10 +10,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const history = ref([]);
     const records = ref([]);
     const lastUpdate = ref('');
-    // 新增連線狀態: 'connected', 'error', 'offline'
     const connectionStatus = ref('connected'); 
 
-    // 統一處理帶有驗證的 Fetch 請求
+    // ✅ 保留：直接獲取 Token 的方法（Tag 1.10 原始方法）
+    const getToken = () => {
+        const auth = useAuthStore();
+        return auth.token;
+    };
+
+    // 保留：統一處理帶有驗證的 Fetch 請求（給其他方法使用）
     const fetchWithAuth = async (endpoint, options = {}) => {
         const auth = useAuthStore();
         if (!auth.token) return null;
@@ -28,15 +33,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 }
             });
 
-            // 關鍵：偵測 Token 過期 (401)
             if (res.status === 401) {
                 console.warn("Token expired, logging out...");
                 connectionStatus.value = 'error';
-                auth.logout(); // 自動登出，觸發 LoginOverlay 顯示
+                auth.logout();
                 return null;
             }
 
-            // 處理其他錯誤
             if (!res.ok) {
                 connectionStatus.value = 'error';
                 const err = await res.json().catch(() => ({}));
@@ -78,17 +81,39 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 修復：還原為 Tag 1.10 的 triggerUpdate 實現（這是核心修復）
     const triggerUpdate = async () => {
         const token = getToken();
-        if(!confirm("確定要觸發後端計算嗎？")) return;
+        if (!token) {
+            alert("請先登入");
+            return;
+        }
+        
+        if (!confirm("確定要觸發後端計算嗎？")) return;
+        
         try {
-            await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
+            const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
                 method: "POST",
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
-            alert("已觸發更新，請稍待片刻後重新整理。");
-        } catch(e) { 
-            alert("Trigger failed"); 
+            
+            if (response.ok || response.status === 204) {
+                alert("✅ 已觸發更新！\n\n系統正在背景計算，請稍待 30-60 秒後重新整理頁面。");
+                // 延遲後自動重整數據
+                setTimeout(() => {
+                    fetchAll();
+                }, 5000);
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                alert(`❌ 觸發失敗\n\n錯誤: ${errorData.error || '後端無回應'}`);
+                console.error('Trigger Error:', errorData);
+            }
+        } catch (e) { 
+            alert(`❌ 觸發失敗\n\n網路錯誤: ${e.message}`);
+            console.error('Trigger failed:', e);
         }
     };
 
@@ -96,7 +121,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
     return { 
-        loading, stats, holdings, history, records, lastUpdate, unrealizedPnL, connectionStatus,
-        fetchAll, fetchRecords, triggerUpdate
+        loading, 
+        stats, 
+        holdings, 
+        history, 
+        records, 
+        lastUpdate, 
+        unrealizedPnL, 
+        connectionStatus,
+        fetchAll, 
+        fetchRecords, 
+        triggerUpdate
     };
 });
