@@ -622,7 +622,8 @@ tr:hover td {
   opacity: 0;
 }
 
-@media (max-width: 1280px) {
+/* 原本是 1280px，建議改為 1024px */
+@media (max-width: 1024px) {
   .content-container { 
     grid-template-columns: 1fr; 
     padding: 20px; 
@@ -631,7 +632,9 @@ tr:hover td {
   
   .side-column { order: -1; }
   .section-charts { grid-template-columns: 1fr; }
-  .sticky-panel { position: static; }
+  
+  /* 這行就是讓 sticky 失效的主因，只有在變成單欄排版時才需要它 */
+  .sticky-panel { position: static; } 
   .desktop-only { display: none; }
 }
 
