@@ -55,6 +55,7 @@
 </template>
 
 <script setup>
+/* 邏輯保持不變 */
 import { reactive, ref } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
@@ -128,36 +129,38 @@ defineExpose({ setupForm });
 </script>
 
 <style scoped>
-.trade-panel { border: none; box-shadow: var(--shadow-md); background: #fff; }
-.panel-title { margin-bottom: 16px; font-size: 1.1rem; }
+.trade-panel { border: none; box-shadow: var(--shadow-md); background: #fff; padding: 24px; }
+.panel-title { margin-bottom: 20px; font-size: 1.2rem; }
 
-.trade-type-switch { display: flex; background: #f1f5f9; padding: 4px; border-radius: 8px; margin-bottom: 20px; }
-.switch-btn { flex: 1; border: none; background: transparent; padding: 8px; font-weight: 600; color: var(--text-sub); cursor: pointer; border-radius: 6px; transition: 0.2s; }
+.trade-type-switch { display: flex; background: #f3f4f6; padding: 4px; border-radius: 8px; margin-bottom: 24px; }
+.switch-btn { flex: 1; border: none; background: transparent; padding: 10px; font-weight: 600; color: var(--text-sub); cursor: pointer; border-radius: 6px; transition: 0.2s; font-size: 1rem; }
 .switch-btn.active { background: #fff; shadow: var(--shadow-sm); color: var(--text-main); }
-.switch-btn.buy.active { color: var(--primary); border-bottom: 2px solid var(--primary); }
-.switch-btn.sell.active { color: var(--success); border-bottom: 2px solid var(--success); }
-.switch-btn.div.active { color: #d97706; border-bottom: 2px solid #d97706; }
+.switch-btn.buy.active { color: var(--primary); border-bottom: 3px solid var(--primary); }
+.switch-btn.sell.active { color: var(--success); border-bottom: 3px solid var(--success); }
+.switch-btn.div.active { color: #d97706; border-bottom: 3px solid #d97706; }
 
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+.form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-group.full { grid-column: span 2; }
 
-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 500; }
-input { padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 1rem; width: 100%; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; }
-input:focus { outline: none; border-color: var(--primary); }
+label { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; }
+input { padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; width: 100%; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; transition: border-color 0.2s; }
+input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
 .uppercase { text-transform: uppercase; }
 
-.dual-input { display: flex; gap: 8px; }
+.dual-input { display: flex; gap: 10px; }
 
-.summary-box { background: #f8fafc; padding: 16px; border-radius: 8px; text-align: center; margin-bottom: 20px; border: 1px solid var(--border-color); }
-.summary-label { font-size: 0.85rem; color: var(--text-sub); margin-bottom: 4px; }
-.summary-value { background: transparent; border: none; text-align: center; font-size: 1.5rem; font-weight: 700; color: var(--text-main); padding: 0; width: 100%; }
+.summary-box { background: #f8fafc; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px; border: 1px solid var(--border-color); }
+.summary-label { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 6px; }
+.summary-value { background: transparent; border: none; text-align: center; font-size: 1.8rem; font-weight: 700; color: var(--text-main); padding: 0; width: 100%; }
 
-.action-buttons { display: flex; gap: 12px; }
-.btn { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 1rem; }
-.btn-cancel { background: #f1f5f9; color: var(--text-sub); }
+.action-buttons { display: flex; gap: 16px; }
+.btn { flex: 1; padding: 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 1rem; }
+.btn-cancel { background: #f3f4f6; color: var(--text-sub); }
+.btn-cancel:hover { background: #e5e7eb; }
 .btn-submit { color: white; background: var(--text-main); }
 .btn-submit.buy { background: var(--primary); }
 .btn-submit.sell { background: var(--success); }
-.btn-submit:disabled { opacity: 0.7; cursor: not-allowed; }
+.btn-submit:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 </style>
