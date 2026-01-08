@@ -28,17 +28,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Google 登入
   const login = async (googleCredential) => {
-          try {
-              // 注意：這裡補上了 /api 前綴
-              const res = await fetch(`${CONFIG.API_BASE_URL}/api/auth/google`, {
-                  method: "POST",
-                  headers: {
-                      'Content-Type': 'application/json' // 建議加上 Header
-                  },
-                  body: JSON.stringify({ id_token: googleCredential }) // 確保後端參數名稱是 id_token 還是 idtoken
-              });
+    try {
+      console.log('正在呼叫後端驗證 API...');
+      // 注意：這裡補上了 /api 前綴，確保與 Cloudflare Worker 路徑一致
+      const res = await fetch(`${CONFIG.API_BASE_URL}/api/auth/google`, {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id_token: googleCredential })
+      });
 
-      const data = await response.json();
+      // 修正點：這裡原本寫 response.json()，改為 res.json()
+      const data = await res.json();
 
       if (data.success) {
         // 保存 token 和用戶信息
@@ -49,7 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
           picture: data.picture || null
         };
 
-        // 保存到 localStorage
+        // 保存到 localStorage (使用您定義的新 key)
         localStorage.setItem('auth_token', data.token);
         localStorage.setItem('user_name', user.value.name);
         localStorage.setItem('user_email', user.value.email);
@@ -68,6 +70,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
     } catch (error) {
       console.error('❌ 登入錯誤:', error);
+      alert('登入失敗，請檢查網路或後端狀態');
       throw error;
     }
   };
