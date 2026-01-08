@@ -12,13 +12,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const lastUpdate = ref('');
     const connectionStatus = ref('connected'); 
 
-    // ✅ 保留：直接獲取 Token 的方法（Tag 1.10 原始方法）
+    // ✅ 保留：Tag 1.10 的 getToken 方法
     const getToken = () => {
         const auth = useAuthStore();
         return auth.token;
     };
 
-    // 保留：統一處理帶有驗證的 Fetch 請求（給其他方法使用）
+    // ✅ 保留：新版的 fetchWithAuth（統一錯誤處理）
     const fetchWithAuth = async (endpoint, options = {}) => {
         const auth = useAuthStore();
         if (!auth.token) return null;
@@ -81,7 +81,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 修復：還原為 Tag 1.10 的 triggerUpdate 實現（這是核心修復）
+    // ✅ 修復：改回 Tag 1.10 的 triggerUpdate 實現
     const triggerUpdate = async () => {
         const token = getToken();
         if (!token) {
@@ -89,7 +89,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             return;
         }
         
-        if (!confirm("確定要觸發後端計算嗎？")) return;
+        if(!confirm("確定要觸發後端計算嗎？")) return;
         
         try {
             const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
