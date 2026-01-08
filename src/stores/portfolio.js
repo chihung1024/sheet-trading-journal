@@ -79,14 +79,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const triggerUpdate = async () => {
-        if(!confirm("確定要觸發後端計算嗎？這可能需要幾秒鐘。")) return;
+        const token = getToken();
+        if(!confirm("確定要觸發後端計算嗎？")) return;
         try {
-            await fetchWithAuth('/api/trigger-update', { method: "POST" });
-            alert("已觸發更新，系統正在重新計算中...");
-            // 延遲幾秒後自動重整數據
-            setTimeout(() => fetchAll(), 3000);
+            await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
+                method: "POST",
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            alert("已觸發更新，請稍待片刻後重新整理。");
         } catch(e) { 
-            alert("觸發更新失敗，請檢查連線。"); 
+            alert("Trigger failed"); 
         }
     };
 
