@@ -1,14 +1,23 @@
 <template>
   <div class="login-overlay">
     <div class="login-card">
-      <h2 style="font-size: 1.8rem; color: white; margin-bottom: 10px;">SaaS 交易管理系統</h2>
-      <p style="color:#ccc; margin-bottom: 30px;">請使用 Google 帳號登入以存取您的投資組合</p>
-      
-      <div ref="googleBtn" class="google-btn-container"></div>
-      
-      <p v-if="error" style="color: #ff6b6b; margin-top: 20px; font-size: 0.9rem;">
-        {{ error }}
-      </p>
+      <div class="logo-section">
+        <span class="logo">📊</span>
+        <h1>Trading Journal</h1>
+        <p class="subtitle">專業交易日誌系統</p>
+      </div>
+
+      <div v-if="error" class="error-message">
+        <strong>❌ 登入失敗</strong>
+        <p>{{ error }}</p>
+      </div>
+
+      <!-- Google 登入按鈕容器 -->
+      <div class="google-btn-container" ref="googleBtn"></div>
+
+      <div class="footer-text">
+        <small>🔒 安全且私密的登入方式</small>
+      </div>
     </div>
   </div>
 </template>
@@ -23,78 +32,160 @@ const authStore = useAuthStore();
 const error = ref('');
 
 onMounted(() => {
-  // 1. 定義全域 callback
+  // 定義全域 callback，讓 Google Script 呼叫
+  // 這是 tag 1.10 中正常工作的方式
   window.handleCredentialResponse = (response) => {
-    console.log("收到 Google 憑證，正在登入...");
+    console.log('🔐 收到 Google 憑證');
     authStore.login(response.credential);
   };
 
-  // 2. 啟動定時檢查器 (解決競態條件)
-  const checkGoogleLoaded = setInterval(() => {
-    if (window.google && window.google.accounts) {
-      clearInterval(checkGoogleLoaded); // 載入成功，停止檢查
-      renderGoogleButton();
-    }
-  }, 100); // 每 100ms 檢查一次
-
-  // 3. 超時保護 (如果 5 秒都沒載入，顯示錯誤)
-  setTimeout(() => {
-    clearInterval(checkGoogleLoaded);
-    if (!window.google) {
-      error.value = "Google 登入服務載入過久，請檢查網路或重新整理頁面";
-    }
-  }, 5000);
+  // 檢查 Google GSI 是否已載入
+  if (window.google && window.google.accounts) {
+    console.log('✅ Google 登入服務已載入');
+    initGoogleSignIn();
+  } else {
+    console.error('❌ Google 登入服務未載入');
+    error.value = 'Google 登入服務載入失敗，請重新整理頁面';
+  }
 });
 
-const renderGoogleButton = () => {
+const initGoogleSignIn = () => {
   try {
+    // 初始化 Google Identity Services（tag 1.10 配置）
     window.google.accounts.id.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
       callback: window.handleCredentialResponse,
       auto_select: false,
       cancel_on_tap_outside: false
     });
-    
-    window.google.accounts.id.renderButton(
-      googleBtn.value,
-      { 
-        theme: "filled_black", // 保留您喜歡的深色按鈕
-        size: "large", 
-        width: 280,            // 稍微加寬以適應手機
-        shape: "rectangular"
-      }
-    );
+
+    // 渲染按鈕（使用與 tag 1.10 相同的配置）
+    window.google.accounts.id.renderButton(googleBtn.value, {
+      theme: 'outline',
+      size: 'large',
+      width: '280',
+      text: 'signin_with',
+      shape: 'rectangular',
+      logo_alignment: 'left'
+    });
+
+    console.log('✅ Google 登入按鈕已渲染');
   } catch (err) {
-    console.error("按鈕渲染失敗:", err);
-    error.value = "登入按鈕初始化失敗";
+    console.error('❌ 初始化錯誤:', err);
+    error.value = '初始化登入系統失敗';
   }
 };
 </script>
 
 <style scoped>
-.login-overlay { 
-    position: fixed; 
-    top: 0; 
-    left: 0; 
-    width: 100%; 
-    height: 100%; 
-    background: rgba(0,0,0,0.92); 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    z-index: 9999; 
-    padding: 20px;
+.login-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 .login-card {
-    text-align: center;
-    width: 100%;
-    max-width: 400px;
+  background: white;
+  border-radius: 24px;
+  padding: 48px 40px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  animation: slideUp 0.5s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.logo-section {
+  margin-bottom: 32px;
+}
+
+.logo {
+  font-size: 4rem;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.login-card h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 8px 0;
+}
+
+.subtitle {
+  color: #6b7280;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.error-message {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  text-align: left;
+  border: 1px solid #fecaca;
+}
+
+.error-message strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.error-message p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Google 按鈕容器 */
 .google-btn-container {
-    display: flex;
-    justify-content: center;
-    min-height: 50px; /* 預留高度避免跳動 */
+  display: flex;
+  justify-content: center;
+  margin: 32px 0;
+  min-height: 50px;
+}
+
+.footer-text {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  margin-top: 24px;
+}
+
+/* 響應式設計 */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 32px 24px;
+  }
+
+  .logo {
+    font-size: 3rem;
+  }
+
+  .login-card h1 {
+    font-size: 1.5rem;
+  }
 }
 </style>
