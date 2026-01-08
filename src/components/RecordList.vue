@@ -2,7 +2,6 @@
   <div class="card">
     <div class="card-header">
         <h3>交易紀錄列表</h3>
-        
         <div class="toolbar">
              <div class="search-box">
                 <span class="icon">🔍</span>
@@ -12,9 +11,9 @@
              <div class="filters">
                  <select v-model="filterType" class="filter-select">
                     <option value="ALL">所有類型</option>
-                    <option value="BUY">買入 (Buy)</option>
-                    <option value="SELL">賣出 (Sell)</option>
-                    <option value="DIV">配息 (Div)</option>
+                    <option value="BUY">買入</option>
+                    <option value="SELL">賣出</option>
+                    <option value="DIV">配息</option>
                 </select>
                 
                 <select v-model="filterYear" class="filter-select">
@@ -36,7 +35,7 @@
                     <th @click="sortBy('txn_type')" class="sortable">類型 <span class="sort-icon">{{ getSortIcon('txn_type') }}</span></th>
                     <th class="text-right">股數</th>
                     <th class="text-right">單價</th>
-                    <th @click="sortBy('total_amount')" class="text-right sortable">總金額 (USD) <span class="sort-icon">{{ getSortIcon('total_amount') }}</span></th>
+                    <th @click="sortBy('total_amount')" class="text-right sortable">總額 (USD) <span class="sort-icon">{{ getSortIcon('total_amount') }}</span></th>
                     <th class="text-right">操作</th>
                 </tr>
             </thead>
@@ -56,8 +55,8 @@
                     <td class="text-right font-num">{{ formatNumber(r.price, 4) }}</td>
                     <td class="text-right font-num font-bold">{{ formatNumber(r.total_amount, 2) }}</td>
                     <td class="text-right actions">
-                        <button class="btn-icon" @click="$emit('edit', r)" title="編輯">✎</button>
-                        <button class="btn-icon delete" @click="del(r.id)" title="刪除">✕</button>
+                        <button class="btn-icon" @click="$emit('edit', r)">✎</button>
+                        <button class="btn-icon delete" @click="del(r.id)">✕</button>
                     </td>
                 </tr>
             </tbody>
@@ -73,6 +72,7 @@
 </template>
 
 <script setup>
+/* Script 內容與上一版相同，省略以節省篇幅 */
 import { ref, computed, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
@@ -84,7 +84,6 @@ const auth = useAuthStore();
 const { addToast } = useToast();
 const emit = defineEmits(['edit']);
 
-// 狀態
 const searchQuery = ref('');
 const filterType = ref('ALL');
 const filterYear = ref('ALL');
@@ -98,13 +97,11 @@ const formatNumber = (num, d=2) => {
     return Number(num).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 };
 
-// 計算可用年份
 const availableYears = computed(() => {
     const years = new Set(store.records.map(r => r.txn_date.substring(0, 4)));
     return Array.from(years).sort().reverse();
 });
 
-// 排序邏輯
 const sortBy = (key) => {
     if (sortKey.value === key) {
         sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
@@ -118,7 +115,6 @@ const getSortIcon = (key) => {
     return sortOrder.value === 'asc' ? '↑' : '↓';
 };
 
-// 篩選與排序
 const processedRecords = computed(() => {
     let result = store.records.filter(r => {
         const matchSearch = r.symbol.toUpperCase().includes(searchQuery.value.toUpperCase());
@@ -130,20 +126,13 @@ const processedRecords = computed(() => {
     result.sort((a, b) => {
         let valA = a[sortKey.value];
         let valB = b[sortKey.value];
-        
-        if (sortKey.value === 'txn_date') {
-            return sortOrder.value === 'asc' ? new Date(valA) - new Date(valB) : new Date(valB) - new Date(valA);
-        }
-        if (typeof valA === 'string') {
-            return sortOrder.value === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        }
+        if (sortKey.value === 'txn_date') return sortOrder.value === 'asc' ? new Date(valA) - new Date(valB) : new Date(valB) - new Date(valA);
+        if (typeof valA === 'string') return sortOrder.value === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
         return sortOrder.value === 'asc' ? valA - valB : valB - valA;
     });
-    
     return result;
 });
 
-// 分頁
 const paginatedRecords = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage;
     return processedRecords.value.slice(start, start + itemsPerPage);
@@ -153,7 +142,6 @@ const totalPages = computed(() => Math.ceil(processedRecords.value.length / item
 const prevPage = () => { if (currentPage.value > 1) currentPage.value--; };
 const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.value++; };
 
-// 當篩選條件改變時，回到第一頁
 watch([searchQuery, filterType, filterYear], () => { currentPage.value = 1; });
 
 const del = async (id) => {
@@ -169,85 +157,35 @@ const del = async (id) => {
 </script>
 
 <style scoped>
-/* 關鍵修正：確保所有元素使用 Border-Box */
-*, *::before, *::after {
-    box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
 
-.card-header { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
-.card-header h3 { margin: 0; padding-left: 12px; border-left: 4px solid var(--primary); }
+.card-header { display: flex; flex-direction: column; gap: 20px; margin-bottom: 24px; }
+.card-header h3 { margin: 0; padding-left: 12px; border-left: 5px solid var(--primary); }
 
 .toolbar { 
-    display: flex; 
-    gap: 12px; 
-    flex-wrap: wrap; /* 允許換行 */
-    align-items: center; 
-    background: #f8fafc; 
-    padding: 12px; 
-    border-radius: 8px; 
-    border: 1px solid var(--border-color); 
+    display: flex; gap: 16px; flex-wrap: wrap; align-items: center; 
+    background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid var(--border-color); 
 }
 
-.search-box { 
-    position: relative; 
-    flex: 1 1 200px; /* 允許伸縮，基本寬度 200px */
-    min-width: 180px; /* 防止縮太小 */
-}
+.search-box { position: relative; flex: 1 1 240px; min-width: 200px; }
+.search-box .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; }
+.search-input { width: 100%; padding: 10px 10px 10px 36px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 1rem; }
 
-.search-box .icon { 
-    position: absolute; left: 10px; top: 50%; transform: translateY(-50%); 
-    color: #94a3b8; font-size: 0.9rem; 
-}
+.filters { display: flex; gap: 12px; flex-wrap: wrap; }
+.filter-select { padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 6px; background: white; font-size: 1rem; color: var(--text-main); }
 
-.search-input { 
-    width: 100%; 
-    padding: 8px 8px 8px 32px; 
-    border: 1px solid var(--border-color); 
-    border-radius: 6px; 
-    font-size: 0.9rem; 
-    /* box-sizing 已在上方全域設定 */
-}
-
-.filters { 
-    display: flex; 
-    gap: 8px; 
-    flex-wrap: wrap; /* 允許篩選器內部換行 */
-}
-
-.filter-select { 
-    padding: 8px 12px; 
-    border: 1px solid var(--border-color); 
-    border-radius: 6px; 
-    background: white; 
-    font-size: 0.9rem; 
-    color: var(--text-main); 
-}
-
-.btn-refresh { 
-    margin-left: auto; 
-    background: white; 
-    border: 1px solid var(--border-color); 
-    padding: 8px 16px; 
-    border-radius: 6px; 
-    cursor: pointer; 
-    color: var(--text-sub); 
-    font-size: 0.9rem; 
-    transition: 0.2s; 
-}
-.btn-refresh:hover { color: var(--primary); border-color: var(--primary); }
+.btn-refresh { margin-left: auto; background: white; border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 6px; cursor: pointer; color: var(--text-sub); font-size: 1rem; font-weight: 500; transition: 0.2s; }
+.btn-refresh:hover { color: var(--primary); border-color: var(--primary); background: #eff6ff; }
 
 .table-container { overflow-x: auto; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th { 
-    text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); 
-    color: var(--text-sub); font-size: 0.85rem; font-weight: 600; cursor: pointer; white-space: nowrap;
-}
+th { text-align: left; padding: 16px 20px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: 0.95rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
 th:hover { color: var(--primary); }
-td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
+td { padding: 16px 20px; border-bottom: 1px solid var(--border-color); font-size: 1rem; }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background-color: #f8fafc; }
+tr:hover td { background-color: #f9fafb; }
 
-.type-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; text-transform: uppercase; }
+.type-badge { font-size: 0.8rem; padding: 4px 10px; border-radius: 6px; font-weight: 700; text-transform: uppercase; }
 .type-badge.buy { background: #eff6ff; color: var(--primary); }
 .type-badge.sell { background: #ecfdf5; color: var(--success); }
 .type-badge.div { background: #fff7ed; color: #d97706; }
@@ -255,20 +193,19 @@ tr:hover td { background-color: #f8fafc; }
 .text-right { text-align: right; }
 .font-num { font-family: 'JetBrains Mono', monospace; }
 .font-bold { font-weight: 700; }
-.actions { display: flex; justify-content: flex-end; gap: 8px; }
-.btn-icon { border: none; background: none; cursor: pointer; color: var(--text-sub); font-size: 1rem; padding: 4px; transition: 0.2s; }
-.btn-icon:hover { color: var(--primary); background: #f1f5f9; border-radius: 4px; }
+.actions { display: flex; justify-content: flex-end; gap: 12px; }
+.btn-icon { border: none; background: none; cursor: pointer; color: var(--text-sub); font-size: 1.1rem; padding: 6px; transition: 0.2s; }
+.btn-icon:hover { color: var(--primary); background: #f3f4f6; border-radius: 4px; }
 .btn-icon.delete:hover { color: var(--danger); }
 
-.pagination { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 20px; }
-.page-btn { width: 32px; height: 32px; border: 1px solid var(--border-color); background: white; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-sub); }
+.pagination { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 30px; }
+.page-btn { width: 36px; height: 36px; border: 1px solid var(--border-color); background: white; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-sub); }
 .page-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.page-info { font-size: 0.9rem; color: var(--text-sub); font-family: monospace; }
-.empty-state { text-align: center; padding: 40px; color: var(--text-sub); font-style: italic; }
+.page-info { font-size: 1rem; color: var(--text-sub); font-family: monospace; }
+.empty-state { text-align: center; padding: 60px; color: var(--text-sub); font-style: italic; }
 
 @media (max-width: 768px) {
-    .card-header { align-items: flex-start; }
     .toolbar { flex-direction: column; align-items: stretch; }
     .filters { overflow-x: auto; padding-bottom: 4px; }
     .btn-refresh { margin-left: 0; width: 100%; }
