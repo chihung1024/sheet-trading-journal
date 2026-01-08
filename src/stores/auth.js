@@ -19,7 +19,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = { name: n, email: e };
       console.log('✅ 已從 localStorage 恢復認證狀態');
       
-      // ✅ 修復：還原自動拉取資料（這是關鍵修復）
+      // ✅ 修復：取消註解（這是關鍵修復）
       portfolioStore.fetchAll();
     }
   };
