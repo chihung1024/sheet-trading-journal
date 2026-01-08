@@ -32,43 +32,41 @@ const authStore = useAuthStore();
 const error = ref('');
 
 onMounted(() => {
-  // 定義 callback
+  // 定義 callback（保留錯誤處理）
   window.handleCredentialResponse = async (response) => {
     console.log('🔐 收到 Google 憑證');
     try {
-      // 加上 await 等待後端回應
       await authStore.login(response.credential); 
     } catch (err) {
-      // 捕捉錯誤並顯示在畫面上
       console.error('登入流程發生錯誤:', err);
       error.value = '登入驗證失敗: ' + (err.message || '無法連接後端伺服器');
-      
-      // 如果是因為 Token 過期等問題，可以考慮重新渲染按鈕
-      // initGoogleSignIn(); 
     }
   };  
 
-  // 1. 改良版：等待 Google Script 載入
-  const checkGoogleScript = setInterval(() => {
-    if (window.google && window.google.accounts) {
-      clearInterval(checkGoogleScript);
-      console.log('✅ Google 登入服務已就緒');
-      initGoogleSignIn();
-    }
-  }, 300); // 每 0.3 秒檢查一次
-
-  // 2. 設定一個超時機制 (例如 10秒後還是沒載入才報錯)
-  setTimeout(() => {
-    if (!window.google && error.value === '') {
-      clearInterval(checkGoogleScript);
-      error.value = '連線逾時，無法載入 Google 登入服務，請檢查網路';
-    }
-  }, 10000);
+  // ✅ 修復：簡化為直接初始化（移除複雜的輪詢邏輯）
+  if (window.google) {
+    initGoogleSignIn();
+  } else {
+    // 如果 Google Script 還沒載入，等待一下
+    const checkGoogle = setInterval(() => {
+      if (window.google) {
+        clearInterval(checkGoogle);
+        initGoogleSignIn();
+      }
+    }, 100);
+    
+    // 10 秒後仍未載入，顯示錯誤
+    setTimeout(() => {
+      if (!window.google) {
+        clearInterval(checkGoogle);
+        error.value = '無法載入 Google 登入服務，請檢查網路連線';
+      }
+    }, 10000);
+  }
 });
 
 const initGoogleSignIn = () => {
   try {
-    // 初始化 Google Identity Services（tag 1.10 配置）
     window.google.accounts.id.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
       callback: window.handleCredentialResponse,
@@ -76,7 +74,6 @@ const initGoogleSignIn = () => {
       cancel_on_tap_outside: false
     });
 
-    // 渲染按鈕（使用與 tag 1.10 相同的配置）
     window.google.accounts.id.renderButton(googleBtn.value, {
       theme: 'outline',
       size: 'large',
