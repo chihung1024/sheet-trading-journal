@@ -686,4 +686,9 @@ tr:hover td {
     font-size: 1rem;
   }
 }
+
+/* src/App.vue 最下方加入 */
+html, body, .main-wrapper, .content-container, .side-column {
+  overflow: visible !important;
+}
 </style>
