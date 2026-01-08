@@ -376,3 +376,4 @@ body {
   color: white;
   padding: 8px 14px;
   font-weight: 600;
+  
