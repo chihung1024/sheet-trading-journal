@@ -32,21 +32,28 @@ const authStore = useAuthStore();
 const error = ref('');
 
 onMounted(() => {
-  // 定義全域 callback，讓 Google Script 呼叫
-  // 這是 tag 1.10 中正常工作的方式
+  // 定義 callback
   window.handleCredentialResponse = (response) => {
     console.log('🔐 收到 Google 憑證');
     authStore.login(response.credential);
   };
 
-  // 檢查 Google GSI 是否已載入
-  if (window.google && window.google.accounts) {
-    console.log('✅ Google 登入服務已載入');
-    initGoogleSignIn();
-  } else {
-    console.error('❌ Google 登入服務未載入');
-    error.value = 'Google 登入服務載入失敗，請重新整理頁面';
-  }
+  // 1. 改良版：等待 Google Script 載入
+  const checkGoogleScript = setInterval(() => {
+    if (window.google && window.google.accounts) {
+      clearInterval(checkGoogleScript);
+      console.log('✅ Google 登入服務已就緒');
+      initGoogleSignIn();
+    }
+  }, 300); // 每 0.3 秒檢查一次
+
+  // 2. 設定一個超時機制 (例如 10秒後還是沒載入才報錯)
+  setTimeout(() => {
+    if (!window.google && error.value === '') {
+      clearInterval(checkGoogleScript);
+      error.value = '連線逾時，無法載入 Google 登入服務，請檢查網路';
+    }
+  }, 10000);
 });
 
 const initGoogleSignIn = () => {
