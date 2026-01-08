@@ -79,6 +79,17 @@
 </template>
 
 <script setup>
+
+import { usePWA } from './composables/usePWA';
+
+const { 
+  isInstallable, 
+  isInstalled, 
+  isOnline, 
+  install 
+} = usePWA();
+
+
 import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
