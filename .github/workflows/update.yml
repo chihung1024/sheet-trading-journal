@@ -38,6 +38,4 @@ jobs:
       env:
         # 這裡非常重要，必須傳入 Secret 才能通過 Worker 的驗證
         API_KEY: ${{ secrets.API_KEY }}
-        # [修正]: 必須將 GitHub Secrets 中的 WORKER_URL 傳入給 Python
-        WORKER_URL: ${{ secrets.WORKER_URL }}
       run: python main.py
