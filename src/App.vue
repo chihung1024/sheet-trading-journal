@@ -268,12 +268,18 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.3s ease, color 0.3s ease;
+  
+  /* ✅ 新增這一行：確保全域滾動正常，讓 sticky 生效 */
+  overflow: visible;
 }
 
 .main-wrapper { 
   min-height: 100vh; 
   display: flex; 
   flex-direction: column; 
+
+  /* ✅ 新增這一行：讓內容自然延伸，找回消失的按鈕 */
+  overflow: visible;
 }
 
 .top-nav {
@@ -449,9 +455,12 @@ body {
   grid-template-columns: minmax(0, 1fr) 380px; 
   gap: 24px;
   width: 100%; 
-  /* 務必確認這裡沒有 align-items: start; */
-  /* align-items: stretch; (預設值，不寫也可以，但寫了更保險) */
-  align-items: stretch; 
+  
+  /* ✅ 確保這裡是 stretch (預設值)，不要有 align-items: start */
+  align-items: stretch;
+  
+  /* ✅ 新增這一行：保險起見 */
+  overflow: visible;
 }
 
 .main-column { 
@@ -479,7 +488,11 @@ body {
   flex-direction: column; 
   gap: 24px; 
   z-index: 10; 
-  height: fit-content; /* 建議加上這行，確保高度正確 */
+
+  /* ✅ 建議加入這些優化，讓體驗更好 */
+  height: fit-content; 
+  max-height: calc(100vh - 48px); /* 避免太高超出視窗 */
+  overflow-y: auto; /* 如果內容真的太多，允許內部滾動 */
 }
 
 .card, .chart-wrapper { 
@@ -687,8 +700,4 @@ tr:hover td {
   }
 }
 
-/* src/App.vue 最下方加入 */
-html, body, .main-wrapper, .content-container, .side-column {
-  overflow: visible !important;
-}
 </style>
