@@ -55,7 +55,6 @@
 </template>
 
 <script setup>
-/* 邏輯保持不變 */
 import { reactive, ref } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
@@ -129,35 +128,54 @@ defineExpose({ setupForm });
 </script>
 
 <style scoped>
-.trade-panel { border: none; box-shadow: var(--shadow-md); background: #fff; padding: 24px; }
-.panel-title { margin-bottom: 20px; font-size: 1.2rem; }
+.trade-panel { 
+    border: 1px solid var(--border-color); 
+    box-shadow: var(--shadow-card); 
+    background: #fff; 
+    padding: 24px;
+    position: sticky;
+    top: 24px; 
+}
 
-.trade-type-switch { display: flex; background: #f3f4f6; padding: 4px; border-radius: 8px; margin-bottom: 24px; }
-.switch-btn { flex: 1; border: none; background: transparent; padding: 10px; font-weight: 600; color: var(--text-sub); cursor: pointer; border-radius: 6px; transition: 0.2s; font-size: 1rem; }
-.switch-btn.active { background: #fff; shadow: var(--shadow-sm); color: var(--text-main); }
-.switch-btn.buy.active { color: var(--primary); border-bottom: 3px solid var(--primary); }
-.switch-btn.sell.active { color: var(--success); border-bottom: 3px solid var(--success); }
-.switch-btn.div.active { color: #d97706; border-bottom: 3px solid #d97706; }
+.panel-title { margin-bottom: 24px; font-size: 1.2rem; }
 
+/* 切換按鈕 */
+.trade-type-switch { display: flex; background: #f1f5f9; padding: 4px; border-radius: 12px; margin-bottom: 24px; }
+.switch-btn { 
+    flex: 1; border: none; background: transparent; padding: 10px; 
+    font-weight: 500; color: var(--text-sub); cursor: pointer; border-radius: 8px; 
+    transition: all 0.2s; font-size: 0.95rem; 
+}
+.switch-btn.active { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: var(--text-main); font-weight: 600; }
+.switch-btn.buy.active { color: var(--primary-dark); }
+.switch-btn.sell.active { color: var(--success); }
+.switch-btn.div.active { color: #d97706; }
+
+/* 表單區塊 */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-group.full { grid-column: span 2; }
 
-label { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; }
-input { padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; width: 100%; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; transition: border-color 0.2s; }
-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; }
+input { 
+    padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; width: 100%; box-sizing: border-box; 
+    font-family: 'JetBrains Mono', monospace; transition: all 0.2s; color: var(--text-main);
+}
+input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 .uppercase { text-transform: uppercase; }
 
-.dual-input { display: flex; gap: 10px; }
+.dual-input { display: flex; gap: 12px; }
 
-.summary-box { background: #f8fafc; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px; border: 1px solid var(--border-color); }
-.summary-label { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 6px; }
-.summary-value { background: transparent; border: none; text-align: center; font-size: 1.8rem; font-weight: 700; color: var(--text-main); padding: 0; width: 100%; }
+/* 總金額區塊 */
+.summary-box { background: #f8fafc; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 24px; border: 1px dashed var(--border-color); }
+.summary-label { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 8px; }
+.summary-value { background: transparent; border: none; text-align: center; font-size: 1.8rem; font-weight: 700; color: var(--text-main); padding: 0; width: 100%; box-shadow: none; }
+.summary-value:focus { box-shadow: none; }
 
 .action-buttons { display: flex; gap: 16px; }
-.btn { flex: 1; padding: 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 1rem; }
-.btn-cancel { background: #f3f4f6; color: var(--text-sub); }
-.btn-cancel:hover { background: #e5e7eb; }
+.btn { flex: 1; padding: 14px; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 1rem; letter-spacing: 0.02em; }
+.btn-cancel { background: #f1f5f9; color: var(--text-sub); }
+.btn-cancel:hover { background: #e2e8f0; }
 .btn-submit { color: white; background: var(--text-main); }
 .btn-submit.buy { background: var(--primary); }
 .btn-submit.sell { background: var(--success); }
