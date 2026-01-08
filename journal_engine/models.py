@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 
@@ -12,6 +12,15 @@ class TransactionRecord(BaseModel):
     commission: float = Field(default=0.0, alias='Commission')
     tax: float = Field(default=0.0, alias='Tax')
     tag: Optional[str] = Field(default='', alias='Tag')
+
+    @computed_field
+    @property
+    def total_amount(self) -> float:
+        """計算總交易金額 = 股數 × 單價 + 手續費 + 稅"""
+        # 注意：這裡使用 abs 是為了確保金額為正數顯示，
+        # 如果需要保留正負號（例如賣出為正收入，買入為負支出），可以拿掉 abs
+        base_amount = abs(self.qty * self.price)
+        return base_amount + self.commission + self.tax
 
     class Config:
         populate_by_name = True
