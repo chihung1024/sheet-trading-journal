@@ -28,19 +28,15 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Google 登入
   const login = async (googleCredential) => {
-    try {
-      console.log('🔄 正在驗證 Google 憑證...');
-      
-      // 發送到後端驗證
-      const response = await fetch(`${CONFIG.API_BASE_URL}/api/auth/google`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          idtoken: googleCredential
-        })
-      });
+          try {
+              // 注意：這裡補上了 /api 前綴
+              const res = await fetch(`${CONFIG.API_BASE_URL}/api/auth/google`, {
+                  method: "POST",
+                  headers: {
+                      'Content-Type': 'application/json' // 建議加上 Header
+                  },
+                  body: JSON.stringify({ id_token: googleCredential }) // 確保後端參數名稱是 id_token 還是 idtoken
+              });
 
       const data = await response.json();
 
