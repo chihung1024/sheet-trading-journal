@@ -33,10 +33,20 @@ const error = ref('');
 
 onMounted(() => {
   // 定義 callback
-  window.handleCredentialResponse = (response) => {
+  window.handleCredentialResponse = async (response) => {
     console.log('🔐 收到 Google 憑證');
-    authStore.login(response.credential);
-  };
+    try {
+      // 加上 await 等待後端回應
+      await authStore.login(response.credential); 
+    } catch (err) {
+      // 捕捉錯誤並顯示在畫面上
+      console.error('登入流程發生錯誤:', err);
+      error.value = '登入驗證失敗: ' + (err.message || '無法連接後端伺服器');
+      
+      // 如果是因為 Token 過期等問題，可以考慮重新渲染按鈕
+      // initGoogleSignIn(); 
+    }
+  };  
 
   // 1. 改良版：等待 Google Script 載入
   const checkGoogleScript = setInterval(() => {
