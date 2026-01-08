@@ -108,20 +108,19 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 
 .stat-block {
     background: #fff;
-    padding: 20px 24px; /* 上下20，左右24 */
-    border-radius: 12px;
+    padding: 16px 20px; /* 內距調整 */
+    border-radius: 10px;
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 128px; /* 稍微縮減高度，更緊湊 */
+    min-height: 120px;
     transition: transform 0.2s;
 }
 
 .stat-block:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 
-/* 主卡片藍色背景 */
 .stat-block.primary {
     background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
     color: white;
@@ -133,43 +132,43 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 .stat-block.primary .icon-box { background: rgba(255,255,255,0.25); }
 
 .stat-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.stat-label { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; }
-.icon-box { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+.stat-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; }
+.icon-box { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
 
 .stat-main { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
 
-/* 加大字體 */
+/* 修正：字體大小平衡 */
 .stat-value {
-    font-size: 2.2rem; 
+    font-size: 1.8rem; /* 從 2.2rem 下修，避免過大 */
     font-weight: 700;
     color: var(--text-main);
-    line-height: 1;
-    letter-spacing: -0.03em;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
 }
-.stat-value.big { font-size: 2.4rem; }
+.stat-value.big { font-size: 2rem; } /* 總資產稍微大一點，但不要太誇張 */
 
-.unit-text, .percent { font-size: 1rem; color: var(--text-sub); font-weight: 600; }
+.unit-text, .percent { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; }
 .stat-block.primary .unit-text { color: rgba(255,255,255,0.8); }
 
 .stat-footer {
-    padding-top: 10px;
+    padding-top: 8px;
     border-top: 1px solid #f3f4f6;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     display: flex; align-items: center; justify-content: space-between;
 }
 
 .footer-item { display: flex; align-items: center; gap: 6px; }
 .f-label { opacity: 0.8; }
-.f-val { font-weight: 600; font-family: 'Inter', monospace; }
+.f-val { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
 .text-sub { color: var(--text-sub); }
 
-.badge { padding: 3px 10px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; letter-spacing: 0.5px; }
+.badge { padding: 3px 8px; border-radius: 20px; font-weight: 700; font-size: 0.75rem; }
 .badge-green { background: #d1fae5; color: #065f46; }
 .badge-red { background: #fee2e2; color: #991b1b; }
 
 @media (max-width: 1400px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 768px) { .stats-grid { grid-template-columns: 1fr; } .stat-value { font-size: 2rem; } }
+@media (max-width: 768px) { .stats-grid { grid-template-columns: 1fr; } .stat-value { font-size: 1.8rem; } }
 </style>
