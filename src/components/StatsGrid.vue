@@ -103,72 +103,73 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr); 
-    gap: 20px;
+    gap: 24px;
 }
 
 .stat-block {
     background: #fff;
-    padding: 16px 20px; /* 內距調整 */
-    border-radius: 10px;
+    padding: 24px;
+    border-radius: 16px;
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 120px;
+    height: 150px; /* 固定高度，讓版面整齊 */
     transition: transform 0.2s;
+    position: relative;
+    overflow: hidden;
 }
 
-.stat-block:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat-block:hover { transform: translateY(-2px); box-shadow: var(--shadow-card); }
 
+/* 首個區塊特別樣式 */
 .stat-block.primary {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
     color: white;
     border: none;
 }
-.stat-block.primary .stat-label { color: rgba(255,255,255,0.9); }
+.stat-block.primary .stat-label { color: #94a3b8; }
 .stat-block.primary .stat-value { color: #fff; }
-.stat-block.primary .stat-footer { border-top-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.9); }
-.stat-block.primary .icon-box { background: rgba(255,255,255,0.25); }
+.stat-block.primary .stat-footer { border-top-color: rgba(255,255,255,0.1); color: #cbd5e1; }
+.stat-block.primary .icon-box { background: rgba(255,255,255,0.1); color: white; }
 
-.stat-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.stat-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .stat-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; }
-.icon-box { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+.icon-box { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
 
 .stat-main { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
 
-/* 修正：字體大小平衡 */
 .stat-value {
-    font-size: 1.8rem; /* 從 2.2rem 下修，避免過大 */
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.75rem;
     font-weight: 700;
     color: var(--text-main);
     line-height: 1.1;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
 }
-.stat-value.big { font-size: 2rem; } /* 總資產稍微大一點，但不要太誇張 */
 
-.unit-text, .percent { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; }
-.stat-block.primary .unit-text { color: rgba(255,255,255,0.8); }
+.unit-text, .percent { font-size: 0.9rem; color: var(--text-sub); font-weight: 500; }
+.stat-block.primary .unit-text { color: #94a3b8; }
 
 .stat-footer {
-    padding-top: 8px;
-    border-top: 1px solid #f3f4f6;
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
     font-size: 0.8rem;
     display: flex; align-items: center; justify-content: space-between;
 }
 
 .footer-item { display: flex; align-items: center; gap: 6px; }
-.f-label { opacity: 0.8; }
 .f-val { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
 .text-sub { color: var(--text-sub); }
 
-.badge { padding: 3px 8px; border-radius: 20px; font-weight: 700; font-size: 0.75rem; }
-.badge-green { background: #d1fae5; color: #065f46; }
+.badge { padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 0.75rem; display: inline-flex; align-items: center; }
+.badge-green { background: #dcfce7; color: #166534; }
 .badge-red { background: #fee2e2; color: #991b1b; }
 
 @media (max-width: 1400px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 768px) { .stats-grid { grid-template-columns: 1fr; } .stat-value { font-size: 1.8rem; } }
+@media (max-width: 600px) { .stats-grid { grid-template-columns: 1fr; height: auto; } }
 </style>
