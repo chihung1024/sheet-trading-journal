@@ -104,37 +104,37 @@ const getTrendClass = (val, isBg = false) => {
 </script>
 
 <style scoped>
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-.summary-info { color: var(--text-sub); font-size: 1rem; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.summary-info { color: var(--text-sub); font-size: 0.95rem; }
 
 .table-container { overflow-x: auto; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
 th { 
-    text-align: left; color: var(--text-sub); font-size: 0.9rem; font-weight: 700; 
-    padding: 16px 20px; border-bottom: 2px solid var(--border-color); white-space: nowrap;
+    text-align: left; color: var(--text-sub); font-size: 0.85rem; font-weight: 600; 
+    padding: 12px 16px; border-bottom: 2px solid var(--border-color); white-space: nowrap;
     cursor: pointer; transition: color 0.2s;
 }
 th:hover { color: var(--primary); }
 .sort-icon { font-size: 0.8rem; margin-left: 4px; opacity: 0.5; }
 
-/* 加大表格內距與文字 */
-td { padding: 20px; border-bottom: 1px solid var(--border-color); font-size: 1.05rem; color: var(--text-main); vertical-align: middle; }
+/* 修正：字級統一為 0.95rem，看起來不費力 */
+td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; color: var(--text-main); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background-color: #f9fafb; }
 
-.col-symbol { width: 15%; min-width: 120px; }
+.col-symbol { width: 15%; min-width: 100px; }
 .symbol-wrapper { display: flex; flex-direction: column; }
-.symbol-text { font-weight: 800; font-size: 1.2rem; color: var(--text-main); }
-.tag-badge { font-size: 0.8rem; color: var(--text-sub); background: #f3f4f6; width: fit-content; padding: 2px 8px; border-radius: 4px; margin-top: 4px; }
+.symbol-text { font-weight: 700; font-size: 1rem; color: var(--text-main); } /* 稍微加強代碼顯示 */
+.tag-badge { font-size: 0.75rem; color: var(--text-sub); background: #f3f4f6; width: fit-content; padding: 2px 6px; border-radius: 4px; margin-top: 4px; }
 
 .text-right { text-align: right; }
 .text-sub { color: var(--text-sub); }
-.font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.01em; }
 .font-bold { font-weight: 700; }
 
 .text-green { color: #059669; }
 .text-red { color: #dc2626; }
-.roi-badge { padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.95rem; }
+.roi-badge { padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 0.9rem; }
 .roi-badge.bg-green { background: #d1fae5; color: #065f46; }
 .roi-badge.bg-red { background: #fee2e2; color: #991b1b; }
 
