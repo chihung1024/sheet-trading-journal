@@ -449,6 +449,9 @@ body {
   grid-template-columns: minmax(0, 1fr) 380px; 
   gap: 24px;
   width: 100%; 
+  /* 務必確認這裡沒有 align-items: start; */
+  /* align-items: stretch; (預設值，不寫也可以，但寫了更保險) */
+  align-items: stretch; 
 }
 
 .main-column { 
@@ -471,11 +474,12 @@ body {
 
 .sticky-panel { 
   position: sticky; 
-  top: 24px; 
+  top: 24px; /* 距離視窗頂部的距離 */
   display: flex; 
   flex-direction: column; 
   gap: 24px; 
   z-index: 10; 
+  height: fit-content; /* 建議加上這行，確保高度正確 */
 }
 
 .card, .chart-wrapper { 
