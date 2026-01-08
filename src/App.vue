@@ -449,7 +449,7 @@ body {
   grid-template-columns: minmax(0, 1fr) 380px; 
   gap: 24px;
   width: 100%; 
-  align-items: start; 
+  align-items: stretch; 
 }
 
 .main-column { 
