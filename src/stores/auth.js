@@ -19,18 +19,16 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = { name: n, email: e };
       console.log('✅ 已從 localStorage 恢復認證狀態');
       
-      // ⚠️ 移除自動拉取資料，改由 App.vue 統一控制
-      // portfolioStore.fetchAll();
+      // ✅ 修復：還原自動拉取資料（這是關鍵修復）
+      portfolioStore.fetchAll();
     }
   };
 
-  // Google 登入（tag 1.10 正常邏輯）
+  // Google 登入
   const login = async (googleCredential) => {
     try {
       console.log('🔄 正在驗證 Google 憑證...');
       
-      // 發送到後端驗證
-      // ⚠️ 注意：API 路徑是 /auth/google（不是 /api/auth/google）
       const res = await fetch(`${CONFIG.API_BASE_URL}/auth/google`, {
         method: 'POST',
         headers: {
@@ -44,18 +42,15 @@ export const useAuthStore = defineStore('auth', () => {
       if (data.success) {
         console.log('✅ 登入成功！');
         
-        // 保存 token 和用戶資訊
         token.value = data.token;
         user.value = { name: data.user, email: data.email };
         
-        // 保存到 localStorage
         localStorage.setItem('token', data.token);
         localStorage.setItem('name', data.user);
         localStorage.setItem('email', data.email);
         
         console.log('📦 用戶資訊已保存到 localStorage');
         
-        // 拉取投資組合數據
         await portfolioStore.fetchAll();
         
         console.log('📊 投資組合數據已載入');
