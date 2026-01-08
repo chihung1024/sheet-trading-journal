@@ -16,19 +16,17 @@
             <span class="dot"></span> 連線正常
           </div>
           
-          <!-- GitHub Action 手動觸發按鈕 -->
           <button 
             class="action-trigger-btn" 
-            @click="triggerGitHubAction" 
+            @click="triggerUpdate" 
             :disabled="isActionTriggerLoading"
             title="手動觸發投資組合數據更新"
           >
             <span v-if="!isActionTriggerLoading">⚙️</span>
             <span v-else class="spinner">⟳</span>
-            {{ isActionTriggerLoading ? '更新中...' : '更新數據' }}
+            {{ isActionTriggerLoading ? '請求中...' : '更新數據' }}
           </button>
           
-          <!-- 深色模式切換按鈕 -->
           <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切換為淺色模式' : '切換為深色模式'">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
@@ -100,6 +98,7 @@ import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
+import { CONFIG } from './config'; // ✅ 導入配置以取得 API URL
 
 import LoginOverlay from './components/LoginOverlay.vue';
 import StatsGrid from './components/StatsGrid.vue';
@@ -142,46 +141,54 @@ const handleLogout = () => {
   }
 };
 
-// GitHub Action 手動觸發函數
-const triggerGitHubAction = async () => {
+// ✅ 改良版：透過 Worker 觸發更新 (符合系統核心架構)
+const triggerUpdate = async () => {
   if (!authStore.token) {
     addToast('請先登入', 'error');
     return;
   }
 
+  // 增加確認步驟，避免誤觸
+  if (!confirm('確定要手動觸發更新嗎？\n這將會通知後端啟動爬蟲與計算，約需 30-60 秒完成。')) {
+    return;
+  }
+
   isActionTriggerLoading.value = true;
   try {
-    const response = await fetch(
-      'https://api.github.com/repos/chihung1024/sheet-trading-journal/actions/workflows/update.yml/dispatches',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ref: 'main'
-        })
+    // 改為呼叫 Worker 的 API，而非直接連線 GitHub
+    // 這樣可以利用 Worker 內部的 GITHUB_TOKEN，前端不需要暴露 Token
+    const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authStore.token}`, // 使用 Google Token 驗證身分
+        'Content-Type': 'application/json'
       }
-    );
+    });
 
     if (response.ok) {
-      addToast('✓ 已觸發數據更新，將在數秒內完成', 'success');
+      addToast('✓ 已發送更新請求，系統正在背景計算...', 'success');
+      
+      // 由於 GitHub Action 需要時間執行，我們延遲一點時間再嘗試拉取新資料
+      // 或者單純通知用戶請求已發送
       setTimeout(async () => {
-        await portfolioStore.fetchAll();
-        addToast('✓ 數據已更新', 'success');
-      }, 3000);
-    } else if (response.status === 404) {
-      addToast('❌ 找不到 GitHub 工作流程', 'error');
-    } else if (response.status === 403) {
-      addToast('❌ 無權限觸發工作流程', 'error');
+        // 嘗試無聲更新一次數據，看是否已經完成 (通常沒那麼快，但這是個好習慣)
+        await portfolioStore.fetchAll(); 
+      }, 5000);
+      
     } else {
-      addToast('❌ 觸發失敗，請稍後再試', 'error');
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Trigger Error:', errorData);
+      
+      if (response.status === 401) {
+        addToast('❌ 權限不足或登入過期', 'error');
+        authStore.logout();
+      } else {
+        addToast(`❌ 觸發失敗: ${errorData.error || '後端無回應'}`, 'error');
+      }
     }
   } catch (error) {
-    console.error('觸發 GitHub Action 失敗:', error);
-    addToast('❌ 網路錯誤，請檢查連線', 'error');
+    console.error('觸發更新失敗:', error);
+    addToast('❌ 網路連線錯誤', 'error');
   } finally {
     isActionTriggerLoading.value = false;
   }
@@ -268,8 +275,6 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.3s ease, color 0.3s ease;
-  
-  /* ✅ 新增這一行：確保全域滾動正常，讓 sticky 生效 */
   overflow: visible;
 }
 
@@ -277,8 +282,6 @@ body {
   min-height: 100vh; 
   display: flex; 
   flex-direction: column; 
-
-  /* ✅ 新增這一行：讓內容自然延伸，找回消失的按鈕 */
   overflow: visible;
 }
 
@@ -455,11 +458,7 @@ body {
   grid-template-columns: minmax(0, 1fr) 380px; 
   gap: 24px;
   width: 100%; 
-  
-  /* ✅ 確保這裡是 stretch (預設值)，不要有 align-items: start */
   align-items: stretch;
-  
-  /* ✅ 新增這一行：保險起見 */
   overflow: visible;
 }
 
@@ -483,16 +482,14 @@ body {
 
 .sticky-panel { 
   position: sticky; 
-  top: 24px; /* 距離視窗頂部的距離 */
+  top: 24px;
   display: flex; 
   flex-direction: column; 
   gap: 24px; 
   z-index: 10; 
-
-  /* ✅ 建議加入這些優化，讓體驗更好 */
   height: fit-content; 
-  max-height: calc(100vh - 48px); /* 避免太高超出視窗 */
-  overflow-y: auto; /* 如果內容真的太多，允許內部滾動 */
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .card, .chart-wrapper { 
@@ -635,7 +632,6 @@ tr:hover td {
   opacity: 0;
 }
 
-/* 原本是 1280px，建議改為 1024px */
 @media (max-width: 1024px) {
   .content-container { 
     grid-template-columns: 1fr; 
@@ -646,7 +642,6 @@ tr:hover td {
   .side-column { order: -1; }
   .section-charts { grid-template-columns: 1fr; }
   
-  /* 這行就是讓 sticky 失效的主因，只有在變成單欄排版時才需要它 */
   .sticky-panel { position: static; } 
   .desktop-only { display: none; }
 }
@@ -699,5 +694,4 @@ tr:hover td {
     font-size: 1rem;
   }
 }
-
 </style>
