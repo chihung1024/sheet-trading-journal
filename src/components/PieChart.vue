@@ -71,11 +71,20 @@ onMounted(async () => { await nextTick(); drawChart(); });
     box-sizing: border-box;
 }
 .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.chart-title { margin: 0; font-size: 1rem; color: #374151; }
+
+/* 修正：統一標題大小 */
+.chart-title { 
+    margin: 0; 
+    font-size: 1.1rem; 
+    font-weight: 700; 
+    color: #1f2937;
+    padding-left: 10px;
+    border-left: 4px solid #2563eb;
+}
 
 .toggle-pills { display: flex; background: #f3f4f6; border-radius: 6px; padding: 2px; }
 .toggle-pills button {
-    border: none; background: transparent; padding: 4px 10px; font-size: 0.75rem; 
+    border: none; background: transparent; padding: 4px 10px; font-size: 0.85rem; 
     border-radius: 4px; color: #6b7280; cursor: pointer; transition: 0.2s;
 }
 .toggle-pills button.active { background: white; color: #2563eb; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
