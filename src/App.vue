@@ -1,79 +1,40 @@
 <template>
   <div class="app-layout" :class="{ 'dark-mode': isDark }">
-    <LoginOverlay v-if="!authStore.token" />
+    <!-- 臨時移除登入檢查 -->
+    <!-- <LoginOverlay v-if="!authStore.token" /> -->
     
-    <div v-else class="main-wrapper">
+    <div class="main-wrapper">
       <header class="top-nav">
         <div class="nav-brand">
             <span class="logo-icon">📊</span>
             <h1>Trading Journal <span class="badge">PRO</span></h1>
         </div>
         <div class="nav-status">
-            <div v-if="portfolioStore.loading" class="status-indicator loading">
-                <span class="dot"></span> 更新中...
-            </div>
-            <div v-else class="status-indicator ready">
-                <span class="dot"></span> 連線正常
+            <div class="status-indicator ready">
+                <span class="dot"></span> 測試模式
             </div>
             
-            <!-- 深色模式切換按鈕 -->
-            <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切換為淺色模式' : '切換為深色模式'">
+            <button class="theme-toggle" @click="toggleTheme">
                 <span v-if="isDark">☀️</span>
                 <span v-else>🌙</span>
             </button>
-            
-            <div class="user-profile" @click="handleLogout" title="點擊登出">
-                <img v-if="authStore.user?.picture" :src="authStore.user.picture" class="avatar-img" alt="User">
-                <div v-else class="avatar">{{ userInitial }}</div>
-                <span class="logout-text desktop-only">登出</span>
-            </div>
         </div>
       </header>
 
       <div class="content-container">
         <main class="main-column">
             <section class="section-stats">
-                <StatsGrid v-if="!isInitialLoading" />
-                <StatsGridSkeleton v-else />
-            </section>
-            
-            <section class="section-charts">
-                <div class="chart-wrapper">
-                    <PerformanceChart v-if="!isInitialLoading" />
-                    <ChartSkeleton v-else />
+                <div class="card">
+                    <h3>應用運行測試</h3>
+                    <p>如果您看到這個頁面，表示 Vue 應用已成功啟動。</p>
+                    <p>當前時間: {{ new Date().toLocaleString('zh-TW') }}</p>
+                    <button @click="testAlert" style="padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                      測試互動
+                    </button>
                 </div>
-                <div class="chart-wrapper">
-                    <PieChart v-if="!isInitialLoading" />
-                    <ChartSkeleton v-else />
-                </div>
-            </section>
-
-            <section class="section-holdings">
-                <HoldingsTable v-if="!isInitialLoading" />
-                <TableSkeleton v-else />
-            </section>
-
-            <section class="section-records">
-                <RecordList v-if="!isInitialLoading" @edit="handleEditRecord" />
-                <TableSkeleton v-else />
             </section>
         </main>
-
-        <aside class="side-column">
-            <div class="sticky-panel">
-                <TradeForm ref="tradeFormRef" />
-            </div>
-        </aside>
       </div>
-    </div>
-
-    <div class="toast-container">
-      <TransitionGroup name="toast-slide">
-        <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" @click="removeToast(t.id)">
-          <div class="toast-icon">{{ t.type === 'success' ? '✓' : '!' }}</div>
-          <div class="toast-body"><div class="toast-msg">{{ t.message }}</div></div>
-        </div>
-      </TransitionGroup>
     </div>
   </div>
 </template>
