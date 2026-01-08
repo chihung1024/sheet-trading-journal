@@ -1,8 +1,8 @@
-// ⚠️ 重要：使用 tag 1.10 中的實際 Google Client ID
-// 這個 ID 在生產環境中已驗證可用
+// 警告：使用 tag 1.10 中的實數 Google Client ID
+// 這個 ID 在產業環境中已驗證可用
 
 export const CONFIG = {
-  // API 基礎 URL - Cloudflare Workers 後端
+  // API 基础 URL - Cloudflare Workers 後端
   API_BASE_URL: 'https://journal-backend.chihired.workers.dev',
   
   // Google OAuth Client ID
