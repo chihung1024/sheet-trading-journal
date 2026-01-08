@@ -2,11 +2,12 @@
   <div class="stats-grid">
     <div class="stat-block primary">
       <div class="stat-top">
-        <span class="stat-label">總資產淨值 (TWD)</span>
+        <span class="stat-label">總資產淨值</span>
         <span class="icon-box">💰</span>
       </div>
       <div class="stat-main">
         <div class="stat-value big">{{ displayTotalValue }}</div>
+        <div class="unit-text">TWD</div>
       </div>
       <div class="stat-footer">
         <div class="footer-item">
@@ -27,14 +28,14 @@
       </div>
       <div class="stat-footer">
         <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
-            {{ roi }}% ROI
+            ROI: {{ roi }}%
         </span>
       </div>
     </div>
     
     <div class="stat-block">
       <div class="stat-top">
-        <span class="stat-label">今日預估損益</span>
+        <span class="stat-label">今日損益 (Est.)</span>
       </div>
       <div class="stat-main">
         <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
@@ -51,7 +52,7 @@
         <span class="stat-label">總報酬率 (TWR)</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="unit">%</span></div>
+        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
       </div>
       <div class="stat-footer">
          <span class="text-sub">SPY Benchmark: </span>
@@ -101,124 +102,74 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 <style scoped>
 .stats-grid {
     display: grid;
-    /* 強制 4 欄位，確保整齊對齊 */
     grid-template-columns: repeat(4, 1fr); 
-    gap: 24px;
+    gap: 20px;
 }
 
 .stat-block {
     background: #fff;
-    padding: 24px; /* 增加內距 */
-    border-radius: 12px; /* 圓角加大一點點 */
+    padding: 20px 24px; /* 上下20，左右24 */
+    border-radius: 12px;
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 140px; /* 增加最小高度 */
-    transition: transform 0.2s, box-shadow 0.2s;
+    min-height: 128px; /* 稍微縮減高度，更緊湊 */
+    transition: transform 0.2s;
 }
 
-.stat-block:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
+.stat-block:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 
-/* 主卡片樣式 */
+/* 主卡片藍色背景 */
 .stat-block.primary {
-    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
     color: white;
     border: none;
-    position: relative;
-    overflow: hidden;
 }
-.stat-block.primary .stat-label { color: rgba(255,255,255,0.8); }
+.stat-block.primary .stat-label { color: rgba(255,255,255,0.9); }
 .stat-block.primary .stat-value { color: #fff; }
-.stat-block.primary .stat-footer { border-top-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.9); }
-.stat-block.primary .icon-box { background: rgba(255,255,255,0.2); }
+.stat-block.primary .stat-footer { border-top-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.9); }
+.stat-block.primary .icon-box { background: rgba(255,255,255,0.25); }
 
-/* 內部排版 */
-.stat-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
+.stat-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.stat-label { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; }
+.icon-box { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
 
-.stat-label {
-    font-size: 0.85rem;
-    color: var(--text-sub);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
+.stat-main { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
 
-.icon-box {
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.2rem;
-}
-
-.stat-main {
-    flex-grow: 1;
-    display: flex;
-    align-items: center; /* 垂直置中數值 */
-}
-
+/* 加大字體 */
 .stat-value {
-    font-size: 2rem; /* 固定大字體，不使用 clamp 避免縮太小 */
+    font-size: 2.2rem; 
     font-weight: 700;
     color: var(--text-main);
-    line-height: 1.1;
-    white-space: nowrap; /* 防止數字折行 */
-    letter-spacing: -0.5px;
+    line-height: 1;
+    letter-spacing: -0.03em;
 }
-.stat-value.big { font-size: 2.2rem; }
+.stat-value.big { font-size: 2.4rem; }
 
-.unit {
-    font-size: 1.2rem;
-    margin-left: 4px;
-    color: var(--text-sub);
-    font-weight: 500;
-    vertical-align: baseline;
-}
+.unit-text, .percent { font-size: 1rem; color: var(--text-sub); font-weight: 600; }
+.stat-block.primary .unit-text { color: rgba(255,255,255,0.8); }
 
 .stat-footer {
-    margin-top: 16px;
-    padding-top: 12px;
+    padding-top: 10px;
     border-top: 1px solid #f3f4f6;
     font-size: 0.85rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 24px;
+    display: flex; align-items: center; justify-content: space-between;
 }
 
 .footer-item { display: flex; align-items: center; gap: 6px; }
-.f-label { opacity: 0.8; font-size: 0.8rem; }
+.f-label { opacity: 0.8; }
 .f-val { font-weight: 600; font-family: 'Inter', monospace; }
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
 .text-sub { color: var(--text-sub); }
 
-.badge {
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.75rem;
-    letter-spacing: 0.5px;
-}
+.badge { padding: 3px 10px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; letter-spacing: 0.5px; }
 .badge-green { background: #d1fae5; color: #065f46; }
 .badge-red { background: #fee2e2; color: #991b1b; }
 
-/* RWD 響應式 */
-@media (max-width: 1400px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); } /* 中螢幕變 2 欄 */
-}
-@media (max-width: 768px) {
-    .stats-grid { grid-template-columns: 1fr; } /* 手機變 1 欄 */
-    .stat-value { font-size: 1.8rem; }
-}
+@media (max-width: 1400px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 768px) { .stats-grid { grid-template-columns: 1fr; } .stat-value { font-size: 2rem; } }
 </style>
