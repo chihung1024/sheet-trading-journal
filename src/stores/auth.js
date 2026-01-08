@@ -4,88 +4,78 @@ import { CONFIG } from '../config';
 import { usePortfolioStore } from './portfolio';
 
 export const useAuthStore = defineStore('auth', () => {
-  // 狀態
-  const token = ref(localStorage.getItem('auth_token') || null);
-  const user = ref({
-    name: localStorage.getItem('user_name') || null,
-    email: localStorage.getItem('user_email') || null,
-    picture: localStorage.getItem('user_picture') || null
-  });
+  const token = ref('');
+  const user = ref({ name: '', email: '' });
+  const portfolioStore = usePortfolioStore();
 
   // 初始化認證狀態
-  const initAuth = async () => {
-    if (token.value) {
-      try {
-        const portfolioStore = usePortfolioStore();
-        await portfolioStore.fetchAll();
-        console.log('✅ 認證狀態已初始化');
-      } catch (err) {
-        console.error('❌ 初始化錯誤:', err);
-        logout();
-      }
+  const initAuth = () => {
+    const t = localStorage.getItem('token');
+    const n = localStorage.getItem('name');
+    const e = localStorage.getItem('email');
+    
+    if (t) {
+      token.value = t;
+      user.value = { name: n, email: e };
+      console.log('✅ 已從 localStorage 恢復認證狀態');
+      
+      // 登入成功後自動拉取資料
+      portfolioStore.fetchAll();
     }
   };
 
-  // Google 登入
+  // Google 登入（tag 1.10 正常邏輯）
   const login = async (googleCredential) => {
     try {
-      console.log('正在呼叫後端驗證 API...');
-      // 注意：這裡補上了 /api 前綴，確保與 Cloudflare Worker 路徑一致
-      const res = await fetch(`${CONFIG.API_BASE_URL}/api/auth/google`, {
-        method: "POST",
+      console.log('🔄 正在驗證 Google 憑證...');
+      
+      // 發送到後端驗證
+      // ⚠️ 注意：API 路徑是 /auth/google（不是 /api/auth/google）
+      const res = await fetch(`${CONFIG.API_BASE_URL}/auth/google`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ id_token: googleCredential })
       });
 
-      // 修正點：這裡原本寫 response.json()，改為 res.json()
       const data = await res.json();
-
+      
       if (data.success) {
-        // 保存 token 和用戶信息
-        token.value = data.token;
-        user.value = {
-          name: data.user.name || data.user,
-          email: data.email,
-          picture: data.picture || null
-        };
-
-        // 保存到 localStorage (使用您定義的新 key)
-        localStorage.setItem('auth_token', data.token);
-        localStorage.setItem('user_name', user.value.name);
-        localStorage.setItem('user_email', user.value.email);
-        if (data.picture) {
-          localStorage.setItem('user_picture', data.picture);
-        }
-
-        console.log('✅ 登入成功:', user.value.name);
+        console.log('✅ 登入成功！');
         
-        // 重新整理頁面以載入數據
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
+        // 保存 token 和用戶資訊
+        token.value = data.token;
+        user.value = { name: data.user, email: data.email };
+        
+        // 保存到 localStorage
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('name', data.user);
+        localStorage.setItem('email', data.email);
+        
+        console.log('📦 用戶資訊已保存到 localStorage');
+        
+        // 拉取投資組合數據
+        await portfolioStore.fetchAll();
+        
+        console.log('📊 投資組合數據已載入');
       } else {
-        throw new Error(data.error || '登入失敗');
+        console.error('❌ 登入失敗:', data.error);
+        throw new Error(`登入失敗: ${data.error || '未知錯誤'}`);
       }
     } catch (error) {
-      console.error('❌ 登入錯誤:', error);
-      alert('登入失敗，請檢查網路或後端狀態');
+      console.error('❌ 登入過程出錯:', error);
       throw error;
     }
   };
 
   // 登出
   const logout = () => {
-    token.value = null;
-    user.value = {
-      name: null,
-      email: null,
-      picture: null
-    };
+    token.value = '';
+    user.value = {};
     localStorage.clear();
     console.log('✅ 已登出');
-    window.location.reload();
+    location.reload();
   };
 
   return {
