@@ -5,7 +5,9 @@ import os
 # ==========================================
 
 # Worker API URL
-WORKER_BASE_URL = 'https://journal-backend.chired.workers.dev'
+# [修正]: 改為從環境變數讀取 WORKER_URL，這樣 GitHub Actions 才能注入您的網址
+WORKER_BASE_URL = os.environ.get('WORKER_URL', 'https://journal-backend.chired.workers.dev')
+
 WORKER_API_URL_RECORDS = f'{WORKER_BASE_URL}/api/records'
 WORKER_API_URL_PORTFOLIO = f'{WORKER_BASE_URL}/api/portfolio'
 
