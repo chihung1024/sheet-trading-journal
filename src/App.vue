@@ -15,6 +15,18 @@
             <div v-else class="status-indicator ready">
                 <span class="dot"></span> 連線正常
             </div>
+
+            <!-- GitHub Action 手動觸發按鈕 -->
+            <button 
+              class="action-trigger-btn" 
+              @click="triggerGitHubAction" 
+              :disabled="isActionTriggerLoading"
+              title="手動觸發投資組合數據更新"
+            >
+              <span v-if="!isActionTriggerLoading">⚙️</span>
+              <span v-else class="spinner">⟳</span>
+              {{ isActionTriggerLoading ? '更新中...' : '更新數據' }}
+            </button>
             
             <!-- 深色模式切換按鈕 -->
             <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切換為淺色模式' : '切換為深色模式'">
@@ -134,6 +146,53 @@ const handleLogout = () => {
     if (confirm("確定要登出系統嗎？")) {
         authStore.logout();
     }
+};
+
+const isActionTriggerLoading = ref(false);
+
+const triggerGitHubAction = async () => {
+  if (!authStore.token) {
+    addToast('請先登入', 'error');
+    return;
+  }
+
+  isActionTriggerLoading.value = true;
+  try {
+    const response = await fetch(
+      'https://api.github.com/repos/chihung1024/sheet-trading-journal/actions/workflows/update.yml/dispatches',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ref: 'main'
+        })
+      }
+    );
+
+    if (response.ok) {
+      addToast('✓ 已觸發數據更新，將在數秒內完成', 'success');
+      // 等待一下後重新拉取數據
+      setTimeout(async () => {
+        await portfolioStore.fetchAll();
+        addToast('✓ 數據已更新', 'success');
+      }, 3000);
+    } else if (response.status === 404) {
+      addToast('❌ 找不到 GitHub 工作流程', 'error');
+    } else if (response.status === 403) {
+      addToast('❌ 無權限觸發工作流程', 'error');
+    } else {
+      addToast('❌ 觸發失敗，請稍後再試', 'error');
+    }
+  } catch (error) {
+    console.error('觸發 GitHub Action 失敗:', error);
+    addToast('❌ 網路錯誤，請檢查連線', 'error');
+  } finally {
+    isActionTriggerLoading.value = false;
+  }
 };
 
 onMounted(async () => {
@@ -362,6 +421,45 @@ body {
     border-radius: 50%; 
     object-fit: cover; 
     border: 2px solid var(--border-color); 
+}
+
+/* GitHub Action 觸發按鈕 */
+.action-trigger-btn {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  border: none;
+  border-radius: 8px;
+  color: white;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+}
+
+.action-trigger-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+}
+
+.action-trigger-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.action-trigger-btn .spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* 主內容 Grid */
