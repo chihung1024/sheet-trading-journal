@@ -8,28 +8,15 @@
       </div>
 
       <div v-if="error" class="error-message">
-        {{ error }}
+        <strong>登入失敗</strong>
+        <p>{{ error }}</p>
       </div>
 
-      <div id="google-signin-button" class="google-btn-container"></div>
-
-      <div class="features">
-        <div class="feature-item">
-          <span class="icon">✓</span>
-          <span>即時持倉追蹤</span>
-        </div>
-        <div class="feature-item">
-          <span class="icon">✓</span>
-          <span>績效分析報表</span>
-        </div>
-        <div class="feature-item">
-          <span class="icon">✓</span>
-          <span>多設備同步</span>
-        </div>
-      </div>
+      <!-- Google 按鈕容器 -->
+      <div class="google-btn-container" ref="googleBtn"></div>
 
       <div class="footer-text">
-        使用 Google 帳號安全登入
+        <small>🔒 安全且私密的登入方式</small>
       </div>
     </div>
   </div>
@@ -38,68 +25,69 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
+import { CONFIG } from '../config';
 
 const authStore = useAuthStore();
+const googleBtn = ref(null);
 const error = ref('');
-
-const initGoogleSignIn = () => {
-  if (typeof google === 'undefined') {
-    error.value = 'Google 登入服務載入失敗';
-    console.error('Google Identity Services not loaded');
-    return;
-  }
-
-  try {
-    google.accounts.id.initialize({
-      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID',
-      callback: handleCredentialResponse,
-      auto_select: false,
-      cancel_on_tap_outside: false
-    });
-
-    google.accounts.id.renderButton(
-      document.getElementById('google-signin-button'),
-      { 
-        theme: 'outline', 
-        size: 'large',
-        width: 280,
-        text: 'signin_with',
-        shape: 'rectangular'
-      }
-    );
-  } catch (e) {
-    error.value = '初始化登入失敗';
-    console.error('Google Sign-In initialization error:', e);
-  }
-};
 
 const handleCredentialResponse = async (response) => {
   try {
     error.value = '';
-    await authStore.loginWithGoogle(response.credential);
-  } catch (e) {
-    error.value = '登入失敗，請稍後再試';
-    console.error('Login error:', e);
+    console.log('🔐 Google 登入成功，正在驗證...');
+    await authStore.login(response.credential);
+  } catch (err) {
+    error.value = err.message || '登入失敗，請稍後重試';
+    console.error('❌ 登入錯誤:', err);
   }
 };
 
 onMounted(() => {
-  // 等待 Google Identity Services 載入
+  // 檢查 Google GSI 是否已載入
   const checkGoogleLoaded = setInterval(() => {
-    if (typeof google !== 'undefined') {
+    if (typeof google !== 'undefined' && google.accounts) {
       clearInterval(checkGoogleLoaded);
       initGoogleSignIn();
     }
   }, 100);
 
-  // 超時保護
+  // 超時保護 (5秒)
   setTimeout(() => {
     clearInterval(checkGoogleLoaded);
     if (typeof google === 'undefined') {
-      error.value = 'Google 登入服務載入超時';
+      error.value = 'Google 登入服務載入失敗，請重新整理頁面';
+      console.error('❌ Google 登入服務未載入');
     }
   }, 5000);
 });
+
+const initGoogleSignIn = () => {
+  try {
+    // 初始化 Google Identity Services
+    google.accounts.id.initialize({
+      client_id: CONFIG.GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+      auto_select: false,
+      cancel_on_tap_outside: false,
+      ux_mode: 'popup'
+    });
+
+    // 渲染按鈕
+    google.accounts.id.renderButton(googleBtn.value, {
+      theme: 'outline',
+      size: 'large',
+      width: '280',
+      text: 'signin_with',
+      shape: 'rectangular',
+      logo_alignment: 'left'
+    });
+
+    console.log('✅ Google 登入按鈕已渲染');
+  } catch (err) {
+    error.value = '初始化 Google 登入失敗';
+    console.error('❌ 初始化錯誤:', err);
+  }
+};
 </script>
 
 <style scoped>
@@ -114,6 +102,8 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   z-index: 9999;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 .login-card {
@@ -122,9 +112,10 @@ onMounted(() => {
   padding: 48px 40px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   max-width: 400px;
-  width: 90%;
+  width: 100%;
   text-align: center;
   animation: slideUp 0.5s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 @keyframes slideUp {
@@ -164,50 +155,35 @@ onMounted(() => {
 .error-message {
   background: #fee2e2;
   color: #991b1b;
-  padding: 12px 16px;
-  border-radius: 8px;
+  padding: 16px;
+  border-radius: 12px;
   margin-bottom: 24px;
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.google-btn-container {
-  margin: 32px 0;
-  display: flex;
-  justify-content: center;
-}
-
-.features {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin: 32px 0;
-  padding: 24px 0;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 0.9rem;
-  color: #4b5563;
   text-align: left;
+  border: 1px solid #fecaca;
 }
 
-.feature-item .icon {
-  width: 24px;
-  height: 24px;
-  background: #dcfce7;
-  color: #166534;
-  border-radius: 50%;
+.error-message strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.error-message p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Google 按鈕容器 */
+.google-btn-container {
   display: flex;
-  align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 0.75rem;
-  flex-shrink: 0;
+  margin: 32px 0;
+  min-height: 50px;
+}
+
+/* 確保 Google 按鈕響應式 */
+:deep(.g_id_signin) {
+  width: 100% !important;
 }
 
 .footer-text {
@@ -216,7 +192,7 @@ onMounted(() => {
   margin-top: 24px;
 }
 
-/* 響應式 */
+/* 響應式設計 */
 @media (max-width: 480px) {
   .login-card {
     padding: 32px 24px;
