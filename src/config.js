@@ -7,7 +7,7 @@ export const CONFIG = {
   
   // Google OAuth Client ID
   // tag 1.10 版本的實數值
-  GOOGLE_CLIENT_ID: '951186116587-8ehcmkvlu3ivduc7kjntjpp9ga781ei1.apps.googleusercontent.com'
+  GOOGLE_CLIENT_ID: '951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com'
 };
 
 // 調試信息
