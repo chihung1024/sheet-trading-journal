@@ -100,7 +100,6 @@ import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
-import { CONFIG } from './config';
 
 import LoginOverlay from './components/LoginOverlay.vue';
 import StatsGrid from './components/StatsGrid.vue';
@@ -169,7 +168,6 @@ const triggerGitHubAction = async () => {
 
     if (response.ok) {
       addToast('✓ 已觸發數據更新，將在數秒內完成', 'success');
-      // 等待一下後重新拉取數據
       setTimeout(async () => {
         await portfolioStore.fetchAll();
         addToast('✓ 數據已更新', 'success');
@@ -190,10 +188,7 @@ const triggerGitHubAction = async () => {
 };
 
 onMounted(async () => {
-  // 先初始化認證狀態
   authStore.initAuth();
-  
-  // 等待下一個事件循環，確保 token 已經正確設置
   await nextTick();
   
   if (authStore.token) {
@@ -204,14 +199,12 @@ onMounted(async () => {
     } catch (error) {
       console.error('❌ 載入數據失敗:', error);
     } finally {
-      // 模擬最小載入時間，讓骨架屏更自然
       setTimeout(() => {
         isInitialLoading.value = false;
       }, 600);
     }
   }
   
-  // 移除載入畫面
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
     loadingEl.style.opacity = '0';
@@ -221,10 +214,8 @@ onMounted(async () => {
 </script>
 
 <style>
-/* 引入現代字體 */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-/* 全域變數定義 - Light Mode */
 :root {
   --bg-app: #f1f5f9;
   --bg-card: #ffffff;
@@ -246,7 +237,6 @@ onMounted(async () => {
   --radius-sm: 8px;
 }
 
-/* Dark Mode Variables */
 html.dark {
   --bg-app: #0f172a;
   --bg-card: #1e293b;
@@ -280,7 +270,6 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* 佈局容器 */
 .main-wrapper { 
   min-height: 100vh; 
   display: flex; 
@@ -327,7 +316,6 @@ body {
   font-size: 1.5rem; 
 }
 
-/* 用戶狀態區 */
 .nav-status { 
   display: flex; 
   align-items: center; 
@@ -339,4 +327,52 @@ body {
 .status-indicator { 
   display: flex; 
   align-items: center; 
-  gap: 8px
+  gap: 8px; 
+}
+
+.status-indicator.ready { color: var(--success); }
+.status-indicator.loading { color: var(--primary); }
+
+.dot { 
+  width: 8px; 
+  height: 8px; 
+  border-radius: 50%; 
+  background: currentColor; 
+}
+
+.loading .dot { 
+  animation: pulse 1.5s infinite; 
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.theme-toggle {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 1.2rem;
+}
+
+.theme-toggle:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.1);
+}
+
+.action-trigger-btn {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  border: none;
+  border-radius: 8px;
+  color: white;
+  padding: 8px 14px;
+  font-weight: 600;
