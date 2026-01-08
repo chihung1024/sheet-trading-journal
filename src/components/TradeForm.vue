@@ -133,8 +133,10 @@ defineExpose({ setupForm });
     box-shadow: var(--shadow-card); 
     background: var(--bg-card); 
     padding: 24px;
-    position: sticky;
-    top: 24px; 
+    
+    /* ❌ 刪除以下這兩行，避免與外層衝突 */
+    /* position: sticky; */
+    /* top: 24px; */
 }
 
 .panel-title { 
