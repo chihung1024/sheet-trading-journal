@@ -19,8 +19,8 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = { name: n, email: e };
       console.log('✅ 已從 localStorage 恢復認證狀態');
       
-      // 登入成功後自動拉取資料
-      portfolioStore.fetchAll();
+      // ⚠️ 移除自動拉取資料，改由 App.vue 統一控制
+      // portfolioStore.fetchAll();
     }
   };
 
