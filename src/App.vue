@@ -87,7 +87,13 @@
 
 <script setup>
 import { usePWA } from './composables/usePWA';
-const { isInstallable, isInstalled, isOnline, install } = usePWA();
+
+const { 
+  isInstallable, 
+  isInstalled, 
+  isOnline, 
+  install 
+} = usePWA();
 
 import { ref, onMounted, computed, nextTick } from 'vue';
 import { useAuthStore } from './stores/auth';
@@ -103,6 +109,7 @@ import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
 
+// Skeleton components
 import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
 import ChartSkeleton from './components/skeletons/ChartSkeleton.vue';
 import TableSkeleton from './components/skeletons/TableSkeleton.vue';
@@ -312,7 +319,7 @@ body {
 .nav-status { 
   display: flex; 
   align-items: center; 
-  gap: 12px; 
+  gap: 20px; 
   font-size: 0.9rem; 
   font-weight: 500; 
 }
@@ -342,6 +349,26 @@ body {
   50% { opacity: 0.5; }
 }
 
+.theme-toggle {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 1.2rem;
+}
+
+.theme-toggle:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.1);
+}
+
 .action-trigger-btn {
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   border: none;
@@ -353,7 +380,7 @@ body {
   cursor: pointer;
   display: flex;
   align-items: center;
- gap: 6px;
+  gap: 6px;
   transition: all 0.2s ease;
   box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
 }
@@ -378,26 +405,6 @@ body {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-.theme-toggle {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 1.2rem;
-}
-
-.theme-toggle:hover {
-  background: var(--primary);
-  border-color: var(--primary);
-  transform: scale(1.1);
 }
 
 .user-profile { 
@@ -639,13 +646,7 @@ tr:hover td {
     font-size: 1.3rem;
   }
   
-  .nav-status {
-    gap: 8px;
-    font-size: 0.8rem;
-  }
-  
-  .action-trigger-btn {
-    padding: 6px 10px;
+  .status-indicator {
     font-size: 0.8rem;
   }
   
@@ -666,10 +667,10 @@ tr:hover td {
 
 @media (max-width: 480px) {
   .nav-status {
-    gap: 6px;
+    gap: 12px;
   }
   
-  .status-indicator {
+  .status-indicator:not(.loading):not(.ready) {
     display: none;
   }
   
@@ -678,11 +679,5 @@ tr:hover td {
     height: 36px;
     font-size: 1rem;
   }
-  
-  .action-trigger-btn {
-    padding: 6px 8px;
-    font-size: 0.75rem;
-  }
 }
 </style>
-
