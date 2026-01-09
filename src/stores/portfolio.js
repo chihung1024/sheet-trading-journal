@@ -55,33 +55,73 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 修復：增強的 fetchAll，確保 loading 一定會重置
     const fetchAll = async () => {
+        console.log('📡 [fetchAll] 開始載入數據...');
         loading.value = true;
+        
         try {
-            await Promise.all([fetchSnapshot(), fetchRecords()]);
+            await Promise.all([
+                fetchSnapshot().catch(err => {
+                    console.error('❌ [fetchSnapshot] 錯誤:', err);
+                }),
+                fetchRecords().catch(err => {
+                    console.error('❌ [fetchRecords] 錯誤:', err);
+                })
+            ]);
+            console.log('✅ [fetchAll] 數據載入完成');
+        } catch (error) {
+            console.error('❌ [fetchAll] 發生嚴重錯誤:', error);
+            connectionStatus.value = 'error';
         } finally {
+            // ✅ 關鍵修復：確保 loading 一定會變回 false
             loading.value = false;
+            console.log('🏁 [fetchAll] loading 狀態已重置為 false');
         }
     };
 
+    // ✅ 修復：增強的 fetchSnapshot
     const fetchSnapshot = async () => {
-        const json = await fetchWithAuth('/api/portfolio');
-        if (json && json.success && json.data) {
-            stats.value = json.data.summary || {};
-            holdings.value = json.data.holdings || [];
-            history.value = json.data.history || [];
-            lastUpdate.value = json.data.updated_at;
+        console.log('📊 [fetchSnapshot] 開始請求...');
+        try {
+            const json = await fetchWithAuth('/api/portfolio');
+            console.log('📊 [fetchSnapshot] API 回應:', json);
+            
+            if (json && json.success && json.data) {
+                stats.value = json.data.summary || {};
+                holdings.value = json.data.holdings || [];
+                history.value = json.data.history || [];
+                lastUpdate.value = json.data.updated_at;
+                console.log('✅ [fetchSnapshot] 數據已更新');
+            } else {
+                console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
+            }
+        } catch (error) {
+            console.error('❌ [fetchSnapshot] 請求失敗:', error);
+            throw error; // 拋出讓 fetchAll 捕捉
         }
     };
 
+    // ✅ 修復：增強的 fetchRecords
     const fetchRecords = async () => {
-        const json = await fetchWithAuth('/api/records');
-        if (json && json.success) {
-            records.value = json.data;
+        console.log('📝 [fetchRecords] 開始請求...');
+        try {
+            const json = await fetchWithAuth('/api/records');
+            console.log('📝 [fetchRecords] API 回應:', json);
+            
+            if (json && json.success) {
+                records.value = json.data || [];
+                console.log('✅ [fetchRecords] 數據已更新，共', records.value.length, '筆');
+            } else {
+                console.warn('⚠️ [fetchRecords] 數據格式異常:', json);
+            }
+        } catch (error) {
+            console.error('❌ [fetchRecords] 請求失敗:', error);
+            throw error; // 拋出讓 fetchAll 捕捉
         }
     };
 
-    // ✅ 修復：改回 Tag 1.10 的 triggerUpdate 實現
+    // ✅ 保留：Tag 1.10 的 triggerUpdate 實現
     const triggerUpdate = async () => {
         const token = getToken();
         if (!token) {
