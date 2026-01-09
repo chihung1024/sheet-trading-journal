@@ -70,24 +70,64 @@ onMounted(async () => { await nextTick(); drawChart(); });
     padding: 16px;
     box-sizing: border-box;
 }
-.chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 
-/* 修正：統一標題大小 */
+.chart-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: 16px; /* 增加一點間距 */
+}
+
+/* 標題樣式 - 使用 CSS 變數適配深色模式 */
 .chart-title { 
     margin: 0; 
     font-size: 1.1rem; 
     font-weight: 700; 
-    color: #1f2937;
+    color: var(--text-main); /* ✅ 改用變數 */
     padding-left: 10px;
-    border-left: 4px solid #2563eb;
+    border-left: 4px solid var(--primary); /* ✅ 改用變數 */
 }
 
-.toggle-pills { display: flex; background: #f3f4f6; border-radius: 6px; padding: 2px; }
-.toggle-pills button {
-    border: none; background: transparent; padding: 4px 10px; font-size: 0.85rem; 
-    border-radius: 4px; color: #6b7280; cursor: pointer; transition: 0.2s;
+/* 切換按鈕容器 - 使用變數 */
+.toggle-pills { 
+    display: flex; 
+    background: var(--bg-secondary); /* ✅ 改用變數，深色模式會變深灰 */
+    border-radius: 6px; 
+    padding: 3px; 
+    border: 1px solid var(--border-color); /* ✅ 增加邊框 */
 }
-.toggle-pills button.active { background: white; color: #2563eb; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+/* 按鈕本體 */
+.toggle-pills button {
+    border: none; 
+    background: transparent; 
+    padding: 4px 12px; 
+    font-size: 0.85rem; 
+    border-radius: 4px; 
+    color: var(--text-sub); /* ✅ 改用變數 */
+    cursor: pointer; 
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+/* 懸停效果 */
+.toggle-pills button:hover {
+    color: var(--text-main);
+}
+
+/* 選中狀態 - 深色模式適配 */
+.toggle-pills button.active { 
+    background: var(--bg-card); /* ✅ 亮色是白，深色是深藍灰 */
+    color: var(--primary); /* ✅ 主色調 */
+    font-weight: 600; 
+    box-shadow: var(--shadow-sm); 
+}
+
+/* 針對深色模式的微調 (利用 :global(.dark) 補丁技巧，確保權重) */
+:global(.dark) .toggle-pills button.active {
+    background: #334155; /* 更明顯的深色高亮 */
+    color: #60a5fa;
+}
 
 .canvas-box {
     flex-grow: 1;
@@ -96,3 +136,4 @@ onMounted(async () => { await nextTick(); drawChart(); });
     min-height: 0;
 }
 </style>
+
