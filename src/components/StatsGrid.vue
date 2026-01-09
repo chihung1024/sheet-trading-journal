@@ -127,22 +127,22 @@ const pnlLabel = computed(() => {
 // 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
-    return '今日台股 + 即時美股 + 匙率';
+    return '今日台股 + 即時美股 + 匯率';
   } else {
-    return '昨晚美股 + 今日台股 + 匙率';
+    return '昨晚美股 + 今日台股 + 匯率';
   }
 });
 
 // Tooltip 完整說明
 const pnlTooltip = computed(() => {
   if (isUSMarketOpen.value) {
-    return '今日台股收盤 + 美股盤中變化 + 匙率波動';
+    return '今日台股收盤 + 美股盤中變化 + 匯率波動';
   } else {
-    return '昨晚美股收盤 + 今日台股變化 + 匙率波動';
+    return '昨晚美股收盤 + 今日台股變化 + 匯率波動';
   }
 });
 
-// ✅ 核心計算：精確分離股價因素和匙率因素
+// ✅ 核心計算：精確分離股價因素和匯率因素
 const dailyPnL = computed(() => {
   const currentFxRate = stats.value.exchange_rate || 32.5;
   
@@ -153,22 +153,22 @@ const dailyPnL = computed(() => {
   const latest = history.value[history.value.length - 1];
   const previous = history.value[history.value.length - 2];
   
-  // 獲取歷史匙率數據
-  const todayFx = latest.fx_rate || currentFxRate;  // 今日匙率
-  const yesterdayFx = previous.fx_rate || currentFxRate;  // 昨日匙率
+  // 獲取歷史匯率數據
+  const todayFx = latest.fx_rate || currentFxRate;  // 今日匯率
+  const yesterdayFx = previous.fx_rate || currentFxRate;  // 昨日匯率
   
-  // ✅ 美股開盤前：昨日股價變化@昨日匙率 + 今日匙率影響@昨日股價
+  // ✅ 美股開盤前：昨日股價變化@昨日匯率 + 今日匯率影響@昨日股價
   if (!isUSMarketOpen.value) {
     if (holdings.value[0].daily_change_usd !== undefined && holdings.value[0].prev_close_price !== undefined) {
-      let stockPnL = 0;  // 昨日股價變化（用昨日匙率）
-      let fxImpact = 0;  // 今日匙率影響（用昨日股價）
+      let stockPnL = 0;  // 昨日股價變化（用昨日匯率）
+      let fxImpact = 0;  // 今日匯率影響（用昨日股價）
       
       holdings.value.forEach(holding => {
-        // 1. 昨日股價變化（USD）× 昨日匙率
+        // 1. 昨日股價變化（USD）× 昨日匯率
         const yesterdayStockChange = holding.daily_change_usd * holding.qty * yesterdayFx;
         stockPnL += yesterdayStockChange;
         
-        // 2. 今日匙率影響 = 昨日收盤市值（USD）× 匙率變化
+        // 2. 今日匯率影響 = 昨日收盤市值（USD）× 匯率變化
         const yesterdayMarketValueUSD = holding.prev_close_price * holding.qty;
         const fxChange = todayFx - yesterdayFx;
         const todayFxImpact = yesterdayMarketValueUSD * fxChange;
@@ -182,7 +182,7 @@ const dailyPnL = computed(() => {
     return (latest.net_profit - previous.net_profit);
   }
   
-  // ✅ 美股盤中：當日股價變化（用今日匙率）
+  // ✅ 美股盤中：當日股價變化（用今日匯率）
   // 簡化：當前市值 - 開盤前市值
   const marketOpenValue = latest.total_value;
   const currentValue = stats.value.total_value;
