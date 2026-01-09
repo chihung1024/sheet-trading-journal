@@ -9,9 +9,17 @@
           <h1>Trading Journal <span class="badge">PRO</span></h1>
         </div>
         <div class="nav-status">
+          <!-- 狀態 1: 正在載入資料 -->
           <div v-if="portfolioStore.loading" class="status-indicator loading">
             <span class="dot"></span> 更新中...
           </div>
+          
+          <!-- ✅ 新增狀態 2: 正在輪詢監控 (橘燈閃爍) -->
+          <div v-else-if="portfolioStore.isPolling" class="status-indicator polling">
+            <span class="dot pulse-orange"></span> 計算中...
+          </div>
+          
+          <!-- 狀態 3: 正常連線 -->
           <div v-else class="status-indicator ready">
             <span class="dot"></span> 連線正常
           </div>
@@ -20,7 +28,8 @@
           <button 
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
-            title="手動觸發投資組合數據更新"
+            :disabled="portfolioStore.isPolling"
+            :title="portfolioStore.isPolling ? '系統正在背景計算中...' : '手動觸發投資組合數據更新'"
           >
             <span>⚙️</span>
             更新數據
@@ -42,7 +51,7 @@
       <div class="content-container">
         <main class="main-column">
           <section class="section-stats">
-            <!-- ✅ 使用 portfolioStore.loading 控制骨架屏 -->
+            <!-- 使用 portfolioStore.loading 控制骨架屏 -->
             <StatsGrid v-if="!portfolioStore.loading" />
             <StatsGridSkeleton v-else />
           </section>
@@ -114,32 +123,36 @@ import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
 import ChartSkeleton from './components/skeletons/ChartSkeleton.vue';
 import TableSkeleton from './components/skeletons/TableSkeleton.vue';
 
-// ✅ 新增這個處理函式
-const handleTriggerUpdate = async () => {
-  if (!confirm("確定要觸發後端計算嗎？")) return;
-  
-  try {
-    // 顯示「處理中」的提示
-    addToast("正在觸發更新...", "info");
-    
-    await portfolioStore.triggerUpdate();
-    
-    // 成功提示
-    addToast("✅ 已觸發更新！系統正在背景計算，數據稍後自動更新。", "success");
-  } catch (error) {
-    // 錯誤提示
-    addToast(`❌ 觸發失敗: ${error.message}`, "error");
-  }
-};
-
 const authStore = useAuthStore();
 const portfolioStore = usePortfolioStore();
 const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 
-// ✅ 移除 isInitialLoading，直接使用 portfolioStore.loading
-// const isInitialLoading = ref(true);
+// ✅ 更新後的處理函式：配合輪詢機制
+const handleTriggerUpdate = async () => {
+  // 1. 如果正在輪詢，提示使用者並阻擋重複觸發
+  if (portfolioStore.isPolling) {
+    addToast("⏳ 系統已在背景監控更新中，請稍候...", "info");
+    return;
+  }
+
+  // 2. 確認是否觸發
+  if (!confirm("確定要觸發後端計算嗎？")) return;
+  
+  try {
+    addToast("🚀 正在請求 GitHub Actions...", "info");
+    
+    // 3. 呼叫 Store 的 triggerUpdate (現在會自動啟動輪詢)
+    await portfolioStore.triggerUpdate();
+    
+    // 4. 成功提示
+    addToast("✅ 已觸發！系統將在背景監控，更新完成後自動刷新。", "success");
+    
+  } catch (error) {
+    addToast(`❌ 觸發失敗: ${error.message}`, "error");
+  }
+};
 
 const handleEditRecord = (record) => {
   if (tradeFormRef.value) {
@@ -169,7 +182,6 @@ onMounted(async () => {
   // 2. 如果已登入，手動觸發資料載入
   if (isLoggedIn) {
     console.log('🔐 已登入，開始載入投資組合數據...');
-    // 這裡加上 await 確保載入順序，雖然 fetchAll 內部是非同步的
     await portfolioStore.fetchAll();
   }
   
@@ -186,7 +198,6 @@ onMounted(async () => {
   
   console.log('✅ App 初始化完成');
 });
-  
 </script>
 
 <style>
@@ -310,6 +321,8 @@ body {
 
 .status-indicator.ready { color: var(--success); }
 .status-indicator.loading { color: var(--primary); }
+/* ✅ 新增 polling 狀態顏色 */
+.status-indicator.polling { color: var(--warning); }
 
 .dot { 
   width: 8px; 
@@ -322,9 +335,20 @@ body {
   animation: pulse 1.5s infinite; 
 }
 
+/* ✅ 新增橘色脈衝動畫 */
+.pulse-orange {
+  animation: pulse-orange 1.5s infinite;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+@keyframes pulse-orange {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .theme-toggle {
@@ -373,6 +397,8 @@ body {
   opacity: 0.7;
   cursor: not-allowed;
   transform: none;
+  /* 禁用時的灰階濾鏡 */
+  filter: grayscale(0.5);
 }
 
 .user-profile { 
@@ -653,5 +679,4 @@ tr:hover td {
     font-size: 1rem;
   }
 }
-
 </style>
