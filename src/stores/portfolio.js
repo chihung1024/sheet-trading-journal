@@ -55,8 +55,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 修復：增強的 fetchAll，確保 loading 一定會重置
+    // ✅ 修改：加入請求去重邏輯
     const fetchAll = async () => {
+        // 如果正在載入中，直接忽略這次請求，防止重複觸發
+        if (loading.value) {
+            console.warn('⚠️ [fetchAll] 請求已在進行中，忽略此次調用');
+            return;
+        }
+
         console.log('📡 [fetchAll] 開始載入數據...');
         loading.value = true;
         
@@ -74,11 +80,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             console.error('❌ [fetchAll] 發生嚴重錯誤:', error);
             connectionStatus.value = 'error';
         } finally {
-            // ✅ 關鍵修復：確保 loading 一定會變回 false
             loading.value = false;
             console.log('🏁 [fetchAll] loading 狀態已重置為 false');
         }
     };
+
 
     // ✅ 修復：增強的 fetchSnapshot
     const fetchSnapshot = async () => {
@@ -121,15 +127,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 保留：Tag 1.10 的 triggerUpdate 實現
+    // ✅ 修改：移除 alert，改為回傳結果讓 UI 層處理
     const triggerUpdate = async () => {
         const token = getToken();
-        if (!token) {
-            alert("請先登入");
-            return;
-        }
+        if (!token) throw new Error("請先登入"); // 拋出錯誤
         
-        if(!confirm("確定要觸發後端計算嗎？")) return;
+        // 這裡不再使用 confirm，改由 UI 層決定是否確認
         
         try {
             const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
@@ -141,21 +144,23 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             });
             
             if (response.ok || response.status === 204) {
-                alert("✅ 已觸發更新！\n\n系統正在背景計算，請稍待 30-60 秒後重新整理頁面。");
+                // 成功：回傳 true
                 // 延遲後自動重整數據
                 setTimeout(() => {
                     fetchAll();
                 }, 5000);
+                return true; 
             } else {
                 const errorData = await response.json().catch(() => ({}));
-                alert(`❌ 觸發失敗\n\n錯誤: ${errorData.error || '後端無回應'}`);
                 console.error('Trigger Error:', errorData);
+                throw new Error(errorData.error || '後端無回應');
             }
         } catch (e) { 
-            alert(`❌ 觸發失敗\n\n網路錯誤: ${e.message}`);
             console.error('Trigger failed:', e);
+            throw e; // 拋出錯誤讓 UI 處理
         }
     };
+
 
     // Getters
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
