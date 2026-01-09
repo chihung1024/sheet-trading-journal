@@ -20,7 +20,7 @@ class PortfolioCalculator:
         # 當前持倉狀態
         self.holdings = {}  # {symbol: {qty, cost_basis_usd, cost_basis_twd, tag}}
         
-        # FIFO 隊列（用於計算賣出時的成本基礎）
+        # FIFO 佇列（用於計算賣出時的成本基礎）
         self.fifo_queues = {}  # {symbol: deque([{qty, price, cost_total_usd, cost_total_twd, date}])}
         
         # 投資統計
@@ -63,21 +63,10 @@ class PortfolioCalculator:
         # ==================== 步驟 2: 建立日期範圍 ====================
         start_date = self.df['Date'].min()
         
-        # ✅ 修正：只計算到有完整市場數據的最後一天
-        # 找出所有股票數據的最晚日期
-        if self.market.market_data:
-            latest_market_dates = [
-                df.index.max() 
-                for df in self.market.market_data.values() 
-                if not df.empty
-            ]
-            if latest_market_dates:
-                end_date = min(latest_market_dates)  # 使用最保守的日期
-                print(f"[History 計算範圍] {start_date.date()} 至 {end_date.date()} (完整數據)")
-            else:
-                end_date = datetime.now()
-        else:
-            end_date = datetime.now()
+        # ✅ 修正：一律計算到今天，即使美股數據還沒更新也要用最新匯率生成今日數據點
+        # 這樣白天時可以看到匯率變化的影響
+        end_date = datetime.now()
+        print(f"[History 計算範圍] {start_date.date()} 至 {end_date.date()}")
         
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
@@ -105,8 +94,6 @@ class PortfolioCalculator:
             self._daily_valuation(d, fx)
         
         # ==================== 步驟 4: 產生最終報表 ====================
-        # ✅ 注意：_generate_final_output 使用的是「最新兩個收盤價」
-        # 這可能比 History 的最後一天還要新（例如美股盤中）
         return self._generate_final_output(fx)
 
 
