@@ -55,18 +55,33 @@
       </div>
     </div>
     
-    <!-- 4. 總報酬率 -->
+    <!-- 4. 總報酬率 (TWR) -->
     <div class="stat-block">
       <div class="stat-top">
-        <span class="stat-label">總報酬率 (TWR)</span>
+        <span class="stat-label">時間加權報酬</span>
         <span class="icon-box">🎯</span>
       </div>
       <div class="stat-main">
         <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub">SPY: </span>
-         <strong>{{ stats.benchmark_twr || '-' }}%</strong>
+         <span class="text-sub">TWR (策略表現)</span>
+      </div>
+    </div>
+    
+    <!-- 5. ✅ 新增：XIRR (個人年化報酬) -->
+    <div class="stat-block highlight">
+      <div class="stat-top">
+        <span class="stat-label">個人年化報酬</span>
+        <span class="icon-box">🚀</span>
+      </div>
+      <div class="stat-main">
+        <div class="stat-value" :class="(stats.xirr || 0) >= 0 ? 'text-green' : 'text-red'">
+          {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
+        </div>
+      </div>
+      <div class="stat-footer">
+         <span class="text-sub">XIRR (資金加權)</span>
       </div>
     </div>
   </div>
@@ -112,22 +127,22 @@ const pnlLabel = computed(() => {
 // 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
-    return '今日台股 + 即時美股 + 匯率';
+    return '今日台股 + 即時美股 + 匙率';
   } else {
-    return '昨晚美股 + 今日台股 + 匯率';
+    return '昨晚美股 + 今日台股 + 匙率';
   }
 });
 
 // Tooltip 完整說明
 const pnlTooltip = computed(() => {
   if (isUSMarketOpen.value) {
-    return '今日台股收盤 + 美股盤中變化 + 匯率波動';
+    return '今日台股收盤 + 美股盤中變化 + 匙率波動';
   } else {
-    return '昨晚美股收盤 + 今日台股變化 + 匯率波動';
+    return '昨晚美股收盤 + 今日台股變化 + 匙率波動';
   }
 });
 
-// ✅ 核心計算：精確分離股價因素和匯率因素
+// ✅ 核心計算：精確分離股價因素和匙率因素
 const dailyPnL = computed(() => {
   const currentFxRate = stats.value.exchange_rate || 32.5;
   
@@ -138,22 +153,22 @@ const dailyPnL = computed(() => {
   const latest = history.value[history.value.length - 1];
   const previous = history.value[history.value.length - 2];
   
-  // 獲取歷史匯率數據
-  const todayFx = latest.fx_rate || currentFxRate;  // 今日匯率
-  const yesterdayFx = previous.fx_rate || currentFxRate;  // 昨日匯率
+  // 獲取歷史匙率數據
+  const todayFx = latest.fx_rate || currentFxRate;  // 今日匙率
+  const yesterdayFx = previous.fx_rate || currentFxRate;  // 昨日匙率
   
-  // ✅ 美股開盤前：昨日股價變化@昨日匯率 + 今日匯率影響@昨日股價
+  // ✅ 美股開盤前：昨日股價變化@昨日匙率 + 今日匙率影響@昨日股價
   if (!isUSMarketOpen.value) {
     if (holdings.value[0].daily_change_usd !== undefined && holdings.value[0].prev_close_price !== undefined) {
-      let stockPnL = 0;  // 昨日股價變化（用昨日匯率）
-      let fxImpact = 0;  // 今日匯率影響（用昨日股價）
+      let stockPnL = 0;  // 昨日股價變化（用昨日匙率）
+      let fxImpact = 0;  // 今日匙率影響（用昨日股價）
       
       holdings.value.forEach(holding => {
-        // 1. 昨日股價變化（USD）× 昨日匯率
+        // 1. 昨日股價變化（USD）× 昨日匙率
         const yesterdayStockChange = holding.daily_change_usd * holding.qty * yesterdayFx;
         stockPnL += yesterdayStockChange;
         
-        // 2. 今日匯率影響 = 昨日收盤市值（USD）× 匯率變化
+        // 2. 今日匙率影響 = 昨日收盤市值（USD）× 匙率變化
         const yesterdayMarketValueUSD = holding.prev_close_price * holding.qty;
         const fxChange = todayFx - yesterdayFx;
         const todayFxImpact = yesterdayMarketValueUSD * fxChange;
@@ -167,7 +182,7 @@ const dailyPnL = computed(() => {
     return (latest.net_profit - previous.net_profit);
   }
   
-  // ✅ 美股盤中：當日股價變化（用今日匯率）
+  // ✅ 美股盤中：當日股價變化（用今日匙率）
   // 簡化：當前市值 - 開盤前市值
   const marketOpenValue = latest.total_value;
   const currentValue = stats.value.total_value;
@@ -205,7 +220,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 <style scoped>
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr); 
+    grid-template-columns: repeat(5, 1fr);  /* ✅ 改為 5 欄 */
     gap: 24px;
 }
 
@@ -237,6 +252,27 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 
 html.dark .stat-block.primary {
     background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
+}
+
+/* ✅ 新增：XIRR 卡片特殊樣式 */
+.stat-block.highlight {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    border: none;
+}
+
+html.dark .stat-block.highlight {
+    background: linear-gradient(135deg, #881337 0%, #be123c 100%);
+}
+
+.stat-block.highlight .stat-label { color: rgba(255,255,255,0.9); }
+.stat-block.highlight .stat-value { color: #fff; }
+.stat-block.highlight .stat-footer { 
+    border-top-color: rgba(255,255,255,0.2); 
+    color: rgba(255,255,255,0.9); 
+}
+.stat-block.highlight .icon-box { 
+    background: rgba(255,255,255,0.2); 
 }
 
 .stat-block.primary .stat-label { color: rgba(255,255,255,0.9); }
@@ -325,6 +361,11 @@ html.dark .stat-block.primary {
     color: rgba(255,255,255,0.8); 
 }
 
+.stat-block.highlight .unit-text,
+.stat-block.highlight .percent { 
+    color: rgba(255,255,255,0.8); 
+}
+
 .stat-footer {
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
@@ -360,6 +401,10 @@ html.dark .stat-block.primary {
 .text-sub { color: var(--text-sub); }
 .text-xs { font-size: 0.75rem; }
 
+/* ✅ XIRR 卡片的文字顏色 */
+.stat-block.highlight .text-green { color: #d4f8d4; }
+.stat-block.highlight .text-red { color: #ffd4d4; }
+
 .badge { 
     padding: 4px 12px; 
     border-radius: 20px; 
@@ -381,9 +426,15 @@ html.dark .stat-block.primary {
     border: 1px solid var(--danger);
 }
 
-@media (max-width: 1400px) { 
+@media (max-width: 1600px) { 
     .stats-grid { 
-        grid-template-columns: repeat(2, 1fr); 
+        grid-template-columns: repeat(3, 1fr);  /* ✅ 中型螢幕 3 欄 */
+    } 
+}
+
+@media (max-width: 1200px) { 
+    .stats-grid { 
+        grid-template-columns: repeat(2, 1fr);  /* ✅ 小型螢幕 2 欄 */
     } 
 }
 
