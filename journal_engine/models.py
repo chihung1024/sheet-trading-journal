@@ -28,6 +28,7 @@ class PortfolioSummary(BaseModel):
     invested_capital: float
     total_pnl: float
     twr: float
+    xirr: float = 0.0  # ✅ 新增：XIRR (擴展內部報酬率)
     realized_pnl: float
     benchmark_twr: float
 
