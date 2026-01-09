@@ -25,10 +25,12 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { useAuthStore } from '../stores/auth';
+import { usePortfolioStore } from '../stores/portfolio'; // ✅ 1. 新增引入
 import { CONFIG } from '../config';
 
 const googleBtn = ref(null);
 const authStore = useAuthStore();
+const portfolioStore = usePortfolioStore(); // ✅ 2. 宣告 store 實例
 const error = ref('');
 
 onMounted(() => {
@@ -36,16 +38,12 @@ onMounted(() => {
   window.handleCredentialResponse = async (response) => {
     console.log('🔐 收到 Google 憑證');
     try {
-      // 1. 先執行登入 (這只會存 Token，不會抓資料)
+      // 執行登入 (這一步只會更新 Token 與 User 狀態，已不含抓資料邏輯)
       await authStore.login(response.credential); 
       
-      // 2. ✅ 新增：登入成功後，立刻手動觸發資料載入
-      // 由於 LoginOverlay 沒有引入 portfolioStore，我們需要先引入它
-      // 但為了避免在這裡又引入 store 造成混亂，我們可以簡單地 reload 頁面
-      // 或者更優雅地，使用 emit 通知 App.vue
-      
-      // 簡單且穩定的解法：直接重新整理頁面，讓 App.vue 的 onMounted 接手
-      location.reload(); 
+      // ✅ 3. 關鍵修正：登入成功後，主動載入投資組合數據
+      console.log('🎉 登入成功，開始載入數據...');
+      await portfolioStore.fetchAll();
 
     } catch (err) {
       console.error('登入流程發生錯誤:', err);
@@ -53,7 +51,7 @@ onMounted(() => {
     }
   };  
 
-  // ✅ 修復：簡化為直接初始化（移除複雜的輪詢邏輯）
+  // 初始化 Google 登入按鈕
   if (window.google) {
     initGoogleSignIn();
   } else {
@@ -100,6 +98,7 @@ const initGoogleSignIn = () => {
   }
 };
 </script>
+
 
 <style scoped>
 .login-overlay {
