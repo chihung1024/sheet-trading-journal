@@ -628,4 +628,31 @@ tr:hover td {
     font-size: 1rem;
   }
 }
+
+/* =============================================
+   🩹 樣式補丁：強制修復交易卡片在重新整理後的顏色問題
+   說明：這段代碼放在 App.vue 全域樣式中，權重最高，
+   可以確保深色模式下的顏色正確應用。
+   ============================================= */
+html.dark .trade-panel {
+  background-color: #1e293b !important; /* 強制深色背景 */
+  border-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+html.dark .trade-panel input {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+html.dark .trade-panel .trade-type-switch,
+html.dark .trade-panel .summary-box {
+  background-color: #334155 !important;
+}
+
+html.dark .trade-panel .switch-btn.active {
+  background-color: #1e293b !important;
+  color: white !important;
+}
 </style>
