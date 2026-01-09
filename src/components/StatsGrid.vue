@@ -1,5 +1,6 @@
 <template>
   <div class="stats-grid">
+    <!-- 1. 總資產 -->
     <div class="stat-block primary">
       <div class="stat-top">
         <span class="stat-label">總資產淨值</span>
@@ -17,6 +18,7 @@
       </div>
     </div>
     
+    <!-- 2. 未實現損益 -->
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">未實現損益</span>
@@ -34,21 +36,26 @@
       </div>
     </div>
     
-    <div class="stat-block">
+    <!-- 3. 今日損益 (智慧計算版) -->
+    <div class="stat-block" :title="pnlTooltip">
       <div class="stat-top">
-        <span class="stat-label">今日損益 (Est.)</span>
+        <span class="stat-label">{{ pnlLabel }}</span>
         <span class="icon-box">⚡</span>
       </div>
-      <div class="stat-main">
+      <div class="stat-main column-layout">
         <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
           {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
         </div>
+        <div class="stat-sub-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
+          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
+        </div>
       </div>
       <div class="stat-footer">
-        <span class="text-sub">Vs. 昨日收盤</span>
+        <span class="text-sub text-xs">{{ pnlDescription }}</span>
       </div>
     </div>
     
+    <!-- 4. 總報酬率 -->
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">總報酬率 (TWR)</span>
@@ -72,20 +79,97 @@ import { usePortfolioStore } from '../stores/portfolio';
 const store = usePortfolioStore();
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
+const holdings = computed(() => store.holdings || []);
 
+// 計算未實現損益
 const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+
+// 計算 ROI
 const roi = computed(() => {
   if (!stats.value.invested_capital) return '0.00';
   return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
 });
 
+// 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
+const isUSMarketOpen = computed(() => {
+  const now = new Date();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  
+  // 簡單判斷：晚上 9:30 後 或 凌晨 5:00 前
+  if (hour >= 21 || hour < 5) {
+    if (hour === 21 && minute < 30) return false;
+    return true;
+  }
+  return false;
+});
+
+// 動態標題
+const pnlLabel = computed(() => {
+  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益 (Est.)';
+});
+
+// 動態說明
+const pnlDescription = computed(() => {
+  if (isUSMarketOpen.value) {
+    return '即時美股 + 台股收盤 + 匯率';
+  } else {
+    return '昨晚美股 + 今日台股 + 匯率';
+  }
+});
+
+// Tooltip 完整說明
+const pnlTooltip = computed(() => {
+  if (isUSMarketOpen.value) {
+    return '顯示今日開盤後的即時損益變化';
+  } else {
+    return '顯示昨日收盤至今的資產變化';
+  }
+});
+
+// ✅ 核心改動：使用後端提供的 daily_change 欄位精確計算
 const dailyPnL = computed(() => {
+  // 方法 1: 如果後端已提供每檔股票的日變化，使用精確計算
+  if (holdings.value.length > 0 && holdings.value[0].daily_change_usd !== undefined) {
+    // 取得當前匯率（從最新的 stats 或 history）
+    const currentFxRate = stats.value.exchange_rate || 32.5;
+    
+    // 精確計算：每檔股票的 (日變化 USD × 持股數量 × 匯率)
+    const stockPnL = holdings.value.reduce((sum, h) => {
+      return sum + (h.daily_change_usd * h.qty * currentFxRate);
+    }, 0);
+    
+    return stockPnL;
+  }
+  
+  // 方法 2 (Fallback): 如果後端未提供，使用歷史快照估算
   if (history.value.length < 2) return 0;
   const last = history.value[history.value.length - 1];
   const prev = history.value[history.value.length - 2];
+  
+  // 檢查是否有資金流動（買賣交易）
+  const capitalChange = Math.abs(last.invested - prev.invested);
+  if (capitalChange > 100) {
+    // 有交易發生，快照法不準確，回傳 0 並顯示提示
+    console.warn('[StatsGrid] 今日有交易，快照法不適用');
+    return 0;
+  }
+  
+  // 總資產變化（包含股價 + 匯率）
   return (last.total_value - last.invested) - (prev.total_value - prev.invested);
 });
 
+// 計算今日損益百分比
+const dailyRoi = computed(() => {
+  if (history.value.length < 2) return '0.00';
+  const prev = history.value[history.value.length - 2];
+  
+  // 分母使用昨日總資產
+  if (!prev.total_value || prev.total_value === 0) return '0.00';
+  return ((dailyPnL.value / prev.total_value) * 100).toFixed(2);
+});
+
+// 數字動畫
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -129,7 +213,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     box-shadow: var(--shadow-lg); 
 }
 
-/* 首個區塊特別樣式 - 使用漸層 */
+/* 首個區塊特別樣式 */
 .stat-block.primary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -189,6 +273,13 @@ html.dark .stat-block.primary {
     flex-grow: 1;
 }
 
+/* 垂直排列模式 */
+.stat-main.column-layout {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
 .stat-value {
     font-family: 'JetBrains Mono', monospace;
     font-size: 1.75rem;
@@ -200,6 +291,15 @@ html.dark .stat-block.primary {
 
 .stat-value.big {
     font-size: 2rem;
+}
+
+/* 副標題樣式 */
+.stat-sub-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1rem;
+    font-weight: 600;
+    opacity: 0.9;
+    margin-top: 4px;
 }
 
 .unit-text, .percent { 
@@ -245,6 +345,7 @@ html.dark .stat-block.primary {
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
 .text-sub { color: var(--text-sub); }
+.text-xs { font-size: 0.75rem; }
 
 .badge { 
     padding: 4px 12px; 
