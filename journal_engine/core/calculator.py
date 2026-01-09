@@ -328,47 +328,52 @@ class PortfolioCalculator:
         產生最終報表輸出
         
         ✅ 新增功能：計算每檔持股的前一交易日收盤價與今日變化
+        ✅ 邏輯：取數據中最新的兩個收盤價（自動適應週末/假日）
         """
-        from datetime import timedelta
         import pandas as pd
         
         print("整理最終報表...")
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
-        # ✅ 使用 pandas Timestamp 並 normalize（與 market_data 格式一致）
-        today = pd.Timestamp.now().normalize()
-        
-        # 往前推 1 天，如果是週末就繼續往前推
-        prev_date = today - pd.Timedelta(days=1)
-        while prev_date.weekday() >= 5:  # 5=週六, 6=週日
-            prev_date -= pd.Timedelta(days=1)
-        
-        print(f"[今日損益計算] 當前日期: {today.date()}, 前一交易日: {prev_date.date()}")
+        print(f"[今日損益計算] 使用最新兩個收盤價進行計算")
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
-                # 取得當前價格
-                curr_p = self.market.get_price(sym, today)
+                # ✅ 取得該股票的完整歷史數據
+                if sym not in self.market.market_data or self.market.market_data[sym].empty:
+                    print(f"[警告] {sym} 無市場數據")
+                    continue
                 
-                # ✅ 取得前一交易日的收盤價
-                prev_p = self.market.get_price(sym, prev_date)
+                stock_data = self.market.market_data[sym]
                 
-                # ✅ Debug: 打印價格資訊
-                if prev_p == 0 or prev_p == curr_p:
-                    print(f"[DEBUG] {sym}: curr={curr_p:.2f}, prev={prev_p:.2f}")
+                # ✅ 取最新兩個收盤價
+                if len(stock_data) >= 2:
+                    # 最新價格（可能是今日盤中或昨日收盤）
+                    curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+                    # 前一交易日收盤價
+                    prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
+                    
+                    latest_date = stock_data.index[-1].date()
+                    prev_date = stock_data.index[-2].date()
+                    
+                    print(f"[{sym}] 最新價: {curr_p:.2f} ({latest_date}) | 前價: {prev_p:.2f} ({prev_date})")
+                elif len(stock_data) == 1:
+                    # 只有一筆數據（新買入的股票）
+                    curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+                    prev_p = curr_p
+                    print(f"[{sym}] 僅有一筆數據，無法計算日變化")
+                else:
+                    print(f"[警告] {sym} 數據不足")
+                    continue
                 
                 # ✅ 計算今日變化
-                if prev_p > 0 and abs(curr_p - prev_p) > 0.01:  # 價格變化超過 $0.01
+                if prev_p > 0 and abs(curr_p - prev_p) > 0.01:
                     daily_change_usd = curr_p - prev_p
                     daily_change_percent = (daily_change_usd / prev_p) * 100
                 else:
-                    # 無法取得前日價格 或 價格幾乎相同
-                    if prev_p == 0:
-                        print(f"[警告] {sym} 無法取得前一交易日價格")
                     daily_change_usd = 0.0
                     daily_change_percent = 0.0
-                    prev_p = curr_p if prev_p == 0 else prev_p
                 
                 # 計算市值與損益
                 mkt_val = h['qty'] * curr_p * current_fx
