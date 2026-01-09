@@ -127,14 +127,25 @@ const pnlTooltip = computed(() => {
   }
 });
 
-// ✅ 核心計算：基於持倉的精確損益（Position-level P&L）
+// ✅ 核心計算：基於時間段的損益計算
 const dailyPnL = computed(() => {
-  // 取得當前匯率
   const currentFxRate = stats.value.exchange_rate || 32.5;
   
-  // 方法 1: 使用後端提供的逐檔變化（精確計算）
+  // ✅ 修正：白天時使用 History 快照計算（包含台股+匯率變化）
+  // 這樣能與曲線圖保持一致
+  if (!isUSMarketOpen.value) {
+    if (history.value.length < 2) return 0;
+    
+    const latest = history.value[history.value.length - 1];
+    const previous = history.value[history.value.length - 2];
+    
+    // 計算淨損益的變化（完整反映股價+匯率）
+    return (latest.net_profit - previous.net_profit);
+  }
+  
+  // ✅ 美股盤中時：使用持倉級別的精確計算
+  // 計算每檔股票的日內變化 (僅股價變動，匯率使用當下最新)
   if (holdings.value.length > 0 && holdings.value[0].daily_change_usd !== undefined) {
-    // 累加每檔股票的損益：(日漲跌 USD × 持股數量 × 匯率)
     const totalDailyPnL = holdings.value.reduce((sum, holding) => {
       const stockDailyPnL = holding.daily_change_usd * holding.qty * currentFxRate;
       return sum + stockDailyPnL;
@@ -143,17 +154,8 @@ const dailyPnL = computed(() => {
     return totalDailyPnL;
   }
   
-  // 方法 2 (Fallback): 使用 History 快照估算
-  if (history.value.length < 2) return 0;
-  
-  const latest = history.value[history.value.length - 1];
-  const previous = history.value[history.value.length - 2];
-  
-  // 計算損益變化
-  const latestPnL = latest.total_value - latest.invested;
-  const previousPnL = previous.total_value - previous.invested;
-  
-  return latestPnL - previousPnL;
+  // Fallback: 無數據時返回 0
+  return 0;
 });
 
 // 計算今日損益百分比
