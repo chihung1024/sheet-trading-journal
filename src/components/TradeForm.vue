@@ -131,12 +131,9 @@ defineExpose({ setupForm });
 .trade-panel { 
     border: 1px solid var(--border-color); 
     box-shadow: var(--shadow-card); 
-    background: var(--bg-card); 
+    background-color: var(--bg-card); /* 使用 background-color 避免簡寫覆蓋 */
     padding: 24px;
-    
-    /* ❌ 刪除以下這兩行，避免與外層衝突 */
-    /* position: sticky; */
-    /* top: 24px; */
+    border-radius: 16px;
 }
 
 .panel-title { 
@@ -221,7 +218,7 @@ input {
     font-family: 'JetBrains Mono', monospace; 
     transition: all 0.2s; 
     color: var(--text-main);
-    background: var(--bg-card);
+    background-color: var(--bg-card);
 }
 
 input::placeholder {
@@ -353,5 +350,36 @@ input:disabled {
     .panel-title {
         font-size: 1.1rem;
     }
+}
+
+/* =================================================================
+   🔥 強制深色模式修正
+   使用 :global(.dark) 選擇器穿透 Scoped CSS，確保在 html.dark 下
+   樣式變數能被正確讀取，或者直接指定深色值作為保險。
+   ================================================================= */
+:global(.dark) .trade-panel {
+    background-color: #1e293b; /* 對應 var(--bg-card) 的深色值 */
+    border-color: #334155;     /* 對應 var(--border-color) 的深色值 */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+}
+
+:global(.dark) .switch-btn.active {
+    background-color: #1e293b;
+    color: #f1f5f9;
+}
+
+:global(.dark) input {
+    background-color: #1e293b;
+    color: #f1f5f9;
+    border-color: #334155;
+}
+
+:global(.dark) input:focus {
+    border-color: #60a5fa; /* var(--primary) */
+}
+
+:global(.dark) .summary-box,
+:global(.dark) .trade-type-switch {
+    background-color: #334155; /* 對應 var(--bg-secondary) */
 }
 </style>
