@@ -176,14 +176,3 @@ Worker (`worker.js`) 作為 API Gateway，負責路由與安全性。
 
 MIT License
 ```
-
-[1](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/78d013fa-83f5-4e2e-a5c0-ccfe5ad251e4/image.jpg)
-[2](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/eb1953c4-1600-49de-be15-bf6e3d85a3a3/image.jpg)
-[3](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/c8231828-45c6-4f4e-a368-700f8c648b2e/image.jpg)
-[4](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/b05c8dd8-fb99-47db-8637-7d3e87d8012e/image.jpg)
-[5](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/157774ed-9db2-42be-bcb3-de65394d7f9e/image.jpg)
-[6](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/c988c9cf-baa0-4d67-bbd8-c65739dff370/image.jpg)
-[7](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/e676a3c2-9255-410c-9070-d456cddfb287/image.jpg)
-[8](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/41953a79-20bc-46be-824d-8c6c77d92279/image.jpg)
-[9](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/43bef347-3540-4a0d-8be9-1a7038681390/image.jpg)
-[10](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/28950833/02910b2e-adbd-4549-a0b9-6052995e47e3/image.jpg)
