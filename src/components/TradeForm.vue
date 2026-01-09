@@ -354,4 +354,43 @@ input:disabled {
         font-size: 1.1rem;
     }
 }
+
+/* 
+   🔥🔥🔥 強制修復深色模式顏色 🔥🔥🔥
+   這段代碼專門解決重新整理後，卡片變成亮白色的問題。
+   它使用 :global(.dark) 來確保優先權最高。
+*/
+
+:global(.dark) .trade-panel {
+    background-color: #1e293b !important; /* 強制深色背景 */
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+
+:global(.dark) .panel-title,
+:global(.dark) label,
+:global(.dark) .summary-label {
+    color: #f1f5f9 !important; /* 強制文字變白 */
+}
+
+:global(.dark) input,
+:global(.dark) .summary-value {
+    background-color: #0f172a !important; /* 輸入框背景更深 */
+    color: #f1f5f9 !important;
+    border-color: #334155 !important;
+}
+
+:global(.dark) .trade-type-switch,
+:global(.dark) .summary-box {
+    background-color: #334155 !important;
+}
+
+:global(.dark) .switch-btn {
+    color: #94a3b8 !important;
+}
+
+:global(.dark) .switch-btn.active {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+}
 </style>
