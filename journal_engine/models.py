@@ -17,8 +17,6 @@ class TransactionRecord(BaseModel):
     @property
     def total_amount(self) -> float:
         """計算總交易金額 = 股數 × 單價 + 手續費 + 稅"""
-        # 注意：這裡使用 abs 是為了確保金額為正數顯示，
-        # 如果需要保留正負號（例如賣出為正收入，買入為負支出），可以拿掉 abs
         base_amount = abs(self.qty * self.price)
         return base_amount + self.commission + self.tax
 
@@ -42,8 +40,12 @@ class HoldingPosition(BaseModel):
     pnl_twd: float
     pnl_percent: float
     current_price_origin: float
-    # 新增欄位：平均成本 (USD)
     avg_cost_usd: float = 0.0
+    
+    # ✅ 新增欄位：用於計算今日損益
+    prev_close_price: float = 0.0       # 昨日收盤價 (USD)
+    daily_change_usd: float = 0.0       # 今日漲跌金額 (USD)
+    daily_change_percent: float = 0.0   # 今日漲跌幅 (%)
 
 class PortfolioSnapshot(BaseModel):
     updated_at: str
