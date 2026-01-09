@@ -131,65 +131,48 @@ const pnlTooltip = computed(() => {
 const dailyPnL = computed(() => {
   const currentFxRate = stats.value.exchange_rate || 32.5;
   
-  // ✅ 美股開盤前：昨日股價變化@昨日匯率 + 今日匯率影響@昨日股價
-  if (!isUSMarketOpen.value) {
-    if (holdings.value.length > 0 && history.value.length >= 2) {
-      const latest = history.value[history.value.length - 1];
-      const previous = history.value[history.value.length - 2];
-      
-      // 獲取前後兩日的匯率
-      // latest 對應今天，previous 對應昨天
-      // 但我們需要的是：昨天vs前天，今天vs昨天
-      
-      // 從 History 獲取匯率數據（如果有的話）
-      // 否則用當前匯率作為今日匯率
-      const todayFx = currentFxRate;  // 今日匯率
-      const yesterdayFx = currentFxRate;  // 昨日匯率（需要從數據獲取）
-      
-      // 方法1：使用 holdings 的 daily_change_usd
-      if (holdings.value[0].daily_change_usd !== undefined && holdings.value[0].prev_close_price !== undefined) {
-        let stockPnL = 0;  // 股價變化（用昨日匯率）
-        let fxImpact = 0;  // 匯率影響（用昨日股價）
-        
-        holdings.value.forEach(holding => {
-          // 1. 昨日股價變化（USD）× 昨日匯率
-          // daily_change_usd 已經是 (今日價 - 昨日價)
-          // 但我們要用「昨日的昨日匯率」
-          // 簡化：用今日匯率計算（因為我們沒有歷史匯率數據）
-          const yesterdayStockChange = holding.daily_change_usd * holding.qty * yesterdayFx;
-          stockPnL += yesterdayStockChange;
-          
-          // 2. 今日匯率影響 = 昨日收盤市值（USD）× 匯率變化
-          const yesterdayMarketValueUSD = holding.prev_close_price * holding.qty;
-          const fxChange = todayFx - yesterdayFx;
-          const todayFxImpact = yesterdayMarketValueUSD * fxChange;
-          fxImpact += todayFxImpact;
-        });
-        
-        return stockPnL + fxImpact;
-      }
-      
-      // Fallback: 使用 History 快照
-      return (latest.net_profit - previous.net_profit);
-    }
-    
+  if (history.value.length < 2 || holdings.value.length === 0) {
     return 0;
   }
   
-  // ✅ 美股盤中：當日股價變化（用今日匯率）
-  if (holdings.value.length > 0 && history.value.length >= 1) {
-    // 獲取今日開盤前的市值（History 的最後一個數據點）
-    const latestHistory = history.value[history.value.length - 1];
-    const marketOpenValue = latestHistory.total_value;
+  const latest = history.value[history.value.length - 1];
+  const previous = history.value[history.value.length - 2];
+  
+  // 獲取歷史匯率數據
+  const todayFx = latest.fx_rate || currentFxRate;  // 今日匯率
+  const yesterdayFx = previous.fx_rate || currentFxRate;  // 昨日匯率
+  
+  // ✅ 美股開盤前：昨日股價變化@昨日匯率 + 今日匯率影響@昨日股價
+  if (!isUSMarketOpen.value) {
+    if (holdings.value[0].daily_change_usd !== undefined && holdings.value[0].prev_close_price !== undefined) {
+      let stockPnL = 0;  // 昨日股價變化（用昨日匯率）
+      let fxImpact = 0;  // 今日匯率影響（用昨日股價）
+      
+      holdings.value.forEach(holding => {
+        // 1. 昨日股價變化（USD）× 昨日匯率
+        const yesterdayStockChange = holding.daily_change_usd * holding.qty * yesterdayFx;
+        stockPnL += yesterdayStockChange;
+        
+        // 2. 今日匯率影響 = 昨日收盤市值（USD）× 匯率變化
+        const yesterdayMarketValueUSD = holding.prev_close_price * holding.qty;
+        const fxChange = todayFx - yesterdayFx;
+        const todayFxImpact = yesterdayMarketValueUSD * fxChange;
+        fxImpact += todayFxImpact;
+      });
+      
+      return stockPnL + fxImpact;
+    }
     
-    // 當前市值（用最新股價 × 當前匯率）
-    const currentValue = stats.value.total_value;
-    
-    // 盤中損益 = 當前市值 - 開盤前市值
-    return currentValue - marketOpenValue;
+    // Fallback: 使用 History 快照
+    return (latest.net_profit - previous.net_profit);
   }
   
-  return 0;
+  // ✅ 美股盤中：當日股價變化（用今日匯率）
+  // 簡化：當前市值 - 開盤前市值
+  const marketOpenValue = latest.total_value;
+  const currentValue = stats.value.total_value;
+  
+  return currentValue - marketOpenValue;
 });
 
 // 計算今日損益百分比
