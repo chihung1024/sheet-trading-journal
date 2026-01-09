@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { CONFIG } from '../config';
-import { usePortfolioStore } from './portfolio';
+// ❌ 移除: import { usePortfolioStore } from './portfolio';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref('');
   const user = ref({ name: '', email: '' });
-  const portfolioStore = usePortfolioStore();
+  // ❌ 移除: const portfolioStore = usePortfolioStore();
 
   // 初始化認證狀態
   const initAuth = () => {
@@ -19,9 +19,11 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = { name: n, email: e };
       console.log('✅ 已從 localStorage 恢復認證狀態');
       
-      // ✅ 修復：取消註解（這是關鍵修復）
-      portfolioStore.fetchAll();
+      // ❌ 移除: portfolioStore.fetchAll();
+      // 回傳 true 表示已恢復登入狀態
+      return true; 
     }
+    return false;
   };
 
   // Google 登入
@@ -51,9 +53,8 @@ export const useAuthStore = defineStore('auth', () => {
         
         console.log('📦 用戶資訊已保存到 localStorage');
         
-        await portfolioStore.fetchAll();
-        
-        console.log('📊 投資組合數據已載入');
+        // ❌ 移除: await portfolioStore.fetchAll();
+        return true; // 回傳成功
       } else {
         console.error('❌ 登入失敗:', data.error);
         throw new Error(`登入失敗: ${data.error || '未知錯誤'}`);
