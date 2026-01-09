@@ -36,7 +36,17 @@ onMounted(() => {
   window.handleCredentialResponse = async (response) => {
     console.log('🔐 收到 Google 憑證');
     try {
+      // 1. 先執行登入 (這只會存 Token，不會抓資料)
       await authStore.login(response.credential); 
+      
+      // 2. ✅ 新增：登入成功後，立刻手動觸發資料載入
+      // 由於 LoginOverlay 沒有引入 portfolioStore，我們需要先引入它
+      // 但為了避免在這裡又引入 store 造成混亂，我們可以簡單地 reload 頁面
+      // 或者更優雅地，使用 emit 通知 App.vue
+      
+      // 簡單且穩定的解法：直接重新整理頁面，讓 App.vue 的 onMounted 接手
+      location.reload(); 
+
     } catch (err) {
       console.error('登入流程發生錯誤:', err);
       error.value = '登入驗證失敗: ' + (err.message || '無法連接後端伺服器');
