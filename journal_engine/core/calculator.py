@@ -327,58 +327,46 @@ class PortfolioCalculator:
         """
         產生最終報表輸出
         
-        ✅ 新增功能：
-        1. 計算每檔持股的前一交易日收盤價
-        2. 計算每檔持股的今日變化（漲跌金額與百分比）
-        3. 考慮美股交易時間，正確定義「昨日」
+        ✅ 新增功能：計算每檔持股的前一交易日收盤價與今日變化
         """
         from datetime import timedelta
-        import pytz
         
         print("整理最終報表...")
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
-        # ✅ 計算「前一交易日」的日期
-        # 使用美東時間（ET）來判斷，因為美股收盤才是真正的「一天結束」
-        et_tz = pytz.timezone('America/New_York')
-        now_utc = datetime.now(pytz.utc)
-        now_et = now_utc.astimezone(et_tz)
+        # ✅ 計算「前一交易日」的日期（簡化版）
+        today = datetime.now()
         
-        # 當前日期（美東時間）
-        current_date_et = now_et.date()
-        
-        # 計算前一交易日
-        # 簡單處理：往前推1天，如果是週末就繼續往前推
-        prev_date = current_date_et - timedelta(days=1)
+        # 往前推 1 天，如果是週末就繼續往前推
+        prev_date = today - timedelta(days=1)
         while prev_date.weekday() >= 5:  # 5=週六, 6=週日
             prev_date -= timedelta(days=1)
         
-        # 轉換為 datetime 物件（使用美東時間的收盤時刻）
-        prev_datetime_et = et_tz.localize(datetime.combine(prev_date, datetime.min.time()))
-        
-        print(f"[今日損益計算] 當前日期 (ET): {current_date_et}, 前一交易日: {prev_date}")
+        print(f"[今日損益計算] 當前日期: {today.date()}, 前一交易日: {prev_date.date()}")
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
-                # 取得當前價格（可能是盤中價或收盤價）
-                curr_p = self.market.get_price(sym, datetime.now())
+                # 取得當前價格
+                curr_p = self.market.get_price(sym, today)
                 
                 # ✅ 取得前一交易日的收盤價
-                prev_p = self.market.get_price(sym, prev_datetime_et)
+                # 使用簡單的日期對象，讓 market client 自己處理
+                prev_p = self.market.get_price(sym, prev_date)
                 
                 # ✅ 計算今日變化
-                if prev_p > 0:
+                if prev_p > 0 and prev_p != curr_p:
                     daily_change_usd = curr_p - prev_p
                     daily_change_percent = (daily_change_usd / prev_p) * 100
                 else:
-                    # 無法取得前日價格（可能是新上市股票或數據缺失）
-                    print(f"[警告] {sym} 無法取得前一交易日價格，使用當前價格作為基準")
+                    # 無法取得前日價格 或 價格相同（可能是數據問題）
+                    if prev_p == 0:
+                        print(f"[警告] {sym} 無法取得前一交易日價格，使用當前價格作為基準")
                     daily_change_usd = 0.0
                     daily_change_percent = 0.0
-                    prev_p = curr_p
+                    prev_p = curr_p if prev_p == 0 else prev_p
                 
-                # 計算市值與損益（使用當前匯率）
+                # 計算市值與損益
                 mkt_val = h['qty'] * curr_p * current_fx
                 cost = h['cost_basis_twd']
                 pnl = mkt_val - cost
