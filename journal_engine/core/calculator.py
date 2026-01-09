@@ -324,13 +324,45 @@ class PortfolioCalculator:
                 self.benchmark_invested -= realized_cost_twd
 
     def _generate_final_output(self, current_fx):
+        """
+        產生最終報表輸出
+        
+        ✅ 新增功能：計算每檔持股的昨日收盤價與今日變化
+        """
+        from datetime import timedelta
+        
         print("整理最終報表...")
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
+        # 計算昨日日期（用於取得昨日收盤價）
+        today = datetime.now()
+        yesterday = today - timedelta(days=1)
+        
+        # 如果昨天是週末，往前推到週五
+        # 這裡做簡單處理，實際上可以用更複雜的邏輯處理假日
+        while yesterday.weekday() >= 5:  # 5=Saturday, 6=Sunday
+            yesterday -= timedelta(days=1)
+        
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
-                curr_p = self.market.get_price(sym, datetime.now())
+                # 取得當前價格
+                curr_p = self.market.get_price(sym, today)
+                
+                # ✅ 新增：取得昨日收盤價
+                prev_p = self.market.get_price(sym, yesterday)
+                
+                # ✅ 新增：計算今日變化
+                if prev_p > 0:
+                    daily_change_usd = curr_p - prev_p
+                    daily_change_percent = (daily_change_usd / prev_p) * 100
+                else:
+                    # 如果無法取得昨日價格（新上市股票），設為 0
+                    daily_change_usd = 0.0
+                    daily_change_percent = 0.0
+                    prev_p = curr_p  # 回退為當前價格
+                
+                # 計算市值與損益
                 mkt_val = h['qty'] * curr_p * current_fx
                 cost = h['cost_basis_twd']
                 pnl = mkt_val - cost
@@ -339,16 +371,25 @@ class PortfolioCalculator:
                 current_holdings_cost_sum += cost
                 
                 final_holdings.append(HoldingPosition(
-                    symbol=sym, tag=h['tag'], currency="USD",
+                    symbol=sym, 
+                    tag=h['tag'], 
+                    currency="USD",
                     qty=round(h['qty'], 2),
                     market_value_twd=round(mkt_val, 0),
                     pnl_twd=round(pnl, 0),
                     pnl_percent=round(pnl_pct, 2),
                     current_price_origin=round(curr_p, 2),
-                    avg_cost_usd=round(avg_cost_usd, 2)
+                    avg_cost_usd=round(avg_cost_usd, 2),
+                    # ✅ 新增欄位輸出
+                    prev_close_price=round(prev_p, 2),
+                    daily_change_usd=round(daily_change_usd, 2),
+                    daily_change_percent=round(daily_change_percent, 2)
                 ))
         
+        # 按市值排序
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
+        
+        # 計算總結統計
         curr_total_val = sum(x.market_value_twd for x in final_holdings)
         total_pnl = (curr_total_val - current_holdings_cost_sum) + self.total_realized_pnl_twd
         
