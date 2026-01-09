@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from collections import deque
 from datetime import datetime
+from pyxirr import xirr  # ✅ 新增：引入 XIRR 計算套件
 from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 
@@ -41,6 +42,9 @@ class PortfolioCalculator:
         # 新增 TWR 計算專用變數
         self.cumulative_twr_factor = 1.0  # 用於累乘 TWR
         self.prev_total_equity = 0.0      # 記錄前一日總權益
+        
+        # ✅ 新增：XIRR 現金流追蹤
+        self.xirr_cashflows = []  # [{'date': datetime, 'amount': float}, ...]
 
     def _pre_scan_dividends(self):
         """
@@ -63,8 +67,8 @@ class PortfolioCalculator:
         # ==================== 步驟 2: 建立日期範圍 ====================
         start_date = self.df['Date'].min()
         
-        # ✅ 修正：一律計算到今天，即使美股數據還沒更新也要用最新匯率生成今日數據點
-        # 這樣白天時可以看到匯率變化的影響
+        # ✅ 修正：一律計算到今天，即使美股數據還沒更新也要用最新匙率生成今日數據點
+        # 這樣白天時可以看到匙率變化的影響
         end_date = datetime.now()
         print(f"[History 計算範圍] {start_date.date()} 至 {end_date.date()}")
         
@@ -74,7 +78,7 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
-            # 取得當日匯率
+            # 取得當日匙率
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx):
@@ -160,6 +164,12 @@ class PortfolioCalculator:
                     # 累加到已實現損益 (補償股價下跌)
                     self.total_realized_pnl_twd += total_div_net_twd
                     
+                    # ✅ 記錄 XIRR 現金流（配息收入）
+                    self.xirr_cashflows.append({
+                        'date': date_ts,
+                        'amount': total_div_net_twd  # 正值：收入
+                    })
+                    
                     # 記錄歷史
                     if not hasattr(self, 'dividend_history'):
                         self.dividend_history = []
@@ -210,6 +220,12 @@ class PortfolioCalculator:
             })
             self.invested_capital += cost_twd
             self._trade_benchmark(date_ts, cost_twd, fx, is_buy=True)
+            
+            # ✅ 記錄 XIRR 現金流（買入支出）
+            self.xirr_cashflows.append({
+                'date': date_ts,
+                'amount': -cost_twd  # 負值：支出
+            })
 
         elif txn_type == 'SELL':
             proceeds_twd = ((qty * price) - comm - tax) * fx
@@ -236,6 +252,12 @@ class PortfolioCalculator:
             self.invested_capital -= cost_sold_twd
             self.total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
             self._trade_benchmark(date_ts, proceeds_twd, fx, is_buy=False, realized_cost_twd=cost_sold_twd)
+            
+            # ✅ 記錄 XIRR 現金流（賣出收入）
+            self.xirr_cashflows.append({
+                'date': date_ts,
+                'amount': proceeds_twd  # 正值：收入
+            })
 
         elif txn_type == 'DIV':
             net_div_usd = price
@@ -243,6 +265,12 @@ class PortfolioCalculator:
             self.total_realized_pnl_twd += net_div_twd
             date_str = date_ts.strftime('%Y-%m-%d')
             self.confirmed_dividends.add(f"{sym}_{date_str}")
+            
+            # ✅ 記錄 XIRR 現金流（手動輸入的配息）
+            self.xirr_cashflows.append({
+                'date': date_ts,
+                'amount': net_div_twd  # 正值：收入
+            })
 
     def _daily_valuation(self, date_ts, fx):
         total_mkt_val = 0.0
@@ -284,7 +312,7 @@ class PortfolioCalculator:
         elif self.invested_capital > 0 and self.prev_total_equity == 0:
              daily_return = total_pnl / self.invested_capital
              
-        # [安全閥] 防止極端異常值 (選用，避免髒數據破壞圖表)
+        # [安全閖] 防止極端異常值 (選用，避免髒數據破壞圖表)
         if abs(daily_return) > 1.0: # 如果單日漲跌超過 100%
              # print(f"Warning: Abnormal daily return {daily_return} on {date_ts}")
              pass 
@@ -305,7 +333,7 @@ class PortfolioCalculator:
         # 6. 更新狀態
         self.prev_total_equity = current_total_equity
         
-        # ✅ 新增：在 history 中加入匯率欄位
+        # ✅ 新增：在 history 中加入匙率欄位
         self.history_data.append({
             "date": date_ts.strftime("%Y-%m-%d"),
             "total_value": round(total_mkt_val, 0),
@@ -313,7 +341,7 @@ class PortfolioCalculator:
             "net_profit": round(total_pnl, 0),
             "twr": round(twr_percentage, 2),
             "benchmark_twr": round(bench_twr, 2),
-            "fx_rate": round(fx, 4)  # ✅ 新增匯率欄位
+            "fx_rate": round(fx, 4)  # ✅ 新增匙率欄位
         })
 
 
@@ -331,6 +359,51 @@ class PortfolioCalculator:
                 self.benchmark_units -= self.benchmark_units * ratio
                 self.benchmark_invested -= realized_cost_twd
 
+    def _calculate_xirr(self, current_fx):
+        """
+        ✅ 計算 XIRR (擴展內部報酬率)
+        
+        XIRR 是考慮不規則現金流的內部報酬率，反映個人實際的年化報酬。
+        與 TWR 不同，XIRR 會受入金時機影響。
+        
+        參數:
+            current_fx: 當前匙率
+        
+        返回:
+            XIRR 百分比 (float)
+        """
+        if not self.xirr_cashflows:
+            return 0.0
+        
+        # 準備數據：複製現金流列表
+        cashflows = self.xirr_cashflows.copy()
+        
+        # 加上當前市值（視為最終收入）
+        current_date = datetime.now()
+        current_value = 0.0
+        
+        for sym, h in self.holdings.items():
+            if h['qty'] > 0.001:
+                price = self.market.get_price(sym, current_date)
+                current_value += h['qty'] * price * current_fx
+        
+        cashflows.append({
+            'date': current_date,
+            'amount': current_value  # 正值：最終市值
+        })
+        
+        # 提取日期與金額
+        dates = [cf['date'] for cf in cashflows]
+        amounts = [cf['amount'] for cf in cashflows]
+        
+        # 計算 XIRR
+        try:
+            xirr_result = xirr(dates, amounts)
+            return round(xirr_result * 100, 2)  # 轉換為百分比
+        except Exception as e:
+            print(f"[XIRR 警告] 計算失敗: {e}")
+            return 0.0
+
     def _generate_final_output(self, current_fx):
         """
         產生最終報表輸出
@@ -342,8 +415,8 @@ class PortfolioCalculator:
         
         print("整理最終報表...")
         
-        # ✅ 新增：顯示最新兩筆匯率數據
-        print(f"\n[匯率比對] 顯示最新兩個交易日匯率")
+        # ✅ 新增：顯示最新兩筆匙率數據
+        print(f"\n[匙率比對] 顯示最新兩個交易日匙率")
         if len(self.market.fx_rates) >= 2:
             latest_fx = self.market.fx_rates.iloc[-1]
             prev_fx = self.market.fx_rates.iloc[-2]
@@ -353,18 +426,18 @@ class PortfolioCalculator:
             fx_change = latest_fx - prev_fx
             fx_change_pct = (fx_change / prev_fx) * 100 if prev_fx > 0 else 0
             
-            print(f"[USD/TWD] 最新匯率: {latest_fx:.4f} ({latest_fx_date}) | 前匯率: {prev_fx:.4f} ({prev_fx_date})")
-            print(f"[USD/TWD] 匯率變化: {fx_change:+.4f} ({fx_change_pct:+.2f}%)")
+            print(f"[USD/TWD] 最新匙率: {latest_fx:.4f} ({latest_fx_date}) | 前匙率: {prev_fx:.4f} ({prev_fx_date})")
+            print(f"[USD/TWD] 匙率變化: {fx_change:+.4f} ({fx_change_pct:+.2f}%)")
             
-            # 計算匯率對持倉的影響
+            # 計算匙率對持倉的影響
             if len(self.holdings) > 0:
                 total_usd_value = sum(
                     h['cost_basis_usd'] for h in self.holdings.values() if h['qty'] > 0.001
                 )
                 fx_impact_twd = total_usd_value * fx_change
-                print(f"[匯率影響] 美元資產 ${total_usd_value:,.0f} × {fx_change:+.4f} = 台幣 {fx_impact_twd:+,.0f}")
+                print(f"[匙率影響] 美元資產 ${total_usd_value:,.0f} × {fx_change:+.4f} = 台幣 {fx_impact_twd:+,.0f}")
         else:
-            print(f"[USD/TWD] 當前匯率: {current_fx:.4f} (數據不足無法比對)")
+            print(f"[USD/TWD] 當前匙率: {current_fx:.4f} (數據不足無法比對)")
         
         print(f"\n[今日損益計算] 使用最新兩個收盤價進行計算")
         
@@ -439,11 +512,16 @@ class PortfolioCalculator:
         curr_total_val = sum(x.market_value_twd for x in final_holdings)
         total_pnl = (curr_total_val - current_holdings_cost_sum) + self.total_realized_pnl_twd
         
+        # ✅ 計算 XIRR
+        xirr_value = self._calculate_xirr(current_fx)
+        print(f"\n[XIRR 計算結果] {xirr_value:.2f}% (個人實際年化報酬率)")
+        
         summary = PortfolioSummary(
             total_value=round(curr_total_val, 0),
             invested_capital=round(current_holdings_cost_sum, 0),
             total_pnl=round(total_pnl, 0),
             twr=self.history_data[-1]['twr'] if self.history_data else 0,
+            xirr=xirr_value,  # ✅ 新增 XIRR
             realized_pnl=round(self.total_realized_pnl_twd, 0),
             benchmark_twr=self.history_data[-1]['benchmark_twr'] if self.history_data else 0
         )
