@@ -41,11 +41,19 @@ def main():
     df = df.sort_values('Date')
     
     # 4. 下載市場數據
-    # ✅ 修改：下載近一個月數據（避免長假問題）
+    # ✅ 抓取範圍：【最早交易日 - 100 天】至今
+    # 用途：
+    # 1. 捕捉買入日之前的拆股/配息事件
+    # 2. 應對長假期與市場休市
+    # 3. 確保有足夠的歷史數據計算調整因子
     if not df.empty:
         start_date = df['Date'].min()
-        fetch_start_date = start_date - timedelta(days=30)  # ✅ 改為 35 天（約一個月）
+        fetch_start_date = start_date - timedelta(days=100)
         unique_tickers = df['Symbol'].unique().tolist()
+        
+        print(f"[數據下載] 最早交易日: {start_date.date()}")
+        print(f"[數據下載] 抓取起始日: {fetch_start_date.date()} (往前推 100 天)")
+        print(f"[數據下載] 抓取標的: {unique_tickers}")
         
         market_client.download_data(unique_tickers, fetch_start_date)
     
