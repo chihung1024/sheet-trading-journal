@@ -62,7 +62,23 @@ class PortfolioCalculator:
         
         # ==================== 步驟 2: 建立日期範圍 ====================
         start_date = self.df['Date'].min()
-        end_date = datetime.now()
+        
+        # ✅ 修正：只計算到有完整市場數據的最後一天
+        # 找出所有股票數據的最晚日期
+        if self.market.market_data:
+            latest_market_dates = [
+                df.index.max() 
+                for df in self.market.market_data.values() 
+                if not df.empty
+            ]
+            if latest_market_dates:
+                end_date = min(latest_market_dates)  # 使用最保守的日期
+                print(f"[History 計算範圍] {start_date.date()} 至 {end_date.date()} (完整數據)")
+            else:
+                end_date = datetime.now()
+        else:
+            end_date = datetime.now()
+        
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
         # ==================== 步驟 3: 逐日計算 ====================
@@ -89,7 +105,10 @@ class PortfolioCalculator:
             self._daily_valuation(d, fx)
         
         # ==================== 步驟 4: 產生最終報表 ====================
+        # ✅ 注意：_generate_final_output 使用的是「最新兩個收盤價」
+        # 這可能比 History 的最後一天還要新（例如美股盤中）
         return self._generate_final_output(fx)
+
 
     def _back_adjust_transactions(self):
         """
