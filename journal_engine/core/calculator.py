@@ -339,10 +339,35 @@ class PortfolioCalculator:
         import pandas as pd
         
         print("整理最終報表...")
+        
+        # ✅ 新增：顯示最新兩筆匯率數據
+        print(f"\n[\u532f\u7387\u6bd4\u5c0d] 顯示最新兩個交易日匯率")
+        if len(self.market.fx_rates) >= 2:
+            latest_fx = self.market.fx_rates.iloc[-1]
+            prev_fx = self.market.fx_rates.iloc[-2]
+            latest_fx_date = self.market.fx_rates.index[-1].date()
+            prev_fx_date = self.market.fx_rates.index[-2].date()
+            
+            fx_change = latest_fx - prev_fx
+            fx_change_pct = (fx_change / prev_fx) * 100 if prev_fx > 0 else 0
+            
+            print(f"[USD/TWD] 最新匯率: {latest_fx:.4f} ({latest_fx_date}) | 前匯率: {prev_fx:.4f} ({prev_fx_date})")
+            print(f"[USD/TWD] 匯率變化: {fx_change:+.4f} ({fx_change_pct:+.2f}%)")
+            
+            # 計算匯率對持倉的影響
+            if len(self.holdings) > 0:
+                total_usd_value = sum(
+                    h['cost_basis_usd'] for h in self.holdings.values() if h['qty'] > 0.001
+                )
+                fx_impact_twd = total_usd_value * fx_change
+                print(f"[\u532f\u7387\u5f71\u97ff] 美\u5143\u8cc7\u7522 ${total_usd_value:,.0f} \u00d7 {fx_change:+.4f} = 台\u5e63 {fx_impact_twd:+,.0f}")
+        else:
+            print(f"[USD/TWD] 當前匯率: {current_fx:.4f} (數據不足無法比對)")
+        
+        print(f"\n[今日損益計算] 使用最新兩個收盤價進行計算")
+        
         final_holdings = []
         current_holdings_cost_sum = 0.0
-        
-        print(f"[今日損益計算] 使用最新兩個收盤價進行計算")
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
