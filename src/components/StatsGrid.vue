@@ -36,7 +36,7 @@
       </div>
     </div>
     
-    <!-- 3. 今日損益 (智慧計算版) -->
+    <!-- 3. 今日損益（基於持倉計算） -->
     <div class="stat-block" :title="pnlTooltip">
       <div class="stat-top">
         <span class="stat-label">{{ pnlLabel }}</span>
@@ -96,7 +96,7 @@ const isUSMarketOpen = computed(() => {
   const hour = now.getHours();
   const minute = now.getMinutes();
   
-  // 簡單判斷：晚上 9:30 後 或 凌晨 5:00 前
+  // 晚上 9:30 後 或 凌晨 5:00 前
   if (hour >= 21 || hour < 5) {
     if (hour === 21 && minute < 30) return false;
     return true;
@@ -112,7 +112,7 @@ const pnlLabel = computed(() => {
 // 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
-    return '即時美股 + 台股收盤 + 匯率';
+    return '今日台股 + 即時美股 + 匯率';
   } else {
     return '昨晚美股 + 今日台股 + 匯率';
   }
@@ -121,52 +121,49 @@ const pnlDescription = computed(() => {
 // Tooltip 完整說明
 const pnlTooltip = computed(() => {
   if (isUSMarketOpen.value) {
-    return '顯示今日開盤後的即時損益變化';
+    return '今日台股收盤 + 美股盤中變化 + 匯率波動';
   } else {
-    return '顯示昨日收盤至今的資產變化';
+    return '昨晚美股收盤 + 今日台股變化 + 匯率波動';
   }
 });
 
-// ✅ 核心改動：使用後端提供的 daily_change 欄位精確計算
+// ✅ 核心計算：基於持倉的精確損益（Position-level P&L）
 const dailyPnL = computed(() => {
-  // 方法 1: 如果後端已提供每檔股票的日變化，使用精確計算
+  // 取得當前匯率
+  const currentFxRate = stats.value.exchange_rate || 32.5;
+  
+  // 方法 1: 使用後端提供的逐檔變化（精確計算）
   if (holdings.value.length > 0 && holdings.value[0].daily_change_usd !== undefined) {
-    // 取得當前匯率（從最新的 stats 或 history）
-    const currentFxRate = stats.value.exchange_rate || 32.5;
-    
-    // 精確計算：每檔股票的 (日變化 USD × 持股數量 × 匯率)
-    const stockPnL = holdings.value.reduce((sum, h) => {
-      return sum + (h.daily_change_usd * h.qty * currentFxRate);
+    // 累加每檔股票的損益：(日漲跌 USD × 持股數量 × 匯率)
+    const totalDailyPnL = holdings.value.reduce((sum, holding) => {
+      const stockDailyPnL = holding.daily_change_usd * holding.qty * currentFxRate;
+      return sum + stockDailyPnL;
     }, 0);
     
-    return stockPnL;
+    return totalDailyPnL;
   }
   
-  // 方法 2 (Fallback): 如果後端未提供，使用歷史快照估算
+  // 方法 2 (Fallback): 使用 History 快照估算
   if (history.value.length < 2) return 0;
-  const last = history.value[history.value.length - 1];
-  const prev = history.value[history.value.length - 2];
   
-  // 檢查是否有資金流動（買賣交易）
-  const capitalChange = Math.abs(last.invested - prev.invested);
-  if (capitalChange > 100) {
-    // 有交易發生，快照法不準確，回傳 0 並顯示提示
-    console.warn('[StatsGrid] 今日有交易，快照法不適用');
-    return 0;
-  }
+  const latest = history.value[history.value.length - 1];
+  const previous = history.value[history.value.length - 2];
   
-  // 總資產變化（包含股價 + 匯率）
-  return (last.total_value - last.invested) - (prev.total_value - prev.invested);
+  // 計算損益變化
+  const latestPnL = latest.total_value - latest.invested;
+  const previousPnL = previous.total_value - previous.invested;
+  
+  return latestPnL - previousPnL;
 });
 
 // 計算今日損益百分比
 const dailyRoi = computed(() => {
+  // 使用昨日總資產作為基準
   if (history.value.length < 2) return '0.00';
-  const prev = history.value[history.value.length - 2];
+  const previous = history.value[history.value.length - 2];
   
-  // 分母使用昨日總資產
-  if (!prev.total_value || prev.total_value === 0) return '0.00';
-  return ((dailyPnL.value / prev.total_value) * 100).toFixed(2);
+  if (!previous.total_value || previous.total_value === 0) return '0.00';
+  return ((dailyPnL.value / previous.total_value) * 100).toFixed(2);
 });
 
 // 數字動畫
@@ -213,7 +210,6 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     box-shadow: var(--shadow-lg); 
 }
 
-/* 首個區塊特別樣式 */
 .stat-block.primary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -273,7 +269,6 @@ html.dark .stat-block.primary {
     flex-grow: 1;
 }
 
-/* 垂直排列模式 */
 .stat-main.column-layout {
     flex-direction: column;
     align-items: flex-start;
@@ -293,7 +288,6 @@ html.dark .stat-block.primary {
     font-size: 2rem;
 }
 
-/* 副標題樣式 */
 .stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
     font-size: 1rem;
@@ -368,7 +362,6 @@ html.dark .stat-block.primary {
     border: 1px solid var(--danger);
 }
 
-/* 響應式設計 */
 @media (max-width: 1400px) { 
     .stats-grid { 
         grid-template-columns: repeat(2, 1fr); 
