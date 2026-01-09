@@ -16,15 +16,14 @@
             <span class="dot"></span> 連線正常
           </div>
           
+          <!-- ✅ 使用 store 中的 triggerUpdate -->
           <button 
             class="action-trigger-btn" 
-            @click="triggerUpdate" 
-            :disabled="isActionTriggerLoading"
+            @click="portfolioStore.triggerUpdate"
             title="手動觸發投資組合數據更新"
           >
-            <span v-if="!isActionTriggerLoading">⚙️</span>
-            <span v-else class="spinner">⟳</span>
-            {{ isActionTriggerLoading ? '請求中...' : '更新數據' }}
+            <span>⚙️</span>
+            更新數據
           </button>
           
           <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切換為淺色模式' : '切換為深色模式'">
@@ -39,29 +38,31 @@
           </div>
         </div>
       </header>
+      
       <div class="content-container">
         <main class="main-column">
           <section class="section-stats">
-            <StatsGrid v-if="!isInitialLoading" />
+            <!-- ✅ 使用 portfolioStore.loading 控制骨架屏 -->
+            <StatsGrid v-if="!portfolioStore.loading" />
             <StatsGridSkeleton v-else />
           </section>
           
           <section class="section-charts">
             <div class="chart-wrapper">
-              <PerformanceChart v-if="!isInitialLoading" />
+              <PerformanceChart v-if="!portfolioStore.loading" />
               <ChartSkeleton v-else />
             </div>
             <div class="chart-wrapper">
-              <PieChart v-if="!isInitialLoading" />
+              <PieChart v-if="!portfolioStore.loading" />
               <ChartSkeleton v-else />
             </div>
           </section>
           <section class="section-holdings">
-            <HoldingsTable v-if="!isInitialLoading" />
+            <HoldingsTable v-if="!portfolioStore.loading" />
             <TableSkeleton v-else />
           </section>
           <section class="section-records">
-            <RecordList v-if="!isInitialLoading" @edit="handleEditRecord" />
+            <RecordList v-if="!portfolioStore.loading" @edit="handleEditRecord" />
             <TableSkeleton v-else />
           </section>
         </main>
@@ -98,7 +99,7 @@ import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
-import { CONFIG } from './config'; // ✅ 導入配置以取得 API URL
+import { CONFIG } from './config';
 
 import LoginOverlay from './components/LoginOverlay.vue';
 import StatsGrid from './components/StatsGrid.vue';
@@ -119,8 +120,8 @@ const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 
-const isInitialLoading = ref(true);
-const isActionTriggerLoading = ref(false);
+// ✅ 移除 isInitialLoading，直接使用 portfolioStore.loading
+// const isInitialLoading = ref(true);
 
 const handleEditRecord = (record) => {
   if (tradeFormRef.value) {
@@ -141,82 +142,25 @@ const handleLogout = () => {
   }
 };
 
-// ✅ 改良版：透過 Worker 觸發更新 (符合系統核心架構)
-const triggerUpdate = async () => {
-  if (!authStore.token) {
-    addToast('請先登入', 'error');
-    return;
-  }
-
-  // 增加確認步驟，避免誤觸
-  if (!confirm('確定要手動觸發更新嗎？\n這將會通知後端啟動爬蟲與計算，約需 30-60 秒完成。')) {
-    return;
-  }
-
-  isActionTriggerLoading.value = true;
-  try {
-    // 改為呼叫 Worker 的 API，而非直接連線 GitHub
-    // 這樣可以利用 Worker 內部的 GITHUB_TOKEN，前端不需要暴露 Token
-    const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`, // 使用 Google Token 驗證身分
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (response.ok) {
-      addToast('✓ 已發送更新請求，系統正在背景計算...', 'success');
-      
-      // 由於 GitHub Action 需要時間執行，我們延遲一點時間再嘗試拉取新資料
-      // 或者單純通知用戶請求已發送
-      setTimeout(async () => {
-        // 嘗試無聲更新一次數據，看是否已經完成 (通常沒那麼快，但這是個好習慣)
-        await portfolioStore.fetchAll(); 
-      }, 5000);
-      
-    } else {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Trigger Error:', errorData);
-      
-      if (response.status === 401) {
-        addToast('❌ 權限不足或登入過期', 'error');
-        authStore.logout();
-      } else {
-        addToast(`❌ 觸發失敗: ${errorData.error || '後端無回應'}`, 'error');
-      }
-    }
-  } catch (error) {
-    console.error('觸發更新失敗:', error);
-    addToast('❌ 網路連線錯誤', 'error');
-  } finally {
-    isActionTriggerLoading.value = false;
-  }
-};
-
 onMounted(async () => {
+  console.log('🚀 App.vue mounted');
+  
+  // ✅ 簡化後的初始化邏輯：
+  // initAuth() 會檢查 localStorage，如果已登入會自動呼叫 portfolioStore.fetchAll()
   authStore.initAuth();
+  
   await nextTick();
   
-  if (authStore.token) {
-    isInitialLoading.value = true;
-    try {
-      await portfolioStore.fetchAll();
-      console.log('📊 首次載入完成');
-    } catch (error) {
-      console.error('❌ 載入數據失敗:', error);
-    } finally {
-      setTimeout(() => {
-        isInitialLoading.value = false;
-      }, 600);
-    }
-  }
-  
+  // 移除載入動畫（如果有的話）
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
-    loadingEl.style.opacity = '0';
-    setTimeout(() => loadingEl.remove(), 300);
+    setTimeout(() => {
+      loadingEl.style.opacity = '0';
+      setTimeout(() => loadingEl.remove(), 300);
+    }, 500);
   }
+  
+  console.log('✅ App 初始化完成');
 });
 </script>
 
@@ -384,7 +328,7 @@ body {
   border-radius: 8px;
   color: white;
   padding: 8px 14px;
-  font-weight: 600;
+  font-weight: 600; 
   font-size: 0.9rem;
   cursor: pointer;
   display: flex;
@@ -404,16 +348,6 @@ body {
   opacity: 0.7;
   cursor: not-allowed;
   transform: none;
-}
-
-.action-trigger-btn .spinner {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 .user-profile { 
