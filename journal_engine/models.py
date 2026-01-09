@@ -42,8 +42,8 @@ class HoldingPosition(BaseModel):
     current_price_origin: float
     avg_cost_usd: float = 0.0
     
-    # ✅ 新增欄位：用於計算今日損益
-    prev_close_price: float = 0.0       # 昨日收盤價 (USD)
+    # ✅ 新增：用於計算今日損益的欄位
+    prev_close_price: float = 0.0       # 前一交易日收盤價 (USD)
     daily_change_usd: float = 0.0       # 今日漲跌金額 (USD)
     daily_change_percent: float = 0.0   # 今日漲跌幅 (%)
 
