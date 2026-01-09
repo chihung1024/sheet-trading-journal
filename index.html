@@ -6,6 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#3b82f6" />
     <title>SaaS Trading Journal (Pro)</title>
+    
+    <!-- ✅ 請插入這行 CSP 設定 -->
+    <meta http-equiv="Content-Security-Policy" 
+          content="default-src 'self'; 
+                   script-src 'self' 'unsafe-inline' https://accounts.google.com https://*.google.com; 
+                   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
+                   font-src 'self' https://fonts.gstatic.com;
+                   img-src 'self' data: https: https://lh3.googleusercontent.com; 
+                   connect-src 'self' https://journal-backend.chired.workers.dev https://accounts.google.com;">
+
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
     <!-- PWA Manifest -->
