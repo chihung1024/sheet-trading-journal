@@ -305,13 +305,15 @@ class PortfolioCalculator:
         # 6. 更新狀態
         self.prev_total_equity = current_total_equity
         
+        # ✅ 新增：在 history 中加入匯率欄位
         self.history_data.append({
             "date": date_ts.strftime("%Y-%m-%d"),
             "total_value": round(total_mkt_val, 0),
             "invested": round(self.invested_capital, 0),
             "net_profit": round(total_pnl, 0),
             "twr": round(twr_percentage, 2),
-            "benchmark_twr": round(bench_twr, 2)
+            "benchmark_twr": round(bench_twr, 2),
+            "fx_rate": round(fx, 4)  # ✅ 新增匯率欄位
         })
 
 
@@ -341,7 +343,7 @@ class PortfolioCalculator:
         print("整理最終報表...")
         
         # ✅ 新增：顯示最新兩筆匯率數據
-        print(f"\n[\u532f\u7387\u6bd4\u5c0d] 顯示最新兩個交易日匯率")
+        print(f"\n[匯率比對] 顯示最新兩個交易日匯率")
         if len(self.market.fx_rates) >= 2:
             latest_fx = self.market.fx_rates.iloc[-1]
             prev_fx = self.market.fx_rates.iloc[-2]
@@ -360,7 +362,7 @@ class PortfolioCalculator:
                     h['cost_basis_usd'] for h in self.holdings.values() if h['qty'] > 0.001
                 )
                 fx_impact_twd = total_usd_value * fx_change
-                print(f"[\u532f\u7387\u5f71\u97ff] 美\u5143\u8cc7\u7522 ${total_usd_value:,.0f} \u00d7 {fx_change:+.4f} = 台\u5e63 {fx_impact_twd:+,.0f}")
+                print(f"[匯率影響] 美元資產 ${total_usd_value:,.0f} × {fx_change:+.4f} = 台幣 {fx_impact_twd:+,.0f}")
         else:
             print(f"[USD/TWD] 當前匯率: {current_fx:.4f} (數據不足無法比對)")
         
