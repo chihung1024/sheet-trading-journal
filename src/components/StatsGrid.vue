@@ -127,34 +127,48 @@ const pnlTooltip = computed(() => {
   }
 });
 
-// ✅ 核心計算：基於時間段的損益計算
+// ✅ 核心計算：今日損益
 const dailyPnL = computed(() => {
   const currentFxRate = stats.value.exchange_rate || 32.5;
   
-  // ✅ 修正：白天時使用 History 快照計算（包含台股+匯率變化）
-  // 這樣能與曲線圖保持一致
+  // ✅ 美股開盤前：計算昨日美股收盤變化 (1/7→1/8)
+  // 使用後端提供的 daily_change_usd × 當前匯率
   if (!isUSMarketOpen.value) {
-    if (history.value.length < 2) return 0;
+    if (holdings.value.length > 0 && holdings.value[0].daily_change_usd !== undefined) {
+      // 累加每檔股票的昨日變化
+      const totalDailyPnL = holdings.value.reduce((sum, holding) => {
+        const stockDailyPnL = holding.daily_change_usd * holding.qty * currentFxRate;
+        return sum + stockDailyPnL;
+      }, 0);
+      
+      return totalDailyPnL;
+    }
     
-    const latest = history.value[history.value.length - 1];
-    const previous = history.value[history.value.length - 2];
+    // Fallback: 如果沒有 daily_change_usd，使用 History
+    if (history.value.length >= 2) {
+      const latest = history.value[history.value.length - 1];
+      const previous = history.value[history.value.length - 2];
+      return (latest.net_profit - previous.net_profit);
+    }
     
-    // 計算淨損益的變化（完整反映股價+匯率）
-    return (latest.net_profit - previous.net_profit);
+    return 0;
   }
   
-  // ✅ 美股盤中時：使用持倉級別的精確計算
-  // 計算每檔股票的日內變化 (僅股價變動，匯率使用當下最新)
-  if (holdings.value.length > 0 && holdings.value[0].daily_change_usd !== undefined) {
-    const totalDailyPnL = holdings.value.reduce((sum, holding) => {
-      const stockDailyPnL = holding.daily_change_usd * holding.qty * currentFxRate;
-      return sum + stockDailyPnL;
-    }, 0);
+  // ✅ 美股盤中：計算當日盤中變化
+  // 需要比對：當前市值 vs. 今日開盤前市值
+  if (holdings.value.length > 0 && history.value.length >= 2) {
+    // 獲取今日開盤前的市值（History 的最後一個數據點）
+    const latestHistory = history.value[history.value.length - 1];
+    const marketOpenValue = latestHistory.total_value; // 今日開盤前市值
     
-    return totalDailyPnL;
+    // 當前市值（用最新股價 × 當前匯率）
+    const currentValue = stats.value.total_value;
+    
+    // 盤中損益 = 當前市值 - 開盤前市值
+    return currentValue - marketOpenValue;
   }
   
-  // Fallback: 無數據時返回 0
+  // Fallback
   return 0;
 });
 
