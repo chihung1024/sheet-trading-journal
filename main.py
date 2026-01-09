@@ -1,4 +1,3 @@
-
 import pandas as pd
 from datetime import timedelta
 from journal_engine.clients.api_client import CloudflareClient
@@ -42,9 +41,10 @@ def main():
     df = df.sort_values('Date')
     
     # 4. 下載市場數據
+    # ✅ 修改：下載近一個月數據（避免長假問題）
     if not df.empty:
         start_date = df['Date'].min()
-        fetch_start_date = start_date - timedelta(days=7)
+        fetch_start_date = start_date - timedelta(days=30)  # ✅ 改為 35 天（約一個月）
         unique_tickers = df['Symbol'].unique().tolist()
         
         market_client.download_data(unique_tickers, fetch_start_date)
