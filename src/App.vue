@@ -16,10 +16,10 @@
             <span class="dot"></span> 連線正常
           </div>
           
-          <!-- ✅ 使用 store 中的 triggerUpdate -->
+          <!-- ✅ 修改 @click 事件綁定 -->
           <button 
             class="action-trigger-btn" 
-            @click="portfolioStore.triggerUpdate"
+            @click="handleTriggerUpdate"
             title="手動觸發投資組合數據更新"
           >
             <span>⚙️</span>
@@ -113,6 +113,24 @@ import RecordList from './components/RecordList.vue';
 import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
 import ChartSkeleton from './components/skeletons/ChartSkeleton.vue';
 import TableSkeleton from './components/skeletons/TableSkeleton.vue';
+
+// ✅ 新增這個處理函式
+const handleTriggerUpdate = async () => {
+  if (!confirm("確定要觸發後端計算嗎？")) return;
+  
+  try {
+    // 顯示「處理中」的提示
+    addToast("正在觸發更新...", "info");
+    
+    await portfolioStore.triggerUpdate();
+    
+    // 成功提示
+    addToast("✅ 已觸發更新！系統正在背景計算，數據稍後自動更新。", "success");
+  } catch (error) {
+    // 錯誤提示
+    addToast(`❌ 觸發失敗: ${error.message}`, "error");
+  }
+};
 
 const authStore = useAuthStore();
 const portfolioStore = usePortfolioStore();
