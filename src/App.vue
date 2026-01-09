@@ -163,13 +163,19 @@ const handleLogout = () => {
 onMounted(async () => {
   console.log('🚀 App.vue mounted');
   
-  // ✅ 簡化後的初始化邏輯：
-  // initAuth() 會檢查 localStorage，如果已登入會自動呼叫 portfolioStore.fetchAll()
-  authStore.initAuth();
+  // 1. 先嘗試恢復登入狀態
+  const isLoggedIn = authStore.initAuth();
+  
+  // 2. 如果已登入，手動觸發資料載入
+  if (isLoggedIn) {
+    console.log('🔐 已登入，開始載入投資組合數據...');
+    // 這裡加上 await 確保載入順序，雖然 fetchAll 內部是非同步的
+    await portfolioStore.fetchAll();
+  }
   
   await nextTick();
   
-  // 移除載入動畫（如果有的話）
+  // 移除載入動畫
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
     setTimeout(() => {
@@ -180,6 +186,7 @@ onMounted(async () => {
   
   console.log('✅ App 初始化完成');
 });
+  
 </script>
 
 <style>
