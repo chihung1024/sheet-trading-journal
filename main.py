@@ -1,1 +1,68 @@
-"""\n投資組合計算引擎 - 主程式\nPortfolio Calculation Engine - Main Entry Point\n\n功能：\n1. 自動判斷美股交易時段（含假期）\n2. 盤中模式：併發抓取即時報價\n3. 收盤模式：使用歷史 Adj Close\n4. 多維度數據驗證與降級\n5. 系統健康度監控\n"""\nimport pandas as pd\nfrom datetime import timedelta\nfrom journal_engine.clients.api_client import CloudflareClient\nfrom journal_engine.clients.market_data import MarketDataClient\nfrom journal_engine.core.calculator import PortfolioCalculator\nfrom journal_engine.utils import is_us_market_open\nfrom journal_engine.monitor import HealthMonitor\n\n\ndef main():\n    print("=" * 60)\n    print("📊 SaaS Trading Journal - 投資組合計算引擎")\n    print("=" * 60)\n    \n    # √️ 初始化監控器\n    monitor = HealthMonitor()\n    \n    try:\n        # 1. 判斷運行模式\n        intraday_mode = is_us_market_open()\n        mode_text = "🔴 盤中即時" if intraday_mode else "🟢 收盤結算"\n        print(f"\n[運行模式] {mode_text}")\n        \n        # 2. 初始化 Clients\n        api_client = CloudflareClient()\n        market_client = MarketDataClient()\n        \n        # 3. 獲取交易紀錄\n        records = api_client.fetch_records()\n        if not records:\n            print("⚠\ufe0f 無交易紀錄")\n            monitor.record(success=True, mode='empty')\n            return\n        \n        # 4. 資料前處理\n        df = pd.DataFrame(records)\n        \n        # 映射欄位名稱\n        df.rename(columns={\n            'txn_date': 'Date',\n            'symbol': 'Symbol',\n            'txn_type': 'Type',\n            'qty': 'Qty',\n            'price': 'Price',\n            'fee': 'Commission',\n            'tax': 'Tax',\n            'tag': 'Tag'\n        }, inplace=True)\n        \n        # 型別轉換\n        df['Date'] = pd.to_datetime(df['Date'])\n        df['Qty'] = pd.to_numeric(df['Qty'])\n        df['Price'] = pd.to_numeric(df['Price'])\n        df['Commission'] = pd.to_numeric(df['Commission'].fillna(0))\n        df['Tax'] = pd.to_numeric(df['Tax'].fillna(0))\n        \n        # 依日期排序 (FIFO)\n        df = df.sort_values('Date')\n        \n        # 5. 下載歷史數據\n        if not df.empty:\n            start_date = df['Date'].min()\n            fetch_start_date = start_date - timedelta(days=100)\n            unique_tickers = df['Symbol'].dropna().unique().tolist()\n            \n            print(f"\n[數據下載] 最早交易日: {start_date.date()}")\n            print(f"[數據下載] 抓取起始日: {fetch_start_date.date()} (往前推 100 天)")\n            print(f"[數據下載] 抓取標的: {unique_tickers}")\n            \n            market_client.download_data(unique_tickers, fetch_start_date)\n        \n        # 6. √️ 盤中模式：抓取即時數據\n        if intraday_mode:\n            print("\n" + "=" * 60)\n            print("📡 抓取即時報價...")\n            print("=" * 60)\n            \n            success = market_client.update_intraday_data(unique_tickers)\n            \n            if not success:\n                print("⚠\ufe0f 即時數據獲取失敗，降級為收盤模式")\n                intraday_mode = False\n        \n        # 7. 執行計算\n        print("\n" + "=" * 60)\n        print("⚙\ufe0f 執行投資組合計算...")\n        print("=" * 60)\n        \n        calculator = PortfolioCalculator(df, market_client)\n        snapshot = calculator.run(intraday_mode=intraday_mode)\n        \n        # 8. √️ 檢查計算結果\n        if snapshot is None:\n            print("❌ 本次計算失敗，保留上次成功的快照")\n            monitor.record(success=False, mode='calculation_failed',\n                         errors=['Snapshot validation failed'])\n            return\n        \n        # 9. 上傳結果\n        print("\n[上傳數據] 寫入 Cloudflare D1...")\n        api_client.upload_portfolio(snapshot)\n        \n        # 10. √️ 記錄成功\n        monitor.record(success=True, mode=snapshot.get('data_mode', 'historical'))\n        \n        print("\n" + "=" * 60)\n        print("✅ 更新完成！")\n        print(f"   數據模式: {snapshot.get('data_mode', 'historical')}")\n        print(f"   更新時間: {snapshot.get('updated_at', 'N/A')}")\n        print(f"   總資產: ${snapshot.get('summary', {}).get('total_value', 0):,.0f}")\n        print("=" * 60)\n        \n        # 11. √️ 輸出健康度報告\n        health = monitor.get_health_score()\n        status_emoji = {\n            'excellent': '🟢',\n            'healthy': '🟡',\n            'degraded': '🟠',\n            'critical': '🔴'\n        }.get(health['status'], '⚪')\n        \n        print(f"\n📊 系統健康度: {status_emoji} {health['score']}% ({health['status']})")\n        if 'total_runs' in health:\n            print(f"   24h 執行 {health['total_runs']} 次，失敗 {health.get('failures', 0)} 次")\n        \n    except Exception as e:\n        print(f"\n❌ 執行失敗: {e}")\n        import traceback\n        traceback.print_exc()\n        \n        # √️ 記錄失敗\n        monitor.record(success=False, mode='exception', errors=[str(e)])\n        raise\n\n\nif __name__ == "__main__":\n    main()\n
+import pandas as pd
+from datetime import timedelta
+from journal_engine.clients.api_client import CloudflareClient
+from journal_engine.clients.market_data import MarketDataClient
+from journal_engine.core.calculator import PortfolioCalculator
+
+def main():
+    # 1. 初始化 Clients
+    api_client = CloudflareClient()
+    market_client = MarketDataClient()
+    
+    # 2. 獲取交易紀錄
+    records = api_client.fetch_records()
+    if not records:
+        print("無交易紀錄，程式結束")
+        return
+
+    # 3. 資料前處理
+    df = pd.DataFrame(records)
+    
+    # 映射欄位名稱 (DB欄位 -> 程式內部邏輯欄位)
+    df.rename(columns={
+        'txn_date': 'Date', 
+        'symbol': 'Symbol', 
+        'txn_type': 'Type', 
+        'qty': 'Qty', 
+        'price': 'Price', 
+        'fee': 'Commission', 
+        'tax': 'Tax', 
+        'tag': 'Tag'
+    }, inplace=True)
+    
+    # 型別轉換與空值填充
+    df['Date'] = pd.to_datetime(df['Date'])
+    df['Qty'] = pd.to_numeric(df['Qty'])
+    df['Price'] = pd.to_numeric(df['Price'])
+    df['Commission'] = pd.to_numeric(df['Commission'].fillna(0))
+    df['Tax'] = pd.to_numeric(df['Tax'].fillna(0)) 
+    
+    # 依日期排序 (FIFO 計算的關鍵)
+    df = df.sort_values('Date')
+    
+    # 4. 下載市場數據
+    # ✅ 抓取範圍：【最早交易日 - 100 天】至今
+    # 用途：
+    # 1. 捕捉買入日之前的拆股/配息事件
+    # 2. 應對長假期與市場休市
+    # 3. 確保有足夠的歷史數據計算調整因子
+    if not df.empty:
+        start_date = df['Date'].min()
+        fetch_start_date = start_date - timedelta(days=100)
+        unique_tickers = df['Symbol'].unique().tolist()
+        
+        print(f"[數據下載] 最早交易日: {start_date.date()}")
+        print(f"[數據下載] 抓取起始日: {fetch_start_date.date()} (往前推 100 天)")
+        print(f"[數據下載] 抓取標的: {unique_tickers}")
+        
+        market_client.download_data(unique_tickers, fetch_start_date)
+    
+    # 5. 核心計算
+    calculator = PortfolioCalculator(df, market_client)
+    final_snapshot = calculator.run()
+    
+    # 6. 上傳結果
+    api_client.upload_portfolio(final_snapshot)
+
+if __name__ == "__main__":
+    main()

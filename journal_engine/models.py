@@ -28,7 +28,7 @@ class PortfolioSummary(BaseModel):
     invested_capital: float
     total_pnl: float
     twr: float
-    xirr: float = 0.0  # ✅ XIRR (擴展內部報酬率)
+    xirr: float = 0.0  # ✅ 新增：XIRR (擴展內部報酬率)
     realized_pnl: float
     benchmark_twr: float
 
@@ -43,14 +43,13 @@ class HoldingPosition(BaseModel):
     current_price_origin: float
     avg_cost_usd: float = 0.0
     
-    # ✅ 用於計算今日損益的欄位
+    # ✅ 新增：用於計算今日損益的欄位
     prev_close_price: float = 0.0       # 前一交易日收盤價 (USD)
     daily_change_usd: float = 0.0       # 今日漲跌金額 (USD)
     daily_change_percent: float = 0.0   # 今日漲跌幅 (%)
 
 class PortfolioSnapshot(BaseModel):
     updated_at: str
-    data_mode: str = "historical"  # ✅ 新增："historical" 或 "intraday"
     base_currency: str
     exchange_rate: float
     summary: PortfolioSummary
