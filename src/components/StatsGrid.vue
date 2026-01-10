@@ -130,17 +130,17 @@ const pnlDescriptionShort = computed(() => {
 // 桌面版完整說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
-    return '今日台股 + 即時美股 + 匯率';
+    return '今日台股 + 即時美股 + 匣率';
   } else {
-    return '昨晚美股 + 今日台股 + 匯率';
+    return '昨晚美股 + 今日台股 + 匣率';
   }
 });
 
 const pnlTooltip = computed(() => {
   if (isUSMarketOpen.value) {
-    return '今日台股收盤 + 美股盤中變化 + 匯率波動';
+    return '今日台股收盤 + 美股盤中變化 + 匣率波動';
   } else {
-    return '昨晚美股收盤 + 今日台股變化 + 匯率波動';
+    return '昨晚美股收盤 + 今日台股變化 + 匣率波動';
   }
 });
 
@@ -436,23 +436,43 @@ html.dark .stat-block.highlight {
     } 
 }
 
+/* ✅ 768px 以下：一行 2 張卡片 */
 @media (max-width: 768px) { 
     .stats-grid { 
-        grid-template-columns: 1fr;
-        gap: 16px;
+        grid-template-columns: repeat(2, 1fr);  /* 保持 2 欄 */
+        gap: 12px;  /* 減少間距 */
     }
     
     .stat-block {
-        min-height: 120px;
-        padding: 18px;
+        min-height: 110px;  /* 減少高度 */
+        padding: 14px;  /* 減少 padding */
     }
     
     .stat-value {
-        font-size: 1.6rem;
+        font-size: 1.4rem;  /* 縮小字體 */
     }
     
     .stat-value.big {
-        font-size: 1.8rem;
+        font-size: 1.6rem;
+    }
+    
+    .stat-sub-value {
+        font-size: 0.85rem;
+    }
+    
+    .icon-box {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+    }
+    
+    .stat-label {
+        font-size: 0.7rem;
+    }
+    
+    .stat-footer {
+        font-size: 0.7rem;
+        padding-top: 8px;
     }
     
     /* ✅ 顯示簡短說明 */
@@ -465,32 +485,38 @@ html.dark .stat-block.highlight {
     }
 }
 
+/* ✅ 480px 以下：改為單欄 */
 @media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: 1fr;  /* 單欄 */
+        gap: 10px;
+    }
+    
     .stat-block {
-        padding: 16px;
-        min-height: 110px;
+        padding: 12px;
+        min-height: 100px;
     }
     
     .stat-value {
-        font-size: 1.4rem;
+        font-size: 1.3rem;
     }
     
     .stat-value.big {
-        font-size: 1.6rem;
+        font-size: 1.5rem;
     }
     
     .stat-sub-value {
-        font-size: 0.9rem;
+        font-size: 0.8rem;
     }
     
     .icon-box {
-        width: 36px;
-        height: 36px;
-        font-size: 1.1rem;
+        width: 30px;
+        height: 30px;
+        font-size: 0.95rem;
     }
     
     .stat-label {
-        font-size: 0.75rem;
+        font-size: 0.65rem;
     }
 }
 </style>
