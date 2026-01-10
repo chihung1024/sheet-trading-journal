@@ -336,52 +336,20 @@ input:disabled {
     transform: none; 
 }
 
-/* ✅ 手機版表單優化 */
+/* ✅ 手機版表單優化：保持雙欄但更緊湏 */
 @media (max-width: 768px) {
   .trade-panel {
-    padding: 20px;
-  }
-  
-  .form-grid {
-    grid-template-columns: 1fr;  /* 改為單欄 */
-    gap: 16px;
-  }
-  
-  .form-group.full {
-    grid-column: span 1;
-  }
-  
-  /* ✅ 雙輸入框改為垂直排列 */
-  .dual-input {
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .dual-input input {
-    width: 100%;
-  }
-  
-  .summary-box {
-    padding: 16px;
-  }
-  
-  .summary-value {
-    font-size: 1.5rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .trade-panel {
-    padding: 16px;
+    padding: 16px;  /* 減少 padding */
   }
   
   .panel-title {
-    font-size: 1rem;
-    margin-bottom: 16px;
+    font-size: 1.1rem;
+    margin-bottom: 16px;  /* 減少間距 */
   }
   
   .trade-type-switch {
-    margin-bottom: 16px;
+    margin-bottom: 16px;  /* 減少間距 */
+    padding: 3px;
   }
   
   .switch-btn {
@@ -389,21 +357,47 @@ input:disabled {
     font-size: 0.85rem;
   }
   
+  /* ✅ 保持雙欄但減少間距 */
   .form-grid {
-    gap: 14px;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;  /* 從 16px 改為 12px */
+  }
+  
+  .form-group.full {
+    grid-column: span 2;
+  }
+  
+  label {
+    font-size: 0.75rem;
+    margin-bottom: 4px;
   }
   
   input {
     padding: 10px;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
   }
   
-  label {
+  /* ✅ 雙輸入框保持橫排但減少間距 */
+  .dual-input {
+    gap: 8px;
+  }
+  
+  .summary-box {
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  
+  .summary-label {
     font-size: 0.8rem;
+    margin-bottom: 6px;
   }
   
   .summary-value {
-    font-size: 1.3rem;
+    font-size: 1.5rem;
+  }
+  
+  .action-buttons {
+    gap: 12px;
   }
   
   .btn {
@@ -412,14 +406,62 @@ input:disabled {
   }
 }
 
+@media (max-width: 480px) {
+  .trade-panel {
+    padding: 14px;
+  }
+  
+  .panel-title {
+    font-size: 1rem;
+    margin-bottom: 14px;
+  }
+  
+  .trade-type-switch {
+    margin-bottom: 14px;
+  }
+  
+  .switch-btn {
+    padding: 7px;
+    font-size: 0.8rem;
+  }
+  
+  .form-grid {
+    gap: 10px;
+  }
+  
+  label {
+    font-size: 0.7rem;
+  }
+  
+  input {
+    padding: 9px;
+    font-size: 0.85rem;
+  }
+  
+  .dual-input {
+    gap: 6px;
+  }
+  
+  .summary-box {
+    padding: 12px;
+  }
+  
+  .summary-value {
+    font-size: 1.3rem;
+  }
+  
+  .btn {
+    padding: 11px;
+    font-size: 0.9rem;
+  }
+}
+
 /* 
    🔥🔥🔥 強制修復深色模式顏色 🔥🔥🔥
-   這段代碼專門解決重新整理後，卡片變成亮白色的問題。
-   它使用 :global(.dark) 來確保優先權最高。
 */
 
 :global(.dark) .trade-panel {
-    background-color: #1e293b !important; /* 強制深色背景 */
+    background-color: #1e293b !important;
     border-color: #334155 !important;
     color: #f1f5f9 !important;
 }
@@ -427,12 +469,12 @@ input:disabled {
 :global(.dark) .panel-title,
 :global(.dark) label,
 :global(.dark) .summary-label {
-    color: #f1f5f9 !important; /* 強制文字變白 */
+    color: #f1f5f9 !important;
 }
 
 :global(.dark) input,
 :global(.dark) .summary-value {
-    background-color: #0f172a !important; /* 輸入框背景更深 */
+    background-color: #0f172a !important;
     color: #f1f5f9 !important;
     border-color: #334155 !important;
 }
