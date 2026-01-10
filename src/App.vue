@@ -24,15 +24,15 @@
             <span class="dot"></span> 連線正常
           </div>
           
-          <!-- ✅ 修改 @click 事件綁定 -->
+          <!-- ✅ 修改 @click 事件繫定 -->
           <button 
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
             :disabled="portfolioStore.isPolling"
             :title="portfolioStore.isPolling ? '系統正在背景計算中...' : '手動觸發投資組合數據更新'"
           >
-            <span>⚙️</span>
-            更新數據
+            <span class="btn-icon">⚙️</span>
+            <span class="btn-text">更新數據</span>
           </button>
           
           <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切換為淺色模式' : '切換為深色模式'">
@@ -631,9 +631,10 @@ tr:hover td {
   .desktop-only { display: none; }
 }
 
+/* ✅ 手機版 UI 優化 */
 @media (max-width: 768px) {
   .top-nav {
-    padding: 0 16px;
+    padding: 0 12px;
     height: 56px;
   }
   
@@ -645,38 +646,91 @@ tr:hover td {
     font-size: 1.3rem;
   }
   
+  .badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+  
   .status-indicator {
     font-size: 0.8rem;
   }
   
-  .content-container {
-    padding: 16px;
+  /* ✅ 優化更新按鈕 */
+  .action-trigger-btn {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    min-width: 90px;
   }
   
-  .toast-container {
-    bottom: 16px;
-    right: 16px;
-    left: 16px;
+  .action-trigger-btn .btn-icon {
+    font-size: 1rem;
   }
   
-  .toast {
-    min-width: auto;
-  }
-}
-
-@media (max-width: 480px) {
   .nav-status {
     gap: 12px;
   }
   
-  .status-indicator:not(.loading):not(.ready) {
+  .content-container {
+    padding: 16px;
+    gap: 16px;
+  }
+  
+  .main-column {
+    gap: 16px;
+  }
+  
+  /* ✅ Toast 優化 */
+  .toast-container {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+  }
+  
+  .toast {
+    min-width: auto;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .content-container {
+    padding: 12px;
+    gap: 12px;
+  }
+  
+  .top-nav {
+    padding: 0 8px;
+  }
+  
+  .nav-brand h1 {
+    font-size: 1rem;
+  }
+  
+  .nav-status {
+    gap: 8px;
+  }
+  
+  /* ✅ 超小螢幕隱藏按鈕文字 */
+  .action-trigger-btn {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    min-width: 42px;
+  }
+  
+  .action-trigger-btn .btn-text {
     display: none;
   }
   
-  .theme-toggle {
-    width: 36px;
-    height: 36px;
-    font-size: 1rem;
+  /* ✅ Toast 優化 */
+  .toast {
+    padding: 12px 16px;
+    font-size: 0.85rem;
+  }
+  
+  .toast-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 0.85rem;
   }
 }
 </style>
