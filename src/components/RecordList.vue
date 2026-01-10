@@ -243,7 +243,7 @@ const sortBy = (key) => {
 };
 
 const getSortIcon = (key) => {
-    if (sortKey.value !== key) return '↕';
+    if (sortKey.value !== key) return '⇕';
     return sortOrder.value === 'asc' ? '↑' : '↓';
 };
 
@@ -800,43 +800,108 @@ tr:last-child td {
     opacity: 0.5;
 }
 
-/* 響應式 */
+/* ✅ 手機版優化 */
 @media (max-width: 768px) {
+    .card-header {
+        gap: 14px;
+        margin-bottom: 16px;
+    }
+    
+    .card-header h3 {
+        font-size: 1.1rem;
+    }
+    
+    /* ✅ 修復下拉選單重疊：改為單欄 */
     .toolbar { 
         flex-direction: column; 
-        align-items: stretch; 
+        align-items: stretch;
+        padding: 12px;
+        gap: 10px;
     }
     
     .search-box {
         flex: 1 1 100%;
+        min-width: auto;
     }
     
+    .search-input {
+        font-size: 0.9rem;
+        padding: 9px 9px 9px 34px;
+    }
+    
+    /* ✅ 下拉選單改為單欄布局 */
     .filters { 
         flex-direction: column;
+        gap: 8px;
     }
     
     .filter-select {
         width: 100%;
+        padding: 9px 14px;
+        font-size: 0.9rem;
     }
     
     .btn-refresh { 
         margin-left: 0; 
         width: 100%; 
         justify-content: center;
+        padding: 9px 18px;
+        font-size: 0.9rem;
     }
     
+    /* ✅ 統計區塊：一行 2 個 */
     .stats-summary {
         grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding: 12px;
+        margin-bottom: 16px;
     }
     
+    .stat-label {
+        font-size: 0.7rem;
+    }
+    
+    .stat-value {
+        font-size: 1.3rem;
+    }
+    
+    /* ✅ 表格優化 */
+    th, td {
+        padding: 10px 8px;
+        font-size: 0.85rem;
+    }
+    
+    th {
+        font-size: 0.75rem;
+    }
+    
+    .symbol-badge {
+        font-size: 0.85rem;
+        padding: 4px 8px;
+    }
+    
+    .type-badge {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+    }
+    
+    .btn-icon {
+        width: 28px;
+        height: 28px;
+        font-size: 1rem;
+        padding: 6px 8px;
+    }
+    
+    /* ✅ 分頁優化 */
     .pagination {
         gap: 4px;
+        margin-top: 20px;
     }
     
     .page-btn, .page-number {
-        min-width: 32px;
-        height: 32px;
-        font-size: 0.85rem;
+        min-width: 30px;
+        height: 30px;
+        font-size: 0.8rem;
     }
     
     .page-info {
@@ -844,12 +909,20 @@ tr:last-child td {
         text-align: center;
         margin-left: 0;
         margin-top: 8px;
+        font-size: 0.85rem;
     }
 }
 
+/* ✅ 超小螢幕優化 */
 @media (max-width: 480px) {
     .stats-summary {
         grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    th, td {
+        padding: 8px 6px;
+        font-size: 0.8rem;
     }
 }
 </style>
