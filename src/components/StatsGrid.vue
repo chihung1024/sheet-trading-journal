@@ -51,7 +51,10 @@
         </div>
       </div>
       <div class="stat-footer">
-        <span class="text-sub text-xs">{{ pnlDescription }}</span>
+        <!-- ✅ 手機版顯示簡短說明 -->
+        <span class="text-sub text-xs mobile-short">{{ pnlDescriptionShort }}</span>
+        <!-- ✅ 桌面版顯示完整說明 -->
+        <span class="text-sub text-xs desktop-long">{{ pnlDescription }}</span>
       </div>
     </div>
     
@@ -69,7 +72,7 @@
       </div>
     </div>
     
-    <!-- 5. ✅ 新增：XIRR (個人年化報酬) -->
+    <!-- 5. XIRR (個人年化報酬) -->
     <div class="stat-block highlight">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
@@ -96,22 +99,18 @@ const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 const holdings = computed(() => store.holdings || []);
 
-// 計算未實現損益
 const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
-// 計算 ROI
 const roi = computed(() => {
   if (!stats.value.invested_capital) return '0.00';
   return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
 });
 
-// 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
 const isUSMarketOpen = computed(() => {
   const now = new Date();
   const hour = now.getHours();
   const minute = now.getMinutes();
   
-  // 晚上 9:30 後 或 凌晨 5:00 前
   if (hour >= 21 || hour < 5) {
     if (hour === 21 && minute < 30) return false;
     return true;
@@ -119,12 +118,16 @@ const isUSMarketOpen = computed(() => {
   return false;
 });
 
-// 動態標題
 const pnlLabel = computed(() => {
-  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益 (Est.)';
+  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益';
 });
 
-// 動態說明
+// ✅ 新增：手機版簡短說明
+const pnlDescriptionShort = computed(() => {
+  return isUSMarketOpen.value ? '台股+美股即時' : '昨晚美股+今日台股';
+});
+
+// 桌面版完整說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
     return '今日台股 + 即時美股 + 匯率';
@@ -133,7 +136,6 @@ const pnlDescription = computed(() => {
   }
 });
 
-// Tooltip 完整說明
 const pnlTooltip = computed(() => {
   if (isUSMarketOpen.value) {
     return '今日台股收盤 + 美股盤中變化 + 匯率波動';
@@ -142,7 +144,6 @@ const pnlTooltip = computed(() => {
   }
 });
 
-// ✅ 核心計算：精確分離股價因素和匯率因素
 const dailyPnL = computed(() => {
   const currentFxRate = stats.value.exchange_rate || 32.5;
   
@@ -153,22 +154,18 @@ const dailyPnL = computed(() => {
   const latest = history.value[history.value.length - 1];
   const previous = history.value[history.value.length - 2];
   
-  // 獲取歷史匯率數據
-  const todayFx = latest.fx_rate || currentFxRate;  // 今日匯率
-  const yesterdayFx = previous.fx_rate || currentFxRate;  // 昨日匯率
+  const todayFx = latest.fx_rate || currentFxRate;
+  const yesterdayFx = previous.fx_rate || currentFxRate;
   
-  // ✅ 美股開盤前：昨日股價變化@昨日匯率 + 今日匯率影響@昨日股價
   if (!isUSMarketOpen.value) {
     if (holdings.value[0].daily_change_usd !== undefined && holdings.value[0].prev_close_price !== undefined) {
-      let stockPnL = 0;  // 昨日股價變化（用昨日匯率）
-      let fxImpact = 0;  // 今日匯率影響（用昨日股價）
+      let stockPnL = 0;
+      let fxImpact = 0;
       
       holdings.value.forEach(holding => {
-        // 1. 昨日股價變化（USD）× 昨日匯率
         const yesterdayStockChange = holding.daily_change_usd * holding.qty * yesterdayFx;
         stockPnL += yesterdayStockChange;
         
-        // 2. 今日匯率影響 = 昨日收盤市值（USD）× 匯率變化
         const yesterdayMarketValueUSD = holding.prev_close_price * holding.qty;
         const fxChange = todayFx - yesterdayFx;
         const todayFxImpact = yesterdayMarketValueUSD * fxChange;
@@ -178,21 +175,16 @@ const dailyPnL = computed(() => {
       return stockPnL + fxImpact;
     }
     
-    // Fallback: 使用 History 快照
     return (latest.net_profit - previous.net_profit);
   }
   
-  // ✅ 美股盤中：當日股價變化（用今日匯率）
-  // 簡化：當前市值 - 開盤前市值
   const marketOpenValue = latest.total_value;
   const currentValue = stats.value.total_value;
   
   return currentValue - marketOpenValue;
 });
 
-// 計算今日損益百分比
 const dailyRoi = computed(() => {
-  // 使用昨日總資產作為基準
   if (history.value.length < 2) return '0.00';
   const previous = history.value[history.value.length - 2];
   
@@ -200,7 +192,6 @@ const dailyRoi = computed(() => {
   return ((dailyPnL.value / previous.total_value) * 100).toFixed(2);
 });
 
-// 數字動畫
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -220,7 +211,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 <style scoped>
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);  /* ✅ 改為 5 欄 */
+    grid-template-columns: repeat(5, 1fr);
     gap: 24px;
 }
 
@@ -254,7 +245,6 @@ html.dark .stat-block.primary {
     background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
 }
 
-/* ✅ 新增：XIRR 卡片特殊樣式 */
 .stat-block.highlight {
     background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     color: white;
@@ -401,7 +391,6 @@ html.dark .stat-block.highlight {
 .text-sub { color: var(--text-sub); }
 .text-xs { font-size: 0.75rem; }
 
-/* ✅ XIRR 卡片的文字顏色 */
 .stat-block.highlight .text-green { color: #d4f8d4; }
 .stat-block.highlight .text-red { color: #ffd4d4; }
 
@@ -426,15 +415,24 @@ html.dark .stat-block.highlight {
     border: 1px solid var(--danger);
 }
 
+/* ✅ 手機版/桌面版切換 */
+.mobile-short {
+    display: none;
+}
+
+.desktop-long {
+    display: inline;
+}
+
 @media (max-width: 1600px) { 
     .stats-grid { 
-        grid-template-columns: repeat(3, 1fr);  /* ✅ 中型螢幕 3 欄 */
+        grid-template-columns: repeat(3, 1fr);
     } 
 }
 
 @media (max-width: 1200px) { 
     .stats-grid { 
-        grid-template-columns: repeat(2, 1fr);  /* ✅ 小型螢幕 2 欄 */
+        grid-template-columns: repeat(2, 1fr);
     } 
 }
 
@@ -445,20 +443,46 @@ html.dark .stat-block.highlight {
     }
     
     .stat-block {
-        min-height: 130px;
-        padding: 20px;
+        min-height: 120px;
+        padding: 18px;
     }
     
     .stat-value {
-        font-size: 1.5rem;
+        font-size: 1.6rem;
     }
     
     .stat-value.big {
-        font-size: 1.75rem;
+        font-size: 1.8rem;
+    }
+    
+    /* ✅ 顯示簡短說明 */
+    .mobile-short {
+        display: inline;
+    }
+    
+    .desktop-long {
+        display: none;
     }
 }
 
 @media (max-width: 480px) {
+    .stat-block {
+        padding: 16px;
+        min-height: 110px;
+    }
+    
+    .stat-value {
+        font-size: 1.4rem;
+    }
+    
+    .stat-value.big {
+        font-size: 1.6rem;
+    }
+    
+    .stat-sub-value {
+        font-size: 0.9rem;
+    }
+    
     .icon-box {
         width: 36px;
         height: 36px;
