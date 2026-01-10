@@ -1,5 +1,5 @@
-// Service Worker v1.0.3
-const CACHE_VERSION = 'v1.0.3';
+// Service Worker v1.0.4 - FORCE UPDATE
+const CACHE_VERSION = 'v1.0.4-20260111';
 const CACHE_NAME = `trading-journal-${CACHE_VERSION}`;
 
 // 需要快取的資源
@@ -9,7 +9,7 @@ const urlsToCache = [
   '/manifest.json'
 ];
 
-// 安裝事件：快取静態資源
+// 安裝事件：快取靜態資源
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing Service Worker v' + CACHE_VERSION);
   event.waitUntil(
