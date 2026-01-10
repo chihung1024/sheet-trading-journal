@@ -48,7 +48,7 @@
     <div class="action-buttons">
         <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
         <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
-            {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出委託') }}
+            {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出姗託') }}
         </button>
     </div>
   </div>
@@ -133,10 +133,6 @@ defineExpose({ setupForm });
     box-shadow: var(--shadow-card); 
     background: var(--bg-card); 
     padding: 24px;
-    
-    /* ❌ 刪除以下這兩行，避免與外層衝突 */
-    /* position: sticky; */
-    /* top: 24px; */
 }
 
 .panel-title { 
@@ -340,19 +336,80 @@ input:disabled {
     transform: none; 
 }
 
-/* 響應式調整 */
+/* ✅ 手機版表單優化 */
 @media (max-width: 768px) {
-    .trade-panel {
-        padding: 20px;
-    }
-    
-    .form-grid {
-        gap: 16px;
-    }
-    
-    .panel-title {
-        font-size: 1.1rem;
-    }
+  .trade-panel {
+    padding: 20px;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;  /* 改為單欄 */
+    gap: 16px;
+  }
+  
+  .form-group.full {
+    grid-column: span 1;
+  }
+  
+  /* ✅ 雙輸入框改為垂直排列 */
+  .dual-input {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .dual-input input {
+    width: 100%;
+  }
+  
+  .summary-box {
+    padding: 16px;
+  }
+  
+  .summary-value {
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .trade-panel {
+    padding: 16px;
+  }
+  
+  .panel-title {
+    font-size: 1rem;
+    margin-bottom: 16px;
+  }
+  
+  .trade-type-switch {
+    margin-bottom: 16px;
+  }
+  
+  .switch-btn {
+    padding: 8px;
+    font-size: 0.85rem;
+  }
+  
+  .form-grid {
+    gap: 14px;
+  }
+  
+  input {
+    padding: 10px;
+    font-size: 0.95rem;
+  }
+  
+  label {
+    font-size: 0.8rem;
+  }
+  
+  .summary-value {
+    font-size: 1.3rem;
+  }
+  
+  .btn {
+    padding: 12px;
+    font-size: 0.95rem;
+  }
 }
 
 /* 
