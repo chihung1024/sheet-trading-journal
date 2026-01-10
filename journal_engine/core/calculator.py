@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from collections import deque
-from datetime import datetime
+from datetime import datetime, time
 from pyxirr import xirr  # ✅ 新增：引入 XIRR 計算套件
 from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
@@ -55,6 +55,40 @@ class PortfolioCalculator:
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             self.confirmed_dividends.add(key)
 
+    def _is_us_market_open(self):
+        """
+        ✅ 新增：判斷當前是否為美股盤中時間
+        
+        美股交易時間：
+        - EST: 09:30 - 16:00
+        - CST (台灣): 22:30 (週一) - 05:00 (週二)
+        
+        返回:
+            True 如果為盤中時間，否則 False
+        """
+        from datetime import datetime
+        
+        now = datetime.now()
+        current_hour = now.hour
+        current_minute = now.minute
+        weekday = now.weekday()  # 0=週一, 6=週日
+        
+        # 週末不開盤
+        if weekday >= 5:  # 週六、週日
+            return False
+        
+        # 台灣時間 22:30 - 23:59 (週一至週四晚上)
+        if current_hour == 22 and current_minute >= 30:
+            return True
+        if current_hour == 23:
+            return True
+        
+        # 台灣時間 00:00 - 05:00 (週二至週五凌晨)
+        if 0 <= current_hour < 5:
+            return True
+        
+        return False
+
     def run(self):
         """
         執行投資組合計算主流程
@@ -67,8 +101,8 @@ class PortfolioCalculator:
         # ==================== 步驟 2: 建立日期範圍 ====================
         start_date = self.df['Date'].min()
         
-        # ✅ 修正：一律計算到今天，即使美股數據還沒更新也要用最新匙率生成今日數據點
-        # 這樣白天時可以看到匙率變化的影響
+        # ✅ 修正：一律計算到今天，即使美股數據還沒更新也要用最新匯率生成今日數據點
+        # 這樣白天時可以看到匯率變化的影響
         end_date = datetime.now()
         print(f"[History 計算範圍] {start_date.date()} 至 {end_date.date()}")
         
@@ -78,7 +112,7 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
-            # 取得當日匙率
+            # 取得當日匯率
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx):
@@ -273,13 +307,28 @@ class PortfolioCalculator:
             })
 
     def _daily_valuation(self, date_ts, fx):
+        """
+        ✅ 每日資產估值（已優化：盤中使用即時價格）
+        """
         total_mkt_val = 0.0
         current_holdings_cost = 0.0
         
-        # 1. 計算當日市值 (使用 Raw Price，除息日會跌)
+        # ✅ 判斷是否為今天 + 是否盤中
+        is_today = date_ts.date() == datetime.now().date()
+        is_market_open = self._is_us_market_open()
+        
+        if is_today and is_market_open:
+            print(f"\n✅ [美股盤中] 使用即時價格計算 ({date_ts.date()})")
+        
+        # 1. 計算當日市值
         for sym, h in self.holdings.items():
             if h['qty'] > 0.0001:
-                price = self.market.get_price(sym, date_ts)
+                # ✅ 核心優化：盤中時使用即時價格
+                if is_today and is_market_open:
+                    price = self.market.get_realtime_price(sym)
+                else:
+                    price = self.market.get_price(sym, date_ts)
+                
                 total_mkt_val += h['qty'] * price * fx
                 current_holdings_cost += h['cost_basis_twd']
         
@@ -288,34 +337,20 @@ class PortfolioCalculator:
         total_pnl = unrealized_pnl + self.total_realized_pnl_twd
         current_total_equity = self.invested_capital + total_pnl
         
-        # 3. 計算當日 TWR (修正版：Modified Dietz 簡易版，解決小基數問題)
+        # 3. 計算當日 TWR (Modified Dietz)
         daily_return = 0.0
         
-        # 取得昨天的數據
         prev_invested = self.history_data[-1]['invested'] if self.history_data else 0.0
         prev_pnl = self.history_data[-1]['net_profit'] if self.history_data else 0.0
         
-        # 計算當日淨資金流入 (New Money)
         daily_net_inflow = self.invested_capital - prev_invested
-        
-        # 計算調整後的起始權益 (分母)
-        # 昨天的權益 + 今天的資金流入
-        # 這能防止 "昨天資產極小 ($0.05) 但今天大額入金 ($87,500)" 導致回報率爆炸
         adjusted_start_equity = self.prev_total_equity + daily_net_inflow
         
         if adjusted_start_equity > 0:
-            # 分子：當日損益變動 (Today PnL - Yesterday PnL)
             daily_pnl_change = total_pnl - prev_pnl
             daily_return = daily_pnl_change / adjusted_start_equity
-            
-        # 特殊情況：第一天 (昨天權益為0，且今天剛投入)
         elif self.invested_capital > 0 and self.prev_total_equity == 0:
              daily_return = total_pnl / self.invested_capital
-             
-        # [安全閖] 防止極端異常值 (選用，避免髒數據破壞圖表)
-        if abs(daily_return) > 1.0: # 如果單日漲跌超過 100%
-             # print(f"Warning: Abnormal daily return {daily_return} on {date_ts}")
-             pass 
 
         # 4. 累乘 TWR
         self.cumulative_twr_factor *= (1 + daily_return)
@@ -333,7 +368,7 @@ class PortfolioCalculator:
         # 6. 更新狀態
         self.prev_total_equity = current_total_equity
         
-        # ✅ 新增：在 history 中加入匙率欄位
+        # ✅ 新增：在 history 中加入匯率欄位
         self.history_data.append({
             "date": date_ts.strftime("%Y-%m-%d"),
             "total_value": round(total_mkt_val, 0),
@@ -341,7 +376,7 @@ class PortfolioCalculator:
             "net_profit": round(total_pnl, 0),
             "twr": round(twr_percentage, 2),
             "benchmark_twr": round(bench_twr, 2),
-            "fx_rate": round(fx, 4)  # ✅ 新增匙率欄位
+            "fx_rate": round(fx, 4)  # ✅ 新增匯率欄位
         })
 
 
@@ -367,7 +402,7 @@ class PortfolioCalculator:
         與 TWR 不同，XIRR 會受入金時機影響。
         
         參數:
-            current_fx: 當前匙率
+            current_fx: 當前匯率
         
         返回:
             XIRR 百分比 (float)
@@ -409,14 +444,14 @@ class PortfolioCalculator:
         產生最終報表輸出
         
         ✅ 新增功能：計算每檔持股的前一交易日收盤價與今日變化
-        ✅ 邏輯：取數據中最新的兩個收盤價（自動適應週末/假日）
+        ✅ 逻輯：取數據中最新的兩個收盤價（自動適應週末/假日）
         """
         import pandas as pd
         
         print("整理最終報表...")
         
-        # ✅ 新增：顯示最新兩筆匙率數據
-        print(f"\n[匙率比對] 顯示最新兩個交易日匙率")
+        # ✅ 新增：顯示最新兩筆匯率數據
+        print(f"\n[匯率比對] 顯示最新兩個交易日匯率")
         if len(self.market.fx_rates) >= 2:
             latest_fx = self.market.fx_rates.iloc[-1]
             prev_fx = self.market.fx_rates.iloc[-2]
@@ -426,23 +461,26 @@ class PortfolioCalculator:
             fx_change = latest_fx - prev_fx
             fx_change_pct = (fx_change / prev_fx) * 100 if prev_fx > 0 else 0
             
-            print(f"[USD/TWD] 最新匙率: {latest_fx:.4f} ({latest_fx_date}) | 前匙率: {prev_fx:.4f} ({prev_fx_date})")
-            print(f"[USD/TWD] 匙率變化: {fx_change:+.4f} ({fx_change_pct:+.2f}%)")
+            print(f"[USD/TWD] 最新匯率: {latest_fx:.4f} ({latest_fx_date}) | 前匯率: {prev_fx:.4f} ({prev_fx_date})")
+            print(f"[USD/TWD] 匯率變化: {fx_change:+.4f} ({fx_change_pct:+.2f}%)")
             
-            # 計算匙率對持倉的影響
+            # 計算匯率對持倉的影響
             if len(self.holdings) > 0:
                 total_usd_value = sum(
                     h['cost_basis_usd'] for h in self.holdings.values() if h['qty'] > 0.001
                 )
                 fx_impact_twd = total_usd_value * fx_change
-                print(f"[匙率影響] 美元資產 ${total_usd_value:,.0f} × {fx_change:+.4f} = 台幣 {fx_impact_twd:+,.0f}")
+                print(f"[匯率影響] 美元資產 ${total_usd_value:,.0f} × {fx_change:+.4f} = 台幣 {fx_impact_twd:+,.0f}")
         else:
-            print(f"[USD/TWD] 當前匙率: {current_fx:.4f} (數據不足無法比對)")
+            print(f"[USD/TWD] 當前匯率: {current_fx:.4f} (數據不足無法比對)")
         
         print(f"\n[今日損益計算] 使用最新兩個收盤價進行計算")
         
         final_holdings = []
         current_holdings_cost_sum = 0.0
+        
+        # ✅ 判斷是否盤中，決定是否使用即時價格
+        is_market_open = self._is_us_market_open()
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
@@ -453,25 +491,29 @@ class PortfolioCalculator:
                 
                 stock_data = self.market.market_data[sym]
                 
-                # ✅ 取最新兩個收盤價
-                if len(stock_data) >= 2:
-                    # 最新價格（可能是今日盤中或昨日收盤）
-                    curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+                # ✅ 盤中時使用即時價格
+                if is_market_open:
+                    curr_p = self.market.get_realtime_price(sym)
                     # 前一交易日收盤價
-                    prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
-                    
-                    latest_date = stock_data.index[-1].date()
-                    prev_date = stock_data.index[-2].date()
-                    
-                    print(f"[{sym}] 最新價: {curr_p:.2f} ({latest_date}) | 前價: {prev_p:.2f} ({prev_date})")
-                elif len(stock_data) == 1:
-                    # 只有一筆數據（新買入的股票）
-                    curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
-                    prev_p = curr_p
-                    print(f"[{sym}] 僅有一筆數據，無法計算日變化")
+                    prev_p = float(stock_data.iloc[-1]['Close_Adjusted']) if len(stock_data) >= 1 else curr_p
+                    print(f"[{sym}] 盤中即時價: ${curr_p:.2f} | 昨日收盤: ${prev_p:.2f}")
                 else:
-                    print(f"[警告] {sym} 數據不足")
-                    continue
+                    # ✅ 盤後：取最新兩個收盤價
+                    if len(stock_data) >= 2:
+                        curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+                        prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
+                        
+                        latest_date = stock_data.index[-1].date()
+                        prev_date = stock_data.index[-2].date()
+                        
+                        print(f"[{sym}] 最新價: ${curr_p:.2f} ({latest_date}) | 前價: ${prev_p:.2f} ({prev_date})")
+                    elif len(stock_data) == 1:
+                        curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+                        prev_p = curr_p
+                        print(f"[{sym}] 僅有一筆數據，無法計算日變化")
+                    else:
+                        print(f"[警告] {sym} 數據不足")
+                        continue
                 
                 # ✅ 計算今日變化
                 if prev_p > 0 and abs(curr_p - prev_p) > 0.01:
