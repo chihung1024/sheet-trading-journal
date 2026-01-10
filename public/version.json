@@ -1,0 +1,16 @@
+{
+  "version": "1.0.5",
+  "buildId": "20260111-004625",
+  "timestamp": "2026-01-11T00:46:25+08:00",
+  "changes": [
+    "修復交易紀錄區塊下拉選單重疊（改為單欄布局）",
+    "統計區塊改為一行 2 個（768px）",
+    "減少間距與 padding優化手機版體驗",
+    "Service Worker 絽急模式啟用"
+  ],
+  "deploy": {
+    "platform": "Cloudflare Pages",
+    "branch": "main",
+    "commit": "c88da69723179bbf973f45b1c63f09247d30c485"
+  }
+}
