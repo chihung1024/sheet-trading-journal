@@ -167,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
@@ -222,7 +222,12 @@ const fxRateMap = computed(() => {
         store.history.forEach(item => {
             map[item.date] = item.fx_rate || 32.0;
         });
+        
+        // 🐛 Debug: 顯示匯率映射表的日期範圍
+        const dates = Object.keys(map).sort();
         console.log('✅ [RecordList] 匯率映射表建立完成，共', Object.keys(map).length, '筆');
+        console.log('📅 [RecordList] 匯率日期範圍:', dates[0], '~', dates[dates.length - 1]);
+        console.log('📊 [RecordList] 匯率樣本:', map[dates[0]], map[dates[dates.length - 1]]);
     } else {
         console.warn('⚠️ [RecordList] store.history 為空，無法建立匯率映射');
     }
@@ -240,15 +245,16 @@ const getFxRateByDate = (dateStr) => {
     const dates = Object.keys(fxRateMap.value).sort();
     for (let i = dates.length - 1; i >= 0; i--) {
         if (dates[i] <= dateStr) {
-            console.log(`ℹ️ [RecordList] ${dateStr} 找不到匯率，使用 ${dates[i]} 的匯率`);
+            console.log(`ℹ️ [RecordList] ${dateStr} 找不到匯率，使用 ${dates[i]} 的匯率: ${fxRateMap.value[dates[i]]}`);
             return fxRateMap.value[dates[i]];
         }
     }
     
-    // 3. 如果還是找不到，使用 store 中的當前匯率
-    if (store.stats?.exchange_rate) {
-        console.log(`ℹ️ [RecordList] ${dateStr} 使用當前匯率: ${store.stats.exchange_rate}`);
-        return store.stats.exchange_rate;
+    // 3. 如果還是找不到，嘗試使用最新的匯率（交易日期可能在 history 之前）
+    if (dates.length > 0) {
+        const latestDate = dates[dates.length - 1];
+        console.log(`ℹ️ [RecordList] ${dateStr} 在 history 範圍之外，使用最新匯率 (${latestDate}): ${fxRateMap.value[latestDate]}`);
+        return fxRateMap.value[latestDate];
     }
     
     // 4. 最後的 fallback：預設匯率 32.0
@@ -262,13 +268,18 @@ const getTotalAmountTWD = (record) => {
     const fxRate = getFxRateByDate(record.txn_date);
     const twdAmount = usdAmount * fxRate;
     
-    // Debug log
-    if (twdAmount === 0 && usdAmount !== 0) {
-        console.warn(`⚠️ [RecordList] ${record.symbol} ${record.txn_date}: USD ${usdAmount} × FX ${fxRate} = TWD ${twdAmount}`);
-    }
-    
     return twdAmount;
 };
+
+// 🐛 Debug: 組件載入時輸出 records 的日期範圍
+onMounted(() => {
+    if (store.records && store.records.length > 0) {
+        const dates = store.records.map(r => r.txn_date).sort();
+        console.log('📝 [RecordList] 交易紀錄共', store.records.length, '筆');
+        console.log('📅 [RecordList] 交易日期範圍:', dates[0], '~', dates[dates.length - 1]);
+        console.log('📊 [RecordList] 第一筆交易:', store.records[0]);
+    }
+});
 
 const availableYears = computed(() => {
     const years = new Set(
