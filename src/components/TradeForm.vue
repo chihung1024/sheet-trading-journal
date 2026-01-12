@@ -94,7 +94,20 @@ const calcPrice = () => {
 };
 
 const submit = async () => {
-    if (!form.symbol || !form.qty || !form.price) { addToast("請填寫完整資料", "error"); return; }
+    if (!form.symbol || !form.qty || !form.price) { 
+        addToast("請填寫完整資料", "error"); 
+        return; 
+    }
+    
+    // ✅ 檢查 token 是否存在且未過期
+    if (!auth.token || auth.isTokenExpired()) {
+        addToast("登入已過期，請重新登入", "error");
+        setTimeout(() => {
+            auth.logout();
+        }, 2000);
+        return;
+    }
+    
     loading.value = true;
     try {
         const method = isEditing.value ? "PUT" : "POST";
@@ -102,15 +115,38 @@ const submit = async () => {
         ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
         
         const res = await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
-            method, headers: { 'Authorization': `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
+            method, 
+            headers: { 
+                'Authorization': `Bearer ${auth.token}`, 
+                'Content-Type': 'application/json' 
+            },
             body: JSON.stringify(payload)
         });
+        
+        // ✅ 處理 401 錯誤
+        if (res.status === 401) {
+            addToast("身份驗證失敗，請重新登入", "error");
+            setTimeout(() => {
+                auth.logout();
+            }, 2000);
+            return;
+        }
+        
         const json = await res.json();
+        
         if (json.success) {
             addToast(isEditing.value ? "更新成功" : "新增成功", "success");
-            resetForm(); store.fetchRecords();
-        } else { addToast(json.error, "error"); }
-    } catch(e) { addToast("連線錯誤", "error"); } finally { loading.value = false; }
+            resetForm(); 
+            store.fetchRecords();
+        } else { 
+            addToast(json.error || "操作失敗", "error"); 
+        }
+    } catch(e) { 
+        console.error('❌ 提交錯誤:', e);
+        addToast("連線錯誤，請稍後再試", "error"); 
+    } finally { 
+        loading.value = false; 
+    }
 };
 
 const resetForm = () => {
@@ -133,10 +169,6 @@ defineExpose({ setupForm });
     box-shadow: var(--shadow-card); 
     background: var(--bg-card); 
     padding: 24px;
-    
-    /* ❌ 刪除以下這兩行，避免與外層衝突 */
-    /* position: sticky; */
-    /* top: 24px; */
 }
 
 .panel-title { 
@@ -355,14 +387,9 @@ input:disabled {
     }
 }
 
-/* 
-   🔥🔥🔥 強制修復深色模式顏色 🔥🔥🔥
-   這段代碼專門解決重新整理後，卡片變成亮白色的問題。
-   它使用 :global(.dark) 來確保優先權最高。
-*/
-
+/* 強制修復深色模式顏色 */
 :global(.dark) .trade-panel {
-    background-color: #1e293b !important; /* 強制深色背景 */
+    background-color: #1e293b !important;
     border-color: #334155 !important;
     color: #f1f5f9 !important;
 }
@@ -370,12 +397,12 @@ input:disabled {
 :global(.dark) .panel-title,
 :global(.dark) label,
 :global(.dark) .summary-label {
-    color: #f1f5f9 !important; /* 強制文字變白 */
+    color: #f1f5f9 !important;
 }
 
 :global(.dark) input,
 :global(.dark) .summary-value {
-    background-color: #0f172a !important; /* 輸入框背景更深 */
+    background-color: #0f172a !important;
     color: #f1f5f9 !important;
     border-color: #334155 !important;
 }
