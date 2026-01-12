@@ -33,7 +33,6 @@
         </div>
         
         <div class="right-controls">
-          <!-- 日期選擇器 - 常態顯示 -->
           <div class="date-range-selector">
             <div class="date-input-group">
               <label>起始日期</label>
@@ -89,7 +88,6 @@ const baselineData = ref(null);
 const customStartDate = ref('');
 const customEndDate = ref('');
 
-// 計算今天的日期字串
 const todayStr = computed(() => {
   const today = new Date();
   return today.toISOString().split('T')[0];
@@ -164,7 +162,7 @@ const onDateChange = () => {
   filterData(start, end);
 };
 
-// ✅ 修正：改善基準點計算和數據過濾邏輯
+// ✅ 修正：排除週末但保留區間第一天，週一的基準點為週日
 const filterData = (startDate, endDate = new Date()) => {
     const fullHistory = store.history || [];
     if (fullHistory.length === 0) {
@@ -173,40 +171,71 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
-    // ✅ 找到選擇區間內的所有資料（不過濾週末）
-    const filteredData = fullHistory.filter(d => {
+    // 1. 先找到區間內的所有資料（不過濾）
+    const rangeData = fullHistory.filter(d => {
         const date = new Date(d.date.replace(/-/g, '/'));
         return date >= startDate && date <= endDate;
     });
     
-    if (filteredData.length === 0) {
+    if (rangeData.length === 0) {
         displayedData.value = [];
         baselineData.value = null;
         return;
     }
 
-    // ✅ 找到選擇區間前一天的資料作為基準點
+    // 2. 取得區間第一天的資料
+    const firstData = rangeData[0];
+    const firstDate = new Date(firstData.date.replace(/-/g, '/'));
+    const firstDayOfWeek = firstDate.getDay(); // 0=週日, 1=週一, ..., 6=週六
+
+    // 3. 過濾數據：排除週末，但保留第一天（即使是週末）
+    const filteredData = rangeData.filter((d, index) => {
+        const date = new Date(d.date.replace(/-/g, '/'));
+        const dayOfWeek = date.getDay();
+        
+        // 第一筆資料一定保留
+        if (index === 0) return true;
+        
+        // 其他資料排除週六、週日
+        return dayOfWeek !== 0 && dayOfWeek !== 6;
+    });
+
+    // 4. 計算基準點
     let baseline = null;
-    const firstDataDate = new Date(filteredData[0].date.replace(/-/g, '/'));
     
-    // 往前找到最近的一筆資料
+    // 先嘗試從 fullHistory 中找到前一天的資料
     for (let i = fullHistory.length - 1; i >= 0; i--) {
         const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
-        if (date < firstDataDate) {
-            baseline = fullHistory[i];
-            break;
+        if (date < firstDate) {
+            const dayOfWeek = date.getDay();
+            // 如果前一天不是週末，使用它作為基準點
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                baseline = fullHistory[i];
+                break;
+            }
         }
     }
     
-    // ✅ 如果找不到前一天，使用第一筆資料作為基準點，但設定值為 0
+    // 5. 如果找不到非週末的前一天，或第一天就是週一，創建虛擬基準點
     if (!baseline) {
+        // 計算前一天的日期（可能是週日）
+        const baselineDate = new Date(firstDate);
+        baselineDate.setDate(baselineDate.getDate() - 1);
+        
         baseline = {
-            date: filteredData[0].date,
-            total_value: filteredData[0].invested, // 設定為投入資本，使 pnl 為 0
-            invested: filteredData[0].invested,
+            date: baselineDate.toISOString().split('T')[0],
+            total_value: firstData.invested, // 設定為投入資本，使 pnl 為 0
+            invested: firstData.invested,
             twr: 0,
             benchmark_twr: 0
         };
+        
+        console.log('📌 創建虛擬基準點:', {
+            '基準日期': baseline.date,
+            '星期': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][baselineDate.getDay()],
+            '第一天': firstData.date,
+            '第一天星期': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][firstDayOfWeek]
+        });
     }
     
     baselineData.value = baseline;
@@ -215,8 +244,14 @@ const filterData = (startDate, endDate = new Date()) => {
     console.log('📅 過濾資料:', {
         '區間': `${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`,
         '第一筆資料': filteredData[0]?.date,
+        '第一天星期': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][firstDayOfWeek],
         '基準點日期': baseline.date,
-        '總筆數': filteredData.length
+        '總筆數': filteredData.length,
+        '包含週末': filteredData.some(d => {
+            const date = new Date(d.date.replace(/-/g, '/'));
+            const dow = date.getDay();
+            return dow === 0 || dow === 6;
+        })
     });
     
     drawChart();
@@ -262,7 +297,6 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        // ✅ 使用基準點計算損益變化
         const basePnL = baselineData.value.total_value - baselineData.value.invested;
         const pnlData = displayedData.value.map(d => {
             const currentPnL = d.total_value - d.invested;
@@ -282,7 +316,6 @@ const drawChart = () => {
             ...common
         }];
     } else {
-        // ✅ 使用基準點計算報酬率變化
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
