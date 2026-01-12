@@ -398,7 +398,8 @@ const drawChart = () => {
                                         maximumFractionDigits: 0
                                     });
                                 } else {
-                                    const sign = context.parsed.y >= 0 ? '+' : ''label += sign + context.parsed.y.toLocaleString('zh-TW', {
+                                    const sign = context.parsed.y >= 0 ? '+' : '';
+                                    label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
                                     });
