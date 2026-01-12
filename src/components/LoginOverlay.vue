@@ -101,33 +101,39 @@ onMounted(() => {
         }
       }, 100);
     }
-  }, 200); // ✅ 延遲 200ms 再初始化
+  }, 200);
 });
 
 const initGoogleSignIn = () => {
   try {
-    console.log('🔧 正在初始化 Google Sign-In...');
+    console.log('🔧 正在初始化 Google Sign-In 使用 FedCM...');
     
     // ✅ 再次確保清空容器
     if (googleBtn.value) {
       googleBtn.value.innerHTML = '';
     }
     
-    // ✅ 重要：確保每次都是全新的初始化
+    // ✅ 重要：啟用 FedCM （已是強制標準）
     window.google.accounts.id.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
       callback: window.handleCredentialResponse,
       auto_select: false,
       cancel_on_tap_outside: false,
       itp_support: true,
-      use_fedcm_for_prompt: false // ✅ 禁用 FedCM 防止快取問題
+      use_fedcm_for_prompt: true // ✅ 啟用 FedCM
     });
 
-    // ✅ 確保每次都顯示 One Tap
+    // ✅ 使用 FedCM 顯示 One Tap
     window.google.accounts.id.prompt((notification) => {
-      console.log('🔔 One Tap 通知:', notification);
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        console.log('⚠️ One Tap 未顯示，原因:', notification.getNotDisplayedReason());
+      console.log('🔔 FedCM One Tap 狀態:', notification);
+      
+      // ✅ FedCM 已不再支援詳細的跳過原因和顯示時刻
+      if (notification.isNotDisplayed()) {
+        console.log('⚠️ FedCM One Tap 未顯示');
+      } else if (notification.isSkippedMoment()) {
+        console.log('🚫 FedCM One Tap 已跳過');
+      } else if (notification.isDismissedMoment()) {
+        console.log('❌ FedCM One Tap 已關閉');
       }
     });
 
@@ -141,7 +147,7 @@ const initGoogleSignIn = () => {
         shape: 'rectangular',
         logo_alignment: 'left'
       });
-      console.log('✅ Google 登入按鈕已渲染');
+      console.log('✅ Google 登入按鈕已渲染（FedCM 模式）');
     } else {
       console.warn('⚠️ googleBtn ref 不存在');
     }
