@@ -164,6 +164,7 @@ const onDateChange = () => {
   filterData(start, end);
 };
 
+// ✅ 修正：改善基準點計算和數據過濾邏輯
 const filterData = (startDate, endDate = new Date()) => {
     const fullHistory = store.history || [];
     if (fullHistory.length === 0) {
@@ -172,29 +173,50 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
+    // ✅ 找到選擇區間內的所有資料（不過濾週末）
+    const filteredData = fullHistory.filter(d => {
+        const date = new Date(d.date.replace(/-/g, '/'));
+        return date >= startDate && date <= endDate;
+    });
+    
+    if (filteredData.length === 0) {
+        displayedData.value = [];
+        baselineData.value = null;
+        return;
+    }
+
+    // ✅ 找到選擇區間前一天的資料作為基準點
     let baseline = null;
-    for (let i = 0; i < fullHistory.length; i++) {
+    const firstDataDate = new Date(filteredData[0].date.replace(/-/g, '/'));
+    
+    // 往前找到最近的一筆資料
+    for (let i = fullHistory.length - 1; i >= 0; i--) {
         const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
-        if (date >= startDate) {
-            if (i > 0) {
-                baseline = fullHistory[i - 1];
-            } else {
-                baseline = fullHistory[i];
-            }
+        if (date < firstDataDate) {
+            baseline = fullHistory[i];
             break;
         }
     }
     
-    if (!baseline && fullHistory.length > 0) {
-        baseline = fullHistory[0];
+    // ✅ 如果找不到前一天，使用第一筆資料作為基準點，但設定值為 0
+    if (!baseline) {
+        baseline = {
+            date: filteredData[0].date,
+            total_value: filteredData[0].invested, // 設定為投入資本，使 pnl 為 0
+            invested: filteredData[0].invested,
+            twr: 0,
+            benchmark_twr: 0
+        };
     }
     
     baselineData.value = baseline;
-
-    displayedData.value = fullHistory.filter(d => {
-        const date = new Date(d.date.replace(/-/g, '/'));
-        const dayOfWeek = date.getDay();
-        return date >= startDate && date <= endDate && dayOfWeek !== 0 && dayOfWeek !== 6;
+    displayedData.value = filteredData;
+    
+    console.log('📅 過濾資料:', {
+        '區間': `${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`,
+        '第一筆資料': filteredData[0]?.date,
+        '基準點日期': baseline.date,
+        '總筆數': filteredData.length
     });
     
     drawChart();
@@ -225,7 +247,6 @@ const drawChart = () => {
     };
 
     if (chartType.value === 'asset') {
-        // ✅ 資產曲線顯示實際值
         const assetData = displayedData.value.map(d => d.total_value);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
@@ -241,6 +262,7 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
+        // ✅ 使用基準點計算損益變化
         const basePnL = baselineData.value.total_value - baselineData.value.invested;
         const pnlData = displayedData.value.map(d => {
             const currentPnL = d.total_value - d.invested;
@@ -260,6 +282,7 @@ const drawChart = () => {
             ...common
         }];
     } else {
+        // ✅ 使用基準點計算報酬率變化
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
@@ -333,13 +356,11 @@ const drawChart = () => {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
                                 } else if (chartType.value === 'asset') {
-                                    // ✅ 資產顯示實際值，不加正負號
                                     label += context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
                                     });
                                 } else {
-                                    // 損益變化加正負號
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
@@ -387,13 +408,11 @@ const drawChart = () => {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
                             } else if (chartType.value === 'asset') {
-                                // ✅ 資產顯示實際值，不加正負號
                                 return value.toLocaleString('zh-TW', {
                                     notation: 'compact',
                                     compactDisplay: 'short'
                                 });
                             } else {
-                                // 損益變化加正負號
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toLocaleString('zh-TW', {
                                     notation: 'compact',
