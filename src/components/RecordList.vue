@@ -76,8 +76,8 @@
                     </th>
                     <th class="text-right">股數</th>
                     <th class="text-right">單價 (USD)</th>
-                    <th @click="sortBy('total_amount')" class="text-right sortable">
-                        總額 (USD) <span class="sort-icon">{{ getSortIcon('total_amount') }}</span>
+                    <th @click="sortBy('total_amount_twd')" class="text-right sortable">
+                        總額 (TWD) <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
                     </th>
                     <th class="text-right">操作</th>
                 </tr>
@@ -109,7 +109,7 @@
                     <td class="text-right font-num">{{ formatNumber(r.qty, 2) }}</td>
                     <td class="text-right font-num">{{ formatNumber(r.price, 4) }}</td>
                     <td class="text-right font-num font-bold">
-                        ${{ formatNumber(r.total_amount, 2) }}
+                        NT${{ formatNumber(getTotalAmountTWD(r), 0) }}
                     </td>
                     <td class="text-right actions">
                         <button 
@@ -215,6 +215,35 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
+// ✅ 新增：建立日期到匯率的映射表（從 history 數據中提取）
+const fxRateMap = computed(() => {
+    const map = {};
+    if (store.portfolio?.history) {
+        store.portfolio.history.forEach(item => {
+            map[item.date] = item.fx_rate || 32.0; // 預設匯率 32.0
+        });
+    }
+    return map;
+});
+
+// ✅ 新增：根據交易日期獲取當天匯率
+const getFxRateByDate = (dateStr) => {
+    // 嘗試精確匹配日期
+    if (fxRateMap.value[dateStr]) {
+        return fxRateMap.value[dateStr];
+    }
+    
+    // 如果找不到（例如新增的交易還沒計算），使用當前匯率
+    return store.portfolio?.exchange_rate || 32.0;
+};
+
+// ✅ 新增：計算台幣總額（使用交易當天匯率）
+const getTotalAmountTWD = (record) => {
+    const usdAmount = record.total_amount || 0;
+    const fxRate = getFxRateByDate(record.txn_date);
+    return usdAmount * fxRate;
+};
+
 const availableYears = computed(() => {
     const years = new Set(
         store.records.map(r => r.txn_date.substring(0, 4))
@@ -257,9 +286,18 @@ const processedRecords = computed(() => {
         return matchSearch && matchType && matchYear;
     });
 
+    // ✅ 修改：支援按台幣總額排序
     result.sort((a, b) => {
-        let valA = a[sortKey.value];
-        let valB = b[sortKey.value];
+        let valA, valB;
+        
+        // 特殊處理：如果是按台幣總額排序
+        if (sortKey.value === 'total_amount_twd') {
+            valA = getTotalAmountTWD(a);
+            valB = getTotalAmountTWD(b);
+        } else {
+            valA = a[sortKey.value];
+            valB = b[sortKey.value];
+        }
         
         if (sortKey.value === 'txn_date') {
             return sortOrder.value === 'asc' 
