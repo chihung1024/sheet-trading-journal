@@ -213,26 +213,36 @@ const drawChart = () => {
     };
 
     if (chartType.value === 'asset') {
+        // ✅ 重置起始點為 0，提供公平的比較基準
+        const baseValue = displayedData.value[0].total_value;
+        const assetData = displayedData.value.map(d => d.total_value - baseValue);
+        
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
         
         datasets = [{
-            label: '總資產 (TWD)',
-            data: displayedData.value.map(d => d.total_value),
+            label: '總資產變化 (TWD)',
+            data: assetData,
             borderColor: '#3b82f6',
             backgroundColor: gradient,
             fill: true,
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        const pnlData = displayedData.value.map(d => d.total_value - d.invested);
+        // ✅ 重置起始點為 0
+        const basePnL = displayedData.value[0].total_value - displayedData.value[0].invested;
+        const pnlData = displayedData.value.map(d => {
+            const currentPnL = d.total_value - d.invested;
+            return currentPnL - basePnL;
+        });
+        
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
         gradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
         gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
         
         datasets = [{
-            label: '損益 (TWD)',
+            label: '損益變化 (TWD)',
             data: pnlData,
             borderColor: '#10b981',
             backgroundColor: gradient,
@@ -240,21 +250,25 @@ const drawChart = () => {
             ...common
         }];
     } else {
+        // ✅ TWR 和 benchmark 都重置起始點為 0
+        const baseTWR = displayedData.value[0].twr;
+        const baseBenchmark = displayedData.value[0].benchmark_twr;
+        
         datasets = [
             {
                 label: 'TWR (%)',
-                data: displayedData.value.map(d => d.twr),
+                data: displayedData.value.map(d => d.twr - baseTWR),
                 borderColor: '#8b5cf6',
                 backgroundColor: 'rgba(139, 92, 246, 0.1)',
                 ...common
             },
             {
                 label: 'SPY (%)',
-                data: displayedData.value.map(d => d.benchmark_twr),
+                data: displayedData.value.map(d => d.benchmark_twr - baseBenchmark),
                 borderColor: '#94a3b8',
                 borderDash: [5, 5],
                 borderWidth: 2,
-                pointRadius: 0,  // 移除數據點標記
+                pointRadius: 0,
                 pointHoverRadius: 4,
                 tension: 0.4
             }
@@ -307,9 +321,13 @@ const drawChart = () => {
                             }
                             if (context.parsed.y !== null) {
                                 if (chartType.value === 'twr') {
-                                    label += context.parsed.y.toFixed(2) + '%';
+                                    // ✅ 顯示相對變化百分比
+                                    const sign = context.parsed.y >= 0 ? '+' : '';
+                                    label += sign + context.parsed.y.toFixed(2) + '%';
                                 } else {
-                                    label += context.parsed.y.toLocaleString('zh-TW', {
+                                    // ✅ 顯示變化值
+                                    const sign = context.parsed.y >= 0 ? '+' : '';
+                                    label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
                                     });
@@ -352,9 +370,13 @@ const drawChart = () => {
                             .getPropertyValue('--text-sub').trim(),
                         callback: function(value) {
                             if (chartType.value === 'twr') {
-                                return value.toFixed(1) + '%';
+                                // ✅ 顯示相對變化百分比
+                                const sign = value >= 0 ? '+' : '';
+                                return sign + value.toFixed(1) + '%';
                             }
-                            return value.toLocaleString('zh-TW', {
+                            // ✅ 顯示變化值
+                            const sign = value >= 0 ? '+' : '';
+                            return sign + value.toLocaleString('zh-TW', {
                                 notation: 'compact',
                                 compactDisplay: 'short'
                             });
