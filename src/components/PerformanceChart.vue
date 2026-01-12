@@ -25,12 +25,42 @@
                   :title="range.label">
             {{ range.label }}
           </button>
+          <button :class="{active: timeRange==='CUSTOM'}" 
+                  @click="timeRange='CUSTOM'"
+                  title="自訂日期範圍">
+            自訂
+          </button>
         </div>
         
         <div class="chart-info" v-if="displayedData.length > 0">
           <span class="info-text">
             共 {{ displayedData.length }} 筆數據
           </span>
+        </div>
+      </div>
+
+      <!-- 自訂日期選擇器 -->
+      <div class="custom-date-range" v-if="timeRange === 'CUSTOM'">
+        <div class="date-inputs">
+          <div class="date-input-group">
+            <label>起始日期</label>
+            <input 
+              type="date" 
+              v-model="customStartDate" 
+              @change="applyCustomDateRange"
+              :max="customEndDate || todayStr"
+            />
+          </div>
+          <div class="date-input-group">
+            <label>結束日期</label>
+            <input 
+              type="date" 
+              v-model="customEndDate" 
+              @change="applyCustomDateRange"
+              :min="customStartDate"
+              :max="todayStr"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -42,7 +72,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick, onUnmounted } from 'vue';
+import { ref, onMounted, watch, nextTick, onUnmounted, computed } from 'vue';
 import Chart from 'chart.js/auto';
 import { usePortfolioStore } from '../stores/portfolio';
 
@@ -54,6 +84,14 @@ let resizeObserver = null;
 const chartType = ref('pnl');
 const timeRange = ref('1Y');
 const displayedData = ref([]);
+const customStartDate = ref('');
+const customEndDate = ref('');
+
+// 計算今天的日期字串
+const todayStr = computed(() => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+});
 
 const timeRanges = [
   { value: '1M', label: '1M' },
@@ -66,6 +104,21 @@ const timeRanges = [
 
 const switchTimeRange = (range) => {
     timeRange.value = range;
+    
+    if (range === 'CUSTOM') {
+      // 切換到自訂模式時，如果還沒設定日期，設定預設值
+      if (!customStartDate.value || !customEndDate.value) {
+        const now = new Date();
+        const oneYearAgo = new Date(now);
+        oneYearAgo.setFullYear(now.getFullYear() - 1);
+        
+        customStartDate.value = oneYearAgo.toISOString().split('T')[0];
+        customEndDate.value = now.toISOString().split('T')[0];
+      }
+      applyCustomDateRange();
+      return;
+    }
+    
     const now = new Date();
     let start = new Date(now);
     
@@ -90,10 +143,26 @@ const switchTimeRange = (range) => {
             break;
     }
     
-    filterData(start);
+    filterData(start, now);
 };
 
-const filterData = (startDate) => {
+const applyCustomDateRange = () => {
+  if (!customStartDate.value || !customEndDate.value) {
+    return;
+  }
+  
+  const start = new Date(customStartDate.value);
+  const end = new Date(customEndDate.value);
+  
+  // 確保結束日期不早於起始日期
+  if (end < start) {
+    return;
+  }
+  
+  filterData(start, end);
+};
+
+const filterData = (startDate, endDate = new Date()) => {
     const fullHistory = store.history || [];
     if (fullHistory.length === 0) {
         displayedData.value = [];
@@ -107,7 +176,7 @@ const filterData = (startDate) => {
         const dayOfWeek = date.getDay();
         
         // 保留時間範圍內的數據,且排除週日(0)與週六(6)
-        return date >= startDate && dayOfWeek !== 0 && dayOfWeek !== 6;
+        return date >= startDate && date <= endDate && dayOfWeek !== 0 && dayOfWeek !== 6;
     });
     
     drawChart();
@@ -129,8 +198,8 @@ const drawChart = () => {
     
     let datasets = [];
     const common = { 
-        pointRadius: 2,
-        pointHoverRadius: 5,
+        pointRadius: 0,  // 移除數據點標記
+        pointHoverRadius: 5,  // 滑鼠懸停時顯示較大的點
         borderWidth: 2.5, 
         tension: 0.4,
         pointBackgroundColor: 'white',
@@ -179,7 +248,7 @@ const drawChart = () => {
                 borderColor: '#94a3b8',
                 borderDash: [5, 5],
                 borderWidth: 2,
-                pointRadius: 0,
+                pointRadius: 0,  // 移除數據點標記
                 pointHoverRadius: 4,
                 tension: 0.4
             }
@@ -303,7 +372,11 @@ watch(chartType, () => {
 // 監聽數據變化
 watch(() => store.history, async () => {
     await nextTick();
-    switchTimeRange(timeRange.value);
+    if (timeRange.value === 'CUSTOM') {
+      applyCustomDateRange();
+    } else {
+      switchTimeRange(timeRange.value);
+    }
 });
 
 onMounted(async () => {
@@ -414,6 +487,53 @@ onUnmounted(() => {
     font-weight: 500;
 }
 
+/* 自訂日期範圍樣式 */
+.custom-date-range {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.date-inputs {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+}
+
+.date-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.date-input-group label {
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    font-weight: 500;
+}
+
+.date-input-group input[type="date"] {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-size: 0.9rem;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.2s ease;
+}
+
+.date-input-group input[type="date"]:hover {
+    border-color: var(--primary);
+}
+
+.date-input-group input[type="date"]:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
 .canvas-box {
     flex-grow: 1;
     position: relative;
@@ -446,6 +566,7 @@ canvas {
     .time-pills {
         width: 100%;
         justify-content: space-between;
+        flex-wrap: wrap;
     }
     
     .toggle-pills button,
@@ -456,6 +577,19 @@ canvas {
     
     .chart-info {
         justify-content: center;
+    }
+    
+    .date-inputs {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .date-input-group {
+        width: 100%;
+    }
+    
+    .date-input-group input[type="date"] {
+        width: 100%;
     }
 }
 
