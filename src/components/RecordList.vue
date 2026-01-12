@@ -167,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
@@ -215,71 +215,61 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
-// ✅ 修正：正確引用 store.history
+// ✅ 修正：建立匯率映射表
 const fxRateMap = computed(() => {
     const map = {};
     if (store.history && store.history.length > 0) {
         store.history.forEach(item => {
             map[item.date] = item.fx_rate || 32.0;
         });
-        
-        // 🐛 Debug: 顯示匯率映射表的日期範圍
-        const dates = Object.keys(map).sort();
-        console.log('✅ [RecordList] 匯率映射表建立完成，共', Object.keys(map).length, '筆');
-        console.log('📅 [RecordList] 匯率日期範圍:', dates[0], '~', dates[dates.length - 1]);
-        console.log('📊 [RecordList] 匯率樣本:', map[dates[0]], map[dates[dates.length - 1]]);
-    } else {
-        console.warn('⚠️ [RecordList] store.history 為空，無法建立匯率映射');
     }
     return map;
 });
 
-// ✅ 修正：增強 fallback 邏輯
+// ✅ 修正：根據日期查找匯率
 const getFxRateByDate = (dateStr) => {
-    // 1. 嘗試精確匹配日期
+    // 1. 精確匹配
     if (fxRateMap.value[dateStr]) {
         return fxRateMap.value[dateStr];
     }
     
-    // 2. 如果找不到，嘗試往前查找最近的匯率（處理週末/假日）
+    // 2. 往前查找最近的匯率（處理週末/假日）
     const dates = Object.keys(fxRateMap.value).sort();
     for (let i = dates.length - 1; i >= 0; i--) {
         if (dates[i] <= dateStr) {
-            console.log(`ℹ️ [RecordList] ${dateStr} 找不到匯率，使用 ${dates[i]} 的匯率: ${fxRateMap.value[dates[i]]}`);
             return fxRateMap.value[dates[i]];
         }
     }
     
-    // 3. 如果還是找不到，嘗試使用最新的匯率（交易日期可能在 history 之前）
+    // 3. 使用最新匯率
     if (dates.length > 0) {
-        const latestDate = dates[dates.length - 1];
-        console.log(`ℹ️ [RecordList] ${dateStr} 在 history 範圍之外，使用最新匯率 (${latestDate}): ${fxRateMap.value[latestDate]}`);
-        return fxRateMap.value[latestDate];
+        return fxRateMap.value[dates[dates.length - 1]];
     }
     
-    // 4. 最後的 fallback：預設匯率 32.0
-    console.warn(`⚠️ [RecordList] ${dateStr} 無法獲取匯率，使用預設值 32.0`);
+    // 4. 預設值
     return 32.0;
 };
 
-// ✅ 新增：計算台幣總額（使用交易當天匯率）
-const getTotalAmountTWD = (record) => {
-    const usdAmount = record.total_amount || 0;
-    const fxRate = getFxRateByDate(record.txn_date);
-    const twdAmount = usdAmount * fxRate;
+// ✅ 核心修正：在前端計算 total_amount (USD)
+const calculateTotalAmountUSD = (record) => {
+    const qty = Number(record.qty) || 0;
+    const price = Number(record.price) || 0;
+    const commission = Number(record.commission) || 0;
+    const tax = Number(record.tax) || 0;
     
-    return twdAmount;
+    // 計算公式：|qty × price| + commission + tax
+    const baseAmount = Math.abs(qty * price);
+    const totalUSD = baseAmount + commission + tax;
+    
+    return totalUSD;
 };
 
-// 🐛 Debug: 組件載入時輸出 records 的日期範圍
-onMounted(() => {
-    if (store.records && store.records.length > 0) {
-        const dates = store.records.map(r => r.txn_date).sort();
-        console.log('📝 [RecordList] 交易紀錄共', store.records.length, '筆');
-        console.log('📅 [RecordList] 交易日期範圍:', dates[0], '~', dates[dates.length - 1]);
-        console.log('📊 [RecordList] 第一筆交易:', store.records[0]);
-    }
-});
+// ✅ 修正：計算台幣總額
+const getTotalAmountTWD = (record) => {
+    const usdAmount = calculateTotalAmountUSD(record);
+    const fxRate = getFxRateByDate(record.txn_date);
+    return usdAmount * fxRate;
+};
 
 const availableYears = computed(() => {
     const years = new Set(
@@ -309,7 +299,7 @@ const sortBy = (key) => {
 };
 
 const getSortIcon = (key) => {
-    if (sortKey.value !== key) return '↕';
+    if (sortKey.value !== key) return '⇅';
     return sortOrder.value === 'asc' ? '↑' : '↓';
 };
 
@@ -327,7 +317,6 @@ const processedRecords = computed(() => {
     result.sort((a, b) => {
         let valA, valB;
         
-        // 特殊處理：如果是按台幣總額排序
         if (sortKey.value === 'total_amount_twd') {
             valA = getTotalAmountTWD(a);
             valB = getTotalAmountTWD(b);
