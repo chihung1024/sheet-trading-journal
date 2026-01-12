@@ -85,6 +85,7 @@ let resizeObserver = null;
 const chartType = ref('pnl');
 const timeRange = ref('1Y');
 const displayedData = ref([]);
+const baselineData = ref(null); // ✅ 儲存前一天的基準值
 const customStartDate = ref('');
 const customEndDate = ref('');
 
@@ -172,8 +173,32 @@ const filterData = (startDate, endDate = new Date()) => {
     const fullHistory = store.history || [];
     if (fullHistory.length === 0) {
         displayedData.value = [];
+        baselineData.value = null;
         return;
     }
+
+    // ✅ 找到選定範圍前一天的數據作為基準
+    let baseline = null;
+    for (let i = 0; i < fullHistory.length; i++) {
+        const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
+        if (date >= startDate) {
+            // 找到第一筆在範圍內的數據，使用前一筆作為基準
+            if (i > 0) {
+                baseline = fullHistory[i - 1];
+            } else {
+                // 如果沒有前一筆，就用第一筆
+                baseline = fullHistory[i];
+            }
+            break;
+        }
+    }
+    
+    // 如果找不到基準值，使用第一筆數據
+    if (!baseline && fullHistory.length > 0) {
+        baseline = fullHistory[0];
+    }
+    
+    baselineData.value = baseline;
 
     // 過濾時間範圍內的數據,並排除週末(週六=6, 週日=0)
     displayedData.value = fullHistory.filter(d => {
@@ -193,7 +218,7 @@ const drawChart = () => {
     const ctx = canvas.value.getContext('2d');
     if (myChart) myChart.destroy();
 
-    if (displayedData.value.length === 0) {
+    if (displayedData.value.length === 0 || !baselineData.value) {
         return;
     }
 
@@ -213,8 +238,8 @@ const drawChart = () => {
     };
 
     if (chartType.value === 'asset') {
-        // ✅ 重置起始點為 0，提供公平的比較基準
-        const baseValue = displayedData.value[0].total_value;
+        // ✅ 使用前一天的資產值作為基準
+        const baseValue = baselineData.value.total_value;
         const assetData = displayedData.value.map(d => d.total_value - baseValue);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
@@ -230,8 +255,8 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        // ✅ 重置起始點為 0
-        const basePnL = displayedData.value[0].total_value - displayedData.value[0].invested;
+        // ✅ 使用前一天的損益值作為基準
+        const basePnL = baselineData.value.total_value - baselineData.value.invested;
         const pnlData = displayedData.value.map(d => {
             const currentPnL = d.total_value - d.invested;
             return currentPnL - basePnL;
@@ -250,9 +275,9 @@ const drawChart = () => {
             ...common
         }];
     } else {
-        // ✅ TWR 和 benchmark 都重置起始點為 0
-        const baseTWR = displayedData.value[0].twr;
-        const baseBenchmark = displayedData.value[0].benchmark_twr;
+        // ✅ 使用前一天的 TWR 和 benchmark 作為基準
+        const baseTWR = baselineData.value.twr;
+        const baseBenchmark = baselineData.value.benchmark_twr;
         
         datasets = [
             {
@@ -291,7 +316,7 @@ const drawChart = () => {
                         boxHeight: 12,
                         padding: 15,
                         font: {
-                            size: 11,
+                            size: 12,  // ✅ 放大圖例文字
                             family: "'Inter', sans-serif"
                         },
                         color: getComputedStyle(document.documentElement)
@@ -321,11 +346,9 @@ const drawChart = () => {
                             }
                             if (context.parsed.y !== null) {
                                 if (chartType.value === 'twr') {
-                                    // ✅ 顯示相對變化百分比
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
                                 } else {
-                                    // ✅ 顯示變化值
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
@@ -348,7 +371,7 @@ const drawChart = () => {
                         maxRotation: 0,
                         autoSkipPadding: 20,
                         font: {
-                            size: 10
+                            size: 12  // ✅ 放大 X 軸文字
                         },
                         color: getComputedStyle(document.documentElement)
                             .getPropertyValue('--text-sub').trim()
@@ -363,18 +386,16 @@ const drawChart = () => {
                     },
                     ticks: {
                         font: {
-                            size: 10,
+                            size: 12,  // ✅ 放大 Y 軸數字
                             family: "'JetBrains Mono', monospace"
                         },
                         color: getComputedStyle(document.documentElement)
                             .getPropertyValue('--text-sub').trim(),
                         callback: function(value) {
                             if (chartType.value === 'twr') {
-                                // ✅ 顯示相對變化百分比
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
                             }
-                            // ✅ 顯示變化值
                             const sign = value >= 0 ? '+' : '';
                             return sign + value.toLocaleString('zh-TW', {
                                 notation: 'compact',
