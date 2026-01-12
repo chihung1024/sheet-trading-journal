@@ -85,7 +85,7 @@ let resizeObserver = null;
 const chartType = ref('pnl');
 const timeRange = ref('1Y');
 const displayedData = ref([]);
-const baselineData = ref(null); // ✅ 儲存前一天的基準值
+const baselineData = ref(null);
 const customStartDate = ref('');
 const customEndDate = ref('');
 
@@ -111,7 +111,6 @@ const switchTimeRange = (range) => {
     let start = new Date(now);
     
     if (range === 'CUSTOM') {
-      // 切換到自訂模式時，如果還沒設定日期，設定預設值
       if (!customStartDate.value || !customEndDate.value) {
         const oneYearAgo = new Date(now);
         oneYearAgo.setFullYear(now.getFullYear() - 1);
@@ -122,7 +121,6 @@ const switchTimeRange = (range) => {
       return;
     }
     
-    // 根據選擇的時間範圍計算起始日期
     switch(range) {
         case '1M': 
             start.setMonth(now.getMonth() - 1); 
@@ -144,7 +142,6 @@ const switchTimeRange = (range) => {
             break;
     }
     
-    // 更新日期選擇器的值以反映當前範圍
     customStartDate.value = start.toISOString().split('T')[0];
     customEndDate.value = now.toISOString().split('T')[0];
     
@@ -159,12 +156,10 @@ const onDateChange = () => {
   const start = new Date(customStartDate.value);
   const end = new Date(customEndDate.value);
   
-  // 確保結束日期不早於起始日期
   if (end < start) {
     return;
   }
   
-  // 切換到自訂模式並套用日期範圍
   timeRange.value = 'CUSTOM';
   filterData(start, end);
 };
@@ -177,36 +172,28 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
-    // ✅ 找到選定範圍前一天的數據作為基準
     let baseline = null;
     for (let i = 0; i < fullHistory.length; i++) {
         const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
         if (date >= startDate) {
-            // 找到第一筆在範圍內的數據，使用前一筆作為基準
             if (i > 0) {
                 baseline = fullHistory[i - 1];
             } else {
-                // 如果沒有前一筆，就用第一筆
                 baseline = fullHistory[i];
             }
             break;
         }
     }
     
-    // 如果找不到基準值，使用第一筆數據
     if (!baseline && fullHistory.length > 0) {
         baseline = fullHistory[0];
     }
     
     baselineData.value = baseline;
 
-    // 過濾時間範圍內的數據,並排除週末(週六=6, 週日=0)
     displayedData.value = fullHistory.filter(d => {
-        // 使用 replace 將 - 換成 / 避免時區偏移問題
         const date = new Date(d.date.replace(/-/g, '/'));
         const dayOfWeek = date.getDay();
-        
-        // 保留時間範圍內的數據,且排除週日(0)與週六(6)
         return date >= startDate && date <= endDate && dayOfWeek !== 0 && dayOfWeek !== 6;
     });
     
@@ -229,8 +216,8 @@ const drawChart = () => {
     
     let datasets = [];
     const common = { 
-        pointRadius: 0,  // 移除數據點標記
-        pointHoverRadius: 5,  // 滑鼠懸停時顯示較大的點
+        pointRadius: 0,
+        pointHoverRadius: 5,
         borderWidth: 2.5, 
         tension: 0.4,
         pointBackgroundColor: 'white',
@@ -238,16 +225,15 @@ const drawChart = () => {
     };
 
     if (chartType.value === 'asset') {
-        // ✅ 使用前一天的資產值作為基準
-        const baseValue = baselineData.value.total_value;
-        const assetData = displayedData.value.map(d => d.total_value - baseValue);
+        // ✅ 資產曲線顯示實際值
+        const assetData = displayedData.value.map(d => d.total_value);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
         
         datasets = [{
-            label: '總資產變化 (TWD)',
+            label: '總資產 (TWD)',
             data: assetData,
             borderColor: '#3b82f6',
             backgroundColor: gradient,
@@ -255,7 +241,6 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        // ✅ 使用前一天的損益值作為基準
         const basePnL = baselineData.value.total_value - baselineData.value.invested;
         const pnlData = displayedData.value.map(d => {
             const currentPnL = d.total_value - d.invested;
@@ -275,7 +260,6 @@ const drawChart = () => {
             ...common
         }];
     } else {
-        // ✅ 使用前一天的 TWR 和 benchmark 作為基準
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
@@ -316,7 +300,7 @@ const drawChart = () => {
                         boxHeight: 12,
                         padding: 15,
                         font: {
-                            size: 12,  // ✅ 放大圖例文字
+                            size: 12,
                             family: "'Inter', sans-serif"
                         },
                         color: getComputedStyle(document.documentElement)
@@ -348,7 +332,14 @@ const drawChart = () => {
                                 if (chartType.value === 'twr') {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
+                                } else if (chartType.value === 'asset') {
+                                    // ✅ 資產顯示實際值，不加正負號
+                                    label += context.parsed.y.toLocaleString('zh-TW', {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0
+                                    });
                                 } else {
+                                    // 損益變化加正負號
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
@@ -371,7 +362,7 @@ const drawChart = () => {
                         maxRotation: 0,
                         autoSkipPadding: 20,
                         font: {
-                            size: 12  // ✅ 放大 X 軸文字
+                            size: 12
                         },
                         color: getComputedStyle(document.documentElement)
                             .getPropertyValue('--text-sub').trim()
@@ -386,7 +377,7 @@ const drawChart = () => {
                     },
                     ticks: {
                         font: {
-                            size: 12,  // ✅ 放大 Y 軸數字
+                            size: 12,
                             family: "'JetBrains Mono', monospace"
                         },
                         color: getComputedStyle(document.documentElement)
@@ -395,12 +386,20 @@ const drawChart = () => {
                             if (chartType.value === 'twr') {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
+                            } else if (chartType.value === 'asset') {
+                                // ✅ 資產顯示實際值，不加正負號
+                                return value.toLocaleString('zh-TW', {
+                                    notation: 'compact',
+                                    compactDisplay: 'short'
+                                });
+                            } else {
+                                // 損益變化加正負號
+                                const sign = value >= 0 ? '+' : '';
+                                return sign + value.toLocaleString('zh-TW', {
+                                    notation: 'compact',
+                                    compactDisplay: 'short'
+                                });
                             }
-                            const sign = value >= 0 ? '+' : '';
-                            return sign + value.toLocaleString('zh-TW', {
-                                notation: 'compact',
-                                compactDisplay: 'short'
-                            });
                         }
                     }
                 }
@@ -413,12 +412,10 @@ const drawChart = () => {
     });
 };
 
-// 監聽圖表類型變化
 watch(chartType, () => {
     drawChart();
 });
 
-// 監聽數據變化
 watch(() => store.history, async () => {
     await nextTick();
     switchTimeRange(timeRange.value);
@@ -428,7 +425,6 @@ onMounted(async () => {
     await nextTick();
     switchTimeRange('1Y');
     
-    // 使用 ResizeObserver 監聽容器大小變化
     if (canvas.value && window.ResizeObserver) {
         resizeObserver = new ResizeObserver(() => {
             if (myChart) {
@@ -539,7 +535,6 @@ onUnmounted(() => {
     white-space: nowrap;
 }
 
-/* 日期選擇器樣式 - 常態顯示在右側 */
 .date-range-selector {
     display: flex;
     align-items: center;
@@ -604,7 +599,6 @@ canvas {
     height: 100% !important;
 }
 
-/* 響應式設計 */
 @media (max-width: 1200px) {
     .controls-row {
         flex-wrap: wrap;
