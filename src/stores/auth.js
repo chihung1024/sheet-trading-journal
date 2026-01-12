@@ -1,12 +1,30 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { CONFIG } from '../config';
-// ❌ 移除: import { usePortfolioStore } from './portfolio';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref('');
   const user = ref({ name: '', email: '' });
-  // ❌ 移除: const portfolioStore = usePortfolioStore();
+
+  // ✅ 新增：檢查 token 是否過期
+  const isTokenExpired = () => {
+    if (!token.value) return true;
+    
+    try {
+      // 解析 JWT payload
+      const parts = token.value.split('.');
+      if (parts.length !== 3) return true;
+      
+      const payload = JSON.parse(atob(parts[1]));
+      const now = Math.floor(Date.now() / 1000);
+      
+      // 檢查是否過期（提前 5 分鐘視為過期）
+      return payload.exp < (now + 300);
+    } catch (e) {
+      console.error('❗ Token 解析錯誤:', e);
+      return true;
+    }
+  };
 
   // 初始化認證狀態
   const initAuth = () => {
@@ -17,10 +35,15 @@ export const useAuthStore = defineStore('auth', () => {
     if (t) {
       token.value = t;
       user.value = { name: n, email: e };
-      console.log('✅ 已從 localStorage 恢復認證狀態');
       
-      // ❌ 移除: portfolioStore.fetchAll();
-      // 回傳 true 表示已恢復登入狀態
+      // ✅ 檢查 token 是否過期
+      if (isTokenExpired()) {
+        console.warn('⚠️ Token 已過期，清除認證狀態');
+        logout();
+        return false;
+      }
+      
+      console.log('✅ 已從 localStorage 恢復認證狀態');
       return true; 
     }
     return false;
@@ -53,8 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
         
         console.log('📦 用戶資訊已保存到 localStorage');
         
-        // ❌ 移除: await portfolioStore.fetchAll();
-        return true; // 回傳成功
+        return true;
       } else {
         console.error('❌ 登入失敗:', data.error);
         throw new Error(`登入失敗: ${data.error || '未知錯誤'}`);
@@ -79,6 +101,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     login,
     logout,
-    initAuth
+    initAuth,
+    isTokenExpired // ✅ 導出供外部使用
   };
 });
