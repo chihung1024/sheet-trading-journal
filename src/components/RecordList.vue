@@ -215,33 +215,59 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
-// ✅ 新增：建立日期到匯率的映射表（從 history 數據中提取）
+// ✅ 修正：正確引用 store.history
 const fxRateMap = computed(() => {
     const map = {};
-    if (store.portfolio?.history) {
-        store.portfolio.history.forEach(item => {
-            map[item.date] = item.fx_rate || 32.0; // 預設匯率 32.0
+    if (store.history && store.history.length > 0) {
+        store.history.forEach(item => {
+            map[item.date] = item.fx_rate || 32.0;
         });
+        console.log('✅ [RecordList] 匯率映射表建立完成，共', Object.keys(map).length, '筆');
+    } else {
+        console.warn('⚠️ [RecordList] store.history 為空，無法建立匯率映射');
     }
     return map;
 });
 
-// ✅ 新增：根據交易日期獲取當天匯率
+// ✅ 修正：增強 fallback 邏輯
 const getFxRateByDate = (dateStr) => {
-    // 嘗試精確匹配日期
+    // 1. 嘗試精確匹配日期
     if (fxRateMap.value[dateStr]) {
         return fxRateMap.value[dateStr];
     }
     
-    // 如果找不到（例如新增的交易還沒計算），使用當前匯率
-    return store.portfolio?.exchange_rate || 32.0;
+    // 2. 如果找不到，嘗試往前查找最近的匯率（處理週末/假日）
+    const dates = Object.keys(fxRateMap.value).sort();
+    for (let i = dates.length - 1; i >= 0; i--) {
+        if (dates[i] <= dateStr) {
+            console.log(`ℹ️ [RecordList] ${dateStr} 找不到匯率，使用 ${dates[i]} 的匯率`);
+            return fxRateMap.value[dates[i]];
+        }
+    }
+    
+    // 3. 如果還是找不到，使用 store 中的當前匯率
+    if (store.stats?.exchange_rate) {
+        console.log(`ℹ️ [RecordList] ${dateStr} 使用當前匯率: ${store.stats.exchange_rate}`);
+        return store.stats.exchange_rate;
+    }
+    
+    // 4. 最後的 fallback：預設匯率 32.0
+    console.warn(`⚠️ [RecordList] ${dateStr} 無法獲取匯率，使用預設值 32.0`);
+    return 32.0;
 };
 
 // ✅ 新增：計算台幣總額（使用交易當天匯率）
 const getTotalAmountTWD = (record) => {
     const usdAmount = record.total_amount || 0;
     const fxRate = getFxRateByDate(record.txn_date);
-    return usdAmount * fxRate;
+    const twdAmount = usdAmount * fxRate;
+    
+    // Debug log
+    if (twdAmount === 0 && usdAmount !== 0) {
+        console.warn(`⚠️ [RecordList] ${record.symbol} ${record.txn_date}: USD ${usdAmount} × FX ${fxRate} = TWD ${twdAmount}`);
+    }
+    
+    return twdAmount;
 };
 
 const availableYears = computed(() => {
