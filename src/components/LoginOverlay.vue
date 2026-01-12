@@ -23,80 +23,111 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import { usePortfolioStore } from '../stores/portfolio'; // ✅ 1. 新增引入
+import { usePortfolioStore } from '../stores/portfolio';
 import { CONFIG } from '../config';
 
 const googleBtn = ref(null);
 const authStore = useAuthStore();
-const portfolioStore = usePortfolioStore(); // ✅ 2. 宣告 store 實例
+const portfolioStore = usePortfolioStore();
 const error = ref('');
 
+let initCheckInterval = null;
+
+// ✅ 清理函數：確保組件銀毀時清理資源
+const cleanup = () => {
+  if (initCheckInterval) {
+    clearInterval(initCheckInterval);
+    initCheckInterval = null;
+  }
+  
+  // 移除全域 callback
+  if (window.handleCredentialResponse) {
+    delete window.handleCredentialResponse;
+  }
+};
+
 onMounted(() => {
-  // 定義 callback（保留錯誤處理）
+  console.log('🔑 初始化登入頁面...');
+  
+  // ✅ 定義 callback
   window.handleCredentialResponse = async (response) => {
     console.log('🔐 收到 Google 憑證');
     try {
-      // 執行登入 (這一步只會更新 Token 與 User 狀態，已不含抓資料邏輯)
       await authStore.login(response.credential); 
-      
-      // ✅ 3. 關鍵修正：登入成功後，主動載入投資組合數據
       console.log('🎉 登入成功，開始載入數據...');
       await portfolioStore.fetchAll();
-
     } catch (err) {
       console.error('登入流程發生錯誤:', err);
       error.value = '登入驗證失敗: ' + (err.message || '無法連接後端伺服器');
     }
   };  
 
-  // 初始化 Google 登入按鈕
+  // ✅ 初始化 Google Sign-In
   if (window.google) {
     initGoogleSignIn();
   } else {
-    // 如果 Google Script 還沒載入，等待一下
-    const checkGoogle = setInterval(() => {
-      if (window.google) {
-        clearInterval(checkGoogle);
-        initGoogleSignIn();
-      }
-    }, 100);
+    let checkCount = 0;
+    const maxChecks = 100; // 10秒最多檢查100次
     
-    // 10 秒後仍未載入，顯示錯誤
-    setTimeout(() => {
-      if (!window.google) {
-        clearInterval(checkGoogle);
+    initCheckInterval = setInterval(() => {
+      checkCount++;
+      
+      if (window.google) {
+        clearInterval(initCheckInterval);
+        initCheckInterval = null;
+        initGoogleSignIn();
+      } else if (checkCount >= maxChecks) {
+        clearInterval(initCheckInterval);
+        initCheckInterval = null;
         error.value = '無法載入 Google 登入服務，請檢查網路連線';
       }
-    }, 10000);
+    }, 100);
   }
 });
 
 const initGoogleSignIn = () => {
   try {
+    console.log('🔧 正在初始化 Google Sign-In...');
+    
+    // ✅ 重要：確保每次都是全新的初始化
     window.google.accounts.id.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
       callback: window.handleCredentialResponse,
-      auto_select: false,
-      cancel_on_tap_outside: false
+      auto_select: false,           // ✅ 關閉自動選擇
+      cancel_on_tap_outside: false, // ✅ 點擊外部不取消
+      itp_support: true              // ✅ 支援 ITP (智能防跟蹤)
     });
 
-    window.google.accounts.id.renderButton(googleBtn.value, {
-      theme: 'outline',
-      size: 'large',
-      width: '280',
-      text: 'signin_with',
-      shape: 'rectangular',
-      logo_alignment: 'left'
-    });
+    // ✅ 確保每次都顯示 One Tap 提示（不自動登入）
+    window.google.accounts.id.prompt();
 
-    console.log('✅ Google 登入按鈕已渲染');
+    // ✅ 渲染按鈕
+    if (googleBtn.value) {
+      window.google.accounts.id.renderButton(googleBtn.value, {
+        theme: 'outline',
+        size: 'large',
+        width: '280',
+        text: 'signin_with',
+        shape: 'rectangular',
+        logo_alignment: 'left'
+      });
+      console.log('✅ Google 登入按鈕已渲染');
+    } else {
+      console.warn('⚠️ googleBtn ref 不存在');
+    }
   } catch (err) {
     console.error('❌ 初始化錯誤:', err);
     error.value = '初始化登入系統失敗';
   }
 };
+
+// ✅ 組件銀毀時清理
+onUnmounted(() => {
+  console.log('🧹 清理登入組件資源...');
+  cleanup();
+});
 </script>
 
 
