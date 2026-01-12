@@ -100,7 +100,16 @@ const filterData = (startDate) => {
         return;
     }
 
-    displayedData.value = fullHistory.filter(d => new Date(d.date) >= startDate);
+    // 過濾時間範圍內的數據,並排除週末(週六=6, 週日=0)
+    displayedData.value = fullHistory.filter(d => {
+        // 使用 replace 將 - 換成 / 避免時區偏移問題
+        const date = new Date(d.date.replace(/-/g, '/'));
+        const dayOfWeek = date.getDay();
+        
+        // 保留時間範圍內的數據,且排除週日(0)與週六(6)
+        return date >= startDate && dayOfWeek !== 0 && dayOfWeek !== 6;
+    });
+    
     drawChart();
 };
 
