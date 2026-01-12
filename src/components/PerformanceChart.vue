@@ -272,13 +272,15 @@ const drawChart = () => {
     });
     
     let datasets = [];
+    // ✅ 修正：降低 tension 並添加 spanGaps
     const common = { 
         pointRadius: 0,
         pointHoverRadius: 5,
         borderWidth: 2.5, 
-        tension: 0.4,
+        tension: 0.3,              // ✅ 從 0.4 降到 0.3
         pointBackgroundColor: 'white',
-        pointBorderWidth: 2
+        pointBorderWidth: 2,
+        spanGaps: true             // ✅ 新增：自動跨越資料間隙
     };
 
     if (chartType.value === 'asset') {
@@ -293,7 +295,7 @@ const drawChart = () => {
             data: assetData,
             borderColor: '#3b82f6',
             backgroundColor: gradient,
-            fill: true,
+            fill: 'origin',        // ✅ 改為 'origin'
             ...common
         }];
     } else if (chartType.value === 'pnl') {
@@ -312,7 +314,7 @@ const drawChart = () => {
             data: pnlData,
             borderColor: '#10b981',
             backgroundColor: gradient,
-            fill: true,
+            fill: 'origin',        // ✅ 改為 'origin'
             ...common
         }];
     } else {
@@ -325,6 +327,7 @@ const drawChart = () => {
                 data: displayedData.value.map(d => d.twr - baseTWR),
                 borderColor: '#8b5cf6',
                 backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                fill: 'origin',    // ✅ 改為 'origin'
                 ...common
             },
             {
@@ -335,7 +338,8 @@ const drawChart = () => {
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 4,
-                tension: 0.4
+                tension: 0.3,      // ✅ 降低 tension
+                spanGaps: true     // ✅ 新增
             }
         ];
     }
@@ -394,8 +398,7 @@ const drawChart = () => {
                                         maximumFractionDigits: 0
                                     });
                                 } else {
-                                    const sign = context.parsed.y >= 0 ? '+' : '';
-                                    label += sign + context.parsed.y.toLocaleString('zh-TW', {
+                                    const sign = context.parsed.y >= 0 ? '+' : ''label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
                                     });
@@ -463,6 +466,7 @@ const drawChart = () => {
         }
     });
 };
+
 
 watch(chartType, () => {
     drawChart();
