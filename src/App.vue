@@ -24,7 +24,7 @@
             <span class="dot"></span> 連線正常
           </div>
           
-          <!-- ✅ 修改 @click 事件綁定 -->
+          <!-- ✅ 修改 @click 事件繫定 -->
           <button 
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
@@ -56,16 +56,19 @@
             <StatsGridSkeleton v-else />
           </section>
           
+          <!-- ✅ 優化圖表區域：隱藏圓餅圖，讓趨勢分析圖佔滿寬度 -->
           <section class="section-charts">
-            <div class="chart-wrapper">
+            <div class="chart-wrapper chart-full">
               <PerformanceChart v-if="!portfolioStore.loading" />
               <ChartSkeleton v-else />
             </div>
-            <div class="chart-wrapper">
+            <!-- 圓餅圖暫時隱藏，未來有需要再重新引入 -->
+            <!-- <div class="chart-wrapper">
               <PieChart v-if="!portfolioStore.loading" />
               <ChartSkeleton v-else />
-            </div>
+            </div> -->
           </section>
+          
           <section class="section-holdings">
             <HoldingsTable v-if="!portfolioStore.loading" />
             <TableSkeleton v-else />
@@ -113,7 +116,8 @@ import { CONFIG } from './config';
 import LoginOverlay from './components/LoginOverlay.vue';
 import StatsGrid from './components/StatsGrid.vue';
 import PerformanceChart from './components/PerformanceChart.vue';
-import PieChart from './components/PieChart.vue';
+// ✅ PieChart 暫時隱藏，未來有需要再重新引入
+// import PieChart from './components/PieChart.vue';
 import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
@@ -133,7 +137,7 @@ const { isDark, toggleTheme } = useDarkMode();
 const handleTriggerUpdate = async () => {
   // 1. 如果正在輪詢，提示使用者並阻擋重複觸發
   if (portfolioStore.isPolling) {
-    addToast("⏳ 系統已在背景監控更新中，請稍候...", "info");
+    addToast("⌛ 系統已在背景監控更新中，請稍候...", "info");
     return;
   }
 
@@ -454,10 +458,9 @@ body {
   min-width: 0; 
 }
 
+/* ✅ 優化圖表區域：移除 grid 佈局，讓趨勢分析圖佔滿寬度 */
 .section-charts { 
-  display: grid; 
-  grid-template-columns: 2fr 1fr; 
-  gap: 24px; 
+  display: block;
   width: 100%; 
 }
 
@@ -492,6 +495,12 @@ body {
   overflow: hidden; 
   display: flex; 
   flex-direction: column; 
+}
+
+/* ✅ 讓圖表佔滿整個寬度並增加高度 */
+.chart-wrapper.chart-full { 
+  height: 500px;
+  width: 100%; 
 }
 
 .card h3 { 
@@ -625,7 +634,8 @@ tr:hover td {
   }
   
   .side-column { order: -1; }
-  .section-charts { grid-template-columns: 1fr; }
+  /* ✅ 移除小螢幕上的 grid 佈局 */
+  .section-charts { display: block; }
   
   .sticky-panel { position: static; } 
   .desktop-only { display: none; }
@@ -653,6 +663,11 @@ tr:hover td {
     padding: 16px;
   }
   
+  /* ✅ 小螢幕上調整圖表高度 */
+  .chart-wrapper.chart-full { 
+    height: 350px;
+  }
+  
   .toast-container {
     bottom: 16px;
     right: 16px;
@@ -677,6 +692,11 @@ tr:hover td {
     width: 36px;
     height: 36px;
     font-size: 1rem;
+  }
+  
+  /* ✅ 更小螢幕上進一步調整 */
+  .chart-wrapper.chart-full { 
+    height: 300px;
   }
 }
 </style>
