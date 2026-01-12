@@ -32,34 +32,35 @@
           </button>
         </div>
         
-        <div class="chart-info" v-if="displayedData.length > 0">
-          <span class="info-text">
-            共 {{ displayedData.length }} 筆數據
-          </span>
-        </div>
-      </div>
-
-      <!-- 自訂日期選擇器 -->
-      <div class="custom-date-range" v-if="timeRange === 'CUSTOM'">
-        <div class="date-inputs">
-          <div class="date-input-group">
-            <label>起始日期</label>
-            <input 
-              type="date" 
-              v-model="customStartDate" 
-              @change="applyCustomDateRange"
-              :max="customEndDate || todayStr"
-            />
+        <div class="right-controls">
+          <!-- 日期選擇器 - 常態顯示 -->
+          <div class="date-range-selector">
+            <div class="date-input-group">
+              <label>起始日期</label>
+              <input 
+                type="date" 
+                v-model="customStartDate" 
+                @change="onDateChange"
+                :max="customEndDate || todayStr"
+              />
+            </div>
+            <div class="date-separator">—</div>
+            <div class="date-input-group">
+              <label>結束日期</label>
+              <input 
+                type="date" 
+                v-model="customEndDate" 
+                @change="onDateChange"
+                :min="customStartDate"
+                :max="todayStr"
+              />
+            </div>
           </div>
-          <div class="date-input-group">
-            <label>結束日期</label>
-            <input 
-              type="date" 
-              v-model="customEndDate" 
-              @change="applyCustomDateRange"
-              :min="customStartDate"
-              :max="todayStr"
-            />
+          
+          <div class="chart-info" v-if="displayedData.length > 0">
+            <span class="info-text">
+              共 {{ displayedData.length }} 筆數據
+            </span>
           </div>
         </div>
       </div>
@@ -105,23 +106,22 @@ const timeRanges = [
 const switchTimeRange = (range) => {
     timeRange.value = range;
     
+    const now = new Date();
+    let start = new Date(now);
+    
     if (range === 'CUSTOM') {
       // 切換到自訂模式時，如果還沒設定日期，設定預設值
       if (!customStartDate.value || !customEndDate.value) {
-        const now = new Date();
         const oneYearAgo = new Date(now);
         oneYearAgo.setFullYear(now.getFullYear() - 1);
         
         customStartDate.value = oneYearAgo.toISOString().split('T')[0];
         customEndDate.value = now.toISOString().split('T')[0];
       }
-      applyCustomDateRange();
       return;
     }
     
-    const now = new Date();
-    let start = new Date(now);
-    
+    // 根據選擇的時間範圍計算起始日期
     switch(range) {
         case '1M': 
             start.setMonth(now.getMonth() - 1); 
@@ -143,10 +143,14 @@ const switchTimeRange = (range) => {
             break;
     }
     
+    // 更新日期選擇器的值以反映當前範圍
+    customStartDate.value = start.toISOString().split('T')[0];
+    customEndDate.value = now.toISOString().split('T')[0];
+    
     filterData(start, now);
 };
 
-const applyCustomDateRange = () => {
+const onDateChange = () => {
   if (!customStartDate.value || !customEndDate.value) {
     return;
   }
@@ -159,6 +163,8 @@ const applyCustomDateRange = () => {
     return;
   }
   
+  // 切換到自訂模式並套用日期範圍
+  timeRange.value = 'CUSTOM';
   filterData(start, end);
 };
 
@@ -372,11 +378,7 @@ watch(chartType, () => {
 // 監聽數據變化
 watch(() => store.history, async () => {
     await nextTick();
-    if (timeRange.value === 'CUSTOM') {
-      applyCustomDateRange();
-    } else {
-      switchTimeRange(timeRange.value);
-    }
+    switchTimeRange(timeRange.value);
 });
 
 onMounted(async () => {
@@ -437,7 +439,13 @@ onUnmounted(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
+}
+
+.right-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
 }
 
 .toggle-pills,
@@ -485,43 +493,42 @@ onUnmounted(() => {
     font-size: 0.8rem;
     color: var(--text-sub);
     font-weight: 500;
+    white-space: nowrap;
 }
 
-/* 自訂日期範圍樣式 */
-.custom-date-range {
-    margin-top: 12px;
-    padding: 12px;
+/* 日期選擇器樣式 - 常態顯示在右側 */
+.date-range-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     background: var(--bg-secondary);
     border-radius: 8px;
-}
-
-.date-inputs {
-    display: flex;
-    gap: 16px;
-    align-items: flex-end;
+    padding: 6px 12px;
 }
 
 .date-input-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 2px;
 }
 
 .date-input-group label {
-    font-size: 0.85rem;
+    font-size: 0.7rem;
     color: var(--text-sub);
     font-weight: 500;
+    white-space: nowrap;
 }
 
 .date-input-group input[type="date"] {
-    padding: 8px 12px;
+    padding: 4px 8px;
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: 4px;
     background: var(--bg-card);
     color: var(--text-main);
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     font-family: 'Inter', sans-serif;
     transition: all 0.2s ease;
+    min-width: 130px;
 }
 
 .date-input-group input[type="date"]:hover {
@@ -531,7 +538,15 @@ onUnmounted(() => {
 .date-input-group input[type="date"]:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.date-separator {
+    color: var(--text-sub);
+    font-size: 0.9rem;
+    padding: 0 4px;
+    align-self: flex-end;
+    padding-bottom: 6px;
 }
 
 .canvas-box {
@@ -547,6 +562,17 @@ canvas {
 }
 
 /* 響應式設計 */
+@media (max-width: 1200px) {
+    .controls-row {
+        flex-wrap: wrap;
+    }
+    
+    .right-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
 @media (max-width: 768px) {
     .inner-chart-layout {
         padding: 16px;
@@ -561,12 +587,22 @@ canvas {
     .controls-row {
         flex-direction: column;
         align-items: stretch;
+        gap: 12px;
     }
     
     .time-pills {
         width: 100%;
         justify-content: space-between;
-        flex-wrap: wrap;
+    }
+    
+    .right-controls {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .date-range-selector {
+        width: 100%;
+        justify-content: center;
     }
     
     .toggle-pills button,
@@ -577,19 +613,6 @@ canvas {
     
     .chart-info {
         justify-content: center;
-    }
-    
-    .date-inputs {
-        flex-direction: column;
-        gap: 12px;
-    }
-    
-    .date-input-group {
-        width: 100%;
-    }
-    
-    .date-input-group input[type="date"] {
-        width: 100%;
     }
 }
 
@@ -609,6 +632,24 @@ canvas {
         font-size: 1rem;
         padding-left: 10px;
         border-left-width: 3px;
+    }
+    
+    .date-range-selector {
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px;
+    }
+    
+    .date-input-group {
+        width: 100%;
+    }
+    
+    .date-input-group input[type="date"] {
+        width: 100%;
+    }
+    
+    .date-separator {
+        display: none;
     }
 }
 </style>
