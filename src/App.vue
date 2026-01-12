@@ -9,22 +9,18 @@
           <h1>Trading Journal <span class="badge">PRO</span></h1>
         </div>
         <div class="nav-status">
-          <!-- 狀態 1: 正在載入資料 -->
           <div v-if="portfolioStore.loading" class="status-indicator loading">
             <span class="dot"></span> 更新中...
           </div>
           
-          <!-- ✅ 新增狀態 2: 正在輪詢監控 (橘燈閃爍) -->
           <div v-else-if="portfolioStore.isPolling" class="status-indicator polling">
             <span class="dot pulse-orange"></span> 計算中...
           </div>
           
-          <!-- 狀態 3: 正常連線 -->
           <div v-else class="status-indicator ready">
             <span class="dot"></span> 連線正常
           </div>
           
-          <!-- ✅ 修改 @click 事件繫定 -->
           <button 
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
@@ -51,22 +47,15 @@
       <div class="content-container">
         <main class="main-column">
           <section class="section-stats">
-            <!-- 使用 portfolioStore.loading 控制骨架屏 -->
             <StatsGrid v-if="!portfolioStore.loading" />
             <StatsGridSkeleton v-else />
           </section>
           
-          <!-- ✅ 優化圖表區域：隱藏圓餅圖，讓趨勢分析圖佔滿寬度 -->
           <section class="section-charts">
             <div class="chart-wrapper chart-full">
               <PerformanceChart v-if="!portfolioStore.loading" />
               <ChartSkeleton v-else />
             </div>
-            <!-- 圓餅圖暫時隱藏，未來有需要再重新引入 -->
-            <!-- <div class="chart-wrapper">
-              <PieChart v-if="!portfolioStore.loading" />
-              <ChartSkeleton v-else />
-            </div> -->
           </section>
           
           <section class="section-holdings">
@@ -116,13 +105,10 @@ import { CONFIG } from './config';
 import LoginOverlay from './components/LoginOverlay.vue';
 import StatsGrid from './components/StatsGrid.vue';
 import PerformanceChart from './components/PerformanceChart.vue';
-// ✅ PieChart 暫時隱藏，未來有需要再重新引入
-// import PieChart from './components/PieChart.vue';
 import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
 
-// Skeleton components
 import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
 import ChartSkeleton from './components/skeletons/ChartSkeleton.vue';
 import TableSkeleton from './components/skeletons/TableSkeleton.vue';
@@ -133,26 +119,18 @@ const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 
-// ✅ 更新後的處理函式：配合輪詢機制
 const handleTriggerUpdate = async () => {
-  // 1. 如果正在輪詢，提示使用者並阻擋重複觸發
   if (portfolioStore.isPolling) {
     addToast("⌛ 系統已在背景監控更新中，請稍候...", "info");
     return;
   }
 
-  // 2. 確認是否觸發
   if (!confirm("確定要觸發後端計算嗎？")) return;
   
   try {
     addToast("🚀 正在請求 GitHub Actions...", "info");
-    
-    // 3. 呼叫 Store 的 triggerUpdate (現在會自動啟動輪詢)
     await portfolioStore.triggerUpdate();
-    
-    // 4. 成功提示
     addToast("✅ 已觸發！系統將在背景監控，更新完成後自動刷新。", "success");
-    
   } catch (error) {
     addToast(`❌ 觸發失敗: ${error.message}`, "error");
   }
@@ -179,6 +157,14 @@ const handleLogout = () => {
 
 onMounted(async () => {
   console.log('🚀 App.vue mounted');
+  
+  // ✅ 清理 URL 中的時間戳參數（登出後加上的）
+  const url = new URL(window.location.href);
+  if (url.searchParams.has('_t')) {
+    url.searchParams.delete('_t');
+    window.history.replaceState({}, '', url.toString());
+    console.log('🧹 已清理 URL 時間戳參數');
+  }
   
   // 1. 先嘗試恢復登入狀態
   const isLoggedIn = authStore.initAuth();
@@ -325,7 +311,6 @@ body {
 
 .status-indicator.ready { color: var(--success); }
 .status-indicator.loading { color: var(--primary); }
-/* ✅ 新增 polling 狀態顏色 */
 .status-indicator.polling { color: var(--warning); }
 
 .dot { 
@@ -339,7 +324,6 @@ body {
   animation: pulse 1.5s infinite; 
 }
 
-/* ✅ 新增橘色脈衝動畫 */
 .pulse-orange {
   animation: pulse-orange 1.5s infinite;
 }
@@ -401,7 +385,6 @@ body {
   opacity: 0.7;
   cursor: not-allowed;
   transform: none;
-  /* 禁用時的灰階濾鏡 */
   filter: grayscale(0.5);
 }
 
@@ -458,7 +441,6 @@ body {
   min-width: 0; 
 }
 
-/* ✅ 優化圖表區域：移除 grid 佈局，讓趨勢分析圖佔滿寬度 */
 .section-charts { 
   display: block;
   width: 100%; 
@@ -497,7 +479,6 @@ body {
   flex-direction: column; 
 }
 
-/* ✅ 讓圖表佔滿整個寬度並增加高度 */
 .chart-wrapper.chart-full { 
   height: 500px;
   width: 100%; 
@@ -634,7 +615,6 @@ tr:hover td {
   }
   
   .side-column { order: -1; }
-  /* ✅ 移除小螢幕上的 grid 佈局 */
   .section-charts { display: block; }
   
   .sticky-panel { position: static; } 
@@ -663,7 +643,6 @@ tr:hover td {
     padding: 16px;
   }
   
-  /* ✅ 小螢幕上調整圖表高度 */
   .chart-wrapper.chart-full { 
     height: 350px;
   }
@@ -694,7 +673,6 @@ tr:hover td {
     font-size: 1rem;
   }
   
-  /* ✅ 更小螢幕上進一步調整 */
   .chart-wrapper.chart-full { 
     height: 300px;
   }
