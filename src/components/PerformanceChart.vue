@@ -33,20 +33,7 @@
         </div>
         
         <div class="right-controls">
-          <!-- ✅ Benchmark 選擇器 -->
-          <div class="benchmark-selector" v-if="chartType === 'twr'">
-            <label>Benchmark</label>
-            <input 
-              type="text" 
-              v-model="tempBenchmark" 
-              @keyup.enter="handleBenchmarkChange"
-              @blur="handleBenchmarkChange"
-              placeholder="輸入股票代碼"
-              maxlength="10"
-            />
-          </div>
-          
-          <!-- 日期選擇器 -->
+          <!-- 日期選擇器 - 常態顯示 -->
           <div class="date-range-selector">
             <div class="date-input-group">
               <label>起始日期</label>
@@ -102,10 +89,7 @@ const baselineData = ref(null);
 const customStartDate = ref('');
 const customEndDate = ref('');
 
-// ✅ Benchmark 相關狀態
-const currentBenchmark = ref('SPY'); // 當前生效的 benchmark
-const tempBenchmark = ref('SPY'); // 輸入框的暫存值
-
+// 計算今天的日期字串
 const todayStr = computed(() => {
   const today = new Date();
   return today.toISOString().split('T')[0];
@@ -119,44 +103,6 @@ const timeRanges = [
   { value: '1Y', label: '1Y' },
   { value: 'ALL', label: '全部' }
 ];
-
-// ✅ 處理 Benchmark 變更
-const handleBenchmarkChange = async () => {
-  const newBenchmark = tempBenchmark.value.trim().toUpperCase();
-  
-  // 如果沒有變更或為空，恢復原值
-  if (!newBenchmark || newBenchmark === currentBenchmark.value) {
-    tempBenchmark.value = currentBenchmark.value;
-    return;
-  }
-  
-  // ✅ 跳出確認視窗
-  const confirmed = confirm(`變更 Benchmark 為 ${newBenchmark}，確定要觸發後端重新計算嗎？`);
-  
-  if (!confirmed) {
-    // 取消，恢復原值
-    tempBenchmark.value = currentBenchmark.value;
-    return;
-  }
-  
-  try {
-    // ✅ 呼叫 store 的方法更新 benchmark 並觸發重算
-    await store.updateBenchmark(newBenchmark);
-    
-    // 更新成功
-    currentBenchmark.value = newBenchmark;
-    tempBenchmark.value = newBenchmark;
-    
-    // 重新繪製圖表
-    drawChart();
-    
-  } catch (error) {
-    console.error('Benchmark 更新失敗:', error);
-    alert(`Benchmark 更新失敗: ${error.message}`);
-    // 失敗後恢復原值
-    tempBenchmark.value = currentBenchmark.value;
-  }
-};
 
 const switchTimeRange = (range) => {
     timeRange.value = range;
@@ -279,6 +225,7 @@ const drawChart = () => {
     };
 
     if (chartType.value === 'asset') {
+        // ✅ 資產曲線顯示實際值
         const assetData = displayedData.value.map(d => d.total_value);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
@@ -325,7 +272,7 @@ const drawChart = () => {
                 ...common
             },
             {
-                label: `${currentBenchmark.value} (%)`,  // ✅ 動態顯示當前 benchmark
+                label: 'SPY (%)',
                 data: displayedData.value.map(d => d.benchmark_twr - baseBenchmark),
                 borderColor: '#94a3b8',
                 borderDash: [5, 5],
@@ -386,11 +333,13 @@ const drawChart = () => {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
                                 } else if (chartType.value === 'asset') {
+                                    // ✅ 資產顯示實際值，不加正負號
                                     label += context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
                                     });
                                 } else {
+                                    // 損益變化加正負號
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
@@ -438,11 +387,13 @@ const drawChart = () => {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
                             } else if (chartType.value === 'asset') {
+                                // ✅ 資產顯示實際值，不加正負號
                                 return value.toLocaleString('zh-TW', {
                                     notation: 'compact',
                                     compactDisplay: 'short'
                                 });
                             } else {
+                                // 損益變化加正負號
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toLocaleString('zh-TW', {
                                     notation: 'compact',
@@ -472,13 +423,6 @@ watch(() => store.history, async () => {
 
 onMounted(async () => {
     await nextTick();
-    
-    // ✅ 初始化時從 store 讀取當前 benchmark
-    if (store.benchmark) {
-        currentBenchmark.value = store.benchmark;
-        tempBenchmark.value = store.benchmark;
-    }
-    
     switchTimeRange('1Y');
     
     if (canvas.value && window.ResizeObserver) {
@@ -591,48 +535,6 @@ onUnmounted(() => {
     white-space: nowrap;
 }
 
-/* ✅ Benchmark 選擇器樣式 */
-.benchmark-selector {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-    padding: 6px 12px;
-}
-
-.benchmark-selector label {
-    font-size: 0.7rem;
-    color: var(--text-sub);
-    font-weight: 500;
-    white-space: nowrap;
-}
-
-.benchmark-selector input[type="text"] {
-    padding: 4px 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-card);
-    color: var(--text-main);
-    font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 600;
-    text-transform: uppercase;
-    transition: all 0.2s ease;
-    min-width: 80px;
-    text-align: center;
-}
-
-.benchmark-selector input[type="text"]:hover {
-    border-color: var(--primary);
-}
-
-.benchmark-selector input[type="text"]:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
 .date-range-selector {
     display: flex;
     align-items: center;
@@ -735,7 +637,6 @@ canvas {
         gap: 12px;
     }
     
-    .benchmark-selector,
     .date-range-selector {
         width: 100%;
         justify-content: center;
