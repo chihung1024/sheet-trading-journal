@@ -81,25 +81,33 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  // ✅ 修正登出邏輯：完全清理 Google OAuth 狀態
+  // ✅ 修正：使用硬重載徹底清除狀態
   const logout = () => {
     console.log('🚪 正在登出...');
     
-    // 1. 清理本地狀態
+    // 1. 保存用戶 email（用於撤銷授權）
+    const userEmail = user.value?.email || '';
+    
+    // 2. 清理本地狀態
     token.value = '';
     user.value = {};
+    
+    // 3. 清除所有 localStorage（包括可能的其他快取）
     localStorage.clear();
     
-    // 2. ✅ 清理 Google Sign-In 狀態
+    // 4. 清除 sessionStorage
+    sessionStorage.clear();
+    
+    // 5. ✅ 清理 Google Sign-In 狀態
     if (window.google?.accounts?.id) {
       try {
         // 取消自動選擇
         window.google.accounts.id.disableAutoSelect();
         
-        // 撤銷授權 (如果支援)
-        if (window.google.accounts.id.revoke) {
-          window.google.accounts.id.revoke(user.value.email || '', () => {
-            console.log('✅ Google OAuth 授權已撤銷');
+        // 撤銷授權
+        if (userEmail && window.google.accounts.id.revoke) {
+          window.google.accounts.id.revoke(userEmail, (done) => {
+            console.log('✅ Google OAuth 授權已撤銷', done);
           });
         }
         
@@ -109,10 +117,17 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
     
-    // 3. ✅ 添加延遲再 reload，確保清理完成
-    console.log('✅ 已登出，正在重新載入...');
+    // 6. ✅ 關鍵修正：使用硬重載 (清除快取)
+    console.log('✅ 已登出，正在硬重載頁面...');
+    
+    // 使用 location.replace 並加上時間戳強制硬重載
+    const url = new URL(window.location.href);
+    url.searchParams.set('_t', Date.now()); // 加上時間戳防止快取
+    
+    // 延遲一點時間確保清理完成
     setTimeout(() => {
-      location.reload();
+      // 使用 replace 避免留下歷史記錄
+      window.location.replace(url.toString());
     }, 100);
   };
 
