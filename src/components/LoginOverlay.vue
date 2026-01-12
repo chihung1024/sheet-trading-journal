@@ -51,6 +51,21 @@ const cleanup = () => {
 onMounted(() => {
   console.log('🔑 初始化登入頁面...');
   
+  // ✅ 先清理所有可能殘留的 Google OAuth 狀態
+  cleanup();
+  
+  // ✅ 清理舊的 Google iframes
+  const oldIframes = document.querySelectorAll('iframe[src*="accounts.google.com"]');
+  oldIframes.forEach(iframe => {
+    console.log('🧹 清理舊的 Google iframe');
+    iframe.remove();
+  });
+  
+  // ✅ 清空按鈕容器
+  if (googleBtn.value) {
+    googleBtn.value.innerHTML = '';
+  }
+  
   // ✅ 定義 callback
   window.handleCredentialResponse = async (response) => {
     console.log('🔐 收到 Google 憑證');
@@ -64,44 +79,57 @@ onMounted(() => {
     }
   };  
 
-  // ✅ 初始化 Google Sign-In
-  if (window.google) {
-    initGoogleSignIn();
-  } else {
-    let checkCount = 0;
-    const maxChecks = 100; // 10秒最多檢查100次
-    
-    initCheckInterval = setInterval(() => {
-      checkCount++;
+  // ✅ 等待一點時間再初始化，確保 DOM 清理完成
+  setTimeout(() => {
+    if (window.google) {
+      initGoogleSignIn();
+    } else {
+      let checkCount = 0;
+      const maxChecks = 100;
       
-      if (window.google) {
-        clearInterval(initCheckInterval);
-        initCheckInterval = null;
-        initGoogleSignIn();
-      } else if (checkCount >= maxChecks) {
-        clearInterval(initCheckInterval);
-        initCheckInterval = null;
-        error.value = '無法載入 Google 登入服務，請檢查網路連線';
-      }
-    }, 100);
-  }
+      initCheckInterval = setInterval(() => {
+        checkCount++;
+        
+        if (window.google) {
+          clearInterval(initCheckInterval);
+          initCheckInterval = null;
+          initGoogleSignIn();
+        } else if (checkCount >= maxChecks) {
+          clearInterval(initCheckInterval);
+          initCheckInterval = null;
+          error.value = '無法載入 Google 登入服務，請檢查網路連線';
+        }
+      }, 100);
+    }
+  }, 200); // ✅ 延遲 200ms 再初始化
 });
 
 const initGoogleSignIn = () => {
   try {
     console.log('🔧 正在初始化 Google Sign-In...');
     
+    // ✅ 再次確保清空容器
+    if (googleBtn.value) {
+      googleBtn.value.innerHTML = '';
+    }
+    
     // ✅ 重要：確保每次都是全新的初始化
     window.google.accounts.id.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
       callback: window.handleCredentialResponse,
-      auto_select: false,           // ✅ 關閉自動選擇
-      cancel_on_tap_outside: false, // ✅ 點擊外部不取消
-      itp_support: true              // ✅ 支援 ITP (智能防跟蹤)
+      auto_select: false,
+      cancel_on_tap_outside: false,
+      itp_support: true,
+      use_fedcm_for_prompt: false // ✅ 禁用 FedCM 防止快取問題
     });
 
-    // ✅ 確保每次都顯示 One Tap 提示（不自動登入）
-    window.google.accounts.id.prompt();
+    // ✅ 確保每次都顯示 One Tap
+    window.google.accounts.id.prompt((notification) => {
+      console.log('🔔 One Tap 通知:', notification);
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        console.log('⚠️ One Tap 未顯示，原因:', notification.getNotDisplayedReason());
+      }
+    });
 
     // ✅ 渲染按鈕
     if (googleBtn.value) {
