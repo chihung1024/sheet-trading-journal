@@ -1,6 +1,6 @@
 <template>
   <div class="stats-grid">
-    <div class="stat-block primary">
+    <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">總資產淨值</span>
         <span class="icon-box">💰</span>
@@ -17,13 +17,30 @@
       </div>
     </div>
     
-    <div class="stat-block success-theme">
+    <div class="stat-block">
+      <div class="stat-top">
+        <span class="stat-label">未實現損益</span>
+        <span class="icon-box">📈</span>
+      </div>
+      <div class="stat-main">
+        <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
+          {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
+        </div>
+      </div>
+      <div class="stat-footer">
+        <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
+            ROI: {{ roi }}%
+        </span>
+      </div>
+    </div>
+    
+    <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">已實現損益</span>
         <span class="icon-box">💵</span>
       </div>
       <div class="stat-main column-layout">
-        <div class="stat-value" :class="realizedPnL >= 0 ? 'text-green-light' : 'text-red-light'">
+        <div class="stat-value" :class="realizedPnL >= 0 ? 'text-green' : 'text-red'">
           {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
         </div>
         <div class="stat-sub-text">
@@ -32,19 +49,6 @@
       </div>
       <div class="stat-footer">
         <span class="text-sub text-xs">已實現的交易損益</span>
-      </div>
-    </div>
-    
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">時間加權報酬</span>
-        <span class="icon-box">🎯</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub">TWR (策略表現)</span>
       </div>
     </div>
     
@@ -68,22 +72,18 @@
     
     <div class="stat-block">
       <div class="stat-top">
-        <span class="stat-label">未實現損益</span>
-        <span class="icon-box">📈</span>
+        <span class="stat-label">時間加權報酬</span>
+        <span class="icon-box">🎯</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
-          {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
-        </div>
+        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
       </div>
       <div class="stat-footer">
-        <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
-            ROI: {{ roi }}%
-        </span>
+         <span class="text-sub">TWR (策略表現)</span>
       </div>
     </div>
     
-    <div class="stat-block highlight">
+    <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
         <span class="icon-box">🚀</span>
@@ -195,102 +195,38 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
+    gap: 20px;
 }
 
 .stat-block {
     background: var(--bg-card);
-    padding: 24px;
+    padding: 18px 20px;
     border-radius: var(--radius);
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-card);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 150px;
+    min-height: 120px;
     transition: all 0.2s ease;
     position: relative;
     overflow: hidden;
 }
 
 .stat-block:hover { 
-    transform: translateY(-4px); 
+    transform: translateY(-2px); 
     box-shadow: var(--shadow-lg); 
-}
-
-.stat-block.primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-}
-
-html.dark .stat-block.primary {
-    background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
-}
-
-.stat-block.success-theme {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
-    border: none;
-}
-
-html.dark .stat-block.success-theme {
-    background: linear-gradient(135deg, #047857 0%, #065f46 100%);
-}
-
-.stat-block.success-theme .stat-label { color: rgba(255,255,255,0.9); }
-.stat-block.success-theme .stat-value { color: #fff; }
-.stat-block.success-theme .stat-footer { 
-    border-top-color: rgba(255,255,255,0.2); 
-    color: rgba(255,255,255,0.9); 
-}
-.stat-block.success-theme .icon-box { 
-    background: rgba(255,255,255,0.2); 
-}
-.stat-block.success-theme .stat-sub-text {
-    color: rgba(255,255,255,0.85);
-    font-size: 0.8rem;
-}
-
-.stat-block.highlight {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    color: white;
-    border: none;
-}
-
-html.dark .stat-block.highlight {
-    background: linear-gradient(135deg, #881337 0%, #be123c 100%);
-}
-
-.stat-block.highlight .stat-label { color: rgba(255,255,255,0.9); }
-.stat-block.highlight .stat-value { color: #fff; }
-.stat-block.highlight .stat-footer { 
-    border-top-color: rgba(255,255,255,0.2); 
-    color: rgba(255,255,255,0.9); 
-}
-.stat-block.highlight .icon-box { 
-    background: rgba(255,255,255,0.2); 
-}
-
-.stat-block.primary .stat-label { color: rgba(255,255,255,0.9); }
-.stat-block.primary .stat-value { color: #fff; }
-.stat-block.primary .stat-footer { 
-    border-top-color: rgba(255,255,255,0.2); 
-    color: rgba(255,255,255,0.9); 
-}
-.stat-block.primary .icon-box { 
-    background: rgba(255,255,255,0.2); 
 }
 
 .stat-top { 
     display: flex; 
     justify-content: space-between; 
     align-items: center; 
-    margin-bottom: 12px; 
+    margin-bottom: 10px; 
 }
 
 .stat-label { 
-    font-size: 0.85rem; 
+    font-size: 0.8rem; 
     color: var(--text-sub); 
     font-weight: 600; 
     text-transform: uppercase;
@@ -298,14 +234,14 @@ html.dark .stat-block.highlight {
 }
 
 .icon-box { 
-    width: 40px; 
-    height: 40px; 
-    border-radius: 12px; 
+    width: 36px; 
+    height: 36px; 
+    border-radius: 10px; 
     background: var(--bg-secondary);
     display: flex; 
     align-items: center; 
     justify-content: center; 
-    font-size: 1.3rem;
+    font-size: 1.2rem;
     transition: transform 0.2s ease;
 }
 
@@ -317,7 +253,7 @@ html.dark .stat-block.highlight {
     display: flex; 
     align-items: baseline; 
     gap: 6px; 
-    margin-bottom: 12px; 
+    margin-bottom: 10px; 
     flex-grow: 1;
 }
 
@@ -329,7 +265,7 @@ html.dark .stat-block.highlight {
 
 .stat-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.75rem;
+    font-size: 1.6rem;
     font-weight: 700;
     color: var(--text-main);
     line-height: 1.1;
@@ -337,44 +273,35 @@ html.dark .stat-block.highlight {
 }
 
 .stat-value.big {
-    font-size: 2rem;
+    font-size: 1.8rem;
 }
 
 .stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     opacity: 0.9;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 .stat-sub-text {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--text-sub);
     font-weight: 500;
-    margin-top: 4px;
+    margin-top: 2px;
     opacity: 0.9;
 }
 
 .unit-text, .percent { 
-    font-size: 0.9rem; 
+    font-size: 0.85rem; 
     color: var(--text-sub); 
     font-weight: 500; 
 }
 
-.stat-block.primary .unit-text { 
-    color: rgba(255,255,255,0.8); 
-}
-
-.stat-block.highlight .unit-text,
-.stat-block.highlight .percent { 
-    color: rgba(255,255,255,0.8); 
-}
-
 .stat-footer {
-    padding-top: 12px;
+    padding-top: 10px;
     border-top: 1px solid var(--border-color);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     display: flex; 
     align-items: center; 
     justify-content: space-between;
@@ -396,26 +323,16 @@ html.dark .stat-block.highlight {
     color: var(--text-main);
 }
 
-.stat-block.primary .f-label,
-.stat-block.primary .f-val {
-    color: rgba(255,255,255,0.9);
-}
-
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
-.text-green-light { color: #d4f8d4; }
-.text-red-light { color: #ffd4d4; }
 .text-sub { color: var(--text-sub); }
-.text-xs { font-size: 0.75rem; }
-
-.stat-block.highlight .text-green { color: #d4f8d4; }
-.stat-block.highlight .text-red { color: #ffd4d4; }
+.text-xs { font-size: 0.7rem; }
 
 .badge { 
-    padding: 4px 12px; 
-    border-radius: 20px; 
+    padding: 3px 10px; 
+    border-radius: 16px; 
     font-weight: 600; 
-    font-size: 0.75rem; 
+    font-size: 0.7rem; 
     display: inline-flex; 
     align-items: center; 
 }
@@ -441,32 +358,32 @@ html.dark .stat-block.highlight {
 @media (max-width: 768px) { 
     .stats-grid { 
         grid-template-columns: 1fr;
-        gap: 16px;
+        gap: 14px;
     }
     
     .stat-block {
-        min-height: 130px;
-        padding: 20px;
+        min-height: 110px;
+        padding: 16px 18px;
     }
     
     .stat-value {
-        font-size: 1.5rem;
+        font-size: 1.4rem;
     }
     
     .stat-value.big {
-        font-size: 1.75rem;
+        font-size: 1.6rem;
     }
 }
 
 @media (max-width: 480px) {
     .icon-box {
-        width: 36px;
-        height: 36px;
+        width: 32px;
+        height: 32px;
         font-size: 1.1rem;
     }
     
     .stat-label {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
     }
 }
 </style>
