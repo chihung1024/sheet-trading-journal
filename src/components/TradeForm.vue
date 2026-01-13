@@ -75,7 +75,7 @@ const form = reactive({
 
 const setTxnType = (type) => { form.txn_type = type; calcTotal(); };
 
-// ✅ 修正：輸入單價、股數、費用 → 計算總額
+// ✅ 輸入單價、股數、費用 → 計算總額
 const calcTotal = () => {
     const qty = parseFloat(form.qty) || 0;
     const price = parseFloat(form.price) || 0;
@@ -107,9 +107,21 @@ const calcPrice = () => {
     
     if (qty <= 0) return;
     
-    // ✅ 新邏輯：無論買賣，平均成本 = (總金額 + Fee + Tax) / 股數
-    // 這是真實的平均成本，包含所有交易成本
-    const avgCost = (total + fee + tax) / qty;
+    let avgCost = 0;
+    
+    if (form.txn_type === 'BUY') {
+        // ✅ 買入：平均成本 = (總金額 + Fee + Tax) / 股數
+        // 現金流：總支出 = 買股票 + 費用
+        avgCost = (total + fee + tax) / qty;
+    } else if (form.txn_type === 'SELL') {
+        // ✅ 賣出：平均成本 = (總金額 - Fee - Tax) / 股數
+        // 現金流：實際成交價 = 入帳金額 - 費用
+        avgCost = (total - fee - tax) / qty;
+    } else {
+        // ✅ 配息：平均成本 = (總金額 - Tax) / 股數
+        avgCost = (total - tax) / qty;
+    }
+    
     form.price = parseFloat(avgCost.toFixed(4));
 };
 
