@@ -1,4 +1,4 @@
-<![CDATA[<template>
+<template>
   <div class="card">
     <div class="card-header">
         <div class="header-left">
@@ -112,7 +112,6 @@
         </table>
     </div>
     
-    <!-- 虛擬捲動提示 -->
     <div class="scroll-hint" v-if="filteredHoldings.length > displayLimit">
         顯示 {{ visibleHoldings.length }} / {{ filteredHoldings.length }} 筆
     </div>
@@ -131,7 +130,6 @@ const searchQuery = ref('');
 const filterStatus = ref('all');
 const highlightedSymbol = ref(null);
 
-// 虛擬捲動相關
 const displayLimit = ref(50);
 const scrollTop = ref(0);
 
@@ -166,21 +164,18 @@ const getSortIcon = (key) => {
 const filteredHoldings = computed(() => {
     let result = store.holdings;
     
-    // 搜尋過濾
     if (searchQuery.value) {
         result = result.filter(h => 
             h.symbol.toLowerCase().includes(searchQuery.value.toLowerCase())
         );
     }
     
-    // 狀態過濾
     if (filterStatus.value === 'profit') {
         result = result.filter(h => (h.pnl_twd || 0) > 0);
     } else if (filterStatus.value === 'loss') {
         result = result.filter(h => (h.pnl_twd || 0) < 0);
     }
     
-    // 排序
     return [...result].sort((a, b) => {
         let valA = a[sortKey.value];
         let valB = b[sortKey.value];
@@ -193,7 +188,6 @@ const filteredHoldings = computed(() => {
     });
 });
 
-// 虛擬捲動：只顯示可見範圍的數據
 const visibleHoldings = computed(() => {
     if (filteredHoldings.value.length <= displayLimit.value) {
         return filteredHoldings.value;
@@ -214,12 +208,10 @@ const highlightRow = (symbol) => {
     }, 2000);
 };
 
-// 捲動監聽（簡化版虛擬捲動）
 const handleScroll = () => {
     if (!tableContainer.value) return;
     const { scrollTop: top, scrollHeight, clientHeight } = tableContainer.value;
     
-    // 當捲動到底部時，增加顯示數量
     if (scrollHeight - top - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
         displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
     }
@@ -442,14 +434,12 @@ th.sortable:hover .sort-icon {
     50% { transform: translateY(-4px); }
 }
 
-/* ✅ 新增：價格變動樣式 */
 .price-change {
     font-size: 0.75rem;
     margin-top: 4px;
     font-weight: 600;
 }
 
-/* ✅ 新增：當日損益包裝 */
 .daily-pnl-wrapper {
     display: flex;
     flex-direction: column;
@@ -530,7 +520,6 @@ th.sortable:hover .sort-icon {
     font-family: 'JetBrains Mono', monospace;
 }
 
-/* 響應式 */
 @media (max-width: 768px) {
     .card-header {
         flex-direction: column;
@@ -551,4 +540,4 @@ th.sortable:hover .sort-icon {
         max-height: 400px;
     }
 }
-</style>]]>
+</style>
