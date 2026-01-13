@@ -1,389 +1,194 @@
 <template>
   <div class="stats-grid">
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">總資產淨值</span>
-        <span class="icon-box">💰</span>
+    <div class="stat-card" v-for="stat in stats" :key="stat.label">
+      <div class="stat-header">
+        <span class="stat-label">{{ stat.label }}</span>
+        <span class="stat-icon">{{ stat.icon }}</span>
       </div>
-      <div class="stat-main">
-        <div class="stat-value big">{{ displayTotalValue }}</div>
-        <div class="unit-text">TWD</div>
+      <div class="stat-value" :class="stat.colorClass">
+        {{ stat.value }}
       </div>
-      <div class="stat-footer">
-        <div class="footer-item">
-            <span class="f-label">投入成本</span> 
-            <span class="f-val">{{ formatNumber(stats.invested_capital) }}</span>
-        </div>
-      </div>
-    </div>
-    
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">未實現損益</span>
-        <span class="icon-box">📈</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
-          {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
-            ROI: {{ roi }}%
-        </span>
-      </div>
-    </div>
-    
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">已實現損益</span>
-        <span class="icon-box">💵</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="realizedPnL >= 0 ? 'text-green' : 'text-red'">
-          {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs">賣出收益 + 配息收入</span>
-      </div>
-    </div>
-    
-    <div class="stat-block" :title="pnlTooltip">
-      <div class="stat-top">
-        <span class="stat-label">{{ pnlLabel }}</span>
-        <span class="icon-box">⚡</span>
-      </div>
-      <div class="stat-main column-layout">
-        <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
-          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
-        </div>
-        <div class="stat-sub-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
-          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs">{{ pnlDescription }}</span>
-      </div>
-    </div>
-    
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">時間加權報酬</span>
-        <span class="icon-box">🎯</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub">TWR (策略表現)</span>
-      </div>
-    </div>
-    
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">個人年化報酬</span>
-        <span class="icon-box">🚀</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="(stats.xirr || 0) >= 0 ? 'text-green' : 'text-red'">
-          {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
-        </div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub">XIRR (資金加權)</span>
+      <div v-if="stat.subValue" class="stat-sub" :class="stat.colorClass">
+        {{ stat.subValue }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
-const stats = computed(() => store.stats || {});
-const history = computed(() => store.history || []);
-const holdings = computed(() => store.holdings || []);
 
-// ✅ 修正：直接使用後端計算好的 total_pnl
-const totalPnL = computed(() => stats.value.total_pnl || 0);
-
-// 計算已實現損益 (從後端 API 獲取)
-const realizedPnL = computed(() => stats.value.realized_pnl || 0);
-
-// ✅ 修正：未實現損益 = 總損益 - 已實現損益
-const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
-
-// 計算 ROI
-const roi = computed(() => {
-  if (!stats.value.invested_capital) return '0.00';
-  return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
-});
-
-// 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
-const isUSMarketOpen = computed(() => {
-  const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  
-  // 晚上 9:30 後 或 凌晨 5:00 前
-  if (hour >= 21 || hour < 5) {
-    if (hour === 21 && minute < 30) return false;
-    return true;
-  }
-  return false;
-});
-
-// 動態標題
-const pnlLabel = computed(() => {
-  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益';
-});
-
-// 動態說明
-const pnlDescription = computed(() => {
-  if (isUSMarketOpen.value) {
-    return '包含今日股價、匯率及交易影響';
-  } else {
-    return '包含昨日股價、今日匯率變化';
-  }
-});
-
-// Tooltip 完整說明
-const pnlTooltip = computed(() => {
-  return '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響';
-});
-
-// 核心修正：直接使用後端計算好的 daily_pl_twd
-// 後端使用 Modified Dietz 方法，公式：daily_pl = ending_value - beginning_value - cashflow
-const dailyPnL = computed(() => {
-  // 直接加總所有持股的 daily_pl_twd
-  return holdings.value.reduce((sum, holding) => {
-    return sum + (holding.daily_pl_twd || 0);
-  }, 0);
-});
-
-// 計算今日損益百分比
-const dailyRoi = computed(() => {
-  // 使用昨日總資產作為基準
-  // 昨日總資產 = 今日總資產 - 今日損益
-  const yesterdayValue = stats.value.total_value - dailyPnL.value;
-  
-  if (!yesterdayValue || yesterdayValue === 0) return '0.00';
-  return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
-});
-
-// 數字動畫
-const useAnimatedNumber = (targetVal) => {
-  const current = ref(0);
-  watch(targetVal, (newVal) => {
-    if (newVal == null) return;
-    current.value = Number(newVal);
-  }, { immediate: true });
-  return computed(() => Math.round(current.value).toLocaleString('zh-TW'));
+const formatCurrency = (val) => {
+  if (!val || isNaN(val)) return '0';
+  return new Intl.NumberFormat('zh-TW', { 
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0 
+  }).format(val);
 };
 
-const displayTotalValue = useAnimatedNumber(computed(() => stats.value.total_value));
-const displayUnrealized = useAnimatedNumber(unrealizedPnL);
-const displayRealized = useAnimatedNumber(realizedPnL);
-const displayDaily = useAnimatedNumber(dailyPnL);
+const formatPercent = (val) => {
+  if (!val || isNaN(val)) return '0.00%';
+  return `${val >= 0 ? '+' : ''}${val.toFixed(2)}%`;
+};
 
-const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
+const getColorClass = (val) => {
+  if (!val || isNaN(val) || val === 0) return '';
+  return val > 0 ? 'positive' : 'negative';
+};
+
+const stats = computed(() => [
+  {
+    label: '總資產 (TWD)',
+    icon: '💰',
+    value: formatCurrency(store.summary?.total_value || 0),
+    colorClass: ''
+  },
+  {
+    label: '當日損益',
+    icon: '⚡',
+    value: formatCurrency(store.summary?.daily_pl || 0),
+    subValue: formatPercent(store.summary?.daily_pl_percent || 0),
+    colorClass: getColorClass(store.summary?.daily_pl || 0)
+  },
+  {
+    label: '未實現損益',
+    icon: '📈',
+    value: formatCurrency(store.summary?.unrealized_pl || 0),
+    colorClass: getColorClass(store.summary?.unrealized_pl || 0)
+  },
+  {
+    label: '已實現損益',
+    icon: '💵',
+    value: formatCurrency(store.summary?.realized_pl || 0),
+    colorClass: getColorClass(store.summary?.realized_pl || 0)
+  },
+  {
+    label: '總報酬率',
+    icon: '📉',
+    value: formatPercent(store.summary?.total_return || 0),
+    colorClass: getColorClass(store.summary?.total_return || 0)
+  },
+  {
+    label: 'XIRR 年化報酬',
+    icon: '🎯',
+    value: formatPercent(store.summary?.xirr || 0),
+    colorClass: getColorClass(store.summary?.xirr || 0)
+  }
+]);
 </script>
 
 <style scoped>
 .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
 }
 
-.stat-block {
-    background: var(--bg-card);
-    padding: 18px 20px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-card);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 120px;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.2s ease;
 }
 
-.stat-block:hover { 
-    transform: translateY(-2px); 
-    box-shadow: var(--shadow-lg); 
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
 }
 
-.stat-top { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    margin-bottom: 10px; 
+.stat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
-.stat-label { 
-    font-size: 0.8rem; 
-    color: var(--text-sub); 
-    font-weight: 600; 
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+.stat-label {
+  font-size: 0.85rem;
+  color: var(--text-sub);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.icon-box { 
-    width: 36px; 
-    height: 36px; 
-    border-radius: 10px; 
-    background: var(--bg-secondary);
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    font-size: 1.2rem;
-    transition: transform 0.2s ease;
-}
-
-.stat-block:hover .icon-box {
-    transform: scale(1.1);
-}
-
-.stat-main { 
-    display: flex; 
-    align-items: baseline; 
-    gap: 6px; 
-    margin-bottom: 10px; 
-    flex-grow: 1;
-}
-
-.stat-main.column-layout {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+.stat-icon {
+  font-size: 1.3rem;
+  opacity: 0.8;
 }
 
 .stat-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--text-main);
-    line-height: 1.1;
-    letter-spacing: -0.03em;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-main);
+  font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 4px;
 }
 
-.stat-value.big {
-    font-size: 1.8rem;
+.stat-sub {
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
 }
 
-.stat-sub-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem;
-    font-weight: 600;
-    opacity: 0.9;
-    margin-top: 2px;
+.positive {
+  color: var(--success);
 }
 
-.stat-sub-text {
+.negative {
+  color: var(--danger);
+}
+
+/* ✅ 手機版：3列 2行 */
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  
+  .stat-card {
+    padding: 14px;
+  }
+  
+  .stat-label {
     font-size: 0.7rem;
-    color: var(--text-sub);
-    font-weight: 500;
-    margin-top: 2px;
-    opacity: 0.9;
-}
-
-.unit-text, .percent { 
-    font-size: 0.85rem; 
-    color: var(--text-sub); 
-    font-weight: 500; 
-}
-
-.stat-footer {
-    padding-top: 10px;
-    border-top: 1px solid var(--border-color);
-    font-size: 0.75rem;
-    display: flex; 
-    align-items: center; 
-    justify-content: space-between;
-}
-
-.footer-item { 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-}
-
-.f-label {
-    color: var(--text-sub);
-}
-
-.f-val { 
-    font-weight: 600; 
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--text-main);
-}
-
-.text-green { color: var(--success); }
-.text-red { color: var(--danger); }
-.text-sub { color: var(--text-sub); }
-.text-xs { font-size: 0.7rem; }
-
-.badge { 
-    padding: 3px 10px; 
-    border-radius: 16px; 
-    font-weight: 600; 
-    font-size: 0.7rem; 
-    display: inline-flex; 
-    align-items: center; 
-}
-
-.badge-green { 
-    background: rgba(16, 185, 129, 0.1); 
-    color: var(--success);
-    border: 1px solid var(--success);
-}
-
-.badge-red { 
-    background: rgba(239, 68, 68, 0.1); 
-    color: var(--danger);
-    border: 1px solid var(--danger);
-}
-
-@media (max-width: 1200px) { 
-    .stats-grid { 
-        grid-template-columns: repeat(2, 1fr);
-    } 
-}
-
-@media (max-width: 768px) { 
-    .stats-grid { 
-        grid-template-columns: 1fr;
-        gap: 14px;
-    }
-    
-    .stat-block {
-        min-height: 110px;
-        padding: 16px 18px;
-    }
-    
-    .stat-value {
-        font-size: 1.4rem;
-    }
-    
-    .stat-value.big {
-        font-size: 1.6rem;
-    }
+  }
+  
+  .stat-icon {
+    font-size: 1.1rem;
+  }
+  
+  .stat-value {
+    font-size: 1.3rem;
+  }
+  
+  .stat-sub {
+    font-size: 0.85rem;
+  }
 }
 
 @media (max-width: 480px) {
-    .icon-box {
-        width: 32px;
-        height: 32px;
-        font-size: 1.1rem;
-    }
-    
-    .stat-label {
-        font-size: 0.7rem;
-    }
+  .stats-grid {
+    gap: 10px;
+  }
+  
+  .stat-card {
+    padding: 12px;
+  }
+  
+  .stat-label {
+    font-size: 0.65rem;
+  }
+  
+  .stat-value {
+    font-size: 1.2rem;
+  }
+  
+  .stat-sub {
+    font-size: 0.8rem;
+  }
 }
 </style>
