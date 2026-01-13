@@ -1,6 +1,5 @@
-<![CDATA[<template>
+<template>
   <div class="stats-grid">
-    <!-- 1. 總資產 -->
     <div class="stat-block primary">
       <div class="stat-top">
         <span class="stat-label">總資產淨值</span>
@@ -18,7 +17,6 @@
       </div>
     </div>
     
-    <!-- 2. 未實現損益 -->
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">未實現損益</span>
@@ -36,7 +34,6 @@
       </div>
     </div>
     
-    <!-- 3. 已實現損益 -->
     <div class="stat-block success-theme">
       <div class="stat-top">
         <span class="stat-label">已實現損益</span>
@@ -55,7 +52,6 @@
       </div>
     </div>
     
-    <!-- 4. 今日損益 -->
     <div class="stat-block" :title="pnlTooltip">
       <div class="stat-top">
         <span class="stat-label">{{ pnlLabel }}</span>
@@ -74,7 +70,6 @@
       </div>
     </div>
     
-    <!-- 5. 總報酬率 (TWR) -->
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">時間加權報酬</span>
@@ -88,7 +83,6 @@
       </div>
     </div>
     
-    <!-- 6. XIRR (個人年化報酬) -->
     <div class="stat-block highlight">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
@@ -481,4 +475,4 @@ html.dark .stat-block.highlight {
         font-size: 0.75rem;
     }
 }
-</style>]]>
+</style>
