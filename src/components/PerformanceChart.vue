@@ -241,18 +241,15 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        // ✅ 修正：使用後端計算好的 net_profit（包含未實現 + 已實現損益）
-        const basePnL = baselineData.value.net_profit;
-        const pnlData = displayedData.value.map(d => {
-            return d.net_profit - basePnL;
-        });
+        // ✅ 修正：直接顯示 net_profit 絕對值，不減去 baseline
+        const pnlData = displayedData.value.map(d => d.net_profit);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
         gradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
         gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
         
         datasets = [{
-            label: '淨損益變化 (TWD)',
+            label: '淨損益 (TWD)',
             data: pnlData,
             borderColor: '#10b981',
             backgroundColor: gradient,
@@ -332,15 +329,10 @@ const drawChart = () => {
                                 if (chartType.value === 'twr') {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
-                                } else if (chartType.value === 'asset') {
-                                    // ✅ 資產顯示實際值，不加正負號
-                                    label += context.parsed.y.toLocaleString('zh-TW', {
-                                        minimumFractionDigits: 0,
-                                        maximumFractionDigits: 0
-                                    });
-                                } else {
-                                    // 損益變化加正負號
-                                    const sign = context.parsed.y >= 0 ? '+' : '';
+                                } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
+                                    // ✅ 資產和損益都顯示實際值，損益加正負號
+                                    const sign = (chartType.value === 'pnl' && context.parsed.y >= 0) ? '+' : 
+                                                 (chartType.value === 'pnl' && context.parsed.y < 0) ? '' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
@@ -386,15 +378,10 @@ const drawChart = () => {
                             if (chartType.value === 'twr') {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
-                            } else if (chartType.value === 'asset') {
-                                // ✅ 資產顯示實際值，不加正負號
-                                return value.toLocaleString('zh-TW', {
-                                    notation: 'compact',
-                                    compactDisplay: 'short'
-                                });
-                            } else {
-                                // 損益變化加正負號
-                                const sign = value >= 0 ? '+' : '';
+                            } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
+                                // ✅ 資產和損益都顯示實際值
+                                const sign = (chartType.value === 'pnl' && value >= 0) ? '+' : 
+                                             (chartType.value === 'pnl' && value < 0) ? '' : '';
                                 return sign + value.toLocaleString('zh-TW', {
                                     notation: 'compact',
                                     compactDisplay: 'short'
