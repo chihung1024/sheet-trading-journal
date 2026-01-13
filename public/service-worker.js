@@ -1,6 +1,6 @@
-const CACHE_NAME = 'trading-journal-v1.0.0';
-const STATIC_CACHE = 'static-v1';
-const DYNAMIC_CACHE = 'dynamic-v1';
+const CACHE_NAME = 'trading-journal-v20260114';
+const STATIC_CACHE = 'static-v2';
+const DYNAMIC_CACHE = 'dynamic-v2';
 
 // 需要緩存的靜態資源
 const STATIC_ASSETS = [
@@ -81,7 +81,35 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 靜態資源：緩存優先策略
+  // ✅ 對 HTML/JS/CSS 使用「網絡優先」策略，確保總是獲取最新版本
+  if (request.destination === 'document' || 
+      request.destination === 'script' || 
+      request.destination === 'style' ||
+      request.url.endsWith('.html') ||
+      request.url.endsWith('.js') ||
+      request.url.endsWith('.css')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // 成功獲取後更新快取
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(DYNAMIC_CACHE).then((cache) => {
+              cache.put(request, responseToCache);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // 網絡失敗時才使用快取（離線支援）
+          console.log('[SW] Network failed, using cache for:', request.url);
+          return caches.match(request);
+        })
+    );
+    return;
+  }
+
+  // 其他靜態資源（圖片、字體等）：緩存優先策略
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       if (cachedResponse) {
