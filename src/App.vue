@@ -11,17 +11,17 @@
         <div class="nav-status">
           <!-- 狀態 1: 正在載入資料 -->
           <div v-if="portfolioStore.loading" class="status-indicator loading">
-            <span class="dot"></span> 更新中...
+            <span class="dot"></span> <span class="status-text">更新中...</span>
           </div>
           
           <!-- ✅ 新增狀態 2: 正在輪詢監控 (橘燈閃爍) -->
           <div v-else-if="portfolioStore.isPolling" class="status-indicator polling">
-            <span class="dot pulse-orange"></span> 計算中...
+            <span class="dot pulse-orange"></span> <span class="status-text">計算中...</span>
           </div>
           
           <!-- 狀態 3: 正常連線 -->
           <div v-else class="status-indicator ready">
-            <span class="dot"></span> 連線正常
+            <span class="dot"></span> <span class="status-text">連線正常</span>
           </div>
           
           <!-- ✅ 修改 @click 事件繫定 -->
@@ -31,8 +31,8 @@
             :disabled="portfolioStore.isPolling"
             :title="portfolioStore.isPolling ? '系統正在背景計算中...' : '手動觸發投資組合數據更新'"
           >
-            <span>⚙️</span>
-            更新數據
+            <span class="btn-icon">⚙️</span>
+            <span class="btn-text">更新數據</span>
           </button>
           
           <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切換為淺色模式' : '切換為深色模式'">
@@ -269,6 +269,9 @@ body {
   overflow: visible;
 }
 
+/* =====================================
+   導航欄 - 響應式優化
+   ===================================== */
 .top-nav {
   background: var(--bg-card);
   border-bottom: 1px solid var(--border-color);
@@ -286,6 +289,8 @@ body {
   display: flex; 
   align-items: center; 
   gap: 12px; 
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .nav-brand h1 { 
@@ -293,7 +298,10 @@ body {
   font-weight: 700; 
   margin: 0; 
   color: var(--text-main); 
-  letter-spacing: -0.01em; 
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .badge { 
@@ -306,15 +314,17 @@ body {
 }
 
 .logo-icon { 
-  font-size: 1.5rem; 
+  font-size: 1.5rem;
+  flex-shrink: 0;
 }
 
 .nav-status { 
   display: flex; 
   align-items: center; 
-  gap: 20px; 
-  font-size: 0.9rem; 
-  font-weight: 500; 
+  gap: 16px; 
+  font-size: 0.85rem; 
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
 .status-indicator { 
@@ -325,21 +335,20 @@ body {
 
 .status-indicator.ready { color: var(--success); }
 .status-indicator.loading { color: var(--primary); }
-/* ✅ 新增 polling 狀態顏色 */
 .status-indicator.polling { color: var(--warning); }
 
 .dot { 
   width: 8px; 
   height: 8px; 
   border-radius: 50%; 
-  background: currentColor; 
+  background: currentColor;
+  flex-shrink: 0;
 }
 
 .loading .dot { 
   animation: pulse 1.5s infinite; 
 }
 
-/* ✅ 新增橘色脈衝動畫 */
 .pulse-orange {
   animation: pulse-orange 1.5s infinite;
 }
@@ -359,20 +368,21 @@ body {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 1.2rem;
+  flex-shrink: 0;
 }
 
 .theme-toggle:hover {
   background: var(--primary);
   border-color: var(--primary);
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 
 .action-trigger-btn {
@@ -380,15 +390,17 @@ body {
   border: none;
   border-radius: 8px;
   color: white;
-  padding: 8px 14px;
+  padding: 10px 16px;
   font-weight: 600; 
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
   transition: all 0.2s ease;
   box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+  white-space: nowrap;
+  min-height: 44px;
 }
 
 .action-trigger-btn:hover:not(:disabled) {
@@ -401,7 +413,6 @@ body {
   opacity: 0.7;
   cursor: not-allowed;
   transform: none;
-  /* 禁用時的灰階濾鏡 */
   filter: grayscale(0.5);
 }
 
@@ -412,7 +423,8 @@ body {
   cursor: pointer; 
   padding: 4px 12px; 
   border-radius: 99px; 
-  transition: background 0.2s; 
+  transition: background 0.2s;
+  min-height: 44px;
 }
 
 .user-profile:hover { 
@@ -428,7 +440,8 @@ body {
   align-items: center; 
   justify-content: center; 
   font-weight: 600; 
-  color: var(--text-sub); 
+  color: var(--text-sub);
+  flex-shrink: 0;
 }
 
 .avatar-img { 
@@ -436,9 +449,13 @@ body {
   height: 36px; 
   border-radius: 50%; 
   object-fit: cover; 
-  border: 2px solid var(--border-color); 
+  border: 2px solid var(--border-color);
+  flex-shrink: 0;
 }
 
+/* =====================================
+   內容容器 - 響應式優化
+   ===================================== */
 .content-container { 
   max-width: 1600px; 
   margin: 0 auto; 
@@ -458,7 +475,6 @@ body {
   min-width: 0; 
 }
 
-/* ✅ 優化圖表區域：移除 grid 佈局，讓趨勢分析圖佔滿寬度 */
 .section-charts { 
   display: block;
   width: 100%; 
@@ -480,6 +496,9 @@ body {
   overflow-y: auto;
 }
 
+/* =====================================
+   卡片與圖表 - 響應式優化
+   ===================================== */
 .card, .chart-wrapper { 
   background: var(--bg-card); 
   border: 1px solid var(--border-color); 
@@ -497,7 +516,6 @@ body {
   flex-direction: column; 
 }
 
-/* ✅ 讓圖表佔滿整個寬度並增加高度 */
 .chart-wrapper.chart-full { 
   height: 500px;
   width: 100%; 
@@ -511,6 +529,9 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* =====================================
+   表格 - 響應式優化
+   ===================================== */
 table { 
   width: 100%; 
   border-collapse: separate; 
@@ -547,6 +568,9 @@ tr:hover td {
   transition: background 0.15s; 
 }
 
+/* =====================================
+   Toast 通知 - 響應式優化
+   ===================================== */
 .toast-container { 
   position: fixed; 
   bottom: 32px; 
@@ -554,7 +578,8 @@ tr:hover td {
   z-index: 9999; 
   display: flex; 
   flex-direction: column; 
-  gap: 12px; 
+  gap: 12px;
+  max-width: 420px;
 }
 
 .toast { 
@@ -593,6 +618,7 @@ tr:hover td {
   align-items: center;
   justify-content: center;
   font-weight: bold;
+  flex-shrink: 0;
 }
 
 .toast.success .toast-icon {
@@ -608,7 +634,8 @@ tr:hover td {
 .toast-msg { 
   font-size: 0.9rem; 
   color: var(--text-main); 
-  font-weight: 500; 
+  font-weight: 500;
+  word-break: break-word;
 }
 
 .toast-slide-enter-active,
@@ -626,44 +653,108 @@ tr:hover td {
   opacity: 0;
 }
 
+/* =====================================
+   響應式斷點 - 平板 (≤ 1024px)
+   ===================================== */
 @media (max-width: 1024px) {
   .content-container { 
     grid-template-columns: 1fr; 
-    padding: 20px; 
-    gap: 20px; 
+    padding: 24px; 
+    gap: 24px; 
   }
   
-  .side-column { order: -1; }
-  /* ✅ 移除小螢幕上的 grid 佈局 */
-  .section-charts { display: block; }
+  .side-column { 
+    order: -1; 
+  }
   
-  .sticky-panel { position: static; } 
-  .desktop-only { display: none; }
+  .section-charts { 
+    display: block; 
+  }
+  
+  .sticky-panel { 
+    position: static;
+    max-height: none;
+  }
+  
+  .desktop-only { 
+    display: none; 
+  }
+  
+  .chart-wrapper.chart-full { 
+    height: 450px;
+  }
 }
 
+/* =====================================
+   響應式斷點 - 手機 (≤ 768px)
+   ===================================== */
 @media (max-width: 768px) {
   .top-nav {
     padding: 0 16px;
-    height: 56px;
+    height: 60px;
   }
   
   .nav-brand h1 {
     font-size: 1.1rem;
   }
   
+  .badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+  
   .logo-icon {
     font-size: 1.3rem;
   }
   
-  .status-indicator {
+  .nav-status {
+    gap: 12px;
     font-size: 0.8rem;
+  }
+  
+  .status-text {
+    display: none;
+  }
+  
+  .action-trigger-btn {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+  }
+  
+  .btn-text {
+    display: none;
+  }
+  
+  .btn-icon {
+    font-size: 1.2rem;
+  }
+  
+  .theme-toggle {
+    width: 40px;
+    height: 40px;
+    font-size: 1.1rem;
+  }
+  
+  .avatar,
+  .avatar-img {
+    width: 32px;
+    height: 32px;
   }
   
   .content-container {
     padding: 16px;
+    gap: 20px;
   }
   
-  /* ✅ 小螢幕上調整圖表高度 */
+  .main-column {
+    gap: 20px;
+  }
+  
+  .card, .chart-wrapper {
+    padding: 16px;
+    border-radius: 12px;
+  }
+  
   .chart-wrapper.chart-full { 
     height: 350px;
   }
@@ -672,20 +763,61 @@ tr:hover td {
     bottom: 16px;
     right: 16px;
     left: 16px;
+    max-width: none;
   }
   
   .toast {
     min-width: auto;
   }
-}
-
-@media (max-width: 480px) {
-  .nav-status {
-    gap: 12px;
+  
+  /* 表格在手機上優化 */
+  th, td {
+    padding: 12px 10px;
+    font-size: 0.85rem;
   }
   
-  .status-indicator:not(.loading):not(.ready) {
+  th {
+    font-size: 0.7rem;
+  }
+}
+
+/* =====================================
+   響應式斷點 - 小手機 (≤ 480px)
+   ===================================== */
+@media (max-width: 480px) {
+  .top-nav {
+    padding: 0 12px;
+    height: 56px;
+  }
+  
+  .nav-brand h1 {
+    font-size: 1rem;
+  }
+  
+  .nav-brand .badge {
     display: none;
+  }
+  
+  .logo-icon {
+    font-size: 1.2rem;
+  }
+  
+  .nav-status {
+    gap: 8px;
+  }
+  
+  .status-indicator {
+    font-size: 0;
+  }
+  
+  .status-indicator .dot {
+    margin: 0;
+  }
+  
+  .action-trigger-btn {
+    padding: 6px 10px;
+    min-width: 40px;
+    min-height: 40px;
   }
   
   .theme-toggle {
@@ -694,9 +826,66 @@ tr:hover td {
     font-size: 1rem;
   }
   
-  /* ✅ 更小螢幕上進一步調整 */
+  .user-profile {
+    padding: 4px;
+  }
+  
+  .content-container {
+    padding: 12px;
+    gap: 16px;
+  }
+  
+  .main-column {
+    gap: 16px;
+  }
+  
+  .card, .chart-wrapper {
+    padding: 12px;
+  }
+  
+  .card h3 {
+    font-size: 1rem;
+    margin-bottom: 12px;
+  }
+  
   .chart-wrapper.chart-full { 
-    height: 300px;
+    height: 280px;
+  }
+  
+  .toast {
+    padding: 12px 16px;
+  }
+  
+  .toast-msg {
+    font-size: 0.85rem;
+  }
+  
+  /* 表格在小手機上進一步優化 */
+  th, td {
+    padding: 10px 8px;
+    font-size: 0.8rem;
+  }
+}
+
+/* =====================================
+   觸控優化
+   ===================================== */
+@media (hover: none) and (pointer: coarse) {
+  /* 確保所有可點擊元素至少 44x44px */
+  button,
+  .user-profile,
+  .theme-toggle,
+  .action-trigger-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  /* 增加觸控反饋 */
+  button:active,
+  .user-profile:active,
+  .theme-toggle:active {
+    transform: scale(0.95);
+    opacity: 0.8;
   }
 }
 </style>
