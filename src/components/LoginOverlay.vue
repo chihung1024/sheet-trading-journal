@@ -23,145 +23,80 @@
 </template>
 
 <script setup>
-import { onMounted, ref, onUnmounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import { usePortfolioStore } from '../stores/portfolio';
+import { usePortfolioStore } from '../stores/portfolio'; // ✅ 1. 新增引入
 import { CONFIG } from '../config';
 
 const googleBtn = ref(null);
 const authStore = useAuthStore();
-const portfolioStore = usePortfolioStore();
+const portfolioStore = usePortfolioStore(); // ✅ 2. 宣告 store 實例
 const error = ref('');
 
-let initCheckInterval = null;
-
-// ✅ 清理函數：確保組件銀毀時清理資源
-const cleanup = () => {
-  if (initCheckInterval) {
-    clearInterval(initCheckInterval);
-    initCheckInterval = null;
-  }
-  
-  // 移除全域 callback
-  if (window.handleCredentialResponse) {
-    delete window.handleCredentialResponse;
-  }
-};
-
 onMounted(() => {
-  console.log('🔑 初始化登入頁面...');
-  
-  // ✅ 先清理所有可能殘留的 Google OAuth 狀態
-  cleanup();
-  
-  // ✅ 清理舊的 Google iframes
-  const oldIframes = document.querySelectorAll('iframe[src*="accounts.google.com"]');
-  oldIframes.forEach(iframe => {
-    console.log('🧹 清理舊的 Google iframe');
-    iframe.remove();
-  });
-  
-  // ✅ 清空按鈕容器
-  if (googleBtn.value) {
-    googleBtn.value.innerHTML = '';
-  }
-  
-  // ✅ 定義 callback
+  // 定義 callback（保留錯誤處理）
   window.handleCredentialResponse = async (response) => {
     console.log('🔐 收到 Google 憑證');
     try {
+      // 執行登入 (這一步只會更新 Token 與 User 狀態，已不含抓資料邏輯)
       await authStore.login(response.credential); 
+      
+      // ✅ 3. 關鍵修正：登入成功後，主動載入投資組合數據
       console.log('🎉 登入成功，開始載入數據...');
       await portfolioStore.fetchAll();
+
     } catch (err) {
       console.error('登入流程發生錯誤:', err);
       error.value = '登入驗證失敗: ' + (err.message || '無法連接後端伺服器');
     }
   };  
 
-  // ✅ 等待一點時間再初始化，確保 DOM 清理完成
-  setTimeout(() => {
-    if (window.google) {
-      initGoogleSignIn();
-    } else {
-      let checkCount = 0;
-      const maxChecks = 100;
-      
-      initCheckInterval = setInterval(() => {
-        checkCount++;
-        
-        if (window.google) {
-          clearInterval(initCheckInterval);
-          initCheckInterval = null;
-          initGoogleSignIn();
-        } else if (checkCount >= maxChecks) {
-          clearInterval(initCheckInterval);
-          initCheckInterval = null;
-          error.value = '無法載入 Google 登入服務，請檢查網路連線';
-        }
-      }, 100);
-    }
-  }, 200);
+  // 初始化 Google 登入按鈕
+  if (window.google) {
+    initGoogleSignIn();
+  } else {
+    // 如果 Google Script 還沒載入，等待一下
+    const checkGoogle = setInterval(() => {
+      if (window.google) {
+        clearInterval(checkGoogle);
+        initGoogleSignIn();
+      }
+    }, 100);
+    
+    // 10 秒後仍未載入，顯示錯誤
+    setTimeout(() => {
+      if (!window.google) {
+        clearInterval(checkGoogle);
+        error.value = '無法載入 Google 登入服務，請檢查網路連線';
+      }
+    }, 10000);
+  }
 });
 
 const initGoogleSignIn = () => {
   try {
-    console.log('🔧 正在初始化 Google Sign-In 使用 FedCM...');
-    
-    // ✅ 再次確保清空容器
-    if (googleBtn.value) {
-      googleBtn.value.innerHTML = '';
-    }
-    
-    // ✅ 重要：啟用 FedCM （已是強制標準）
     window.google.accounts.id.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
       callback: window.handleCredentialResponse,
       auto_select: false,
-      cancel_on_tap_outside: false,
-      itp_support: true,
-      use_fedcm_for_prompt: true // ✅ 啟用 FedCM
+      cancel_on_tap_outside: false
     });
 
-    // ✅ 使用 FedCM 顯示 One Tap
-    window.google.accounts.id.prompt((notification) => {
-      console.log('🔔 FedCM One Tap 狀態:', notification);
-      
-      // ✅ FedCM 已不再支援詳細的跳過原因和顯示時刻
-      if (notification.isNotDisplayed()) {
-        console.log('⚠️ FedCM One Tap 未顯示');
-      } else if (notification.isSkippedMoment()) {
-        console.log('🚫 FedCM One Tap 已跳過');
-      } else if (notification.isDismissedMoment()) {
-        console.log('❌ FedCM One Tap 已關閉');
-      }
+    window.google.accounts.id.renderButton(googleBtn.value, {
+      theme: 'outline',
+      size: 'large',
+      width: '280',
+      text: 'signin_with',
+      shape: 'rectangular',
+      logo_alignment: 'left'
     });
 
-    // ✅ 渲染按鈕
-    if (googleBtn.value) {
-      window.google.accounts.id.renderButton(googleBtn.value, {
-        theme: 'outline',
-        size: 'large',
-        width: '280',
-        text: 'signin_with',
-        shape: 'rectangular',
-        logo_alignment: 'left'
-      });
-      console.log('✅ Google 登入按鈕已渲染（FedCM 模式）');
-    } else {
-      console.warn('⚠️ googleBtn ref 不存在');
-    }
+    console.log('✅ Google 登入按鈕已渲染');
   } catch (err) {
     console.error('❌ 初始化錯誤:', err);
     error.value = '初始化登入系統失敗';
   }
 };
-
-// ✅ 組件銀毀時清理
-onUnmounted(() => {
-  console.log('🧹 清理登入組件資源...');
-  cleanup();
-});
 </script>
 
 

@@ -6,16 +6,19 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref('');
   const user = ref({ name: '', email: '' });
 
+  // ✅ 新增：檢查 token 是否過期
   const isTokenExpired = () => {
     if (!token.value) return true;
     
     try {
+      // 解析 JWT payload
       const parts = token.value.split('.');
       if (parts.length !== 3) return true;
       
       const payload = JSON.parse(atob(parts[1]));
       const now = Math.floor(Date.now() / 1000);
       
+      // 檢查是否過期（提前 5 分鐘視為過期）
       return payload.exp < (now + 300);
     } catch (e) {
       console.error('❗ Token 解析錯誤:', e);
@@ -23,6 +26,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
+  // 初始化認證狀態
   const initAuth = () => {
     const t = localStorage.getItem('token');
     const n = localStorage.getItem('name');
@@ -32,6 +36,7 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = t;
       user.value = { name: n, email: e };
       
+      // ✅ 檢查 token 是否過期
       if (isTokenExpired()) {
         console.warn('⚠️ Token 已過期，清除認證狀態');
         logout();
@@ -44,6 +49,7 @@ export const useAuthStore = defineStore('auth', () => {
     return false;
   };
 
+  // Google 登入
   const login = async (googleCredential) => {
     try {
       console.log('🔄 正在驗證 Google 憑證...');
@@ -81,54 +87,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  // ✅ 修正：使用硬重載徹底清除狀態
+  // 登出
   const logout = () => {
-    console.log('🚪 正在登出...');
-    
-    // 1. 保存用戶 email（用於撤銷授權）
-    const userEmail = user.value?.email || '';
-    
-    // 2. 清理本地狀態
     token.value = '';
     user.value = {};
-    
-    // 3. 清除所有 localStorage（包括可能的其他快取）
     localStorage.clear();
-    
-    // 4. 清除 sessionStorage
-    sessionStorage.clear();
-    
-    // 5. ✅ 清理 Google Sign-In 狀態
-    if (window.google?.accounts?.id) {
-      try {
-        // 取消自動選擇
-        window.google.accounts.id.disableAutoSelect();
-        
-        // 撤銷授權
-        if (userEmail && window.google.accounts.id.revoke) {
-          window.google.accounts.id.revoke(userEmail, (done) => {
-            console.log('✅ Google OAuth 授權已撤銷', done);
-          });
-        }
-        
-        console.log('✅ Google Sign-In 狀態已清理');
-      } catch (e) {
-        console.warn('⚠️ 清理 Google 狀態時出錯:', e);
-      }
-    }
-    
-    // 6. ✅ 關鍵修正：使用硬重載 (清除快取)
-    console.log('✅ 已登出，正在硬重載頁面...');
-    
-    // 使用 location.replace 並加上時間戳強制硬重載
-    const url = new URL(window.location.href);
-    url.searchParams.set('_t', Date.now()); // 加上時間戳防止快取
-    
-    // 延遲一點時間確保清理完成
-    setTimeout(() => {
-      // 使用 replace 避免留下歷史記錄
-      window.location.replace(url.toString());
-    }, 100);
+    console.log('✅ 已登出');
+    location.reload();
   };
 
   return {
@@ -137,6 +102,6 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     initAuth,
-    isTokenExpired
+    isTokenExpired // ✅ 導出供外部使用
   };
 });

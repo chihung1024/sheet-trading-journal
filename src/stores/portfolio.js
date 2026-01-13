@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { CONFIG } from '../config';
 import { useAuthStore } from './auth';
-import { useToast } from '../composables/useToast';
+import { useToast } from '../composables/useToast'; // ✅ 新增：引入 Toast
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -13,15 +13,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const lastUpdate = ref('');
     const connectionStatus = ref('connected'); 
 
-    // ✅ 輪詢控制變數
+    // ✅ 新增：輪詢控制變數
     const isPolling = ref(false);
     let pollTimer = null;
 
+    // ✅ 保留：Tag 1.10 的 getToken 方法
     const getToken = () => {
         const auth = useAuthStore();
         return auth.token;
     };
 
+    // ✅ 保留：新版的 fetchWithAuth（統一錯誤處理）
     const fetchWithAuth = async (endpoint, options = {}) => {
         const auth = useAuthStore();
         if (!auth.token) return null;
@@ -58,7 +60,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 修改：加入請求去重邏輯
     const fetchAll = async () => {
+        // 如果正在載入中，直接忽略這次請求，防止重複觸發
         if (loading.value) {
             console.warn('⚠️ [fetchAll] 請求已在進行中，忽略此次調用');
             return;
@@ -86,6 +90,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+
+    // ✅ 修復：增強的 fetchSnapshot
     const fetchSnapshot = async () => {
         console.log('📊 [fetchSnapshot] 開始請求...');
         try {
@@ -96,17 +102,18 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 stats.value = json.data.summary || {};
                 holdings.value = json.data.holdings || [];
                 history.value = json.data.history || [];
-                lastUpdate.value = json.data.updated_at;
+                lastUpdate.value = json.data.updated_at; // 更新時間
                 console.log('✅ [fetchSnapshot] 數據已更新');
             } else {
                 console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
             }
         } catch (error) {
             console.error('❌ [fetchSnapshot] 請求失敗:', error);
-            throw error;
+            throw error; // 拋出讓 fetchAll 捕捉
         }
     };
 
+    // ✅ 修復：增強的 fetchRecords
     const fetchRecords = async () => {
         console.log('📝 [fetchRecords] 開始請求...');
         try {
@@ -121,22 +128,22 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
         } catch (error) {
             console.error('❌ [fetchRecords] 請求失敗:', error);
-            throw error;
+            throw error; // 拋出讓 fetchAll 捕捉
         }
     };
 
-    // ✅ 修改：智慧輪詢改為每 5 秒
+    // ✅ 新增：智慧輪詢函式 (Smart Polling)
     const startPolling = () => {
         if (isPolling.value) return;
         
-        console.log('⌛ [SmartPolling] 開始監控數據更新（每 5 秒檢查）...');
+        console.log('⏳ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
-        const initialTime = lastUpdate.value;
+        const initialTime = lastUpdate.value; // 記錄當前的更新時間
         const { addToast } = useToast(); 
 
         pollTimer = setInterval(async () => {
-            // 1. 超時檢查 (3 分鐘)
+            // 1. 超時檢查 (例如 3 分鐘後放棄)
             if (Date.now() - startTime > 180000) {
                 console.warn('⚠️ [SmartPolling] 更新超時，停止輪詢');
                 stopPolling();
@@ -145,18 +152,19 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
 
             try {
-                // 2. 輕量檢查
+                // 2. 輕量檢查 (只抓 Snapshot 檢查 updated_at)
+                // 注意：這裡不呼叫 fetchSnapshot() 以免觸發大量 console log 和 UI 更新
                 const json = await fetchWithAuth('/api/portfolio');
                 
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
                     
-                    // 3. 比對時間
+                    // 3. 比對時間：如果新時間與舊時間不同，代表 GitHub Actions 跑完了
                     if (newTime !== initialTime) {
                         console.log('✨ [SmartPolling] 偵測到新數據！時間:', newTime);
                         
-                        stopPolling();
-                        await fetchAll();
+                        stopPolling(); // 先停止輪詢
+                        await fetchAll(); // 正式抓取並更新畫面
                         
                         addToast("✅ 數據已更新完畢！", "success");
                     } else {
@@ -166,9 +174,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             } catch (e) {
                 console.warn('⚠️ [SmartPolling] 檢查失敗:', e);
             }
-        }, 5000); // ✅ 改為每 5 秒檢查一次
+        }, 10000); // 每 10 秒檢查一次
     };
 
+    // ✅ 新增：停止輪詢
     const stopPolling = () => {
         isPolling.value = false;
         if (pollTimer) {
@@ -177,6 +186,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 修改：觸發更新邏輯
     const triggerUpdate = async () => {
         const token = getToken();
         if (!token) throw new Error("請先登入"); 
@@ -191,6 +201,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             });
             
             if (response.ok || response.status === 204) {
+                // 成功：啟動輪詢，等待 GitHub Actions 完成
                 startPolling(); 
                 return true; 
             } else {
@@ -204,6 +215,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // Getters
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
     return { 
@@ -215,7 +227,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         lastUpdate, 
         unrealizedPnL, 
         connectionStatus,
-        isPolling,
+        isPolling, // ✅ 匯出此狀態供 UI 顯示
         fetchAll, 
         fetchRecords, 
         triggerUpdate

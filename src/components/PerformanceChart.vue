@@ -33,6 +33,7 @@
         </div>
         
         <div class="right-controls">
+          <!-- 日期選擇器 - 常態顯示 -->
           <div class="date-range-selector">
             <div class="date-input-group">
               <label>起始日期</label>
@@ -88,6 +89,7 @@ const baselineData = ref(null);
 const customStartDate = ref('');
 const customEndDate = ref('');
 
+// 計算今天的日期字串
 const todayStr = computed(() => {
   const today = new Date();
   return today.toISOString().split('T')[0];
@@ -162,7 +164,6 @@ const onDateChange = () => {
   filterData(start, end);
 };
 
-// ✅ 修正：排除週末但保留區間第一天，週一的基準點為週日
 const filterData = (startDate, endDate = new Date()) => {
     const fullHistory = store.history || [];
     if (fullHistory.length === 0) {
@@ -171,87 +172,29 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
-    // 1. 先找到區間內的所有資料（不過濾）
-    const rangeData = fullHistory.filter(d => {
-        const date = new Date(d.date.replace(/-/g, '/'));
-        return date >= startDate && date <= endDate;
-    });
-    
-    if (rangeData.length === 0) {
-        displayedData.value = [];
-        baselineData.value = null;
-        return;
-    }
-
-    // 2. 取得區間第一天的資料
-    const firstData = rangeData[0];
-    const firstDate = new Date(firstData.date.replace(/-/g, '/'));
-    const firstDayOfWeek = firstDate.getDay(); // 0=週日, 1=週一, ..., 6=週六
-
-    // 3. 過濾數據：排除週末，但保留第一天（即使是週末）
-    const filteredData = rangeData.filter((d, index) => {
-        const date = new Date(d.date.replace(/-/g, '/'));
-        const dayOfWeek = date.getDay();
-        
-        // 第一筆資料一定保留
-        if (index === 0) return true;
-        
-        // 其他資料排除週六、週日
-        return dayOfWeek !== 0 && dayOfWeek !== 6;
-    });
-
-    // 4. 計算基準點
     let baseline = null;
-    
-    // 先嘗試從 fullHistory 中找到前一天的資料
-    for (let i = fullHistory.length - 1; i >= 0; i--) {
+    for (let i = 0; i < fullHistory.length; i++) {
         const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
-        if (date < firstDate) {
-            const dayOfWeek = date.getDay();
-            // 如果前一天不是週末，使用它作為基準點
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        if (date >= startDate) {
+            if (i > 0) {
+                baseline = fullHistory[i - 1];
+            } else {
                 baseline = fullHistory[i];
-                break;
             }
+            break;
         }
     }
     
-    // 5. 如果找不到非週末的前一天，或第一天就是週一，創建虛擬基準點
-    if (!baseline) {
-        // 計算前一天的日期（可能是週日）
-        const baselineDate = new Date(firstDate);
-        baselineDate.setDate(baselineDate.getDate() - 1);
-        
-        baseline = {
-            date: baselineDate.toISOString().split('T')[0],
-            total_value: firstData.invested, // 設定為投入資本，使 pnl 為 0
-            invested: firstData.invested,
-            twr: 0,
-            benchmark_twr: 0
-        };
-        
-        console.log('📌 創建虛擬基準點:', {
-            '基準日期': baseline.date,
-            '星期': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][baselineDate.getDay()],
-            '第一天': firstData.date,
-            '第一天星期': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][firstDayOfWeek]
-        });
+    if (!baseline && fullHistory.length > 0) {
+        baseline = fullHistory[0];
     }
     
     baselineData.value = baseline;
-    displayedData.value = filteredData;
-    
-    console.log('📅 過濾資料:', {
-        '區間': `${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`,
-        '第一筆資料': filteredData[0]?.date,
-        '第一天星期': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][firstDayOfWeek],
-        '基準點日期': baseline.date,
-        '總筆數': filteredData.length,
-        '包含週末': filteredData.some(d => {
-            const date = new Date(d.date.replace(/-/g, '/'));
-            const dow = date.getDay();
-            return dow === 0 || dow === 6;
-        })
+
+    displayedData.value = fullHistory.filter(d => {
+        const date = new Date(d.date.replace(/-/g, '/'));
+        const dayOfWeek = date.getDay();
+        return date >= startDate && date <= endDate && dayOfWeek !== 0 && dayOfWeek !== 6;
     });
     
     drawChart();
@@ -272,18 +215,17 @@ const drawChart = () => {
     });
     
     let datasets = [];
-    // ✅ 修正：降低 tension 並添加 spanGaps
     const common = { 
         pointRadius: 0,
         pointHoverRadius: 5,
         borderWidth: 2.5, 
-        tension: 0.3,              // ✅ 從 0.4 降到 0.3
+        tension: 0.4,
         pointBackgroundColor: 'white',
-        pointBorderWidth: 2,
-        spanGaps: true             // ✅ 新增：自動跨越資料間隙
+        pointBorderWidth: 2
     };
 
     if (chartType.value === 'asset') {
+        // ✅ 資產曲線顯示實際值
         const assetData = displayedData.value.map(d => d.total_value);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
@@ -295,7 +237,7 @@ const drawChart = () => {
             data: assetData,
             borderColor: '#3b82f6',
             backgroundColor: gradient,
-            fill: 'origin',        // ✅ 改為 'origin'
+            fill: true,
             ...common
         }];
     } else if (chartType.value === 'pnl') {
@@ -314,7 +256,7 @@ const drawChart = () => {
             data: pnlData,
             borderColor: '#10b981',
             backgroundColor: gradient,
-            fill: 'origin',        // ✅ 改為 'origin'
+            fill: true,
             ...common
         }];
     } else {
@@ -327,7 +269,6 @@ const drawChart = () => {
                 data: displayedData.value.map(d => d.twr - baseTWR),
                 borderColor: '#8b5cf6',
                 backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                fill: 'origin',    // ✅ 改為 'origin'
                 ...common
             },
             {
@@ -338,8 +279,7 @@ const drawChart = () => {
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 4,
-                tension: 0.3,      // ✅ 降低 tension
-                spanGaps: true     // ✅ 新增
+                tension: 0.4
             }
         ];
     }
@@ -393,11 +333,13 @@ const drawChart = () => {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
                                 } else if (chartType.value === 'asset') {
+                                    // ✅ 資產顯示實際值，不加正負號
                                     label += context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
                                     });
                                 } else {
+                                    // 損益變化加正負號
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
@@ -445,11 +387,13 @@ const drawChart = () => {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
                             } else if (chartType.value === 'asset') {
+                                // ✅ 資產顯示實際值，不加正負號
                                 return value.toLocaleString('zh-TW', {
                                     notation: 'compact',
                                     compactDisplay: 'short'
                                 });
                             } else {
+                                // 損益變化加正負號
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toLocaleString('zh-TW', {
                                     notation: 'compact',
@@ -467,7 +411,6 @@ const drawChart = () => {
         }
     });
 };
-
 
 watch(chartType, () => {
     drawChart();
