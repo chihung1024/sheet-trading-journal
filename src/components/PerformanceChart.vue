@@ -241,10 +241,10 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        const basePnL = baselineData.value.total_value - baselineData.value.invested;
+        // ✅ 修正：使用後端計算好的 net_profit（包含未實現 + 已實現損益）
+        const basePnL = baselineData.value.net_profit;
         const pnlData = displayedData.value.map(d => {
-            const currentPnL = d.total_value - d.invested;
-            return currentPnL - basePnL;
+            return d.net_profit - basePnL;
         });
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
@@ -252,7 +252,7 @@ const drawChart = () => {
         gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
         
         datasets = [{
-            label: '損益變化 (TWD)',
+            label: '淨損益變化 (TWD)',
             data: pnlData,
             borderColor: '#10b981',
             backgroundColor: gradient,
