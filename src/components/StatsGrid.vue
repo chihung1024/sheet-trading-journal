@@ -1,4 +1,4 @@
-<![CDATA[<template>
+<template>
   <div class="stats-grid">
     <!-- 1. 總資產 -->
     <div class="stat-block primary">
@@ -36,7 +36,7 @@
       </div>
     </div>
     
-    <!-- 3. ✅ 修正：今日損益（直接使用後端計算的 daily_pl_twd） -->
+    <!-- 3. 今日損益 -->
     <div class="stat-block" :title="pnlTooltip">
       <div class="stat-top">
         <span class="stat-label">{{ pnlLabel }}</span>
@@ -69,7 +69,7 @@
       </div>
     </div>
     
-    <!-- 5. ✅ 新增：XIRR (個人年化報酬) -->
+    <!-- 5. XIRR (個人年化報酬) -->
     <div class="stat-block highlight">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
@@ -138,12 +138,8 @@ const pnlTooltip = computed(() => {
   return '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響';
 });
 
-// ✅ 核心修正：直接使用後端計算好的 daily_pl_twd
+// 核心修正：直接使用後端計算好的 daily_pl_twd
 // 後端使用 Modified Dietz 方法，公式：daily_pl = ending_value - beginning_value - cashflow
-// 這個方法能正確處理：
-// 1. 股價變動的影響
-// 2. 匯率變動的影響  
-// 3. 當日買賣交易的影響（不會重複計算）
 const dailyPnL = computed(() => {
   // 直接加總所有持股的 daily_pl_twd
   return holdings.value.reduce((sum, holding) => {
@@ -181,7 +177,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 <style scoped>
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);  /* ✅ 改為 5 欄 */
+    grid-template-columns: repeat(5, 1fr);
     gap: 24px;
 }
 
@@ -215,7 +211,6 @@ html.dark .stat-block.primary {
     background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
 }
 
-/* ✅ 新增：XIRR 卡片特殊樣式 */
 .stat-block.highlight {
     background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     color: white;
@@ -362,7 +357,6 @@ html.dark .stat-block.highlight {
 .text-sub { color: var(--text-sub); }
 .text-xs { font-size: 0.75rem; }
 
-/* ✅ XIRR 卡片的文字顏色 */
 .stat-block.highlight .text-green { color: #d4f8d4; }
 .stat-block.highlight .text-red { color: #ffd4d4; }
 
@@ -389,13 +383,13 @@ html.dark .stat-block.highlight {
 
 @media (max-width: 1600px) { 
     .stats-grid { 
-        grid-template-columns: repeat(3, 1fr);  /* ✅ 中型螢幕 3 欄 */
+        grid-template-columns: repeat(3, 1fr);
     } 
 }
 
 @media (max-width: 1200px) { 
     .stats-grid { 
-        grid-template-columns: repeat(2, 1fr);  /* ✅ 小型螢幕 2 欄 */
+        grid-template-columns: repeat(2, 1fr);
     } 
 }
 
@@ -430,4 +424,4 @@ html.dark .stat-block.highlight {
         font-size: 0.75rem;
     }
 }
-</style>]]>
+</style>
