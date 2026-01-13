@@ -312,7 +312,7 @@ class PortfolioCalculator:
         elif self.invested_capital > 0 and self.prev_total_equity == 0:
              daily_return = total_pnl / self.invested_capital
              
-        # [安全閖] 防止極端異常值 (選用，避免髒數據破壞圖表)
+        # [安全閖] 防止極端異常值 (選用，避免髯數據破壞圖表)
         if abs(daily_return) > 1.0: # 如果單日漲跌超過 100%
              # print(f"Warning: Abnormal daily return {daily_return} on {date_ts}")
              pass 
@@ -409,7 +409,7 @@ class PortfolioCalculator:
         產生最終報表輸出
         
         ✅ 新增功能：計算每檔持股的前一交易日收盤價與今日變化
-        ✅ 邏輯：取數據中最新的兩個收盤價（自動適應週末/假日）
+        ✅ 核心修正：正確計算當日損益 (Modified Dietz 方法)
         """
         import pandas as pd
         
@@ -439,7 +439,7 @@ class PortfolioCalculator:
         else:
             print(f"[USD/TWD] 當前匙率: {current_fx:.4f} (數據不足無法比對)")
         
-        print(f"\n[今日損益計算] 使用最新兩個收盤價進行計算")
+        print(f"\n[今日損益計算] 使用 Modified Dietz 方法進行計算")
         
         final_holdings = []
         current_holdings_cost_sum = 0.0
@@ -455,31 +455,78 @@ class PortfolioCalculator:
                 
                 # ✅ 取最新兩個收盤價
                 if len(stock_data) >= 2:
-                    # 最新價格（可能是今日盤中或昨日收盤）
                     curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
-                    # 前一交易日收盤價
                     prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
                     
-                    latest_date = stock_data.index[-1].date()
-                    prev_date = stock_data.index[-2].date()
+                    latest_date = stock_data.index[-1]
+                    prev_date = stock_data.index[-2]
                     
-                    print(f"[{sym}] 最新價: {curr_p:.2f} ({latest_date}) | 前價: {prev_p:.2f} ({prev_date})")
+                    # ✅ 取得對應日期的匙率
+                    try:
+                        curr_fx = self.market.fx_rates.asof(latest_date)
+                        prev_fx = self.market.fx_rates.asof(prev_date)
+                        if pd.isna(curr_fx): curr_fx = current_fx
+                        if pd.isna(prev_fx): prev_fx = current_fx
+                    except:
+                        curr_fx = current_fx
+                        prev_fx = current_fx
+                    
+                    # ==================== 【核心修正 - 開始】 ====================
+                    
+                    # 1. 找出今日的所有交易
+                    today_txs = self.df[
+                        (self.df['Symbol'] == sym) & 
+                        (self.df['Date'].dt.date == latest_date.date())
+                    ]
+                    
+                    # 2. 計算今日交易的股數變化和現金流
+                    daily_qty_change = 0.0
+                    daily_cashflow_twd = 0.0
+                    
+                    for _, tx in today_txs.iterrows():
+                        if tx['Type'] == 'BUY':
+                            daily_qty_change += tx['Qty']
+                            cost_twd = (tx['Qty'] * tx['Price'] + tx['Commission'] + tx['Tax']) * curr_fx
+                            daily_cashflow_twd += cost_twd  # 買入為正現金流
+                        elif tx['Type'] == 'SELL':
+                            daily_qty_change -= tx['Qty']
+                            proceeds_twd = (tx['Qty'] * tx['Price'] - tx['Commission'] - tx['Tax']) * curr_fx
+                            daily_cashflow_twd -= proceeds_twd  # 賣出為負現金流
+                    
+                    # 3. 計算今日開始前的股數
+                    qty_start_of_day = h['qty'] - daily_qty_change
+                    
+                    # 4. 計算昨日收盤市值 (用昨日價格和昨日匙率)
+                    beginning_market_value_twd = qty_start_of_day * prev_p * prev_fx
+                    
+                    # 5. 計算今日收盤市值 (用今日價格和今日匙率)
+                    ending_market_value_twd = h['qty'] * curr_p * curr_fx
+                    
+                    # 6. 核心公式：當日損益 = 今日市值 - 昨日市值 - 當日現金流
+                    daily_pl_twd = ending_market_value_twd - beginning_market_value_twd - daily_cashflow_twd
+                    
+                    # 7. Modified Dietz 百分比計算
+                    denominator = beginning_market_value_twd + daily_cashflow_twd
+                    if abs(denominator) > 1e-9:
+                        daily_change_percent = (daily_pl_twd / denominator) * 100
+                    else:
+                        daily_change_percent = 0.0
+                    
+                    # 8. 計算價格變化 (USD)
+                    daily_change_usd = curr_p - prev_p
+                    
+                    # ==================== 【核心修正 - 結束】 ====================
+                    
+                    print(f"[{sym}] 昨日市值: {beginning_market_value_twd:,.0f} | 今日市值: {ending_market_value_twd:,.0f} | 現金流: {daily_cashflow_twd:,.0f} | 損益: {daily_pl_twd:,.0f} ({daily_change_percent:.2f}%)")
+                    
                 elif len(stock_data) == 1:
-                    # 只有一筆數據（新買入的股票）
                     curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
                     prev_p = curr_p
-                    print(f"[{sym}] 僅有一筆數據，無法計算日變化")
-                else:
-                    print(f"[警告] {sym} 數據不足")
-                    continue
-                
-                # ✅ 計算今日變化
-                if prev_p > 0 and abs(curr_p - prev_p) > 0.01:
-                    daily_change_usd = curr_p - prev_p
-                    daily_change_percent = (daily_change_usd / prev_p) * 100
-                else:
                     daily_change_usd = 0.0
                     daily_change_percent = 0.0
+                    daily_pl_twd = 0.0
+                else:
+                    continue
                 
                 # 計算市值與損益
                 mkt_val = h['qty'] * curr_p * current_fx
@@ -502,7 +549,8 @@ class PortfolioCalculator:
                     # ✅ 新增欄位
                     prev_close_price=round(prev_p, 2),
                     daily_change_usd=round(daily_change_usd, 2),
-                    daily_change_percent=round(daily_change_percent, 2)
+                    daily_change_percent=round(daily_change_percent, 2),
+                    daily_pl_twd=round(daily_pl_twd, 0)  # ✅ 新增此欄位
                 ))
         
         # 按市值排序
