@@ -48,7 +48,7 @@
     <div class="action-buttons">
         <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
         <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
-            {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出委託') }}
+            {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出姗託') }}
         </button>
     </div>
   </div>
@@ -75,22 +75,42 @@ const form = reactive({
 
 const setTxnType = (type) => { form.txn_type = type; calcTotal(); };
 
+// ✅ 修正：輸入單價、股數、費用 → 計算總額
 const calcTotal = () => {
-    const qty = parseFloat(form.qty)||0; const price = parseFloat(form.price)||0;
-    const fee = parseFloat(form.fee)||0; const tax = parseFloat(form.tax)||0;
-    let base = qty * price;
-    if (form.txn_type === 'BUY') form.total_amount = parseFloat((base + fee + tax).toFixed(2));
-    else if (form.txn_type === 'SELL') form.total_amount = parseFloat((base - fee - tax).toFixed(2));
-    else form.total_amount = parseFloat((base - tax).toFixed(2));
+    const qty = parseFloat(form.qty) || 0;
+    const price = parseFloat(form.price) || 0;
+    const fee = parseFloat(form.fee) || 0;
+    const tax = parseFloat(form.tax) || 0;
+    
+    // 計算基礎金額
+    let base = Math.abs(qty * price);
+    
+    // 根據交易類型計算總額
+    if (form.txn_type === 'BUY') {
+        // 買入：總額 = 股價 + 費用
+        form.total_amount = parseFloat((base + fee + tax).toFixed(2));
+    } else if (form.txn_type === 'SELL') {
+        // 賣出：總額 = 股價 - 費用 (實際入帳金額)
+        form.total_amount = parseFloat((base - fee - tax).toFixed(2));
+    } else {
+        // 配息：總額 = 配息金額 - 稅金
+        form.total_amount = parseFloat((base - tax).toFixed(2));
+    }
 };
 
+// ✅ 修正：輸入總額 → 計算平均成本
 const calcPrice = () => {
-    const qty = parseFloat(form.qty)||0; const total = parseFloat(form.total_amount)||0;
-    const fee = parseFloat(form.fee)||0; const tax = parseFloat(form.tax)||0;
+    const qty = parseFloat(form.qty) || 0;
+    const total = parseFloat(form.total_amount) || 0;
+    const fee = parseFloat(form.fee) || 0;
+    const tax = parseFloat(form.tax) || 0;
+    
     if (qty <= 0) return;
-    if (form.txn_type === 'BUY') form.price = parseFloat(((total - fee - tax) / qty).toFixed(4));
-    else if (form.txn_type === 'SELL') form.price = parseFloat(((total + fee + tax) / qty).toFixed(4));
-    else form.price = parseFloat(((total + tax) / qty).toFixed(4));
+    
+    // ✅ 新邏輯：無論買賣，平均成本 = (總金額 + Fee + Tax) / 股數
+    // 這是真實的平均成本，包含所有交易成本
+    const avgCost = (total + fee + tax) / qty;
+    form.price = parseFloat(avgCost.toFixed(4));
 };
 
 const submit = async () => {
