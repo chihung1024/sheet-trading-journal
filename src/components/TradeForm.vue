@@ -1,73 +1,61 @@
 <template>
-  <div class="card trade-panel" id="trade-form-anchor" :class="{ 'is-collapsed': isCollapsed }">
-    <!-- ✅ 手機版折疊標題欄 -->
-    <div class="panel-header" @click="toggleCollapse">
-      <h3 class="panel-title">{{ isEditing ? '編輯交易' : '快速下單' }}</h3>
-      <button class="collapse-btn" type="button">
-        <span v-if="isCollapsed">▼</span>
-        <span v-else>▲</span>
-      </button>
-    </div>
+  <div class="card trade-panel" id="trade-form-anchor">
+    <h3 class="panel-title">{{ isEditing ? '編輯交易' : '快速下單' }}</h3>
     
-    <!-- ✅ 可折疊內容 -->
-    <transition name="collapse">
-      <div v-show="!isCollapsed" class="panel-content">
-        <div class="trade-type-switch">
-            <button v-for="t in ['BUY', 'SELL', 'DIV']" :key="t"
-                :class="['switch-btn', t.toLowerCase(), { active: form.txn_type === t }]"
-                @click="setTxnType(t)">
-                {{ t === 'BUY' ? '買進' : t === 'SELL' ? '賣出' : '股息' }}
-            </button>
-        </div>
+    <div class="trade-type-switch">
+        <button v-for="t in ['BUY', 'SELL', 'DIV']" :key="t"
+            :class="['switch-btn', t.toLowerCase(), { active: form.txn_type === t }]"
+            @click="setTxnType(t)">
+            {{ t === 'BUY' ? '買進' : t === 'SELL' ? '賣出' : '股息' }}
+        </button>
+    </div>
 
-        <div class="form-grid">
-            <div class="form-group full">
-                <label>交易標的</label>
-                <input type="text" v-model="form.symbol" placeholder="輸入代碼 (如 NVDA)" :disabled="isEditing" class="input-lg uppercase">
-            </div>
-            
-            <div class="form-group">
-                <label>日期</label>
-                <input type="date" v-model="form.txn_date" class="input-md">
-            </div>
-            
-            <div class="form-group">
-                <label>成交單價 (USD)</label>
-                <input type="number" v-model="form.price" placeholder="0.00" class="input-md" step="0.0001">
-            </div>
-
-            <div class="form-group">
-                <label>股數</label>
-                <input type="number" v-model="form.qty" @input="calcPriceFromInputs" placeholder="0" class="input-md" step="0.0001">
-            </div>
-
-            <div class="form-group">
-                <label>費用 (Fee/Tax)</label>
-                <div class="dual-input">
-                    <input type="number" v-model="form.fee" @input="calcPriceFromInputs" placeholder="手續費" step="0.01">
-                    <input type="number" v-model="form.tax" @input="calcPriceFromInputs" placeholder="稅金" step="0.01">
-                </div>
-            </div>
-        </div>
-
-        <div class="summary-box">
-            <div class="summary-label">交易總金額 (USD)</div>
-            <input type="number" v-model="form.total_amount" @input="calcPriceFromInputs" class="summary-value" step="0.01" placeholder="0.00">
+    <div class="form-grid">
+        <div class="form-group full">
+            <label>交易標的</label>
+            <input type="text" v-model="form.symbol" placeholder="輸入代碼 (如 NVDA)" :disabled="isEditing" class="input-lg uppercase">
         </div>
         
-        <div class="action-buttons">
-            <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
-            <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
-                {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出委託') }}
-            </button>
+        <div class="form-group">
+            <label>日期</label>
+            <input type="date" v-model="form.txn_date" class="input-md">
         </div>
-      </div>
-    </transition>
+        
+        <div class="form-group">
+            <label>成交單價 (USD)</label>
+            <input type="number" v-model="form.price" placeholder="0.00" class="input-md" step="0.0001">
+        </div>
+
+        <div class="form-group">
+            <label>股數</label>
+            <input type="number" v-model="form.qty" @input="calcPriceFromInputs" placeholder="0" class="input-md" step="0.0001">
+        </div>
+
+        <div class="form-group">
+            <label>費用 (Fee/Tax)</label>
+            <div class="dual-input">
+                <input type="number" v-model="form.fee" @input="calcPriceFromInputs" placeholder="手續費" step="0.01">
+                <input type="number" v-model="form.tax" @input="calcPriceFromInputs" placeholder="稅金" step="0.01">
+            </div>
+        </div>
+    </div>
+
+    <div class="summary-box">
+        <div class="summary-label">交易總金額 (USD)</div>
+        <input type="number" v-model="form.total_amount" @input="calcPriceFromInputs" class="summary-value" step="0.01" placeholder="0.00">
+    </div>
+    
+    <div class="action-buttons">
+        <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
+        <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
+            {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出委託') }}
+        </button>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue';
+import { reactive, ref } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
@@ -79,57 +67,36 @@ const { addToast } = useToast();
 const loading = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
-const isCollapsed = ref(false);
 
 const form = reactive({
     txn_date: new Date().toISOString().split('T')[0],
     symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0, tax: 0, total_amount: ''
 });
 
-// ✅ 手機版預設收起
-const checkMobile = () => {
-  isCollapsed.value = window.innerWidth < 1024;
-};
-
-onMounted(() => {
-  checkMobile();
-  window.addEventListener('resize', checkMobile);
-});
-
-const toggleCollapse = () => {
-  if (window.innerWidth < 1024) {
-    isCollapsed.value = !isCollapsed.value;
-    if (!isCollapsed.value) {
-      // 展開時滾動到頁面頂部
-      setTimeout(() => {
-        document.getElementById('trade-form-anchor')?.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'start' 
-        });
-      }, 100);
-    }
-  }
-};
-
 const setTxnType = (type) => { 
     form.txn_type = type; 
 };
 
+// ✅ 新邏輯：當輸入總金額、股數、Fee、Tax 時，自動計算平均成本
 const calcPriceFromInputs = () => {
     const qty = parseFloat(form.qty) || 0;
     const total = parseFloat(form.total_amount) || 0;
     const fee = parseFloat(form.fee) || 0;
     const tax = parseFloat(form.tax) || 0;
     
+    // 如果沒有股數或總金額，不計算
     if (qty <= 0 || total <= 0) return;
     
     let avgCost = 0;
     
     if (form.txn_type === 'BUY') {
+        // ✅ 買入：平均成本 = (總金額 + Fee + Tax) / 股數
         avgCost = (total + fee + tax) / qty;
     } else if (form.txn_type === 'SELL') {
+        // ✅ 賣出：平均成本 = (總金額 - Fee - Tax) / 股數
         avgCost = (total - fee - tax) / qty;
     } else {
+        // ✅ 配息：平均成本 = (總金額 - Tax) / 股數
         avgCost = (total - tax) / qty;
     }
     
@@ -142,6 +109,7 @@ const submit = async () => {
         return; 
     }
     
+    // ✅ 檢查 token 是否存在且未過期
     if (!auth.token || auth.isTokenExpired()) {
         addToast("登入已過期，請重新登入", "error");
         setTimeout(() => {
@@ -165,6 +133,7 @@ const submit = async () => {
             body: JSON.stringify(payload)
         });
         
+        // ✅ 處理 401 錯誤
         if (res.status === 401) {
             addToast("身份驗證失敗，請重新登入", "error");
             setTimeout(() => {
@@ -179,10 +148,6 @@ const submit = async () => {
             addToast(isEditing.value ? "更新成功" : "新增成功", "success");
             resetForm(); 
             store.fetchRecords();
-            // ✅ 提交成功後收起表單
-            if (window.innerWidth < 1024) {
-              isCollapsed.value = true;
-            }
         } else { 
             addToast(json.error || "操作失敗", "error"); 
         }
@@ -203,8 +168,6 @@ const resetForm = () => {
 const setupForm = (r) => {
     isEditing.value = true; editingId.value = r.id;
     Object.keys(form).forEach(k => form[k] = r[k]);
-    // ✅ 編輯時自動展開
-    isCollapsed.value = false;
 };
 defineExpose({ setupForm });
 </script>
@@ -214,72 +177,14 @@ defineExpose({ setupForm });
     border: 1px solid var(--border-color); 
     box-shadow: var(--shadow-card); 
     background: var(--bg-card); 
-    padding: 0;
-    overflow: hidden;
-    transition: all 0.3s ease;
-}
-
-/* ✅ 折疊標題欄 */
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  cursor: default;
+    padding: 24px;
 }
 
 .panel-title { 
-    margin: 0;
+    margin-bottom: 24px; 
     font-size: 1.2rem; 
     color: var(--text-main);
     font-weight: 700;
-}
-
-.collapse-btn {
-  display: none;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  width: 36px;
-  height: 36px;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 1rem;
-  color: var(--text-sub);
-}
-
-.collapse-btn:hover {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
-}
-
-/* ✅ 可折疊內容 */
-.panel-content {
-  padding: 0 24px 24px 24px;
-}
-
-/* ✅ 折疊動畫 */
-.collapse-enter-active,
-.collapse-leave-active {
-  transition: all 0.3s ease;
-  overflow: hidden;
-}
-
-.collapse-enter-from,
-.collapse-leave-to {
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.collapse-enter-to,
-.collapse-leave-from {
-  max-height: 2000px;
-  opacity: 1;
-  transform: translateY(0);
 }
 
 /* 切換按鈕 */
@@ -476,42 +381,10 @@ input:disabled {
     transform: none; 
 }
 
-/* ✅ 手機版顯示折疊按鈕 */
-@media (max-width: 1023px) {
-  .panel-header {
-    cursor: pointer;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-  
-  .panel-header:active {
-    background: var(--bg-secondary);
-  }
-  
-  .collapse-btn {
-    display: flex;
-  }
-  
-  .trade-panel.is-collapsed {
-    padding: 0;
-  }
-  
-  .trade-panel.is-collapsed .panel-header {
-    border-bottom: none;
-  }
-}
-
 /* 響應式調整 */
 @media (max-width: 768px) {
-    .panel-header,
-    .panel-content {
-        padding-left: 16px;
-        padding-right: 16px;
-    }
-    
-    .panel-header {
-      padding-top: 16px;
-      padding-bottom: 16px;
+    .trade-panel {
+        padding: 20px;
     }
     
     .form-grid {
@@ -520,22 +393,6 @@ input:disabled {
     
     .panel-title {
         font-size: 1.1rem;
-    }
-}
-
-@media (max-width: 480px) {
-    .panel-header,
-    .panel-content {
-        padding-left: 12px;
-        padding-right: 12px;
-    }
-    
-    .panel-title {
-        font-size: 1rem;
-    }
-    
-    .form-grid {
-        gap: 12px;
     }
 }
 
@@ -571,11 +428,5 @@ input:disabled {
 :global(.dark) .switch-btn.active {
     background-color: #1e293b !important;
     color: #f1f5f9 !important;
-}
-
-:global(.dark) .collapse-btn {
-    background-color: #334155 !important;
-    border-color: #475569 !important;
-    color: #94a3b8 !important;
 }
 </style>
