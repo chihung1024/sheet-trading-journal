@@ -106,11 +106,14 @@ const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 const holdings = computed(() => store.holdings || []);
 
-// 計算未實現損益
-const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+// ✅ 修正：直接使用後端計算好的 total_pnl
+const totalPnL = computed(() => stats.value.total_pnl || 0);
 
 // 計算已實現損益 (從後端 API 獲取)
 const realizedPnL = computed(() => stats.value.realized_pnl || 0);
+
+// ✅ 修正：未實現損益 = 總損益 - 已實現損益
+const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
 
 // 計算 ROI
 const roi = computed(() => {
