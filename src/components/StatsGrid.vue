@@ -1,4 +1,4 @@
-<template>
+<![CDATA[<template>
   <div class="stats-grid">
     <!-- 1. 總資產 -->
     <div class="stat-block primary">
@@ -36,7 +36,26 @@
       </div>
     </div>
     
-    <!-- 3. 今日損益 -->
+    <!-- 3. 已實現損益 -->
+    <div class="stat-block success-theme">
+      <div class="stat-top">
+        <span class="stat-label">已實現損益</span>
+        <span class="icon-box">💵</span>
+      </div>
+      <div class="stat-main column-layout">
+        <div class="stat-value" :class="realizedPnL >= 0 ? 'text-green-light' : 'text-red-light'">
+          {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
+        </div>
+        <div class="stat-sub-text">
+          賣出收益 + 配息收入
+        </div>
+      </div>
+      <div class="stat-footer">
+        <span class="text-sub text-xs">已實現的交易損益</span>
+      </div>
+    </div>
+    
+    <!-- 4. 今日損益 -->
     <div class="stat-block" :title="pnlTooltip">
       <div class="stat-top">
         <span class="stat-label">{{ pnlLabel }}</span>
@@ -55,7 +74,7 @@
       </div>
     </div>
     
-    <!-- 4. 總報酬率 (TWR) -->
+    <!-- 5. 總報酬率 (TWR) -->
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">時間加權報酬</span>
@@ -69,7 +88,7 @@
       </div>
     </div>
     
-    <!-- 5. XIRR (個人年化報酬) -->
+    <!-- 6. XIRR (個人年化報酬) -->
     <div class="stat-block highlight">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
@@ -98,6 +117,9 @@ const holdings = computed(() => store.holdings || []);
 
 // 計算未實現損益
 const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+
+// 計算已實現損益 (從後端 API 獲取)
+const realizedPnL = computed(() => stats.value.realized_pnl || 0);
 
 // 計算 ROI
 const roi = computed(() => {
@@ -169,6 +191,7 @@ const useAnimatedNumber = (targetVal) => {
 
 const displayTotalValue = useAnimatedNumber(computed(() => stats.value.total_value));
 const displayUnrealized = useAnimatedNumber(unrealizedPnL);
+const displayRealized = useAnimatedNumber(realizedPnL);
 const displayDaily = useAnimatedNumber(dailyPnL);
 
 const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
@@ -177,7 +200,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 <style scoped>
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 24px;
 }
 
@@ -209,6 +232,30 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 
 html.dark .stat-block.primary {
     background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
+}
+
+.stat-block.success-theme {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+}
+
+html.dark .stat-block.success-theme {
+    background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+}
+
+.stat-block.success-theme .stat-label { color: rgba(255,255,255,0.9); }
+.stat-block.success-theme .stat-value { color: #fff; }
+.stat-block.success-theme .stat-footer { 
+    border-top-color: rgba(255,255,255,0.2); 
+    color: rgba(255,255,255,0.9); 
+}
+.stat-block.success-theme .icon-box { 
+    background: rgba(255,255,255,0.2); 
+}
+.stat-block.success-theme .stat-sub-text {
+    color: rgba(255,255,255,0.85);
+    font-size: 0.8rem;
 }
 
 .stat-block.highlight {
@@ -307,6 +354,14 @@ html.dark .stat-block.highlight {
     margin-top: 4px;
 }
 
+.stat-sub-text {
+    font-size: 0.75rem;
+    color: var(--text-sub);
+    font-weight: 500;
+    margin-top: 4px;
+    opacity: 0.9;
+}
+
 .unit-text, .percent { 
     font-size: 0.9rem; 
     color: var(--text-sub); 
@@ -354,6 +409,8 @@ html.dark .stat-block.highlight {
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
+.text-green-light { color: #d4f8d4; }
+.text-red-light { color: #ffd4d4; }
 .text-sub { color: var(--text-sub); }
 .text-xs { font-size: 0.75rem; }
 
@@ -424,4 +481,4 @@ html.dark .stat-block.highlight {
         font-size: 0.75rem;
     }
 }
-</style>
+</style>]]>
