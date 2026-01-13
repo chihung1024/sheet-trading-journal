@@ -17,23 +17,6 @@
       </div>
     </div>
     
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">未實現損益</span>
-        <span class="icon-box">📈</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
-          {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
-            ROI: {{ roi }}%
-        </span>
-      </div>
-    </div>
-    
     <div class="stat-block success-theme">
       <div class="stat-top">
         <span class="stat-label">已實現損益</span>
@@ -49,6 +32,19 @@
       </div>
       <div class="stat-footer">
         <span class="text-sub text-xs">已實現的交易損益</span>
+      </div>
+    </div>
+    
+    <div class="stat-block">
+      <div class="stat-top">
+        <span class="stat-label">時間加權報酬</span>
+        <span class="icon-box">🎯</span>
+      </div>
+      <div class="stat-main">
+        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
+      </div>
+      <div class="stat-footer">
+         <span class="text-sub">TWR (策略表現)</span>
       </div>
     </div>
     
@@ -72,14 +68,18 @@
     
     <div class="stat-block">
       <div class="stat-top">
-        <span class="stat-label">時間加權報酬</span>
-        <span class="icon-box">🎯</span>
+        <span class="stat-label">未實現損益</span>
+        <span class="icon-box">📈</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
+        <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
+          {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
+        </div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub">TWR (策略表現)</span>
+        <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
+            ROI: {{ roi }}%
+        </span>
       </div>
     </div>
     
@@ -194,7 +194,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 <style scoped>
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 24px;
 }
 
@@ -430,12 +430,6 @@ html.dark .stat-block.highlight {
     background: rgba(239, 68, 68, 0.1); 
     color: var(--danger);
     border: 1px solid var(--danger);
-}
-
-@media (max-width: 1600px) { 
-    .stats-grid { 
-        grid-template-columns: repeat(3, 1fr);
-    } 
 }
 
 @media (max-width: 1200px) { 
