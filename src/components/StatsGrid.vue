@@ -39,16 +39,13 @@
         <span class="stat-label">已實現損益</span>
         <span class="icon-box">💵</span>
       </div>
-      <div class="stat-main column-layout">
+      <div class="stat-main">
         <div class="stat-value" :class="realizedPnL >= 0 ? 'text-green' : 'text-red'">
           {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
         </div>
-        <div class="stat-sub-text">
-          賣出收益 + 配息收入
-        </div>
       </div>
       <div class="stat-footer">
-        <span class="text-sub text-xs">已實現的交易損益</span>
+        <span class="text-sub text-xs">賣出收益 + 配息收入</span>
       </div>
     </div>
     
