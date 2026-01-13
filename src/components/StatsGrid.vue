@@ -1,4 +1,4 @@
-<template>
+<![CDATA[<template>
   <div class="stats-grid">
     <!-- 1. 總資產 -->
     <div class="stat-block primary">
@@ -36,7 +36,7 @@
       </div>
     </div>
     
-    <!-- 3. 今日損益（基於持倉計算） -->
+    <!-- 3. ✅ 修正：今日損益（直接使用後端計算的 daily_pl_twd） -->
     <div class="stat-block" :title="pnlTooltip">
       <div class="stat-top">
         <span class="stat-label">{{ pnlLabel }}</span>
@@ -121,83 +121,44 @@ const isUSMarketOpen = computed(() => {
 
 // 動態標題
 const pnlLabel = computed(() => {
-  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益 (Est.)';
+  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益';
 });
 
 // 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
-    return '今日台股 + 即時美股 + 匯率';
+    return '包含今日股價、匯率及交易影響';
   } else {
-    return '昨晚美股 + 今日台股 + 匯率';
+    return '包含昨日股價、今日匯率變化';
   }
 });
 
 // Tooltip 完整說明
 const pnlTooltip = computed(() => {
-  if (isUSMarketOpen.value) {
-    return '今日台股收盤 + 美股盤中變化 + 匯率波動';
-  } else {
-    return '昨晚美股收盤 + 今日台股變化 + 匯率波動';
-  }
+  return '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響';
 });
 
-// ✅ 核心計算：精確分離股價因素和匯率因素
+// ✅ 核心修正：直接使用後端計算好的 daily_pl_twd
+// 後端使用 Modified Dietz 方法，公式：daily_pl = ending_value - beginning_value - cashflow
+// 這個方法能正確處理：
+// 1. 股價變動的影響
+// 2. 匯率變動的影響  
+// 3. 當日買賣交易的影響（不會重複計算）
 const dailyPnL = computed(() => {
-  const currentFxRate = stats.value.exchange_rate || 32.5;
-  
-  if (history.value.length < 2 || holdings.value.length === 0) {
-    return 0;
-  }
-  
-  const latest = history.value[history.value.length - 1];
-  const previous = history.value[history.value.length - 2];
-  
-  // 獲取歷史匯率數據
-  const todayFx = latest.fx_rate || currentFxRate;  // 今日匯率
-  const yesterdayFx = previous.fx_rate || currentFxRate;  // 昨日匯率
-  
-  // ✅ 美股開盤前：昨日股價變化@昨日匯率 + 今日匯率影響@昨日股價
-  if (!isUSMarketOpen.value) {
-    if (holdings.value[0].daily_change_usd !== undefined && holdings.value[0].prev_close_price !== undefined) {
-      let stockPnL = 0;  // 昨日股價變化（用昨日匯率）
-      let fxImpact = 0;  // 今日匯率影響（用昨日股價）
-      
-      holdings.value.forEach(holding => {
-        // 1. 昨日股價變化（USD）× 昨日匯率
-        const yesterdayStockChange = holding.daily_change_usd * holding.qty * yesterdayFx;
-        stockPnL += yesterdayStockChange;
-        
-        // 2. 今日匯率影響 = 昨日收盤市值（USD）× 匯率變化
-        const yesterdayMarketValueUSD = holding.prev_close_price * holding.qty;
-        const fxChange = todayFx - yesterdayFx;
-        const todayFxImpact = yesterdayMarketValueUSD * fxChange;
-        fxImpact += todayFxImpact;
-      });
-      
-      return stockPnL + fxImpact;
-    }
-    
-    // Fallback: 使用 History 快照
-    return (latest.net_profit - previous.net_profit);
-  }
-  
-  // ✅ 美股盤中：當日股價變化（用今日匯率）
-  // 簡化：當前市值 - 開盤前市值
-  const marketOpenValue = latest.total_value;
-  const currentValue = stats.value.total_value;
-  
-  return currentValue - marketOpenValue;
+  // 直接加總所有持股的 daily_pl_twd
+  return holdings.value.reduce((sum, holding) => {
+    return sum + (holding.daily_pl_twd || 0);
+  }, 0);
 });
 
 // 計算今日損益百分比
 const dailyRoi = computed(() => {
   // 使用昨日總資產作為基準
-  if (history.value.length < 2) return '0.00';
-  const previous = history.value[history.value.length - 2];
+  // 昨日總資產 = 今日總資產 - 今日損益
+  const yesterdayValue = stats.value.total_value - dailyPnL.value;
   
-  if (!previous.total_value || previous.total_value === 0) return '0.00';
-  return ((dailyPnL.value / previous.total_value) * 100).toFixed(2);
+  if (!yesterdayValue || yesterdayValue === 0) return '0.00';
+  return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
 });
 
 // 數字動畫
@@ -469,4 +430,4 @@ html.dark .stat-block.highlight {
         font-size: 0.75rem;
     }
 }
-</style>
+</style>]]>
