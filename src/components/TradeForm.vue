@@ -23,32 +23,32 @@
         
         <div class="form-group">
             <label>成交單價 (USD)</label>
-            <input type="number" v-model="form.price" @input="calcTotal" placeholder="0.00" class="input-md">
+            <input type="number" v-model="form.price" placeholder="0.00" class="input-md" step="0.0001">
         </div>
 
         <div class="form-group">
             <label>股數</label>
-            <input type="number" v-model="form.qty" @input="calcTotal" placeholder="0" class="input-md">
+            <input type="number" v-model="form.qty" @input="calcPriceFromInputs" placeholder="0" class="input-md" step="0.0001">
         </div>
 
         <div class="form-group">
             <label>費用 (Fee/Tax)</label>
             <div class="dual-input">
-                <input type="number" v-model="form.fee" @input="calcTotal" placeholder="手續費">
-                <input type="number" v-model="form.tax" @input="calcTotal" placeholder="稅金">
+                <input type="number" v-model="form.fee" @input="calcPriceFromInputs" placeholder="手續費" step="0.01">
+                <input type="number" v-model="form.tax" @input="calcPriceFromInputs" placeholder="稅金" step="0.01">
             </div>
         </div>
     </div>
 
     <div class="summary-box">
-        <div class="summary-label">預估總金額 (USD)</div>
-        <input type="number" v-model="form.total_amount" @input="calcPrice" class="summary-value">
+        <div class="summary-label">交易總金額 (USD)</div>
+        <input type="number" v-model="form.total_amount" @input="calcPriceFromInputs" class="summary-value" step="0.01" placeholder="0.00">
     </div>
     
     <div class="action-buttons">
         <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
         <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
-            {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出姗託') }}
+            {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出委託') }}
         </button>
     </div>
   </div>
@@ -73,49 +73,27 @@ const form = reactive({
     symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0, tax: 0, total_amount: ''
 });
 
-const setTxnType = (type) => { form.txn_type = type; calcTotal(); };
-
-// ✅ 輸入單價、股數、費用 → 計算總額
-const calcTotal = () => {
-    const qty = parseFloat(form.qty) || 0;
-    const price = parseFloat(form.price) || 0;
-    const fee = parseFloat(form.fee) || 0;
-    const tax = parseFloat(form.tax) || 0;
-    
-    // 計算基礎金額
-    let base = Math.abs(qty * price);
-    
-    // 根據交易類型計算總額
-    if (form.txn_type === 'BUY') {
-        // 買入：總額 = 股價 + 費用
-        form.total_amount = parseFloat((base + fee + tax).toFixed(2));
-    } else if (form.txn_type === 'SELL') {
-        // 賣出：總額 = 股價 - 費用 (實際入帳金額)
-        form.total_amount = parseFloat((base - fee - tax).toFixed(2));
-    } else {
-        // 配息：總額 = 配息金額 - 稅金
-        form.total_amount = parseFloat((base - tax).toFixed(2));
-    }
+const setTxnType = (type) => { 
+    form.txn_type = type; 
 };
 
-// ✅ 修正：輸入總額 → 計算平均成本
-const calcPrice = () => {
+// ✅ 新邏輯：當輸入總金額、股數、Fee、Tax 時，自動計算平均成本
+const calcPriceFromInputs = () => {
     const qty = parseFloat(form.qty) || 0;
     const total = parseFloat(form.total_amount) || 0;
     const fee = parseFloat(form.fee) || 0;
     const tax = parseFloat(form.tax) || 0;
     
-    if (qty <= 0) return;
+    // 如果沒有股數或總金額，不計算
+    if (qty <= 0 || total <= 0) return;
     
     let avgCost = 0;
     
     if (form.txn_type === 'BUY') {
         // ✅ 買入：平均成本 = (總金額 + Fee + Tax) / 股數
-        // 現金流：總支出 = 買股票 + 費用
         avgCost = (total + fee + tax) / qty;
     } else if (form.txn_type === 'SELL') {
         // ✅ 賣出：平均成本 = (總金額 - Fee - Tax) / 股數
-        // 現金流：實際成交價 = 入帳金額 - 費用
         avgCost = (total - fee - tax) / qty;
     } else {
         // ✅ 配息：平均成本 = (總金額 - Tax) / 股數
@@ -190,7 +168,6 @@ const resetForm = () => {
 const setupForm = (r) => {
     isEditing.value = true; editingId.value = r.id;
     Object.keys(form).forEach(k => form[k] = r[k]);
-    calcTotal();
 };
 defineExpose({ setupForm });
 </script>
