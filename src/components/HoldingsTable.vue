@@ -1,4 +1,4 @@
-<template>
+<![CDATA[<template>
   <div class="card">
     <div class="card-header">
         <div class="header-left">
@@ -44,13 +44,16 @@
                         成本 (USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
                     </th>
                     <th @click="sortBy('current_price_origin')" class="text-right sortable">
-                        現價 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
+                        現價 / 當日變動 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
                     </th>
                     <th @click="sortBy('market_value_twd')" class="text-right sortable">
                         市值 (TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
                     </th>
+                    <th @click="sortBy('daily_pl_twd')" class="text-right sortable">
+                        當日損益 <span class="sort-icon">{{ getSortIcon('daily_pl_twd') }}</span>
+                    </th>
                     <th @click="sortBy('pnl_twd')" class="text-right sortable">
-                        損益 <span class="sort-icon">{{ getSortIcon('pnl_twd') }}</span>
+                        總損益 <span class="sort-icon">{{ getSortIcon('pnl_twd') }}</span>
                     </th>
                     <th @click="sortBy('pnl_percent')" class="text-right sortable">
                         報酬率 <span class="sort-icon">{{ getSortIcon('pnl_percent') }}</span>
@@ -59,7 +62,7 @@
             </thead>
             <tbody>
                  <tr v-if="filteredHoldings.length === 0">
-                    <td colspan="7" class="empty-state">
+                    <td colspan="8" class="empty-state">
                         <div class="empty-icon">📊</div>
                         <div>目前無持倉數據</div>
                     </td>
@@ -79,8 +82,21 @@
                     </td>
                     <td class="text-right font-num">{{ formatNumber(h.qty, 2) }}</td>
                     <td class="text-right font-num text-sub">{{ formatNumber(h.avg_cost_usd, 2) }}</td>
-                    <td class="text-right font-num">{{ formatNumber(h.current_price_origin, 2) }}</td>
+                    <td class="text-right font-num">
+                        <div>{{ formatNumber(h.current_price_origin, 2) }}</div>
+                        <div class="price-change" :class="getTrendClass(h.daily_change_usd)">
+                            {{ h.daily_change_usd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_change_usd, 2) }}
+                            ({{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%)
+                        </div>
+                    </td>
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
+                    <td class="text-right font-num" :class="getTrendClass(h.daily_pl_twd)">
+                        <div class="daily-pnl-wrapper">
+                            <span class="pnl-value">
+                                {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
+                            </span>
+                        </div>
+                    </td>
                     <td class="text-right font-num" :class="getTrendClass(h.pnl_twd)">
                         <span class="pnl-value">
                             {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
@@ -96,7 +112,7 @@
         </table>
     </div>
     
-    <!-- 虛擬滾動提示 -->
+    <!-- 虛擬捲動提示 -->
     <div class="scroll-hint" v-if="filteredHoldings.length > displayLimit">
         顯示 {{ visibleHoldings.length }} / {{ filteredHoldings.length }} 筆
     </div>
@@ -115,7 +131,7 @@ const searchQuery = ref('');
 const filterStatus = ref('all');
 const highlightedSymbol = ref(null);
 
-// 虛擬滾動相關
+// 虛擬捲動相關
 const displayLimit = ref(50);
 const scrollTop = ref(0);
 
@@ -143,7 +159,7 @@ const sortBy = (key) => {
 };
 
 const getSortIcon = (key) => {
-    if (sortKey.value !== key) return '↕';
+    if (sortKey.value !== key) return '⇕';
     return sortOrder.value === 'asc' ? '↑' : '↓';
 };
 
@@ -177,7 +193,7 @@ const filteredHoldings = computed(() => {
     });
 });
 
-// 虛擬滾動：只顯示可見範圍的數據
+// 虛擬捲動：只顯示可見範圍的數據
 const visibleHoldings = computed(() => {
     if (filteredHoldings.value.length <= displayLimit.value) {
         return filteredHoldings.value;
@@ -198,12 +214,12 @@ const highlightRow = (symbol) => {
     }, 2000);
 };
 
-// 滾動監聽（簡化版虛擬滾動）
+// 捲動監聽（簡化版虛擬捲動）
 const handleScroll = () => {
     if (!tableContainer.value) return;
     const { scrollTop: top, scrollHeight, clientHeight } = tableContainer.value;
     
-    // 當滾動到底部時，增加顯示數量
+    // 當捲動到底部時，增加顯示數量
     if (scrollHeight - top - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
         displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
     }
@@ -426,6 +442,20 @@ th.sortable:hover .sort-icon {
     50% { transform: translateY(-4px); }
 }
 
+/* ✅ 新增：價格變動樣式 */
+.price-change {
+    font-size: 0.75rem;
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+/* ✅ 新增：當日損益包裝 */
+.daily-pnl-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
 .text-right { text-align: right; }
 .text-sub { color: var(--text-sub); font-size: 0.85rem; }
 .font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
@@ -521,4 +551,4 @@ th.sortable:hover .sort-icon {
         max-height: 400px;
     }
 }
-</style>
+</style>]]>
