@@ -26,7 +26,16 @@ jobs:
       with:
         python-version: '3.10'
 
-    # 3. 安裝套件
+    # 3. 安裝套件 (修改後：加入 Cache 機制)
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        # 使用 requirements.txt 的 hash 作為快取金鑰
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
     - name: Install dependencies
       run: |
         pip install --upgrade pip
