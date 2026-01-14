@@ -15,7 +15,7 @@ class TransactionRecord(BaseModel):
 
     @computed_field
     @property
-    def total_amount(self) -> float
+    def total_amount(self) -> float:
         """計算總交易金額 = 股數 × 單價 + 手續費 + 稅"""
         base_amount = abs(self.qty * self.price)
         return base_amount + self.commission + self.tax
