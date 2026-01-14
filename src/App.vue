@@ -255,7 +255,7 @@ body {
   color: var(--text-main);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -289,7 +289,7 @@ body {
 }
 
 .nav-brand h1 { 
-  font-size: 1.35rem; 
+  font-size: 1.45rem; 
   font-weight: 700; 
   margin: 0; 
   color: var(--text-main); 
@@ -313,7 +313,7 @@ body {
   display: flex; 
   align-items: center; 
   gap: 20px; 
-  font-size: 0.95rem; 
+  font-size: 1rem; 
   font-weight: 500; 
 }
 
@@ -382,7 +382,7 @@ body {
   color: white;
   padding: 8px 14px;
   font-weight: 600; 
-  font-size: 0.95rem;
+  font-size: 1rem;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -520,7 +520,7 @@ table {
 th { 
   text-align: left; 
   color: var(--text-sub); 
-  font-size: 0.8rem; 
+  font-size: 0.85rem; 
   text-transform: uppercase; 
   letter-spacing: 0.05em; 
   font-weight: 600; 
@@ -535,7 +535,7 @@ th:last-child { border-top-right-radius: var(--radius-sm); }
 td { 
   padding: 16px; 
   border-bottom: 1px solid var(--border-color); 
-  font-size: 0.95rem; 
+  font-size: 1rem; 
   color: var(--text-main); 
   vertical-align: middle; 
 }
@@ -606,7 +606,7 @@ tr:hover td {
 }
 
 .toast-msg { 
-  font-size: 0.95rem; 
+  font-size: 1rem; 
   color: var(--text-main); 
   font-weight: 500; 
 }
