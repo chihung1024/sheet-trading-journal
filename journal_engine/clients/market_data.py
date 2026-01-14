@@ -1,5 +1,6 @@
 import pandas as pd
 import yfinance as yf
+import concurrent.futures
 from datetime import timedelta
 from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
 
@@ -46,32 +47,35 @@ class MarketDataClient:
         # ==================== 2. 下載個股數據 ====================
         # 確保包含 SPY（用於基準對比）
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
-        
-        for t in all_tickers:
-            try:
-                ticker_obj = yf.Ticker(t)
                 
-                # 關鍵參數設定：
-                # - auto_adjust=False: 保留原始 Close 和 Adj Close 兩欄
-                # - actions=True: 包含 Dividends 和 Stock Splits 事件
-                hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
-                
-                if not hist.empty:
-                    # 標準化日期格式
-                    hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
-                    
-                    # 準備數據：計算調整因子
-                    hist_adj = self._prepare_data(t, hist)
-                    
-                    self.market_data[t] = hist_adj
-                    print(f"[{t}] 下載成功 ({len(hist)} 筆)")
-                else:
-                    print(f"[{t}] 警告: 無歷史數據")
-                    
-            except Exception as e:
-                print(f"[{t}] 下載錯誤: {e}")
+                # 定義單個下載任務函數
+                def fetch_single_ticker(t):
+                    try:
+                        ticker_obj = yf.Ticker(t)
+                        hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
+                        
+                        if not hist.empty:
+                            hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
+                            hist_adj = self._prepare_data(t, hist)
+                            return t, hist_adj
+                        else:
+                            print(f"[{t}] 警告: 無歷史數據")
+                            return t, None
+                    except Exception as e:
+                        print(f"[{t}] 下載錯誤: {e}")
+                        return t, None
         
-        return self.market_data, self.fx_rates
+                # 使用 ThreadPoolExecutor 平行下載 (建議設定 max_workers=5~10)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                    future_to_ticker = {executor.submit(fetch_single_ticker, t): t for t in all_tickers}
+                    
+                    for future in concurrent.futures.as_completed(future_to_ticker):
+                        t, data = future.result()
+                        if data is not None:
+                            self.market_data[t] = data
+                            print(f"[{t}] 下載成功")
+                
+                return self.market_data, self.fx_rates
 
     def _prepare_data(self, symbol, df):
         """
