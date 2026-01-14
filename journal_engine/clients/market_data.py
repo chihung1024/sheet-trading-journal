@@ -30,6 +30,7 @@ class MarketDataClient:
         # ==================== 1. 下載匯率數據 ====================
         try:
             fx = yf.Ticker(EXCHANGE_SYMBOL)
+            # 先抓取歷史日線
             fx_hist = fx.history(start=start_date - timedelta(days=5))
             
             if not fx_hist.empty:
@@ -37,10 +38,31 @@ class MarketDataClient:
                 fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None).normalize()
                 # 按日重採樣並前向填充（處理週末/假日）
                 self.fx_rates = fx_hist['Close'].resample('D').ffill()
+
+                # ✅ [新增] 強制抓取最新的即時匯率 (1分鐘K線)
+                # 解決 Daily 資料在盤中可能不會即時更新的問題
+                try:
+                    print("[FX] 正在獲取即時匯率...")
+                    # 抓取最近 1 天的 1 分鐘資料，取最後一筆
+                    realtime_data = fx.history(period="1d", interval="1m")
+                    if not realtime_data.empty:
+                        latest_rate = float(realtime_data['Close'].iloc[-1])
+                        # 取得今日的標準化日期 (00:00:00)
+                        today = pd.Timestamp.now().normalize()
+                        
+                        # 覆蓋或新增今日匯率
+                        self.fx_rates[today] = latest_rate
+                        print(f"[FX] ✅ 已獲取即時匯率: {latest_rate:.4f} (已更新至今日數據)")
+                    else:
+                        print("[FX] ⚠️ 無法獲取即時數據，使用日線資料")
+                except Exception as e:
+                    print(f"[FX] ⚠️ 即時匯率抓取失敗: {e}")
+
             else:
                 # 若下載失敗，使用預設匯率
                 self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
-        except:
+        except Exception as e:
+            print(f"[FX] 匯率下載嚴重錯誤: {e}")
             # 錯誤處理：使用預設匯率
             self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
 
@@ -61,6 +83,27 @@ class MarketDataClient:
                 if not hist.empty:
                     # 標準化日期格式
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
+                    
+                    # ✅ [新增] 強制抓取即時報價 (1分鐘 K線)
+                    # 解決盤中 Daily 資料未更新，導致損益不動的問題
+                    try:
+                        # 只抓取最近 1 天的 1 分鐘資料
+                        intraday = ticker_obj.history(period="1d", interval="1m")
+                        
+                        if not intraday.empty:
+                            latest_price = float(intraday['Close'].iloc[-1])
+                            last_date = hist.index[-1]
+                            
+                            # 如果日線最後一筆存在，就用即時價覆蓋 Close 和 Adj Close
+                            # 這樣能確保 calculator.py 抓到的價格是當下最新的
+                            hist.at[last_date, 'Close'] = latest_price
+                            hist.at[last_date, 'Adj Close'] = latest_price
+                            
+                            print(f"[{t}] ✅ 即時報價覆蓋: {latest_price:.2f}")
+                    except Exception as e:
+                        # 抓不到即時資料就維持原本的日線，不報錯以免影響流程
+                        pass
+
                     # 準備數據：計算調整因子
                     hist_adj = self._prepare_data(t, hist)
                     return t, hist_adj
