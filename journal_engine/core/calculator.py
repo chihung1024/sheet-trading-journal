@@ -3,7 +3,7 @@ import numpy as np
 from collections import deque
 from datetime import datetime
 from pyxirr import xirr  # ✅ 新增：引入 XIRR 計算套件
-from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition
+from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, DividendRecord
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 
 class PortfolioCalculator:
@@ -34,6 +34,9 @@ class PortfolioCalculator:
         # 配息去重
         self.confirmed_dividends = set()  # 記錄已手動輸入的配息
         self._pre_scan_dividends()
+        
+        # ✅ 新增：配息歷史追蹤
+        self.dividend_history = []  # 所有配息記錄（包含自動和手動）
         
         # 基準對比（SPY）
         self.benchmark_units = 0.0        # SPY 持有單位
@@ -146,8 +149,10 @@ class PortfolioCalculator:
             qty = h_data['qty']
             
             if qty > 0:
-                if f"{sym}_{date_str}" in self.confirmed_dividends:
-                    continue
+                dividend_key = f"{sym}_{date_str}"
+                
+                # ✅ 檢查是否已手動輸入
+                is_confirmed = dividend_key in self.confirmed_dividends
                 
                 div_per_share_gross = self.market.get_dividend(sym, date_ts)
                 
@@ -161,28 +166,32 @@ class PortfolioCalculator:
                     total_div_net_usd = total_gross * 0.7
                     total_div_net_twd = total_div_net_usd * fx
                     
-                    # 累加到已實現損益 (補償股價下跌)
-                    self.total_realized_pnl_twd += total_div_net_twd
-                    
-                    # ✅ 記錄 XIRR 現金流（配息收入）
-                    self.xirr_cashflows.append({
-                        'date': date_ts,
-                        'amount': total_div_net_twd  # 正值：收入
-                    })
-                    
-                    # 記錄歷史
-                    if not hasattr(self, 'dividend_history'):
-                        self.dividend_history = []
-                    
+                    # ✅ 記錄配息歷史（包含狀態）
                     self.dividend_history.append({
-                        'date': date_str,
                         'symbol': sym,
-                        'shares': qty,
-                        'div_per_share': div_per_share_gross,
+                        'ex_date': date_str,
+                        'pay_date': None,  # 自動抓取沒有發放日
+                        'shares_held': qty,
+                        'dividend_per_share_gross': div_per_share_gross,
                         'total_gross': total_gross,
-                        'total_net': total_div_net_usd,
-                        'total_net_twd': total_div_net_twd
+                        'tax_rate': 30.0,
+                        'total_net_usd': total_div_net_usd,
+                        'total_net_twd': total_div_net_twd,
+                        'fx_rate': fx,
+                        'status': 'confirmed' if is_confirmed else 'pending',
+                        'notes': '手動輸入' if is_confirmed else '系統自動抓取'
                     })
+                    
+                    # ✅ 只有未確認的配息才計入損益（已確認的由手動輸入處理）
+                    if not is_confirmed:
+                        # 累加到已實現損益 (補償股價下跌)
+                        self.total_realized_pnl_twd += total_div_net_twd
+                        
+                        # ✅ 記錄 XIRR 現金流（配息收入）
+                        self.xirr_cashflows.append({
+                            'date': date_ts,
+                            'amount': total_div_net_twd  # 正值：收入
+                        })
 
     def _process_transaction(self, row, fx, date_ts):
         """
@@ -410,6 +419,7 @@ class PortfolioCalculator:
         
         ✅ 新增功能：計算每檔持股的前一交易日收盤價與今日變化
         ✅ 核心修正：正確計算當日損益 (Modified Dietz 方法)
+        ✅ 新增功能：整合配息列表
         """
         import pandas as pd
         
@@ -564,6 +574,15 @@ class PortfolioCalculator:
         xirr_value = self._calculate_xirr(current_fx)
         print(f"\n[XIRR 計算結果] {xirr_value:.2f}% (個人實際年化報酬率)")
         
+        # ✅ 整理待確認配息列表（只顯示 pending 狀態）
+        pending_dividends = [
+            DividendRecord(**div_data)
+            for div_data in self.dividend_history
+            if div_data['status'] == 'pending'
+        ]
+        
+        print(f"\n[配息統計] 待確認配息: {len(pending_dividends)} 筆")
+        
         summary = PortfolioSummary(
             total_value=round(curr_total_val, 0),
             invested_capital=round(current_holdings_cost_sum, 0),
@@ -580,5 +599,6 @@ class PortfolioCalculator:
             exchange_rate=round(current_fx, 2),
             summary=summary,
             holdings=final_holdings,
-            history=self.history_data
+            history=self.history_data,
+            pending_dividends=pending_dividends  # ✅ 新增配息列表
         )
