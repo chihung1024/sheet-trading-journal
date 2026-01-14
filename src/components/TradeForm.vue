@@ -1,4 +1,4 @@
-<template>
+<![CDATA[<template>
   <div class="card trade-panel" id="trade-form-anchor">
     <h3 class="panel-title">{{ isEditing ? '編輯交易' : '快速下單' }}</h3>
     
@@ -14,6 +14,24 @@
         <div class="form-group full">
             <label>交易標的</label>
             <input type="text" v-model="form.symbol" placeholder="輸入代碼 (如 NVDA)" :disabled="isEditing" class="input-lg uppercase">
+        </div>
+        
+        <!-- ✅ 新增：群組選擇器 -->
+        <div class="form-group full">
+            <label>
+                <span class="label-icon">📁</span>
+                所屬群組
+            </label>
+            <select v-model="form.tag" class="input-lg group-select">
+                <option value="長線投資">🎯 長線投資</option>
+                <option value="短線交易">⚡ 短線交易</option>
+                <option value="波段操作">📈 波段操作</option>
+                <option value="價值投資">💎 價值投資</option>
+                <option value="成長股">🚀 成長股</option>
+                <option value="股息股">💰 股息股</option>
+                <option value="指數ETF">📊 指數ETF</option>
+                <option value="其他">📝 其他</option>
+            </select>
         </div>
         
         <div class="form-group">
@@ -38,27 +56,6 @@
                 <input type="number" v-model="form.tax" @input="calcPriceFromInputs" placeholder="稅金" step="0.01">
             </div>
         </div>
-
-        <!-- ✅ 新增：群組選擇器 -->
-        <div class="form-group full">
-            <label>📋 所屬群組（可複選）</label>
-            <div class="group-selector">
-                <label v-for="group in availableGroups" :key="group.id" class="group-checkbox">
-                    <input 
-                        type="checkbox" 
-                        :value="group.id" 
-                        v-model="form.selectedGroups"
-                    >
-                    <span class="group-label" :style="{ borderColor: group.color }">
-                        <span class="group-icon">{{ group.icon }}</span>
-                        <span class="group-name">{{ group.name }}</span>
-                    </span>
-                </label>
-                <div v-if="availableGroups.length === 0" class="no-groups">
-                    尚無群組，請先建立群組
-                </div>
-            </div>
-        </div>
     </div>
 
     <div class="summary-box">
@@ -76,7 +73,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed } from 'vue';
+import { reactive, ref } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
@@ -98,10 +95,8 @@ const form = reactive({
     fee: 0, 
     tax: 0, 
     total_amount: '',
-    selectedGroups: []  // ✅ 新增
+    tag: '長線投資'  // ✅ 預設群組
 });
-
-const availableGroups = computed(() => store.groups || []);
 
 const setTxnType = (type) => { 
     form.txn_type = type; 
@@ -145,11 +140,7 @@ const submit = async () => {
     loading.value = true;
     try {
         const method = isEditing.value ? "PUT" : "POST";
-        const payload = { 
-            ...form, 
-            id: isEditing.value ? editingId.value : undefined,
-            group_ids: form.selectedGroups  // ✅ 傳送群組 ID 陣列
-        };
+        const payload = { ...form, id: isEditing.value ? editingId.value : undefined };
         ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
         
         const res = await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
@@ -196,20 +187,13 @@ const resetForm = () => {
     form.tax = 0; 
     form.total_amount = '';
     form.txn_type = 'BUY';
-    form.selectedGroups = [];  // ✅ 重置群組
+    form.tag = '長線投資';  // ✅ 重置為預設群組
 };
 
 const setupForm = (r) => {
     isEditing.value = true; 
     editingId.value = r.id;
-    Object.keys(form).forEach(k => {
-        if (k === 'selectedGroups') {
-            // ✅ 載入該交易的群組
-            form.selectedGroups = store.getRecordGroups(r.id);
-        } else {
-            form[k] = r[k];
-        }
-    });
+    Object.keys(form).forEach(k => form[k] = r[k]);
 };
 
 defineExpose({ setupForm });
@@ -258,9 +242,17 @@ defineExpose({ setupForm });
     font-weight: 600; 
 }
 
-.switch-btn.buy.active { color: var(--primary); }
-.switch-btn.sell.active { color: var(--success); }
-.switch-btn.div.active { color: var(--warning); }
+.switch-btn.buy.active { 
+    color: var(--primary); 
+}
+
+.switch-btn.sell.active { 
+    color: var(--success); 
+}
+
+.switch-btn.div.active { 
+    color: var(--warning); 
+}
 
 .form-grid { 
     display: grid; 
@@ -275,15 +267,24 @@ defineExpose({ setupForm });
     gap: 8px; 
 }
 
-.form-group.full { grid-column: span 2; }
+.form-group.full { 
+    grid-column: span 2; 
+}
 
 label { 
     font-size: 0.9rem; 
     color: var(--text-sub); 
-    font-weight: 600; 
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-input, textarea { 
+.label-icon {
+    font-size: 1rem;
+}
+
+input, select { 
     padding: 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
@@ -296,58 +297,47 @@ input, textarea {
     background: var(--bg-card);
 }
 
-input::placeholder { color: var(--text-sub); opacity: 0.6; }
-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 0.7; }
-
-.uppercase { text-transform: uppercase; }
-.dual-input { display: flex; gap: 12px; }
-
-/* ✅ 群組選擇器 */
-.group-selector {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.group-checkbox {
-    display: inline-flex;
+/* ✅ 群組選擇器特殊樣式 */
+.group-select {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 500;
     cursor: pointer;
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    appearance: none;
 }
 
-.group-checkbox input[type="checkbox"] {
-    display: none;
+.group-select option {
+    padding: 12px;
+    font-size: 1rem;
 }
 
-.group-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    background: var(--bg-secondary);
-    border: 2px solid var(--border-color);
-    border-radius: 20px;
-    transition: all 0.2s;
-    font-size: 0.95rem;
-}
-
-.group-checkbox input:checked + .group-label {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
-    font-weight: 600;
-}
-
-.group-icon {
-    font-size: 1.1rem;
-}
-
-.no-groups {
-    padding: 16px;
-    text-align: center;
+input::placeholder, select::placeholder {
     color: var(--text-sub);
-    font-size: 0.9rem;
-    width: 100%;
+    opacity: 0.6;
+}
+
+input:focus, select:focus { 
+    outline: none; 
+    border-color: var(--primary); 
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); 
+}
+
+input:disabled {
+    background: var(--bg-secondary);
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.uppercase { 
+    text-transform: uppercase; 
+}
+
+.dual-input { 
+    display: flex; 
+    gap: 12px; 
 }
 
 .summary-box { 
@@ -378,9 +368,14 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     box-shadow: none; 
 }
 
-.summary-value:focus { box-shadow: none; }
+.summary-value:focus { 
+    box-shadow: none; 
+}
 
-.action-buttons { display: flex; gap: 16px; }
+.action-buttons { 
+    display: flex; 
+    gap: 16px; 
+}
 
 .btn { 
     flex: 1; 
@@ -400,31 +395,89 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     border: 1px solid var(--border-color);
 }
 
-.btn-cancel:hover { background: var(--border-color); color: var(--text-main); }
+.btn-cancel:hover { 
+    background: var(--border-color); 
+    color: var(--text-main);
+}
 
-.btn-submit { color: white; background: var(--primary); }
-.btn-submit.buy { background: var(--primary); }
-.btn-submit.sell { background: var(--success); }
-.btn-submit.div { background: var(--warning); }
+.btn-submit { 
+    color: white; 
+    background: var(--primary); 
+}
 
-.btn-submit:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: var(--shadow-card); }
-.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-submit.buy { 
+    background: var(--primary); 
+}
+
+.btn-submit.sell { 
+    background: var(--success); 
+}
+
+.btn-submit.div { 
+    background: var(--warning); 
+}
+
+.btn-submit:hover { 
+    opacity: 0.9; 
+    transform: translateY(-1px); 
+    box-shadow: var(--shadow-card);
+}
+
+.btn-submit:disabled { 
+    opacity: 0.6; 
+    cursor: not-allowed; 
+    transform: none; 
+}
 
 @media (max-width: 768px) {
-    .trade-panel { padding: 20px; }
-    .form-grid { gap: 16px; }
-    .panel-title { font-size: 1.2rem; }
+    .trade-panel {
+        padding: 20px;
+    }
+    
+    .form-grid {
+        gap: 16px;
+    }
+    
+    .panel-title {
+        font-size: 1.2rem;
+    }
 }
 
 :global(.dark) .trade-panel {
     background-color: #1e293b !important;
     border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+
+:global(.dark) .panel-title,
+:global(.dark) label,
+:global(.dark) .summary-label {
+    color: #f1f5f9 !important;
 }
 
 :global(.dark) input,
+:global(.dark) select,
 :global(.dark) .summary-value {
     background-color: #0f172a !important;
     color: #f1f5f9 !important;
     border-color: #334155 !important;
 }
-</style>
+
+:global(.dark) .trade-type-switch,
+:global(.dark) .summary-box {
+    background-color: #334155 !important;
+}
+
+:global(.dark) .switch-btn {
+    color: #94a3b8 !important;
+}
+
+:global(.dark) .switch-btn.active {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+}
+
+:global(.dark) .group-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+}
+</style>]]>
