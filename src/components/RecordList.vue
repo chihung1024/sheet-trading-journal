@@ -510,7 +510,7 @@ watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
     padding: 10px 10px 10px 36px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
-    font-size: 0.95rem;
+    font-size: 1rem;
     background: var(--bg-card);
     color: var(--text-main);
     transition: all 0.2s ease;
@@ -533,7 +533,7 @@ watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
     background: var(--bg-card); 
-    font-size: 0.95rem; 
+    font-size: 1rem; 
     color: var(--text-main);
     cursor: pointer;
     transition: all 0.2s ease;
@@ -557,7 +557,7 @@ watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
     border-radius: 8px; 
     cursor: pointer; 
     color: var(--text-sub); 
-    font-size: 0.95rem; 
+    font-size: 1rem; 
     font-weight: 500; 
     transition: all 0.2s ease;
     display: flex;
@@ -609,7 +609,7 @@ watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
 }
 
 .stat-label {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     color: var(--text-sub);
     font-weight: 600;
     text-transform: uppercase;
@@ -617,7 +617,7 @@ watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
 }
 
 .stat-value {
-    font-size: 1.5rem;
+    font-size: 1.7rem;
     font-weight: 700;
     font-family: 'JetBrains Mono', monospace;
     color: var(--text-main);
@@ -643,7 +643,7 @@ th {
     padding: 16px 20px; 
     border-bottom: 2px solid var(--border-color); 
     color: var(--text-sub); 
-    font-size: 0.85rem; 
+    font-size: 0.9rem; 
     font-weight: 700; 
     white-space: nowrap;
     background: var(--bg-secondary);
@@ -663,7 +663,7 @@ th.sortable:hover {
 .sort-icon {
     margin-left: 4px;
     opacity: 0.5;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     transition: opacity 0.2s;
 }
 
@@ -674,7 +674,7 @@ th.sortable:hover .sort-icon {
 td { 
     padding: 16px 20px; 
     border-bottom: 1px solid var(--border-color); 
-    font-size: 0.95rem; 
+    font-size: 1rem; 
 }
 
 tr:last-child td { 
@@ -701,14 +701,14 @@ tr:last-child td {
 
 .date-cell {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     color: var(--text-sub);
 }
 
 .symbol-badge {
     display: inline-block;
     font-weight: 700;
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     padding: 6px 12px;
     background: var(--bg-secondary);
     color: var(--primary);
@@ -723,7 +723,7 @@ tr:last-child td {
 }
 
 .type-badge { 
-    font-size: 0.8rem; 
+    font-size: 0.9rem; 
     padding: 6px 12px; 
     border-radius: 8px; 
     font-weight: 700; 
@@ -843,7 +843,7 @@ tr:last-child td {
 }
 
 .page-info { 
-    font-size: 0.9rem; 
+    font-size: 1rem; 
     color: var(--text-sub); 
     font-family: 'JetBrains Mono', monospace;
     margin-left: 8px;

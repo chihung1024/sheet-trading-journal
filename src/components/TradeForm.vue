@@ -182,7 +182,7 @@ defineExpose({ setupForm });
 
 .panel-title { 
     margin-bottom: 24px; 
-    font-size: 1.2rem; 
+    font-size: 1.3rem; 
     color: var(--text-main);
     font-weight: 700;
 }
@@ -206,7 +206,7 @@ defineExpose({ setupForm });
     cursor: pointer; 
     border-radius: 8px; 
     transition: all 0.2s; 
-    font-size: 0.95rem; 
+    font-size: 1rem; 
 }
 
 .switch-btn.active { 
@@ -247,7 +247,7 @@ defineExpose({ setupForm });
 }
 
 label { 
-    font-size: 0.85rem; 
+    font-size: 0.9rem; 
     color: var(--text-sub); 
     font-weight: 600; 
 }
@@ -256,7 +256,7 @@ input {
     padding: 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
-    font-size: 1rem; 
+    font-size: 1.05rem; 
     width: 100%; 
     box-sizing: border-box; 
     font-family: 'JetBrains Mono', monospace; 
@@ -302,7 +302,7 @@ input:disabled {
 }
 
 .summary-label { 
-    font-size: 0.9rem; 
+    font-size: 0.95rem; 
     color: var(--text-sub); 
     margin-bottom: 8px; 
     font-weight: 500;
@@ -312,7 +312,7 @@ input:disabled {
     background: transparent; 
     border: none; 
     text-align: center; 
-    font-size: 1.8rem; 
+    font-size: 2rem; 
     font-weight: 700; 
     color: var(--text-main); 
     padding: 0; 
@@ -337,7 +337,7 @@ input:disabled {
     font-weight: 600; 
     cursor: pointer; 
     transition: all 0.2s; 
-    font-size: 1rem; 
+    font-size: 1.05rem; 
     letter-spacing: 0.02em; 
 }
 
@@ -392,7 +392,7 @@ input:disabled {
     }
     
     .panel-title {
-        font-size: 1.1rem;
+        font-size: 1.2rem;
     }
 }
 
