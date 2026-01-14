@@ -24,7 +24,7 @@
             <span class="dot"></span> 連線正常
           </div>
           
-          <!-- ✅ 修改 @click 事件繫結 -->
+          <!-- ✅ 修改 @click 事件繫定 -->
           <button 
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
@@ -73,18 +73,40 @@
             <HoldingsTable v-if="!portfolioStore.loading" />
             <TableSkeleton v-else />
           </section>
+          
           <section class="section-records">
             <RecordList v-if="!portfolioStore.loading" @edit="handleEditRecord" />
             <TableSkeleton v-else />
           </section>
+          
+          <!-- ✅ 新增：配息管理區塊 -->
+          <section class="section-dividends" v-if="!portfolioStore.loading && hasPendingDividends">
+            <DividendManager />
+          </section>
         </main>
+        
         <aside class="side-column">
           <div class="sticky-panel">
             <TradeForm ref="tradeFormRef" />
+            
+            <!-- ✅ 新增：配息提醒卡片 -->
+            <div v-if="hasPendingDividends" class="dividend-alert card">
+              <div class="alert-header">
+                <span class="alert-icon">🔔</span>
+                <h4>待確認配息</h4>
+              </div>
+              <p class="alert-text">
+                您有 <strong>{{ pendingDividendsCount }}</strong> 筆配息待確認
+              </p>
+              <button class="btn-alert" @click="scrollToDividends">
+                前往確認
+              </button>
+            </div>
           </div>
         </aside>
       </div>
     </div>
+    
     <div class="toast-container">
       <TransitionGroup name="toast-slide">
         <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" @click="removeToast(t.id)">
@@ -116,11 +138,10 @@ import { CONFIG } from './config';
 import LoginOverlay from './components/LoginOverlay.vue';
 import StatsGrid from './components/StatsGrid.vue';
 import PerformanceChart from './components/PerformanceChart.vue';
-// ✅ PieChart 暫時隱藏，未來有需要再重新引入
-// import PieChart from './components/PieChart.vue';
 import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
+import DividendManager from './components/DividendManager.vue';  // ✅ 新增
 
 // Skeleton components
 import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
@@ -132,6 +153,23 @@ const portfolioStore = usePortfolioStore();
 const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
+
+// ✅ 新增：計算是否有待確認配息
+const hasPendingDividends = computed(() => {
+  return portfolioStore.pending_dividends && portfolioStore.pending_dividends.length > 0;
+});
+
+const pendingDividendsCount = computed(() => {
+  return portfolioStore.pending_dividends ? portfolioStore.pending_dividends.length : 0;
+});
+
+// ✅ 新增：滾動至配息管理區塊
+const scrollToDividends = () => {
+  const dividendSection = document.querySelector('.section-dividends');
+  if (dividendSection) {
+    dividendSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+};
 
 // ✅ 更新後的處理函式：配合輪詢機制
 const handleTriggerUpdate = async () => {
@@ -226,6 +264,7 @@ onMounted(async () => {
   
   --radius: 16px;
   --radius-sm: 8px;
+  --radius-md: 12px;
 }
 
 html.dark {
@@ -401,7 +440,6 @@ body {
   opacity: 0.7;
   cursor: not-allowed;
   transform: none;
-  /* 禁用時的灰階濾鏡 */
   filter: grayscale(0.5);
 }
 
@@ -509,6 +547,61 @@ body {
   color: var(--text-main); 
   margin: 0 0 20px 0; 
   letter-spacing: -0.01em;
+}
+
+/* ✅ 新增：配息提醒卡片樣式 */
+.dividend-alert {
+  border-left: 4px solid var(--warning);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
+}
+
+.alert-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.alert-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.alert-icon {
+  font-size: 1.3rem;
+}
+
+.alert-text {
+  margin: 0 0 16px 0;
+  font-size: 0.95rem;
+  color: var(--text-sub);
+  line-height: 1.5;
+}
+
+.alert-text strong {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.btn-alert {
+  width: 100%;
+  padding: 10px;
+  background: var(--warning);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+}
+
+.btn-alert:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
 }
 
 table { 
