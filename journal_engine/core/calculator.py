@@ -70,8 +70,8 @@ class PortfolioCalculator:
         # ==================== 步驟 2: 建立日期範圍 ====================
         start_date = self.df['Date'].min()
         
-        # ✅ 修正：一律計算到今天，即使美股數據還沒更新也要用最新匙率生成今日數據點
-        # 這樣白天時可以看到匙率變化的影響
+        # ✅ 修正：一律計算到今天，即使美股數據還沒更新也要用最新匯率生成今日數據點
+        # 這樣白天時可以看到匯率變化的影響
         end_date = datetime.now()
         print(f"[History 計算範圍] {start_date.date()} 至 {end_date.date()}")
         
@@ -81,7 +81,7 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
-            # 取得當日匙率
+            # 取得當日匯率
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx):
@@ -342,7 +342,7 @@ class PortfolioCalculator:
         # 6. 更新狀態
         self.prev_total_equity = current_total_equity
         
-        # ✅ 新增：在 history 中加入匙率欄位
+        # ✅ 新增：在 history 中加入匯率欄位
         self.history_data.append({
             "date": date_ts.strftime("%Y-%m-%d"),
             "total_value": round(total_mkt_val, 0),
@@ -350,7 +350,7 @@ class PortfolioCalculator:
             "net_profit": round(total_pnl, 0),
             "twr": round(twr_percentage, 2),
             "benchmark_twr": round(bench_twr, 2),
-            "fx_rate": round(fx, 4)  # ✅ 新增匙率欄位
+            "fx_rate": round(fx, 4)  # ✅ 新增匯率欄位
         })
 
 
@@ -376,7 +376,7 @@ class PortfolioCalculator:
         與 TWR 不同，XIRR 會受入金時機影響。
         
         參數:
-            current_fx: 當前匙率
+            current_fx: 當前匯率
         
         返回:
             XIRR 百分比 (float)
@@ -425,8 +425,8 @@ class PortfolioCalculator:
         
         print("整理最終報表...")
         
-        # ✅ 新增：顯示最新兩筆匙率數據
-        print(f"\n[匙率比對] 顯示最新兩個交易日匙率")
+        # ✅ 新增：顯示最新兩筆匯率數據
+        print(f"\n[匯率比對] 顯示最新兩個交易日匯率")
         if len(self.market.fx_rates) >= 2:
             latest_fx = self.market.fx_rates.iloc[-1]
             prev_fx = self.market.fx_rates.iloc[-2]
@@ -436,18 +436,18 @@ class PortfolioCalculator:
             fx_change = latest_fx - prev_fx
             fx_change_pct = (fx_change / prev_fx) * 100 if prev_fx > 0 else 0
             
-            print(f"[USD/TWD] 最新匙率: {latest_fx:.4f} ({latest_fx_date}) | 前匙率: {prev_fx:.4f} ({prev_fx_date})")
-            print(f"[USD/TWD] 匙率變化: {fx_change:+.4f} ({fx_change_pct:+.2f}%)")
+            print(f"[USD/TWD] 最新匯率: {latest_fx:.4f} ({latest_fx_date}) | 前匯率: {prev_fx:.4f} ({prev_fx_date})")
+            print(f"[USD/TWD] 匯率變化: {fx_change:+.4f} ({fx_change_pct:+.2f}%)")
             
-            # 計算匙率對持倉的影響
+            # 計算匯率對持倉的影響
             if len(self.holdings) > 0:
                 total_usd_value = sum(
                     h['cost_basis_usd'] for h in self.holdings.values() if h['qty'] > 0.001
                 )
                 fx_impact_twd = total_usd_value * fx_change
-                print(f"[匙率影響] 美元資產 ${total_usd_value:,.0f} × {fx_change:+.4f} = 台幣 {fx_impact_twd:+,.0f}")
+                print(f"[匯率影響] 美元資產 ${total_usd_value:,.0f} × {fx_change:+.4f} = 台幣 {fx_impact_twd:+,.0f}")
         else:
-            print(f"[USD/TWD] 當前匙率: {current_fx:.4f} (數據不足無法比對)")
+            print(f"[USD/TWD] 當前匯率: {current_fx:.4f} (數據不足無法比對)")
         
         print(f"\n[今日損益計算] 使用 Modified Dietz 方法進行計算")
         
@@ -471,7 +471,7 @@ class PortfolioCalculator:
                     latest_date = stock_data.index[-1]
                     prev_date = stock_data.index[-2]
                     
-                    # ✅ 取得對應日期的匙率
+                    # ✅ 取得對應日期的匯率
                     try:
                         curr_fx = self.market.fx_rates.asof(latest_date)
                         prev_fx = self.market.fx_rates.asof(prev_date)
@@ -506,10 +506,10 @@ class PortfolioCalculator:
                     # 3. 計算今日開始前的股數
                     qty_start_of_day = h['qty'] - daily_qty_change
                     
-                    # 4. 計算昨日收盤市值 (用昨日價格和昨日匙率)
+                    # 4. 計算昨日收盤市值 (用昨日價格和昨日匯率)
                     beginning_market_value_twd = qty_start_of_day * prev_p * prev_fx
                     
-                    # 5. 計算今日收盤市值 (用今日價格和今日匙率)
+                    # 5. 計算今日收盤市值 (用今日價格和今日匯率)
                     ending_market_value_twd = h['qty'] * curr_p * curr_fx
                     
                     # 6. 核心公式：當日損益 = 今日市值 - 昨日市值 - 當日現金流
