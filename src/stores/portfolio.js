@@ -10,23 +10,21 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const holdings = ref([]);
     const history = ref([]);
     const records = ref([]);
-    const pending_dividends = ref([]);
+    const pending_dividends = ref([]);  // ✅ 新增：待確認配息列表
     const lastUpdate = ref('');
-    const connectionStatus = ref('connected');
+    const connectionStatus = ref('connected'); 
 
-    // ✅ 新增：群組相關狀態
-    const groups = ref([]);
-    const recordGroups = ref([]);  // 交易-群組關聯
-    const currentGroupId = ref(null);  // 當前選中的群組ID
-
+    // ✅ 新增：輪詢控制變數
     const isPolling = ref(false);
     let pollTimer = null;
 
+    // ✅ 保留：Tag 1.10 的 getToken 方法
     const getToken = () => {
         const auth = useAuthStore();
         return auth.token;
     };
 
+    // ✅ 保留：新版的 fetchWithAuth（統一錯誤處理）
     const fetchWithAuth = async (endpoint, options = {}) => {
         const auth = useAuthStore();
         if (!auth.token) return null;
@@ -63,7 +61,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 修改：加入請求去重邏輯
     const fetchAll = async () => {
+        // 如果正在載入中，直接忽略這次請求，防止重複觸發
         if (loading.value) {
             console.warn('⚠️ [fetchAll] 請求已在進行中，忽略此次調用');
             return;
@@ -74,9 +74,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         
         try {
             await Promise.all([
-                fetchSnapshot().catch(err => console.error('❌ [fetchSnapshot] 錯誤:', err)),
-                fetchRecords().catch(err => console.error('❌ [fetchRecords] 錯誤:', err)),
-                fetchGroups().catch(err => console.error('❌ [fetchGroups] 錯誤:', err))  // ✅ 新增
+                fetchSnapshot().catch(err => {
+                    console.error('❌ [fetchSnapshot] 錯誤:', err);
+                }),
+                fetchRecords().catch(err => {
+                    console.error('❌ [fetchRecords] 錯誤:', err);
+                })
             ]);
             console.log('✅ [fetchAll] 數據載入完成');
         } catch (error) {
@@ -84,34 +87,35 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             connectionStatus.value = 'error';
         } finally {
             loading.value = false;
+            console.log('🏁 [fetchAll] loading 狀態已重置為 false');
         }
     };
 
+
+    // ✅ 修復：增強的 fetchSnapshot
     const fetchSnapshot = async () => {
         console.log('📊 [fetchSnapshot] 開始請求...');
         try {
-            // ✅ 支援群組過濾
-            const endpoint = currentGroupId.value 
-                ? `/api/portfolio/${currentGroupId.value}` 
-                : '/api/portfolio';
-            
-            const json = await fetchWithAuth(endpoint);
+            const json = await fetchWithAuth('/api/portfolio');
             console.log('📊 [fetchSnapshot] API 回應:', json);
             
             if (json && json.success && json.data) {
                 stats.value = json.data.summary || {};
                 holdings.value = json.data.holdings || [];
                 history.value = json.data.history || [];
-                pending_dividends.value = json.data.pending_dividends || [];
-                lastUpdate.value = json.data.updated_at;
-                console.log('✅ [fetchSnapshot] 數據已更新');
+                pending_dividends.value = json.data.pending_dividends || [];  // ✅ 新增
+                lastUpdate.value = json.data.updated_at; // 更新時間
+                console.log('✅ [fetchSnapshot] 數據已更新，待確認配息:', pending_dividends.value.length, '筆');
+            } else {
+                console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
             }
         } catch (error) {
             console.error('❌ [fetchSnapshot] 請求失敗:', error);
-            throw error;
+            throw error; // 抛出讓 fetchAll 捕捉
         }
     };
 
+    // ✅ 修復：增強的 fetchRecords
     const fetchRecords = async () => {
         console.log('📝 [fetchRecords] 開始請求...');
         try {
@@ -121,87 +125,27 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (json && json.success) {
                 records.value = json.data || [];
                 console.log('✅ [fetchRecords] 數據已更新，共', records.value.length, '筆');
+            } else {
+                console.warn('⚠️ [fetchRecords] 數據格式異常:', json);
             }
         } catch (error) {
             console.error('❌ [fetchRecords] 請求失敗:', error);
-            throw error;
+            throw error; // 抛出讓 fetchAll 捕捉
         }
     };
 
-    // ✅ 新增：獲取所有群組
-    const fetchGroups = async () => {
-        console.log('📁 [fetchGroups] 開始請求...');
-        try {
-            const json = await fetchWithAuth('/api/groups');
-            if (json && json.success) {
-                groups.value = json.data || [];
-                recordGroups.value = json.record_groups || [];  // ✅ 同時載入關聯數據
-                console.log('✅ [fetchGroups] 載入', groups.value.length, '個群組');
-            }
-        } catch (error) {
-            console.error('❌ [fetchGroups] 請求失敗:', error);
-            throw error;
-        }
-    };
-
-    // ✅ 新增：創建群組
-    const createGroup = async (groupData) => {
-        const json = await fetchWithAuth('/api/groups', {
-            method: 'POST',
-            body: JSON.stringify(groupData)
-        });
-        if (json && json.success) {
-            await fetchGroups();
-        }
-        return json;
-    };
-
-    // ✅ 新增：更新群組
-    const updateGroup = async (groupId, groupData) => {
-        const json = await fetchWithAuth(`/api/groups/${groupId}`, {
-            method: 'PUT',
-            body: JSON.stringify(groupData)
-        });
-        if (json && json.success) {
-            await fetchGroups();
-        }
-        return json;
-    };
-
-    // ✅ 新增：刪除群組
-    const deleteGroup = async (groupId) => {
-        const json = await fetchWithAuth(`/api/groups/${groupId}`, {
-            method: 'DELETE'
-        });
-        if (json && json.success) {
-            await fetchGroups();
-        }
-        return json;
-    };
-
-    // ✅ 新增：切換群組
-    const switchGroup = async (groupId) => {
-        currentGroupId.value = groupId;
-        await fetchSnapshot();
-    };
-
-    // ✅ 新增：獲取交易的群組列表
-    const getRecordGroups = (recordId) => {
-        return recordGroups.value
-            .filter(rg => rg.record_id === recordId)
-            .map(rg => rg.group_id);
-    };
-
+    // ✅ 新增：智慧輪詢函式 (Smart Polling)
     const startPolling = () => {
         if (isPolling.value) return;
         
         console.log('⌛ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
-        const initialTime = lastUpdate.value;
-        const { addToast } = useToast();
+        const initialTime = lastUpdate.value; // 記錄當前的更新時間
+        const { addToast } = useToast(); 
 
         pollTimer = setInterval(async () => {
+            // 1. 超時檢查 (例如 3 分鐘後放棄)
             if (Date.now() - startTime > 180000) {
                 console.warn('⚠️ [SmartPolling] 更新超時，停止輪詢');
                 stopPolling();
@@ -210,24 +154,32 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
 
             try {
+                // 2. 輕量檢查 (只抓 Snapshot 檢查 updated_at)
+                // 注意：這裡不呼叫 fetchSnapshot() 以免觸發大量 console log 和 UI 更新
                 const json = await fetchWithAuth('/api/portfolio');
                 
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
                     
+                    // 3. 比對時間：如果新時間與舊時間不同，代表 GitHub Actions 跑完了
                     if (newTime !== initialTime) {
                         console.log('✨ [SmartPolling] 偵測到新數據！時間:', newTime);
-                        stopPolling();
-                        await fetchAll();
+                        
+                        stopPolling(); // 先停止輪詢
+                        await fetchAll(); // 正式抓取並更新畫面
+                        
                         addToast("✅ 數據已更新完畢！", "success");
+                    } else {
+                        console.log('💤 [SmartPolling] 數據尚未變更...');
                     }
                 }
             } catch (e) {
                 console.warn('⚠️ [SmartPolling] 檢查失敗:', e);
             }
-        }, 5000);
+        }, 5000); // 每 5 秒檢查一次
     };
 
+    // ✅ 新增：停止輪詢
     const stopPolling = () => {
         isPolling.value = false;
         if (pollTimer) {
@@ -236,9 +188,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 修改：觸發更新邏輯
     const triggerUpdate = async () => {
         const token = getToken();
-        if (!token) throw new Error("請先登入");
+        if (!token) throw new Error("請先登入"); 
         
         try {
             const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
@@ -250,18 +203,21 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             });
             
             if (response.ok || response.status === 204) {
-                startPolling();
-                return true;
+                // 成功：啟動輪詢，等待 GitHub Actions 完成
+                startPolling(); 
+                return true; 
             } else {
                 const errorData = await response.json().catch(() => ({}));
+                console.error('Trigger Error:', errorData);
                 throw new Error(errorData.error || '後端無回應');
             }
-        } catch (e) {
+        } catch (e) { 
             console.error('Trigger failed:', e);
-            throw e;
+            throw e; 
         }
     };
 
+    // Getters
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
     return { 
@@ -270,23 +226,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         holdings, 
         history, 
         records, 
-        pending_dividends,
+        pending_dividends,  // ✅ 匯出
         lastUpdate, 
         unrealizedPnL, 
         connectionStatus,
-        isPolling,
-        // ✅ 群組相關
-        groups,
-        recordGroups,
-        currentGroupId,
+        isPolling, // ✅ 匯出此狀態供 UI 顯示
         fetchAll, 
-        fetchRecords,
-        fetchGroups,
-        createGroup,
-        updateGroup,
-        deleteGroup,
-        switchGroup,
-        getRecordGroups,
+        fetchRecords, 
         triggerUpdate
     };
 });

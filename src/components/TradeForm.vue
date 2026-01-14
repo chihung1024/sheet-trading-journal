@@ -1,4 +1,4 @@
-<![CDATA[<template>
+<template>
   <div class="card trade-panel" id="trade-form-anchor">
     <h3 class="panel-title">{{ isEditing ? '編輯交易' : '快速下單' }}</h3>
     
@@ -14,24 +14,6 @@
         <div class="form-group full">
             <label>交易標的</label>
             <input type="text" v-model="form.symbol" placeholder="輸入代碼 (如 NVDA)" :disabled="isEditing" class="input-lg uppercase">
-        </div>
-        
-        <!-- ✅ 新增：群組選擇器 -->
-        <div class="form-group full">
-            <label>
-                <span class="label-icon">📁</span>
-                所屬群組
-            </label>
-            <select v-model="form.tag" class="input-lg group-select">
-                <option value="長線投資">🎯 長線投資</option>
-                <option value="短線交易">⚡ 短線交易</option>
-                <option value="波段操作">📈 波段操作</option>
-                <option value="價值投資">💎 價值投資</option>
-                <option value="成長股">🚀 成長股</option>
-                <option value="股息股">💰 股息股</option>
-                <option value="指數ETF">📊 指數ETF</option>
-                <option value="其他">📝 其他</option>
-            </select>
         </div>
         
         <div class="form-group">
@@ -88,35 +70,33 @@ const editingId = ref(null);
 
 const form = reactive({
     txn_date: new Date().toISOString().split('T')[0],
-    symbol: '', 
-    txn_type: 'BUY', 
-    qty: '', 
-    price: '', 
-    fee: 0, 
-    tax: 0, 
-    total_amount: '',
-    tag: '長線投資'  // ✅ 預設群組
+    symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0, tax: 0, total_amount: ''
 });
 
 const setTxnType = (type) => { 
     form.txn_type = type; 
 };
 
+// ✅ 新邏輯：當輸入總金額、股數、Fee、Tax 時，自動計算平均成本
 const calcPriceFromInputs = () => {
     const qty = parseFloat(form.qty) || 0;
     const total = parseFloat(form.total_amount) || 0;
     const fee = parseFloat(form.fee) || 0;
     const tax = parseFloat(form.tax) || 0;
     
+    // 如果沒有股數或總金額，不計算
     if (qty <= 0 || total <= 0) return;
     
     let avgCost = 0;
     
     if (form.txn_type === 'BUY') {
+        // ✅ 買入：平均成本 = (總金額 + Fee + Tax) / 股數
         avgCost = (total + fee + tax) / qty;
     } else if (form.txn_type === 'SELL') {
+        // ✅ 賣出：平均成本 = (總金額 - Fee - Tax) / 股數
         avgCost = (total - fee - tax) / qty;
     } else {
+        // ✅ 配息：平均成本 = (總金額 - Tax) / 股數
         avgCost = (total - tax) / qty;
     }
     
@@ -129,6 +109,7 @@ const submit = async () => {
         return; 
     }
     
+    // ✅ 檢查 token 是否存在且未過期
     if (!auth.token || auth.isTokenExpired()) {
         addToast("登入已過期，請重新登入", "error");
         setTimeout(() => {
@@ -152,6 +133,7 @@ const submit = async () => {
             body: JSON.stringify(payload)
         });
         
+        // ✅ 處理 401 錯誤
         if (res.status === 401) {
             addToast("身份驗證失敗，請重新登入", "error");
             setTimeout(() => {
@@ -178,24 +160,15 @@ const submit = async () => {
 };
 
 const resetForm = () => {
-    isEditing.value = false; 
-    editingId.value = null;
-    form.symbol = ''; 
-    form.qty = ''; 
-    form.price = ''; 
-    form.fee = 0; 
-    form.tax = 0; 
-    form.total_amount = '';
+    isEditing.value = false; editingId.value = null;
+    form.symbol = ''; form.qty = ''; form.price = ''; form.fee = 0; form.tax = 0; form.total_amount = '';
     form.txn_type = 'BUY';
-    form.tag = '長線投資';  // ✅ 重置為預設群組
 };
 
 const setupForm = (r) => {
-    isEditing.value = true; 
-    editingId.value = r.id;
+    isEditing.value = true; editingId.value = r.id;
     Object.keys(form).forEach(k => form[k] = r[k]);
 };
-
 defineExpose({ setupForm });
 </script>
 
@@ -214,6 +187,7 @@ defineExpose({ setupForm });
     font-weight: 700;
 }
 
+/* 切換按鈕 */
 .trade-type-switch { 
     display: flex; 
     background: var(--bg-secondary); 
@@ -254,6 +228,7 @@ defineExpose({ setupForm });
     color: var(--warning); 
 }
 
+/* 表單區塊 */
 .form-grid { 
     display: grid; 
     grid-template-columns: 1fr 1fr; 
@@ -274,17 +249,10 @@ defineExpose({ setupForm });
 label { 
     font-size: 0.9rem; 
     color: var(--text-sub); 
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    font-weight: 600; 
 }
 
-.label-icon {
-    font-size: 1rem;
-}
-
-input, select { 
+input { 
     padding: 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
@@ -297,29 +265,12 @@ input, select {
     background: var(--bg-card);
 }
 
-/* ✅ 群組選擇器特殊樣式 */
-.group-select {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-weight: 500;
-    cursor: pointer;
-    padding-right: 36px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    appearance: none;
-}
-
-.group-select option {
-    padding: 12px;
-    font-size: 1rem;
-}
-
-input::placeholder, select::placeholder {
+input::placeholder {
     color: var(--text-sub);
     opacity: 0.6;
 }
 
-input:focus, select:focus { 
+input:focus { 
     outline: none; 
     border-color: var(--primary); 
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); 
@@ -340,6 +291,7 @@ input:disabled {
     gap: 12px; 
 }
 
+/* 總金額區塊 */
 .summary-box { 
     background: var(--bg-secondary); 
     padding: 20px; 
@@ -429,6 +381,7 @@ input:disabled {
     transform: none; 
 }
 
+/* 響應式調整 */
 @media (max-width: 768px) {
     .trade-panel {
         padding: 20px;
@@ -443,6 +396,7 @@ input:disabled {
     }
 }
 
+/* 強制修復深色模式顏色 */
 :global(.dark) .trade-panel {
     background-color: #1e293b !important;
     border-color: #334155 !important;
@@ -456,7 +410,6 @@ input:disabled {
 }
 
 :global(.dark) input,
-:global(.dark) select,
 :global(.dark) .summary-value {
     background-color: #0f172a !important;
     color: #f1f5f9 !important;
@@ -476,8 +429,4 @@ input:disabled {
     background-color: #1e293b !important;
     color: #f1f5f9 !important;
 }
-
-:global(.dark) .group-select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-}
-</style>]]>
+</style>
