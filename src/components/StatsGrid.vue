@@ -226,7 +226,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 }
 
 .stat-label { 
-    font-size: 0.8rem; 
+    font-size: 0.9rem; 
     color: var(--text-sub); 
     font-weight: 600; 
     text-transform: uppercase;
@@ -265,7 +265,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 
 .stat-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.6rem;
+    font-size: 1.8rem;
     font-weight: 700;
     color: var(--text-main);
     line-height: 1.1;
@@ -273,19 +273,19 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 }
 
 .stat-value.big {
-    font-size: 1.8rem;
+    font-size: 2rem;
 }
 
 .stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     font-weight: 600;
     opacity: 0.9;
     margin-top: 2px;
 }
 
 .stat-sub-text {
-    font-size: 0.7rem;
+    font-size: 0.8rem;
     color: var(--text-sub);
     font-weight: 500;
     margin-top: 2px;
@@ -293,7 +293,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 }
 
 .unit-text, .percent { 
-    font-size: 0.85rem; 
+    font-size: 0.95rem; 
     color: var(--text-sub); 
     font-weight: 500; 
 }
@@ -301,7 +301,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 .stat-footer {
     padding-top: 10px;
     border-top: 1px solid var(--border-color);
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     display: flex; 
     align-items: center; 
     justify-content: space-between;
@@ -326,13 +326,13 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
 .text-sub { color: var(--text-sub); }
-.text-xs { font-size: 0.7rem; }
+.text-xs { font-size: 0.8rem; }
 
 .badge { 
     padding: 3px 10px; 
     border-radius: 16px; 
     font-weight: 600; 
-    font-size: 0.7rem; 
+    font-size: 0.8rem; 
     display: inline-flex; 
     align-items: center; 
 }
@@ -367,11 +367,11 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     }
     
     .stat-value {
-        font-size: 1.4rem;
+        font-size: 1.6rem;
     }
     
     .stat-value.big {
-        font-size: 1.6rem;
+        font-size: 1.8rem;
     }
 }
 
@@ -383,7 +383,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     }
     
     .stat-label {
-        font-size: 0.7rem;
+        font-size: 0.8rem;
     }
 }
 </style>

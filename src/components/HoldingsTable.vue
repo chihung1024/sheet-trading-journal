@@ -274,7 +274,7 @@ onUnmounted(() => {
     padding: 8px 12px 8px 36px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: 1rem;
     background: var(--bg-secondary);
     color: var(--text-main);
     transition: all 0.2s ease;
@@ -294,7 +294,7 @@ onUnmounted(() => {
 }
 
 .filter-label {
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     color: var(--text-sub);
     font-weight: 600;
 }
@@ -305,7 +305,7 @@ onUnmounted(() => {
     border-radius: 8px;
     background: var(--bg-secondary);
     color: var(--text-main);
-    font-size: 0.9rem;
+    font-size: 1rem;
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -322,7 +322,7 @@ onUnmounted(() => {
 
 .summary-info { 
     font-family: 'JetBrains Mono', monospace; 
-    font-size: 0.9rem; 
+    font-size: 1rem; 
     background: var(--bg-secondary); 
     padding: 8px 14px; 
     border-radius: 8px; 
@@ -356,7 +356,7 @@ onUnmounted(() => {
 }
 
 .sort-icon { 
-    font-size: 0.75rem; 
+    font-size: 0.85rem; 
     margin-left: 4px; 
     opacity: 0.5; 
     transition: opacity 0.2s;
@@ -409,7 +409,7 @@ th.sortable:hover .sort-icon {
 
 .symbol-text { 
     font-weight: 700; 
-    font-size: 0.95rem; 
+    font-size: 1.05rem; 
     background: var(--bg-secondary); 
     color: var(--primary); 
     padding: 6px 12px; 
@@ -435,7 +435,7 @@ th.sortable:hover .sort-icon {
 }
 
 .price-change {
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     margin-top: 4px;
     font-weight: 600;
 }
@@ -447,7 +447,7 @@ th.sortable:hover .sort-icon {
 }
 
 .text-right { text-align: right; }
-.text-sub { color: var(--text-sub); font-size: 0.85rem; }
+.text-sub { color: var(--text-sub); font-size: 0.95rem; }
 .font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
 .font-bold { font-weight: 700; }
 
@@ -478,7 +478,7 @@ th.sortable:hover .sort-icon {
     padding: 6px 10px; 
     border-radius: 8px; 
     font-weight: 600; 
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     transition: all 0.2s ease;
 }
 
@@ -513,7 +513,7 @@ th.sortable:hover .sort-icon {
 .scroll-hint {
     text-align: center;
     padding: 12px;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     color: var(--text-sub);
     background: var(--bg-secondary);
     border-radius: 0 0 var(--radius) var(--radius);
