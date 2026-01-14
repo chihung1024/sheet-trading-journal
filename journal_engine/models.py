@@ -15,7 +15,7 @@ class TransactionRecord(BaseModel):
 
     @computed_field
     @property
-    def total_amount(self) -> float:
+    def total_amount(self) -> float
         """計算總交易金額 = 股數 × 單價 + 手續費 + 稅"""
         base_amount = abs(self.qty * self.price)
         return base_amount + self.commission + self.tax
@@ -69,6 +69,7 @@ class DividendRecord(BaseModel):
     fx_rate: float  # 匯率
     status: str = "pending"  # pending | confirmed
     notes: Optional[str] = None  # 備註
+    record_id: Optional[int] = None  # ✅ 新增：已確認的 transaction ID
 
 class PortfolioSnapshot(BaseModel):
     updated_at: str
