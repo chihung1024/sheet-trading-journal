@@ -3,7 +3,7 @@
     <div class="chart-header">
       <h3 class="chart-title">資產配置</h3>
       <div class="toggle-pills">
-        <button :class="{active: type==='tags'}" @click="type='tags'">策略</button>
+        <button :class="{active: type==='groups'}" @click="type='groups'">群組</button>
         <button :class="{active: type==='currency'}" @click="type='currency'">幣別</button>
       </div>
     </div>
@@ -22,7 +22,7 @@ import { usePortfolioStore } from '../stores/portfolio';
 const store = usePortfolioStore();
 const canvas = ref(null);
 let myChart = null;
-const type = ref('tags');
+const type = ref('groups');  // ✅ 預設顯示群組
 
 const drawChart = () => {
     if (!canvas.value) return;
@@ -30,10 +30,59 @@ const drawChart = () => {
     if (myChart) myChart.destroy();
 
     const dataMap = {};
-    store.holdings.forEach(h => {
-        const key = type.value === 'tags' ? (h.tag || 'Stock') : (h.currency || 'USD');
-        dataMap[key] = (dataMap[key] || 0) + h.market_value_twd;
-    });
+    
+    if (type.value === 'groups') {
+        // ✅ 群組模式：根據群組計算市值
+        const groups = store.groups || [];
+        const recordGroups = store.recordGroups || [];
+        
+        // 初始化所有群組為 0
+        groups.forEach(g => {
+            dataMap[g.name] = 0;
+        });
+        
+        // 遍歷所有持倉
+        store.holdings.forEach(h => {
+            // 找出該股票所有交易記錄
+            const symbolRecords = (store.records || []).filter(r => r.symbol === h.symbol);
+            
+            symbolRecords.forEach(record => {
+                // 找出該交易屬於哪些群組
+                const relatedGroups = recordGroups
+                    .filter(rg => rg.record_id === record.id)
+                    .map(rg => groups.find(g => g.id === rg.group_id))
+                    .filter(g => g !== undefined);
+                
+                if (relatedGroups.length > 0) {
+                    // 市值按群組數量平分
+                    const valuePerGroup = h.market_value_twd / relatedGroups.length;
+                    relatedGroups.forEach(g => {
+                        dataMap[g.name] = (dataMap[g.name] || 0) + valuePerGroup;
+                    });
+                } else {
+                    // 未分配群組
+                    dataMap['未分類'] = (dataMap['未分類'] || 0) + h.market_value_twd;
+                }
+            });
+        });
+        
+        // 移除數值為 0 的群組
+        Object.keys(dataMap).forEach(key => {
+            if (dataMap[key] === 0) delete dataMap[key];
+        });
+        
+    } else {
+        // 幣別模式（保留原有逻輯）
+        store.holdings.forEach(h => {
+            const key = h.currency || 'USD';
+            dataMap[key] = (dataMap[key] || 0) + h.market_value_twd;
+        });
+    }
+
+    // ✅ 如果沒有數據，顯示提示
+    if (Object.keys(dataMap).length === 0) {
+        dataMap['無數據'] = 1;
+    }
 
     myChart = new Chart(ctx, {
         type: 'doughnut',
@@ -41,7 +90,7 @@ const drawChart = () => {
             labels: Object.keys(dataMap),
             datasets: [{
                 data: Object.values(dataMap),
-                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'],
                 borderWidth: 2,
                 borderColor: '#ffffff'
             }]
@@ -50,7 +99,25 @@ const drawChart = () => {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } }
+                legend: { 
+                    position: 'right', 
+                    labels: { 
+                        boxWidth: 10, 
+                        font: { size: 11 },
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() || '#1f2937'
+                    } 
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${label}: NT$ ${value.toLocaleString()} (${percentage}%)`;
+                        }
+                    }
+                }
             },
             layout: { padding: 10 }
         }
@@ -59,6 +126,8 @@ const drawChart = () => {
 
 watch(type, drawChart);
 watch(() => store.holdings, async () => { await nextTick(); drawChart(); }, { deep: true });
+watch(() => store.groups, async () => { await nextTick(); drawChart(); }, { deep: true });  // ✅ 監聽群組變化
+watch(() => store.recordGroups, async () => { await nextTick(); drawChart(); }, { deep: true });  // ✅ 監聽關聯變化
 onMounted(async () => { await nextTick(); drawChart(); });
 </script>
 
@@ -75,57 +144,51 @@ onMounted(async () => { await nextTick(); drawChart(); });
     display: flex; 
     justify-content: space-between; 
     align-items: center; 
-    margin-bottom: 16px; /* 增加一點間距 */
+    margin-bottom: 16px;
 }
 
-/* 標題樣式 - 使用 CSS 變數適配深色模式 */
 .chart-title { 
     margin: 0; 
     font-size: 1.1rem; 
     font-weight: 700; 
-    color: var(--text-main); /* ✅ 改用變數 */
+    color: var(--text-main);
     padding-left: 10px;
-    border-left: 4px solid var(--primary); /* ✅ 改用變數 */
+    border-left: 4px solid var(--primary);
 }
 
-/* 切換按鈕容器 - 使用變數 */
 .toggle-pills { 
     display: flex; 
-    background: var(--bg-secondary); /* ✅ 改用變數，深色模式會變深灰 */
+    background: var(--bg-secondary);
     border-radius: 6px; 
     padding: 3px; 
-    border: 1px solid var(--border-color); /* ✅ 增加邊框 */
+    border: 1px solid var(--border-color);
 }
 
-/* 按鈕本體 */
 .toggle-pills button {
     border: none; 
     background: transparent; 
     padding: 4px 12px; 
     font-size: 0.85rem; 
     border-radius: 4px; 
-    color: var(--text-sub); /* ✅ 改用變數 */
+    color: var(--text-sub);
     cursor: pointer; 
     transition: all 0.2s ease;
     font-weight: 500;
 }
 
-/* 懸停效果 */
 .toggle-pills button:hover {
     color: var(--text-main);
 }
 
-/* 選中狀態 - 深色模式適配 */
 .toggle-pills button.active { 
-    background: var(--bg-card); /* ✅ 亮色是白，深色是深藍灰 */
-    color: var(--primary); /* ✅ 主色調 */
+    background: var(--bg-card);
+    color: var(--primary);
     font-weight: 600; 
     box-shadow: var(--shadow-sm); 
 }
 
-/* 針對深色模式的微調 (利用 :global(.dark) 補丁技巧，確保權重) */
 :global(.dark) .toggle-pills button.active {
-    background: #334155; /* 更明顯的深色高亮 */
+    background: #334155;
     color: #60a5fa;
 }
 
@@ -136,4 +199,3 @@ onMounted(async () => { await nextTick(); drawChart(); });
     min-height: 0;
 }
 </style>
-
