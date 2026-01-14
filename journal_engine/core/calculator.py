@@ -473,7 +473,7 @@ class PortfolioCalculator:
                     
                     # ✅ 取得對應日期的匯率
                     try:
-                        curr_fx = self.market.fx_rates.asof(latest_date)
+                        curr_fx = current_fx  # ✅ 強制使用當下最新匯率
                         prev_fx = self.market.fx_rates.asof(prev_date)
                         if pd.isna(curr_fx): curr_fx = current_fx
                         if pd.isna(prev_fx): prev_fx = current_fx
