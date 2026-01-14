@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { CONFIG } from '../config';
 import { useAuthStore } from './auth';
-import { useToast } from '../composables/useToast'; // ✅ 新增：引入 Toast
+import { useToast } from '../composables/useToast';
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -10,6 +10,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const holdings = ref([]);
     const history = ref([]);
     const records = ref([]);
+    const pending_dividends = ref([]);  // ✅ 新增：待確認配息列表
     const lastUpdate = ref('');
     const connectionStatus = ref('connected'); 
 
@@ -102,14 +103,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 stats.value = json.data.summary || {};
                 holdings.value = json.data.holdings || [];
                 history.value = json.data.history || [];
+                pending_dividends.value = json.data.pending_dividends || [];  // ✅ 新增
                 lastUpdate.value = json.data.updated_at; // 更新時間
-                console.log('✅ [fetchSnapshot] 數據已更新');
+                console.log('✅ [fetchSnapshot] 數據已更新，待確認配息:', pending_dividends.value.length, '筆');
             } else {
                 console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
             }
         } catch (error) {
             console.error('❌ [fetchSnapshot] 請求失敗:', error);
-            throw error; // 拋出讓 fetchAll 捕捉
+            throw error; // 抛出讓 fetchAll 捕捉
         }
     };
 
@@ -128,7 +130,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
         } catch (error) {
             console.error('❌ [fetchRecords] 請求失敗:', error);
-            throw error; // 拋出讓 fetchAll 捕捉
+            throw error; // 抛出讓 fetchAll 捕捉
         }
     };
 
@@ -136,7 +138,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const startPolling = () => {
         if (isPolling.value) return;
         
-        console.log('⏳ [SmartPolling] 開始監控數據更新...');
+        console.log('⌛ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
         const initialTime = lastUpdate.value; // 記錄當前的更新時間
@@ -224,6 +226,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         holdings, 
         history, 
         records, 
+        pending_dividends,  // ✅ 匯出
         lastUpdate, 
         unrealizedPnL, 
         connectionStatus,
