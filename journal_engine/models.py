@@ -49,6 +49,27 @@ class HoldingPosition(BaseModel):
     daily_change_percent: float = 0.0   # 今日漲跌幅 (%)
     daily_pl_twd: float = 0.0            # ✅ 新增：當日損益台幣金額 (正確計算)
 
+class DividendRecord(BaseModel):
+    """
+    配息記錄模型
+    
+    狀態說明：
+    - pending: 待確認（系統自動抓取，但未確認）
+    - confirmed: 已確認（使用者手動輸入或確認）
+    """
+    symbol: str
+    ex_date: str  # 除息日 (YYYY-MM-DD)
+    pay_date: Optional[str] = None  # 發放日 (YYYY-MM-DD)
+    shares_held: float  # 除息日持股數
+    dividend_per_share_gross: float  # 每股配息(稅前, USD)
+    total_gross: float  # 總配息(稅前, USD)
+    tax_rate: float = 30.0  # 稅率 (%)
+    total_net_usd: float  # 稅後配息 (USD)
+    total_net_twd: float  # 稅後配息 (TWD)
+    fx_rate: float  # 匯率
+    status: str = "pending"  # pending | confirmed
+    notes: Optional[str] = None  # 備註
+
 class PortfolioSnapshot(BaseModel):
     updated_at: str
     base_currency: str
@@ -56,3 +77,4 @@ class PortfolioSnapshot(BaseModel):
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
+    pending_dividends: List[DividendRecord] = []  # ✅ 新增：待確認配息列表
