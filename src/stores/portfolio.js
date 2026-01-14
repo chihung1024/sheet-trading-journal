@@ -176,7 +176,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             } catch (e) {
                 console.warn('⚠️ [SmartPolling] 檢查失敗:', e);
             }
-        }, 10000); // 每 10 秒檢查一次
+        }, 5000); // 每 10 秒檢查一次
     };
 
     // ✅ 新增：停止輪詢
