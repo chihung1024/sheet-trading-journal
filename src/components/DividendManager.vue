@@ -1,155 +1,71 @@
 <template>
   <div class="card dividend-manager">
-    <div class="header-section">
-      <div class="header-title">
-        <h3>配息管理</h3>
-        <span class="pending-count" v-if="pendingDividends.length > 0">
-          {{ pendingDividends.length }} 筆待確認
+    <div class="panel-header">
+      <div class="header-left">
+        <h3 class="panel-title">💰 待確認配息</h3>
+        <span v-if="currentGroupId !== 'ALL'" class="group-badge" :style="{ color: currentGroupColor, borderColor: currentGroupColor }">
+            {{ currentGroupName }}
         </span>
       </div>
       
-      <div class="header-actions" v-if="pendingDividends.length > 0">
-        <button class="btn btn-secondary" @click="confirmAll">
-          <span class="icon">✓</span>
-          全部確認
-        </button>
-        <button class="btn btn-tertiary" @click="refreshData">
-          <span class="icon">↻</span>
-          刷新
-        </button>
+      <div class="header-right">
+        <span class="stat-text" v-if="pendingDividends.length > 0">
+           共 {{ pendingDividends.length }} 筆待入帳
+           <span class="total-amount">(約 {{ formatCurrency(totalPendingAmountTWD) }} TWD)</span>
+        </span>
       </div>
     </div>
 
-    <!-- 空狀態 -->
-    <div v-if="pendingDividends.length === 0" class="empty-state">
-      <div class="empty-icon">🎉</div>
-      <p class="empty-title">沒有待確認的配息</p>
-      <p class="empty-desc">系統會自動抓取持股的配息資訊，您可以在此確認後寫入交易記錄。</p>
-    </div>
+    <div class="dividend-list">
+      <div v-if="pendingDividends.length === 0" class="empty-state">
+        <div class="empty-icon">🎉</div>
+        <p>目前沒有待確認的配息</p>
+        <small v-if="currentGroupId !== 'ALL'">
+            (僅顯示 {{ currentGroupName }} 群組的配息)
+        </small>
+        <small v-else>系統會自動根據持倉偵測除息日</small>
+      </div>
 
-    <!-- 配息列表 -->
-    <div v-else class="dividend-list">
       <div 
         v-for="(div, index) in pendingDividends" 
-        :key="`${div.symbol}_${div.ex_date}`"
-        class="dividend-card"
-        :class="{ editing: editingIndex === index }"
+        :key="index" 
+        class="dividend-item"
       >
-        <!-- 顯示模式 -->
-        <div v-if="editingIndex !== index" class="dividend-display">
-          <div class="dividend-header">
-            <div class="dividend-symbol">
-              <span class="symbol-text">{{ div.symbol }}</span>
-              <span class="badge badge-pending">{{ div.status === 'pending' ? '待確認' : '已確認' }}</span>
-            </div>
-            <div class="dividend-amount">
-              <span class="amount-twd">NT${{ formatNumber(div.total_net_twd, 0) }}</span>
-              <span class="amount-usd">${{ formatNumber(div.total_net_usd, 2) }}</span>
-            </div>
-          </div>
-          
-          <div class="dividend-details">
-            <div class="detail-row">
-              <span class="detail-label">除息日：</span>
-              <span class="detail-value">{{ div.ex_date }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">持股數：</span>
-              <span class="detail-value">{{ formatNumber(div.shares_held, 2) }} 股</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">每股配息：</span>
-              <span class="detail-value">${{ formatNumber(div.dividend_per_share_gross, 4) }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">稅前總額：</span>
-              <span class="detail-value">${{ formatNumber(div.total_gross, 2) }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">稅率：</span>
-              <span class="detail-value">{{ div.tax_rate }}%</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">匯率：</span>
-              <span class="detail-value">{{ formatNumber(div.fx_rate, 4) }}</span>
-            </div>
-          </div>
+        <div class="div-date">
+          <span class="month">{{ getMonth(div.ex_date) }}</span>
+          <span class="day">{{ getDay(div.ex_date) }}</span>
+          <span class="year">{{ getYear(div.ex_date) }}</span>
+        </div>
 
-          <div class="dividend-actions">
-            <button class="btn-action btn-edit" @click="editDividend(index)">
-              <span class="icon">✎</span>
-              編輯
-            </button>
-            <button class="btn-action btn-confirm" @click="confirmDividend(index)">
-              <span class="icon">✓</span>
-              確認
-            </button>
-            <button class="btn-action btn-ignore" @click="ignoreDividend(index)">
-              <span class="icon">✕</span>
-              忽略
-            </button>
+        <div class="div-info">
+          <div class="div-header">
+            <span class="symbol">{{ div.symbol }}</span>
+            <span class="share-info">{{ formatNumber(div.shares_held) }} 股 × ${{ div.dividend_per_share_gross }}</span>
+          </div>
+          <div class="div-meta">
+            預估發放日: {{ div.pay_date || 'N/A' }}
           </div>
         </div>
 
-        <!-- 編輯模式 -->
-        <div v-else class="dividend-edit">
-          <div class="edit-header">
-            <h4>編輯配息資訊 - {{ div.symbol }}</h4>
-          </div>
-          
-          <div class="edit-form">
-            <div class="form-group">
-              <label>發放日期</label>
-              <input 
-                type="date" 
-                v-model="editForm.pay_date" 
-                class="form-input"
-              >
+        <div class="div-amounts">
+            <div class="amount-row">
+                <span class="label">稅前</span>
+                <span class="val">{{ formatCurrency(div.total_gross, 'USD') }}</span>
             </div>
-            
-            <div class="form-group">
-              <label>稅率 (%)</label>
-              <input 
-                type="number" 
-                v-model.number="editForm.tax_rate" 
-                step="0.1"
-                min="0"
-                max="100"
-                class="form-input"
-                @input="recalculateNet"
-              >
+            <div class="amount-row net">
+                <span class="label">稅後 (30%)</span>
+                <span class="val highlight">{{ formatCurrency(div.total_net_usd, 'USD') }}</span>
             </div>
-            
-            <div class="form-group">
-              <label>稅後實收 (USD)</label>
-              <input 
-                type="number" 
-                v-model.number="editForm.total_net_usd" 
-                step="0.01"
-                class="form-input"
-              >
-              <span class="help-text">台幣約 NT${{ formatNumber(editForm.total_net_usd * div.fx_rate, 0) }}</span>
+             <div class="amount-row twd">
+                <span class="label">約合台幣</span>
+                <span class="val">{{ formatCurrency(div.total_net_twd, 'TWD') }}</span>
             </div>
-            
-            <div class="form-group">
-              <label>備註</label>
-              <textarea 
-                v-model="editForm.notes" 
-                rows="2"
-                class="form-input"
-                placeholder="選填"
-              ></textarea>
-            </div>
-          </div>
+        </div>
 
-          <div class="edit-actions">
-            <button class="btn-action btn-cancel" @click="cancelEdit">
-              取消
-            </button>
-            <button class="btn-action btn-save" @click="saveEdit(index)">
-              儲存
-            </button>
-          </div>
+        <div class="div-actions">
+          <button class="btn-confirm" @click="confirmDividend(div)" :disabled="isProcessing">
+            <span class="icon">✓</span> 確認入帳
+          </button>
         </div>
       </div>
     </div>
@@ -157,519 +73,298 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
-import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
-import { CONFIG } from '../config';
+import { createTransaction } from '../js/api';
 
 const store = usePortfolioStore();
-const auth = useAuthStore();
-const { addToast } = useToast();
+const toast = useToast();
+const isProcessing = ref(false);
 
-const editingIndex = ref(null);
-const editForm = ref({
-  pay_date: '',
-  tax_rate: 30.0,
-  total_net_usd: 0,
-  notes: ''
+// --- Phase 2: 群組連動 ---
+// 自動從 Store 取得「當前群組」的待確認配息
+const pendingDividends = computed(() => store.pendingDividends || []);
+
+const currentGroupId = computed(() => store.currentGroupId);
+const currentGroupName = computed(() => {
+    const group = store.availableGroups.find(g => g.id === currentGroupId.value);
+    return group ? group.name : currentGroupId.value;
+});
+const currentGroupColor = computed(() => {
+    const group = store.availableGroups.find(g => g.id === currentGroupId.value);
+    return group ? group.color : '#666';
 });
 
-// 從 store 中取得待確認配息
-const pendingDividends = computed(() => {
-  // 假設 store 會提供 pending_dividends
-  return store.pending_dividends || [];
+const totalPendingAmountTWD = computed(() => {
+    return pendingDividends.value.reduce((sum, d) => sum + (d.total_net_twd || 0), 0);
 });
 
-const formatNumber = (num, decimals = 2) => {
-  if (num === undefined || num === null || isNaN(num)) return '0';
-  return Number(num).toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
-  });
+// --- 日期格式化 ---
+const getYear = (d) => d.split('-')[0];
+const getMonth = (d) => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[parseInt(d.split('-')[1]) - 1];
+};
+const getDay = (d) => d.split('-')[2];
+
+const formatNumber = (val) => Number(val).toLocaleString();
+const formatCurrency = (val, currency = '') => {
+    const num = Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return currency ? `${currency === 'TWD' ? 'NT$' : '$'}${num}` : num;
 };
 
-const refreshData = async () => {
-  try {
-    await store.fetchAll();
-    addToast('資料已更新', 'success');
-  } catch (e) {
-    addToast('更新失敗', 'error');
-  }
-};
-
-const editDividend = (index) => {
-  const div = pendingDividends.value[index];
-  editingIndex.value = index;
-  editForm.value = {
-    pay_date: div.pay_date || div.ex_date,
-    tax_rate: div.tax_rate,
-    total_net_usd: div.total_net_usd,
-    notes: div.notes || ''
-  };
-};
-
-const cancelEdit = () => {
-  editingIndex.value = null;
-  editForm.value = {
-    pay_date: '',
-    tax_rate: 30.0,
-    total_net_usd: 0,
-    notes: ''
-  };
-};
-
-const recalculateNet = () => {
-  const div = pendingDividends.value[editingIndex.value];
-  if (!div) return;
-  
-  const taxRate = editForm.value.tax_rate / 100;
-  editForm.value.total_net_usd = div.total_gross * (1 - taxRate);
-};
-
-const saveEdit = async (index) => {
-  const div = pendingDividends.value[index];
-  
-  // 更新配息資訊
-  const updatedDiv = {
-    ...div,
-    ...editForm.value,
-    total_net_twd: editForm.value.total_net_usd * div.fx_rate
-  };
-  
-  // 確認配息
-  await confirmDividendWithData(updatedDiv);
-  
-  cancelEdit();
-};
-
-const confirmDividend = async (index) => {
-  const div = pendingDividends.value[index];
-  await confirmDividendWithData(div);
-};
-
-const confirmDividendWithData = async (divData) => {
-  try {
-    // 呼叫 API 寫入交易記錄
-    const response = await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${auth.token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        txn_date: divData.pay_date || divData.ex_date,
-        symbol: divData.symbol,
-        txn_type: 'DIV',
-        qty: divData.shares_held,
-        price: divData.total_net_usd / divData.shares_held,  // 每股稅後配息
-        commission: 0,
-        tax: divData.total_gross * (divData.tax_rate / 100),  // 稅金
-        tag: `配息-${divData.ex_date}`
-      })
-    });
+// --- 核心功能：確認配息 ---
+const confirmDividend = async (divData) => {
+    if (isProcessing.value) return;
     
-    const json = await response.json();
-    
-    if (json.success) {
-      addToast(`${divData.symbol} 配息已確認`, 'success');
-      // 重新載入數據
-      await store.fetchAll();
-    } else {
-      addToast(json.error || '確認失敗', 'error');
-    }
-  } catch (e) {
-    console.error('確認配息錯誤:', e);
-    addToast('連線錯誤', 'error');
-  }
-};
+    // 防呆確認
+    const msg = `確定要將 ${divData.symbol} 的配息 US$${divData.total_net_usd.toFixed(2)} 入帳嗎？\n\n` +
+                (currentGroupId.value !== 'ALL' 
+                 ? `此紀錄將自動標記為群組: [${currentGroupName.value}]` 
+                 : `此紀錄將歸入總帳 (未指定群組)`);
+                 
+    if (!confirm(msg)) return;
 
-const confirmAll = async () => {
-  if (!confirm(`確定要確認所有 ${pendingDividends.value.length} 筆配息嗎？`)) {
-    return;
-  }
-  
-  let successCount = 0;
-  let failCount = 0;
-  
-  for (const div of pendingDividends.value) {
+    isProcessing.value = true;
     try {
-      await confirmDividendWithData(div);
-      successCount++;
-    } catch (e) {
-      failCount++;
-    }
-  }
-  
-  if (successCount > 0) {
-    addToast(`成功確認 ${successCount} 筆配息`, 'success');
-  }
-  if (failCount > 0) {
-    addToast(`${failCount} 筆配息確認失敗`, 'error');
-  }
-};
+        // 1. 建構交易物件
+        const payload = {
+            date: divData.ex_date, // 通常記在除息日或發放日，這邊預設除息日
+            type: 'DIV',
+            symbol: divData.symbol,
+            qty: 0, // 配息不影響持股數，通常記 0 或該批次的持股數(僅供參考)
+            price: divData.total_net_usd, // Price 欄位存入「稅後總金額」
+            commission: 0,
+            tax: 0, // 系統計算時已扣 30%，這裡設 0 避免重複扣
+            tag: currentGroupId.value !== 'ALL' ? currentGroupId.value : '' // 【關鍵】自動帶入當前群組
+        };
 
-const ignoreDividend = (index) => {
-  // 此功能可以先留著，未來可以實作「永久忽略」功能
-  addToast('此功能尚未實作，請直接確認或編輯', 'info');
+        // 2. 送出 API
+        await createTransaction(payload);
+        
+        toast.success(`${divData.symbol} 配息已入帳`);
+        
+        // 3. 重新整理 (讓後端重新計算並移除 Pending 狀態)
+        await store.triggerUpdate(); 
+
+    } catch (e) {
+        console.error(e);
+        toast.error('入帳失敗: ' + e.message);
+    } finally {
+        isProcessing.value = false;
+    }
 };
 </script>
 
 <style scoped>
 .dividend-manager {
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  /* max-height: 500px;  如果需要固定高度可開啟 */
 }
 
-.header-section {
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
-  gap: 16px;
-}
-
-.header-title {
-  display: flex;
-  align-items: center;
   gap: 12px;
 }
 
-.header-title h3 {
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.panel-title {
   margin: 0;
-  font-size: 1.3rem;
-  font-weight: 700;
+  font-size: 1.2rem;
   color: var(--text-main);
+  border-left: 4px solid var(--warning, #f59e0b);
+  padding-left: 12px;
 }
 
-.pending-count {
-  background: var(--warning);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
+.group-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border: 1px solid currentColor;
+    border-radius: 12px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.05);
 }
 
-.header-actions {
+.stat-text {
+    font-size: 0.9rem;
+    color: var(--text-sub);
+}
+
+.total-amount {
+    color: var(--text-main);
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+.dividend-list {
   display: flex;
+  flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
 }
 
-.btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 0.95rem;
-}
-
-.btn-secondary {
-  background: var(--success);
-  color: white;
-}
-
-.btn-secondary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-.btn-tertiary {
-  background: var(--bg-secondary);
-  color: var(--text-sub);
-  border: 1px solid var(--border-color);
-}
-
-.btn-tertiary:hover {
-  background: var(--border-color);
-}
-
-/* 空狀態 */
 .empty-state {
   text-align: center;
-  padding: 80px 20px;
-}
-
-.empty-icon {
-  font-size: 4rem;
-  margin-bottom: 16px;
-}
-
-.empty-title {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: var(--text-main);
-  margin-bottom: 8px;
-}
-
-.empty-desc {
+  padding: 40px 20px;
   color: var(--text-sub);
-  font-size: 0.95rem;
-  max-width: 500px;
-  margin: 0 auto;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px dashed var(--border-color);
 }
 
-/* 配息列表 */
-.dividend-list {
+.empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+/* 單筆配息卡片 */
+.dividend-item {
   display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
   gap: 16px;
-}
-
-.dividend-card {
+  padding: 16px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  transition: all 0.2s ease;
+  border-radius: 12px;
+  transition: all 0.2s;
 }
 
-.dividend-card:hover {
+.dividend-item:hover {
+  transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
   border-color: var(--primary);
 }
 
-.dividend-card.editing {
-  border-color: var(--warning);
-  background: rgba(245, 158, 11, 0.05);
-}
-
-/* 顯示模式 */
-.dividend-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.dividend-symbol {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.symbol-text {
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: var(--primary);
-}
-
-.badge {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.badge-pending {
-  background: rgba(245, 158, 11, 0.15);
-  color: var(--warning);
-}
-
-.dividend-amount {
-  text-align: right;
-}
-
-.amount-twd {
-  display: block;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--success);
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.amount-usd {
-  display: block;
-  font-size: 0.9rem;
-  color: var(--text-sub);
-  font-family: 'JetBrains Mono', monospace;
-  margin-top: 4px;
-}
-
-.dividend-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 16px;
-  background: var(--bg-secondary);
-  border-radius: 8px;
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.9rem;
-}
-
-.detail-label {
-  color: var(--text-sub);
-  font-weight: 500;
-}
-
-.detail-value {
-  color: var(--text-main);
-  font-weight: 600;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.dividend-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.btn-action {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 14px;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-edit {
-  background: var(--bg-secondary);
-  color: var(--text-sub);
-}
-
-.btn-edit:hover {
-  background: var(--primary);
-  color: white;
-}
-
-.btn-confirm {
-  background: var(--success);
-  color: white;
-}
-
-.btn-confirm:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-.btn-ignore {
-  background: var(--bg-secondary);
-  color: var(--danger);
-}
-
-.btn-ignore:hover {
-  background: var(--danger);
-  color: white;
-}
-
-/* 編輯模式 */
-.edit-header {
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.edit-header h4 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.edit-form {
-  display: grid;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.form-group {
+/* 日期區塊 */
+.div-date {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-sub);
-}
-
-.form-input {
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  font-size: 1rem;
-  color: var(--text-main);
-  background: var(--bg-card);
-  transition: all 0.2s ease;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.help-text {
-  font-size: 0.85rem;
-  color: var(--text-sub);
-  margin-top: 4px;
-}
-
-.edit-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.btn-cancel {
+  align-items: center;
+  justify-content: center;
   background: var(--bg-secondary);
-  color: var(--text-sub);
+  padding: 8px 12px;
+  border-radius: 8px;
+  min-width: 60px;
 }
 
-.btn-cancel:hover {
-  background: var(--border-color);
+.month { font-size: 0.75rem; color: var(--text-sub); text-transform: uppercase; font-weight: 700; }
+.day { font-size: 1.4rem; font-weight: 700; color: var(--text-main); line-height: 1.1; }
+.year { font-size: 0.7rem; color: var(--text-sub); }
+
+/* 資訊區塊 */
+.div-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.btn-save {
-  background: var(--primary);
-  color: white;
+.div-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
 }
 
-.btn-save:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
+.symbol { font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
+.share-info { font-size: 0.9rem; color: var(--text-sub); }
+
+.div-meta {
+    font-size: 0.8rem;
+    color: var(--text-sub);
+    font-family: 'JetBrains Mono', monospace;
 }
 
-/* 響應式 */
-@media (max-width: 768px) {
-  .header-section {
+/* 金額區塊 */
+.div-amounts {
+    display: flex;
     flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .header-actions {
-    width: 100%;
-  }
-  
-  .header-actions .btn {
-    flex: 1;
-  }
-  
-  .dividend-details {
-    grid-template-columns: 1fr;
-  }
-  
-  .dividend-actions {
-    flex-wrap: wrap;
-  }
-  
-  .btn-action {
-    flex: 1;
-  }
+    align-items: flex-end;
+    gap: 2px;
+    min-width: 120px;
+}
+
+.amount-row {
+    display: flex;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-sub);
+}
+
+.amount-row.net {
+    font-size: 1rem;
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.amount-row.twd {
+    font-size: 0.8rem;
+    opacity: 0.8;
+}
+
+.val.highlight { color: var(--success); }
+
+/* 按鈕區塊 */
+.btn-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--success);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-confirm:hover:not(:disabled) {
+  background: #059669; /* emerald-600 */
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-confirm:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--text-sub);
+}
+
+/* RWD 響應式 */
+@media (max-width: 768px) {
+    .dividend-item {
+        grid-template-columns: auto 1fr;
+        grid-template-rows: auto auto;
+        gap: 12px;
+    }
+
+    .div-amounts {
+        grid-column: 2;
+        align-items: flex-start;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 4px;
+    }
+    
+    .div-actions {
+        grid-column: 1 / -1;
+        width: 100%;
+    }
+    
+    .btn-confirm {
+        width: 100%;
+        justify-content: center;
+        padding: 12px;
+    }
 }
 </style>
