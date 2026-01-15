@@ -143,8 +143,11 @@ const formatNumber = (num, d=0) => {
     return Number(num).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 };
 
+// ✅ 修改：使用 currentSnapshot.holdings 支援群組切換
+const holdings = computed(() => store.currentSnapshot.holdings || []);
+
 const totalMarketValue = computed(() => {
-    return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
+    return holdings.value.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
 });
 
 const sortBy = (key) => {
@@ -162,7 +165,7 @@ const getSortIcon = (key) => {
 };
 
 const filteredHoldings = computed(() => {
-    let result = store.holdings;
+    let result = holdings.value;  // ✅ 使用當前群組的持倉
     
     if (searchQuery.value) {
         result = result.filter(h => 
