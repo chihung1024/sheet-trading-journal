@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { CONFIG } from '../config';
 import { useAuthStore } from './auth';
 import { useToast } from '../composables/useToast';
+import { GroupManager } from '../config/groups';  // ✅ 新增
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -17,6 +18,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     // ✅ 新增：輪詢控制變數
     const isPolling = ref(false);
     let pollTimer = null;
+
+    // ✅ 新增：群組相關狀態
+    const groupManager = new GroupManager();
+    const currentGroupId = ref('all');  // 當前選中的群組 ID
+    const groupSnapshots = ref({});     // 儲存各群組的快照 { 'all': {...}, 'long-term': {...} }
+    const showGroupManagerModal = ref(false);  // 群組管理器 Modal 顯示狀態
 
     // ✅ 保留：Tag 1.10 的 getToken 方法
     const getToken = () => {
@@ -81,6 +88,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     console.error('❌ [fetchRecords] 錯誤:', err);
                 })
             ]);
+            
+            // ✅ 新增：載入後自動計算當前群組快照
+            if (currentGroupId.value !== 'all') {
+                calculateGroupSnapshot(currentGroupId.value);
+            }
+            
             console.log('✅ [fetchAll] 數據載入完成');
         } catch (error) {
             console.error('❌ [fetchAll] 發生嚴重錯誤:', error);
@@ -105,6 +118,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 history.value = json.data.history || [];
                 pending_dividends.value = json.data.pending_dividends || [];  // ✅ 新增
                 lastUpdate.value = json.data.updated_at; // 更新時間
+                
+                // ✅ 儲存「全部紀錄」的快照
+                groupSnapshots.value['all'] = {
+                    summary: stats.value,
+                    holdings: holdings.value,
+                    history: history.value,
+                    updated_at: lastUpdate.value
+                };
+                
                 console.log('✅ [fetchSnapshot] 數據已更新，待確認配息:', pending_dividends.value.length, '筆');
             } else {
                 console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
@@ -155,7 +177,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
             try {
                 // 2. 輕量檢查 (只抓 Snapshot 檢查 updated_at)
-                // 注意：這裡不呼叫 fetchSnapshot() 以免觸發大量 console log 和 UI 更新
                 const json = await fetchWithAuth('/api/portfolio');
                 
                 if (json && json.success && json.data) {
@@ -217,22 +238,147 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 新增：前端即時計算群組快照
+    const calculateGroupSnapshot = (groupId) => {
+        const group = groupManager.getGroup(groupId);
+        if (!group || groupId === 'all') return;
+        
+        console.log(`📊 計算群組快照: ${group.name} (${groupId})`);
+        
+        // 篩選該群組的交易紀錄
+        const filteredRecords = records.value.filter(record => {
+            const recordGroups = groupManager.getRecordGroups(record.tag);
+            return recordGroups.includes(groupId);
+        });
+        
+        // 篩選該群組的持倉
+        const filteredHoldings = holdings.value.filter(holding => {
+            const relatedRecords = filteredRecords.filter(r => r.symbol === holding.symbol);
+            return relatedRecords.length > 0;
+        });
+        
+        // 計算群組總市值 (簡化版)
+        const totalValue = filteredHoldings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
+        const totalPnl = filteredHoldings.reduce((sum, h) => sum + (h.pnl_twd || 0), 0);
+        const investedCapital = totalValue - totalPnl;
+        
+        // 儲存快照
+        groupSnapshots.value[groupId] = {
+            summary: {
+                total_value: totalValue,
+                invested_capital: investedCapital,
+                total_pnl: totalPnl,
+                realized_pnl: stats.value.realized_pnl || 0,  // 比例估算
+                twr: stats.value.twr || 0,
+                xirr: stats.value.xirr || 0,
+                benchmark_twr: stats.value.benchmark_twr || 0,
+            },
+            holdings: filteredHoldings,
+            history: history.value,  // 歷史數據不篩選，用於圖表顯示
+            updated_at: lastUpdate.value,
+        };
+        
+        console.log(`✅ 群組 ${group.name} 快照已更新:`, {
+            持倉數: filteredHoldings.length,
+            總市值: totalValue.toFixed(0),
+            總損益: totalPnl.toFixed(0)
+        });
+    };
+
+    // ✅ 新增：切換群組
+    const switchGroup = async (groupId) => {
+        console.log(`🔄 切換群組: ${groupId}`);
+        currentGroupId.value = groupId;
+        
+        // 如果是「全部紀錄」，使用完整快照
+        if (groupId === 'all') {
+            return;
+        }
+        
+        // 如果該群組快照不存在，則計算
+        if (!groupSnapshots.value[groupId]) {
+            calculateGroupSnapshot(groupId);
+        }
+    };
+
+    // ✅ 新增：群組管理方法
+    const addGroup = (params) => {
+        const newGroup = groupManager.addGroup(params);
+        return newGroup;
+    };
+    
+    const updateGroup = (id, updates) => {
+        return groupManager.updateGroup(id, updates);
+    };
+    
+    const deleteGroup = (id) => {
+        const success = groupManager.deleteGroup(id);
+        if (success && currentGroupId.value === id) {
+            // 如果刪除的是當前群組，切換到「全部」
+            currentGroupId.value = 'all';
+        }
+        return success;
+    };
+    
+    const reorderGroups = (orderedIds) => {
+        groupManager.reorderGroups(orderedIds);
+    };
+
     // Getters
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+    
+    // ✅ 新增：群組相關 getters
+    const groups = computed(() => groupManager.getAllGroups());
+    
+    const currentGroup = computed(() => 
+        groups.value.find(g => g.id === currentGroupId.value) || groups.value[0]
+    );
+    
+    const currentSnapshot = computed(() => 
+        groupSnapshots.value[currentGroupId.value] || {
+            summary: stats.value,
+            holdings: holdings.value,
+            history: history.value,
+            updated_at: lastUpdate.value
+        }
+    );
+    
+    const filteredStats = computed(() => currentSnapshot.value.summary || {});
+    const filteredHoldings = computed(() => currentSnapshot.value.holdings || []);
+    const filteredHistory = computed(() => currentSnapshot.value.history || []);
 
     return { 
         loading, 
-        stats, 
+        stats,
         holdings, 
         history, 
         records, 
-        pending_dividends,  // ✅ 匯出
+        pending_dividends,
         lastUpdate, 
         unrealizedPnL, 
         connectionStatus,
-        isPolling, // ✅ 匯出此狀態供 UI 顯示
+        isPolling,
+        
+        // ✅ 新增：群組相關狀態與方法
+        groups,
+        currentGroupId,
+        currentGroup,
+        currentSnapshot,
+        filteredStats,
+        filteredHoldings,
+        filteredHistory,
+        showGroupManagerModal,
+        groupManager,  // 暴露給組件使用
+        
+        // 方法
         fetchAll, 
         fetchRecords, 
-        triggerUpdate
+        triggerUpdate,
+        switchGroup,
+        calculateGroupSnapshot,
+        addGroup,
+        updateGroup,
+        deleteGroup,
+        reorderGroups,
     };
 });
