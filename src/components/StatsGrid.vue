@@ -12,7 +12,7 @@
       <div class="stat-footer">
         <div class="footer-item">
             <span class="f-label">投入成本</span> 
-            <span class="f-val">{{ formatNumber(stats.invested_capital) }}</span>
+            <span class="f-val">{{ formatNumber(summary.invested_capital) }}</span>
         </div>
       </div>
     </div>
@@ -73,7 +73,7 @@
         <span class="icon-box">🎯</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
+        <div class="stat-value">{{ summary.twr || 0 }}<span class="percent">%</span></div>
       </div>
       <div class="stat-footer">
          <span class="text-sub">TWR (策略表現)</span>
@@ -86,8 +86,8 @@
         <span class="icon-box">🚀</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value" :class="(stats.xirr || 0) >= 0 ? 'text-green' : 'text-red'">
-          {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
+        <div class="stat-value" :class="(summary.xirr || 0) >= 0 ? 'text-green' : 'text-red'">
+          {{ (summary.xirr || 0) >= 0 ? '+' : '' }}{{ (summary.xirr || 0).toFixed(2) }}<span class="percent">%</span>
         </div>
       </div>
       <div class="stat-footer">
@@ -102,32 +102,30 @@ import { computed, ref, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
-const stats = computed(() => store.stats || {});
-const history = computed(() => store.history || []);
+
+// 【關鍵修改】對接新的 Store Getter 架構
+// 原本是 store.stats，現在改為 store.summary (對應 GroupStats.summary)
+const summary = computed(() => store.summary || {});
 const holdings = computed(() => store.holdings || []);
 
-// ✅ 修正：直接使用後端計算好的 total_pnl
-const totalPnL = computed(() => stats.value.total_pnl || 0);
+// 從 summary 中取得總損益與已實現損益
+const totalPnL = computed(() => summary.value.total_pnl || 0);
+const realizedPnL = computed(() => summary.value.realized_pnl || 0);
 
-// 計算已實現損益 (從後端 API 獲取)
-const realizedPnL = computed(() => stats.value.realized_pnl || 0);
-
-// ✅ 修正：未實現損益 = 總損益 - 已實現損益
+// 計算未實現損益
 const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
 
 // 計算 ROI
 const roi = computed(() => {
-  if (!stats.value.invested_capital) return '0.00';
-  return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
+  if (!summary.value.invested_capital) return '0.00';
+  return ((unrealizedPnL.value / summary.value.invested_capital) * 100).toFixed(2);
 });
 
-// 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
+// 判斷美股盤中時間 (21:30 - 05:00)
 const isUSMarketOpen = computed(() => {
   const now = new Date();
   const hour = now.getHours();
   const minute = now.getMinutes();
-  
-  // 晚上 9:30 後 或 凌晨 5:00 前
   if (hour >= 21 || hour < 5) {
     if (hour === 21 && minute < 30) return false;
     return true;
@@ -135,45 +133,26 @@ const isUSMarketOpen = computed(() => {
   return false;
 });
 
-// 動態標題
-const pnlLabel = computed(() => {
-  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益';
-});
+const pnlLabel = computed(() => isUSMarketOpen.value ? '美股盤中損益' : '今日損益');
+const pnlDescription = computed(() => isUSMarketOpen.value ? '包含今日股價、匯率及交易影響' : '包含昨日股價、今日匯率變化');
+const pnlTooltip = computed(() => '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響');
 
-// 動態說明
-const pnlDescription = computed(() => {
-  if (isUSMarketOpen.value) {
-    return '包含今日股價、匯率及交易影響';
-  } else {
-    return '包含昨日股價、今日匯率變化';
-  }
-});
-
-// Tooltip 完整說明
-const pnlTooltip = computed(() => {
-  return '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響';
-});
-
-// 核心修正：直接使用後端計算好的 daily_pl_twd
-// 後端使用 Modified Dietz 方法，公式：daily_pl = ending_value - beginning_value - cashflow
+// 計算今日損益 (加總所有持倉的 daily_pl_twd)
+// 注意：store.holdings 已經是根據當前群組篩選過的，所以這裡的加總也是該群組的今日損益
 const dailyPnL = computed(() => {
-  // 直接加總所有持股的 daily_pl_twd
   return holdings.value.reduce((sum, holding) => {
     return sum + (holding.daily_pl_twd || 0);
   }, 0);
 });
 
-// 計算今日損益百分比
+// 計算今日 ROI
 const dailyRoi = computed(() => {
-  // 使用昨日總資產作為基準
-  // 昨日總資產 = 今日總資產 - 今日損益
-  const yesterdayValue = stats.value.total_value - dailyPnL.value;
-  
+  const yesterdayValue = summary.value.total_value - dailyPnL.value;
   if (!yesterdayValue || yesterdayValue === 0) return '0.00';
   return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
 });
 
-// 數字動畫
+// 數字動畫 Hook
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -183,7 +162,7 @@ const useAnimatedNumber = (targetVal) => {
   return computed(() => Math.round(current.value).toLocaleString('zh-TW'));
 };
 
-const displayTotalValue = useAnimatedNumber(computed(() => stats.value.total_value));
+const displayTotalValue = useAnimatedNumber(computed(() => summary.value.total_value));
 const displayUnrealized = useAnimatedNumber(unrealizedPnL);
 const displayRealized = useAnimatedNumber(realizedPnL);
 const displayDaily = useAnimatedNumber(dailyPnL);
