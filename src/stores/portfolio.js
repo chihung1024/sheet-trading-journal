@@ -166,7 +166,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
             try {
                 // 2. 輕量檢查 (只抓 Snapshot 檢查 updated_at)
-                // 注意：這裡不呼叫 fetchSnapshot() 以免觸發大量 console log 和 UI 更新
                 const json = await fetchWithAuth('/api/portfolio');
                 
                 if (json && json.success && json.data) {
@@ -250,7 +249,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const calculateGroupSnapshot = (groupId) => {
-        const group = groupManager.getGroupById(groupId);
+        const group = groupManager.getGroup(groupId);  // ✅ 修正方法名
         if (!group) return;
         
         console.log(`🧮 計算群組快照: ${group.name}`);
@@ -289,8 +288,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     // ✅ 新增：群組 CRUD 操作
-    const addGroup = (name, icon, color, tags) => {
-        return groupManager.addGroup(name, icon, color, tags);
+    const addGroup = (name, icon, color, tags, description) => {
+        return groupManager.addGroup(name, icon, color, tags, description);
     };
 
     const updateGroup = (id, updates) => {
@@ -314,7 +313,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     
     // ✅ 新增：群組相關 getters
     const groups = computed(() => groupManager.getAllGroups());
-    const currentGroup = computed(() => groupManager.getGroupById(currentGroupId.value));
+    const currentGroup = computed(() => groupManager.getGroup(currentGroupId.value));  // ✅ 修正方法名
     const currentSnapshot = computed(() => {
         return groupSnapshots.value[currentGroupId.value] || {
             summary: stats.value,
