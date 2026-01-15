@@ -40,7 +40,9 @@
                     <th @click="sortBy('qty')" class="text-right sortable">
                         股數 <span class="sort-icon">{{ getSortIcon('qty') }}</span>
                     </th>
-                    <th @click="sortBy('avg_cost_usd')" class="text-right sortable">
+                    <th class="hidden-mobile">策略群組</th>
+                    
+                    <th @click="sortBy('avg_cost_usd')" class="text-right sortable hidden-mobile">
                         成本 (USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
                     </th>
                     <th @click="sortBy('current_price_origin')" class="text-right sortable">
@@ -62,9 +64,14 @@
             </thead>
             <tbody>
                  <tr v-if="filteredHoldings.length === 0">
-                    <td colspan="8" class="empty-state">
+                    <td colspan="9" class="empty-state">
                         <div class="empty-icon">📊</div>
-                        <div>目前無持倉數據</div>
+                        <div>
+                            {{ store.holdings.length === 0 && store.currentGroupId !== 'ALL' 
+                               ? `群組 [${currentGroupName}] 目前無持倉` 
+                               : '目前無符合條件的持倉' 
+                            }}
+                        </div>
                     </td>
                 </tr>
                 <tr 
@@ -80,16 +87,28 @@
                             <span class="symbol-badge" v-if="h.pnl_percent > 50">🔥</span>
                         </div>
                     </td>
+                    
                     <td class="text-right font-num">{{ formatNumber(h.qty, 2) }}</td>
-                    <td class="text-right font-num text-sub">{{ formatNumber(h.avg_cost_usd, 2) }}</td>
+                    
+                    <td class="hidden-mobile">
+                        <div class="tags-container" v-if="h.tag">
+                            <span class="tag-pill" :title="h.tag">{{ h.tag }}</span>
+                        </div>
+                        <span v-else class="text-sub">-</span>
+                    </td>
+
+                    <td class="text-right font-num text-sub hidden-mobile">{{ formatNumber(h.avg_cost_usd, 2) }}</td>
+                    
                     <td class="text-right font-num">
                         <div>{{ formatNumber(h.current_price_origin, 2) }}</div>
                         <div class="price-change" :class="getTrendClass(h.daily_change_usd)">
                             {{ h.daily_change_usd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_change_usd, 2) }}
-                            ({{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%)
+                            <span class="change-pct">({{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%)</span>
                         </div>
                     </td>
+                    
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
+                    
                     <td class="text-right font-num" :class="getTrendClass(h.daily_pl_twd)">
                         <div class="daily-pnl-wrapper">
                             <span class="pnl-value">
@@ -97,11 +116,13 @@
                             </span>
                         </div>
                     </td>
+                    
                     <td class="text-right font-num" :class="getTrendClass(h.pnl_twd)">
                         <span class="pnl-value">
                             {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
                         </span>
                     </td>
+                    
                     <td class="text-right font-num">
                         <span class="roi-badge" :class="getTrendClass(h.pnl_percent, true)">
                             {{ h.pnl_percent >= 0 ? '+' : '' }}{{ safeNum(h.pnl_percent) }}%
@@ -131,7 +152,12 @@ const filterStatus = ref('all');
 const highlightedSymbol = ref(null);
 
 const displayLimit = ref(50);
-const scrollTop = ref(0);
+
+// Helper: 取得當前群組名稱
+const currentGroupName = computed(() => {
+    const group = store.availableGroups.find(g => g.id === store.currentGroupId);
+    return group ? group.name : store.currentGroupId;
+});
 
 const safeNum = (val) => {
     if (val === undefined || val === null || isNaN(val)) return '0.00';
@@ -162,7 +188,7 @@ const getSortIcon = (key) => {
 };
 
 const filteredHoldings = computed(() => {
-    let result = store.holdings;
+    let result = store.holdings || [];
     
     if (searchQuery.value) {
         result = result.filter(h => 
@@ -336,21 +362,19 @@ onUnmounted(() => {
     overflow-y: auto;
 }
 
+/* 捲軸美化 */
 .table-container::-webkit-scrollbar {
     width: 8px;
     height: 8px;
 }
-
 .table-container::-webkit-scrollbar-track {
     background: var(--bg-secondary);
     border-radius: 4px;
 }
-
 .table-container::-webkit-scrollbar-thumb {
     background: var(--border-color);
     border-radius: 4px;
 }
-
 .table-container::-webkit-scrollbar-thumb:hover {
     background: var(--text-sub);
 }
@@ -434,10 +458,35 @@ th.sortable:hover .sort-icon {
     50% { transform: translateY(-4px); }
 }
 
+/* Phase 2: 標籤樣式 */
+.tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.tag-pill {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-sub);
+    white-space: nowrap;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .price-change {
     font-size: 0.85rem;
     margin-top: 4px;
     font-weight: 600;
+}
+
+.change-pct {
+    margin-left: 4px;
+    font-weight: 400;
+    opacity: 0.9;
 }
 
 .daily-pnl-wrapper {
@@ -538,6 +587,10 @@ th.sortable:hover .sort-icon {
     
     .table-container {
         max-height: 400px;
+    }
+    
+    .hidden-mobile {
+        display: none;
     }
 }
 </style>
