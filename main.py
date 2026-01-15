@@ -165,11 +165,23 @@ def main():
     # 為了保持與現有 API 相容，預設上傳 "all" 群組
     if 'all' in all_snapshots:
         api_client.upload_portfolio(all_snapshots['all'])
-        print("✅ 已上傳「全部紀錄」快照")
+        print("✅ 已上傳「全部紀錄」快照至 D1")
     
-    # ✅ TODO: 未來可擴展為上傳多個群組快照
-    # for group_id, snapshot in all_snapshots.items():
-    #     api_client.upload_portfolio(snapshot, group_id=group_id)
+    # ✅ 新增：將所有群組快照儲存為 JSON 檔
+    output_dir = "output"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for group_id, snapshot in all_snapshots.items():
+        output_file = os.path.join(output_dir, f"portfolio_snapshot_{group_id}.json")
+        
+        # 轉換為 JSON 格式
+        snapshot_dict = snapshot.dict()
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(snapshot_dict, f, ensure_ascii=False, indent=2)
+        
+        group_name = groups_config[group_id].get('name', group_id)
+        print(f"✅ 已儲存「{group_name}」快照: {output_file}")
     
     print("\n" + "="*60)
     print("✅ 所有任務完成！")
