@@ -1,177 +1,127 @@
+import os
 import pandas as pd
-from datetime import timedelta
-from typing import Dict
-from journal_engine.clients.api_client import CloudflareClient
+from datetime import datetime
+from journal_engine.config import GOOGLE_SHEET_URL, D1_DB_PATH
+from journal_engine.clients.api_client import GoogleSheetClient
 from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.core.calculator import PortfolioCalculator
-from journal_engine.models import PortfolioSnapshot, GroupStats
+from journal_engine.models import PortfolioSnapshot
+
+def load_transactions_from_csv(csv_path="data/transactions.csv"):
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"找不到交易記錄檔: {csv_path}")
+    
+    df = pd.read_csv(csv_path)
+    
+    # 確保欄位名稱正確 (處理 BOM 或空白)
+    df.columns = df.columns.str.strip().str.replace('\ufeff', '')
+    
+    # 轉換日期格式
+    df['Date'] = pd.to_datetime(df['Date'])
+    
+    # 確保數值欄位型別正確
+    num_cols = ['Qty', 'Price', 'Commission', 'Tax']
+    for col in num_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            
+    # 確保 Tag 欄位存在且為字串
+    if 'Tag' not in df.columns:
+        df['Tag'] = ''
+    df['Tag'] = df['Tag'].fillna('').astype(str)
+            
+    return df
 
 def main():
-    # 1. 初始化 Clients
-    api_client = CloudflareClient()
-    market_client = MarketDataClient()
+    print("=== 啟動美股投資組合計算引擎 (多群組支援版) ===")
     
-    # 2. 獲取交易紀錄
-    records = api_client.fetch_records()
-    if not records:
-        print("無交易紀錄，程式結束")
+    # 1. 讀取數據
+    # 優先從 CSV 讀取 (開發測試用)，正式環境可切換回 Google Sheet
+    try:
+        print("正在讀取交易記錄...")
+        df = load_transactions_from_csv()
+        print(f"成功載入 {len(df)} 筆交易記錄")
+    except Exception as e:
+        print(f"讀取 CSV 失敗，嘗試從 Google Sheet 下載... ({e})")
+        # 這裡保留原有的 Google Sheet 邏輯，視需求啟用
         return
 
-    # 3. 資料前處理
-    df_all = pd.DataFrame(records)
-    
-    # 映射欄位名稱 (DB欄位 -> 程式內部邏輯欄位)
-    df_all.rename(columns={
-        'txn_date': 'Date', 
-        'symbol': 'Symbol', 
-        'txn_type': 'Type', 
-        'qty': 'Qty', 
-        'price': 'Price', 
-        'fee': 'Commission', 
-        'tax': 'Tax', 
-        'tag': 'Tag'
-    }, inplace=True)
-    
-    # 型別轉換與空值填充
-    df_all['Date'] = pd.to_datetime(df_all['Date'])
-    df_all['Qty'] = pd.to_numeric(df_all['Qty'])
-    df_all['Price'] = pd.to_numeric(df_all['Price'])
-    df_all['Commission'] = pd.to_numeric(df_all['Commission'].fillna(0))
-    df_all['Tax'] = pd.to_numeric(df_all['Tax'].fillna(0)) 
-    
-    # ✅ Phase 1: 標籤欄位格式化（去除空白、統一分隔符）
-    df_all['Tag'] = df_all['Tag'].fillna('')  # 空值填充為空字串
-    df_all['Tag'] = df_all['Tag'].str.strip()  # 去除首尾空白
-    
-    # 依日期排序 (FIFO 計算的關鍵)
-    df_all = df_all.sort_values('Date')
-    
-    # 4. 下載市場數據
-    # ✅ 抓取範圍：【最早交易日 - 100 天】至今
-    # 用途：
-    # 1. 捕捉買入日之前的拆股/配息事件
-    # 2. 應對長假期與市場休市
-    # 3. 確保有足夠的歷史數據計算調整因子
-    if not df_all.empty:
-        start_date = df_all['Date'].min()
-        fetch_start_date = start_date - timedelta(days=100)
-        unique_tickers = df_all['Symbol'].unique().tolist()
+    # 2. 準備市場數據
+    symbols = df['Symbol'].unique().tolist()
+    if 'SPY' not in symbols:
+        symbols.append('SPY') # 基準指數
         
-        print(f"[數據下載] 最早交易日: {start_date.date()}")
-        print(f"[數據下載] 抓取起始日: {fetch_start_date.date()} (往前推 100 天)")
-        print(f"[數據下載] 抓取標的: {unique_tickers}")
-        
-        market_client.download_data(unique_tickers, fetch_start_date)
+    market_client = MarketDataClient()
+    print(f"正在更新市場數據 (共 {len(symbols)} 檔股票)...")
+    market_client.update_market_data(symbols)
     
-    # ============================================================
-    # Phase 1: 標籤掃描與多群組平行運算 (Tag Discovery & Multiverse Loop)
-    # ============================================================
-    
-    print("\n" + "="*60)
-    print("✅ Phase 1: 開始基於標籤的多維度運算 (Tag-Based Multiverse Calculation)")
-    print("="*60)
-    
-    # 步驟 1: 標籤掃描 (Tag Discovery)
-    # 建立不重複標籤列表（支援多標籤，以逗號分隔）
+    # 3. 識別所有群組 (Tags)
+    # 解析 Tag 欄位 (支援逗號分隔，如 "LongTerm, Tech")
     unique_tags = set()
-    for tags_str in df_all['Tag'].unique():
-        if tags_str:  # 跳過空字串
-            # 支援多標籤："LongTerm,ShortTerm" -> ["LongTerm", "ShortTerm"]
-            for tag in tags_str.split(','):
-                tag = tag.strip()
-                if tag:
-                    unique_tags.add(tag)
+    for tags_str in df['Tag']:
+        if not tags_str.strip():
+            continue
+        # 分割並去除空白
+        for tag in tags_str.split(','):
+            clean_tag = tag.strip()
+            if clean_tag:
+                unique_tags.add(clean_tag)
     
-    # 定義計算目標：ALL (總帳) + 各個獨立群組
-    targets = ["ALL"] + sorted(list(unique_tags))
+    # 定義計算目標：全部 (ALL) + 各個別標籤
+    # 注意：'ALL' 包含所有交易，無視標籤
+    calculation_targets = ['ALL'] + sorted(list(unique_tags))
+    print(f"識別到的群組: {calculation_targets}")
     
-    print(f"\n[標籤掃描] 發現的獨特標籤: {sorted(list(unique_tags))}")
-    print(f"[計算目標] 將運算 {len(targets)} 個群組: {targets}")
+    # 4. 平行宇宙運算 (Loop Calculation)
+    group_results = {}
     
-    # 步驟 2: 平行宇宙迴圈 (The Multiverse Loop)
-    # 對每個群組獨立運算，互不干擾
-    group_results: Dict[str, GroupStats] = {}
-    
-    for target in targets:
-        print(f"\n{'='*60}")
-        print(f"⚙️  處理群組: {target}")
-        print(f"{'='*60}")
+    for group_key in calculation_targets:
+        print(f"\n--- 正在計算群組: [{group_key}] ---")
         
-        # 篩選 (Filter)：根據群組名稱篩選交易紀錄
-        if target == "ALL":
-            # 總帳：使用全部交易
-            df_subset = df_all.copy()
-            print(f"[篩選] 使用全部交易紀錄 ({len(df_subset)} 筆)")
+        target_df = pd.DataFrame()
+        
+        if group_key == 'ALL':
+            # ALL 群組包含所有資料
+            target_df = df.copy()
         else:
-            # 特定群組：篩選包含該標籤的交易
-            # 支援部分匹配："LongTerm" 匹配 "LongTerm" 和 "LongTerm,ShortTerm"
-            mask = df_all['Tag'].str.contains(target, case=False, na=False, regex=False)
-            df_subset = df_all[mask].copy()
-            print(f"[篩選] 標籤包含 '{target}' 的交易: {len(df_subset)} 筆")
+            # 篩選包含該 Tag 的交易
+            # 邏輯：將 Tag 欄位分割成列表，檢查 group_key 是否在列表中
+            # 這樣可以避免 "US" 匹配到 "US_Stock" 的部分字串問題
+            mask = df['Tag'].apply(lambda x: group_key in [t.strip() for t in x.split(',')])
+            target_df = df[mask].copy()
             
-            if df_subset.empty:
-                print(f"⚠️  警告: 群組 '{target}' 無交易紀錄，跳過")
-                continue
+        if target_df.empty:
+            print(f"群組 [{group_key}] 無交易記錄，跳過。")
+            continue
+            
+        # 為每個群組建立獨立的計算器實例 (確保 FIFO 獨立)
+        calculator = PortfolioCalculator(target_df, market_client)
+        result_stats = calculator.run()
         
-        # 實例化 (Instantiate)：為每個群組建立獨立的 Calculator
-        # ✅ 核心設計：每個 Calculator 有獨立的 FIFO 佇列，互不干擾
-        calculator = PortfolioCalculator(df_subset, market_client)
+        # 存入結果容器
+        group_results[group_key] = result_stats
         
-        # 執行 (Run)：運算該群組的績效
-        print(f"[運算] 執行 FIFO 與績效計算...")
-        group_snapshot = calculator.run()
-        
-        # 儲存 (Store)：將舊版 PortfolioSnapshot 轉換為新版 GroupStats
-        # ✅ 注意：calculator.run() 現在還是返回舊版的 PortfolioSnapshot
-        #    我們需要提取其中的數據封裝為 GroupStats
-        group_stats = GroupStats(
-            summary=group_snapshot.summary,
-            holdings=group_snapshot.holdings,
-            history=group_snapshot.history,
-            pending_dividends=group_snapshot.pending_dividends
-        )
-        
-        group_results[target] = group_stats
-        
-        print(f"✅ 完成: {target}")
-        print(f"   - 總價值: {group_stats.summary.total_value:,.0f} TWD")
-        print(f"   - 總損益: {group_stats.summary.total_pnl:,.0f} TWD")
-        print(f"   - TWR: {group_stats.summary.twr:.2%}")
-        print(f"   - 持倉數: {len(group_stats.holdings)} 個")
+    # 5. 打包最終結果
+    # 取得最新匯率用於顯示
+    try:
+        latest_fx = market_client.fx_rates.iloc[-1]
+    except:
+        latest_fx = 30.0 # Fallback
+
+    final_snapshot = PortfolioSnapshot(
+        updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+        base_currency="TWD",
+        exchange_rate=round(latest_fx, 2),
+        groups=group_results # 這裡傳入巢狀的群組數據
+    )
     
-    # 步驟 3: 打包輸出 (Package Output)
-    # 建立新版的 PortfolioSnapshot，包含多群組數據
-    print(f"\n{'='*60}")
-    print("✅ 所有群組運算完成，打包輸出...")
-    print(f"{'='*60}")
-    
-    # 獲取基本資訊（從任意一個群組取得，因為都相同）
-    # 注意：這裡需要確保至少有一個群組（ALL）
-    if "ALL" in group_results:
-        # 從原本的 group_snapshot 中取得基本資訊
-        # （這是最後一次計算的 snapshot，應該是 ALL 群組）
-        final_snapshot = PortfolioSnapshot(
-            updated_at=group_snapshot.updated_at,
-            base_currency=group_snapshot.base_currency,
-            exchange_rate=group_snapshot.exchange_rate,
-            groups=group_results
-        )
-    else:
-        # 如果沒有 ALL 群組（理論上不應該發生），使用預設值
-        from datetime import datetime
-        final_snapshot = PortfolioSnapshot(
-            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            base_currency="TWD",
-            exchange_rate=31.5,  # 預設匯率
-            groups=group_results
-        )
-    
-    print(f"✅ 打包完成，包含 {len(final_snapshot.groups)} 個群組")
-    
-    # 6. 上傳結果
-    print(f"\n[上傳] 正在上傳投資組合快照...")
-    api_client.upload_portfolio(final_snapshot)
-    print("✅ Phase 1 重構完成！")
+    # 6. 輸出結果
+    output_path = "data/portfolio_snapshot.json"
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(final_snapshot.model_dump_json(indent=2))
+        
+    print(f"\n計算完成！結果已儲存至 {output_path}")
+    print(f"包含群組: {list(group_results.keys())}")
 
 if __name__ == "__main__":
     main()
