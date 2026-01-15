@@ -102,9 +102,10 @@ import { computed, ref, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
-const stats = computed(() => store.stats || {});
-const history = computed(() => store.history || []);
-const holdings = computed(() => store.holdings || []);
+
+// ✅ 修改：使用 currentSnapshot 支援群組切換
+const stats = computed(() => store.currentSnapshot.summary || {});
+const holdings = computed(() => store.currentSnapshot.holdings || []);
 
 // ✅ 修正：直接使用後端計算好的 total_pnl
 const totalPnL = computed(() => stats.value.total_pnl || 0);
