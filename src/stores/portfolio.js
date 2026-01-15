@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { CONFIG } from '../config';
 import { useAuthStore } from './auth';
 import { useToast } from '../composables/useToast';
+import { GroupManager } from '../config/groups';  // ✅ 新增
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -17,6 +18,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     // ✅ 新增：輪詢控制變數
     const isPolling = ref(false);
     let pollTimer = null;
+
+    // ✅ 新增：群組管理
+    const groupManager = new GroupManager();
+    const currentGroupId = ref('all');
+    const groupSnapshots = ref({});  // 儲存各群組的快照
+    const showGroupManagerModal = ref(false);
 
     // ✅ 保留：Tag 1.10 的 getToken 方法
     const getToken = () => {
@@ -105,6 +112,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 history.value = json.data.history || [];
                 pending_dividends.value = json.data.pending_dividends || [];  // ✅ 新增
                 lastUpdate.value = json.data.updated_at; // 更新時間
+                
+                // ✅ 儲存到「全部紀錄」群組
+                groupSnapshots.value['all'] = json.data;
+                
                 console.log('✅ [fetchSnapshot] 數據已更新，待確認配息:', pending_dividends.value.length, '筆');
             } else {
                 console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
@@ -188,10 +199,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 修改：觸發更新邏輯
+    // ✅ 修改：觸發更新時傳遞群組配置
     const triggerUpdate = async () => {
         const token = getToken();
         if (!token) throw new Error("請先登入"); 
+        
+        // ✅ 匯出群組配置
+        const groupsConfig = groupManager.exportForPython();
+        console.log('📊 傳遞群組配置:', groupsConfig);
         
         try {
             const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
@@ -199,7 +214,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                body: JSON.stringify({
+                    groups_config: groupsConfig  // ✅ 傳遞群組配置
+                })
             });
             
             if (response.ok || response.status === 204) {
@@ -217,8 +235,93 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 新增：群組管理方法
+    const switchGroup = (groupId) => {
+        console.log(`🔄 切換群組: ${groupId}`);
+        currentGroupId.value = groupId;
+        
+        // 如果是「全部紀錄」，直接使用完整快照
+        if (groupId === 'all') {
+            return;
+        }
+        
+        // ✅ 前端即時築選該群組的數據
+        calculateGroupSnapshot(groupId);
+    };
+
+    const calculateGroupSnapshot = (groupId) => {
+        const group = groupManager.getGroupById(groupId);
+        if (!group) return;
+        
+        console.log(`🧮 計算群組快照: ${group.name}`);
+        
+        // 築選該群組的交易紀錄
+        const filteredRecords = records.value.filter(record => {
+            const recordGroups = groupManager.getRecordGroups(record.tag);
+            return recordGroups.includes(groupId);
+        });
+        
+        // 築選該群組的持倉
+        const symbolsInGroup = new Set(filteredRecords.map(r => r.symbol));
+        const filteredHoldings = holdings.value.filter(h => symbolsInGroup.has(h.symbol));
+        
+        // 計算群組總市值 (簡化版)
+        const totalValue = filteredHoldings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
+        const totalPnl = filteredHoldings.reduce((sum, h) => sum + (h.pnl_twd || 0), 0);
+        const investedCapital = totalValue - totalPnl;
+        
+        // 儲存快照
+        groupSnapshots.value[groupId] = {
+            summary: {
+                total_value: totalValue,
+                total_pnl: totalPnl,
+                invested_capital: investedCapital,
+                twr: stats.value.twr || 0,  // 使用全局 TWR 作為估計
+                xirr: stats.value.xirr || 0,
+                realized_pnl: stats.value.realized_pnl || 0,
+                benchmark_twr: stats.value.benchmark_twr || 0,
+            },
+            holdings: filteredHoldings,
+            history: history.value,  // 歷史資料保持完整
+        };
+        
+        console.log(`✅ 群組快照已計算: ${filteredRecords.length} 筆交易，${filteredHoldings.length} 個持倉`);
+    };
+
+    // ✅ 新增：群組 CRUD 操作
+    const addGroup = (name, icon, color, tags) => {
+        return groupManager.addGroup(name, icon, color, tags);
+    };
+
+    const updateGroup = (id, updates) => {
+        return groupManager.updateGroup(id, updates);
+    };
+
+    const deleteGroup = (id) => {
+        const result = groupManager.deleteGroup(id);
+        if (result && currentGroupId.value === id) {
+            currentGroupId.value = 'all';  // 刪除後回到「全部」
+        }
+        return result;
+    };
+
+    const reorderGroups = (orderedIds) => {
+        groupManager.reorderGroups(orderedIds);
+    };
+
     // Getters
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+    
+    // ✅ 新增：群組相關 getters
+    const groups = computed(() => groupManager.getAllGroups());
+    const currentGroup = computed(() => groupManager.getGroupById(currentGroupId.value));
+    const currentSnapshot = computed(() => {
+        return groupSnapshots.value[currentGroupId.value] || {
+            summary: stats.value,
+            holdings: holdings.value,
+            history: history.value,
+        };
+    });
 
     return { 
         loading, 
@@ -226,13 +329,26 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         holdings, 
         history, 
         records, 
-        pending_dividends,  // ✅ 匯出
+        pending_dividends,
         lastUpdate, 
         unrealizedPnL, 
         connectionStatus,
-        isPolling, // ✅ 匯出此狀態供 UI 顯示
+        isPolling,
+        // ✅ 新增：群組相關狀態與方法
+        groups,
+        currentGroupId,
+        currentGroup,
+        currentSnapshot,
+        groupManager,
+        showGroupManagerModal,
+        // 方法
         fetchAll, 
         fetchRecords, 
-        triggerUpdate
+        triggerUpdate,
+        switchGroup,
+        addGroup,
+        updateGroup,
+        deleteGroup,
+        reorderGroups,
     };
 });
