@@ -2,8 +2,9 @@ import pandas as pd
 import numpy as np
 from collections import deque
 from datetime import datetime
-from pyxirr import xirr  # ✅ 新增：引入 XIRR 計算套件
-from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, DividendRecord
+from pyxirr import xirr 
+# 引入新的 GroupStats
+from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, DividendRecord, GroupStats
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 
 class PortfolioCalculator:
@@ -12,16 +13,16 @@ class PortfolioCalculator:
         初始化投資組合計算器
         
         參數:
-            transactions_df: 交易記錄 DataFrame
+            transactions_df: 交易記錄 DataFrame (可能是完整資料，也可能是篩選過後的子集)
             market_client: MarketDataClient 實例
         """
-        self.df = transactions_df
+        self.df = transactions_df.copy() # 確保操作副本
         self.market = market_client
         
         # 當前持倉狀態
         self.holdings = {}  # {symbol: {qty, cost_basis_usd, cost_basis_twd, tag}}
         
-        # FIFO 佇列（用於計算賣出時的成本基礎）
+        # FIFO 佇列（群組內獨立計算）
         self.fifo_queues = {}  # {symbol: deque([{qty, price, cost_total_usd, cost_total_twd, date}])}
         
         # 投資統計
@@ -35,45 +36,49 @@ class PortfolioCalculator:
         self.confirmed_dividends = set()  # 記錄已手動輸入的配息
         self._pre_scan_dividends()
         
-        # ✅ 新增：配息歷史追蹤
+        # 配息歷史追蹤
         self.dividend_history = []  # 所有配息記錄（包含自動和手動）
         
         # 基準對比（SPY）
         self.benchmark_units = 0.0        # SPY 持有單位
         self.benchmark_invested = 0.0     # SPY 投入資金
 
-        # 新增 TWR 計算專用變數
+        # TWR 計算專用變數
         self.cumulative_twr_factor = 1.0  # 用於累乘 TWR
         self.prev_total_equity = 0.0      # 記錄前一日總權益
         
-        # ✅ 新增：XIRR 現金流追蹤
+        # XIRR 現金流追蹤
         self.xirr_cashflows = []  # [{'date': datetime, 'amount': float}, ...]
 
     def _pre_scan_dividends(self):
         """
         預先掃描使用者手動輸入的配息記錄
         """
+        if self.df.empty:
+            return
+            
         div_txs = self.df[self.df['Type'] == 'DIV']
         for _, row in div_txs.iterrows():
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             self.confirmed_dividends.add(key)
 
-    def run(self):
+    def run(self) -> GroupStats:
         """
         執行投資組合計算主流程
+        回傳: GroupStats (單一群組的統計結果)
         """
-        print("=== 開始執行投資組合計算 (會計模式: 原始價格+配息現金) ===")
+        # print(f"=== 開始執行投資組合計算 (會計模式: 原始價格+配息現金) ===")
+        
+        if self.df.empty:
+            return self._generate_empty_output()
         
         # ==================== 步驟 1: 復權處理 ====================
         self._back_adjust_transactions()
         
         # ==================== 步驟 2: 建立日期範圍 ====================
         start_date = self.df['Date'].min()
-        
-        # ✅ 修正：一律計算到今天，即使美股數據還沒更新也要用最新匯率生成今日數據點
-        # 這樣白天時可以看到匯率變化的影響
         end_date = datetime.now()
-        print(f"[History 計算範圍] {start_date.date()} 至 {end_date.date()}")
+        # print(f"[History 計算範圍] {start_date.date()} 至 {end_date.date()}")
         
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
@@ -101,14 +106,34 @@ class PortfolioCalculator:
             self._daily_valuation(d, fx)
         
         # ==================== 步驟 4: 產生最終報表 ====================
-        return self._generate_final_output(fx)
+        # 取得最後一天的匯率
+        try:
+            final_fx = self.market.fx_rates.asof(end_date)
+            if pd.isna(final_fx):
+                final_fx = DEFAULT_FX_RATE
+        except:
+            final_fx = DEFAULT_FX_RATE
 
+        return self._generate_final_output(final_fx)
+
+    def _generate_empty_output(self) -> GroupStats:
+        """產生空的統計數據"""
+        empty_summary = PortfolioSummary(
+            total_value=0, invested_capital=0, total_pnl=0,
+            twr=0, xirr=0, realized_pnl=0, benchmark_twr=0
+        )
+        return GroupStats(
+            summary=empty_summary,
+            holdings=[],
+            history=[],
+            pending_dividends=[]
+        )
 
     def _back_adjust_transactions(self):
         """
         復權處理：調整交易記錄以匹配 Adj Close 價格體系
         """
-        print("正在進行交易數據復權處理...")
+        # print("正在進行交易數據復權處理...")
         
         for index, row in self.df.iterrows():
             sym = row['Symbol']
@@ -137,7 +162,7 @@ class PortfolioCalculator:
                 self.df.at[index, 'Qty'] = new_qty
                 self.df.at[index, 'Price'] = new_price
                 
-                print(f"  [復權] {sym} {date.date()}: {old_qty}股@${old_price:.2f} → {new_qty:.2f}股@${new_price:.2f}")
+                # print(f"  [復權] {sym} {date.date()}: {old_qty}股@${old_price:.2f} → {new_qty:.2f}股@${new_price:.2f}")
 
     def _process_implicit_dividends(self, date_ts, fx):
         """
@@ -151,7 +176,7 @@ class PortfolioCalculator:
             if qty > 0:
                 dividend_key = f"{sym}_{date_str}"
                 
-                # ✅ 檢查是否已手動輸入
+                # 檢查是否已手動輸入
                 is_confirmed = dividend_key in self.confirmed_dividends
                 
                 div_per_share_gross = self.market.get_dividend(sym, date_ts)
@@ -166,7 +191,7 @@ class PortfolioCalculator:
                     total_div_net_usd = total_gross * 0.7
                     total_div_net_twd = total_div_net_usd * fx
                     
-                    # ✅ 記錄配息歷史（包含狀態）
+                    # 記錄配息歷史（包含狀態）
                     self.dividend_history.append({
                         'symbol': sym,
                         'ex_date': date_str,
@@ -182,12 +207,12 @@ class PortfolioCalculator:
                         'notes': '手動輸入' if is_confirmed else '系統自動抓取'
                     })
                     
-                    # ✅ 只有未確認的配息才計入損益（已確認的由手動輸入處理）
+                    # 只有未確認的配息才計入損益（已確認的由手動輸入處理）
                     if not is_confirmed:
                         # 累加到已實現損益 (補償股價下跌)
                         self.total_realized_pnl_twd += total_div_net_twd
                         
-                        # ✅ 記錄 XIRR 現金流（配息收入）
+                        # 記錄 XIRR 現金流（配息收入）
                         self.xirr_cashflows.append({
                             'date': date_ts,
                             'amount': total_div_net_twd  # 正值：收入
@@ -230,7 +255,7 @@ class PortfolioCalculator:
             self.invested_capital += cost_twd
             self._trade_benchmark(date_ts, cost_twd, fx, is_buy=True)
             
-            # ✅ 記錄 XIRR 現金流（買入支出）
+            # 記錄 XIRR 現金流（買入支出）
             self.xirr_cashflows.append({
                 'date': date_ts,
                 'amount': -cost_twd  # 負值：支出
@@ -262,7 +287,7 @@ class PortfolioCalculator:
             self.total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
             self._trade_benchmark(date_ts, proceeds_twd, fx, is_buy=False, realized_cost_twd=cost_sold_twd)
             
-            # ✅ 記錄 XIRR 現金流（賣出收入）
+            # 記錄 XIRR 現金流（賣出收入）
             self.xirr_cashflows.append({
                 'date': date_ts,
                 'amount': proceeds_twd  # 正值：收入
@@ -275,7 +300,7 @@ class PortfolioCalculator:
             date_str = date_ts.strftime('%Y-%m-%d')
             self.confirmed_dividends.add(f"{sym}_{date_str}")
             
-            # ✅ 記錄 XIRR 現金流（手動輸入的配息）
+            # 記錄 XIRR 現金流（手動輸入的配息）
             self.xirr_cashflows.append({
                 'date': date_ts,
                 'amount': net_div_twd  # 正值：收入
@@ -309,7 +334,6 @@ class PortfolioCalculator:
         
         # 計算調整後的起始權益 (分母)
         # 昨天的權益 + 今天的資金流入
-        # 這能防止 "昨天資產極小 ($0.05) 但今天大額入金 ($87,500)" 導致回報率爆炸
         adjusted_start_equity = self.prev_total_equity + daily_net_inflow
         
         if adjusted_start_equity > 0:
@@ -321,9 +345,8 @@ class PortfolioCalculator:
         elif self.invested_capital > 0 and self.prev_total_equity == 0:
              daily_return = total_pnl / self.invested_capital
              
-        # [安全閖] 防止極端異常值 (選用，避免髯數據破壞圖表)
-        if abs(daily_return) > 1.0: # 如果單日漲跌超過 100%
-             # print(f"Warning: Abnormal daily return {daily_return} on {date_ts}")
+        # [安全閖] 防止極端異常值
+        if abs(daily_return) > 1.0: 
              pass 
 
         # 4. 累乘 TWR
@@ -342,7 +365,7 @@ class PortfolioCalculator:
         # 6. 更新狀態
         self.prev_total_equity = current_total_equity
         
-        # ✅ 新增：在 history 中加入匯率欄位
+        # 在 history 中加入匯率欄位
         self.history_data.append({
             "date": date_ts.strftime("%Y-%m-%d"),
             "total_value": round(total_mkt_val, 0),
@@ -350,7 +373,7 @@ class PortfolioCalculator:
             "net_profit": round(total_pnl, 0),
             "twr": round(twr_percentage, 2),
             "benchmark_twr": round(bench_twr, 2),
-            "fx_rate": round(fx, 4)  # ✅ 新增匯率欄位
+            "fx_rate": round(fx, 4)
         })
 
 
@@ -370,16 +393,7 @@ class PortfolioCalculator:
 
     def _calculate_xirr(self, current_fx):
         """
-        ✅ 計算 XIRR (擴展內部報酬率)
-        
-        XIRR 是考慮不規則現金流的內部報酬率，反映個人實際的年化報酬。
-        與 TWR 不同，XIRR 會受入金時機影響。
-        
-        參數:
-            current_fx: 當前匯率
-        
-        返回:
-            XIRR 百分比 (float)
+        計算 XIRR (擴展內部報酬率)
         """
         if not self.xirr_cashflows:
             return 0.0
@@ -408,62 +422,30 @@ class PortfolioCalculator:
         # 計算 XIRR
         try:
             xirr_result = xirr(dates, amounts)
-            return round(xirr_result * 100, 2)  # 轉換為百分比
+            if xirr_result is None or pd.isna(xirr_result):
+                return 0.0
+            return round(xirr_result * 100, 2)
         except Exception as e:
-            print(f"[XIRR 警告] 計算失敗: {e}")
+            # print(f"[XIRR 警告] 計算失敗: {e}")
             return 0.0
 
-    def _generate_final_output(self, current_fx):
+    def _generate_final_output(self, current_fx) -> GroupStats:
         """
-        產生最終報表輸出
-        
-        ✅ 新增功能：計算每檔持股的前一交易日收盤價與今日變化
-        ✅ 核心修正：正確計算當日損益 (Modified Dietz 方法)
-        ✅ 新增功能：整合配息列表
+        產生最終報表輸出 (回傳 GroupStats)
         """
-        import pandas as pd
-        
-        print("整理最終報表...")
-        
-        # ✅ 新增：顯示最新兩筆匯率數據
-        print(f"\n[匯率比對] 顯示最新兩個交易日匯率")
-        if len(self.market.fx_rates) >= 2:
-            latest_fx = self.market.fx_rates.iloc[-1]
-            prev_fx = self.market.fx_rates.iloc[-2]
-            latest_fx_date = self.market.fx_rates.index[-1].date()
-            prev_fx_date = self.market.fx_rates.index[-2].date()
-            
-            fx_change = latest_fx - prev_fx
-            fx_change_pct = (fx_change / prev_fx) * 100 if prev_fx > 0 else 0
-            
-            print(f"[USD/TWD] 最新匯率: {latest_fx:.4f} ({latest_fx_date}) | 前匯率: {prev_fx:.4f} ({prev_fx_date})")
-            print(f"[USD/TWD] 匯率變化: {fx_change:+.4f} ({fx_change_pct:+.2f}%)")
-            
-            # 計算匯率對持倉的影響
-            if len(self.holdings) > 0:
-                total_usd_value = sum(
-                    h['cost_basis_usd'] for h in self.holdings.values() if h['qty'] > 0.001
-                )
-                fx_impact_twd = total_usd_value * fx_change
-                print(f"[匯率影響] 美元資產 ${total_usd_value:,.0f} × {fx_change:+.4f} = 台幣 {fx_impact_twd:+,.0f}")
-        else:
-            print(f"[USD/TWD] 當前匯率: {current_fx:.4f} (數據不足無法比對)")
-        
-        print(f"\n[今日損益計算] 使用 Modified Dietz 方法進行計算")
-        
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
         for sym, h in self.holdings.items():
             if h['qty'] > 0.001:
-                # ✅ 取得該股票的完整歷史數據
+                # 取得該股票的完整歷史數據
                 if sym not in self.market.market_data or self.market.market_data[sym].empty:
-                    print(f"[警告] {sym} 無市場數據")
+                    # print(f"[警告] {sym} 無市場數據")
                     continue
                 
                 stock_data = self.market.market_data[sym]
                 
-                # ✅ 取最新兩個收盤價
+                # 取最新兩個收盤價
                 if len(stock_data) >= 2:
                     curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
                     prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
@@ -471,9 +453,9 @@ class PortfolioCalculator:
                     latest_date = stock_data.index[-1]
                     prev_date = stock_data.index[-2]
                     
-                    # ✅ 取得對應日期的匯率
+                    # 取得對應日期的匯率
                     try:
-                        curr_fx = current_fx  # ✅ 強制使用當下最新匯率
+                        curr_fx = current_fx
                         prev_fx = self.market.fx_rates.asof(prev_date)
                         if pd.isna(curr_fx): curr_fx = current_fx
                         if pd.isna(prev_fx): prev_fx = current_fx
@@ -481,7 +463,7 @@ class PortfolioCalculator:
                         curr_fx = current_fx
                         prev_fx = current_fx
                     
-                    # ==================== 【核心修正 - 開始】 ====================
+                    # ==================== 【當日損益核心計算】 ====================
                     
                     # 1. 找出今日的所有交易
                     today_txs = self.df[
@@ -525,10 +507,6 @@ class PortfolioCalculator:
                     # 8. 計算價格變化 (USD)
                     daily_change_usd = curr_p - prev_p
                     
-                    # ==================== 【核心修正 - 結束】 ====================
-                    
-                    print(f"[{sym}] 昨日市值: {beginning_market_value_twd:,.0f} | 今日市值: {ending_market_value_twd:,.0f} | 現金流: {daily_cashflow_twd:,.0f} | 損益: {daily_pl_twd:,.0f} ({daily_change_percent:.2f}%)")
-                    
                 elif len(stock_data) == 1:
                     curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
                     prev_p = curr_p
@@ -556,11 +534,10 @@ class PortfolioCalculator:
                     pnl_percent=round(pnl_pct, 2),
                     current_price_origin=round(curr_p, 2),
                     avg_cost_usd=round(avg_cost_usd, 2),
-                    # ✅ 新增欄位
                     prev_close_price=round(prev_p, 2),
                     daily_change_usd=round(daily_change_usd, 2),
                     daily_change_percent=round(daily_change_percent, 2),
-                    daily_pl_twd=round(daily_pl_twd, 0)  # ✅ 新增此欄位
+                    daily_pl_twd=round(daily_pl_twd, 0)
                 ))
         
         # 按市值排序
@@ -570,35 +547,29 @@ class PortfolioCalculator:
         curr_total_val = sum(x.market_value_twd for x in final_holdings)
         total_pnl = (curr_total_val - current_holdings_cost_sum) + self.total_realized_pnl_twd
         
-        # ✅ 計算 XIRR
+        # 計算 XIRR
         xirr_value = self._calculate_xirr(current_fx)
-        print(f"\n[XIRR 計算結果] {xirr_value:.2f}% (個人實際年化報酬率)")
         
-        # ✅ 整理待確認配息列表（只顯示 pending 狀態）
+        # 整理待確認配息列表（只顯示 pending 狀態）
         pending_dividends = [
             DividendRecord(**div_data)
             for div_data in self.dividend_history
             if div_data['status'] == 'pending'
         ]
         
-        print(f"\n[配息統計] 待確認配息: {len(pending_dividends)} 筆")
-        
         summary = PortfolioSummary(
             total_value=round(curr_total_val, 0),
             invested_capital=round(current_holdings_cost_sum, 0),
             total_pnl=round(total_pnl, 0),
             twr=self.history_data[-1]['twr'] if self.history_data else 0,
-            xirr=xirr_value,  # ✅ 新增 XIRR
+            xirr=xirr_value,
             realized_pnl=round(self.total_realized_pnl_twd, 0),
             benchmark_twr=self.history_data[-1]['benchmark_twr'] if self.history_data else 0
         )
         
-        return PortfolioSnapshot(
-            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-            base_currency=BASE_CURRENCY,
-            exchange_rate=round(current_fx, 2),
+        return GroupStats(
             summary=summary,
             holdings=final_holdings,
             history=self.history_data,
-            pending_dividends=pending_dividends  # ✅ 新增配息列表
+            pending_dividends=pending_dividends
         )
