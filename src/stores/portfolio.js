@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 import { getTransactions, triggerCalculation } from '../js/api'
+import { CONFIG } from '../config' // 引入設定檔以取得 API_BASE_URL
 
 // ==========================================
 // 群組元數據設定 (Group Metadata Config)
@@ -45,7 +46,7 @@ function generateColor(str) {
 
 export const usePortfolioStore = defineStore('portfolio', {
   state: () => ({
-    // 1. 投資組合快照 (Snapshot) - 來自 Python 計算結果 (包含多群組數據)
+    // 1. 投資組合快照 (Snapshot) - 來自後端計算結果 (包含多群組數據)
     rawSnapshot: null,
     
     // 2. 原始交易列表 (Records) - 用於列表顯示與編輯
@@ -171,14 +172,19 @@ export const usePortfolioStore = defineStore('portfolio', {
 
     /**
      * 載入投資組合計算快照 (JSON)
+     * 修正：從後端 API 獲取，而非靜態檔案
      */
     async fetchPortfolio() {
       try {
-        // 加入 timestamp 防止快取
-        const response = await axios.get('/data/portfolio_snapshot.json?t=' + new Date().getTime())
+        // 使用後端 API 路徑
+        const apiUrl = `${CONFIG.API_BASE_URL}/api/portfolio`;
+        const response = await axios.get(apiUrl);
         
-        this.rawSnapshot = response.data
-        this.lastUpdated = response.data.updated_at
+        // 假設後端回傳格式直接是 Snapshot 物件
+        // 如果後端包在 { success: true, data: ... } 裡，請改為 response.data.data
+        this.rawSnapshot = response.data;
+        
+        this.lastUpdated = this.rawSnapshot.updated_at;
         
         // 如果當前選的群組在新數據中不存在，重置為 ALL
         if (this.rawSnapshot.groups && !this.rawSnapshot.groups[this.currentGroupId]) {
@@ -233,7 +239,7 @@ export const usePortfolioStore = defineStore('portfolio', {
     },
 
     /**
-     * 輪詢機制：定期檢查 JSON 檔案的 updated_at 是否改變
+     * 輪詢機制：定期檢查 API 的 updated_at 是否改變
      */
     async pollForUpdates(previousTime) {
       let attempts = 0;
@@ -242,7 +248,11 @@ export const usePortfolioStore = defineStore('portfolio', {
       const interval = setInterval(async () => {
         attempts++;
         try {
-          const response = await axios.get('/data/portfolio_snapshot.json?t=' + new Date().getTime());
+          // 修正：輪詢也改為呼叫後端 API
+          const apiUrl = `${CONFIG.API_BASE_URL}/api/portfolio`;
+          const response = await axios.get(apiUrl);
+          
+          // 假設後端回傳格式直接是 Snapshot 物件
           const newTime = response.data.updated_at;
           
           if (newTime !== previousTime) {
