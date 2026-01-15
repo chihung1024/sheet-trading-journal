@@ -1,7 +1,13 @@
 <template>
   <div class="card">
     <div class="card-header">
-        <h3>交易紀錄列表</h3>
+        <div class="header-title-row">
+            <h3>交易紀錄列表</h3>
+            <span v-if="currentGroupId !== 'ALL'" class="group-filter-badge" :style="{ borderColor: currentGroupColor, color: currentGroupColor }">
+                <span class="filter-icon">🏷️</span>
+                Filtering: {{ currentGroupName }}
+            </span>
+        </div>
         
         <div class="toolbar">
              <div class="search-box">
@@ -76,6 +82,7 @@
                     </th>
                     <th class="text-right">股數</th>
                     <th class="text-right">單價 (USD)</th>
+                    <th>標籤 (Tags)</th> 
                     <th @click="sortBy('total_amount_twd')" class="text-right sortable">
                         總額 (TWD) <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
                     </th>
@@ -84,9 +91,14 @@
             </thead>
             <tbody>
                 <tr v-if="paginatedRecords.length === 0">
-                    <td colspan="7" class="empty-state">
+                    <td colspan="8" class="empty-state">
                         <div class="empty-icon">📋</div>
-                        <div>無符合條件的紀錄</div>
+                        <div>
+                            {{ processedRecords.length === 0 && currentGroupId !== 'ALL' 
+                               ? `此群組 (${currentGroupName}) 無相關交易紀錄` 
+                               : '無符合條件的紀錄' 
+                            }}
+                        </div>
                     </td>
                 </tr>
                 <tr 
@@ -108,6 +120,20 @@
                     </td>
                     <td class="text-right font-num">{{ formatNumber(r.qty, 2) }}</td>
                     <td class="text-right font-num">{{ formatNumber(r.price, 4) }}</td>
+                    
+                    <td class="col-tags">
+                        <div class="tags-wrapper">
+                            <span 
+                                v-for="tag in parseTags(r.tag || r.Tag)" 
+                                :key="tag" 
+                                class="tag-pill"
+                                :class="{ 'highlight': tag === currentGroupId }"
+                            >
+                                {{ tag }}
+                            </span>
+                        </div>
+                    </td>
+
                     <td class="text-right font-num font-bold">
                         NT${{ formatNumber(getTotalAmountTWD(r), 0) }}
                     </td>
@@ -189,6 +215,17 @@ const sortOrder = ref('desc');
 const isRefreshing = ref(false);
 const editingId = ref(null);
 
+// --- Phase 2: 群組相關 Computed ---
+const currentGroupId = computed(() => store.currentGroupId);
+const currentGroupName = computed(() => {
+    const group = store.availableGroups.find(g => g.id === currentGroupId.value);
+    return group ? group.name : currentGroupId.value;
+});
+const currentGroupColor = computed(() => {
+    const group = store.availableGroups.find(g => g.id === currentGroupId.value);
+    return group ? group.color : '#666';
+});
+
 const formatNumber = (num, d=2) => {
     if (num === undefined || num === null || isNaN(num)) return '0.00';
     return Number(num).toLocaleString('en-US', { 
@@ -215,7 +252,13 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
-// ✅ 修正：建立匯率映射表
+// 工具：解析 Tags 字串
+const parseTags = (tagStr) => {
+    if (!tagStr) return [];
+    // 支援逗號或空格分隔
+    return tagStr.toString().split(/[, ]+/).filter(t => t.trim());
+};
+
 const fxRateMap = computed(() => {
     const map = {};
     if (store.history && store.history.length > 0) {
@@ -226,45 +269,32 @@ const fxRateMap = computed(() => {
     return map;
 });
 
-// ✅ 修正：根據日期查找匯率
 const getFxRateByDate = (dateStr) => {
-    // 1. 精確匹配
     if (fxRateMap.value[dateStr]) {
         return fxRateMap.value[dateStr];
     }
-    
-    // 2. 往前查找最近的匯率（處理週末/假日）
     const dates = Object.keys(fxRateMap.value).sort();
     for (let i = dates.length - 1; i >= 0; i--) {
         if (dates[i] <= dateStr) {
             return fxRateMap.value[dates[i]];
         }
     }
-    
-    // 3. 使用最新匯率
     if (dates.length > 0) {
         return fxRateMap.value[dates[dates.length - 1]];
     }
-    
-    // 4. 預設值
     return 32.0;
 };
 
-// ✅ 核心修正：在前端計算 total_amount (USD)
 const calculateTotalAmountUSD = (record) => {
     const qty = Number(record.qty) || 0;
     const price = Number(record.price) || 0;
     const commission = Number(record.commission) || 0;
     const tax = Number(record.tax) || 0;
-    
-    // 計算公式：|qty × price| + commission + tax
     const baseAmount = Math.abs(qty * price);
     const totalUSD = baseAmount + commission + tax;
-    
     return totalUSD;
 };
 
-// ✅ 修正：計算台幣總額
 const getTotalAmountTWD = (record) => {
     const usdAmount = calculateTotalAmountUSD(record);
     const fxRate = getFxRateByDate(record.txn_date);
@@ -278,7 +308,7 @@ const availableYears = computed(() => {
     return Array.from(years).sort().reverse();
 });
 
-// 統計數據
+// --- 統計數據 (會隨 processedRecords 自動更新) ---
 const buyCount = computed(() => 
     processedRecords.value.filter(r => r.txn_type === 'BUY').length
 );
@@ -303,17 +333,33 @@ const getSortIcon = (key) => {
     return sortOrder.value === 'asc' ? '↑' : '↓';
 };
 
+// --- Phase 2: 核心過濾邏輯更新 ---
 const processedRecords = computed(() => {
     let result = store.records.filter(r => {
+        // 1. 搜尋過濾
         const matchSearch = r.symbol.toUpperCase().includes(
             searchQuery.value.toUpperCase()
         );
+        // 2. 類型過濾
         const matchType = filterType.value === 'ALL' || r.txn_type === filterType.value;
+        // 3. 年份過濾
         const matchYear = filterYear.value === 'ALL' || r.txn_date.startsWith(filterYear.value);
-        return matchSearch && matchType && matchYear;
+        
+        // 4. 群組過濾 (Phase 2 新增)
+        // 檢查交易的 tag 欄位是否包含 currentGroupId
+        // 注意：需兼容 tag 為 null/undefined 的情況
+        let matchGroup = true;
+        if (currentGroupId.value !== 'ALL') {
+            const tags = r.tag || r.Tag || ''; // 兼容大小寫
+            // 檢查字串中是否包含群組 ID (簡單檢查，或使用 split 精確檢查)
+            const tagList = tags.toString().split(',').map(t => t.trim());
+            matchGroup = tagList.includes(currentGroupId.value);
+        }
+
+        return matchSearch && matchType && matchYear && matchGroup;
     });
 
-    // ✅ 修改：支援按台幣總額排序
+    // 排序邏輯
     result.sort((a, b) => {
         let valA, valB;
         
@@ -460,7 +506,8 @@ const deleteRecord = async (id) => {
 };
 
 // 監聽篩選條件變化，重置頁碼
-watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
+// Phase 2: 也監聽 currentGroupId
+watch([searchQuery, filterType, filterYear, itemsPerPage, currentGroupId], () => {
     currentPage.value = 1;
 });
 </script>
@@ -473,10 +520,36 @@ watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
     margin-bottom: 24px; 
 }
 
+/* 標題與過濾 Badge 區塊 */
+.header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
 .card-header h3 { 
     margin: 0; 
     padding-left: 12px; 
     border-left: 4px solid var(--primary); 
+}
+
+.group-filter-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid currentColor;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.05);
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
 .toolbar { 
@@ -748,6 +821,31 @@ tr:last-child td {
     background: rgba(245, 158, 11, 0.15); 
     color: var(--warning);
     border: 1px solid var(--warning);
+}
+
+/* Phase 2: Tag Pills Styles */
+.col-tags {
+    max-width: 200px;
+}
+.tags-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.tag-pill {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-sub);
+    white-space: nowrap;
+}
+.tag-pill.highlight {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--primary);
+    border-color: var(--primary);
+    font-weight: 600;
 }
 
 .text-right { text-align: right; }
