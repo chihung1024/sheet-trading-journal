@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
-import axios from 'axios' // 假設您使用 axios，若專案使用 fetch 可自行替換
-import { computed, ref } from 'vue'
+import axios from 'axios'
+import { getTransactions, triggerCalculation } from '../js/api'
 
 // ==========================================
-// 方案 B：群組元數據設定 (Group Metadata Config)
-// 建議：未來可將此物件移至 src/config/groups.js
+// 群組元數據設定 (Group Metadata Config)
+// 定義各群組的顯示名稱、顏色與圖示
 // ==========================================
 const DEFAULT_GROUP_CONFIG = {
   'ALL': { 
@@ -33,7 +33,7 @@ const DEFAULT_GROUP_CONFIG = {
   }
 }
 
-// 輔助函式：為未設定的群組產生固定顏色 (String Hash -> Color)
+// 輔助函式：為未設定的群組自動產生固定顏色 (String Hash -> Color)
 function generateColor(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -45,16 +45,21 @@ function generateColor(str) {
 
 export const usePortfolioStore = defineStore('portfolio', {
   state: () => ({
-    // 原始完整數據 (巢狀結構)
+    // 1. 投資組合快照 (Snapshot) - 來自 Python 計算結果 (包含多群組數據)
     rawSnapshot: null,
     
-    // 當前選擇的群組 ID
+    // 2. 原始交易列表 (Records) - 用於列表顯示與編輯
+    records: [], 
+    
+    // 當前選擇的群組 ID (預設 ALL)
     currentGroupId: 'ALL',
     
-    // 群組設定 (方案 B)
+    // 群組設定 (用於 UI 顯示)
     groupConfig: DEFAULT_GROUP_CONFIG,
     
+    // 系統狀態
     loading: false,
+    isPolling: false, // 是否正在輪詢後端更新
     error: null,
     lastUpdated: null
   }),
@@ -145,15 +150,31 @@ export const usePortfolioStore = defineStore('portfolio', {
 
   actions: {
     /**
-     * 載入投資組合數據
+     * 載入所有數據 (Snapshot + Records)
+     * 初始化 App 時呼叫
      */
-    async fetchPortfolio() {
+    async fetchAll() {
       this.loading = true
       this.error = null
       try {
-        // 呼叫 Phase 1 的後端 API
-        // 注意：這裡假設後端輸出的 JSON 路徑，請依實際部署調整
-        // 開發環境通常是讀取 public/data/portfolio_snapshot.json 或 API 端點
+        await Promise.all([
+          this.fetchPortfolio(),
+          this.fetchRecords()
+        ])
+      } catch (err) {
+        console.error('Fetch All Error:', err)
+        this.error = '部分數據載入失敗'
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * 載入投資組合計算快照 (JSON)
+     */
+    async fetchPortfolio() {
+      try {
+        // 加入 timestamp 防止快取
         const response = await axios.get('/data/portfolio_snapshot.json?t=' + new Date().getTime())
         
         this.rawSnapshot = response.data
@@ -165,16 +186,27 @@ export const usePortfolioStore = defineStore('portfolio', {
         }
         
       } catch (err) {
-        console.error('Failed to load portfolio:', err)
-        this.error = '無法載入投資組合數據，請稍後再試。'
-      } finally {
-        this.loading = false
+        console.error('Failed to load portfolio snapshot:', err)
+        throw err // 讓 fetchAll 捕獲
+      }
+    },
+
+    /**
+     * 載入原始交易記錄列表 (用於 RecordList)
+     */
+    async fetchRecords() {
+      try {
+        const data = await getTransactions()
+        this.records = data || []
+      } catch (err) {
+        console.error('Failed to load records:', err)
+        this.error = '無法載入交易記錄'
+        // 不 throw，避免影響 Dashboard 顯示
       }
     },
 
     /**
      * 切換當前顯示的群組
-     * UI 切換器呼叫此 Action 即可瞬間改變所有圖表數據
      */
     setGroupId(id) {
       if (this.rawSnapshot?.groups?.[id]) {
@@ -183,10 +215,64 @@ export const usePortfolioStore = defineStore('portfolio', {
     },
 
     /**
+     * 觸發後端計算並開始輪詢 (Polling)
+     */
+    async triggerUpdate() {
+      this.isPolling = true;
+      try {
+        // 1. 呼叫後端 API 觸發 GitHub Actions 或計算腳本
+        await triggerCalculation();
+        
+        // 2. 開始輪詢檢查數據是否更新
+        this.pollForUpdates(this.lastUpdated);
+      } catch (error) {
+        console.error("Trigger update failed:", error);
+        this.isPolling = false;
+        throw error;
+      }
+    },
+
+    /**
+     * 輪詢機制：定期檢查 JSON 檔案的 updated_at 是否改變
+     */
+    async pollForUpdates(previousTime) {
+      let attempts = 0;
+      const maxAttempts = 24; // 最長輪詢 2 分鐘 (5秒 * 24次)
+      
+      const interval = setInterval(async () => {
+        attempts++;
+        try {
+          const response = await axios.get('/data/portfolio_snapshot.json?t=' + new Date().getTime());
+          const newTime = response.data.updated_at;
+          
+          if (newTime !== previousTime) {
+            // 數據已更新！
+            console.log("Data updated detected!", newTime);
+            this.rawSnapshot = response.data;
+            this.lastUpdated = newTime;
+            this.isPolling = false;
+            clearInterval(interval);
+            
+            // 順便更新交易列表，確保一致性
+            this.fetchRecords(); 
+          }
+        } catch (e) { 
+          console.log("Polling check failed, retrying..."); 
+        }
+
+        if (attempts >= maxAttempts) {
+          console.warn("Polling timeout.");
+          this.isPolling = false;
+          clearInterval(interval);
+        }
+      }, 5000); // 每 5 秒檢查一次
+    },
+
+    /**
      * 強制重新整理
      */
     async refresh() {
-      await this.fetchPortfolio()
+      await this.fetchAll()
     }
   }
 })
