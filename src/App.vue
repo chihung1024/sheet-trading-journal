@@ -7,6 +7,34 @@
         <div class="nav-brand">
           <span class="logo-icon">📊</span>
           <h1>Trading Journal <span class="badge">PRO</span></h1>
+          
+          <!-- ✅ 新增：群組切換器 -->
+          <div class="group-selector" v-click-outside="closeGroupMenu">
+            <button class="group-btn" @click="toggleGroupMenu">
+              <span class="group-icon">{{ portfolioStore.currentGroup.icon }}</span>
+              <span class="group-name">{{ portfolioStore.currentGroup.name }}</span>
+              <span class="chevron">▼</span>
+            </button>
+            
+            <!-- 下拉選單 -->
+            <Transition name="dropdown">
+              <div v-if="showGroupMenu" class="group-menu">
+                <div v-for="group in portfolioStore.groups" :key="group.id"
+                     class="group-item"
+                     :class="{ active: portfolioStore.currentGroupId === group.id }"
+                     @click="switchGroup(group.id)">
+                  <span class="group-icon">{{ group.icon }}</span>
+                  <span class="group-name">{{ group.name }}</span>
+                  <span v-if="portfolioStore.currentGroupId === group.id" class="check">✓</span>
+                </div>
+                
+                <div class="group-divider"></div>
+                <button class="group-manage-btn" @click="openGroupManager">
+                  ⚙️ 管理群組
+                </button>
+              </div>
+            </Transition>
+          </div>
         </div>
         <div class="nav-status">
           <!-- 狀態 1: 正在載入資料 -->
@@ -56,17 +84,12 @@
             <StatsGridSkeleton v-else />
           </section>
           
-          <!-- ✅ 優化圖表區域：隱藏圓餅圖，讓趨勢分析圖佔滿寬度 -->
+          <!-- ✅ 優化圖表區域：隱藏圓餅圖，讓趋勢分析圖佔滿寬度 -->
           <section class="section-charts">
             <div class="chart-wrapper chart-full">
               <PerformanceChart v-if="!portfolioStore.loading" />
               <ChartSkeleton v-else />
             </div>
-            <!-- 圓餅圖暫時隱藏，未來有需要再重新引入 -->
-            <!-- <div class="chart-wrapper">
-              <PieChart v-if="!portfolioStore.loading" />
-              <ChartSkeleton v-else />
-            </div> -->
           </section>
           
           <section class="section-holdings">
@@ -115,6 +138,9 @@
         </div>
       </TransitionGroup>
     </div>
+    
+    <!-- ✅ 新增：群組管理器 Modal -->
+    <GroupManager v-if="portfolioStore.showGroupManagerModal" @close="portfolioStore.showGroupManagerModal = false" />
   </div>
 </template>
 
@@ -141,7 +167,8 @@ import PerformanceChart from './components/PerformanceChart.vue';
 import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
-import DividendManager from './components/DividendManager.vue';  // ✅ 新增
+import DividendManager from './components/DividendManager.vue';
+import GroupManager from './components/GroupManager.vue';  // ✅ 新增
 
 // Skeleton components
 import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
@@ -153,6 +180,27 @@ const portfolioStore = usePortfolioStore();
 const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
+
+// ✅ 新增：群組切換器狀態
+const showGroupMenu = ref(false);
+
+const toggleGroupMenu = () => {
+  showGroupMenu.value = !showGroupMenu.value;
+};
+
+const closeGroupMenu = () => {
+  showGroupMenu.value = false;
+};
+
+const switchGroup = async (groupId) => {
+  await portfolioStore.switchGroup(groupId);
+  showGroupMenu.value = false;
+};
+
+const openGroupManager = () => {
+  portfolioStore.showGroupManagerModal = true;
+  showGroupMenu.value = false;
+};
 
 // ✅ 新增：計算是否有待確認配息
 const hasPendingDividends = computed(() => {
@@ -212,6 +260,21 @@ const userInitial = computed(() => {
 const handleLogout = () => {
   if (confirm("確定要登出系統嗎？")) {
     authStore.logout();
+  }
+};
+
+// ✅ 新增：v-click-outside 指令
+const vClickOutside = {
+  mounted(el, binding) {
+    el.clickOutsideEvent = (event) => {
+      if (!(el === event.target || el.contains(event.target))) {
+        binding.value();
+      }
+    };
+    document.addEventListener('click', el.clickOutsideEvent);
+  },
+  unmounted(el) {
+    document.removeEventListener('click', el.clickOutsideEvent);
   }
 };
 
@@ -346,6 +409,125 @@ body {
 
 .logo-icon { 
   font-size: 1.5rem; 
+}
+
+/* ✅ 新增：群組切換器樣式 */
+.group-selector {
+  position: relative;
+  margin-left: 16px;
+}
+
+.group-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.group-btn:hover {
+  background: var(--border-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.group-icon {
+  font-size: 1.2rem;
+}
+
+.chevron {
+  font-size: 0.7rem;
+  color: var(--text-sub);
+  transition: transform 0.2s;
+}
+
+.group-btn:hover .chevron {
+  transform: translateY(2px);
+}
+
+.group-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  min-width: 240px;
+  padding: 8px;
+  z-index: 1000;
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: var(--text-main);
+}
+
+.group-item:hover {
+  background: var(--bg-secondary);
+}
+
+.group-item.active {
+  background: var(--primary);
+  color: white;
+}
+
+.group-name {
+  flex: 1;
+}
+
+.check {
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.group-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 8px 0;
+}
+
+.group-manage-btn {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.2s;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+.group-manage-btn:hover {
+  background: var(--bg-secondary);
+}
+
+/* 下拉選單動畫 */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: all 0.2s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 
 .nav-status { 
@@ -496,7 +678,7 @@ body {
   min-width: 0; 
 }
 
-/* ✅ 優化圖表區域：移除 grid 佈局，讓趨勢分析圖佔滿寬度 */
+/* ✅ 優化圖表區域：移除 grid 佈局，讓趋勢分析圖佔滿寬度 */
 .section-charts { 
   display: block;
   width: 100%; 
@@ -748,6 +930,15 @@ tr:hover td {
     font-size: 1.3rem;
   }
   
+  .group-selector {
+    margin-left: 8px;
+  }
+  
+  .group-btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+  }
+  
   .status-indicator {
     font-size: 0.8rem;
   }
@@ -777,7 +968,7 @@ tr:hover td {
     gap: 12px;
   }
   
-  .status-indicator:not(.loading):not(.ready) {
+  .status-indicator:not(.loading):not(.ready):not(.polling) {
     display: none;
   }
   
