@@ -8,7 +8,7 @@
           <span class="logo-icon">📊</span>
           <h1>Trading Journal <span class="badge">PRO</span></h1>
           
-          <!-- ✅ 新增：群組切換器 -->
+          <!-- ✅ 群組切換器 -->
           <div class="group-selector" v-click-outside="() => showGroupMenu = false">
             <button class="group-btn" @click="toggleGroupMenu" :title="`當前群組: ${currentGroup?.name || '全部紀錄'}`">
               <span class="group-icon">{{ currentGroup?.icon || '📊' }}</span>
@@ -16,7 +16,6 @@
               <span class="chevron">▼</span>
             </button>
             
-            <!-- 下拉選單 -->
             <Transition name="dropdown">
               <div v-if="showGroupMenu" class="group-menu">
                 <div class="group-menu-header">
@@ -44,17 +43,14 @@
         </div>
         
         <div class="nav-status">
-          <!-- 狀態 1: 正在載入資料 -->
           <div v-if="portfolioStore.loading" class="status-indicator loading">
             <span class="dot"></span> 更新中...
           </div>
           
-          <!-- ✅ 新增狀態 2: 正在輪詢監控 (橘燈閃爛) -->
           <div v-else-if="portfolioStore.isPolling" class="status-indicator polling">
             <span class="dot pulse-orange"></span> 計算中...
           </div>
           
-          <!-- 狀態 3: 正常連線 -->
           <div v-else class="status-indicator ready">
             <span class="dot"></span> 連線正常
           </div>
@@ -132,6 +128,9 @@
       </div>
     </div>
     
+    <!-- ✅ 群組管理器 Modal -->
+    <GroupManager :show="portfolioStore.showGroupManagerModal" @close="portfolioStore.showGroupManagerModal = false" />
+    
     <div class="toast-container">
       <TransitionGroup name="toast-slide">
         <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" @click="removeToast(t.id)">
@@ -161,6 +160,7 @@ import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
 import DividendManager from './components/DividendManager.vue';
+import GroupManager from './components/GroupManager.vue';  // ✅ 新增
 
 import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
 import ChartSkeleton from './components/skeletons/ChartSkeleton.vue';
@@ -172,7 +172,7 @@ const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 
-// ✅ 新增：群組切換相關狀態
+// ✅ 群組切換相關狀態
 const showGroupMenu = ref(false);
 const currentGroupId = computed(() => portfolioStore.currentGroupId);
 const currentGroup = computed(() => portfolioStore.currentGroup);
@@ -190,7 +190,6 @@ const switchGroup = (groupId) => {
 const openGroupManager = () => {
   showGroupMenu.value = false;
   portfolioStore.showGroupManagerModal = true;
-  addToast('🛠️ 群組管理器即將推出...', 'info');
 };
 
 // Click outside directive
