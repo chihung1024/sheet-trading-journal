@@ -7,24 +7,54 @@
         <div class="nav-brand">
           <span class="logo-icon">📊</span>
           <h1>Trading Journal <span class="badge">PRO</span></h1>
+          
+          <!-- ✅ 群組切換器 -->
+          <div class="group-selector" v-click-outside="() => showGroupMenu = false">
+            <button class="group-btn" @click="toggleGroupMenu" :title="`當前群組: ${currentGroup?.name || '全部紀錄'}`">
+              <span class="group-icon">{{ currentGroup?.icon || '📊' }}</span>
+              <span class="group-name">{{ currentGroup?.name || '全部紀錄' }}</span>
+              <span class="chevron">▼</span>
+            </button>
+            
+            <Transition name="dropdown">
+              <div v-if="showGroupMenu" class="group-menu">
+                <div class="group-menu-header">
+                  <span>選擇群組</span>
+                </div>
+                
+                <div class="group-list">
+                  <div v-for="group in portfolioStore.groups" :key="group.id"
+                       class="group-item"
+                       :class="{ active: currentGroupId === group.id }"
+                       @click="switchGroup(group.id)">
+                    <span class="group-icon">{{ group.icon }}</span>
+                    <span class="group-name">{{ group.name }}</span>
+                    <span v-if="currentGroupId === group.id" class="check">✓</span>
+                  </div>
+                </div>
+                
+                <div class="group-divider"></div>
+                <button class="group-manage-btn" @click="openGroupManager">
+                  ⚙️ 管理群組
+                </button>
+              </div>
+            </Transition>
+          </div>
         </div>
+        
         <div class="nav-status">
-          <!-- 狀態 1: 正在載入資料 -->
           <div v-if="portfolioStore.loading" class="status-indicator loading">
             <span class="dot"></span> 更新中...
           </div>
           
-          <!-- ✅ 新增狀態 2: 正在輪詢監控 (橘燈閃爍) -->
           <div v-else-if="portfolioStore.isPolling" class="status-indicator polling">
             <span class="dot pulse-orange"></span> 計算中...
           </div>
           
-          <!-- 狀態 3: 正常連線 -->
           <div v-else class="status-indicator ready">
             <span class="dot"></span> 連線正常
           </div>
           
-          <!-- ✅ 修改 @click 事件繫定 -->
           <button 
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
@@ -51,22 +81,15 @@
       <div class="content-container">
         <main class="main-column">
           <section class="section-stats">
-            <!-- 使用 portfolioStore.loading 控制骨架屏 -->
             <StatsGrid v-if="!portfolioStore.loading" />
             <StatsGridSkeleton v-else />
           </section>
           
-          <!-- ✅ 優化圖表區域：隱藏圓餅圖，讓趨勢分析圖佔滿寬度 -->
           <section class="section-charts">
             <div class="chart-wrapper chart-full">
               <PerformanceChart v-if="!portfolioStore.loading" />
               <ChartSkeleton v-else />
             </div>
-            <!-- 圓餅圖暫時隱藏，未來有需要再重新引入 -->
-            <!-- <div class="chart-wrapper">
-              <PieChart v-if="!portfolioStore.loading" />
-              <ChartSkeleton v-else />
-            </div> -->
           </section>
           
           <section class="section-holdings">
@@ -79,7 +102,6 @@
             <TableSkeleton v-else />
           </section>
           
-          <!-- ✅ 新增：配息管理區塊 -->
           <section class="section-dividends" v-if="!portfolioStore.loading && hasPendingDividends">
             <DividendManager />
           </section>
@@ -89,7 +111,6 @@
           <div class="sticky-panel">
             <TradeForm ref="tradeFormRef" />
             
-            <!-- ✅ 新增：配息提醒卡片 -->
             <div v-if="hasPendingDividends" class="dividend-alert card">
               <div class="alert-header">
                 <span class="alert-icon">🔔</span>
@@ -107,6 +128,9 @@
       </div>
     </div>
     
+    <!-- ✅ 群組管理器 Modal -->
+    <GroupManager :show="portfolioStore.showGroupManagerModal" @close="portfolioStore.showGroupManagerModal = false" />
+    
     <div class="toast-container">
       <TransitionGroup name="toast-slide">
         <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" @click="removeToast(t.id)">
@@ -120,13 +144,7 @@
 
 <script setup>
 import { usePWA } from './composables/usePWA';
-
-const { 
-  isInstallable, 
-  isInstalled, 
-  isOnline, 
-  install 
-} = usePWA();
+const { isInstallable, isInstalled, isOnline, install } = usePWA();
 
 import { ref, onMounted, computed, nextTick } from 'vue';
 import { useAuthStore } from './stores/auth';
@@ -141,9 +159,9 @@ import PerformanceChart from './components/PerformanceChart.vue';
 import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
-import DividendManager from './components/DividendManager.vue';  // ✅ 新增
+import DividendManager from './components/DividendManager.vue';
+import GroupManager from './components/GroupManager.vue';  // ✅ 新增
 
-// Skeleton components
 import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
 import ChartSkeleton from './components/skeletons/ChartSkeleton.vue';
 import TableSkeleton from './components/skeletons/TableSkeleton.vue';
@@ -154,7 +172,41 @@ const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 
-// ✅ 新增：計算是否有待確認配息
+// ✅ 群組切換相關狀態
+const showGroupMenu = ref(false);
+const currentGroupId = computed(() => portfolioStore.currentGroupId);
+const currentGroup = computed(() => portfolioStore.currentGroup);
+
+const toggleGroupMenu = () => {
+  showGroupMenu.value = !showGroupMenu.value;
+};
+
+const switchGroup = (groupId) => {
+  portfolioStore.switchGroup(groupId);
+  showGroupMenu.value = false;
+  addToast(`✅ 已切換至：${portfolioStore.currentGroup?.name}`, 'success');
+};
+
+const openGroupManager = () => {
+  showGroupMenu.value = false;
+  portfolioStore.showGroupManagerModal = true;
+};
+
+// Click outside directive
+const vClickOutside = {
+  mounted(el, binding) {
+    el.clickOutsideEvent = (event) => {
+      if (!(el === event.target || el.contains(event.target))) {
+        binding.value();
+      }
+    };
+    document.addEventListener('click', el.clickOutsideEvent);
+  },
+  unmounted(el) {
+    document.removeEventListener('click', el.clickOutsideEvent);
+  },
+};
+
 const hasPendingDividends = computed(() => {
   return portfolioStore.pending_dividends && portfolioStore.pending_dividends.length > 0;
 });
@@ -163,7 +215,6 @@ const pendingDividendsCount = computed(() => {
   return portfolioStore.pending_dividends ? portfolioStore.pending_dividends.length : 0;
 });
 
-// ✅ 新增：滾動至配息管理區塊
 const scrollToDividends = () => {
   const dividendSection = document.querySelector('.section-dividends');
   if (dividendSection) {
@@ -171,26 +222,18 @@ const scrollToDividends = () => {
   }
 };
 
-// ✅ 更新後的處理函式：配合輪詢機制
 const handleTriggerUpdate = async () => {
-  // 1. 如果正在輪詢，提示使用者並阻擋重複觸發
   if (portfolioStore.isPolling) {
     addToast("⌛ 系統已在背景監控更新中，請稍候...", "info");
     return;
   }
 
-  // 2. 確認是否觸發
   if (!confirm("確定要觸發後端計算嗎？")) return;
   
   try {
     addToast("🚀 正在請求 GitHub Actions...", "info");
-    
-    // 3. 呼叫 Store 的 triggerUpdate (現在會自動啟動輪詢)
     await portfolioStore.triggerUpdate();
-    
-    // 4. 成功提示
     addToast("✅ 已觸發！系統將在背景監控，更新完成後自動刷新。", "success");
-    
   } catch (error) {
     addToast(`❌ 觸發失敗: ${error.message}`, "error");
   }
@@ -217,19 +260,13 @@ const handleLogout = () => {
 
 onMounted(async () => {
   console.log('🚀 App.vue mounted');
-  
-  // 1. 先嘗試恢復登入狀態
   const isLoggedIn = authStore.initAuth();
-  
-  // 2. 如果已登入，手動觸發資料載入
   if (isLoggedIn) {
     console.log('🔐 已登入，開始載入投資組合數據...');
     await portfolioStore.fetchAll();
   }
   
   await nextTick();
-  
-  // 移除載入動畫
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
     setTimeout(() => {
@@ -237,7 +274,6 @@ onMounted(async () => {
       setTimeout(() => loadingEl.remove(), 300);
     }, 500);
   }
-  
   console.log('✅ App 初始化完成');
 });
 </script>
@@ -285,9 +321,7 @@ html.dark {
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.4);
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   background-color: var(--bg-app);
@@ -324,7 +358,7 @@ body {
 .nav-brand { 
   display: flex; 
   align-items: center; 
-  gap: 12px; 
+  gap: 16px; 
 }
 
 .nav-brand h1 { 
@@ -348,6 +382,138 @@ body {
   font-size: 1.5rem; 
 }
 
+/* ✅ 群組切換器樣式 */
+.group-selector {
+  position: relative;
+}
+
+.group-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.group-btn:hover {
+  background: var(--border-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.group-btn .chevron {
+  font-size: 0.7rem;
+  color: var(--text-sub);
+  transition: transform 0.2s;
+}
+
+.group-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  min-width: 240px;
+  padding: 8px;
+  z-index: 1000;
+}
+
+.group-menu-header {
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-sub);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.group-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 0.95rem;
+}
+
+.group-item:hover {
+  background: var(--bg-secondary);
+}
+
+.group-item.active {
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+}
+
+.group-item .group-icon {
+  font-size: 1.2rem;
+}
+
+.group-item .group-name {
+  flex: 1;
+}
+
+.group-item .check {
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.group-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 8px 0;
+}
+
+.group-manage-btn {
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.2s;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+.group-manage-btn:hover {
+  background: var(--bg-secondary);
+}
+
+/* Dropdown animation */
+.dropdown-enter-active, .dropdown-leave-active {
+  transition: all 0.2s ease;
+}
+
+.dropdown-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
 .nav-status { 
   display: flex; 
   align-items: center; 
@@ -364,7 +530,6 @@ body {
 
 .status-indicator.ready { color: var(--success); }
 .status-indicator.loading { color: var(--primary); }
-/* ✅ 新增 polling 狀態顏色 */
 .status-indicator.polling { color: var(--warning); }
 
 .dot { 
@@ -378,7 +543,6 @@ body {
   animation: pulse 1.5s infinite; 
 }
 
-/* ✅ 新增橘色脈衝動畫 */
 .pulse-orange {
   animation: pulse-orange 1.5s infinite;
 }
@@ -496,7 +660,6 @@ body {
   min-width: 0; 
 }
 
-/* ✅ 優化圖表區域：移除 grid 佈局，讓趨勢分析圖佔滿寬度 */
 .section-charts { 
   display: block;
   width: 100%; 
@@ -535,7 +698,6 @@ body {
   flex-direction: column; 
 }
 
-/* ✅ 讓圖表佔滿整個寬度並增加高度 */
 .chart-wrapper.chart-full { 
   height: 500px;
   width: 100%; 
@@ -549,7 +711,6 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* ✅ 新增：配息提醒卡片樣式 */
 .dividend-alert {
   border-left: 4px solid var(--warning);
   background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
@@ -727,9 +888,7 @@ tr:hover td {
   }
   
   .side-column { order: -1; }
-  /* ✅ 移除小螢幕上的 grid 佈局 */
   .section-charts { display: block; }
-  
   .sticky-panel { position: static; } 
   .desktop-only { display: none; }
 }
@@ -740,12 +899,20 @@ tr:hover td {
     height: 56px;
   }
   
+  .nav-brand {
+    gap: 8px;
+  }
+  
   .nav-brand h1 {
     font-size: 1.1rem;
   }
   
   .logo-icon {
     font-size: 1.3rem;
+  }
+  
+  .group-selector {
+    display: none;
   }
   
   .status-indicator {
@@ -756,7 +923,6 @@ tr:hover td {
     padding: 16px;
   }
   
-  /* ✅ 小螢幕上調整圖表高度 */
   .chart-wrapper.chart-full { 
     height: 350px;
   }
@@ -787,7 +953,6 @@ tr:hover td {
     font-size: 1rem;
   }
   
-  /* ✅ 更小螢幕上進一步調整 */
   .chart-wrapper.chart-full { 
     height: 300px;
   }
