@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { CONFIG } from '../config';
 import { useAuthStore } from './auth';
 import { useToast } from '../composables/useToast';
+import { GroupManager } from '../config/groups';  // ✅ 新增
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -17,6 +18,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     // ✅ 新增：輪詢控制變數
     const isPolling = ref(false);
     let pollTimer = null;
+
+    // ✅ 新增：群組功能
+    const groupManager = new GroupManager();
+    const currentGroupId = ref('all');
+    const showGroupManagerModal = ref(false);
 
     // ✅ 保留：Tag 1.10 的 getToken 方法
     const getToken = () => {
@@ -155,7 +161,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
             try {
                 // 2. 輕量檢查 (只抓 Snapshot 檢查 updated_at)
-                // 注意：這裡不呼叫 fetchSnapshot() 以免觸發大量 console log 和 UI 更新
                 const json = await fetchWithAuth('/api/portfolio');
                 
                 if (json && json.success && json.data) {
@@ -194,12 +199,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         if (!token) throw new Error("請先登入"); 
         
         try {
+            // ✅ 傳送群組配置給 GitHub Actions
+            const groupsConfig = groupManager.exportForPython();
+            
             const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
                 method: "POST",
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                body: JSON.stringify({ groups_config: groupsConfig })
             });
             
             if (response.ok || response.status === 204) {
@@ -217,6 +226,62 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // ✅ 新增：群組相關 Getters
+    const groups = computed(() => groupManager.getAllGroups());
+    
+    const currentGroup = computed(() => {
+        return groupManager.getGroupById(currentGroupId.value) || groups.value[0];
+    });
+
+    // ✅ 新增：筩選當前群組的交易紀錄
+    const filteredRecords = computed(() => {
+        if (currentGroupId.value === 'all') {
+            return records.value;
+        }
+        
+        return records.value.filter(record => {
+            const recordGroups = groupManager.getRecordGroups(record.tag);
+            return recordGroups.includes(currentGroupId.value);
+        });
+    });
+
+    // ✅ 新增：筩選當前群組的持倉
+    const filteredHoldings = computed(() => {
+        if (currentGroupId.value === 'all') {
+            return holdings.value;
+        }
+        
+        // 简化版：根据交易紀錄筩選持倉
+        const groupSymbols = new Set(
+            filteredRecords.value.map(r => r.symbol)
+        );
+        
+        return holdings.value.filter(h => groupSymbols.has(h.symbol));
+    });
+
+    // ✅ 新增：群組切換
+    const switchGroup = (groupId) => {
+        console.log('🔄 切換群組:', groupId);
+        currentGroupId.value = groupId;
+    };
+
+    // ✅ 新增：群組管理操作
+    const addGroup = (name, icon, color, tags) => {
+        return groupManager.addGroup(name, icon, color, tags);
+    };
+
+    const updateGroup = (id, updates) => {
+        return groupManager.updateGroup(id, updates);
+    };
+
+    const deleteGroup = (id) => {
+        return groupManager.deleteGroup(id);
+    };
+
+    const reorderGroups = (orderedIds) => {
+        groupManager.reorderGroups(orderedIds);
+    };
+
     // Getters
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
@@ -231,6 +296,22 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         unrealizedPnL, 
         connectionStatus,
         isPolling, // ✅ 匯出此狀態供 UI 顯示
+        
+        // ✅ 新增：群組功能
+        groupManager,
+        groups,
+        currentGroupId,
+        currentGroup,
+        filteredRecords,
+        filteredHoldings,
+        showGroupManagerModal,
+        switchGroup,
+        addGroup,
+        updateGroup,
+        deleteGroup,
+        reorderGroups,
+        
+        // 原有方法
         fetchAll, 
         fetchRecords, 
         triggerUpdate
