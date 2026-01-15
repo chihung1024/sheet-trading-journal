@@ -71,11 +71,54 @@ class DividendRecord(BaseModel):
     notes: Optional[str] = None  # 備註
     record_id: Optional[int] = None  # ✅ 新增：已確認的 transaction ID
 
-class PortfolioSnapshot(BaseModel):
-    updated_at: str
-    base_currency: str
-    exchange_rate: float
+# ============================================================
+# Phase 1: Tag-Based Multiverse Calculation
+# ============================================================
+
+class GroupStats(BaseModel):
+    """
+    單一群組的統計數據封裝
+    (原本 PortfolioSnapshot 的內容搬到這裡)
+    
+    每個群組（如 "ALL", "LongTerm", "ShortTerm"）都有獨立的：
+    - 投資組合摘要 (summary)
+    - 持倉明細 (holdings)
+    - 歷史績效 (history)
+    - 待確認配息 (pending_dividends)
+    """
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
-    pending_dividends: List[DividendRecord] = []  # ✅ 新增：待確認配息列表
+    pending_dividends: List[DividendRecord] = []
+    
+    # Phase 2 可擴充的 metadata (如顏色、名稱、描述等)
+    # display_name: Optional[str] = None
+    # color: Optional[str] = None
+    # description: Optional[str] = None
+
+class PortfolioSnapshot(BaseModel):
+    """
+    最終輸出的總體快照
+    
+    Phase 1 核心改變：
+    使用 Dictionary 儲存不同群組的數據，支援多維度平行運算
+    
+    Key 為群組名稱：
+    - "ALL": 全部交易（總帳）
+    - 其他 Key: 來自交易紀錄中的 Tag 欄位（如 "LongTerm", "ShortTerm", "Tech"）
+    
+    範例結構：
+    {
+      "groups": {
+        "ALL": { summary: {...}, holdings: [...], ... },
+        "LongTerm": { summary: {...}, holdings: [...], ... },
+        "ShortTerm": { summary: {...}, holdings: [...], ... }
+      }
+    }
+    """
+    updated_at: str
+    base_currency: str
+    exchange_rate: float
+    
+    # ✅ Phase 1 核心變更：groups 取代原本的 summary, holdings, history, pending_dividends
+    groups: Dict[str, GroupStats]
