@@ -13,7 +13,48 @@
     <div class="form-grid">
         <div class="form-group full">
             <label>交易標的</label>
-            <input type="text" v-model="form.symbol" placeholder="輸入代碼 (如 NVDA)" :disabled="isEditing" class="input-lg uppercase">
+            <input type="text" v-model="form.symbol" @change="checkHoldings" placeholder="輸入代碼 (如 NVDA)" :disabled="isEditing" class="input-lg uppercase">
+        </div>
+        
+        <!-- ✅ 新增：策略標籤輸入 -->
+        <div class="form-group full">
+            <label>策略標籤 (Groups)</label>
+            
+            <!-- ✅ 賣出時的智慧檢核 -->
+            <div v-if="form.txn_type === 'SELL' && holdingGroups.length > 0" class="smart-sell-options">
+                <span class="hint">⚠️ 此標的目前持倉於以下群組，請勾選要賣出的部位：</span>
+                <div class="checkbox-group">
+                    <label v-for="g in holdingGroups" :key="g" class="tag-checkbox">
+                        <input type="checkbox" :value="g" v-model="selectedSellGroups" @change="updateTagsFromCheckboxes">
+                        <span class="tag-name">{{ g }}</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- ✅ 標籤晶片輸入器 -->
+            <div class="tag-input-container" :class="{ disabled: form.txn_type === 'SELL' && holdingGroups.length > 0 }">
+                <div class="tags-list">
+                    <span v-for="(tag, idx) in tagsArray" :key="idx" class="tag-chip">
+                        {{ tag }}
+                        <span class="remove-tag" @click="removeTag(idx)">×</span>
+                    </span>
+                    <input 
+                        type="text" 
+                        v-model="tagInput" 
+                        @keydown.enter.prevent="addTag"
+                        @keydown.tab.prevent="addTag"
+                        @blur="addTag"
+                        placeholder="輸入標籤後按 Enter..."
+                        class="tag-input-field"
+                        :disabled="form.txn_type === 'SELL' && holdingGroups.length > 0"
+                    >
+                </div>
+            </div>
+            
+            <!-- ✅ 快速標籤建議 -->
+            <div class="quick-tags" v-if="form.txn_type !== 'SELL' || holdingGroups.length === 0">
+                <span v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">{{ t }}</span>
+            </div>
         </div>
         
         <div class="form-group">
@@ -55,7 +96,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
+import { reactive, ref, computed, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
@@ -68,35 +109,101 @@ const loading = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
 
+// ✅ 新增：標籤相關狀態
+const tagInput = ref('');
+const selectedSellGroups = ref([]);
+const holdingGroups = ref([]);
+
 const form = reactive({
     txn_date: new Date().toISOString().split('T')[0],
-    symbol: '', txn_type: 'BUY', qty: '', price: '', fee: 0, tax: 0, total_amount: ''
+    symbol: '', 
+    txn_type: 'BUY', 
+    qty: '', 
+    price: '', 
+    fee: 0, 
+    tax: 0, 
+    total_amount: '',
+    tag: '' // ✅ 新增
 });
 
-const setTxnType = (type) => { 
-    form.txn_type = type; 
+// ✅ 解析 tag 字串為陣列
+const tagsArray = computed(() => {
+    return (form.tag || '').split(/[,;]/).map(t=>t.trim()).filter(t=>t);
+});
+
+// ✅ 常見標籤建議 (從系統中已存在的群組提取)
+const commonTags = computed(() => {
+    return store.availableGroups.filter(g => g !== 'all' && !tagsArray.value.includes(g));
+});
+
+// ✅ 當輸入 Symbol 改變時，檢查持倉 (Smart Sell)
+const checkHoldings = () => {
+    if (form.txn_type === 'SELL' && form.symbol) {
+        holdingGroups.value = store.getGroupsWithHolding(form.symbol.toUpperCase());
+        selectedSellGroups.value = [];
+        
+        // 如果是在編輯模式，嘗試回填
+        if (isEditing.value) {
+            const currentTags = (form.tag || '').split(',').map(t=>t.trim());
+            selectedSellGroups.value = holdingGroups.value.filter(g => currentTags.includes(g));
+        }
+    } else {
+        holdingGroups.value = [];
+    }
 };
 
-// ✅ 新邏輯：當輸入總金額、股數、Fee、Tax 時，自動計算平均成本
+const updateTagsFromCheckboxes = () => {
+    form.tag = selectedSellGroups.value.join(', ');
+};
+
+const addTag = () => {
+    const val = tagInput.value.trim();
+    if (val && !tagsArray.value.includes(val)) {
+        const newTags = [...tagsArray.value, val];
+        form.tag = newTags.join(', ');
+    }
+    tagInput.value = '';
+};
+
+const removeTag = (index) => {
+    const newTags = [...tagsArray.value];
+    newTags.splice(index, 1);
+    form.tag = newTags.join(', ');
+    if (holdingGroups.value.length > 0) {
+        selectedSellGroups.value = newTags.filter(t => holdingGroups.value.includes(t));
+    }
+};
+
+const pushTag = (t) => {
+    if (!tagsArray.value.includes(t)) {
+        const newTags = [...tagsArray.value, t];
+        form.tag = newTags.join(', ');
+    }
+};
+
+// ✅ 監聽類型變化
+watch(() => form.txn_type, () => checkHoldings());
+
+const setTxnType = (type) => { 
+    form.txn_type = type;
+    checkHoldings();
+};
+
 const calcPriceFromInputs = () => {
     const qty = parseFloat(form.qty) || 0;
     const total = parseFloat(form.total_amount) || 0;
     const fee = parseFloat(form.fee) || 0;
     const tax = parseFloat(form.tax) || 0;
     
-    // 如果沒有股數或總金額，不計算
     if (qty <= 0 || total <= 0) return;
     
     let avgCost = 0;
     
     if (form.txn_type === 'BUY') {
-        // ✅ 買入：平均成本 = (總金額 + Fee + Tax) / 股數
         avgCost = (total + fee + tax) / qty;
     } else if (form.txn_type === 'SELL') {
-        // ✅ 賣出：平均成本 = (總金額 - Fee - Tax) / 股數
         avgCost = (total - fee - tax) / qty;
     } else {
-        // ✅ 配息：平均成本 = (總金額 - Tax) / 股數
         avgCost = (total - tax) / qty;
     }
     
@@ -109,12 +216,15 @@ const submit = async () => {
         return; 
     }
     
-    // ✅ 檢查 token 是否存在且未過期
+    // ✅ 賣出檢核：必須至少勾選一個群組
+    if (form.txn_type === 'SELL' && holdingGroups.value.length > 0 && selectedSellGroups.value.length === 0) {
+        addToast("請勾選要賣出的群組", "error");
+        return;
+    }
+    
     if (!auth.token || auth.isTokenExpired()) {
         addToast("登入已過期，請重新登入", "error");
-        setTimeout(() => {
-            auth.logout();
-        }, 2000);
+        setTimeout(() => auth.logout(), 2000);
         return;
     }
     
@@ -133,12 +243,9 @@ const submit = async () => {
             body: JSON.stringify(payload)
         });
         
-        // ✅ 處理 401 錯誤
         if (res.status === 401) {
             addToast("身份驗證失敗，請重新登入", "error");
-            setTimeout(() => {
-                auth.logout();
-            }, 2000);
+            setTimeout(() => auth.logout(), 2000);
             return;
         }
         
@@ -160,273 +267,89 @@ const submit = async () => {
 };
 
 const resetForm = () => {
-    isEditing.value = false; editingId.value = null;
-    form.symbol = ''; form.qty = ''; form.price = ''; form.fee = 0; form.tax = 0; form.total_amount = '';
+    isEditing.value = false; 
+    editingId.value = null;
+    form.symbol = ''; 
+    form.qty = ''; 
+    form.price = ''; 
+    form.fee = 0; 
+    form.tax = 0; 
+    form.total_amount = '';
+    form.tag = ''; // ✅ 清除標籤
     form.txn_type = 'BUY';
+    holdingGroups.value = [];
+    selectedSellGroups.value = [];
+    tagInput.value = '';
 };
 
 const setupForm = (r) => {
-    isEditing.value = true; editingId.value = r.id;
+    isEditing.value = true; 
+    editingId.value = r.id;
     Object.keys(form).forEach(k => form[k] = r[k]);
+    checkHoldings();
 };
+
 defineExpose({ setupForm });
 </script>
 
 <style scoped>
-.trade-panel { 
-    border: 1px solid var(--border-color); 
-    box-shadow: var(--shadow-card); 
-    background: var(--bg-card); 
-    padding: 24px;
-}
+.trade-panel { border: 1px solid var(--border-color); box-shadow: var(--shadow-card); background: var(--bg-card); padding: 24px; }
+.panel-title { margin-bottom: 24px; font-size: 1.3rem; color: var(--text-main); font-weight: 700; }
+.trade-type-switch { display: flex; background: var(--bg-secondary); padding: 4px; border-radius: 12px; margin-bottom: 24px; }
+.switch-btn { flex: 1; border: none; background: transparent; padding: 10px; font-weight: 500; color: var(--text-sub); cursor: pointer; border-radius: 8px; transition: all 0.2s; font-size: 1rem; }
+.switch-btn.active { background: var(--bg-card); box-shadow: var(--shadow-sm); color: var(--text-main); font-weight: 600; }
+.switch-btn.buy.active { color: var(--primary); }
+.switch-btn.sell.active { color: var(--success); }
+.switch-btn.div.active { color: var(--warning); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+.form-group { display: flex; flex-direction: column; gap: 8px; }
+.form-group.full { grid-column: span 2; }
+label { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; }
+input { padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1.05rem; width: 100%; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; transition: all 0.2s; color: var(--text-main); background: var(--bg-card); }
+input::placeholder { color: var(--text-sub); opacity: 0.6; }
+input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 0.7; }
+.uppercase { text-transform: uppercase; }
+.dual-input { display: flex; gap: 12px; }
 
-.panel-title { 
-    margin-bottom: 24px; 
-    font-size: 1.3rem; 
-    color: var(--text-main);
-    font-weight: 700;
-}
+/* ✅ 標籤輸入器樣式 */
+.tag-input-container { border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: var(--bg-card); display: flex; flex-wrap: wrap; gap: 6px; min-height: 46px; }
+.tag-input-container.disabled { opacity: 0.6; pointer-events: none; }
+.tags-list { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; align-items: center; }
+.tag-chip { background: var(--bg-secondary); color: var(--primary); padding: 4px 8px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.remove-tag { cursor: pointer; opacity: 0.6; font-weight: bold; font-size: 1.1rem; }
+.remove-tag:hover { opacity: 1; color: var(--danger); }
+.tag-input-field { border: none; outline: none; background: transparent; flex: 1; min-width: 100px; padding: 4px; color: var(--text-main); font-family: 'Inter', sans-serif; font-size: 0.95rem; }
+.quick-tags { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-tag { font-size: 0.8rem; color: var(--text-sub); border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 12px; cursor: pointer; transition: all 0.2s; }
+.quick-tag:hover { border-color: var(--primary); color: var(--primary); }
 
-/* 切換按鈕 */
-.trade-type-switch { 
-    display: flex; 
-    background: var(--bg-secondary); 
-    padding: 4px; 
-    border-radius: 12px; 
-    margin-bottom: 24px; 
-}
+/* ✅ 智慧賣出檢核樣式 */
+.smart-sell-options { background: rgba(245, 158, 11, 0.1); border: 1px dashed var(--warning); padding: 12px; border-radius: 8px; margin-bottom: 12px; }
+.hint { display: block; font-size: 0.85rem; color: var(--warning); margin-bottom: 8px; font-weight: 600; }
+.checkbox-group { display: flex; gap: 12px; flex-wrap: wrap; }
+.tag-checkbox { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.tag-checkbox input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
+.tag-name { font-size: 0.95rem; font-weight: 500; color: var(--text-main); }
 
-.switch-btn { 
-    flex: 1; 
-    border: none; 
-    background: transparent; 
-    padding: 10px; 
-    font-weight: 500; 
-    color: var(--text-sub); 
-    cursor: pointer; 
-    border-radius: 8px; 
-    transition: all 0.2s; 
-    font-size: 1rem; 
-}
+.summary-box { background: var(--bg-secondary); padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 24px; border: 1px dashed var(--border-color); }
+.summary-label { font-size: 0.95rem; color: var(--text-sub); margin-bottom: 8px; font-weight: 500; }
+.summary-value { background: transparent; border: none; text-align: center; font-size: 2rem; font-weight: 700; color: var(--text-main); padding: 0; width: 100%; box-shadow: none; }
+.summary-value:focus { box-shadow: none; }
+.action-buttons { display: flex; gap: 16px; }
+.btn { flex: 1; padding: 14px; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 1.05rem; letter-spacing: 0.02em; }
+.btn-cancel { background: var(--bg-secondary); color: var(--text-sub); border: 1px solid var(--border-color); }
+.btn-cancel:hover { background: var(--border-color); color: var(--text-main); }
+.btn-submit { color: white; background: var(--primary); }
+.btn-submit.buy { background: var(--primary); }
+.btn-submit.sell { background: var(--success); }
+.btn-submit.div { background: var(--warning); }
+.btn-submit:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: var(--shadow-card); }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-.switch-btn.active { 
-    background: var(--bg-card); 
-    box-shadow: var(--shadow-sm); 
-    color: var(--text-main); 
-    font-weight: 600; 
-}
-
-.switch-btn.buy.active { 
-    color: var(--primary); 
-}
-
-.switch-btn.sell.active { 
-    color: var(--success); 
-}
-
-.switch-btn.div.active { 
-    color: var(--warning); 
-}
-
-/* 表單區塊 */
-.form-grid { 
-    display: grid; 
-    grid-template-columns: 1fr 1fr; 
-    gap: 20px; 
-    margin-bottom: 24px; 
-}
-
-.form-group { 
-    display: flex; 
-    flex-direction: column; 
-    gap: 8px; 
-}
-
-.form-group.full { 
-    grid-column: span 2; 
-}
-
-label { 
-    font-size: 0.9rem; 
-    color: var(--text-sub); 
-    font-weight: 600; 
-}
-
-input { 
-    padding: 12px; 
-    border: 1px solid var(--border-color); 
-    border-radius: 8px; 
-    font-size: 1.05rem; 
-    width: 100%; 
-    box-sizing: border-box; 
-    font-family: 'JetBrains Mono', monospace; 
-    transition: all 0.2s; 
-    color: var(--text-main);
-    background: var(--bg-card);
-}
-
-input::placeholder {
-    color: var(--text-sub);
-    opacity: 0.6;
-}
-
-input:focus { 
-    outline: none; 
-    border-color: var(--primary); 
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); 
-}
-
-input:disabled {
-    background: var(--bg-secondary);
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-.uppercase { 
-    text-transform: uppercase; 
-}
-
-.dual-input { 
-    display: flex; 
-    gap: 12px; 
-}
-
-/* 總金額區塊 */
-.summary-box { 
-    background: var(--bg-secondary); 
-    padding: 20px; 
-    border-radius: 12px; 
-    text-align: center; 
-    margin-bottom: 24px; 
-    border: 1px dashed var(--border-color); 
-}
-
-.summary-label { 
-    font-size: 0.95rem; 
-    color: var(--text-sub); 
-    margin-bottom: 8px; 
-    font-weight: 500;
-}
-
-.summary-value { 
-    background: transparent; 
-    border: none; 
-    text-align: center; 
-    font-size: 2rem; 
-    font-weight: 700; 
-    color: var(--text-main); 
-    padding: 0; 
-    width: 100%; 
-    box-shadow: none; 
-}
-
-.summary-value:focus { 
-    box-shadow: none; 
-}
-
-.action-buttons { 
-    display: flex; 
-    gap: 16px; 
-}
-
-.btn { 
-    flex: 1; 
-    padding: 14px; 
-    border: none; 
-    border-radius: 10px; 
-    font-weight: 600; 
-    cursor: pointer; 
-    transition: all 0.2s; 
-    font-size: 1.05rem; 
-    letter-spacing: 0.02em; 
-}
-
-.btn-cancel { 
-    background: var(--bg-secondary); 
-    color: var(--text-sub); 
-    border: 1px solid var(--border-color);
-}
-
-.btn-cancel:hover { 
-    background: var(--border-color); 
-    color: var(--text-main);
-}
-
-.btn-submit { 
-    color: white; 
-    background: var(--primary); 
-}
-
-.btn-submit.buy { 
-    background: var(--primary); 
-}
-
-.btn-submit.sell { 
-    background: var(--success); 
-}
-
-.btn-submit.div { 
-    background: var(--warning); 
-}
-
-.btn-submit:hover { 
-    opacity: 0.9; 
-    transform: translateY(-1px); 
-    box-shadow: var(--shadow-card);
-}
-
-.btn-submit:disabled { 
-    opacity: 0.6; 
-    cursor: not-allowed; 
-    transform: none; 
-}
-
-/* 響應式調整 */
 @media (max-width: 768px) {
-    .trade-panel {
-        padding: 20px;
-    }
-    
-    .form-grid {
-        gap: 16px;
-    }
-    
-    .panel-title {
-        font-size: 1.2rem;
-    }
-}
-
-/* 強制修復深色模式顏色 */
-:global(.dark) .trade-panel {
-    background-color: #1e293b !important;
-    border-color: #334155 !important;
-    color: #f1f5f9 !important;
-}
-
-:global(.dark) .panel-title,
-:global(.dark) label,
-:global(.dark) .summary-label {
-    color: #f1f5f9 !important;
-}
-
-:global(.dark) input,
-:global(.dark) .summary-value {
-    background-color: #0f172a !important;
-    color: #f1f5f9 !important;
-    border-color: #334155 !important;
-}
-
-:global(.dark) .trade-type-switch,
-:global(.dark) .summary-box {
-    background-color: #334155 !important;
-}
-
-:global(.dark) .switch-btn {
-    color: #94a3b8 !important;
-}
-
-:global(.dark) .switch-btn.active {
-    background-color: #1e293b !important;
-    color: #f1f5f9 !important;
+    .trade-panel { padding: 20px; }
+    .form-grid { gap: 16px; }
+    .panel-title { font-size: 1.2rem; }
 }
 </style>
