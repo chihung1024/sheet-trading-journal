@@ -13,7 +13,7 @@ class PortfolioCalculator:
 
     def run(self):
         """執行多群組投資組合計算主流程"""
-        print("=== 開始執行多群組投資組合計算 ===")
+        print("開始執行多群組投資組合計算")
         
         # 1. 全域復權處理 (只做一次)
         self._back_adjust_transactions_global()
@@ -23,7 +23,7 @@ class PortfolioCalculator:
         end_date = datetime.now()
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
-        # 取得最新匙率
+        # 取得最新匠率
         current_fx = DEFAULT_FX_RATE
         if not self.market.fx_rates.empty:
             current_fx = float(self.market.fx_rates.iloc[-1])
@@ -172,7 +172,8 @@ class PortfolioCalculator:
                         benchmark_invested += cost_twd
 
                 elif txn_type == 'SELL':
-                    proceeds_twd = ((qty * price) - comm - tax) * fx
+                    proceeds_usd = (qty * price) - comm - tax
+                    proceeds_twd = proceeds_usd * fx
                     holdings[sym]['qty'] -= qty
                     
                     remaining = qty
@@ -191,12 +192,20 @@ class PortfolioCalculator:
                         if batch['qty'] < 1e-9: 
                             fifo_queues[sym].popleft()
                     
+                    # ✅ 修正：先計算實現損益
+                    realized_pnl_twd = proceeds_twd - cost_sold_twd
+                    total_realized_pnl_twd += realized_pnl_twd
+                    
+                    # ✅ 修正：不再直接扣除 cost，而是直接扣除收入 (proceeds)
+                    # 這樣 invested_capital 會減少，但不會影響 total_pnl 的計算
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
                     holdings[sym]['cost_basis_twd'] -= cost_sold_twd
                     invested_capital -= cost_sold_twd
-                    total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
+                    
+                    # ✅ XIRR 現金流記錄賣出收入
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
 
+                    # Benchmark 調整
                     if benchmark_units > 0:
                         ratio = cost_sold_twd / benchmark_invested if benchmark_invested > 0 else 0
                         benchmark_units -= benchmark_units * ratio
@@ -241,9 +250,15 @@ class PortfolioCalculator:
                     total_mkt_val += h['qty'] * price * fx
                     current_holdings_cost += h['cost_basis_twd']
             
+            # ✅ 修正：未實現損益 = 市值 - 持倉成本
             unrealized_pnl = total_mkt_val - current_holdings_cost
+            
+            # ✅ 修正：總損益 = 未實現 + 已實現
             total_pnl = unrealized_pnl + total_realized_pnl_twd
-            current_total_equity = invested_capital + total_pnl
+            
+            # ✅ 修正：總資產 = 持倉市值 + 累計已實現損益
+            # 或者等價於：已投入成本 + 總損益
+            current_total_equity = current_holdings_cost + total_pnl
             
             # TWR 計算
             prev_invested = history_data[-1]['invested'] if history_data else 0.0
@@ -271,7 +286,7 @@ class PortfolioCalculator:
             history_data.append({
                 "date": date_str,
                 "total_value": round(total_mkt_val, 0),
-                "invested": round(invested_capital, 0),
+                "invested": round(current_holdings_cost, 0),  # ✅ 修正：這裡應該是持倉成本
                 "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2),
                 "benchmark_twr": round(bench_twr, 2),
