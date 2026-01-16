@@ -215,7 +215,6 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
-// ✅ 修正：建立匯率映射表
 const fxRateMap = computed(() => {
     const map = {};
     if (store.history && store.history.length > 0) {
@@ -226,14 +225,11 @@ const fxRateMap = computed(() => {
     return map;
 });
 
-// ✅ 修正：根據日期查找匯率
 const getFxRateByDate = (dateStr) => {
-    // 1. 精確匹配
     if (fxRateMap.value[dateStr]) {
         return fxRateMap.value[dateStr];
     }
     
-    // 2. 往前查找最近的匯率（處理週末/假日）
     const dates = Object.keys(fxRateMap.value).sort();
     for (let i = dates.length - 1; i >= 0; i--) {
         if (dates[i] <= dateStr) {
@@ -241,30 +237,25 @@ const getFxRateByDate = (dateStr) => {
         }
     }
     
-    // 3. 使用最新匯率
     if (dates.length > 0) {
         return fxRateMap.value[dates[dates.length - 1]];
     }
     
-    // 4. 預設值
     return 32.0;
 };
 
-// ✅ 核心修正：在前端計算 total_amount (USD)
 const calculateTotalAmountUSD = (record) => {
     const qty = Number(record.qty) || 0;
     const price = Number(record.price) || 0;
     const commission = Number(record.commission) || 0;
     const tax = Number(record.tax) || 0;
     
-    // 計算公式：|qty × price| + commission + tax
     const baseAmount = Math.abs(qty * price);
     const totalUSD = baseAmount + commission + tax;
     
     return totalUSD;
 };
 
-// ✅ 修正：計算台幣總額
 const getTotalAmountTWD = (record) => {
     const usdAmount = calculateTotalAmountUSD(record);
     const fxRate = getFxRateByDate(record.txn_date);
@@ -278,7 +269,6 @@ const availableYears = computed(() => {
     return Array.from(years).sort().reverse();
 });
 
-// 統計數據
 const buyCount = computed(() => 
     processedRecords.value.filter(r => r.txn_type === 'BUY').length
 );
@@ -310,10 +300,17 @@ const processedRecords = computed(() => {
         );
         const matchType = filterType.value === 'ALL' || r.txn_type === filterType.value;
         const matchYear = filterYear.value === 'ALL' || r.txn_date.startsWith(filterYear.value);
-        return matchSearch && matchType && matchYear;
+        
+        // ✅ 新增：群組過濾
+        let matchGroup = true;
+        if (store.currentGroup !== 'all') {
+            const tags = (r.tag || '').split(/[,;]/).map(t => t.trim());
+            matchGroup = tags.includes(store.currentGroup);
+        }
+        
+        return matchSearch && matchType && matchYear && matchGroup;
     });
 
-    // ✅ 修改：支援按台幣總額排序
     result.sort((a, b) => {
         let valA, valB;
         
@@ -459,8 +456,12 @@ const deleteRecord = async (id) => {
     }
 };
 
-// 監聽篩選條件變化，重置頁碼
 watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
+    currentPage.value = 1;
+});
+
+// ✅ 新增：監聽群組切換，重置頁碼
+watch(() => store.currentGroup, () => {
     currentPage.value = 1;
 });
 </script>
@@ -864,7 +865,6 @@ tr:last-child td {
     opacity: 0.5;
 }
 
-/* 響應式 */
 @media (max-width: 768px) {
     .toolbar { 
         flex-direction: column; 
