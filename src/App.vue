@@ -69,10 +69,10 @@
         <section class="section-main-data">
            <div class="data-col">
              <HoldingsTable />
-             <RecordList />
+             <RecordList @edit="handleEditTransaction" />
            </div>
            <div class="form-col">
-             <TradeForm />
+             <TradeForm ref="tradeFormRef" />
              <DividendManager />
            </div>
         </section>
@@ -144,7 +144,7 @@ import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
 import TradeForm from './components/TradeForm.vue';
 import DividendManager from './components/DividendManager.vue';
-import ToastContainer from './components/ToastContainer.vue'; // 假設您有這個組件，若無可移除
+import ToastContainer from './components/ToastContainer.vue'; 
 
 const authStore = useAuthStore();
 const portfolioStore = usePortfolioStore();
@@ -155,6 +155,8 @@ const { isDark, toggleDark } = useDarkMode();
 const showGroupModal = ref(false);
 const isProcessing = ref(false);
 const groupRenameMap = reactive({});
+// ✅ 新增：TradeForm 的元件實例參照
+const tradeFormRef = ref(null);
 
 // Computed
 const availableGroupsList = computed(() => {
@@ -172,6 +174,13 @@ const formatTime = (isoString) => {
     if (!isoString) return '';
     const d = new Date(isoString);
     return d.toLocaleString('zh-TW', { hour12: false });
+};
+
+// ✅ 新增：處理編輯事件，呼叫 TradeForm 的 setupForm 方法
+const handleEditTransaction = (record) => {
+    if (tradeFormRef.value) {
+        tradeFormRef.value.setupForm(record);
+    }
 };
 
 const openGroupModal = () => {
@@ -209,17 +218,14 @@ const renameGroup = async (oldName) => {
         let successCount = 0;
         let failCount = 0;
 
-        // 2. 逐筆更新 (Sequential Update to avoid race conditions or rate limits)
+        // 2. 逐筆更新 (Sequential Update)
         for (const record of recordsToUpdate) {
-            // 替換標籤邏輯
             let tags = record.tag.split(/[,;]/).map(t => t.trim());
             tags = tags.map(t => t === oldName ? newName : t);
-            // 去除重複並重組字串
             tags = [...new Set(tags)];
             const newTagStr = tags.join(', ');
 
             try {
-                // 直接呼叫 Fetch 以避免 Store 頻繁刷新
                 const res = await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
                     method: 'PUT',
                     headers: { 
@@ -240,11 +246,9 @@ const renameGroup = async (oldName) => {
         // 3. 完成後處理
         addToast(`更新完成: 成功 ${successCount} 筆, 失敗 ${failCount} 筆`, failCount > 0 ? 'warning' : 'success');
         
-        // 強制重新獲取資料並觸發後端重算
         await portfolioStore.fetchAll();
         await portfolioStore.triggerUpdate();
         
-        // 關閉視窗或重置輸入
         if (failCount === 0) {
             delete groupRenameMap[oldName];
             groupRenameMap[newName] = newName;
@@ -266,7 +270,7 @@ onMounted(() => {
 </script>
 
 <style>
-/* 全域變數定義 */
+/* ... (樣式部分保持不變) ... */
 :root {
   --primary: #2563eb;
   --bg-main: #f3f4f6;
@@ -291,7 +295,6 @@ onMounted(() => {
   --primary: #3b82f6;
 }
 
-/* Layout */
 .app-layout {
   min-height: 100vh;
   background-color: var(--bg-main);
@@ -306,7 +309,6 @@ onMounted(() => {
   padding: 0 16px 40px;
 }
 
-/* Header Styles */
 .top-nav {
   display: flex;
   justify-content: space-between;
@@ -349,7 +351,6 @@ onMounted(() => {
   margin-top: 2px;
 }
 
-/* ✅ Group Selector Styles */
 .group-selector {
     display: flex;
     align-items: center;
@@ -401,7 +402,6 @@ onMounted(() => {
     border-color: var(--primary);
 }
 
-/* Status Area */
 .nav-status {
   display: flex;
   align-items: center;
@@ -427,7 +427,6 @@ onMounted(() => {
 }
 .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
 
-/* Content Layout */
 .content-container {
   display: flex; flex-direction: column; gap: 24px;
 }
@@ -443,13 +442,11 @@ onMounted(() => {
 .data-col { display: flex; flex-direction: column; gap: 24px; }
 .form-col { display: flex; flex-direction: column; gap: 24px; }
 
-/* Responsive */
 @media (max-width: 1024px) {
   .section-charts, .section-main-data { grid-template-columns: 1fr; }
-  .form-col { order: -1; } /* Mobile: Form on top */
+  .form-col { order: -1; }
 }
 
-/* ✅ Modal Styles */
 .modal-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.6); backdrop-filter: blur(2px);
