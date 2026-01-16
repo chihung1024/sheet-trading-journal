@@ -108,8 +108,8 @@ class PortfolioCalculator:
         holdings = {}
         fifo_queues = {}
         
-        # ✅ 關鍵修正：分離「淨投入」和「已實現損益」
-        net_cash_inflow = 0.0  # 累計淨現金流入（買入 - 賣出收入）
+        # ✅ 關鍵：參考舊專案邏輯
+        total_buy_cost_twd = 0.0  # 累計買入成本（只增不減）
         total_realized_pnl_twd = 0.0  # 累計已實現損益
         
         history_data = []
@@ -172,8 +172,8 @@ class PortfolioCalculator:
                         'date': d
                     })
                     
-                    # ✅ 買入：現金流出
-                    net_cash_inflow += cost_twd
+                    # ✅ 買入：累計投入成本（只增不減）
+                    total_buy_cost_twd += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     
                     # Benchmark
@@ -209,16 +209,15 @@ class PortfolioCalculator:
                         if batch['qty'] < 1e-9: 
                             fifo_queues[sym].popleft()
                     
-                    # ✅ 清晰分離：已實現損益
+                    # ✅ 賣出：計算已實現損益
                     realized_pnl_twd = proceeds_twd - cost_sold_twd
                     total_realized_pnl_twd += realized_pnl_twd
                     
-                    # ✅ 清晰分離：更新持倉成本
+                    # ✅ 更新持倉成本
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
                     holdings[sym]['cost_basis_twd'] -= cost_sold_twd
                     
-                    # ✅ 賣出：現金流入（減少淨投入）
-                    net_cash_inflow -= proceeds_twd
+                    # ✅ XIRR 現金流
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
 
                     # Benchmark 調整
@@ -231,7 +230,6 @@ class PortfolioCalculator:
                     # ✅ 配息直接計入已實現損益
                     net_div_twd = price * fx
                     total_realized_pnl_twd += net_div_twd
-                    net_cash_inflow -= net_div_twd  # 配息收入減少淨投入
                     xirr_cashflows.append({'date': d, 'amount': net_div_twd})
 
             # 處理自動配息
@@ -257,7 +255,6 @@ class PortfolioCalculator:
                         
                         if not is_confirmed:
                             total_realized_pnl_twd += total_net_twd
-                            net_cash_inflow -= total_net_twd
                             xirr_cashflows.append({'date': d, 'amount': total_net_twd})
 
             # ✅ 每日估值：使用清晰的計算邏輯
@@ -277,7 +274,6 @@ class PortfolioCalculator:
             total_pnl = unrealized_pnl + total_realized_pnl_twd
             
             # ✅ 總資產 = 持倉市值 + 已實現損益
-            # 或者：current_holdings_cost + total_pnl
             current_total_equity = total_mkt_val + total_realized_pnl_twd
             
             # TWR 計算
@@ -307,7 +303,7 @@ class PortfolioCalculator:
             history_data.append({
                 "date": date_str,
                 "total_value": round(total_mkt_val, 0),
-                "invested": round(current_holdings_cost, 0),
+                "invested": round(total_buy_cost_twd, 0),  # ✅ 修正：累計買入成本
                 "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2),
                 "benchmark_twr": round(bench_twr, 2),
@@ -316,7 +312,6 @@ class PortfolioCalculator:
 
         # 產生最終報表
         final_holdings = []
-        current_holdings_cost_sum = 0.0
         current_date = datetime.now()
         
         for sym, h in holdings.items():
@@ -348,7 +343,6 @@ class PortfolioCalculator:
                 pnl = mkt_val - cost
                 pnl_pct = (pnl / cost * 100) if cost > 0 else 0
                 avg_cost_usd = h['cost_basis_usd'] / h['qty'] if h['qty'] > 0 else 0
-                current_holdings_cost_sum += cost
                 
                 final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency="USD",
@@ -380,13 +374,12 @@ class PortfolioCalculator:
 
         # ✅ Summary 計算
         total_value = sum(h.market_value_twd for h in final_holdings)
-        invested_capital = current_holdings_cost_sum
-        unrealized_pnl_final = total_value - invested_capital
+        unrealized_pnl_final = total_value - sum(h.market_value_twd - h.pnl_twd for h in final_holdings)
         total_pnl_final = unrealized_pnl_final + total_realized_pnl_twd
 
         summary = PortfolioSummary(
             total_value=round(total_value, 0),
-            invested_capital=round(invested_capital, 0),
+            invested_capital=round(total_buy_cost_twd, 0),  # ✅ 修正：累計買入成本
             total_pnl=round(total_pnl_final, 0),
             twr=history_data[-1]['twr'] if history_data else 0,
             xirr=xirr_val,
