@@ -28,13 +28,13 @@ class PortfolioSummary(BaseModel):
     invested_capital: float
     total_pnl: float
     twr: float
-    xirr: float = 0.0
+    xirr: float = 0.0  # ✅ 保留 XIRR
     realized_pnl: float
     benchmark_twr: float
 
 class HoldingPosition(BaseModel):
     symbol: str
-    tag: str = '' # 標記這筆持倉屬於哪個群組視角 (例如 'AI', 'all')
+    tag: str = '' # 標記這筆持倉屬於哪個群組視角
     currency: str
     qty: float
     market_value_twd: float
@@ -42,12 +42,17 @@ class HoldingPosition(BaseModel):
     pnl_percent: float
     current_price_origin: float
     avg_cost_usd: float = 0.0
-    prev_close_price: float = 0.0
-    daily_change_usd: float = 0.0
-    daily_change_percent: float = 0.0
-    daily_pl_twd: float = 0.0
+    
+    # ✅ 保留今日損益欄位
+    prev_close_price: float = 0.0       
+    daily_change_usd: float = 0.0       
+    daily_change_percent: float = 0.0   
+    daily_pl_twd: float = 0.0            
 
 class DividendRecord(BaseModel):
+    """
+    配息記錄模型
+    """
     symbol: str
     ex_date: str
     pay_date: Optional[str] = None
@@ -58,15 +63,12 @@ class DividendRecord(BaseModel):
     total_net_usd: float
     total_net_twd: float
     fx_rate: float
-    status: str = "pending"
+    status: str = "pending"  # pending | confirmed
     notes: Optional[str] = None
     record_id: Optional[int] = None
 
+# ✅ 新增：單一群組的完整數據封裝
 class PortfolioGroupData(BaseModel):
-    """
-    單一策略群組的完整數據封裝
-    包含該群組獨立的摘要、持倉、歷史曲線與配息
-    """
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
@@ -77,12 +79,11 @@ class PortfolioSnapshot(BaseModel):
     base_currency: str
     exchange_rate: float
     
-    # --- 向下相容區塊 (對應 'all' 群組) ---
+    # 向下相容欄位 (代表 'all' 群組)
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
-    pending_dividends: List[DividendRecord] = []
+    pending_dividends: List[DividendRecord] = []  # ✅ 保留配息列表
     
-    # --- 新增：多群組資料字典 ---
-    # Key 為群組名稱 (如 "LongTerm", "AI"), Value 為該群組的計算結果
+    # ✅ 新增：多群組資料字典
     groups: Dict[str, PortfolioGroupData] = {}
