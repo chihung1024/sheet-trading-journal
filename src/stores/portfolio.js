@@ -5,234 +5,266 @@ import { useAuthStore } from './auth';
 import { useToast } from '../composables/useToast';
 
 export const usePortfolioStore = defineStore('portfolio', () => {
+    const { addToast } = useToast();
+    
+    // --- State ---
     const loading = ref(false);
-    const stats = ref({});
-    const holdings = ref([]);
-    const history = ref([]);
+    const rawData = ref(null); // 儲存後端回傳的完整 Snapshot (包含 groups)
     const records = ref([]);
-    const pending_dividends = ref([]);  // ✅ 新增：待確認配息列表
     const lastUpdate = ref('');
     const connectionStatus = ref('connected'); 
-
-    // ✅ 新增：輪詢控制變數
     const isPolling = ref(false);
     let pollTimer = null;
 
-    // ✅ 保留：Tag 1.10 的 getToken 方法
+    // 當前選擇的策略群組 (預設為 'all')
+    const currentGroup = ref('all');
+
+    // --- Actions: 基礎 API 呼叫 ---
     const getToken = () => {
         const auth = useAuthStore();
         return auth.token;
     };
 
-    // ✅ 保留：新版的 fetchWithAuth（統一錯誤處理）
     const fetchWithAuth = async (endpoint, options = {}) => {
         const auth = useAuthStore();
         if (!auth.token) return null;
-
+        
         try {
             const res = await fetch(`${CONFIG.API_BASE_URL}${endpoint}`, {
                 ...options,
-                headers: {
-                    ...options.headers,
-                    'Authorization': `Bearer ${auth.token}`,
-                    'Content-Type': 'application/json'
+                headers: { 
+                    ...options.headers, 
+                    'Authorization': `Bearer ${auth.token}`, 
+                    'Content-Type': 'application/json' 
                 }
             });
 
-            if (res.status === 401) {
-                console.warn("Token expired, logging out...");
-                connectionStatus.value = 'error';
-                auth.logout();
-                return null;
+            if (res.status === 401) { 
+                auth.logout(); 
+                return null; 
             }
-
+            
             if (!res.ok) {
-                connectionStatus.value = 'error';
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || `API Error: ${res.status}`);
+                throw new Error(`API Error: ${res.status}`);
             }
 
             connectionStatus.value = 'connected';
             return await res.json();
-        } catch (e) {
-            console.error(`Fetch error [${endpoint}]:`, e);
-            connectionStatus.value = 'error';
-            throw e;
-        }
-    };
-
-    // ✅ 修改：加入請求去重邏輯
-    const fetchAll = async () => {
-        // 如果正在載入中，直接忽略這次請求，防止重複觸發
-        if (loading.value) {
-            console.warn('⚠️ [fetchAll] 請求已在進行中，忽略此次調用');
-            return;
-        }
-
-        console.log('📡 [fetchAll] 開始載入數據...');
-        loading.value = true;
-        
-        try {
-            await Promise.all([
-                fetchSnapshot().catch(err => {
-                    console.error('❌ [fetchSnapshot] 錯誤:', err);
-                }),
-                fetchRecords().catch(err => {
-                    console.error('❌ [fetchRecords] 錯誤:', err);
-                })
-            ]);
-            console.log('✅ [fetchAll] 數據載入完成');
-        } catch (error) {
-            console.error('❌ [fetchAll] 發生嚴重錯誤:', error);
-            connectionStatus.value = 'error';
-        } finally {
-            loading.value = false;
-            console.log('🏁 [fetchAll] loading 狀態已重置為 false');
-        }
-    };
-
-
-    // ✅ 修復：增強的 fetchSnapshot
-    const fetchSnapshot = async () => {
-        console.log('📊 [fetchSnapshot] 開始請求...');
-        try {
-            const json = await fetchWithAuth('/api/portfolio');
-            console.log('📊 [fetchSnapshot] API 回應:', json);
-            
-            if (json && json.success && json.data) {
-                stats.value = json.data.summary || {};
-                holdings.value = json.data.holdings || [];
-                history.value = json.data.history || [];
-                pending_dividends.value = json.data.pending_dividends || [];  // ✅ 新增
-                lastUpdate.value = json.data.updated_at; // 更新時間
-                console.log('✅ [fetchSnapshot] 數據已更新，待確認配息:', pending_dividends.value.length, '筆');
-            } else {
-                console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
-            }
-        } catch (error) {
-            console.error('❌ [fetchSnapshot] 請求失敗:', error);
-            throw error; // 抛出讓 fetchAll 捕捉
-        }
-    };
-
-    // ✅ 修復：增強的 fetchRecords
-    const fetchRecords = async () => {
-        console.log('📝 [fetchRecords] 開始請求...');
-        try {
-            const json = await fetchWithAuth('/api/records');
-            console.log('📝 [fetchRecords] API 回應:', json);
-            
-            if (json && json.success) {
-                records.value = json.data || [];
-                console.log('✅ [fetchRecords] 數據已更新，共', records.value.length, '筆');
-            } else {
-                console.warn('⚠️ [fetchRecords] 數據格式異常:', json);
-            }
-        } catch (error) {
-            console.error('❌ [fetchRecords] 請求失敗:', error);
-            throw error; // 抛出讓 fetchAll 捕捉
-        }
-    };
-
-    // ✅ 新增：智慧輪詢函式 (Smart Polling)
-    const startPolling = () => {
-        if (isPolling.value) return;
-        
-        console.log('⌛ [SmartPolling] 開始監控數據更新...');
-        isPolling.value = true;
-        const startTime = Date.now();
-        const initialTime = lastUpdate.value; // 記錄當前的更新時間
-        const { addToast } = useToast(); 
-
-        pollTimer = setInterval(async () => {
-            // 1. 超時檢查 (例如 3 分鐘後放棄)
-            if (Date.now() - startTime > 180000) {
-                console.warn('⚠️ [SmartPolling] 更新超時，停止輪詢');
-                stopPolling();
-                addToast("⚠️ 更新等待超時，請稍後手動重新整理", "error");
-                return;
-            }
-
-            try {
-                // 2. 輕量檢查 (只抓 Snapshot 檢查 updated_at)
-                // 注意：這裡不呼叫 fetchSnapshot() 以免觸發大量 console log 和 UI 更新
-                const json = await fetchWithAuth('/api/portfolio');
-                
-                if (json && json.success && json.data) {
-                    const newTime = json.data.updated_at;
-                    
-                    // 3. 比對時間：如果新時間與舊時間不同，代表 GitHub Actions 跑完了
-                    if (newTime !== initialTime) {
-                        console.log('✨ [SmartPolling] 偵測到新數據！時間:', newTime);
-                        
-                        stopPolling(); // 先停止輪詢
-                        await fetchAll(); // 正式抓取並更新畫面
-                        
-                        addToast("✅ 數據已更新完畢！", "success");
-                    } else {
-                        console.log('💤 [SmartPolling] 數據尚未變更...');
-                    }
-                }
-            } catch (e) {
-                console.warn('⚠️ [SmartPolling] 檢查失敗:', e);
-            }
-        }, 5000); // 每 5 秒檢查一次
-    };
-
-    // ✅ 新增：停止輪詢
-    const stopPolling = () => {
-        isPolling.value = false;
-        if (pollTimer) {
-            clearInterval(pollTimer);
-            pollTimer = null;
-        }
-    };
-
-    // ✅ 修改：觸發更新邏輯
-    const triggerUpdate = async () => {
-        const token = getToken();
-        if (!token) throw new Error("請先登入"); 
-        
-        try {
-            const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
-                method: "POST",
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (response.ok || response.status === 204) {
-                // 成功：啟動輪詢，等待 GitHub Actions 完成
-                startPolling(); 
-                return true; 
-            } else {
-                const errorData = await response.json().catch(() => ({}));
-                console.error('Trigger Error:', errorData);
-                throw new Error(errorData.error || '後端無回應');
-            }
         } catch (e) { 
-            console.error('Trigger failed:', e);
+            connectionStatus.value = 'error'; 
+            console.error("Fetch error:", e);
             throw e; 
         }
     };
 
-    // Getters
-    const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+    // --- Actions: 數據獲取 ---
+    const fetchAll = async () => {
+        if (loading.value) return;
+        loading.value = true;
+        try {
+            await Promise.all([fetchSnapshot(), fetchRecords()]);
+        } catch (error) { 
+            console.error("Failed to fetch all data:", error);
+            // 這裡不 throw，避免阻斷 UI 渲染，讓個別組件處理錯誤狀態
+        } finally { 
+            loading.value = false; 
+        }
+    };
+
+    const fetchSnapshot = async () => {
+        try {
+            const json = await fetchWithAuth('/api/portfolio');
+            if (json && json.success && json.data) {
+                rawData.value = json.data;
+                lastUpdate.value = json.data.updated_at;
+            }
+        } catch (error) { 
+            throw error; 
+        }
+    };
+
+    const fetchRecords = async () => {
+        try {
+            const json = await fetchWithAuth('/api/records');
+            if (json && json.success) {
+                records.value = json.data || [];
+            }
+        } catch (error) { 
+            throw error; 
+        }
+    };
+
+    const addRecord = async (record) => {
+        try {
+            const json = await fetchWithAuth('/api/records', {
+                method: 'POST',
+                body: JSON.stringify(record)
+            });
+            if (json && json.success) {
+                await fetchRecords(); // 重新獲取列表
+                return true;
+            }
+            throw new Error(json?.error || 'Add failed');
+        } catch (e) { throw e; }
+    };
+
+    const updateRecord = async (record) => {
+        try {
+            const json = await fetchWithAuth('/api/records', {
+                method: 'PUT',
+                body: JSON.stringify(record)
+            });
+            if (json && json.success) {
+                await fetchRecords();
+                return true;
+            }
+            throw new Error(json?.error || 'Update failed');
+        } catch (e) { throw e; }
+    };
+
+    const deleteRecord = async (id) => {
+        try {
+            const json = await fetchWithAuth('/api/records', {
+                method: 'DELETE',
+                body: JSON.stringify({ id })
+            });
+            if (json && json.success) {
+                await fetchRecords();
+                return true;
+            }
+            throw new Error(json?.error || 'Delete failed');
+        } catch (e) { throw e; }
+    };
+
+    const triggerUpdate = async () => {
+        try {
+            await fetchWithAuth('/api/update', { method: 'POST' });
+            // 觸發後端更新後，稍微延遲再拉取最新數據
+            setTimeout(() => fetchAll(), 2000); 
+        } catch (e) { console.error(e); }
+    };
+
+    // --- Actions: 群組操作邏輯 ---
+    
+    // 切換當前視圖群組
+    const setGroup = (group) => {
+        currentGroup.value = group;
+    };
+
+    /**
+     * 取得某支股票在各個群組的持倉分佈
+     * 用於 TradeForm 的賣出智慧檢核
+     * @param {string} symbol 股票代碼
+     * @returns {Array} [{ group: string, qty: number, pnl: number }]
+     */
+    const getHoldingDistribution = (symbol) => {
+        if (!rawData.value || !rawData.value.groups) return [];
+        
+        const result = [];
+        const targetSym = symbol.toUpperCase();
+
+        // 遍歷所有群組 (排除 all)
+        for (const [groupName, data] of Object.entries(rawData.value.groups)) {
+            if (groupName === 'all') continue;
+            
+            const position = data.holdings.find(h => h.symbol === targetSym && h.qty > 0);
+            if (position) {
+                result.push({
+                    group: groupName,
+                    qty: position.qty,
+                    pnl: position.pnl_percent
+                });
+            }
+        }
+        return result.sort((a, b) => b.qty - a.qty);
+    };
+
+    /**
+     * 取得某支股票在當前群組是否持有
+     * @param {string} symbol 
+     */
+    const hasHoldingInCurrentGroup = (symbol) => {
+        const h = holdings.value.find(item => item.symbol === symbol.toUpperCase());
+        return h && h.qty > 0;
+    };
+
+    // --- Computed: 動態數據解析 ---
+
+    // 取得所有可用群組列表 (從 rawData 解析)
+    const availableGroups = computed(() => {
+        if (!rawData.value || !rawData.value.groups) return ['all'];
+        // 取得 keys 並排除 all (之後手動加回第一位)
+        const groups = Object.keys(rawData.value.groups).filter(k => k !== 'all').sort();
+        return ['all', ...groups];
+    });
+
+    // 核心 Computed: 根據 currentGroup 動態決定要顯示哪一份數據
+    const currentGroupData = computed(() => {
+        if (!rawData.value) return {};
+        
+        // 優先嘗試從 groups 字典取值
+        if (rawData.value.groups && rawData.value.groups[currentGroup.value]) {
+            return rawData.value.groups[currentGroup.value];
+        }
+        
+        // 若找不到 (或資料結構舊版)，回傳頂層結構 (相容性處理)
+        return rawData.value;
+    });
+
+    // 以下所有 UI 綁定的數據，都依賴 currentGroupData
+    const stats = computed(() => currentGroupData.value.summary || {});
+    const holdings = computed(() => currentGroupData.value.holdings || []);
+    const history = computed(() => currentGroupData.value.history || []);
+    const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
+    
+    const unrealizedPnL = computed(() => {
+        const val = stats.value.total_value || 0;
+        const cap = stats.value.invested_capital || 0;
+        return val - cap;
+    });
+
+    // --- Polling Logic ---
+    const startPolling = () => {
+        if (isPolling.value) return;
+        isPolling.value = true;
+        fetchAll(); // 立即執行一次
+        pollTimer = setInterval(fetchAll, 60000); // 每分鐘更新
+    };
+
+    const stopPolling = () => {
+        isPolling.value = false;
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = null;
+    };
 
     return { 
+        // State
         loading, 
+        records, 
+        lastUpdate, 
+        connectionStatus, 
+        isPolling,
+        currentGroup, // 匯出當前群組狀態
+
+        // Getters
         stats, 
         holdings, 
         history, 
-        records, 
-        pending_dividends,  // ✅ 匯出
-        lastUpdate, 
-        unrealizedPnL, 
-        connectionStatus,
-        isPolling, // ✅ 匯出此狀態供 UI 顯示
+        pending_dividends, 
+        unrealizedPnL,
+        availableGroups, // 匯出可用群組列表
+        
+        // Actions
         fetchAll, 
         fetchRecords, 
-        triggerUpdate
+        addRecord, 
+        updateRecord, 
+        deleteRecord, 
+        triggerUpdate,
+        startPolling, 
+        stopPolling,
+        setGroup,             // 匯出切換群組方法
+        getHoldingDistribution, // 匯出持倉分佈查詢方法
+        hasHoldingInCurrentGroup
     };
 });
