@@ -6,25 +6,21 @@ import { useToast } from '../composables/useToast';
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
-    const stats = ref({});
-    const holdings = ref([]);
-    const history = ref([]);
+    const rawData = ref(null); // 儲存原始完整資料 (包含 groups)
     const records = ref([]);
-    const pending_dividends = ref([]);  // ✅ 新增：待確認配息列表
     const lastUpdate = ref('');
     const connectionStatus = ref('connected'); 
-
-    // ✅ 新增：輪詢控制變數
     const isPolling = ref(false);
     let pollTimer = null;
 
-    // ✅ 保留：Tag 1.10 的 getToken 方法
+    // ✅ 新增：當前選擇的群組
+    const currentGroup = ref('all');
+
     const getToken = () => {
         const auth = useAuthStore();
         return auth.token;
     };
 
-    // ✅ 保留：新版的 fetchWithAuth（統一錯誤處理）
     const fetchWithAuth = async (endpoint, options = {}) => {
         const auth = useAuthStore();
         if (!auth.token) return null;
@@ -61,9 +57,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 修改：加入請求去重邏輯
     const fetchAll = async () => {
-        // 如果正在載入中，直接忽略這次請求，防止重複觸發
         if (loading.value) {
             console.warn('⚠️ [fetchAll] 請求已在進行中，忽略此次調用');
             return;
@@ -91,8 +85,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-
-    // ✅ 修復：增強的 fetchSnapshot
     const fetchSnapshot = async () => {
         console.log('📊 [fetchSnapshot] 開始請求...');
         try {
@@ -100,22 +92,18 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             console.log('📊 [fetchSnapshot] API 回應:', json);
             
             if (json && json.success && json.data) {
-                stats.value = json.data.summary || {};
-                holdings.value = json.data.holdings || [];
-                history.value = json.data.history || [];
-                pending_dividends.value = json.data.pending_dividends || [];  // ✅ 新增
-                lastUpdate.value = json.data.updated_at; // 更新時間
-                console.log('✅ [fetchSnapshot] 數據已更新，待確認配息:', pending_dividends.value.length, '筆');
+                rawData.value = json.data; // ✅ 儲存完整數據包含 groups
+                lastUpdate.value = json.data.updated_at;
+                console.log('✅ [fetchSnapshot] 數據已更新');
             } else {
                 console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
             }
         } catch (error) {
             console.error('❌ [fetchSnapshot] 請求失敗:', error);
-            throw error; // 抛出讓 fetchAll 捕捉
+            throw error;
         }
     };
 
-    // ✅ 修復：增強的 fetchRecords
     const fetchRecords = async () => {
         console.log('📝 [fetchRecords] 開始請求...');
         try {
@@ -130,22 +118,67 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
         } catch (error) {
             console.error('❌ [fetchRecords] 請求失敗:', error);
-            throw error; // 抛出讓 fetchAll 捕捉
+            throw error;
         }
     };
 
-    // ✅ 新增：智慧輪詢函式 (Smart Polling)
+    // ✅ 新增：可用群組列表
+    const availableGroups = computed(() => {
+        if (!rawData.value || !rawData.value.groups) return ['all'];
+        return Object.keys(rawData.value.groups).sort((a, b) => {
+            if (a === 'all') return -1;
+            if (b === 'all') return 1;
+            return a.localeCompare(b);
+        });
+    });
+
+    // ✅ 修改：動態取得當前群組數據
+    const currentGroupData = computed(() => {
+        if (!rawData.value) return {};
+        if (rawData.value.groups && rawData.value.groups[currentGroup.value]) {
+            return rawData.value.groups[currentGroup.value];
+        }
+        // 向下相容或預設回傳頂層 (通常是 all)
+        return rawData.value;
+    });
+
+    // Getters 改為依賴 currentGroupData
+    const stats = computed(() => currentGroupData.value.summary || {});
+    const holdings = computed(() => currentGroupData.value.holdings || []);
+    const history = computed(() => currentGroupData.value.history || []);
+    const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
+    const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+
+    // ✅ 新增：切換群組 Action
+    const setGroup = (group) => {
+        if (availableGroups.value.includes(group)) {
+            currentGroup.value = group;
+            console.log(`✅ 已切換至群組: ${group}`);
+        }
+    };
+
+    // ✅ 新增：取得某支股票存在於哪些群組 (用於賣出時智慧判斷)
+    const getGroupsWithHolding = (symbol) => {
+        if (!rawData.value || !rawData.value.groups) return [];
+        const groups = [];
+        for (const [groupName, data] of Object.entries(rawData.value.groups)) {
+            if (groupName === 'all') continue;
+            const hasStock = data.holdings.some(h => h.symbol === symbol && h.qty > 0);
+            if (hasStock) groups.push(groupName);
+        }
+        return groups;
+    };
+
     const startPolling = () => {
         if (isPolling.value) return;
         
         console.log('⌛ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
-        const initialTime = lastUpdate.value; // 記錄當前的更新時間
+        const initialTime = lastUpdate.value;
         const { addToast } = useToast(); 
 
         pollTimer = setInterval(async () => {
-            // 1. 超時檢查 (例如 3 分鐘後放棄)
             if (Date.now() - startTime > 180000) {
                 console.warn('⚠️ [SmartPolling] 更新超時，停止輪詢');
                 stopPolling();
@@ -154,19 +187,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
 
             try {
-                // 2. 輕量檢查 (只抓 Snapshot 檢查 updated_at)
-                // 注意：這裡不呼叫 fetchSnapshot() 以免觸發大量 console log 和 UI 更新
                 const json = await fetchWithAuth('/api/portfolio');
                 
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
                     
-                    // 3. 比對時間：如果新時間與舊時間不同，代表 GitHub Actions 跑完了
                     if (newTime !== initialTime) {
                         console.log('✨ [SmartPolling] 偵測到新數據！時間:', newTime);
                         
-                        stopPolling(); // 先停止輪詢
-                        await fetchAll(); // 正式抓取並更新畫面
+                        stopPolling();
+                        await fetchAll();
                         
                         addToast("✅ 數據已更新完畢！", "success");
                     } else {
@@ -176,10 +206,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             } catch (e) {
                 console.warn('⚠️ [SmartPolling] 檢查失敗:', e);
             }
-        }, 5000); // 每 5 秒檢查一次
+        }, 5000);
     };
 
-    // ✅ 新增：停止輪詢
     const stopPolling = () => {
         isPolling.value = false;
         if (pollTimer) {
@@ -188,7 +217,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 修改：觸發更新邏輯
     const triggerUpdate = async () => {
         const token = getToken();
         if (!token) throw new Error("請先登入"); 
@@ -203,7 +231,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             });
             
             if (response.ok || response.status === 204) {
-                // 成功：啟動輪詢，等待 GitHub Actions 完成
                 startPolling(); 
                 return true; 
             } else {
@@ -217,20 +244,21 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // Getters
-    const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
-
     return { 
         loading, 
         stats, 
         holdings, 
         history, 
         records, 
-        pending_dividends,  // ✅ 匯出
+        pending_dividends,
         lastUpdate, 
         unrealizedPnL, 
         connectionStatus,
-        isPolling, // ✅ 匯出此狀態供 UI 顯示
+        isPolling,
+        currentGroup, // ✅ 匯出
+        availableGroups, // ✅ 匯出
+        setGroup, // ✅ 匯出
+        getGroupsWithHolding, // ✅ 匯出
         fetchAll, 
         fetchRecords, 
         triggerUpdate
