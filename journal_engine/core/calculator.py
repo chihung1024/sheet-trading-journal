@@ -135,7 +135,6 @@ class PortfolioCalculator:
                 fx = DEFAULT_FX_RATE
             
             # --- 核心優化：同一日期內的處理順序 ---
-            # 取得當日所有交易並強制排序：BUY (1) -> DIV (2) -> SELL (3)
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
@@ -250,24 +249,26 @@ class PortfolioCalculator:
             total_pnl = unrealized_pnl + total_realized_pnl_twd
             current_total_equity = invested_capital + total_pnl
             
-            # TWR 計算
+            # --- 核心優化點：績效精準度優化 (二) ---
+            # 引入 Threshold (1.0 TWD) 避免帳戶餘額接近零時的報酬率雜訊
             prev_invested = history_data[-1]['invested'] if history_data else 0.0
             prev_pnl = history_data[-1]['net_profit'] if history_data else 0.0
             daily_net_inflow = invested_capital - prev_invested
             adjusted_start_equity = prev_total_equity + daily_net_inflow
             
             daily_return = 0.0
-            if adjusted_start_equity > 0:
+            if adjusted_start_equity > 1.0:
                 daily_return = (total_pnl - prev_pnl) / adjusted_start_equity
-            elif invested_capital > 0 and prev_total_equity == 0:
+            elif invested_capital > 1.0 and prev_total_equity < 1.0:
+                # 初始投入時的報酬率計算
                 daily_return = total_pnl / invested_capital
             
             cumulative_twr_factor *= (1 + daily_return)
             
-            # Benchmark TWR
+            # Benchmark TWR (同樣加入基準點檢查)
             bench_twr = 0.0
             spy_p = self.market.get_price('SPY', d)
-            if spy_p > 0 and benchmark_invested > 0:
+            if spy_p > 0 and benchmark_invested > 1.0:
                 bench_val = benchmark_units * spy_p * fx
                 bench_twr = ((bench_val - benchmark_invested) / benchmark_invested) * 100
 
