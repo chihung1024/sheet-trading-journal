@@ -134,7 +134,7 @@ class PortfolioCalculator:
             except: 
                 fx = DEFAULT_FX_RATE
             
-            # --- 核心優化：同一日期內的處理順序 ---
+            # --- 優化點：同一日期內的處理順序 ---
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
@@ -176,25 +176,38 @@ class PortfolioCalculator:
                         benchmark_invested += cost_twd
 
                 elif txn_type == 'SELL':
+                    # --- 核心優化點：強化 FIFO 引擎 (三) ---
+                    # 1. 檢查是否有庫存可供賣出，避免程式崩溃
+                    if sym not in fifo_queues or not fifo_queues[sym]:
+                        print(f"警告: {sym} 在 {current_date} 嘗試賣出但無買入紀錄，跳過此筆。")
+                        continue
+
                     proceeds_twd = ((qty * price) - comm - tax) * fx
-                    holdings[sym]['qty'] -= qty
                     
                     remaining = qty
                     cost_sold_twd = 0.0
                     cost_sold_usd = 0.0
-                    while remaining > 0 and fifo_queues[sym]:
+                    
+                    while remaining > 1e-6 and fifo_queues[sym]:
                         batch = fifo_queues[sym][0]
                         take = min(remaining, batch['qty'])
                         frac = take / batch['qty']
+                        
                         cost_sold_usd += batch['cost_total_usd'] * frac
                         cost_sold_twd += batch['cost_total_twd'] * frac
+                        
                         batch['qty'] -= take
                         batch['cost_total_usd'] -= batch['cost_total_usd'] * frac
                         batch['cost_total_twd'] -= batch['cost_total_twd'] * frac
+                        
                         remaining -= take
-                        if batch['qty'] < 1e-9: 
+                        
+                        # 2. 處理浮點數殘值，若批次剩餘股數極小則彈出
+                        if batch['qty'] < 1e-6: 
                             fifo_queues[sym].popleft()
                     
+                    # 更新持倉數據
+                    holdings[sym]['qty'] -= (qty - remaining) # 實際扣除成功的部分
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
                     holdings[sym]['cost_basis_twd'] -= cost_sold_twd
                     invested_capital -= cost_sold_twd
@@ -214,7 +227,7 @@ class PortfolioCalculator:
             # 處理自動配息
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
-                if h_data['qty'] > 0:
+                if h_data['qty'] > 1e-6:
                     div_key = f"{sym}_{date_str}"
                     is_confirmed = div_key in confirmed_dividends
                     div_per_share = self.market.get_dividend(sym, d)
@@ -240,7 +253,7 @@ class PortfolioCalculator:
             total_mkt_val = 0.0
             current_holdings_cost = 0.0
             for sym, h in holdings.items():
-                if h['qty'] > 0.0001:
+                if h['qty'] > 1e-6:
                     price = self.market.get_price(sym, d)
                     total_mkt_val += h['qty'] * price * fx
                     current_holdings_cost += h['cost_basis_twd']
@@ -249,8 +262,7 @@ class PortfolioCalculator:
             total_pnl = unrealized_pnl + total_realized_pnl_twd
             current_total_equity = invested_capital + total_pnl
             
-            # --- 核心優化點：績效精準度優化 (二) ---
-            # 引入 Threshold (1.0 TWD) 避免帳戶餘額接近零時的報酬率雜訊
+            # --- 優化點：績效精準度優化 (二) - 已保留 ---
             prev_invested = history_data[-1]['invested'] if history_data else 0.0
             prev_pnl = history_data[-1]['net_profit'] if history_data else 0.0
             daily_net_inflow = invested_capital - prev_invested
@@ -260,12 +272,10 @@ class PortfolioCalculator:
             if adjusted_start_equity > 1.0:
                 daily_return = (total_pnl - prev_pnl) / adjusted_start_equity
             elif invested_capital > 1.0 and prev_total_equity < 1.0:
-                # 初始投入時的報酬率計算
                 daily_return = total_pnl / invested_capital
             
             cumulative_twr_factor *= (1 + daily_return)
             
-            # Benchmark TWR (同樣加入基準點檢查)
             bench_twr = 0.0
             spy_p = self.market.get_price('SPY', d)
             if spy_p > 0 and benchmark_invested > 1.0:
@@ -290,7 +300,7 @@ class PortfolioCalculator:
         current_date = datetime.now()
         
         for sym, h in holdings.items():
-            if h['qty'] > 0.001:
+            if h['qty'] > 1e-4:
                 stock_data = self.market.market_data.get(sym, pd.DataFrame())
                 curr_p = 0.0
                 prev_p = 0.0
