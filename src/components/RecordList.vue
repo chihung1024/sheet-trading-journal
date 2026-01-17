@@ -61,7 +61,46 @@
         </div>
     </div>
 
-    <div class="table-container" ref="tableRef">
+    <div class="mobile-record-list" v-if="paginatedRecords.length > 0">
+        <div 
+            v-for="r in paginatedRecords" 
+            :key="r.id"
+            class="m-record-card"
+            :class="{ 'editing': editingId === r.id }"
+        >
+            <div class="m-card-top">
+                <div class="m-info">
+                    <span class="m-date">{{ formatDate(r.txn_date) }}</span>
+                    <span class="m-symbol">{{ r.symbol }}</span>
+                </div>
+                <div class="m-type">
+                    <span class="type-badge" :class="r.txn_type.toLowerCase()">
+                        {{ getTypeLabel(r.txn_type) }}
+                    </span>
+                </div>
+            </div>
+            
+            <div class="m-card-middle">
+                <div class="m-details">
+                    {{ formatNumber(r.qty, 2) }} 股 × ${{ formatNumber(r.price, 2) }}
+                </div>
+                <div class="m-total font-bold text-right">
+                    NT${{ formatNumber(getTotalAmountTWD(r), 0) }}
+                </div>
+            </div>
+            
+            <div class="m-card-actions">
+                <button class="m-btn m-edit" @click="editRecord(r)">
+                    ✎ 編輯
+                </button>
+                <button class="m-btn m-delete" @click="deleteRecord(r.id)">
+                    ✕ 刪除
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container desktop-only" ref="tableRef">
         <table>
             <thead>
                 <tr>
@@ -865,50 +904,52 @@ tr:last-child td {
     opacity: 0.5;
 }
 
+/* ✅ 手機版優化區域 - 加入此段以支援卡片流排版 */
+.mobile-record-list {
+    display: none;
+}
+
 @media (max-width: 768px) {
+    .desktop-only { display: none; }
+    .mobile-record-list { display: block; }
+    
     .toolbar { 
         flex-direction: column; 
         align-items: stretch; 
     }
     
-    .search-box {
-        flex: 1 1 100%;
+    .search-box { flex: 1 1 100%; }
+    .filters { flex-direction: column; }
+    .filter-select { width: 100%; }
+    .btn-refresh { margin-left: 0; width: 100%; justify-content: center; }
+    .stats-summary { grid-template-columns: repeat(2, 1fr); }
+
+    /* 手機版卡片樣式 */
+    .m-record-card {
+        background: var(--bg-card);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
+    .m-record-card.editing { border-color: var(--primary); background: rgba(59, 130, 246, 0.05); }
+    .m-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .m-info { display: flex; flex-direction: column; gap: 4px; }
+    .m-date { font-size: 0.8rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+    .m-symbol { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
+    .m-card-middle { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px dashed var(--border-color); }
+    .m-details { font-size: 0.85rem; color: var(--text-sub); }
+    .m-total { font-size: 1.1rem; font-family: 'JetBrains Mono', monospace; }
+    .m-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .m-btn { padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-secondary); cursor: pointer; font-size: 0.9rem; }
+    .m-btn.m-edit:active { background: var(--primary); color: white; }
+    .m-btn.m-delete:active { background: var(--danger); color: white; }
     
-    .filters { 
-        flex-direction: column;
-    }
-    
-    .filter-select {
-        width: 100%;
-    }
-    
-    .btn-refresh { 
-        margin-left: 0; 
-        width: 100%; 
-        justify-content: center;
-    }
-    
-    .stats-summary {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .pagination {
-        gap: 4px;
-    }
-    
-    .page-btn, .page-number {
-        min-width: 32px;
-        height: 32px;
-        font-size: 0.85rem;
-    }
-    
-    .page-info {
-        width: 100%;
-        text-align: center;
-        margin-left: 0;
-        margin-top: 8px;
-    }
+    .pagination { gap: 4px; justify-content: space-between; }
+    .page-numbers { display: none; } /* 手機版隱藏中間頁碼，保留左右導航 */
+    .page-btn, .page-number { min-width: 32px; height: 32px; font-size: 0.85rem; }
+    .page-info { width: 100%; text-align: center; margin-left: 0; margin-top: 8px; }
 }
 
 @media (max-width: 480px) {
