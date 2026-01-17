@@ -106,13 +106,13 @@ const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 const holdings = computed(() => store.holdings || []);
 
-// 修正：直接使用後端計算好的 total_pnl
+// ✅ 修正：直接使用後端計算好的 total_pnl
 const totalPnL = computed(() => stats.value.total_pnl || 0);
 
 // 計算已實現損益 (從後端 API 獲取)
 const realizedPnL = computed(() => stats.value.realized_pnl || 0);
 
-// 修正：未實現損益 = 總損益 - 已實現損益
+// ✅ 修正：未實現損益 = 總損益 - 已實現損益
 const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
 
 // 計算 ROI
@@ -127,6 +127,7 @@ const isUSMarketOpen = computed(() => {
   const hour = now.getHours();
   const minute = now.getMinutes();
   
+  // 晚上 9:30 後 或 凌晨 5:00 前
   if (hour >= 21 || hour < 5) {
     if (hour === 21 && minute < 30) return false;
     return true;
@@ -154,7 +155,9 @@ const pnlTooltip = computed(() => {
 });
 
 // 核心修正：直接使用後端計算好的 daily_pl_twd
+// 後端使用 Modified Dietz 方法，公式：daily_pl = ending_value - beginning_value - cashflow
 const dailyPnL = computed(() => {
+  // 直接加總所有持股的 daily_pl_twd
   return holdings.value.reduce((sum, holding) => {
     return sum + (holding.daily_pl_twd || 0);
   }, 0);
@@ -162,12 +165,15 @@ const dailyPnL = computed(() => {
 
 // 計算今日損益百分比
 const dailyRoi = computed(() => {
+  // 使用昨日總資產作為基準
+  // 昨日總資產 = 今日總資產 - 今日損益
   const yesterdayValue = stats.value.total_value - dailyPnL.value;
+  
   if (!yesterdayValue || yesterdayValue === 0) return '0.00';
   return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
 });
 
-// 數字動畫邏輯
+// 數字動畫
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -204,6 +210,7 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     min-height: 120px;
     transition: all 0.2s ease;
     position: relative;
+    overflow: hidden;
 }
 
 .stat-block:hover { 
@@ -235,6 +242,11 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     align-items: center; 
     justify-content: center; 
     font-size: 1.2rem;
+    transition: transform 0.2s ease;
+}
+
+.stat-block:hover .icon-box {
+    transform: scale(1.1);
 }
 
 .stat-main { 
@@ -260,12 +272,24 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     letter-spacing: -0.03em;
 }
 
-.stat-value.big { font-size: 2rem; }
+.stat-value.big {
+    font-size: 2rem;
+}
 
 .stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
     font-size: 1.05rem;
     font-weight: 600;
+    opacity: 0.9;
+    margin-top: 2px;
+}
+
+.stat-sub-text {
+    font-size: 0.8rem;
+    color: var(--text-sub);
+    font-weight: 500;
+    margin-top: 2px;
+    opacity: 0.9;
 }
 
 .unit-text, .percent { 
@@ -283,9 +307,21 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     justify-content: space-between;
 }
 
-.footer-item { display: flex; align-items: center; gap: 6px; }
-.f-label { color: var(--text-sub); }
-.f-val { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+.footer-item { 
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
+}
+
+.f-label {
+    color: var(--text-sub);
+}
+
+.f-val { 
+    font-weight: 600; 
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-main);
+}
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
@@ -297,6 +333,8 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     border-radius: 16px; 
     font-weight: 600; 
     font-size: 0.8rem; 
+    display: inline-flex; 
+    align-items: center; 
 }
 
 .badge-green { 
@@ -311,37 +349,41 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     border: 1px solid var(--danger);
 }
 
-/* 手機版優化：改為橫向滾動卡片 */
+@media (max-width: 1200px) { 
+    .stats-grid { 
+        grid-template-columns: repeat(2, 1fr);
+    } 
+}
+
 @media (max-width: 768px) { 
     .stats-grid { 
-        display: flex;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-        gap: 12px;
-        padding-bottom: 12px;
-        /* 隱藏捲軸 */
-        scrollbar-width: none; 
-        -ms-overflow-style: none;
-    }
-
-    .stats-grid::-webkit-scrollbar {
-        display: none;
+        grid-template-columns: 1fr;
+        gap: 14px;
     }
     
     .stat-block {
-        min-width: 280px;
-        scroll-snap-align: start;
-        flex-shrink: 0;
         min-height: 110px;
-        padding: 16px;
+        padding: 16px 18px;
     }
     
-    .stat-value { font-size: 1.6rem; }
-    .stat-value.big { font-size: 1.8rem; }
+    .stat-value {
+        font-size: 1.6rem;
+    }
+    
+    .stat-value.big {
+        font-size: 1.8rem;
+    }
 }
 
 @media (max-width: 480px) {
-    .stat-block { min-width: 260px; }
-    .stat-label { font-size: 0.8rem; }
+    .icon-box {
+        width: 32px;
+        height: 32px;
+        font-size: 1.1rem;
+    }
+    
+    .stat-label {
+        font-size: 0.8rem;
+    }
 }
 </style>

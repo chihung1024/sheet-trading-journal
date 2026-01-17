@@ -1,19 +1,20 @@
 <template>
-  <div class="app-layout" :class="{ 'dark-mode': isDark, 'is-mobile': isMobile }">
+  <div class="app-layout" :class="{ 'dark-mode': isDark }">
     <LoginOverlay v-if="!authStore.token" />
     
     <div v-else class="main-wrapper">
       <header class="top-nav">
         <div class="nav-brand">
           <span class="logo-icon">📊</span>
-          <h1 class="desktop-only">Trading Journal <span class="badge">PRO</span></h1>
+          <h1>Trading Journal <span class="badge">PRO</span></h1>
         </div>
 
+        <!-- ✅ 新增：群組選擇器 -->
         <div class="group-selector" v-if="portfolioStore.availableGroups.length > 1">
-          <span class="selector-label desktop-only">策略群組:</span>
+          <span class="selector-label">策略群組:</span>
           <div class="select-wrapper">
             <select :value="portfolioStore.currentGroup" @change="e => portfolioStore.setGroup(e.target.value)">
-              <option value="all">{{ isMobile ? '全部持倉' : '全部 (All Portfolios)' }}</option>
+              <option value="all">全部 (All Portfolios)</option>
               <option v-for="g in portfolioStore.availableGroups.filter(x=>x!=='all')" :key="g" :value="g">
                 {{ g }}
               </option>
@@ -25,15 +26,15 @@
         </div>
 
         <div class="nav-status">
-          <div v-if="portfolioStore.loading" class="status-indicator loading" title="更新中...">
-            <span class="dot"></span> <span class="desktop-only">更新中...</span>
+          <div v-if="portfolioStore.loading" class="status-indicator loading">
+            <span class="dot"></span> 更新中...
           </div>
           
-          <div v-else-if="portfolioStore.isPolling" class="status-indicator polling" title="計算中...">
-            <span class="dot pulse-orange"></span> <span class="desktop-only">計算中...</span>
+          <div v-else-if="portfolioStore.isPolling" class="status-indicator polling">
+            <span class="dot pulse-orange"></span> 計算中...
           </div>
           
-          <div v-else class="status-indicator ready desktop-only">
+          <div v-else class="status-indicator ready">
             <span class="dot"></span> 連線正常
           </div>
           
@@ -41,13 +42,13 @@
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
             :disabled="portfolioStore.isPolling"
-            :title="portfolioStore.isPolling ? '系統正在背景計算中...' : '手動觸發數據更新'"
+            :title="portfolioStore.isPolling ? '系統正在背景計算中...' : '手動觸發投資組合數據更新'"
           >
             <span>⚙️</span>
-            <span class="desktop-only">更新數據</span>
+            更新數據
           </button>
           
-          <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '淺色模式' : '深色模式'">
+          <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切換為淺色模式' : '切換為深色模式'">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
           </button>
@@ -60,6 +61,7 @@
         </div>
       </header>
       
+      <!-- ✅ 新增：群組管理彈窗 -->
       <div v-if="showGroupModal" class="modal-overlay" @click.self="showGroupModal=false">
         <div class="modal-card">
           <h3>管理策略群組</h3>
@@ -142,7 +144,7 @@
 
 <script setup>
 import { usePWA } from './composables/usePWA';
-import { ref, onMounted, onUnmounted, computed, nextTick, reactive } from 'vue';
+import { ref, onMounted, computed, nextTick, reactive } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
@@ -167,15 +169,7 @@ const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 
-// ✅ 手機版偵測邏輯
-const windowWidth = ref(window.innerWidth);
-const isMobile = computed(() => windowWidth.value < 768);
-
-const handleResize = () => {
-  windowWidth.value = window.innerWidth;
-};
-
-// 群組管理
+// ✅ 新增：群組管理狀態
 const showGroupModal = ref(false);
 const groupRenameMap = reactive({});
 
@@ -194,11 +188,12 @@ const scrollToDividends = () => {
   }
 };
 
+// ✅ 新增：群組更名功能
 const renameGroup = async (oldName) => {
   const newName = groupRenameMap[oldName];
-  if(!newName || !confirm(`確定將 "${oldName}" 更名為 "${newName}" 嗎？`)) return;
+  if(!newName || !confirm(`確定將 "${oldName}" 更名為 "${newName}" 嗎？這將更新所有相關紀錄。`)) return;
   
-  addToast('正在處理中...', 'info');
+  addToast('正在批次更新紀錄...', 'info');
   try {
     const targetRecords = portfolioStore.records.filter(r => {
       const tags = (r.tag || '').split(/[,;]/).map(t=>t.trim());
@@ -229,26 +224,27 @@ const renameGroup = async (oldName) => {
 };
 
 const handleTriggerUpdate = async () => {
-  if (portfolioStore.isPolling) return;
+  if (portfolioStore.isPolling) {
+    addToast("⌛ 系統已在背景監控更新中，請稍候...", "info");
+    return;
+  }
+
   if (!confirm("確定要觸發後端計算嗎？")) return;
   
   try {
-    addToast("🚀 正在請求更新...", "info");
+    addToast("🚀 正在請求 GitHub Actions...", "info");
     await portfolioStore.triggerUpdate();
-    addToast("✅ 已觸發計算，請稍候刷新。", "success");
+    addToast("✅ 已觸發！系統將在背景監控，更新完成後自動刷新。", "success");
   } catch (error) {
-    addToast(`❌ 失敗: ${error.message}`, "error");
+    addToast(`❌ 觸發失敗: ${error.message}`, "error");
   }
 };
 
 const handleEditRecord = (record) => {
   if (tradeFormRef.value) {
     tradeFormRef.value.setupForm(record);
-    // 捲動到表單位置 (手機版)
-    if (isMobile.value) {
-      setTimeout(() => {
-        document.querySelector('.side-column')?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+    if (window.innerWidth < 1024) {
+      document.querySelector('.side-column')?.scrollIntoView({ behavior: 'smooth' });
     }
   }
 };
@@ -264,21 +260,21 @@ const handleLogout = () => {
 };
 
 onMounted(async () => {
-  window.addEventListener('resize', handleResize);
+  console.log('🚀 App.vue mounted');
   const isLoggedIn = authStore.initAuth();
   if (isLoggedIn) {
+    console.log('🔐 已登入，開始載入投資組合數據...');
     await portfolioStore.fetchAll();
   }
   await nextTick();
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
-    loadingEl.style.opacity = '0';
-    setTimeout(() => loadingEl.remove(), 300);
+    setTimeout(() => {
+      loadingEl.style.opacity = '0';
+      setTimeout(() => loadingEl.remove(), 300);
+    }, 500);
   }
-});
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize);
+  console.log('✅ App 初始化完成');
 });
 </script>
 
@@ -297,141 +293,144 @@ onUnmounted(() => {
   --success: #10b981;
   --danger: #ef4444;
   --warning: #f59e0b;
-  --radius: 12px;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --radius: 16px;
   --radius-sm: 8px;
-  --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --radius-md: 12px;
 }
 
 html.dark {
   --bg-app: #0f172a;
   --bg-card: #1e293b;
-  --bg-secondary: #0f172a;
+  --bg-secondary: #334155;
+  --primary: #60a5fa;
+  --primary-dark: #3b82f6;
   --text-main: #f1f5f9;
   --text-sub: #94a3b8;
   --border-color: #334155;
+  --success: #34d399;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.4);
 }
 
 * { box-sizing: border-box; }
+body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; font-size: 18px; line-height: 1.5; -webkit-font-smoothing: antialiased; transition: background-color 0.3s ease, color 0.3s ease; overflow: visible; }
+.main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow: visible; }
+.top-nav { background: var(--bg-card); border-bottom: 1px solid var(--border-color); padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: var(--shadow-sm); transition: all 0.3s ease; }
+.nav-brand { display: flex; align-items: center; gap: 12px; }
+.nav-brand h1 { font-size: 1.45rem; font-weight: 700; margin: 0; color: var(--text-main); letter-spacing: -0.01em; }
+.badge { background: var(--text-main); color: var(--bg-card); font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+.logo-icon { font-size: 1.5rem; }
 
-/* ✅ 全域字體大小優化：手機版縮小以增加容納空間 */
-body { 
-  background-color: var(--bg-app); 
-  color: var(--text-main); 
-  font-family: 'Inter', sans-serif; 
-  margin: 0; 
-  font-size: 16px; /* 桌面預設從 18px 改為 16px */
-  line-height: 1.5; 
-  transition: background-color 0.3s ease;
-}
+/* ✅ 群組選擇器樣式 */
+.group-selector { display: flex; align-items: center; gap: 8px; margin: 0 20px; background: var(--bg-secondary); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color); }
+.selector-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; }
+.select-wrapper { display: flex; gap: 8px; }
+.select-wrapper select { background: transparent; border: none; font-size: 0.95rem; color: var(--text-main); font-weight: 600; cursor: pointer; outline: none; }
+.btn-edit-group { background: transparent; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-sub); font-size: 0.8rem; padding: 2px 6px; }
+.btn-edit-group:hover { background: var(--bg-card); color: var(--primary); }
 
-.main-wrapper { min-height: 100vh; display: flex; flex-direction: column; }
+/* ✅ Modal 樣式 */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; display: flex; align-items: center; justify-content: center; }
+.modal-card { background: var(--bg-card); padding: 24px; border-radius: 12px; width: 400px; max-width: 90%; box-shadow: var(--shadow-lg); }
+.modal-desc { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 16px; }
+.group-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.group-item { display: flex; gap: 8px; }
+.group-item input { flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); color: var(--text-main); }
+.btn-sm { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+.modal-footer { display: flex; justify-content: flex-end; }
+.modal-footer button { padding: 8px 20px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; color: var(--text-main); font-weight: 600; }
 
-/* ✅ Top Nav：增加手機版適配性 */
-.top-nav { 
-  background: var(--bg-card); 
-  border-bottom: 1px solid var(--border-color); 
-  padding: 0 16px; 
-  height: 60px; /* 稍微縮小高度 */
-  display: flex; 
-  align-items: center; 
-  justify-content: space-between; 
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
+.nav-status { display: flex; align-items: center; gap: 20px; font-size: 1rem; font-weight: 500; }
+.status-indicator { display: flex; align-items: center; gap: 8px; }
+.status-indicator.ready { color: var(--success); }
+.status-indicator.loading { color: var(--primary); }
+.status-indicator.polling { color: var(--warning); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.loading .dot { animation: pulse 1.5s infinite; }
+.pulse-orange { animation: pulse-orange 1.5s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes pulse-orange { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
 
-.nav-brand { display: flex; align-items: center; gap: 8px; }
-.logo-icon { font-size: 1.4rem; }
+.theme-toggle { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; font-size: 1.2rem; }
+.theme-toggle:hover { background: var(--primary); border-color: var(--primary); transform: scale(1.1); }
+.action-trigger-btn { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); border: none; border-radius: 8px; color: white; padding: 8px 14px; font-weight: 600; font-size: 1rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2); }
+.action-trigger-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3); background: linear-gradient(135deg, var(--primary-dark), var(--primary)); }
+.action-trigger-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; filter: grayscale(0.5); }
+.user-profile { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 4px 12px; border-radius: 99px; transition: background 0.2s; }
+.user-profile:hover { background: var(--bg-secondary); }
+.avatar { width: 36px; height: 36px; background: var(--bg-secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--text-sub); }
+.avatar-img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-color); }
+.content-container { max-width: 1600px; margin: 0 auto; padding: 32px; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; width: 100%; align-items: stretch; overflow: visible; }
+.main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.section-charts { display: block; width: 100%; }
+.side-column { min-width: 0; }
+.sticky-panel { position: sticky; top: 24px; display: flex; flex-direction: column; gap: 24px; z-index: 10; height: fit-content; max-height: calc(100vh - 48px); overflow-y: auto; }
+.card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-card); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.chart-wrapper { height: 400px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.chart-wrapper.chart-full { height: 500px; width: 100%; }
+.card h3 { font-size: 1.125rem; font-weight: 700; color: var(--text-main); margin: 0 0 20px 0; letter-spacing: -0.01em; }
+.dividend-alert { border-left: 4px solid var(--warning); background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05)); }
+.alert-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.alert-header h4 { margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-main); }
+.alert-icon { font-size: 1.3rem; }
+.alert-text { margin: 0 0 16px 0; font-size: 0.95rem; color: var(--text-sub); line-height: 1.5; }
+.alert-text strong { color: var(--warning); font-weight: 700; }
+.btn-alert { width: 100%; padding: 10px; background: var(--warning); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; font-size: 0.95rem; }
+.btn-alert:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3); }
 
-/* ✅ 群組選擇器：手機版移除標籤，縮小寬度 */
-.group-selector { 
-  display: flex; 
-  align-items: center; 
-  gap: 6px; 
-  background: var(--bg-secondary); 
-  padding: 4px 10px; 
-  border-radius: 8px; 
-  border: 1px solid var(--border-color);
-  max-width: 150px;
-}
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+th { text-align: left; color: var(--text-sub); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
+th:first-child { border-top-left-radius: var(--radius-sm); }
+th:last-child { border-top-right-radius: var(--radius-sm); }
+td { padding: 16px; border-bottom: 1px solid var(--border-color); font-size: 1rem; color: var(--text-main); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background-color: var(--bg-secondary); transition: background 0.15s; }
 
-.select-wrapper select { 
-  background: transparent; 
-  border: none; 
-  font-size: 0.9rem; 
-  color: var(--text-main); 
-  font-weight: 600; 
-  outline: none;
-  width: 100%;
-}
-
-.nav-status { display: flex; align-items: center; gap: 12px; }
-
-/* ✅ 按鈕優化：手機版僅顯示圖示 */
-.action-trigger-btn { 
-  background: var(--primary); 
-  border: none; 
-  border-radius: 8px; 
-  color: white; 
-  padding: 8px 10px; 
-  font-weight: 600; 
-  cursor: pointer;
-}
-
-.theme-toggle { 
-  background: var(--bg-secondary); 
-  border: 1px solid var(--border-color); 
-  border-radius: 50%; 
-  width: 36px; 
-  height: 36px; 
-  display: flex; 
-  align-items: center; 
-  justify-content: center;
-}
-
-/* ✅ 佈署容器：桌面雙欄，手機單欄 */
-.content-container { 
-  max-width: 1400px; 
-  margin: 0 auto; 
-  padding: 16px; 
-  display: grid; 
-  grid-template-columns: 1fr 340px; 
-  gap: 16px; 
-}
-
-.main-column { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-
-.card { 
-  background: var(--bg-card); 
-  border: 1px solid var(--border-color); 
-  border-radius: var(--radius); 
-  padding: 16px;
-}
-
-/* ✅ Responsive Utilities */
-.desktop-only { display: block; }
+.toast-container { position: fixed; bottom: 32px; right: 32px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
+.toast { background: var(--bg-card); border: 1px solid var(--border-color); border-left: 4px solid transparent; padding: 16px 20px; border-radius: 12px; box-shadow: var(--shadow-lg); display: flex; gap: 12px; cursor: pointer; min-width: 280px; animation: slideIn 0.3s ease; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.toast.success { border-left-color: var(--success); }
+.toast.error { border-left-color: var(--danger); }
+.toast-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+.toast.success .toast-icon { background: #dcfce7; color: #166534; }
+.toast.error .toast-icon { background: #fee2e2; color: #991b1b; }
+.toast-msg { font-size: 1rem; color: var(--text-main); font-weight: 500; }
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
+.toast-slide-enter-from { transform: translateX(100%); opacity: 0; }
+.toast-slide-leave-to { transform: translateX(100%); opacity: 0; }
 
 @media (max-width: 1024px) {
-  .content-container { grid-template-columns: 1fr; }
-  .side-column { order: -1; } /* 手機版將表單放在較上方，方便輸入 */
+  .content-container { grid-template-columns: 1fr; padding: 20px; gap: 20px; }
+  .side-column { order: -1; }
+  .section-charts { display: block; }
+  .sticky-panel { position: static; }
   .desktop-only { display: none; }
-  .group-selector { max-width: none; flex: 1; margin: 0 10px; }
 }
-
+@media (max-width: 768px) {
+  .top-nav { padding: 0 16px; height: 56px; }
+  .nav-brand h1 { font-size: 1.1rem; }
+  .logo-icon { font-size: 1.3rem; }
+  .status-indicator { font-size: 0.8rem; }
+  .content-container { padding: 16px; }
+  .chart-wrapper.chart-full { height: 350px; }
+  .toast-container { bottom: 16px; right: 16px; left: 16px; }
+  .toast { min-width: auto; }
+  .group-selector { margin: 0 10px; padding: 4px 8px; }
+  .selector-label { font-size: 0.75rem; }
+  .select-wrapper select { font-size: 0.85rem; }
+}
 @media (max-width: 480px) {
-  body { font-size: 14px; }
-  .top-nav { height: 56px; padding: 0 8px; }
-  .content-container { padding: 12px; }
-  .group-selector { margin: 0 4px; }
-}
-
-/* ✅ 狀態點動畫 */
-.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.polling .pulse-orange { animation: pulse-orange 1.5s infinite; }
-@keyframes pulse-orange { 
-  0% { transform: scale(1); opacity: 1; } 
-  50% { transform: scale(1.3); opacity: 0.5; } 
-  100% { transform: scale(1); opacity: 1; } 
+  .nav-status { gap: 12px; }
+  .status-indicator:not(.loading):not(.ready) { display: none; }
+  .theme-toggle { width: 36px; height: 36px; font-size: 1rem; }
+  .chart-wrapper.chart-full { height: 300px; }
+  .group-selector { display: none; }
 }
 </style>

@@ -30,49 +30,7 @@
         </div>
     </div>
     
-    <div class="mobile-holdings-list" v-if="filteredHoldings.length > 0">
-        <div 
-            v-for="h in visibleHoldings" 
-            :key="h.symbol" 
-            class="mobile-card"
-            @click="highlightRow(h.symbol)"
-            :class="{ 'highlighted': highlightedSymbol === h.symbol, 'p-profit': h.pnl_twd >= 0, 'p-loss': h.pnl_twd < 0 }"
-        >
-            <div class="m-card-top">
-                <div class="m-symbol">
-                    <span class="m-text">{{ h.symbol }}</span>
-                    <span class="m-badge" v-if="h.pnl_percent > 50">🔥</span>
-                    <div class="m-qty">{{ formatNumber(h.qty, 2) }} 股</div>
-                </div>
-                <div class="m-price text-right">
-                    <div class="m-val">{{ formatNumber(h.market_value_twd, 0) }}</div>
-                    <div class="m-label">市值 (TWD)</div>
-                </div>
-            </div>
-            <div class="m-card-grid">
-                <div class="m-item">
-                    <div class="m-label">當日損益</div>
-                    <div :class="getTrendClass(h.daily_pl_twd)">
-                        {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
-                    </div>
-                </div>
-                <div class="m-item">
-                    <div class="m-label">總損益</div>
-                    <div :class="getTrendClass(h.pnl_twd)">
-                        {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
-                    </div>
-                </div>
-                <div class="m-item text-right">
-                    <div class="m-label">報酬率</div>
-                    <div class="roi-badge" :class="getTrendClass(h.pnl_percent, true)">
-                        {{ h.pnl_percent >= 0 ? '+' : '' }}{{ safeNum(h.pnl_percent) }}%
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="table-container desktop-only" ref="tableContainer">
+    <div class="table-container" ref="tableContainer">
         <table>
             <thead>
                 <tr>
@@ -173,6 +131,7 @@ const filterStatus = ref('all');
 const highlightedSymbol = ref(null);
 
 const displayLimit = ref(50);
+const scrollTop = ref(0);
 
 const safeNum = (val) => {
     if (val === undefined || val === null || isNaN(val)) return '0.00';
@@ -250,20 +209,24 @@ const highlightRow = (symbol) => {
 };
 
 const handleScroll = () => {
-    const target = tableContainer.value || document.documentElement;
-    const { scrollTop, scrollHeight, clientHeight } = target;
+    if (!tableContainer.value) return;
+    const { scrollTop: top, scrollHeight, clientHeight } = tableContainer.value;
     
-    if (scrollHeight - scrollTop - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
+    if (scrollHeight - top - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
         displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
     }
 };
 
 onMounted(() => {
-    window.addEventListener('scroll', handleScroll, true);
+    if (tableContainer.value) {
+        tableContainer.value.addEventListener('scroll', handleScroll);
+    }
 });
 
 onUnmounted(() => {
-    window.removeEventListener('scroll', handleScroll, true);
+    if (tableContainer.value) {
+        tableContainer.value.removeEventListener('scroll', handleScroll);
+    }
 });
 </script>
 
@@ -317,6 +280,25 @@ onUnmounted(() => {
     transition: all 0.2s ease;
 }
 
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-label {
+    font-size: 0.95rem;
+    color: var(--text-sub);
+    font-weight: 600;
+}
+
 .filter-select {
     padding: 8px 12px;
     border: 1px solid var(--border-color);
@@ -325,6 +307,17 @@ onUnmounted(() => {
     color: var(--text-main);
     font-size: 1rem;
     cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.filter-select:hover {
+    border-color: var(--primary);
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .summary-info { 
@@ -343,54 +336,208 @@ onUnmounted(() => {
     overflow-y: auto;
 }
 
-/* 桌面版表格樣式保留 */
-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th { text-align: left; color: var(--text-sub); font-size: 0.85rem; text-transform: uppercase; padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
-td { padding: 16px; border-bottom: 1px solid var(--border-color); font-size: 1rem; color: var(--text-main); }
-.symbol-text { font-weight: 700; color: var(--primary); background: var(--bg-secondary); padding: 6px 12px; border-radius: 8px; }
-.font-num { font-family: 'JetBrains Mono', monospace; }
-.text-right { text-align: right; }
-.text-green { color: var(--success); }
-.text-red { color: var(--danger); }
-.roi-badge { padding: 6px 10px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; display: inline-block; }
-.roi-badge.bg-green { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); }
-.roi-badge.bg-red { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid var(--danger); }
-
-/* ✅ 手機版卡片樣式設定 */
-.mobile-holdings-list { display: none; }
-
-@media (max-width: 768px) {
-    .desktop-only { display: none; }
-    .mobile-holdings-list { display: block; }
-    .card-header { flex-direction: column; align-items: stretch; }
-    
-    .mobile-card {
-        background: var(--bg-secondary);
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 12px;
-        border-left: 4px solid var(--border-color);
-        box-shadow: var(--shadow-sm);
-        transition: transform 0.2s;
-    }
-    
-    .mobile-card.p-profit { border-left-color: var(--success); }
-    .mobile-card.p-loss { border-left-color: var(--danger); }
-    .mobile-card.highlighted { background: rgba(59, 130, 246, 0.1); }
-
-    .m-card-top { display: flex; justify-content: space-between; margin-bottom: 16px; }
-    .m-symbol { display: flex; flex-direction: column; gap: 4px; }
-    .m-text { font-weight: 800; font-size: 1.2rem; color: var(--primary); }
-    .m-qty { font-size: 0.85rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
-    
-    .m-val { font-size: 1.15rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-    .m-label { font-size: 0.7rem; color: var(--text-sub); text-transform: uppercase; }
-    
-    .m-card-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border-color); }
-    .m-item .m-label { margin-bottom: 4px; }
-    .roi-small { font-size: 0.8rem; }
+.table-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
 }
 
-.empty-state { text-align: center; padding: 60px 20px; color: var(--text-sub); }
-.scroll-hint { text-align: center; padding: 12px; font-size: 0.85rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+.table-container::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: var(--text-sub);
+}
+
+.sort-icon { 
+    font-size: 0.85rem; 
+    margin-left: 4px; 
+    opacity: 0.5; 
+    transition: opacity 0.2s;
+}
+
+th.sortable { 
+    cursor: pointer; 
+    transition: all 0.2s;
+    user-select: none;
+}
+
+th.sortable:hover { 
+    color: var(--primary); 
+    background: var(--bg-card);
+}
+
+th.sortable:hover .sort-icon {
+    opacity: 1;
+}
+
+.row-item {
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.row-item:hover {
+    background-color: var(--bg-secondary) !important;
+    transform: scale(1.01);
+}
+
+.row-item.highlighted {
+    background: rgba(59, 130, 246, 0.1);
+    animation: pulse-highlight 0.5s ease;
+}
+
+@keyframes pulse-highlight {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+.col-symbol { 
+    width: 120px; 
+}
+
+.symbol-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.symbol-text { 
+    font-weight: 700; 
+    font-size: 1.05rem; 
+    background: var(--bg-secondary); 
+    color: var(--primary); 
+    padding: 6px 12px; 
+    border-radius: 8px; 
+    display: inline-block;
+    transition: all 0.2s ease;
+}
+
+.row-item:hover .symbol-text {
+    background: var(--primary);
+    color: white;
+    transform: translateX(4px);
+}
+
+.symbol-badge {
+    font-size: 1rem;
+    animation: bounce 1s ease infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+
+.price-change {
+    font-size: 0.85rem;
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+.daily-pnl-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.text-right { text-align: right; }
+.text-sub { color: var(--text-sub); font-size: 0.95rem; }
+.font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.font-bold { font-weight: 700; }
+
+.pnl-value {
+    display: inline-block;
+    transition: all 0.2s ease;
+}
+
+.row-item:hover .pnl-value {
+    transform: scale(1.1);
+    font-weight: 700;
+}
+
+.text-green { 
+    color: var(--success);
+    font-weight: 600;
+}
+
+.text-red { 
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.roi-badge { 
+    display: inline-block; 
+    min-width: 72px; 
+    text-align: center; 
+    padding: 6px 10px; 
+    border-radius: 8px; 
+    font-weight: 600; 
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+}
+
+.row-item:hover .roi-badge {
+    transform: scale(1.05);
+}
+
+.roi-badge.bg-green { 
+    background: rgba(16, 185, 129, 0.15); 
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.roi-badge.bg-red { 
+    background: rgba(239, 68, 68, 0.15); 
+    color: var(--danger);
+    border: 1px solid var(--danger);
+}
+
+.empty-state { 
+    text-align: center; 
+    padding: 80px 20px; 
+    color: var(--text-sub);
+}
+
+.empty-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.scroll-hint {
+    text-align: center;
+    padding: 12px;
+    font-size: 0.95rem;
+    color: var(--text-sub);
+    background: var(--bg-secondary);
+    border-radius: 0 0 var(--radius) var(--radius);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+@media (max-width: 768px) {
+    .card-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .header-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .search-box,
+    .filter-select {
+        width: 100%;
+    }
+    
+    .table-container {
+        max-height: 400px;
+    }
+}
 </style>
