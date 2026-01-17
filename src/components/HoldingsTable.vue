@@ -4,7 +4,7 @@
         <div class="header-left">
             <h3>持倉明細</h3>
             <div class="summary-info">
-                <span class="desktop-only">市值總計: </span><strong>{{ formatNumber(totalMarketValue) }}</strong> TWD
+                市值總計: <strong>{{ formatNumber(totalMarketValue) }}</strong> TWD
             </div>
         </div>
         
@@ -19,10 +19,10 @@
                 >
             </div>
             
-            <div class="filter-group desktop-only">
+            <div class="filter-group">
                 <label class="filter-label">顯示:</label>
                 <select v-model="filterStatus" class="filter-select">
-                    <option value="all">全部</option>
+                    <option value="all">全部持倉</option>
                     <option value="profit">獲利</option>
                     <option value="loss">虧損</option>
                 </select>
@@ -30,38 +30,42 @@
         </div>
     </div>
     
-    <div class="mobile-list" ref="mobileContainer">
-        <div v-if="filteredHoldings.length === 0" class="empty-state">目前無持倉數據</div>
+    <div class="mobile-holdings-list" v-if="filteredHoldings.length > 0">
         <div 
             v-for="h in visibleHoldings" 
             :key="h.symbol" 
-            class="mobile-holding-card"
-            :class="{ 'profit': h.pnl_twd >= 0, 'loss': h.pnl_twd < 0 }"
+            class="mobile-card"
+            @click="highlightRow(h.symbol)"
+            :class="{ 'highlighted': highlightedSymbol === h.symbol, 'p-profit': h.pnl_twd >= 0, 'p-loss': h.pnl_twd < 0 }"
         >
-            <div class="card-header-row">
-                <div class="symbol-box">
-                    <span class="symbol-text">{{ h.symbol }}</span>
-                    <span class="qty-text">{{ formatNumber(h.qty, 2) }} 股</span>
+            <div class="m-card-top">
+                <div class="m-symbol">
+                    <span class="m-text">{{ h.symbol }}</span>
+                    <span class="m-badge" v-if="h.pnl_percent > 50">🔥</span>
+                    <div class="m-qty">{{ formatNumber(h.qty, 2) }} 股</div>
                 </div>
-                <div class="mkt-val-box">
-                    <div class="label">市值 (TWD)</div>
-                    <div class="val">{{ formatNumber(h.market_value_twd, 0) }}</div>
+                <div class="m-price text-right">
+                    <div class="m-val">{{ formatNumber(h.market_value_twd, 0) }}</div>
+                    <div class="m-label">市值 (TWD)</div>
                 </div>
             </div>
-            <div class="card-data-grid">
-                <div class="data-item">
-                    <div class="label">當日損益</div>
+            <div class="m-card-grid">
+                <div class="m-item">
+                    <div class="m-label">當日損益</div>
                     <div :class="getTrendClass(h.daily_pl_twd)">
                         {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
                     </div>
                 </div>
-                <div class="data-item text-right">
-                    <div class="label">總損益 / 報酬率</div>
+                <div class="m-item">
+                    <div class="m-label">總損益</div>
                     <div :class="getTrendClass(h.pnl_twd)">
                         {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
-                        <span class="roi-small" :class="getTrendClass(h.pnl_percent, true)">
-                            {{ h.pnl_percent >= 0 ? '+' : '' }}{{ safeNum(h.pnl_percent) }}%
-                        </span>
+                    </div>
+                </div>
+                <div class="m-item text-right">
+                    <div class="m-label">報酬率</div>
+                    <div class="roi-badge" :class="getTrendClass(h.pnl_percent, true)">
+                        {{ h.pnl_percent >= 0 ? '+' : '' }}{{ safeNum(h.pnl_percent) }}%
                     </div>
                 </div>
             </div>
@@ -72,33 +76,73 @@
         <table>
             <thead>
                 <tr>
-                    <th @click="sortBy('symbol')" class="sortable">代碼 <span class="sort-icon">{{ getSortIcon('symbol') }}</span></th>
-                    <th @click="sortBy('qty')" class="text-right sortable">股數 <span class="sort-icon">{{ getSortIcon('qty') }}</span></th>
-                    <th @click="sortBy('avg_cost_usd')" class="text-right sortable">成本 (USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span></th>
-                    <th @click="sortBy('current_price_origin')" class="text-right sortable">現價 / 變動 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span></th>
-                    <th @click="sortBy('market_value_twd')" class="text-right sortable">市值 (TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span></th>
-                    <th @click="sortBy('daily_pl_twd')" class="text-right sortable">當日損益 <span class="sort-icon">{{ getSortIcon('daily_pl_twd') }}</span></th>
-                    <th @click="sortBy('pnl_twd')" class="text-right sortable">總損益 <span class="sort-icon">{{ getSortIcon('pnl_twd') }}</span></th>
-                    <th @click="sortBy('pnl_percent')" class="text-right sortable">報酬率 <span class="sort-icon">{{ getSortIcon('pnl_percent') }}</span></th>
+                    <th @click="sortBy('symbol')" class="sortable">
+                        代碼 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
+                    </th>
+                    <th @click="sortBy('qty')" class="text-right sortable">
+                        股數 <span class="sort-icon">{{ getSortIcon('qty') }}</span>
+                    </th>
+                    <th @click="sortBy('avg_cost_usd')" class="text-right sortable">
+                        成本 (USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
+                    </th>
+                    <th @click="sortBy('current_price_origin')" class="text-right sortable">
+                        現價 / 當日變動 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
+                    </th>
+                    <th @click="sortBy('market_value_twd')" class="text-right sortable">
+                        市值 (TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
+                    </th>
+                    <th @click="sortBy('daily_pl_twd')" class="text-right sortable">
+                        當日損益 <span class="sort-icon">{{ getSortIcon('daily_pl_twd') }}</span>
+                    </th>
+                    <th @click="sortBy('pnl_twd')" class="text-right sortable">
+                        總損益 <span class="sort-icon">{{ getSortIcon('pnl_twd') }}</span>
+                    </th>
+                    <th @click="sortBy('pnl_percent')" class="text-right sortable">
+                        報酬率 <span class="sort-icon">{{ getSortIcon('pnl_percent') }}</span>
+                    </th>
                 </tr>
             </thead>
             <tbody>
-                <tr v-for="h in visibleHoldings" :key="h.symbol" class="row-item">
-                    <td class="col-symbol"><span class="symbol-text">{{ h.symbol }}</span></td>
+                 <tr v-if="filteredHoldings.length === 0">
+                    <td colspan="8" class="empty-state">
+                        <div class="empty-icon">📊</div>
+                        <div>目前無持倉數據</div>
+                    </td>
+                </tr>
+                <tr 
+                    v-for="h in visibleHoldings" 
+                    :key="h.symbol" 
+                    class="row-item"
+                    @click="highlightRow(h.symbol)"
+                    :class="{ 'highlighted': highlightedSymbol === h.symbol }"
+                >
+                    <td class="col-symbol">
+                        <div class="symbol-wrapper">
+                            <span class="symbol-text">{{ h.symbol }}</span>
+                            <span class="symbol-badge" v-if="h.pnl_percent > 50">🔥</span>
+                        </div>
+                    </td>
                     <td class="text-right font-num">{{ formatNumber(h.qty, 2) }}</td>
                     <td class="text-right font-num text-sub">{{ formatNumber(h.avg_cost_usd, 2) }}</td>
                     <td class="text-right font-num">
                         <div>{{ formatNumber(h.current_price_origin, 2) }}</div>
                         <div class="price-change" :class="getTrendClass(h.daily_change_usd)">
-                            {{ h.daily_change_usd >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%
+                            {{ h.daily_change_usd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_change_usd, 2) }}
+                            ({{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%)
                         </div>
                     </td>
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
                     <td class="text-right font-num" :class="getTrendClass(h.daily_pl_twd)">
-                        {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
+                        <div class="daily-pnl-wrapper">
+                            <span class="pnl-value">
+                                {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
+                            </span>
+                        </div>
                     </td>
                     <td class="text-right font-num" :class="getTrendClass(h.pnl_twd)">
-                        {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
+                        <span class="pnl-value">
+                            {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
+                        </span>
                     </td>
                     <td class="text-right font-num">
                         <span class="roi-badge" :class="getTrendClass(h.pnl_percent, true)">
@@ -126,32 +170,71 @@ const sortKey = ref('market_value_twd');
 const sortOrder = ref('desc');
 const searchQuery = ref('');
 const filterStatus = ref('all');
+const highlightedSymbol = ref(null);
+
 const displayLimit = ref(50);
 
-const safeNum = (val) => (val == null || isNaN(val)) ? '0.00' : Number(val).toFixed(2);
-const formatNumber = (num, d=0) => (num == null || isNaN(num)) ? '-' : Number(num).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
-const totalMarketValue = computed(() => store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0));
-
-const sortBy = (key) => {
-    if (sortKey.value === key) { sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'; } 
-    else { sortKey.value = key; sortOrder.value = 'desc'; }
+const safeNum = (val) => {
+    if (val === undefined || val === null || isNaN(val)) return '0.00';
+    return Number(val).toFixed(2);
 };
 
-const getSortIcon = (key) => sortKey.value !== key ? '⇕' : (sortOrder.value === 'asc' ? '↑' : '↓');
+const formatNumber = (num, d=0) => {
+    if (num === undefined || num === null || isNaN(num)) return '-';
+    return Number(num).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+};
+
+const totalMarketValue = computed(() => {
+    return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
+});
+
+const sortBy = (key) => {
+    if (sortKey.value === key) {
+        sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortKey.value = key;
+        sortOrder.value = 'desc';
+    }
+};
+
+const getSortIcon = (key) => {
+    if (sortKey.value !== key) return '⇕';
+    return sortOrder.value === 'asc' ? '↑' : '↓';
+};
 
 const filteredHoldings = computed(() => {
     let result = store.holdings;
-    if (searchQuery.value) result = result.filter(h => h.symbol.toLowerCase().includes(searchQuery.value.toLowerCase()));
-    if (filterStatus.value === 'profit') result = result.filter(h => h.pnl_twd > 0);
-    else if (filterStatus.value === 'loss') result = result.filter(h => h.pnl_twd < 0);
+    
+    if (searchQuery.value) {
+        result = result.filter(h => 
+            h.symbol.toLowerCase().includes(searchQuery.value.toLowerCase())
+        );
+    }
+    
+    if (filterStatus.value === 'profit') {
+        result = result.filter(h => (h.pnl_twd || 0) > 0);
+    } else if (filterStatus.value === 'loss') {
+        result = result.filter(h => (h.pnl_twd || 0) < 0);
+    }
+    
     return [...result].sort((a, b) => {
-        let valA = a[sortKey.value], valB = b[sortKey.value];
-        if (typeof valA === 'string') return sortOrder.value === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        return sortOrder.value === 'asc' ? (Number(valA)||0) - (Number(valB)||0) : (Number(valB)||0) - (Number(valA)||0);
+        let valA = a[sortKey.value];
+        let valB = b[sortKey.value];
+        if (typeof valA === 'string') {
+            return sortOrder.value === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+        return sortOrder.value === 'asc' ? valA - valB : valB - valA;
     });
 });
 
-const visibleHoldings = computed(() => filteredHoldings.value.slice(0, displayLimit.value));
+const visibleHoldings = computed(() => {
+    if (filteredHoldings.value.length <= displayLimit.value) {
+        return filteredHoldings.value;
+    }
+    return filteredHoldings.value.slice(0, displayLimit.value);
+});
 
 const getTrendClass = (val, isBg = false) => {
     const num = Number(val) || 0;
@@ -159,73 +242,155 @@ const getTrendClass = (val, isBg = false) => {
     return isBg ? 'bg-red' : 'text-red';
 };
 
+const highlightRow = (symbol) => {
+    highlightedSymbol.value = symbol;
+    setTimeout(() => {
+        highlightedSymbol.value = null;
+    }, 2000);
+};
+
 const handleScroll = () => {
     const target = tableContainer.value || document.documentElement;
-    if (target.scrollHeight - target.scrollTop - target.clientHeight < 100) {
-        if (displayLimit.value < filteredHoldings.value.length) displayLimit.value += 20;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    
+    if (scrollHeight - scrollTop - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
+        displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
     }
 };
 
-onMounted(() => { window.addEventListener('scroll', handleScroll, true); });
-onUnmounted(() => { window.removeEventListener('scroll', handleScroll, true); });
+onMounted(() => {
+    window.addEventListener('scroll', handleScroll, true);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('scroll', handleScroll, true);
+});
 </script>
 
 <style scoped>
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); gap: 16px; }
-.summary-info { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; background: var(--bg-secondary); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color); }
-.header-controls { display: flex; gap: 12px; align-items: center; }
-.search-box { position: relative; min-width: 180px; }
-.search-input { width: 100%; padding: 8px 12px 8px 32px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; background: var(--bg-secondary); color: var(--text-main); }
-.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); opacity: 0.5; }
-.filter-select { padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-main); font-size: 0.9rem; }
+.card-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: flex-start;
+    margin-bottom: 24px; 
+    padding-bottom: 16px; 
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+    gap: 16px;
+}
 
-/* 桌面表格 */
-.table-container { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; }
-th { text-align: left; padding: 12px; font-size: 0.8rem; color: var(--text-sub); border-bottom: 2px solid var(--border-color); cursor: pointer; white-space: nowrap; }
-td { padding: 14px 12px; border-bottom: 1px solid var(--border-color); }
-.symbol-text { font-weight: 700; color: var(--primary); background: var(--bg-secondary); padding: 4px 8px; border-radius: 6px; }
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.header-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.search-box {
+    position: relative;
+    min-width: 200px;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-sub);
+    pointer-events: none;
+}
+
+.search-input {
+    width: 100%;
+    padding: 8px 12px 8px 36px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 1rem;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    transition: all 0.2s ease;
+}
+
+.filter-select {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.summary-info { 
+    font-family: 'JetBrains Mono', monospace; 
+    font-size: 1rem; 
+    background: var(--bg-secondary); 
+    padding: 8px 14px; 
+    border-radius: 8px; 
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+
+.table-container { 
+    overflow-x: auto; 
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+/* 桌面版表格樣式保留 */
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+th { text-align: left; color: var(--text-sub); font-size: 0.85rem; text-transform: uppercase; padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
+td { padding: 16px; border-bottom: 1px solid var(--border-color); font-size: 1rem; color: var(--text-main); }
+.symbol-text { font-weight: 700; color: var(--primary); background: var(--bg-secondary); padding: 6px 12px; border-radius: 8px; }
 .font-num { font-family: 'JetBrains Mono', monospace; }
 .text-right { text-align: right; }
-.text-green { color: var(--success); font-weight: 600; }
-.text-red { color: var(--danger); font-weight: 600; }
-.roi-badge { padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; }
-.bg-green { background: rgba(16, 185, 129, 0.1); color: var(--success); }
-.bg-red { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+.text-green { color: var(--success); }
+.text-red { color: var(--danger); }
+.roi-badge { padding: 6px 10px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; display: inline-block; }
+.roi-badge.bg-green { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); }
+.roi-badge.bg-red { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid var(--danger); }
 
-/* ✅ 手機版列表樣式 */
-.mobile-list { display: none; }
+/* ✅ 手機版卡片樣式設定 */
+.mobile-holdings-list { display: none; }
 
 @media (max-width: 768px) {
     .desktop-only { display: none; }
-    .mobile-list { display: block; }
+    .mobile-holdings-list { display: block; }
     .card-header { flex-direction: column; align-items: stretch; }
-    .search-box { min-width: unset; }
     
-    .mobile-holding-card {
+    .mobile-card {
         background: var(--bg-secondary);
         border-radius: 12px;
         padding: 16px;
         margin-bottom: 12px;
-        border-left: 5px solid var(--border-color);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-left: 4px solid var(--border-color);
+        box-shadow: var(--shadow-sm);
+        transition: transform 0.2s;
     }
-    .mobile-holding-card.profit { border-left-color: var(--success); }
-    .mobile-holding-card.loss { border-left-color: var(--danger); }
     
-    .card-header-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
-    .symbol-box { display: flex; flex-direction: column; gap: 4px; }
-    .symbol-text { font-size: 1.1rem; padding: 2px 6px; }
-    .qty-text { font-size: 0.8rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+    .mobile-card.p-profit { border-left-color: var(--success); }
+    .mobile-card.p-loss { border-left-color: var(--danger); }
+    .mobile-card.highlighted { background: rgba(59, 130, 246, 0.1); }
+
+    .m-card-top { display: flex; justify-content: space-between; margin-bottom: 16px; }
+    .m-symbol { display: flex; flex-direction: column; gap: 4px; }
+    .m-text { font-weight: 800; font-size: 1.2rem; color: var(--primary); }
+    .m-qty { font-size: 0.85rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
     
-    .mkt-val-box .val { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; text-align: right; }
-    .mkt-val-box .label { font-size: 0.7rem; color: var(--text-sub); text-align: right; }
+    .m-val { font-size: 1.15rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .m-label { font-size: 0.7rem; color: var(--text-sub); text-transform: uppercase; }
     
-    .card-data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); }
-    .data-item .label { font-size: 0.7rem; color: var(--text-sub); margin-bottom: 2px; }
-    .roi-small { font-size: 0.75rem; padding: 1px 4px; border-radius: 4px; margin-left: 4px; }
+    .m-card-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+    .m-item .m-label { margin-bottom: 4px; }
+    .roi-small { font-size: 0.8rem; }
 }
 
-.scroll-hint { text-align: center; padding: 12px; font-size: 0.8rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
-.empty-state { text-align: center; padding: 40px; color: var(--text-sub); }
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-sub); }
+.scroll-hint { text-align: center; padding: 12px; font-size: 0.85rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 </style>
