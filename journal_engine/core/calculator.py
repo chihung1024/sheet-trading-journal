@@ -1,10 +1,14 @@
 import pandas as pd
 import numpy as np
+import logging
 from collections import deque
 from datetime import datetime, timedelta
 from pyxirr import xirr
 from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, DividendRecord, PortfolioGroupData
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
+
+# 取得 logger 實例
+logger = logging.getLogger(__name__)
 
 class PortfolioCalculator:
     def __init__(self, transactions_df, market_client):
@@ -13,12 +17,16 @@ class PortfolioCalculator:
 
     def run(self):
         """執行多群組投資組合計算主流程"""
-        print("=== 開始執行多群組投資組合計算 ===")
+        logger.info("=== 開始執行多群組投資組合計算 ===")
         
         # 1. 全域復權處理 (只做一次)
         self._back_adjust_transactions_global()
         
         # 2. 準備日期範圍
+        if self.df.empty:
+            logger.error("無交易紀錄可供計算")
+            return None
+            
         start_date = self.df['Date'].min()
         end_date = datetime.now()
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
@@ -37,13 +45,13 @@ class PortfolioCalculator:
             all_tags.update(split_tags)
         
         groups_to_calc = ['all'] + sorted(list(all_tags))
-        print(f"識別到的群組: {groups_to_calc}")
+        logger.info(f"識別到的群組: {groups_to_calc}")
 
         # 4. 迴圈計算每個群組
         final_groups_data = {}
         
         for group_name in groups_to_calc:
-            print(f"\n--- 計算群組: {group_name} ---")
+            logger.info(f"正在計算群組: {group_name}")
             
             # 篩選該群組的交易紀錄
             if group_name == 'all':
@@ -55,36 +63,33 @@ class PortfolioCalculator:
                 group_df = self.df[mask].copy()
             
             if group_df.empty:
-                print(f"群組 {group_name} 無交易紀錄，跳過")
+                logger.warning(f"群組 {group_name} 無交易紀錄，跳過")
                 continue
 
             # 執行單一群組計算
             group_result = self._calculate_single_portfolio(group_df, date_range, current_fx)
             final_groups_data[group_name] = group_result
 
-        # 5. 組合最終結果 (all 放在頂層以相容舊版)
+        # 5. 組合最終結果
         all_data = final_groups_data.get('all')
-        
         if not all_data:
-            print("警告: 無 'all' 群組數據")
+            logger.error("無法產出 'all' 群組的總體數據")
             return None
         
         return PortfolioSnapshot(
             updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
             base_currency=BASE_CURRENCY,
             exchange_rate=round(current_fx, 2),
-            # 頂層欄位 (Backward Compatibility)
             summary=all_data.summary,
             holdings=all_data.holdings,
             history=all_data.history,
             pending_dividends=all_data.pending_dividends,
-            # 新增群組欄位
             groups=final_groups_data
         )
 
     def _back_adjust_transactions_global(self):
         """全域復權處理"""
-        print("正在進行全域交易數據復權處理...")
+        logger.info("正在進行全域交易數據復權處理...")
         for index, row in self.df.iterrows():
             sym = row['Symbol']
             date = row['Date']
@@ -104,7 +109,6 @@ class PortfolioCalculator:
 
     def _calculate_single_portfolio(self, df, date_range, current_fx):
         """單一群組的核心計算邏輯"""
-        # 初始化狀態變數
         holdings = {}
         fifo_queues = {}
         invested_capital = 0.0
@@ -129,12 +133,11 @@ class PortfolioCalculator:
             current_date = d.date()
             try:
                 fx = self.market.fx_rates.asof(d)
-                if pd.isna(fx): 
-                    fx = DEFAULT_FX_RATE
+                if pd.isna(fx): fx = DEFAULT_FX_RATE
             except: 
                 fx = DEFAULT_FX_RATE
             
-            # --- 優化點：同一日期內的處理順序 ---
+            # 同一日期處理順序優化
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
@@ -154,8 +157,7 @@ class PortfolioCalculator:
                     holdings[sym] = {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': tag}
                     fifo_queues[sym] = deque()
                 
-                if tag: 
-                    holdings[sym]['tag'] = tag
+                if tag: holdings[sym]['tag'] = tag
 
                 if txn_type == 'BUY':
                     cost_usd = (qty * price) + comm + tax
@@ -176,14 +178,12 @@ class PortfolioCalculator:
                         benchmark_invested += cost_twd
 
                 elif txn_type == 'SELL':
-                    # --- 核心優化點：強化 FIFO 引擎 (三) ---
-                    # 1. 檢查是否有庫存可供賣出，避免程式崩溃
+                    # FIFO 引擎優化：容錯檢查
                     if sym not in fifo_queues or not fifo_queues[sym]:
-                        print(f"警告: {sym} 在 {current_date} 嘗試賣出但無買入紀錄，跳過此筆。")
+                        logger.warning(f"標的 {sym} 在 {current_date} 嘗試賣出但無持倉紀錄，已跳過。")
                         continue
 
                     proceeds_twd = ((qty * price) - comm - tax) * fx
-                    
                     remaining = qty
                     cost_sold_twd = 0.0
                     cost_sold_usd = 0.0
@@ -201,13 +201,11 @@ class PortfolioCalculator:
                         batch['cost_total_twd'] -= batch['cost_total_twd'] * frac
                         
                         remaining -= take
-                        
-                        # 2. 處理浮點數殘值，若批次剩餘股數極小則彈出
+                        # FIFO 引擎優化：浮點數殘值處理
                         if batch['qty'] < 1e-6: 
                             fifo_queues[sym].popleft()
                     
-                    # 更新持倉數據
-                    holdings[sym]['qty'] -= (qty - remaining) # 實際扣除成功的部分
+                    holdings[sym]['qty'] -= (qty - remaining)
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
                     holdings[sym]['cost_basis_twd'] -= cost_sold_twd
                     invested_capital -= cost_sold_twd
@@ -224,7 +222,7 @@ class PortfolioCalculator:
                     total_realized_pnl_twd += net_div_twd
                     xirr_cashflows.append({'date': d, 'amount': net_div_twd})
 
-            # 處理自動配息
+            # 自動配息偵測
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 if h_data['qty'] > 1e-6:
@@ -249,7 +247,7 @@ class PortfolioCalculator:
                             total_realized_pnl_twd += total_net_twd
                             xirr_cashflows.append({'date': d, 'amount': total_net_twd})
 
-            # 每日估值
+            # 每日結算與 TWR 計算 (績效精準度優化已保留)
             total_mkt_val = 0.0
             current_holdings_cost = 0.0
             for sym, h in holdings.items():
@@ -262,7 +260,6 @@ class PortfolioCalculator:
             total_pnl = unrealized_pnl + total_realized_pnl_twd
             current_total_equity = invested_capital + total_pnl
             
-            # --- 優化點：績效精準度優化 (二) - 已保留 ---
             prev_invested = history_data[-1]['invested'] if history_data else 0.0
             prev_pnl = history_data[-1]['net_profit'] if history_data else 0.0
             daily_net_inflow = invested_capital - prev_invested
@@ -283,7 +280,6 @@ class PortfolioCalculator:
                 bench_twr = ((bench_val - benchmark_invested) / benchmark_invested) * 100
 
             prev_total_equity = current_total_equity
-            
             history_data.append({
                 "date": date_str,
                 "total_value": round(total_mkt_val, 0),
@@ -294,34 +290,27 @@ class PortfolioCalculator:
                 "fx_rate": round(fx, 4)
             })
 
-        # 產生最終報表
+        # 最終持倉列表產生
         final_holdings = []
         current_holdings_cost_sum = 0.0
-        current_date = datetime.now()
+        current_date_dt = datetime.now()
         
         for sym, h in holdings.items():
             if h['qty'] > 1e-4:
                 stock_data = self.market.market_data.get(sym, pd.DataFrame())
-                curr_p = 0.0
-                prev_p = 0.0
-                daily_change_usd = 0.0
-                daily_pl_twd = 0.0
+                curr_p, prev_p, daily_change_usd, daily_pl_twd = 0.0, 0.0, 0.0, 0.0
                 
                 if not stock_data.empty:
                     curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
                     if len(stock_data) >= 2:
                         prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
                         daily_change_usd = curr_p - prev_p
-                        
                         try:
                             prev_fx = self.market.fx_rates.asof(stock_data.index[-2])
                             if pd.isna(prev_fx): prev_fx = current_fx
                         except:
                             prev_fx = current_fx
-                        
-                        beginning_market_value_twd = h['qty'] * prev_p * prev_fx
-                        ending_market_value_twd = h['qty'] * curr_p * current_fx
-                        daily_pl_twd = ending_market_value_twd - beginning_market_value_twd
+                        daily_pl_twd = (h['qty'] * curr_p * current_fx) - (h['qty'] * prev_p * prev_fx)
                 
                 mkt_val = h['qty'] * curr_p * current_fx
                 cost = h['cost_basis_twd']
@@ -340,7 +329,6 @@ class PortfolioCalculator:
                     avg_cost_usd=round(avg_cost_usd, 2),
                     prev_close_price=round(prev_p, 2),
                     daily_change_usd=round(daily_change_usd, 2),
-                    daily_change_percent=0.0,
                     daily_pl_twd=round(daily_pl_twd, 0)
                 ))
         
@@ -351,12 +339,11 @@ class PortfolioCalculator:
         if xirr_cashflows:
             curr_val_sum = sum(h.market_value_twd for h in final_holdings)
             xirr_cashflows_calc = xirr_cashflows.copy()
-            xirr_cashflows_calc.append({'date': current_date, 'amount': curr_val_sum})
+            xirr_cashflows_calc.append({'date': current_date_dt, 'amount': curr_val_sum})
             try:
                 xirr_res = xirr([x['date'] for x in xirr_cashflows_calc], [x['amount'] for x in xirr_cashflows_calc])
                 xirr_val = round(xirr_res * 100, 2)
-            except: 
-                pass
+            except: pass
 
         summary = PortfolioSummary(
             total_value=round(sum(h.market_value_twd for h in final_holdings), 0),
@@ -369,8 +356,6 @@ class PortfolioCalculator:
         )
         
         return PortfolioGroupData(
-            summary=summary,
-            holdings=final_holdings,
-            history=history_data,
+            summary=summary, holdings=final_holdings, history=history_data,
             pending_dividends=[DividendRecord(**d) for d in dividend_history if d['status']=='pending']
         )
