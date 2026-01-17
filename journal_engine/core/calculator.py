@@ -23,7 +23,7 @@ class PortfolioCalculator:
         end_date = datetime.now()
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
-        # 取得最新匙率
+        # 取得最新匯率
         current_fx = DEFAULT_FX_RATE
         if not self.market.fx_rates.empty:
             current_fx = float(self.market.fx_rates.iloc[-1])
@@ -134,8 +134,13 @@ class PortfolioCalculator:
             except: 
                 fx = DEFAULT_FX_RATE
             
-            # 當日交易
-            daily_txns = df[df['Date'].dt.date == current_date]
+            # --- 核心優化：同一日期內的處理順序 ---
+            # 取得當日所有交易並強制排序：BUY (1) -> DIV (2) -> SELL (3)
+            daily_txns = df[df['Date'].dt.date == current_date].copy()
+            if not daily_txns.empty:
+                priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
+                daily_txns['priority'] = daily_txns['Type'].map(priority_map).fillna(99)
+                daily_txns = daily_txns.sort_values(by='priority', kind='stable')
             
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
