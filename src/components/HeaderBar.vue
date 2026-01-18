@@ -10,7 +10,7 @@
 
       <nav class="nav-section">
         <div class="benchmark-container" v-if="auth.isLoggedIn">
-          <span class="benchmark-label">基準:</span>
+          <span class="benchmark-label">基準標的:</span>
           <div class="selector-wrapper">
             <select 
               id="benchmark-select" 
@@ -31,7 +31,7 @@
               v-model="customTicker"
               @blur="applyCustomBenchmark"
               @keyup.enter="applyCustomBenchmark"
-              placeholder="代碼(如:NVDA)"
+              placeholder="輸入代碼..."
               class="custom-ticker-input"
               ref="customInput"
             />
@@ -44,17 +44,18 @@
             class="btn-sync" 
             @click="manualTrigger" 
             :disabled="store.isPolling || store.loading"
+            :title="store.isPolling ? '數據計算中...' : '手動同步數據'"
           >
             <span class="sync-icon" :class="{ 'spinning': store.isPolling }">🔄</span>
             <span class="btn-text">{{ store.isPolling ? '計算中' : '同步' }}</span>
           </button>
 
-          <button class="btn-icon theme-toggle" @click="toggleDarkMode">
+          <button class="btn-icon theme-toggle" @click="toggleDarkMode" :title="isDark ? '切換淺色模式' : '切換深色模式'">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
           </button>
 
-          <button v-if="canInstall" class="btn-icon install-btn" @click="installPWA">
+          <button v-if="canInstall" class="btn-icon install-btn" @click="installPWA" title="安裝應用程式">
             📥
           </button>
 
@@ -97,7 +98,7 @@ const currentBenchmark = ref(store.selectedBenchmark || 'SPY');
 const isCustomBenchmark = ref(false);
 const customTicker = ref('');
 
-// 監聽 Store 狀態以同步 UI
+// 監聽 Store 狀態以同步介面顯示
 watch(() => store.selectedBenchmark, (newVal) => {
   if (['SPY', 'QQQ', 'VT', '0050.TW'].includes(newVal)) {
     currentBenchmark.value = newVal;
@@ -109,6 +110,7 @@ watch(() => store.selectedBenchmark, (newVal) => {
   }
 }, { immediate: true });
 
+// 處理選單切換
 const handleBenchmarkChange = async () => {
   if (currentBenchmark.value === 'CUSTOM') {
     isCustomBenchmark.value = true;
@@ -121,51 +123,59 @@ const handleBenchmarkChange = async () => {
   await confirmAndTrigger(currentBenchmark.value);
 };
 
+// 套用自定義代碼
 const applyCustomBenchmark = async () => {
   if (!customTicker.value) {
     isCustomBenchmark.value = false;
     currentBenchmark.value = store.selectedBenchmark;
     return;
   }
-  // ✅ 修正：使用 JavaScript 標準 .trim()
+  // ✅ 修正：使用 JavaScript 標準的 .trim() 而非 Python 的 .strip()
   const ticker = customTicker.value.toUpperCase().trim();
   await confirmAndTrigger(ticker);
 };
 
+// 彈出確認框並發送更新請求
 const confirmAndTrigger = async (ticker) => {
-  const confirmed = window.confirm(`確定要將數據基準修改為 ${ticker} 並重新計算嗎？`);
+  const confirmed = window.confirm(`確定要將數據基準 (Benchmark) 修改為 ${ticker} 並重新計算嗎？`);
   
   if (confirmed) {
     try {
+      // 調用 store 的 triggerUpdate 傳入標的參數
       await store.triggerUpdate(ticker);
-      addToast(`已成功切換至 ${ticker}，計算引擎啟動中...`, "success");
+      addToast(`已成功切換基準至 ${ticker}，正在重新計算數據...`, "success");
     } catch (err) {
-      addToast(err.message || "更新失敗", "error");
+      addToast(err.message || "更新基準失敗", "error");
+      // 失敗時回歸舊值
       currentBenchmark.value = store.selectedBenchmark;
     }
   } else {
+    // 使用者取消，恢復選單狀態
     currentBenchmark.value = store.selectedBenchmark;
   }
 };
 
+// 手動觸發更新
 const manualTrigger = async () => {
   try {
     await store.triggerUpdate();
-    addToast("已觸發手動更新", "success");
+    addToast("已觸發數據手動同步", "success");
   } catch (err) {
-    addToast(err.message || "觸發失敗", "error");
+    addToast(err.message || "觸發同步失敗", "error");
   }
 };
 
+// 登出
 const handleLogout = () => {
-  if (confirm("確定要登出嗎？")) {
+  if (confirm("確定要登出系統嗎？")) {
     auth.logout();
     if (store.resetData) store.resetData();
-    addToast("已安全登出", "info");
+    addToast("已成功登出", "info");
   }
 };
 
 onMounted(() => {
+  // 透過此 Log 確保新版組件已載入
   console.log("🛠️ HeaderBar: Benchmark Selector Initialized");
 });
 </script>
@@ -178,6 +188,7 @@ onMounted(() => {
   position: sticky;
   top: 0;
   z-index: 100;
+  width: 100%;
 }
 
 .header-content {
@@ -211,7 +222,7 @@ onMounted(() => {
   gap: 15px;
 }
 
-/* ✅ 基準選擇器強化樣式 */
+/* ✅ Benchmark Selector 強化樣式 (確保清晰可見) */
 .benchmark-container {
   display: flex;
   align-items: center;
@@ -219,7 +230,7 @@ onMounted(() => {
   background: var(--bg-secondary);
   padding: 6px 14px;
   border-radius: 12px;
-  border: 2px solid var(--primary); /* 強化邊框 */
+  border: 2px solid var(--primary); /* 強化藍色邊框 */
 }
 
 .benchmark-label {
@@ -229,31 +240,41 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.selector-wrapper { display: flex; gap: 6px; align-items: center; }
+.selector-wrapper {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
 
 .benchmark-select {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   color: var(--text-main);
   border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 0.9rem;
+  padding: 4px 6px;
+  font-size: 0.85rem;
   cursor: pointer;
   outline: none;
 }
 
+.benchmark-select:focus { border-color: var(--primary); }
+
 .custom-ticker-input {
-  width: 100px;
+  width: 90px;
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid var(--primary);
   background: var(--bg-card);
   color: var(--text-main);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   text-transform: uppercase;
 }
 
-.nav-actions { display: flex; align-items: center; gap: 10px; }
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
 .btn-sync {
   display: flex;
@@ -262,27 +283,33 @@ onMounted(() => {
   background: var(--primary);
   color: white;
   border: none;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
 }
 
+.btn-sync:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
 .btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
 .sync-icon.spinning { animation: spin 2s linear infinite; }
 
 .btn-icon {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
+  transition: all 0.2s;
 }
+
+.btn-icon:hover { border-color: var(--primary); color: var(--primary); }
 
 .user-menu {
   display: flex;
@@ -293,19 +320,24 @@ onMounted(() => {
 }
 
 .user-info { display: flex; flex-direction: column; text-align: right; }
-.user-name { font-weight: 700; font-size: 0.9rem; color: var(--text-main); }
+.user-name { font-weight: 700; font-size: 0.9rem; color: var(--text-main); line-height: 1.2; }
 .user-email { font-size: 0.7rem; color: var(--text-sub); }
 
 .btn-logout {
   background: transparent;
   border: 1px solid var(--danger);
   color: var(--danger);
-  padding: 6px 12px;
+  padding: 4px 10px;
   border-radius: 6px;
   font-weight: 600;
+  font-size: 0.85rem;
   cursor: pointer;
+  transition: all 0.2s;
 }
 
+.btn-logout:hover { background: var(--danger); color: white; }
+
+/* 進度指示條 */
 .sync-progress {
   position: absolute;
   bottom: 0;
@@ -330,10 +362,15 @@ onMounted(() => {
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-@media (max-width: 1024px) { .benchmark-label { display: none; } }
+/* 響應式佈局 */
+@media (max-width: 1024px) {
+  .benchmark-label { display: none; }
+}
+
 @media (max-width: 768px) {
   .logo-text, .user-info, .btn-text { display: none; }
   .header-content { padding: 0 10px; }
-  .benchmark-container { padding: 4px 6px; }
+  .nav-section { gap: 8px; }
+  .benchmark-container { padding: 4px 6px; border-radius: 8px; }
 }
 </style>
