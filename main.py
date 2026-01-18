@@ -24,7 +24,7 @@ def main():
     setup_logging()
     logger = logging.getLogger("main")
     
-    logger.info("=== 啟動交易日誌更新程序 (多使用者版) ===")
+    logger.info("=== 啟動交易日誌更新程序 (多人隔離版) ===")
 
     # 2. 安全性檢查
     if not API_KEY:
@@ -39,82 +39,72 @@ def main():
     logger.info("正在從 Cloudflare 獲取原始交易紀錄...")
     records = api_client.fetch_records()
     if not records:
-        logger.warning("資料庫中無任何交易紀錄，程式結束。")
+        logger.warning("資料庫中無任何交易紀錄，程序結束。")
         return
 
     # 5. 資料前處理
     df = pd.DataFrame(records)
     
-    # 欄位重新命名以符合計算引擎需求
+    # 檢查是否有 user_id 欄位以進行分組
+    if 'user_id' not in df.columns:
+        logger.error("交易紀錄中缺少 user_id 欄位，請檢查 API 回傳內容。")
+        return
+
     df.rename(columns={
         'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type', 
         'qty': 'Qty', 'price': 'Price', 'fee': 'Commission', 
         'tax': 'Tax', 'tag': 'Tag'
     }, inplace=True)
     
-    # 資料型態轉換
     df['Date'] = pd.to_datetime(df['Date'])
     df['Qty'] = pd.to_numeric(df['Qty'])
     df['Price'] = pd.to_numeric(df['Price'])
     df['Commission'] = pd.to_numeric(df['Commission'].fillna(0))
     df['Tax'] = pd.to_numeric(df['Tax'].fillna(0)) 
-    
-    # 依照日期排序，確保計算順序正確
     df = df.sort_values('Date')
     
-    # 6. 下載市場數據 (維持全域下載)
-    # 即使是多使用者，熱門標的(如 NVDA, TSM)通常是重疊的，一次下載效率最高
+    # 6. 下載市場數據 (維持全域下載以優化 API 呼叫效能)
     if not df.empty:
         start_date = df['Date'].min()
         fetch_start_date = start_date - timedelta(days=100)
         unique_tickers = df['Symbol'].unique().tolist()
         
-        logger.info(f"開始下載市場數據。最早交易日: {start_date.date()}, 全域標的數: {len(unique_tickers)}")
+        logger.info(f"開始下載全域市場數據。最早交易日: {start_date.date()}, 標的數: {len(unique_tickers)}")
         market_client.download_data(unique_tickers, fetch_start_date)
     
     # ==========================================
-    # 7. 核心計算：按使用者分組計算 (User-based Loop)
+    # [關鍵修改] 核心計算：針對每位使用者分別處理
     # ==========================================
     
-    # 取得所有有交易紀錄的使用者 ID (Email)
-    # 檢查是否有 user_id 欄位 (相容性檢查)
-    if 'user_id' in df.columns:
-        user_ids = df['user_id'].dropna().unique()
-    else:
-        logger.warning("未偵測到 user_id 欄位，將視為單一系統使用者 system 處理")
-        user_ids = ['system']
+    # 取得所有有交易紀錄的使用者 ID 清單
+    user_list = df['user_id'].unique()
+    logger.info(f"偵測到 {len(user_list)} 位使用者，開始批次處理...")
 
-    logger.info(f"偵測到 {len(user_ids)} 位使用者，開始批次處理...")
-
-    for user_email in user_ids:
+    for user_email in user_list:
         try:
             logger.info(f"--- 正在處理使用者: {user_email} ---")
             
-            # 7-1. 篩選：只取該使用者的交易紀錄
-            # 使用 copy() 避免污染原始資料
-            if 'user_id' in df.columns:
-                user_df = df[df['user_id'] == user_email].copy()
-            else:
-                user_df = df.copy()
-
+            # 1. 篩選該使用者的交易紀錄
+            user_df = df[df['user_id'] == user_email].copy()
+            
             if user_df.empty:
-                logger.info(f"使用者 {user_email} 無有效交易紀錄，跳過。")
+                logger.info(f"使用者 {user_email} 無效紀錄，跳過。")
                 continue
 
-            # 7-2. 計算：產出該使用者的專屬快照
+            # 2. 計算該使用者的投資組合快照
             calculator = PortfolioCalculator(user_df, market_client)
             user_snapshot = calculator.run()
             
             if user_snapshot:
-                # 7-3. 上傳：指定 target_user_id，讓 Worker 知道這份資料是誰的
+                # 3. 指定 target_user_id 並上傳結果
+                logger.info(f"計算完成，正在上傳 {user_email} 的快照數據...")
                 api_client.upload_portfolio(user_snapshot, target_user_id=user_email)
+                logger.info(f"使用者 {user_email} 處理成功。")
             else:
-                logger.warning(f"使用者 {user_email} 計算後無有效數據 (可能是空倉或資料不足)")
-
+                logger.warning(f"使用者 {user_email} 核心計算失敗，未產生快照。")
+                
         except Exception as u_err:
-            logger.error(f"處理使用者 {user_email} 時發生錯誤: {u_err}")
-            # 發生錯誤時跳過此人，繼續處理下一位，確保整體流程不中斷
-            continue
+            logger.error(f"處理使用者 {user_email} 時發生未預期錯誤: {u_err}")
 
     logger.info("=== 所有使用者處理程序執行完畢 ===")
 
