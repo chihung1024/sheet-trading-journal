@@ -10,7 +10,7 @@
 
       <nav class="nav-section">
         <div class="benchmark-container" v-if="auth.isLoggedIn">
-          <span class="benchmark-label">基準:</span>
+          <span class="benchmark-label">基準標的:</span>
           <div class="selector-wrapper">
             <select 
               id="benchmark-select" 
@@ -47,7 +47,7 @@
             :title="store.isPolling ? '數據計算中...' : '手動同步數據'"
           >
             <span class="sync-icon" :class="{ 'spinning': store.isPolling }">🔄</span>
-            <span class="btn-text">{{ store.isPolling ? '計算中...' : '同步' }}</span>
+            <span class="btn-text">{{ store.isPolling ? '計算中' : '同步' }}</span>
           </button>
 
           <button class="btn-icon theme-toggle" @click="toggleDarkMode" :title="isDark ? '切換淺色模式' : '切換深色模式'">
@@ -77,7 +77,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useDarkMode } from '../composables/useDarkMode';
@@ -93,12 +93,12 @@ const { addToast } = useToast();
 const emit = defineEmits(['go-home']);
 const customInput = ref(null);
 
-// --- Benchmark 核心處理邏輯 ---
+// --- Benchmark 處理邏輯 ---
 const currentBenchmark = ref(store.selectedBenchmark || 'SPY');
 const isCustomBenchmark = ref(false);
 const customTicker = ref('');
 
-// 監聽 Store 狀態以同步 UI (確保 Store 中的 benchmark 變更時介面跟著變)
+// 監聽 Store 狀態以同步介面顯示
 watch(() => store.selectedBenchmark, (newVal) => {
   if (['SPY', 'QQQ', 'VT', '0050.TW'].includes(newVal)) {
     currentBenchmark.value = newVal;
@@ -110,6 +110,7 @@ watch(() => store.selectedBenchmark, (newVal) => {
   }
 }, { immediate: true });
 
+// 處理選單切換
 const handleBenchmarkChange = async () => {
   if (currentBenchmark.value === 'CUSTOM') {
     isCustomBenchmark.value = true;
@@ -122,51 +123,50 @@ const handleBenchmarkChange = async () => {
   await confirmAndTrigger(currentBenchmark.value);
 };
 
+// 套用自定義代碼
 const applyCustomBenchmark = async () => {
   if (!customTicker.value) {
     isCustomBenchmark.value = false;
     currentBenchmark.value = store.selectedBenchmark;
     return;
   }
-  // ✅ 修正：使用 JavaScript 的 .trim() 而非 Python 的 .strip()
   const ticker = customTicker.value.toUpperCase().trim();
   await confirmAndTrigger(ticker);
 };
 
+// 彈出確認框並發送更新請求
 const confirmAndTrigger = async (ticker) => {
-  const confirmed = window.confirm(`確定要將 Benchmark 修改為 ${ticker} 並重新計算所有數據嗎？`);
+  const confirmed = window.confirm(`確定要將數據基準 (Benchmark) 修改為 ${ticker} 並重新計算嗎？`);
   
   if (confirmed) {
     try {
-      // 調用 store 的 triggerUpdate 傳入標的參數
       await store.triggerUpdate(ticker);
-      addToast(`已切換基準至 ${ticker}，計算引擎啟動中...`, "success");
+      addToast(`已成功切換基準至 ${ticker}，正在重新計算數據...`, "success");
     } catch (err) {
-      addToast(err.message || "更新失敗", "error");
-      // 失敗時回歸舊值
+      addToast(err.message || "更新基準失敗", "error");
       currentBenchmark.value = store.selectedBenchmark;
     }
   } else {
-    // 使用者取消，恢復選單狀態
     currentBenchmark.value = store.selectedBenchmark;
   }
 };
 
-// --- 其他功能函數 ---
+// 手動觸發更新
 const manualTrigger = async () => {
   try {
     await store.triggerUpdate();
-    addToast("已觸發手動同步數據", "success");
+    addToast("已觸發數據手動同步", "success");
   } catch (err) {
-    addToast(err.message || "同步失敗", "error");
+    addToast(err.message || "觸發同步失敗", "error");
   }
 };
 
+// 登出
 const handleLogout = () => {
   if (confirm("確定要登出系統嗎？")) {
     auth.logout();
     if (store.resetData) store.resetData();
-    addToast("已安全登出", "info");
+    addToast("已成功登出", "info");
   }
 };
 </script>
@@ -205,21 +205,19 @@ const handleLogout = () => {
   -webkit-text-fill-color: transparent;
 }
 
-.logo-icon {
-  -webkit-text-fill-color: initial;
-}
+.logo-icon { -webkit-text-fill-color: initial; }
 
 .nav-section {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 15px;
 }
 
-/* Benchmark Selector 新增樣式 */
+/* Benchmark Selector 容器樣式 */
 .benchmark-container {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: var(--bg-secondary);
   padding: 6px 14px;
   border-radius: 12px;
@@ -230,11 +228,12 @@ const handleLogout = () => {
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--text-sub);
+  white-space: nowrap;
 }
 
 .selector-wrapper {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
@@ -243,121 +242,93 @@ const handleLogout = () => {
   border: 1px solid var(--border-color);
   color: var(--text-main);
   border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 0.9rem;
+  padding: 4px 6px;
+  font-size: 0.85rem;
   cursor: pointer;
   outline: none;
 }
 
-.benchmark-select:focus {
-  border-color: var(--primary);
-}
+.benchmark-select:focus { border-color: var(--primary); }
 
 .custom-ticker-input {
-  width: 110px;
+  width: 90px;
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid var(--primary);
   background: var(--bg-card);
   color: var(--text-main);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   text-transform: uppercase;
 }
 
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .btn-sync {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   background: var(--primary);
   color: white;
   border: none;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
-.btn-sync:hover:not(:disabled) {
-  background: #2563eb;
-  transform: translateY(-1px);
-}
-
-.btn-sync:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.sync-icon.spinning {
-  animation: spin 2s linear infinite;
-}
+.btn-sync:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
+.btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
+.sync-icon.spinning { animation: spin 2s linear infinite; }
 
 .btn-icon {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   transition: all 0.2s;
 }
 
-.btn-icon:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-}
+.btn-icon:hover { border-color: var(--primary); color: var(--primary); }
 
 .user-menu {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding-left: 16px;
+  gap: 12px;
+  padding-left: 12px;
   border-left: 1px solid var(--border-color);
 }
 
-.user-info {
-  display: flex;
-  flex-direction: column;
-  text-align: right;
-}
-
-.user-name {
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--text-main);
-}
-
-.user-email {
-  font-size: 0.75rem;
-  color: var(--text-sub);
-}
+.user-info { display: flex; flex-direction: column; text-align: right; }
+.user-name { font-weight: 700; font-size: 0.9rem; color: var(--text-main); line-height: 1.2; }
+.user-email { font-size: 0.7rem; color: var(--text-sub); }
 
 .btn-logout {
   background: transparent;
   border: 1px solid var(--danger);
   color: var(--danger);
-  padding: 6px 12px;
+  padding: 4px 10px;
   border-radius: 6px;
   font-weight: 600;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-logout:hover {
-  background: var(--danger);
-  color: white;
-}
+.btn-logout:hover { background: var(--danger); color: white; }
 
+/* 進度指示條樣式 */
 .sync-progress {
   position: absolute;
   bottom: 0;
@@ -380,27 +351,17 @@ const handleLogout = () => {
   100% { transform: translateX(300%); }
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-@media (max-width: 992px) {
+/* 響應式優化 */
+@media (max-width: 1024px) {
   .benchmark-label { display: none; }
 }
 
 @media (max-width: 768px) {
-  .logo-text, .user-info, .btn-text {
-    display: none;
-  }
-  .header-content {
-    padding: 0 12px;
-  }
-  .nav-section {
-    gap: 10px;
-  }
-  .benchmark-container {
-    padding: 4px 8px;
-  }
+  .logo-text, .user-info, .btn-text { display: none; }
+  .header-content { padding: 0 10px; }
+  .nav-section { gap: 8px; }
+  .benchmark-container { padding: 4px 6px; border-radius: 8px; }
 }
 </style>
