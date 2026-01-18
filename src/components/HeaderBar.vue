@@ -90,16 +90,16 @@ const { addToast } = useToast();
 const emit = defineEmits(['go-home']);
 
 // --- Benchmark 邏輯 ---
-const currentBenchmark = ref(store.selectedBenchmark);
+const currentBenchmark = ref(store.selectedBenchmark || 'SPY');
 const isCustomBenchmark = ref(false);
 const customTicker = ref('');
 
-// 監聽 Store 的基準變動 (例如其他組件修改或載入時)
+// 監聽 Store 的基準變動
 watch(() => store.selectedBenchmark, (newVal) => {
   if (['SPY', 'QQQ', 'VT', '0050.TW'].includes(newVal)) {
     currentBenchmark.value = newVal;
     isCustomBenchmark.value = false;
-  } else {
+  } else if (newVal) {
     currentBenchmark.value = 'CUSTOM';
     isCustomBenchmark.value = true;
     customTicker.value = newVal;
@@ -118,7 +118,7 @@ const handleBenchmarkChange = async () => {
 
 const applyCustomBenchmark = async () => {
   if (!customTicker.value) return;
-  const ticker = customTicker.value.toUpperCase().strip();
+  const ticker = customTicker.value.toUpperCase().trim();
   await confirmAndTrigger(ticker);
 };
 
@@ -127,11 +127,12 @@ const confirmAndTrigger = async (ticker) => {
   
   if (confirmed) {
     try {
+      // 調用 store 中封裝好的 triggerUpdate (帶標的參數)
       await store.triggerUpdate(ticker);
-      addToast(`已成功切換基準至 ${ticker}，計算引擎啟動中...`, "success");
+      addToast(`已切換基準至 ${ticker}，計算引擎啟動中...`, "success");
     } catch (err) {
       addToast(err.message || "更新失敗", "error");
-      // 失敗時回退介面狀態
+      // 失敗時回退狀態
       currentBenchmark.value = store.selectedBenchmark;
     }
   } else {
@@ -153,7 +154,7 @@ const manualTrigger = async () => {
 const handleLogout = () => {
   if (confirm("確定要登出嗎？")) {
     auth.logout();
-    store.resetData();
+    if (store.resetData) store.resetData();
     addToast("已安全登出", "info");
   }
 };
