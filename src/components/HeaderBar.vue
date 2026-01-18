@@ -44,17 +44,18 @@
             class="btn-sync" 
             @click="manualTrigger" 
             :disabled="store.isPolling || store.loading"
+            :title="store.isPolling ? '數據計算中...' : '手動同步數據'"
           >
             <span class="sync-icon" :class="{ 'spinning': store.isPolling }">🔄</span>
-            <span class="btn-text">{{ store.isPolling ? '計算中' : '同步' }}</span>
+            <span class="btn-text">{{ store.isPolling ? '計算中...' : '同步' }}</span>
           </button>
 
-          <button class="btn-icon theme-toggle" @click="toggleDarkMode">
+          <button class="btn-icon theme-toggle" @click="toggleDarkMode" :title="isDark ? '切換淺色模式' : '切換深色模式'">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
           </button>
 
-          <button v-if="canInstall" class="btn-icon install-btn" @click="installPWA">
+          <button v-if="canInstall" class="btn-icon install-btn" @click="installPWA" title="安裝應用程式">
             📥
           </button>
 
@@ -92,12 +93,12 @@ const { addToast } = useToast();
 const emit = defineEmits(['go-home']);
 const customInput = ref(null);
 
-// --- Benchmark 核心邏輯 ---
+// --- Benchmark 核心處理邏輯 ---
 const currentBenchmark = ref(store.selectedBenchmark || 'SPY');
 const isCustomBenchmark = ref(false);
 const customTicker = ref('');
 
-// 監聽 Store 基準變動以同步 UI
+// 監聽 Store 狀態以同步 UI (確保 Store 中的 benchmark 變更時介面跟著變)
 watch(() => store.selectedBenchmark, (newVal) => {
   if (['SPY', 'QQQ', 'VT', '0050.TW'].includes(newVal)) {
     currentBenchmark.value = newVal;
@@ -127,6 +128,7 @@ const applyCustomBenchmark = async () => {
     currentBenchmark.value = store.selectedBenchmark;
     return;
   }
+  // ✅ 修正：使用 JavaScript 的 .trim() 而非 Python 的 .strip()
   const ticker = customTicker.value.toUpperCase().trim();
   await confirmAndTrigger(ticker);
 };
@@ -136,31 +138,35 @@ const confirmAndTrigger = async (ticker) => {
   
   if (confirmed) {
     try {
+      // 調用 store 的 triggerUpdate 傳入標的參數
       await store.triggerUpdate(ticker);
-      addToast(`已成功切換基準至 ${ticker}，正在重新計算數據...`, "success");
+      addToast(`已切換基準至 ${ticker}，計算引擎啟動中...`, "success");
     } catch (err) {
       addToast(err.message || "更新失敗", "error");
+      // 失敗時回歸舊值
       currentBenchmark.value = store.selectedBenchmark;
     }
   } else {
+    // 使用者取消，恢復選單狀態
     currentBenchmark.value = store.selectedBenchmark;
   }
 };
 
+// --- 其他功能函數 ---
 const manualTrigger = async () => {
   try {
     await store.triggerUpdate();
-    addToast("已觸發手動同步", "success");
+    addToast("已觸發手動同步數據", "success");
   } catch (err) {
     addToast(err.message || "同步失敗", "error");
   }
 };
 
 const handleLogout = () => {
-  if (confirm("確定要登出嗎？")) {
+  if (confirm("確定要登出系統嗎？")) {
     auth.logout();
     if (store.resetData) store.resetData();
-    addToast("已成功登出", "info");
+    addToast("已安全登出", "info");
   }
 };
 </script>
@@ -209,7 +215,7 @@ const handleLogout = () => {
   gap: 20px;
 }
 
-/* Benchmark Selector 新樣式 */
+/* Benchmark Selector 新增樣式 */
 .benchmark-container {
   display: flex;
   align-items: center;
@@ -229,6 +235,7 @@ const handleLogout = () => {
 .selector-wrapper {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
 .benchmark-select {
