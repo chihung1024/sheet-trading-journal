@@ -50,12 +50,12 @@
             <span class="btn-text">{{ store.isPolling ? '計算中' : '同步' }}</span>
           </button>
 
-          <button class="btn-icon theme-toggle" @click="toggleDarkMode" :title="isDark ? '切換淺色模式' : '切換深色模式'">
+          <button class="btn-icon theme-toggle" @click="toggleDarkMode" :title="isDark ? '淺色' : '深色'">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
           </button>
 
-          <button v-if="canInstall" class="btn-icon install-btn" @click="installPWA" title="安裝應用程式">
+          <button v-if="canInstall" class="btn-icon install-btn" @click="installPWA">
             📥
           </button>
 
@@ -77,7 +77,7 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, onMounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useDarkMode } from '../composables/useDarkMode';
@@ -93,12 +93,12 @@ const { addToast } = useToast();
 const emit = defineEmits(['go-home']);
 const customInput = ref(null);
 
-// --- Benchmark 處理邏輯 ---
+// --- Benchmark 核心邏輯 ---
 const currentBenchmark = ref(store.selectedBenchmark || 'SPY');
 const isCustomBenchmark = ref(false);
 const customTicker = ref('');
 
-// 監聽 Store 狀態以同步介面顯示
+// 監聽 Store 的基準變動以同步 UI
 watch(() => store.selectedBenchmark, (newVal) => {
   if (['SPY', 'QQQ', 'VT', '0050.TW'].includes(newVal)) {
     currentBenchmark.value = newVal;
@@ -110,7 +110,6 @@ watch(() => store.selectedBenchmark, (newVal) => {
   }
 }, { immediate: true });
 
-// 處理選單切換
 const handleBenchmarkChange = async () => {
   if (currentBenchmark.value === 'CUSTOM') {
     isCustomBenchmark.value = true;
@@ -123,27 +122,26 @@ const handleBenchmarkChange = async () => {
   await confirmAndTrigger(currentBenchmark.value);
 };
 
-// 套用自定義代碼
 const applyCustomBenchmark = async () => {
   if (!customTicker.value) {
     isCustomBenchmark.value = false;
     currentBenchmark.value = store.selectedBenchmark;
     return;
   }
+  // ✅ 修正：使用 JavaScript 的 .trim() 而非 Python 的 .strip()
   const ticker = customTicker.value.toUpperCase().trim();
   await confirmAndTrigger(ticker);
 };
 
-// 彈出確認框並發送更新請求
 const confirmAndTrigger = async (ticker) => {
   const confirmed = window.confirm(`確定要將數據基準 (Benchmark) 修改為 ${ticker} 並重新計算嗎？`);
   
   if (confirmed) {
     try {
       await store.triggerUpdate(ticker);
-      addToast(`已成功切換基準至 ${ticker}，正在重新計算數據...`, "success");
+      addToast(`已切換至 ${ticker}，正在計算中...`, "success");
     } catch (err) {
-      addToast(err.message || "更新基準失敗", "error");
+      addToast(err.message || "更新失敗", "error");
       currentBenchmark.value = store.selectedBenchmark;
     }
   } else {
@@ -151,30 +149,32 @@ const confirmAndTrigger = async (ticker) => {
   }
 };
 
-// 手動觸發更新
 const manualTrigger = async () => {
   try {
     await store.triggerUpdate();
-    addToast("已觸發數據手動同步", "success");
+    addToast("已觸發手動同步", "success");
   } catch (err) {
-    addToast(err.message || "觸發同步失敗", "error");
+    addToast(err.message || "觸發失敗", "error");
   }
 };
 
-// 登出
 const handleLogout = () => {
-  if (confirm("確定要登出系統嗎？")) {
+  if (confirm("確定要登出嗎？")) {
     auth.logout();
     if (store.resetData) store.resetData();
-    addToast("已成功登出", "info");
+    addToast("已安全登出", "info");
   }
 };
+
+onMounted(() => {
+  console.log("🛠️ HeaderBar: Benchmark Selector Initialized");
+});
 </script>
 
 <style scoped>
 .header-bar {
   background: var(--bg-card);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 2px solid var(--primary); /* 強化邊框以辨識更新 */
   box-shadow: var(--shadow-sm);
   position: sticky;
   top: 0;
@@ -213,21 +213,21 @@ const handleLogout = () => {
   gap: 15px;
 }
 
-/* Benchmark Selector 容器樣式 */
+/* Benchmark Selector 強化樣式 */
 .benchmark-container {
   display: flex;
   align-items: center;
   gap: 8px;
   background: var(--bg-secondary);
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: 12px;
-  border: 1px solid var(--border-color);
+  border: 1.5px solid var(--primary); /* 鮮明顏色確保能看見 */
 }
 
 .benchmark-label {
   font-size: 0.85rem;
   font-weight: 700;
-  color: var(--text-sub);
+  color: var(--primary);
   white-space: nowrap;
 }
 
@@ -247,8 +247,6 @@ const handleLogout = () => {
   cursor: pointer;
   outline: none;
 }
-
-.benchmark-select:focus { border-color: var(--primary); }
 
 .custom-ticker-input {
   width: 90px;
@@ -297,7 +295,6 @@ const handleLogout = () => {
   align-items: center;
   justify-content: center;
   font-size: 1.1rem;
-  transition: all 0.2s;
 }
 
 .btn-icon:hover { border-color: var(--primary); color: var(--primary); }
@@ -323,12 +320,8 @@ const handleLogout = () => {
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
-  transition: all 0.2s;
 }
 
-.btn-logout:hover { background: var(--danger); color: white; }
-
-/* 進度指示條樣式 */
 .sync-progress {
   position: absolute;
   bottom: 0;
@@ -353,10 +346,7 @@ const handleLogout = () => {
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-/* 響應式優化 */
-@media (max-width: 1024px) {
-  .benchmark-label { display: none; }
-}
+@media (max-width: 1024px) { .benchmark-label { display: none; } }
 
 @media (max-width: 768px) {
   .logo-text, .user-info, .btn-text { display: none; }
