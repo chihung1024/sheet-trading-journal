@@ -76,10 +76,7 @@
         <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub">基準 ({{ store.selectedBenchmark }}): </span>
-         <span class="f-val" :class="getPnlClass(stats.benchmark_twr)">
-           {{ (stats.benchmark_twr || 0).toFixed(2) }}%
-         </span>
+         <span class="text-sub">TWR (策略表現)</span>
       </div>
     </div>
     
@@ -106,23 +103,31 @@ import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
 const stats = computed(() => store.stats || {});
+const history = computed(() => store.history || []);
 const holdings = computed(() => store.holdings || []);
 
-// 1. 損益計算邏輯
+// ✅ 修正：直接使用後端計算好的 total_pnl
 const totalPnL = computed(() => stats.value.total_pnl || 0);
+
+// 計算已實現損益 (從後端 API 獲取)
 const realizedPnL = computed(() => stats.value.realized_pnl || 0);
+
+// ✅ 修正：未實現損益 = 總損益 - 已實現損益
 const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
 
+// 計算 ROI
 const roi = computed(() => {
   if (!stats.value.invested_capital) return '0.00';
   return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
 });
 
-// 2. 美股時間判斷
+// 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
 const isUSMarketOpen = computed(() => {
   const now = new Date();
   const hour = now.getHours();
   const minute = now.getMinutes();
+  
+  // 晚上 9:30 後 或 凌晨 5:00 前
   if (hour >= 21 || hour < 5) {
     if (hour === 21 && minute < 30) return false;
     return true;
@@ -130,28 +135,45 @@ const isUSMarketOpen = computed(() => {
   return false;
 });
 
-const pnlLabel = computed(() => isUSMarketOpen.value ? '美股盤中損益' : '今日損益');
-const pnlDescription = computed(() => isUSMarketOpen.value ? '包含今日股價、匯率及交易影響' : '包含昨日股價、今日匯率變化');
-const pnlTooltip = computed(() => '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響');
-
-// 3. 今日損益計算 (Modified Dietz)
-const dailyPnL = computed(() => {
-  return holdings.value.reduce((sum, holding) => sum + (holding.daily_pl_twd || 0), 0);
+// 動態標題
+const pnlLabel = computed(() => {
+  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益';
 });
 
+// 動態說明
+const pnlDescription = computed(() => {
+  if (isUSMarketOpen.value) {
+    return '包含今日股價、匯率及交易影響';
+  } else {
+    return '包含昨日股價、今日匯率變化';
+  }
+});
+
+// Tooltip 完整說明
+const pnlTooltip = computed(() => {
+  return '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響';
+});
+
+// 核心修正：直接使用後端計算好的 daily_pl_twd
+// 後端使用 Modified Dietz 方法，公式：daily_pl = ending_value - beginning_value - cashflow
+const dailyPnL = computed(() => {
+  // 直接加總所有持股的 daily_pl_twd
+  return holdings.value.reduce((sum, holding) => {
+    return sum + (holding.daily_pl_twd || 0);
+  }, 0);
+});
+
+// 計算今日損益百分比
 const dailyRoi = computed(() => {
+  // 使用昨日總資產作為基準
+  // 昨日總資產 = 今日總資產 - 今日損益
   const yesterdayValue = stats.value.total_value - dailyPnL.value;
+  
   if (!yesterdayValue || yesterdayValue === 0) return '0.00';
   return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
 });
 
-// 4. 輔助函式
-const getPnlClass = (val) => {
-  if (!val || val === 0) return '';
-  return val > 0 ? 'text-green' : 'text-red';
-};
-
-// 5. 數字動畫邏輯
+// 數字動畫
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -262,6 +284,14 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     margin-top: 2px;
 }
 
+.stat-sub-text {
+    font-size: 0.8rem;
+    color: var(--text-sub);
+    font-weight: 500;
+    margin-top: 2px;
+    opacity: 0.9;
+}
+
 .unit-text, .percent { 
     font-size: 0.95rem; 
     color: var(--text-sub); 
@@ -320,18 +350,40 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 }
 
 @media (max-width: 1200px) { 
-    .stats-grid { grid-template-columns: repeat(2, 1fr); } 
+    .stats-grid { 
+        grid-template-columns: repeat(2, 1fr);
+    } 
 }
 
 @media (max-width: 768px) { 
-    .stats-grid { grid-template-columns: 1fr; gap: 14px; }
-    .stat-block { min-height: 110px; padding: 16px 18px; }
-    .stat-value { font-size: 1.6rem; }
-    .stat-value.big { font-size: 1.8rem; }
+    .stats-grid { 
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+    
+    .stat-block {
+        min-height: 110px;
+        padding: 16px 18px;
+    }
+    
+    .stat-value {
+        font-size: 1.6rem;
+    }
+    
+    .stat-value.big {
+        font-size: 1.8rem;
+    }
 }
 
 @media (max-width: 480px) {
-    .icon-box { width: 32px; height: 32px; font-size: 1.1rem; }
-    .stat-label { font-size: 0.8rem; }
+    .icon-box {
+        width: 32px;
+        height: 32px;
+        font-size: 1.1rem;
+    }
+    
+    .stat-label {
+        font-size: 0.8rem;
+    }
 }
 </style>

@@ -11,51 +11,30 @@ from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 logger = logging.getLogger(__name__)
 
 class PortfolioCalculator:
-    def __init__(self, transactions_df, market_client, benchmark_ticker="SPY"):
-        """
-        初始化計算器
-        :param transactions_df: 交易紀錄 DataFrame
-        :param market_client: 市場數據客戶端
-        :param benchmark_ticker: 基準標的代碼 (例如 'SPY', 'QQQ', '0050.TW')
-        """
+    def __init__(self, transactions_df, market_client):
         self.df = transactions_df
         self.market = market_client
-        self.benchmark_ticker = benchmark_ticker # 儲存自訂基準
 
     def run(self):
         """執行多群組投資組合計算主流程"""
-        logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
+        logger.info("=== 開始執行多群組投資組合計算 ===")
+        
+        # 1. 全域復權處理 (只做一次)
+        self._back_adjust_transactions_global()
+        
+        # 2. 準備日期範圍
+        if self.df.empty:
+            logger.error("無交易紀錄可供計算")
+            return None
+            
+        start_date = self.df['Date'].min()
+        end_date = datetime.now()
+        date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
         # 取得最新匯率
         current_fx = DEFAULT_FX_RATE
         if not self.market.fx_rates.empty:
             current_fx = float(self.market.fx_rates.iloc[-1])
-
-        # [修復 BUG]：處理完全無交易紀錄的邊際情況，回傳空快照而非 None
-        if self.df.empty:
-            logger.warning("無交易紀錄，產生空快照以重置數據。")
-            empty_summary = PortfolioSummary(
-                total_value=0, invested_capital=0, total_pnl=0, 
-                twr=0, xirr=0, realized_pnl=0, benchmark_twr=0
-            )
-            return PortfolioSnapshot(
-                updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                base_currency=BASE_CURRENCY,
-                exchange_rate=round(current_fx, 2),
-                summary=empty_summary,
-                holdings=[],
-                history=[],
-                pending_dividends=[],
-                groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
-            )
-            
-        # 1. 全域復權處理 (只做一次)
-        self._back_adjust_transactions_global()
-        
-        # 2. 準備日期範圍
-        start_date = self.df['Date'].min()
-        end_date = datetime.now()
-        date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
         # 3. 識別所有群組
         all_tags = set()
@@ -86,7 +65,7 @@ class PortfolioCalculator:
                 logger.warning(f"群組 {group_name} 無交易紀錄，跳過")
                 continue
 
-            # 執行單一群組計算 (傳入動態匯率)
+            # 執行單一群組計算
             group_result = self._calculate_single_portfolio(group_df, date_range, current_fx)
             final_groups_data[group_name] = group_result
 
@@ -140,8 +119,8 @@ class PortfolioCalculator:
         cumulative_twr_factor = 1.0
         prev_total_equity = 0.0
         
-        # Benchmark 計算所需 (使用自訂標的)
-        first_benchmark_price = None
+        # Benchmark (SPY) 計算所需
+        first_spy_price = None
 
         # 用於存儲每個標的最新的活躍當日損益
         last_active_daily_pnls = {}
@@ -161,10 +140,10 @@ class PortfolioCalculator:
             except: 
                 fx = DEFAULT_FX_RATE
             
-            # 取得自訂基準價格用於 Benchmark 計算
-            benchmark_p = self.market.get_price(self.benchmark_ticker, d)
-            if first_benchmark_price is None and benchmark_p > 0:
-                first_benchmark_price = benchmark_p
+            # 取得 SPY 價格用於 Benchmark 計算
+            spy_p = self.market.get_price('SPY', d)
+            if first_spy_price is None and spy_p > 0:
+                first_spy_price = spy_p
             
             # 取得昨日匯率與當日交易
             prev_date = d - timedelta(days=1)
@@ -247,7 +226,7 @@ class PortfolioCalculator:
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_cashflows[sym]['div_received'] += div_twd
 
-            # 處理自動配息與標的損益
+            # 處理自動配息並偵測當日損益
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
@@ -256,9 +235,10 @@ class PortfolioCalculator:
                     is_confirmed = div_key in confirmed_dividends
                     split_factor = self.market.get_transaction_multiplier(sym, d)
                     
+                    # 計算配息數值以符合 DividendRecord 驗證
                     shares_at_ex = h_data['qty'] / split_factor
                     total_gross = shares_at_ex * div_per_share
-                    total_net_usd = total_gross * 0.7 
+                    total_net_usd = total_gross * 0.7 # 假設 30% 稅
                     total_net_twd = total_net_usd * fx
 
                     dividend_history.append({
@@ -300,14 +280,14 @@ class PortfolioCalculator:
             cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
             
-            # 計算自訂標的的 Benchmark TWR
-            benchmark_twr = (benchmark_p / first_benchmark_price - 1) * 100 if first_benchmark_price else 0.0
+            # 計算 Benchmark TWR
+            benchmark_twr = (spy_p / first_spy_price - 1) * 100 if first_spy_price else 0.0
 
             history_data.append({
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2), # 存儲基準回報
+                "benchmark_twr": round(benchmark_twr, 2), # 補齊此欄位
                 "fx_rate": round(fx, 4)
             })
 
@@ -354,7 +334,7 @@ class PortfolioCalculator:
             total_pnl=round(history_data[-1]['net_profit'], 0),
             twr=history_data[-1]['twr'], xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
-            benchmark_twr=history_data[-1]['benchmark_twr'] # 基準回報最終值
+            benchmark_twr=history_data[-1]['benchmark_twr'] # 使用最後一天的基準報酬
         )
         
         return PortfolioGroupData(
