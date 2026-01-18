@@ -44,26 +44,20 @@ def main():
 
     # 5. 資料前處理
     df = pd.DataFrame(records)
-    
-    # 欄位重新命名以符合計算引擎需求
     df.rename(columns={
         'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type', 
         'qty': 'Qty', 'price': 'Price', 'fee': 'Commission', 
         'tax': 'Tax', 'tag': 'Tag'
     }, inplace=True)
     
-    # 資料型態轉換
     df['Date'] = pd.to_datetime(df['Date'])
     df['Qty'] = pd.to_numeric(df['Qty'])
     df['Price'] = pd.to_numeric(df['Price'])
     df['Commission'] = pd.to_numeric(df['Commission'].fillna(0))
     df['Tax'] = pd.to_numeric(df['Tax'].fillna(0)) 
-    
-    # 依照日期排序，確保計算順序正確
     df = df.sort_values('Date')
     
-    # 6. 下載市場數據 (維持全域下載)
-    # 即使是多使用者，熱門標的(如 NVDA, TSM)通常是重疊的，一次下載效率最高
+    # 6. 下載市場數據 (維持全域下載，因為不同人的持股可能重疊，一次下載效率最高)
     if not df.empty:
         start_date = df['Date'].min()
         fetch_start_date = start_date - timedelta(days=100)
@@ -72,16 +66,13 @@ def main():
         logger.info(f"開始下載市場數據。最早交易日: {start_date.date()}, 全域標的數: {len(unique_tickers)}")
         market_client.download_data(unique_tickers, fetch_start_date)
     
-    # ==========================================
     # 7. 核心計算：按使用者分組計算 (User-based Loop)
-    # ==========================================
     
-    # 取得所有有交易紀錄的使用者 ID (Email)
-    # 檢查是否有 user_id 欄位 (相容性檢查)
+    # 取得所有使用者的 Email 清單 (相容性檢查：若無 user_id 則視為 system)
     if 'user_id' in df.columns:
         user_ids = df['user_id'].dropna().unique()
     else:
-        logger.warning("未偵測到 user_id 欄位，將視為單一系統使用者 system 處理")
+        logger.warning("未偵測到 user_id 欄位，將視為單一系統使用者處理")
         user_ids = ['system']
 
     logger.info(f"偵測到 {len(user_ids)} 位使用者，開始批次處理...")
@@ -98,7 +89,7 @@ def main():
                 user_df = df.copy()
 
             if user_df.empty:
-                logger.info(f"使用者 {user_email} 無有效交易紀錄，跳過。")
+                logger.info(f"使用者 {user_email} 無交易紀錄，跳過。")
                 continue
 
             # 7-2. 計算：產出該使用者的專屬快照
@@ -109,12 +100,11 @@ def main():
                 # 7-3. 上傳：指定 target_user_id，讓 Worker 知道這份資料是誰的
                 api_client.upload_portfolio(user_snapshot, target_user_id=user_email)
             else:
-                logger.warning(f"使用者 {user_email} 計算後無有效數據 (可能是空倉或資料不足)")
+                logger.warning(f"使用者 {user_email} 計算後無有效數據")
 
         except Exception as u_err:
             logger.error(f"處理使用者 {user_email} 時發生錯誤: {u_err}")
-            # 發生錯誤時跳過此人，繼續處理下一位，確保整體流程不中斷
-            continue
+            continue # 發生錯誤時跳過此人，繼續處理下一位
 
     logger.info("=== 所有使用者處理程序執行完畢 ===")
 
