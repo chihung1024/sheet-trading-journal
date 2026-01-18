@@ -4,3 +4,4 @@ numpy
 yfinance
 pydantic
 pyxirr
+python-dotenv
