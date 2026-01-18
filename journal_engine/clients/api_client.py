@@ -30,16 +30,18 @@ class CloudflareClient:
     def upload_portfolio(self, snapshot: PortfolioSnapshot, target_user_id: str = None):
         """
         上傳計算結果至 Cloudflare D1
-        :param snapshot: 計算好的快照物件 (Pydantic Model)
-        :param target_user_id: (選填) 指定這份資料屬於哪個使用者 Email，供管理員代理上傳使用
+        :param snapshot: 計算結果物件
+        :param target_user_id: (選填) 指定這份資料屬於哪個 Email，若不填則預設為 system
         """
-        print(f"計算完成，正在上傳 {target_user_id if target_user_id else 'System'} 的投資組合至 Cloudflare D1...")
+        user_label = target_user_id if target_user_id else 'System'
+        print(f"計算完成，正在上傳使用者 [{user_label}] 的投資組合至 Cloudflare D1 ({WORKER_API_URL_PORTFOLIO})...")
         
-        # [關鍵修改]：包裝 payload，加入 target_user_id 以支援多使用者資料隔離
-        # 如果有 target_user_id，則採用代理上傳格式；否則維持原樣
+        snapshot_data = snapshot.model_dump()
+        
+        # [修改] 建構包含 target_user_id 的 Payload
         payload = {
             "target_user_id": target_user_id,
-            "data": snapshot.model_dump()
+            "data": snapshot_data
         }
         
         try:
@@ -50,9 +52,9 @@ class CloudflareClient:
             )
             
             if response.status_code == 200:
-                print(f"上傳成功! Worker 回應: {response.text}")
+                print(f"[{user_label}] 上傳成功! Worker 回應: {response.text}")
             else:
-                print(f"上傳失敗 [{response.status_code}]: {response.text}")
+                print(f"[{user_label}] 上傳失敗 [{response.status_code}]: {response.text}")
                 
         except Exception as e:
-            print(f"上傳過程發生錯誤: {e}")
+            print(f"[{user_label}] 上傳過程發生錯誤: {e}")
