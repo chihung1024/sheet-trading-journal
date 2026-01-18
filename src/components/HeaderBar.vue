@@ -10,7 +10,7 @@
 
       <nav class="nav-section">
         <div class="benchmark-container" v-if="auth.isLoggedIn">
-          <span class="benchmark-label">基準標的:</span>
+          <span class="benchmark-label">基準:</span>
           <div class="selector-wrapper">
             <select 
               id="benchmark-select" 
@@ -31,7 +31,7 @@
               v-model="customTicker"
               @blur="applyCustomBenchmark"
               @keyup.enter="applyCustomBenchmark"
-              placeholder="輸入代碼..."
+              placeholder="代碼(如:NVDA)"
               class="custom-ticker-input"
               ref="customInput"
             />
@@ -44,13 +44,12 @@
             class="btn-sync" 
             @click="manualTrigger" 
             :disabled="store.isPolling || store.loading"
-            :title="store.isPolling ? '數據計算中...' : '手動同步數據'"
           >
             <span class="sync-icon" :class="{ 'spinning': store.isPolling }">🔄</span>
             <span class="btn-text">{{ store.isPolling ? '計算中' : '同步' }}</span>
           </button>
 
-          <button class="btn-icon theme-toggle" @click="toggleDarkMode" :title="isDark ? '淺色' : '深色'">
+          <button class="btn-icon theme-toggle" @click="toggleDarkMode">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
           </button>
@@ -93,12 +92,12 @@ const { addToast } = useToast();
 const emit = defineEmits(['go-home']);
 const customInput = ref(null);
 
-// --- Benchmark 核心邏輯 ---
+// --- Benchmark 核心處理邏輯 ---
 const currentBenchmark = ref(store.selectedBenchmark || 'SPY');
 const isCustomBenchmark = ref(false);
 const customTicker = ref('');
 
-// 監聽 Store 的基準變動以同步 UI
+// 監聽 Store 狀態以同步 UI
 watch(() => store.selectedBenchmark, (newVal) => {
   if (['SPY', 'QQQ', 'VT', '0050.TW'].includes(newVal)) {
     currentBenchmark.value = newVal;
@@ -128,18 +127,18 @@ const applyCustomBenchmark = async () => {
     currentBenchmark.value = store.selectedBenchmark;
     return;
   }
-  // ✅ 修正：使用 JavaScript 的 .trim() 而非 Python 的 .strip()
+  // ✅ 修正：使用 JavaScript 標準 .trim()
   const ticker = customTicker.value.toUpperCase().trim();
   await confirmAndTrigger(ticker);
 };
 
 const confirmAndTrigger = async (ticker) => {
-  const confirmed = window.confirm(`確定要將數據基準 (Benchmark) 修改為 ${ticker} 並重新計算嗎？`);
+  const confirmed = window.confirm(`確定要將數據基準修改為 ${ticker} 並重新計算嗎？`);
   
   if (confirmed) {
     try {
       await store.triggerUpdate(ticker);
-      addToast(`已切換至 ${ticker}，正在計算中...`, "success");
+      addToast(`已成功切換至 ${ticker}，計算引擎啟動中...`, "success");
     } catch (err) {
       addToast(err.message || "更新失敗", "error");
       currentBenchmark.value = store.selectedBenchmark;
@@ -152,7 +151,7 @@ const confirmAndTrigger = async (ticker) => {
 const manualTrigger = async () => {
   try {
     await store.triggerUpdate();
-    addToast("已觸發手動同步", "success");
+    addToast("已觸發手動更新", "success");
   } catch (err) {
     addToast(err.message || "觸發失敗", "error");
   }
@@ -174,12 +173,11 @@ onMounted(() => {
 <style scoped>
 .header-bar {
   background: var(--bg-card);
-  border-bottom: 2px solid var(--primary); /* 強化邊框以辨識更新 */
+  border-bottom: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
   position: sticky;
   top: 0;
   z-index: 100;
-  width: 100%;
 }
 
 .header-content {
@@ -213,15 +211,15 @@ onMounted(() => {
   gap: 15px;
 }
 
-/* Benchmark Selector 強化樣式 */
+/* ✅ 基準選擇器強化樣式 */
 .benchmark-container {
   display: flex;
   align-items: center;
   gap: 8px;
   background: var(--bg-secondary);
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 12px;
-  border: 1.5px solid var(--primary); /* 鮮明顏色確保能看見 */
+  border: 2px solid var(--primary); /* 強化邊框 */
 }
 
 .benchmark-label {
@@ -231,39 +229,31 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.selector-wrapper {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
+.selector-wrapper { display: flex; gap: 6px; align-items: center; }
 
 .benchmark-select {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   color: var(--text-main);
   border-radius: 6px;
-  padding: 4px 6px;
-  font-size: 0.85rem;
+  padding: 4px 8px;
+  font-size: 0.9rem;
   cursor: pointer;
   outline: none;
 }
 
 .custom-ticker-input {
-  width: 90px;
+  width: 100px;
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid var(--primary);
   background: var(--bg-card);
   color: var(--text-main);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   text-transform: uppercase;
 }
 
-.nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+.nav-actions { display: flex; align-items: center; gap: 10px; }
 
 .btn-sync {
   display: flex;
@@ -272,32 +262,27 @@ onMounted(() => {
   background: var(--primary);
   color: white;
   border: none;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
 }
 
-.btn-sync:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
 .btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
 .sync-icon.spinning { animation: spin 2s linear infinite; }
 
 .btn-icon {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
 }
-
-.btn-icon:hover { border-color: var(--primary); color: var(--primary); }
 
 .user-menu {
   display: flex;
@@ -308,17 +293,16 @@ onMounted(() => {
 }
 
 .user-info { display: flex; flex-direction: column; text-align: right; }
-.user-name { font-weight: 700; font-size: 0.9rem; color: var(--text-main); line-height: 1.2; }
+.user-name { font-weight: 700; font-size: 0.9rem; color: var(--text-main); }
 .user-email { font-size: 0.7rem; color: var(--text-sub); }
 
 .btn-logout {
   background: transparent;
   border: 1px solid var(--danger);
   color: var(--danger);
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: 6px;
   font-weight: 600;
-  font-size: 0.85rem;
   cursor: pointer;
 }
 
@@ -347,11 +331,9 @@ onMounted(() => {
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 @media (max-width: 1024px) { .benchmark-label { display: none; } }
-
 @media (max-width: 768px) {
   .logo-text, .user-info, .btn-text { display: none; }
   .header-content { padding: 0 10px; }
-  .nav-section { gap: 8px; }
-  .benchmark-container { padding: 4px 6px; border-radius: 8px; }
+  .benchmark-container { padding: 4px 6px; }
 }
 </style>
