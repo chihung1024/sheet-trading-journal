@@ -2,21 +2,21 @@
   <header class="header-bar">
     <div class="header-content">
       <div class="logo-section">
-        <h1 @click="$emit('go-home')">
+        <h1 @click="$emit('go-home')" class="cursor-pointer">
           <span class="logo-icon">📈</span>
-          <span class="logo-text">Sheet Trading Journal</span>
+          <span class="logo-text">Trading Journal <span class="badge">PRO</span></span>
         </h1>
       </div>
 
       <nav class="nav-section">
-        <div class="benchmark-container" v-if="auth.isLoggedIn">
+        <div class="benchmark-container" v-if="authStore.token">
           <span class="benchmark-label">基準標的:</span>
           <div class="selector-wrapper">
             <select 
               id="benchmark-select" 
               v-model="currentBenchmark" 
               @change="handleBenchmarkChange"
-              :disabled="store.isPolling"
+              :disabled="portfolioStore.isPolling"
               class="benchmark-select"
             >
               <option value="SPY">S&P 500 (SPY)</option>
@@ -40,17 +40,17 @@
 
         <div class="nav-actions">
           <button 
-            v-if="auth.isLoggedIn"
+            v-if="authStore.token"
             class="btn-sync" 
             @click="manualTrigger" 
-            :disabled="store.isPolling || store.loading"
-            :title="store.isPolling ? '數據計算中...' : '手動同步數據'"
+            :disabled="portfolioStore.isPolling || portfolioStore.loading"
+            :title="portfolioStore.isPolling ? '數據計算中...' : '手動同步數據'"
           >
-            <span class="sync-icon" :class="{ 'spinning': store.isPolling }">🔄</span>
-            <span class="btn-text">{{ store.isPolling ? '計算中' : '同步' }}</span>
+            <span class="sync-icon" :class="{ 'spinning': portfolioStore.isPolling }">🔄</span>
+            <span class="btn-text">{{ portfolioStore.isPolling ? '計算中' : '同步' }}</span>
           </button>
 
-          <button class="btn-icon theme-toggle" @click="toggleDarkMode" :title="isDark ? '切換淺色模式' : '切換深色模式'">
+          <button class="btn-icon theme-toggle" @click="toggleTheme" :title="isDark ? '切換淺色模式' : '切換深色模式'">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
           </button>
@@ -59,10 +59,10 @@
             📥
           </button>
 
-          <div v-if="auth.isLoggedIn" class="user-menu">
+          <div v-if="authStore.token" class="user-menu">
             <div class="user-info">
-              <span class="user-name">{{ auth.user }}</span>
-              <span class="user-email">{{ auth.email }}</span>
+              <span class="user-name">{{ authStore.user?.name || 'User' }}</span>
+              <span class="user-email">{{ authStore.user?.email || '' }}</span>
             </div>
             <button class="btn-logout" @click="handleLogout">登出</button>
           </div>
@@ -70,7 +70,7 @@
       </nav>
     </div>
 
-    <div v-if="store.isPolling" class="sync-progress">
+    <div v-if="portfolioStore.isPolling" class="sync-progress">
       <div class="progress-bar"></div>
     </div>
   </header>
@@ -84,9 +84,9 @@ import { useDarkMode } from '../composables/useDarkMode';
 import { usePWA } from '../composables/usePWA';
 import { useToast } from '../composables/useToast';
 
-const auth = useAuthStore();
-const store = usePortfolioStore();
-const { isDark, toggleDarkMode } = useDarkMode();
+const authStore = useAuthStore();
+const portfolioStore = usePortfolioStore();
+const { isDark, toggleTheme } = useDarkMode();
 const { canInstall, installPWA } = usePWA();
 const { addToast } = useToast();
 
@@ -94,12 +94,12 @@ const emit = defineEmits(['go-home']);
 const customInput = ref(null);
 
 // --- Benchmark 核心處理邏輯 ---
-const currentBenchmark = ref(store.selectedBenchmark || 'SPY');
+const currentBenchmark = ref(portfolioStore.selectedBenchmark || 'SPY');
 const isCustomBenchmark = ref(false);
 const customTicker = ref('');
 
 // 監聽 Store 狀態以同步介面顯示
-watch(() => store.selectedBenchmark, (newVal) => {
+watch(() => portfolioStore.selectedBenchmark, (newVal) => {
   if (['SPY', 'QQQ', 'VT', '0050.TW'].includes(newVal)) {
     currentBenchmark.value = newVal;
     isCustomBenchmark.value = false;
@@ -110,7 +110,6 @@ watch(() => store.selectedBenchmark, (newVal) => {
   }
 }, { immediate: true });
 
-// 處理選單切換
 const handleBenchmarkChange = async () => {
   if (currentBenchmark.value === 'CUSTOM') {
     isCustomBenchmark.value = true;
@@ -123,59 +122,51 @@ const handleBenchmarkChange = async () => {
   await confirmAndTrigger(currentBenchmark.value);
 };
 
-// 套用自定義代碼
 const applyCustomBenchmark = async () => {
   if (!customTicker.value) {
     isCustomBenchmark.value = false;
-    currentBenchmark.value = store.selectedBenchmark;
+    currentBenchmark.value = portfolioStore.selectedBenchmark;
     return;
   }
-  // ✅ 修正：使用 JavaScript 標準的 .trim() 而非 Python 的 .strip()
+  // ✅ 修正：使用 .trim()
   const ticker = customTicker.value.toUpperCase().trim();
   await confirmAndTrigger(ticker);
 };
 
-// 彈出確認框並發送更新請求
 const confirmAndTrigger = async (ticker) => {
   const confirmed = window.confirm(`確定要將數據基準 (Benchmark) 修改為 ${ticker} 並重新計算嗎？`);
   
   if (confirmed) {
     try {
-      // 調用 store 的 triggerUpdate 傳入標的參數
-      await store.triggerUpdate(ticker);
+      await portfolioStore.triggerUpdate(ticker);
       addToast(`已成功切換基準至 ${ticker}，正在重新計算數據...`, "success");
     } catch (err) {
       addToast(err.message || "更新基準失敗", "error");
-      // 失敗時回歸舊值
-      currentBenchmark.value = store.selectedBenchmark;
+      currentBenchmark.value = portfolioStore.selectedBenchmark;
     }
   } else {
-    // 使用者取消，恢復選單狀態
-    currentBenchmark.value = store.selectedBenchmark;
+    currentBenchmark.value = portfolioStore.selectedBenchmark;
   }
 };
 
-// 手動觸發更新
 const manualTrigger = async () => {
   try {
-    await store.triggerUpdate();
+    await portfolioStore.triggerUpdate();
     addToast("已觸發數據手動同步", "success");
   } catch (err) {
     addToast(err.message || "觸發同步失敗", "error");
   }
 };
 
-// 登出
 const handleLogout = () => {
   if (confirm("確定要登出系統嗎？")) {
-    auth.logout();
-    if (store.resetData) store.resetData();
-    addToast("已成功登出", "info");
+    authStore.logout();
+    if (portfolioStore.resetData) portfolioStore.resetData();
+    addToast("已安全登出", "info");
   }
 };
 
 onMounted(() => {
-  // 透過此 Log 確保新版組件已載入
   console.log("🛠️ HeaderBar: Benchmark Selector Initialized");
 });
 </script>
@@ -192,9 +183,9 @@ onMounted(() => {
 }
 
 .header-content {
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 32px;
   height: 70px;
   display: flex;
   justify-content: space-between;
@@ -205,24 +196,28 @@ onMounted(() => {
   margin: 0;
   font-size: 1.4rem;
   font-weight: 800;
-  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 10px;
-  background: linear-gradient(135deg, var(--primary), #60a5fa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-main);
 }
 
-.logo-icon { -webkit-text-fill-color: initial; }
+.badge {
+  background: var(--primary);
+  color: white;
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 99px;
+  vertical-align: middle;
+}
 
 .nav-section {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 20px;
 }
 
-/* ✅ Benchmark Selector 強化樣式 (確保清晰可見) */
+/* Benchmark Selector 樣式 */
 .benchmark-container {
   display: flex;
   align-items: center;
@@ -230,13 +225,13 @@ onMounted(() => {
   background: var(--bg-secondary);
   padding: 6px 14px;
   border-radius: 12px;
-  border: 2px solid var(--primary); /* 強化藍色邊框 */
+  border: 1px solid var(--border-color);
 }
 
 .benchmark-label {
   font-size: 0.85rem;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--text-sub);
   white-space: nowrap;
 }
 
@@ -247,21 +242,18 @@ onMounted(() => {
 }
 
 .benchmark-select {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: transparent;
+  border: none;
   color: var(--text-main);
-  border-radius: 6px;
-  padding: 4px 6px;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
   outline: none;
 }
 
-.benchmark-select:focus { border-color: var(--primary); }
-
 .custom-ticker-input {
   width: 90px;
-  padding: 4px 8px;
+  padding: 2px 8px;
   border-radius: 6px;
   border: 1px solid var(--primary);
   background: var(--bg-card);
@@ -273,7 +265,7 @@ onMounted(() => {
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .btn-sync {
@@ -283,24 +275,33 @@ onMounted(() => {
   background: var(--primary);
   color: white;
   border: none;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  white-space: nowrap;
 }
 
-.btn-sync:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
-.btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
-.sync-icon.spinning { animation: spin 2s linear infinite; }
+.btn-sync:hover:not(:disabled) {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+}
+
+.btn-sync:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sync-icon.spinning {
+  animation: spin 2s linear infinite;
+}
 
 .btn-icon {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -309,7 +310,10 @@ onMounted(() => {
   transition: all 0.2s;
 }
 
-.btn-icon:hover { border-color: var(--primary); color: var(--primary); }
+.btn-icon:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
 
 .user-menu {
   display: flex;
@@ -319,9 +323,22 @@ onMounted(() => {
   border-left: 1px solid var(--border-color);
 }
 
-.user-info { display: flex; flex-direction: column; text-align: right; }
-.user-name { font-weight: 700; font-size: 0.9rem; color: var(--text-main); line-height: 1.2; }
-.user-email { font-size: 0.7rem; color: var(--text-sub); }
+.user-info {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+}
+
+.user-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-main);
+}
+
+.user-email {
+  font-size: 0.7rem;
+  color: var(--text-sub);
+}
 
 .btn-logout {
   background: transparent;
@@ -332,12 +349,13 @@ onMounted(() => {
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
-  transition: all 0.2s;
 }
 
-.btn-logout:hover { background: var(--danger); color: white; }
+.btn-logout:hover {
+  background: var(--danger);
+  color: white;
+}
 
-/* 進度指示條 */
 .sync-progress {
   position: absolute;
   bottom: 0;
@@ -351,26 +369,27 @@ onMounted(() => {
 .progress-bar {
   height: 100%;
   background: var(--primary);
-  width: 40%;
+  width: 30%;
   animation: progress-move 2s infinite linear;
 }
 
 @keyframes progress-move {
   0% { transform: translateX(-100%); }
-  100% { transform: translateX(300%); }
+  100% { transform: translateX(330%); }
 }
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-/* 響應式佈局 */
+.cursor-pointer { cursor: pointer; }
+
 @media (max-width: 1024px) {
-  .benchmark-label { display: none; }
+  .benchmark-label, .user-email { display: none; }
 }
 
 @media (max-width: 768px) {
   .logo-text, .user-info, .btn-text { display: none; }
-  .header-content { padding: 0 10px; }
-  .nav-section { gap: 8px; }
-  .benchmark-container { padding: 4px 6px; border-radius: 8px; }
+  .header-content { padding: 0 16px; }
+  .nav-section { gap: 10px; }
+  .benchmark-container { padding: 4px 8px; }
 }
 </style>
