@@ -13,25 +13,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const isPolling = ref(false);
     let pollTimer = null;
 
-    // 當前選擇的策略群組
+    // ✅ 新增：當前選擇的群組
     const currentGroup = ref('all');
 
     const getToken = () => {
         const auth = useAuthStore();
         return auth.token;
-    };
-
-    /**
-     * ✅ 新增：徹底清空 Store 的功能
-     * 用於登出或切換帳號時，確保舊數據不會殘留
-     */
-    const clearData = () => {
-        rawData.value = null;
-        records.value = [];
-        lastUpdate.value = '';
-        currentGroup.value = 'all';
-        connectionStatus.value = 'connected';
-        console.log('🧹 Portfolio Store 數據已徹底清空');
     };
 
     const fetchWithAuth = async (endpoint, options = {}) => {
@@ -104,19 +91,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             const json = await fetchWithAuth('/api/portfolio');
             console.log('📊 [fetchSnapshot] API 回應:', json);
             
-            // ✅ 優化：若 API 回傳成功但該使用者尚無資料，強制清空舊緩存實現畫面歸零
-            if (json && json.success && json.data && json.data.updated_at) {
-                rawData.value = json.data; 
+            if (json && json.success && json.data) {
+                rawData.value = json.data; // ✅ 儲存完整數據包含 groups
                 lastUpdate.value = json.data.updated_at;
                 console.log('✅ [fetchSnapshot] 數據已更新');
             } else {
-                console.warn('⚠️ [fetchSnapshot] 此帳號無快照資料，將畫面數據歸零');
-                rawData.value = null;
-                lastUpdate.value = '';
+                console.warn('⚠️ [fetchSnapshot] 數據格式異常:', json);
             }
         } catch (error) {
             console.error('❌ [fetchSnapshot] 請求失敗:', error);
-            rawData.value = null;
             throw error;
         }
     };
@@ -132,16 +115,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 console.log('✅ [fetchRecords] 數據已更新，共', records.value.length, '筆');
             } else {
                 console.warn('⚠️ [fetchRecords] 數據格式異常:', json);
-                records.value = [];
             }
         } catch (error) {
             console.error('❌ [fetchRecords] 請求失敗:', error);
-            records.value = [];
             throw error;
         }
     };
 
-    // 可用群組列表
+    // ✅ 新增：可用群組列表
     const availableGroups = computed(() => {
         if (!rawData.value || !rawData.value.groups) return ['all'];
         return Object.keys(rawData.value.groups).sort((a, b) => {
@@ -151,23 +132,24 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         });
     });
 
-    // 動態取得當前群組數據
+    // ✅ 修改：動態取得當前群組數據
     const currentGroupData = computed(() => {
         if (!rawData.value) return {};
         if (rawData.value.groups && rawData.value.groups[currentGroup.value]) {
             return rawData.value.groups[currentGroup.value];
         }
+        // 向下相容或預設回傳頂層 (通常是 all)
         return rawData.value;
     });
 
-    // Getters 依賴於 currentGroupData
+    // Getters 改為依賴 currentGroupData
     const stats = computed(() => currentGroupData.value.summary || {});
     const holdings = computed(() => currentGroupData.value.holdings || []);
     const history = computed(() => currentGroupData.value.history || []);
     const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
-    // 切換群組 Action
+    // ✅ 新增：切換群組 Action
     const setGroup = (group) => {
         if (availableGroups.value.includes(group)) {
             currentGroup.value = group;
@@ -175,7 +157,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // 取得某支股票存在於哪些群組 (用於賣出時智慧判斷)
+    // ✅ 新增：取得某支股票存在於哪些群組 (用於賣出時智慧判斷)
     const getGroupsWithHolding = (symbol) => {
         if (!rawData.value || !rawData.value.groups) return [];
         const groups = [];
@@ -187,9 +169,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         return groups;
     };
 
-    /**
-     * ✅ 完整的 Polling 監控邏輯
-     */
     const startPolling = () => {
         if (isPolling.value) return;
         
@@ -200,7 +179,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         const { addToast } = useToast(); 
 
         pollTimer = setInterval(async () => {
-            // 設定 3 分鐘超時保護
             if (Date.now() - startTime > 180000) {
                 console.warn('⚠️ [SmartPolling] 更新超時，停止輪詢');
                 stopPolling();
@@ -216,8 +194,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     
                     if (newTime !== initialTime) {
                         console.log('✨ [SmartPolling] 偵測到新數據！時間:', newTime);
+                        
                         stopPolling();
                         await fetchAll();
+                        
                         addToast("✅ 數據已更新完畢！", "success");
                     } else {
                         console.log('💤 [SmartPolling] 數據尚未變更...');
@@ -226,7 +206,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             } catch (e) {
                 console.warn('⚠️ [SmartPolling] 檢查失敗:', e);
             }
-        }, 5000); // 每 5 秒檢查一次
+        }, 5000);
     };
 
     const stopPolling = () => {
@@ -235,7 +215,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             clearInterval(pollTimer);
             pollTimer = null;
         }
-        console.log('🛑 [SmartPolling] 輪詢已停止');
     };
 
     const triggerUpdate = async () => {
@@ -276,13 +255,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         unrealizedPnL, 
         connectionStatus,
         isPolling,
-        currentGroup, 
-        availableGroups, 
-        setGroup, 
-        getGroupsWithHolding, 
+        currentGroup, // ✅ 匯出
+        availableGroups, // ✅ 匯出
+        setGroup, // ✅ 匯出
+        getGroupsWithHolding, // ✅ 匯出
         fetchAll, 
         fetchRecords, 
-        triggerUpdate,
-        clearData // 匯出清空功能
+        triggerUpdate
     };
 });
