@@ -39,6 +39,7 @@ class CloudflareClient:
         snapshot_data = snapshot.model_dump()
         
         # [修改] 建構包含 target_user_id 的 Payload
+        # 這是為了配合 Worker 端新增的代理人機制，將資料包裝在 data 欄位中
         payload = {
             "target_user_id": target_user_id,
             "data": snapshot_data
