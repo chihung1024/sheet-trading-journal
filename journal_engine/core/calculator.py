@@ -234,17 +234,30 @@ class PortfolioCalculator:
                     div_key = f"{sym}_{date_str}"
                     is_confirmed = div_key in confirmed_dividends
                     split_factor = self.market.get_transaction_multiplier(sym, d)
-                    total_net_twd = (h_data['qty'] / split_factor) * div_per_share * 0.7 * fx
+                    
+                    # ✅ [修正] 計算各項數值以符合 DividendRecord 模型
+                    shares_at_ex = h_data['qty'] / split_factor
+                    t_gross = shares_at_ex * div_per_share
+                    t_net_usd = t_gross * 0.7 # 假設 30% 預扣稅
+                    t_net_twd = t_net_usd * fx
+
                     dividend_history.append({
-                        'symbol': sym, 'ex_date': date_str, 'shares_held': h_data['qty'],
-                        'dividend_per_share_gross': div_per_share, 'total_net_twd': total_net_twd,
-                        'fx_rate': fx, 'status': 'confirmed' if is_confirmed else 'pending'
+                        'symbol': sym, 
+                        'ex_date': date_str, 
+                        'shares_held': h_data['qty'],
+                        'dividend_per_share_gross': div_per_share, 
+                        'total_gross': t_gross,        # 新增此欄位
+                        'total_net_usd': t_net_usd,    # 新增此欄位
+                        'total_net_twd': t_net_twd,
+                        'fx_rate': fx, 
+                        'status': 'confirmed' if is_confirmed else 'pending'
                     })
+                    
                     if not is_confirmed:
-                        total_realized_pnl_twd += total_net_twd
-                        xirr_cashflows.append({'date': d, 'amount': total_net_twd})
+                        total_realized_pnl_twd += t_net_twd
+                        xirr_cashflows.append({'date': d, 'amount': t_net_twd})
                         if sym not in daily_cashflows: daily_cashflows[sym] = {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0}
-                        daily_cashflows[sym]['div_received'] += total_net_twd
+                        daily_cashflows[sym]['div_received'] += t_net_twd
 
                 # --- 核心修正：計算該標的今日的損益貢獻 (Daily Contribution) ---
                 curr_p = self.market.get_price(sym, d)
@@ -279,7 +292,7 @@ class PortfolioCalculator:
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), "fx_rate": round(fx, 4)
             })
 
-        # --- 產生報表：使用 last_active_daily_pnls 填充當日損益 ---
+        # --- 產生報表 ---
         final_holdings = []
         current_holdings_cost_sum = 0.0
         for sym, h in holdings.items():
