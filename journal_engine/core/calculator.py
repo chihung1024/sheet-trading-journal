@@ -116,13 +116,14 @@ class PortfolioCalculator:
         confirmed_dividends = set()
         dividend_history = []
         xirr_cashflows = []
-        benchmark_units = 0.0
-        benchmark_invested = 0.0
         cumulative_twr_factor = 1.0
         prev_total_equity = 0.0
+        
+        # Benchmark (SPY) 計算所需
+        first_spy_price = None
 
-        # 用於存儲每個標的最新的活躍當日損益（解決週末顯示問題）
-        last_active_daily_pnls = {} # { symbol: daily_pnl_twd }
+        # 用於存儲每個標的最新的活躍當日損益
+        last_active_daily_pnls = {}
 
         # 預掃描確認配息
         div_txs = df[df['Type'] == 'DIV']
@@ -139,6 +140,11 @@ class PortfolioCalculator:
             except: 
                 fx = DEFAULT_FX_RATE
             
+            # 取得 SPY 價格用於 Benchmark 計算
+            spy_p = self.market.get_price('SPY', d)
+            if first_spy_price is None and spy_p > 0:
+                first_spy_price = spy_p
+            
             # 取得昨日匯率與當日交易
             prev_date = d - timedelta(days=1)
             try:
@@ -148,8 +154,8 @@ class PortfolioCalculator:
 
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             
-            # --- 核心邏輯：紀錄今日交易前的初始狀態 ---
-            start_of_day_state = {} # { symbol: {qty, prev_price} }
+            # 紀錄今日交易前的持倉狀態
+            start_of_day_state = {}
             for sym, h in holdings.items():
                 if h['qty'] > 1e-6:
                     start_of_day_state[sym] = {
@@ -158,7 +164,7 @@ class PortfolioCalculator:
                     }
 
             # 處理當日交易
-            daily_cashflows = {} # { symbol: {buy_cost, sell_proceeds, div_received} }
+            daily_cashflows = {}
             
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
@@ -187,11 +193,6 @@ class PortfolioCalculator:
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     daily_cashflows[sym]['buy_cost'] += cost_twd
-                    
-                    spy_p = self.market.get_price('SPY', d)
-                    if spy_p > 0:
-                        benchmark_units += (cost_twd / fx) / spy_p
-                        benchmark_invested += cost_twd
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]: continue
@@ -228,55 +229,47 @@ class PortfolioCalculator:
             # 處理自動配息並偵測當日損益
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
-                # 處理配息
                 div_per_share = self.market.get_dividend(sym, d)
                 if div_per_share > 0 and h_data['qty'] > 1e-6:
                     div_key = f"{sym}_{date_str}"
                     is_confirmed = div_key in confirmed_dividends
                     split_factor = self.market.get_transaction_multiplier(sym, d)
                     
-                    # ✅ [修正] 計算各項數值以符合 DividendRecord 模型
+                    # 計算配息數值以符合 DividendRecord 驗證
                     shares_at_ex = h_data['qty'] / split_factor
-                    t_gross = shares_at_ex * div_per_share
-                    t_net_usd = t_gross * 0.7 # 假設 30% 預扣稅
-                    t_net_twd = t_net_usd * fx
+                    total_gross = shares_at_ex * div_per_share
+                    total_net_usd = total_gross * 0.7 # 假設 30% 稅
+                    total_net_twd = total_net_usd * fx
 
                     dividend_history.append({
-                        'symbol': sym, 
-                        'ex_date': date_str, 
-                        'shares_held': h_data['qty'],
+                        'symbol': sym, 'ex_date': date_str, 'shares_held': h_data['qty'],
                         'dividend_per_share_gross': div_per_share, 
-                        'total_gross': t_gross,        # 新增此欄位
-                        'total_net_usd': t_net_usd,    # 新增此欄位
-                        'total_net_twd': t_net_twd,
-                        'fx_rate': fx, 
-                        'status': 'confirmed' if is_confirmed else 'pending'
+                        'total_gross': round(total_gross, 2),
+                        'total_net_usd': round(total_net_usd, 2),
+                        'total_net_twd': round(total_net_twd, 0),
+                        'fx_rate': fx, 'status': 'confirmed' if is_confirmed else 'pending'
                     })
-                    
                     if not is_confirmed:
-                        total_realized_pnl_twd += t_net_twd
-                        xirr_cashflows.append({'date': d, 'amount': t_net_twd})
+                        total_realized_pnl_twd += total_net_twd
+                        xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         if sym not in daily_cashflows: daily_cashflows[sym] = {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0}
-                        daily_cashflows[sym]['div_received'] += t_net_twd
+                        daily_cashflows[sym]['div_received'] += total_net_twd
 
-                # --- 核心修正：計算該標的今日的損益貢獻 (Daily Contribution) ---
+                # 計算該標的今日的損益貢獻
                 curr_p = self.market.get_price(sym, d)
                 prev_info = start_of_day_state.get(sym, {'qty': 0.0, 'prev_price': curr_p})
                 cf = daily_cashflows.get(sym, {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0})
                 
-                # 公式：(今日市值 + 今日賣出所得 + 今日配息) - (昨日持倉市值 + 今日買入成本)
                 end_val = h_data['qty'] * curr_p * fx
                 start_val = prev_info['qty'] * prev_info['prev_price'] * prev_fx
                 daily_pnl = (end_val + cf['sell_proceeds'] + cf['div_received']) - (start_val + cf['buy_cost'])
                 
-                # 如果有價格變動或交易，更新該標的的活躍當日損益
                 if abs(daily_pnl) > 1e-2 or not daily_txns[daily_txns['Symbol'] == sym].empty:
                     last_active_daily_pnls[sym] = daily_pnl
 
-            # 每日組合估值與 TWR (Threshold 優化)
+            # 每日組合估值與 TWR
             total_mkt_val = sum(h['qty'] * self.market.get_price(s, d) * fx for s, h in holdings.items() if h['qty'] > 1e-6)
-            current_holdings_cost = sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)
-            total_pnl = (total_mkt_val - current_holdings_cost) + total_realized_pnl_twd
+            total_pnl = (total_mkt_val - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)) + total_realized_pnl_twd
             current_total_equity = invested_capital + total_pnl
             
             prev_invested = history_data[-1]['invested'] if history_data else 0.0
@@ -286,13 +279,19 @@ class PortfolioCalculator:
             daily_return = (total_pnl - prev_pnl) / adj_equity if adj_equity > 1.0 else 0.0
             cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
+            
+            # 計算 Benchmark TWR
+            benchmark_twr = (spy_p / first_spy_price - 1) * 100 if first_spy_price else 0.0
+
             history_data.append({
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
-                "twr": round((cumulative_twr_factor - 1) * 100, 2), "fx_rate": round(fx, 4)
+                "twr": round((cumulative_twr_factor - 1) * 100, 2), 
+                "benchmark_twr": round(benchmark_twr, 2), # 補齊此欄位
+                "fx_rate": round(fx, 4)
             })
 
-        # --- 產生報表 ---
+        # --- 產生最終報表 ---
         final_holdings = []
         current_holdings_cost_sum = 0.0
         for sym, h in holdings.items():
@@ -335,7 +334,7 @@ class PortfolioCalculator:
             total_pnl=round(history_data[-1]['net_profit'], 0),
             twr=history_data[-1]['twr'], xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
-            benchmark_twr=0.0 
+            benchmark_twr=history_data[-1]['benchmark_twr'] # 使用最後一天的基準報酬
         )
         
         return PortfolioGroupData(
