@@ -2,16 +2,11 @@ name: Update Portfolio Data
 
 on:
   schedule:
-    # 每天 UTC 0 點 (台灣時間早上 8 點) 自動執行 (預設為 system 或全域更新)
+    # 每天 UTC 0 點 (台灣時間早上 8 點) 自動執行
     - cron: '0 0 * * *'
   
-  # 允許手動觸發，並接收來自 Worker 的參數
+  # 允許手動點擊按鈕執行
   workflow_dispatch:
-    inputs:
-      target_user:
-        description: '要執行計算的使用者 Email'
-        required: true
-        default: 'system'
 
 permissions:
   contents: write
@@ -31,29 +26,25 @@ jobs:
       with:
         python-version: '3.10'
 
-    # 3. 安裝套件 (包含 Cache 機制)
+    # 3. 安裝套件 (修改後：加入 Cache 機制)
     - name: Cache pip packages
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
+        # 使用 requirements.txt 的 hash 作為快取金鑰
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
+        pip install --upgrade pip
         pip install -r requirements.txt
 
     # 4. [核心步驟] 執行 Python 腳本
+    # 這一步現在會直接將結果 POST 到 Cloudflare D1 資料庫
     - name: Run calculation & Upload to API
       env:
-        # 從 GitHub Secrets 讀取 API 連接資訊
-        WORKER_API_URL_RECORDS: ${{ secrets.WORKER_API_URL_RECORDS }}
-        WORKER_API_URL_PORTFOLIO: ${{ secrets.WORKER_API_URL_PORTFOLIO }}
-        API_SECRET: ${{ secrets.API_SECRET }}
-        
-        # ✅ 核心修正：接收來自手動觸發 (Worker) 的 Email
-        # 若是自動排程執行，則預設為 'system'
-        TARGET_USER_EMAIL: ${{ github.event.inputs.target_user || 'system' }}
+        # 這裡非常重要，必須傳入 Secret 才能通過 Worker 的驗證
+        API_KEY: ${{ secrets.API_KEY }}
       run: python main.py
