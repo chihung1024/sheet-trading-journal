@@ -38,18 +38,22 @@ def main():
     # 4. 獲取交易紀錄
     logger.info("正在從 Cloudflare 獲取原始交易紀錄...")
     records = api_client.fetch_records()
+    
+    # [改善方案]：不再因為 records 為空就結束，因為我們可能需要處理「剛刪除所有紀錄」的使用者
     if not records:
-        logger.warning("資料庫中無任何交易紀錄，程序結束。")
-        return
+        logger.info("目前資料庫中無任何交易紀錄，將檢查是否需要清理過期快照。")
 
     # 5. 資料前處理
-    df = pd.DataFrame(records)
+    if records:
+        df = pd.DataFrame(records)
+    else:
+        # 建立具備欄位結構的空 DataFrame，避免後續處理出錯
+        df = pd.DataFrame(columns=[
+            'user_id', 'txn_date', 'symbol', 'txn_type', 
+            'qty', 'price', 'fee', 'tax', 'tag'
+        ])
     
-    # 檢查是否有 user_id 欄位以進行分組
-    if 'user_id' not in df.columns:
-        logger.error("交易紀錄中缺少 user_id 欄位，請檢查 API 回傳內容。")
-        return
-
+    # 統一欄位名稱與型態
     df.rename(columns={
         'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type', 
         'qty': 'Qty', 'price': 'Price', 'fee': 'Commission', 
@@ -57,51 +61,54 @@ def main():
     }, inplace=True)
     
     df['Date'] = pd.to_datetime(df['Date'])
-    df['Qty'] = pd.to_numeric(df['Qty'])
-    df['Price'] = pd.to_numeric(df['Price'])
-    df['Commission'] = pd.to_numeric(df['Commission'].fillna(0))
-    df['Tax'] = pd.to_numeric(df['Tax'].fillna(0)) 
+    df['Qty'] = pd.to_numeric(df['Qty'], errors='coerce')
+    df['Price'] = pd.to_numeric(df['Price'], errors='coerce')
+    df['Commission'] = pd.to_numeric(df['Commission'].fillna(0), errors='coerce')
+    df['Tax'] = pd.to_numeric(df['Tax'].fillna(0), errors='coerce') 
     df = df.sort_values('Date')
     
-    # 6. 下載市場數據 (維持全域下載以優化 API 呼叫效能)
+    # 6. 下載市場數據 (僅在有標的時執行)
     if not df.empty:
         start_date = df['Date'].min()
         fetch_start_date = start_date - timedelta(days=100)
-        unique_tickers = df['Symbol'].unique().tolist()
+        unique_tickers = df['Symbol'].dropna().unique().tolist()
         
-        logger.info(f"開始下載全域市場數據。最早交易日: {start_date.date()}, 標的數: {len(unique_tickers)}")
-        market_client.download_data(unique_tickers, fetch_start_date)
+        if unique_tickers:
+            logger.info(f"開始下載全域市場數據。最早交易日: {start_date.date()}, 標的數: {len(unique_tickers)}")
+            market_client.download_data(unique_tickers, fetch_start_date)
     
     # ==========================================
-    # [關鍵修改] 核心計算：針對每位使用者分別處理
+    # [關鍵修改] 核心計算：整合「紀錄」與「快照」使用者清單
     # ==========================================
     
-    # 取得所有有交易紀錄的使用者 ID 清單
-    user_list = df['user_id'].unique()
-    logger.info(f"偵測到 {len(user_list)} 位使用者，開始批次處理...")
+    # 獲取所有需要處理的使用者 (包含有交易的人，以及目前已有快照的人)
+    users_with_records = set(df['user_id'].unique()) if 'user_id' in df.columns else set()
+    
+    # 呼叫 api_client 新增的 fetch_active_users 方法 (將在下一個檔案提供)
+    users_with_snapshots = set(api_client.fetch_active_users())
+    
+    # 取聯集，確保「剛刪除所有紀錄」的人也會被處理到
+    user_list = sorted(list(users_with_records.union(users_with_snapshots)))
+    
+    logger.info(f"偵測到需維護的使用者共 {len(user_list)} 位，開始批次處理...")
 
     for user_email in user_list:
         try:
             logger.info(f"--- 正在處理使用者: {user_email} ---")
             
-            # 1. 篩選該使用者的交易紀錄
-            user_df = df[df['user_id'] == user_email].copy()
+            # 篩選該使用者的交易紀錄 (若已刪除則會是空 DF)
+            user_df = df[df['user_id'] == user_email].copy() if not df.empty else pd.DataFrame()
             
-            if user_df.empty:
-                logger.info(f"使用者 {user_email} 無效紀錄，跳過。")
-                continue
-
-            # 2. 計算該使用者的投資組合快照
+            # 執行計算 (若 user_df 為空，Calculator 將產出「重置快照」)
             calculator = PortfolioCalculator(user_df, market_client)
             user_snapshot = calculator.run()
             
             if user_snapshot:
-                # 3. 指定 target_user_id 並上傳結果
-                logger.info(f"計算完成，正在上傳 {user_email} 的快照數據...")
+                logger.info(f"正在上傳 {user_email} 的快照數據 (包含清理狀態)...")
                 api_client.upload_portfolio(user_snapshot, target_user_id=user_email)
-                logger.info(f"使用者 {user_email} 處理成功。")
+                logger.info(f"使用者 {user_email} 處理/重置成功。")
             else:
-                logger.warning(f"使用者 {user_email} 核心計算失敗，未產生快照。")
+                logger.warning(f"使用者 {user_email} 處理失敗，未產生快照。")
                 
         except Exception as u_err:
             logger.error(f"處理使用者 {user_email} 時發生未預期錯誤: {u_err}")
