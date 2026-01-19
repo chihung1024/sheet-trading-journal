@@ -81,6 +81,7 @@
             </div>
           </div>
           
+          <!-- ✅ [關鍵修正] 數據筆數顯示，防止跳行 -->
           <div class="chart-info" v-if="displayedData.length > 0">
             <span class="info-text">
               共 {{ displayedData.length }} 筆數據
@@ -684,17 +685,23 @@ onUnmounted(() => {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+/* ✅ [關鍵修正] 數據筆數顯示，防止跳行 */
 .chart-info {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 8px 16px;
+    min-width: 120px; /* ✅ 固定最小寬度 */
 }
 
 .info-text {
     font-size: 0.8rem;
     color: var(--text-sub);
     font-weight: 500;
-    white-space: nowrap;
+    white-space: nowrap; /* ✅ 防止文字換行 */
+    font-family: 'JetBrains Mono', monospace; /* ✅ 使用等寬字體 */
 }
 
 .date-range-selector {
@@ -821,6 +828,7 @@ canvas {
     
     .chart-info {
         justify-content: center;
+        width: 100%;
     }
 }
 
