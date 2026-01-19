@@ -5,12 +5,19 @@ on:
     # 每天 UTC 0 點 (台灣時間早上 8 點) 自動執行
     - cron: '0 0 * * *'
   
-  # ✅ 新增：支援 repository_dispatch 事件（由 Cloudflare Worker 觸發）
-  repository_dispatch:
-    types: [trigger-update]
-  
-  # 允許手動點擊按鈕執行
+  # ✅ 使用 workflow_dispatch 並定義 inputs
   workflow_dispatch:
+    inputs:
+      custom_benchmark:
+        description: '自訂基準標的代碼 (例如: QQQ, TQQQ, 0050.TW)'
+        required: false
+        default: 'SPY'
+        type: string
+      target_user_id:
+        description: '目標使用者 email (留空表示全部使用者)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -46,10 +53,10 @@ jobs:
         pip install -r requirements.txt
 
     # 4. [核心步驟] 執行 Python 腳本
-    # ✅ 這一步現在會直接將結果 POST 到 Cloudflare D1 資料庫
-    # ✅ main.py 會從 GITHUB_EVENT_PATH 讀取 client_payload 中的 custom_benchmark
+    # ✅ 透過環境變數傳遞 inputs
     - name: Run calculation & Upload to API
       env:
-        # 這裡非常重要，必須傳入 Secret 才能通過 Worker 的驗證
         API_KEY: ${{ secrets.API_KEY }}
+        CUSTOM_BENCHMARK: ${{ github.event.inputs.custom_benchmark || 'SPY' }}
+        TARGET_USER_ID: ${{ github.event.inputs.target_user_id || '' }}
       run: python main.py
