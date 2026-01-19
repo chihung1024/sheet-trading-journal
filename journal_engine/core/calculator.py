@@ -52,10 +52,14 @@ class PortfolioCalculator:
         # 1. 全域復權處理 (只做一次)
         self._back_adjust_transactions_global()
         
-        # 2. 準備日期範圍
-        start_date = self.df['Date'].min()
+        # ✅ 2. 準備日期範圍（從基準日開始）
+        first_trade_date = self.df['Date'].min()
+        baseline_date = first_trade_date - timedelta(days=1)  # ✅ 基準日為第一筆交易前一天
         end_date = datetime.now()
-        date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
+        date_range = pd.date_range(start=baseline_date, end=end_date, freq='D').normalize()
+        
+        logger.info(f"第一筆交易日期: {first_trade_date.strftime('%Y-%m-%d')}")
+        logger.info(f"TWR 基準日期: {baseline_date.strftime('%Y-%m-%d')} (設為 0%)")
         
         # 3. 識別所有群組
         all_tags = set()
@@ -86,8 +90,8 @@ class PortfolioCalculator:
                 logger.warning(f"群組 {group_name} 無交易紀錄，跳過")
                 continue
 
-            # 執行單一群組計算 (傳入動態匯率)
-            group_result = self._calculate_single_portfolio(group_df, date_range, current_fx)
+            # 執行單一群組計算 (傳入動態匯率和基準日期)
+            group_result = self._calculate_single_portfolio(group_df, date_range, current_fx, baseline_date)
             final_groups_data[group_name] = group_result
 
         # 5. 組合最終結果
@@ -127,13 +131,8 @@ class PortfolioCalculator:
                 self.df.at[index, 'Qty'] = new_qty
                 self.df.at[index, 'Price'] = new_price
 
-    def _calculate_single_portfolio(self, df, date_range, current_fx):
+    def _calculate_single_portfolio(self, df, date_range, current_fx, baseline_date):
         """單一群組的核心計算邏輯 (✅ 修復 TWR 基準點)"""
-        
-        # ✅ 確定基準日期（第一筆交易的前一天）
-        first_trade_date = df['Date'].min()
-        baseline_date = (first_trade_date - timedelta(days=1)).date()
-        logger.info(f"第一筆交易: {first_trade_date.date()}, TWR 基準日: {baseline_date}")
         
         holdings = {}
         fifo_queues = {}
@@ -147,8 +146,7 @@ class PortfolioCalculator:
         prev_total_equity = 0.0
         
         # Benchmark 計算所需 (使用自訂標的)
-        baseline_benchmark_price = None
-        first_data_point_added = False
+        baseline_benchmark_price = None  # ✅ 基準日的 benchmark 價格
 
         # 用於存儲每個標的最新的活躍當日損益
         last_active_daily_pnls = {}
@@ -159,17 +157,19 @@ class PortfolioCalculator:
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             confirmed_dividends.add(key)
 
-        # 逐日計算
+        # ✅ 逐日計算（從基準日開始）
         for d in date_range:
             current_date = d.date()
             
-            # ✅ 處理基準日（交易前一天）
+            # ✅ 處理基準日（第一筆交易的前一天）
             if current_date == baseline_date:
                 # 獲取基準日的 benchmark 價格
                 baseline_benchmark_price = self.market.get_price(self.benchmark_ticker, d)
                 if baseline_benchmark_price <= 0:
                     baseline_benchmark_price = None
-                    logger.warning(f"無法獲取基準日 {baseline_date} 的 {self.benchmark_ticker} 價格")
+                    logger.warning(f"⚠️  無法獲取基準日 {baseline_date} 的 {self.benchmark_ticker} 價格，Benchmark 將顯示 0")
+                else:
+                    logger.info(f"✅ 基準日 {baseline_date}: {self.benchmark_ticker} = ${baseline_benchmark_price:.2f}")
                 
                 # 添加基準點數據（TWR = 0%）
                 history_data.append({
@@ -178,10 +178,9 @@ class PortfolioCalculator:
                     "invested": 0,
                     "net_profit": 0,
                     "twr": 0.0,  # ✅ 基準點為 0%
-                    "benchmark_twr": 0.0,
+                    "benchmark_twr": 0.0,  # ✅ Benchmark 基準點為 0%
                     "fx_rate": round(DEFAULT_FX_RATE, 4)
                 })
-                first_data_point_added = True
                 continue
             
             # 取得匯率
@@ -318,22 +317,20 @@ class PortfolioCalculator:
             current_total_equity = invested_capital + total_pnl
             
             # ✅ TWR 計算（修復版）
-            if first_data_point_added:
-                prev_invested = history_data[-1]['invested'] if history_data else 0.0
-                prev_pnl = history_data[-1]['net_profit'] if history_data else 0.0
-                adj_equity = prev_total_equity + (invested_capital - prev_invested)
-                
-                # 避免除以零
-                if adj_equity > 1.0:
-                    daily_return = (total_pnl - prev_pnl) / adj_equity
-                else:
-                    daily_return = 0.0
-                    
-                cumulative_twr_factor *= (1 + daily_return)
+            prev_invested = history_data[-1]['invested'] if history_data else 0.0
+            prev_pnl = history_data[-1]['net_profit'] if history_data else 0.0
+            adj_equity = prev_total_equity + (invested_capital - prev_invested)
             
+            # 避免除以零
+            if adj_equity > 1.0:
+                daily_return = (total_pnl - prev_pnl) / adj_equity
+            else:
+                daily_return = 0.0
+                
+            cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
             
-            # ✅ 計算自訂標的的 Benchmark TWR
+            # ✅ 計算自訂標的的 Benchmark TWR（相對於基準日）
             benchmark_twr = 0.0
             if baseline_benchmark_price and baseline_benchmark_price > 0:
                 benchmark_p = self.market.get_price(self.benchmark_ticker, d)
@@ -344,7 +341,7 @@ class PortfolioCalculator:
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2),
+                "benchmark_twr": round(benchmark_twr, 2),  # ✅ 相對基準日的回報
                 "fx_rate": round(fx, 4)
             })
 
@@ -391,8 +388,10 @@ class PortfolioCalculator:
             total_pnl=round(history_data[-1]['net_profit'], 0),
             twr=history_data[-1]['twr'], xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
-            benchmark_twr=history_data[-1]['benchmark_twr']
+            benchmark_twr=history_data[-1]['benchmark_twr']  # ✅ 基準回報最終值
         )
+        
+        logger.info(f"✅ 計算完成 - TWR: {summary.twr}%, Benchmark: {summary.benchmark_twr}%, 歷史數據點: {len(history_data)}")
         
         return PortfolioGroupData(
             summary=summary, holdings=final_holdings, history=history_data,
