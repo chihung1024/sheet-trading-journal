@@ -1,181 +1,363 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional
 import logging
+from collections import deque
+from datetime import datetime, timedelta
+from pyxirr import xirr
+from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, DividendRecord, PortfolioGroupData
+from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 
+# 取得 logger 實例
 logger = logging.getLogger(__name__)
 
 class PortfolioCalculator:
-    """
-    Portfolio Calculator (v20260119 穩定版)
-    負責將原始交易紀錄轉換為多維度的投資績效快照
-    """
-    
-    def __init__(self, records: List[Dict], market_client, benchmark_symbol: str = "SPY"):
-        self.records = records
-        self.market_client = market_client
-        self.benchmark_symbol = benchmark_symbol
-        self.df = self._prepare_dataframe(records)
+    def __init__(self, transactions_df, market_client, benchmark_ticker="SPY"):
+        """
+        初始化計算器
+        :param transactions_df: 交易紀錄 DataFrame
+        :param market_client: 市場數據客戶端
+        :param benchmark_ticker: 基準標的代碼 (例如 'SPY', 'QQQ', '0050.TW')
+        """
+        self.df = transactions_df
+        self.market = market_client
+        self.benchmark_ticker = benchmark_ticker # 儲存自訂基準
+
+    def run(self):
+        """執行多群組投資組合計算主流程"""
+        logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
         
-    def _prepare_dataframe(self, records: List[Dict]) -> pd.DataFrame:
-        """格式化紀錄為 DataFrame 並處理日期"""
-        if not records:
-            return pd.DataFrame()
+        # 取得最新匯率
+        current_fx = DEFAULT_FX_RATE
+        if not self.market.fx_rates.empty:
+            current_fx = float(self.market.fx_rates.iloc[-1])
+
+        # [修復 BUG]：處理完全無交易紀錄的邊際情況，回傳空快照而非 None
+        if self.df.empty:
+            logger.warning("無交易紀錄，產生空快照以重置數據。")
+            empty_summary = PortfolioSummary(
+                total_value=0, invested_capital=0, total_pnl=0, 
+                twr=0, xirr=0, realized_pnl=0, benchmark_twr=0
+            )
+            return PortfolioSnapshot(
+                updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                base_currency=BASE_CURRENCY,
+                exchange_rate=round(current_fx, 2),
+                summary=empty_summary,
+                holdings=[],
+                history=[],
+                pending_dividends=[],
+                groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
+            )
             
-        df = pd.DataFrame(records)
-        df['txn_date'] = pd.to_datetime(df['txn_date'])
-        # 確保數值型態正確
-        for col in ['qty', 'price', 'fee', 'tax']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        return df.sort_values('txn_date')
-
-    def run(self) -> Optional[Dict]:
-        """執行完整計算流程"""
-        try:
-            if self.df.empty:
-                return self._get_empty_result()
-
-            # 1. 抓取目前市場報價與匯率
-            symbols = self.df['symbol'].unique().tolist()
-            quotes = self.market_client.get_quotes(symbols + [self.benchmark_symbol])
-            fx_rates = self.market_client.get_fx_rates()
-            usdtwd = fx_rates.get('USDTWD', 32.5) # 預設匯率防禦
-
-            # 2. 計算目前持倉 (Holdings)
-            holdings = self._calculate_holdings(quotes, usdtwd)
-            
-            # 3. 計算歷史績效與對標基準
-            history = self._calculate_history(quotes, usdtwd)
-            
-            # 4. 彙總摘要數據 (Summary)
-            summary = self._calculate_summary(holdings, history)
-            
-            # 5. 偵測待確認配息 (基於市場數據與持有股數)
-            pending_divs = self._detect_pending_dividends(holdings, quotes)
-
-            # 6. 組裝最終快照結構
-            # ✅ 新增：按標籤(Groups)進行分組計算
-            groups_data = self._calculate_groups(holdings, usdtwd)
-
-            return {
-                "summary": summary,
-                "holdings": holdings,
-                "history": history,
-                "pending_dividends": pending_divs,
-                "groups": groups_data,
-                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")
-            }
-        except Exception as e:
-            logger.error(f"❌ 計算核心發生錯誤: {str(e)}", exc_info=True)
-            return self._get_empty_result()
-
-    def _calculate_holdings(self, quotes, usdtwd) -> List[Dict]:
-        """計算個別標的的持倉狀態"""
-        holdings_map = {}
+        # 1. 全域復權處理 (只做一次)
+        self._back_adjust_transactions_global()
         
-        # 依序處理交易以計算平均成本
-        for _, row in self.df.iterrows():
-            sym = row['symbol']
-            if sym not in holdings_map:
-                holdings_map[sym] = {"qty": 0, "total_cost": 0, "tag": row.get('tag', 'Stock')}
-            
-            h = holdings_map[sym]
-            if row['txn_type'] == 'BUY':
-                h['qty'] += row['qty']
-                h['total_cost'] += (row['qty'] * row['price']) + row['fee'] + row['tax']
-            elif row['txn_type'] == 'SELL':
-                # 簡單移動平均成本法
-                avg_cost = h['total_cost'] / h['qty'] if h['qty'] > 0 else 0
-                h['qty'] -= row['qty']
-                h['total_cost'] -= (row['qty'] * avg_cost)
-            elif row['txn_type'] == 'DIV':
-                # 配息視為成本扣除
-                h['total_cost'] -= (row['qty'] * row['price'])
-
-        results = []
-        for sym, h in holdings_map.items():
-            if h['qty'] <= 0.0001: continue # 略過已平倉位
-            
-            q = quotes.get(sym, {})
-            current_price = q.get('price', 0)
-            market_value_usd = h['qty'] * current_price
-            avg_cost_usd = h['total_cost'] / h['qty'] if h['qty'] > 0 else 0
-            
-            pnl_usd = market_value_usd - h['total_cost']
-            pnl_percent = (pnl_usd / h['total_cost'] * 100) if h['total_cost'] > 0 else 0
-            
-            results.append({
-                "symbol": sym,
-                "qty": round(h['qty'], 4),
-                "avg_cost_usd": round(avg_cost_usd, 2),
-                "current_price_origin": current_price,
-                "market_value_twd": round(market_value_usd * usdtwd),
-                "pnl_twd": round(pnl_usd * usdtwd),
-                "pnl_percent": round(pnl_percent, 2),
-                "daily_change_percent": q.get('change_percent', 0),
-                "daily_pl_twd": round(h['qty'] * q.get('change', 0) * usdtwd),
-                "tag": h['tag']
-            })
-            
-        return results
-
-    def _calculate_groups(self, all_holdings, usdtwd) -> Dict:
-        """將持倉按標籤分組並計算各組摘要"""
-        groups = {"all": {"holdings": all_holdings}}
+        # 2. 準備日期範圍
+        start_date = self.df['Date'].min()
+        end_date = datetime.now()
+        date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
         
-        for h in all_holdings:
-            # 支援多標籤格式 (如 "AI, Growth")
-            tags = [t.strip() for t in str(h['tag']).replace(';', ',').split(',')]
-            for tag in tags:
-                if not tag: continue
-                if tag not in groups:
-                    groups[tag] = {"holdings": [], "summary": {"total_value": 0, "invested_capital": 0}}
+        # 3. 識別所有群組
+        all_tags = set()
+        for tags_str in self.df['Tag'].dropna().unique():
+            if not tags_str: 
+                continue
+            split_tags = [t.strip() for t in tags_str.replace(';', ',').split(',') if t.strip()]
+            all_tags.update(split_tags)
+        
+        groups_to_calc = ['all'] + sorted(list(all_tags))
+        logger.info(f"識別到的群組: {groups_to_calc}")
+
+        # 4. 迴圈計算每個群組
+        final_groups_data = {}
+        
+        for group_name in groups_to_calc:
+            logger.info(f"正在計算群組: {group_name}")
+            
+            if group_name == 'all':
+                group_df = self.df.copy()
+            else:
+                mask = self.df['Tag'].apply(
+                    lambda x: group_name in [t.strip() for t in (x or '').replace(';', ',').split(',')]
+                )
+                group_df = self.df[mask].copy()
+            
+            if group_df.empty:
+                logger.warning(f"群組 {group_name} 無交易紀錄，跳過")
+                continue
+
+            # 執行單一群組計算 (傳入動態匯率)
+            group_result = self._calculate_single_portfolio(group_df, date_range, current_fx)
+            final_groups_data[group_name] = group_result
+
+        # 5. 組合最終結果
+        all_data = final_groups_data.get('all')
+        if not all_data:
+            logger.error("無法產出 'all' 群組的總體數據")
+            return None
+        
+        return PortfolioSnapshot(
+            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            base_currency=BASE_CURRENCY,
+            exchange_rate=round(current_fx, 2),
+            summary=all_data.summary,
+            holdings=all_data.holdings,
+            history=all_data.history,
+            pending_dividends=all_data.pending_dividends,
+            groups=final_groups_data
+        )
+
+    def _back_adjust_transactions_global(self):
+        """全域復權處理"""
+        logger.info("正在進行全域交易數據復權處理...")
+        for index, row in self.df.iterrows():
+            sym = row['Symbol']
+            date = row['Date']
+            if row['Type'] not in ['BUY', 'SELL']: 
+                continue
+            
+            split_factor = self.market.get_transaction_multiplier(sym, date)
+            div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
+            
+            if split_factor != 1.0 or div_adj_factor != 1.0:
+                old_qty = row['Qty']
+                old_price = row['Price']
+                new_qty = old_qty * split_factor
+                new_price = (old_price / split_factor) * div_adj_factor
+                self.df.at[index, 'Qty'] = new_qty
+                self.df.at[index, 'Price'] = new_price
+
+    def _calculate_single_portfolio(self, df, date_range, current_fx):
+        """單一群組的核心計算邏輯"""
+        holdings = {}
+        fifo_queues = {}
+        invested_capital = 0.0
+        total_realized_pnl_twd = 0.0
+        history_data = []
+        confirmed_dividends = set()
+        dividend_history = []
+        xirr_cashflows = []
+        cumulative_twr_factor = 1.0
+        prev_total_equity = 0.0
+        
+        # Benchmark 計算所需 (使用自訂標的)
+        first_benchmark_price = None
+
+        # 用於存儲每個標的最新的活躍當日損益
+        last_active_daily_pnls = {}
+
+        # 預掃描確認配息
+        div_txs = df[df['Type'] == 'DIV']
+        for _, row in div_txs.iterrows():
+            key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
+            confirmed_dividends.add(key)
+
+        # 逐日計算
+        for d in date_range:
+            current_date = d.date()
+            try:
+                fx = self.market.fx_rates.asof(d)
+                if pd.isna(fx): fx = DEFAULT_FX_RATE
+            except: 
+                fx = DEFAULT_FX_RATE
+            
+            # 取得自訂基準價格用於 Benchmark 計算
+            benchmark_p = self.market.get_price(self.benchmark_ticker, d)
+            if first_benchmark_price is None and benchmark_p > 0:
+                first_benchmark_price = benchmark_p
+            
+            # 取得昨日匯率與當日交易
+            prev_date = d - timedelta(days=1)
+            try:
+                prev_fx = self.market.fx_rates.asof(prev_date)
+                if pd.isna(prev_fx): prev_fx = fx
+            except: prev_fx = fx
+
+            daily_txns = df[df['Date'].dt.date == current_date].copy()
+            
+            # 紀錄今日交易前的持倉狀態
+            start_of_day_state = {}
+            for sym, h in holdings.items():
+                if h['qty'] > 1e-6:
+                    start_of_day_state[sym] = {
+                        'qty': h['qty'], 
+                        'prev_price': self.market.get_price(sym, prev_date)
+                    }
+
+            # 處理當日交易
+            daily_cashflows = {}
+            
+            if not daily_txns.empty:
+                priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
+                daily_txns['priority'] = daily_txns['Type'].map(priority_map).fillna(99)
+                daily_txns = daily_txns.sort_values(by='priority', kind='stable')
+            
+            for _, row in daily_txns.iterrows():
+                sym = row['Symbol']
+                if sym not in holdings:
+                    holdings[sym] = {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': row['Tag']}
+                    fifo_queues[sym] = deque()
                 
-                groups[tag]["holdings"].append(h)
-                # 簡易累加組內指標
-                groups[tag]["summary"]["total_value"] += h['market_value_twd']
-                # 注意：組內成本計算在此為簡化版，精確計算需回溯交易紀錄
-        return groups
+                if sym not in daily_cashflows:
+                    daily_cashflows[sym] = {'buy_cost': 0.0, 'sell_proceeds': 0.0, 'div_received': 0.0}
 
-    def _calculate_history(self, quotes, usdtwd) -> List[Dict]:
-        """計算歷史績效曲線 (簡化版)"""
-        # 實際生產環境中，此處應透過 D1 讀取過去的 snapshots 並與今日數據連接
-        # 這裡回傳今日單點數據作為範例起點
-        return [{
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "roi": 0, # 計算邏輯待與歷史表對接
-            "benchmark_roi": 0
-        }]
+                if row['Type'] == 'BUY':
+                    cost_usd = (row['Qty'] * row['Price']) + row['Commission'] + row['Tax']
+                    cost_twd = cost_usd * fx
+                    holdings[sym]['qty'] += row['Qty']
+                    holdings[sym]['cost_basis_usd'] += cost_usd
+                    holdings[sym]['cost_basis_twd'] += cost_twd
+                    fifo_queues[sym].append({
+                        'qty': row['Qty'], 'price': row['Price'], 'cost_total_usd': cost_usd, 
+                        'cost_total_twd': cost_twd, 'date': d
+                    })
+                    invested_capital += cost_twd
+                    xirr_cashflows.append({'date': d, 'amount': -cost_twd})
+                    daily_cashflows[sym]['buy_cost'] += cost_twd
 
-    def _calculate_summary(self, holdings, history) -> Dict:
-        """總結全域投資數據"""
-        total_value = sum(h['market_value_twd'] for h in holdings)
-        total_pnl = sum(h['pnl_twd'] for h in holdings)
-        invested = total_value - total_pnl
+                elif row['Type'] == 'SELL':
+                    if not fifo_queues.get(sym) or not fifo_queues[sym]: continue
+                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * fx
+                    remaining = row['Qty']
+                    cost_sold_twd = 0.0
+                    cost_sold_usd = 0.0
+                    while remaining > 1e-6 and fifo_queues[sym]:
+                        batch = fifo_queues[sym][0]
+                        take = min(remaining, batch['qty'])
+                        frac = take / batch['qty']
+                        cost_sold_usd += batch['cost_total_usd'] * frac
+                        cost_sold_twd += batch['cost_total_twd'] * frac
+                        batch['qty'] -= take
+                        batch['cost_total_usd'] -= batch['cost_total_usd'] * frac
+                        batch['cost_total_twd'] -= batch['cost_total_twd'] * frac
+                        remaining -= take
+                        if batch['qty'] < 1e-6: fifo_queues[sym].popleft()
+                    
+                    holdings[sym]['qty'] -= (row['Qty'] - remaining)
+                    holdings[sym]['cost_basis_usd'] -= cost_sold_usd
+                    holdings[sym]['cost_basis_twd'] -= cost_sold_twd
+                    invested_capital -= cost_sold_twd
+                    total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
+                    xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
+                    daily_cashflows[sym]['sell_proceeds'] += proceeds_twd
+
+                elif row['Type'] == 'DIV':
+                    div_twd = row['Price'] * fx
+                    total_realized_pnl_twd += div_twd
+                    xirr_cashflows.append({'date': d, 'amount': div_twd})
+                    daily_cashflows[sym]['div_received'] += div_twd
+
+            # 處理自動配息與標的損益
+            date_str = d.strftime('%Y-%m-%d')
+            for sym, h_data in holdings.items():
+                div_per_share = self.market.get_dividend(sym, d)
+                if div_per_share > 0 and h_data['qty'] > 1e-6:
+                    div_key = f"{sym}_{date_str}"
+                    is_confirmed = div_key in confirmed_dividends
+                    split_factor = self.market.get_transaction_multiplier(sym, d)
+                    
+                    shares_at_ex = h_data['qty'] / split_factor
+                    total_gross = shares_at_ex * div_per_share
+                    total_net_usd = total_gross * 0.7 
+                    total_net_twd = total_net_usd * fx
+
+                    dividend_history.append({
+                        'symbol': sym, 'ex_date': date_str, 'shares_held': h_data['qty'],
+                        'dividend_per_share_gross': div_per_share, 
+                        'total_gross': round(total_gross, 2),
+                        'total_net_usd': round(total_net_usd, 2),
+                        'total_net_twd': round(total_net_twd, 0),
+                        'fx_rate': fx, 'status': 'confirmed' if is_confirmed else 'pending'
+                    })
+                    if not is_confirmed:
+                        total_realized_pnl_twd += total_net_twd
+                        xirr_cashflows.append({'date': d, 'amount': total_net_twd})
+                        if sym not in daily_cashflows: daily_cashflows[sym] = {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0}
+                        daily_cashflows[sym]['div_received'] += total_net_twd
+
+                # 計算該標的今日的損益貢獻
+                curr_p = self.market.get_price(sym, d)
+                prev_info = start_of_day_state.get(sym, {'qty': 0.0, 'prev_price': curr_p})
+                cf = daily_cashflows.get(sym, {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0})
+                
+                end_val = h_data['qty'] * curr_p * fx
+                start_val = prev_info['qty'] * prev_info['prev_price'] * prev_fx
+                daily_pnl = (end_val + cf['sell_proceeds'] + cf['div_received']) - (start_val + cf['buy_cost'])
+                
+                if abs(daily_pnl) > 1e-2 or not daily_txns[daily_txns['Symbol'] == sym].empty:
+                    last_active_daily_pnls[sym] = daily_pnl
+
+            # 每日組合估值與 TWR
+            total_mkt_val = sum(h['qty'] * self.market.get_price(s, d) * fx for s, h in holdings.items() if h['qty'] > 1e-6)
+            total_pnl = (total_mkt_val - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)) + total_realized_pnl_twd
+            current_total_equity = invested_capital + total_pnl
+            
+            prev_invested = history_data[-1]['invested'] if history_data else 0.0
+            prev_pnl = history_data[-1]['net_profit'] if history_data else 0.0
+            adj_equity = prev_total_equity + (invested_capital - prev_invested)
+            
+            daily_return = (total_pnl - prev_pnl) / adj_equity if adj_equity > 1.0 else 0.0
+            cumulative_twr_factor *= (1 + daily_return)
+            prev_total_equity = current_total_equity
+            
+            # 計算自訂標的的 Benchmark TWR
+            benchmark_twr = (benchmark_p / first_benchmark_price - 1) * 100 if first_benchmark_price else 0.0
+
+            history_data.append({
+                "date": date_str, "total_value": round(total_mkt_val, 0),
+                "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
+                "twr": round((cumulative_twr_factor - 1) * 100, 2), 
+                "benchmark_twr": round(benchmark_twr, 2), # 存儲基準回報
+                "fx_rate": round(fx, 4)
+            })
+
+        # --- 產生最終報表 ---
+        final_holdings = []
+        current_holdings_cost_sum = 0.0
+        for sym, h in holdings.items():
+            if h['qty'] > 1e-4:
+                stock_data = self.market.market_data.get(sym, pd.DataFrame())
+                curr_p, prev_p = 0.0, 0.0
+                if not stock_data.empty:
+                    curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+                    if len(stock_data) >= 2: prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
+
+                mkt_val = h['qty'] * curr_p * current_fx
+                cost = h['cost_basis_twd']
+                current_holdings_cost_sum += cost
+                
+                final_holdings.append(HoldingPosition(
+                    symbol=sym, tag=h['tag'], currency="USD", qty=round(h['qty'], 2),
+                    market_value_twd=round(mkt_val, 0), pnl_twd=round(mkt_val - cost, 0),
+                    pnl_percent=round((mkt_val - cost) / cost * 100, 2) if cost > 0 else 0,
+                    current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2),
+                    prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
+                    daily_pl_twd=round(last_active_daily_pnls.get(sym, 0.0), 0)
+                ))
         
-        return {
-            "total_value": round(total_value),
-            "invested_capital": round(invested),
-            "total_pnl": round(total_pnl),
-            "realized_pnl": 0, # 需從交易紀錄累加
-            "twr": 0,
-            "xirr": 0
-        }
+        final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
+        
+        # XIRR 計算
+        xirr_val = 0.0
+        if xirr_cashflows:
+            curr_val_sum = sum(h.market_value_twd for h in final_holdings)
+            xirr_cashflows_calc = xirr_cashflows.copy()
+            xirr_cashflows_calc.append({'date': datetime.now(), 'amount': curr_val_sum})
+            try:
+                xirr_res = xirr([x['date'] for x in xirr_cashflows_calc], [x['amount'] for x in xirr_cashflows_calc])
+                xirr_val = round(xirr_res * 100, 2)
+            except: pass
 
-    def _detect_pending_dividends(self, holdings, quotes) -> List[Dict]:
-        """偵測市場上已公告但尚未入帳的配息"""
-        # 對接 MarketDataClient 抓取配息日曆
-        return []
-
-    def _get_empty_result(self) -> Dict:
-        """回傳標準空結構，確保前端不崩潰"""
-        return {
-            "summary": {"total_value": 0, "invested_capital": 0, "total_pnl": 0, "realized_pnl": 0, "twr": 0, "xirr": 0},
-            "holdings": [],
-            "history": [],
-            "groups": {"all": {"holdings": [], "summary": {}}},
-            "pending_dividends": [],
-            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")
-        }
+        summary = PortfolioSummary(
+            total_value=round(sum(h.market_value_twd for h in final_holdings), 0),
+            invested_capital=round(current_holdings_cost_sum, 0),
+            total_pnl=round(history_data[-1]['net_profit'], 0),
+            twr=history_data[-1]['twr'], xirr=xirr_val,
+            realized_pnl=round(total_realized_pnl_twd, 0),
+            benchmark_twr=history_data[-1]['benchmark_twr'] # 基準回報最終值
+        )
+        
+        return PortfolioGroupData(
+            summary=summary, holdings=final_holdings, history=history_data,
+            pending_dividends=[DividendRecord(**d) for d in dividend_history if d['status']=='pending']
+        )
