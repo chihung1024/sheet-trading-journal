@@ -10,10 +10,13 @@
     "vue": "^3.4.21",
     "pinia": "^2.1.7",
     "chart.js": "^4.4.1",
+    "apexcharts": "^3.46.0",
+    "vue3-apexcharts": "^1.5.2",
     "date-fns": "^3.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
-    "vite": "^5.1.4"
+    "vite": "^5.4.11",
+    "terser": "^5.31.0"
   }
 }
