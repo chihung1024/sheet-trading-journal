@@ -65,7 +65,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         rawData.value = null;
         records.value = [];
         lastUpdate.value = '';
-        console.log('Sweep [resetData] 本地投資組合數據已清空');
+        console.log('🧹 [resetData] 本地投資組合數據已清空');
     };
 
     const fetchAll = async () => {
@@ -108,22 +108,27 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             const json = await fetchWithAuth('/api/portfolio');
             
             if (json && json.success && json.data) {
-                // MODIFIED: 只有在確實有時間戳時才更新介面數據
-                if (json.data.updated_at) {
-                    // MODIFIED: 增加過期數據檢查。如果已有紀錄但快照中持倉為空，視為計算中的過期快照，不予更新 lastUpdate。
-                    if (records.value.length > 0 && (!json.data.holdings || json.data.holdings.length === 0)) {
-                        console.log('⏳ [fetchSnapshot] 快照數據與交易紀錄不匹配 (空持倉)，略過更新');
-                        return;
+                // MODIFIED: 強化重置判斷，如果後端回傳空數據且前端無紀錄，立即重置 UI
+                if (!json.data.updated_at) {
+                    if (records.value.length === 0) {
+                        resetData();
+                        console.log('✅ [fetchSnapshot] 後端已同步重置為空數據');
+                    } else {
+                        console.log('⏳ [fetchSnapshot] 快照計算中，暫不更新介面');
                     }
-                    rawData.value = json.data; 
-                    lastUpdate.value = json.data.updated_at;
-                    console.log('✅ [fetchSnapshot] 數據已更新時間:', lastUpdate.value);
-                } else if (records.value.length === 0) {
-                    // 只有在完全無交易紀錄且快照也為空時，才執行重置
-                    resetData();
+                    return;
                 }
+
+                // MODIFIED: 防止在刪除後抓到「舊的」非空快照
+                if (records.value.length === 0 && json.data.holdings && json.data.holdings.length > 0) {
+                    console.warn('⏳ [fetchSnapshot] 偵測到殘留的舊快照資料，略過更新');
+                    return;
+                }
+
+                rawData.value = json.data; 
+                lastUpdate.value = json.data.updated_at;
+                console.log('✅ [fetchSnapshot] 數據已更新時間:', lastUpdate.value);
             } else {
-                console.warn('⚠️ [fetchSnapshot] 數據格式異常');
                 if (records.value.length === 0) resetData();
             }
         } catch (error) {
@@ -166,8 +171,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             
             if (json && json.success) {
                 addToast("新增成功", "success");
-                // MODIFIED: 插入後先拉一次紀錄以建立 records.value.length 的狀態
-                await fetchRecords(); 
+                await fetchRecords();
                 
                 if (json.auto_update) {
                     handleAutoUpdateSignal("🚀 這是您的第一筆交易，系統正自動啟動背景計算...");
@@ -213,9 +217,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (json && json.success) {
                 addToast("刪除成功", "success");
                 
+                // [關鍵修復] 如果收到重置信號，立即進入輪詢以監控後端清理進度
                 if (json.message === "RELOAD_UI") {
-                    resetData();
-                    handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據...");
+                    records.value = []; // 先清空列表
+                    handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據..."); // MODIFIED: 同步觸發輪詢
                 } else {
                     await fetchRecords();
                     startPolling();
@@ -275,15 +280,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         console.log('⌛ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
-        // MODIFIED: 捕捉當前基準時間，如果是首次更新則為空
+        // MODIFIED: 獲取初始狀態的時間戳
         const initialTime = lastUpdate.value; 
         const { addToast } = useToast(); 
 
         pollTimer = setInterval(async () => {
-            if (Date.now() - startTime > 300000) { 
+            if (Date.now() - startTime > 180000) { 
                 console.warn('⚠️ [SmartPolling] 更新超時，停止輪詢');
                 stopPolling();
-                addToast("⚠️ 更新等待超時，背景計算較久，請稍後手動重新整理", "error");
                 return;
             }
 
@@ -293,24 +297,24 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
                     
-                    // MODIFIED: 核心檢查條件。必須同時滿足：
-                    // 1. newTime 必須存在且不等於初始值。
-                    // 2. 如果目前已有紀錄 (records > 0)，新抓到的快照不能是空的 (holdings > 0)。
-                    // 這能有效防止首筆交易時，輪詢抓到之前刪除紀錄後留下的「0持倉過期快照」。
-                    const isNewTimestamp = newTime && (newTime !== initialTime);
-                    const hasValidContent = (records.value.length === 0) || (json.data.holdings && json.data.holdings.length > 0);
+                    // MODIFIED: 核心判斷邏輯
+                    // 1. 標準更新：時間戳變更且有新內容。
+                    const isNewData = newTime && (newTime !== initialTime) && (json.data.holdings?.length > 0 || records.value.length === 0);
+                    // 2. 重置更新：當交易紀錄為 0 且後端回傳的快照時間消失（即回傳空對象），判定重置完成。
+                    const isResetConfirmed = (records.value.length === 0) && !newTime;
 
-                    if (isNewTimestamp && hasValidContent) {
-                        console.log('✨ [SmartPolling] 偵測到有效新數據！時間:', newTime);
+                    if (isNewData || isResetConfirmed) {
+                        console.log('✨ [SmartPolling] 狀態已同步！更新/重置成功');
                         stopPolling();
-                        await fetchAll();
-                        addToast("✅ 數據已更新完畢！", "success");
+                        await fetchAll(); // 執行最終同步以歸零 UI
+                        if (isResetConfirmed) addToast("✅ 所有資產數據已歸零", "success");
+                        else addToast("✅ 數據已更新完畢！", "success");
                     } else {
-                        console.log('💤 [SmartPolling] 數據尚未產生或內容尚未匹配 (每 5 秒檢查中)...'); 
+                        console.log('💤 [SmartPolling] 正在等待後端計算/重置任務完成...'); 
                     }
                 }
             } catch (e) {
-                console.warn('⚠️ [SmartPolling] 檢查失敗:', e);
+                console.warn('⚠️ [SmartPolling] 檢查中:', e);
             }
         }, 5000); 
     };
