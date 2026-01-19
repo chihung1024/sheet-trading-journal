@@ -140,8 +140,9 @@ class PortfolioCalculator:
         cumulative_twr_factor = 1.0
         prev_total_equity = 0.0
         
-        # Benchmark 計算所需 (使用自訂標的)
-        first_benchmark_price = None
+        # ✅ 修正：Benchmark 使用逐日累積計算 (方案二)
+        benchmark_twr_factor = 1.0
+        prev_benchmark_price = None
 
         # 用於存儲每個標的最新的活躍當日損益
         last_active_daily_pnls = {}
@@ -161,10 +162,19 @@ class PortfolioCalculator:
             except: 
                 fx = DEFAULT_FX_RATE
             
-            # 取得自訂基準價格用於 Benchmark 計算
-            benchmark_p = self.market.get_price(self.benchmark_ticker, d)
-            if first_benchmark_price is None and benchmark_p > 0:
-                first_benchmark_price = benchmark_p
+            # ✅ 修正：逐日計算 Benchmark 報酬率
+            benchmark_price = self.market.get_price(self.benchmark_ticker, d)
+            
+            if prev_benchmark_price is not None and prev_benchmark_price > 0 and benchmark_price > 0:
+                daily_benchmark_return = (benchmark_price - prev_benchmark_price) / prev_benchmark_price
+                benchmark_twr_factor *= (1 + daily_benchmark_return)
+            
+            # 更新前一日價格（確保有效價格才更新）
+            if benchmark_price > 0:
+                prev_benchmark_price = benchmark_price
+            
+            # 計算累積報酬率（百分比）
+            benchmark_twr = (benchmark_twr_factor - 1) * 100
             
             # 取得昨日匯率與當日交易
             prev_date = d - timedelta(days=1)
@@ -299,15 +309,12 @@ class PortfolioCalculator:
             daily_return = (total_pnl - prev_pnl) / adj_equity if adj_equity > 1.0 else 0.0
             cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
-            
-            # 計算自訂標的的 Benchmark TWR
-            benchmark_twr = (benchmark_p / first_benchmark_price - 1) * 100 if first_benchmark_price else 0.0
 
             history_data.append({
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2), # 存儲基準回報
+                "benchmark_twr": round(benchmark_twr, 2), # ✅ 使用逐日累積的基準報酬
                 "fx_rate": round(fx, 4)
             })
 
@@ -354,7 +361,7 @@ class PortfolioCalculator:
             total_pnl=round(history_data[-1]['net_profit'], 0),
             twr=history_data[-1]['twr'], xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
-            benchmark_twr=history_data[-1]['benchmark_twr'] # 基準回報最終值
+            benchmark_twr=history_data[-1]['benchmark_twr'] # ✅ 基準報酬最終值
         )
         
         return PortfolioGroupData(
