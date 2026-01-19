@@ -2,15 +2,15 @@
   <div class="inner-chart-layout">
     <div class="chart-header">
       <div class="title-row">
-        <h3 class="chart-title">趨勢分析</h3>
+        <h3 class="chart-title">趋勢分析</h3>
         <div class="toggle-pills">
-          <button :class="{active: chartType==='pnl'}" @click="chartType='pnl'" title="查看損益趨勢">
+          <button :class="{active: chartType==='pnl'}" @click="chartType='pnl'" title="查看損益趋勢">
             損益
           </button>
-          <button :class="{active: chartType==='twr'}" @click="chartType='twr'" title="查看報酬率趨勢">
+          <button :class="{active: chartType==='twr'}" @click="chartType='twr'" title="查看報酬率趋勢">
             報酬率
           </button>
-          <button :class="{active: chartType==='asset'}" @click="chartType='asset'" title="查看資產趨勢">
+          <button :class="{active: chartType==='asset'}" @click="chartType='asset'" title="查看資產趋勢">
             資產
           </button>
         </div>
@@ -88,6 +88,12 @@
           </div>
         </div>
       </div>
+      
+      <!-- ✅ 新增：數據範圍提示 -->
+      <div v-if="dataRangeWarning" class="data-range-warning">
+        <span class="warning-icon">⚠️</span>
+        <span class="warning-text">{{ dataRangeWarning }}</span>
+      </div>
     </div>
 
     <div class="canvas-box">
@@ -120,6 +126,9 @@ const customEndDate = ref('');
 // ✅ 新增：基準標的相關狀態
 const benchmarkInput = ref(portfolioStore.selectedBenchmark);
 const isChangingBenchmark = ref(false);
+
+// ✅ 新增：數據範圍警告
+const dataRangeWarning = ref('');
 
 // 計算今天的日期字串
 const todayStr = computed(() => {
@@ -169,7 +178,7 @@ const handleBenchmarkChange = async () => {
   }
 };
 
-// ✅ 監聽 Store 中的 selectedBenchmark 變化，同步更新輸入框
+// ✅ 監聴 Store 中的 selectedBenchmark 變化，同步更新輸入框
 watch(() => portfolioStore.selectedBenchmark, (newVal) => {
   benchmarkInput.value = newVal;
 });
@@ -239,9 +248,25 @@ const filterData = (startDate, endDate = new Date()) => {
     if (fullHistory.length === 0) {
         displayedData.value = [];
         baselineData.value = null;
+        dataRangeWarning.value = '';
         return;
     }
 
+    // ✅ 找到實際數據的第一筆和最後一筆
+    const firstDataDate = new Date(fullHistory[0].date.replace(/-/g, '/'));
+    const lastDataDate = new Date(fullHistory[fullHistory.length - 1].date.replace(/-/g, '/'));
+    
+    // ✅ 檢查用戶選擇的範圍是否超出實際數據範圍
+    let warning = '';
+    if (startDate < firstDataDate) {
+        const firstDateStr = firstDataDate.toLocaleDateString('zh-TW', { 
+            year: 'numeric', month: 'short', day: 'numeric' 
+        });
+        warning = `實際數據從 ${firstDateStr} 開始（您的第一筆交易的基準日）`;
+    }
+    dataRangeWarning.value = warning;
+
+    // ✅ 找到基準點（第一個大於等於 startDate 的數據點的前一個）
     let baseline = null;
     for (let i = 0; i < fullHistory.length; i++) {
         const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
@@ -249,18 +274,21 @@ const filterData = (startDate, endDate = new Date()) => {
             if (i > 0) {
                 baseline = fullHistory[i - 1];
             } else {
+                // 如果第一筆數據就已經大於 startDate，使用第一筆作為基準
                 baseline = fullHistory[i];
             }
             break;
         }
     }
     
+    // ✅ 如果所有數據都小於 startDate，使用最後一筆作為基準
     if (!baseline && fullHistory.length > 0) {
-        baseline = fullHistory[0];
+        baseline = fullHistory[fullHistory.length - 1];
     }
     
     baselineData.value = baseline;
 
+    // ✅ 過濾數據（排除週末）
     displayedData.value = fullHistory.filter(d => {
         const date = new Date(d.date.replace(/-/g, '/'));
         const dayOfWeek = date.getDay();
@@ -325,6 +353,7 @@ const drawChart = () => {
             ...common
         }];
     } else {
+        // ✅ TWR 圖表：相對於基準點的變化
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
@@ -543,6 +572,42 @@ onUnmounted(() => {
     align-items: center;
     gap: 16px;
     flex-wrap: wrap;
+}
+
+/* ✅ 新增：數據範圍警告樣式 */
+.data-range-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 10px;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.warning-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.warning-text {
+    font-size: 0.85rem;
+    color: var(--warning);
+    font-weight: 500;
+    line-height: 1.4;
 }
 
 /* ✅ 新增：基準標的選擇器樣式 */
@@ -799,6 +864,14 @@ canvas {
     
     .chart-info {
         justify-content: center;
+    }
+    
+    .data-range-warning {
+        padding: 8px 12px;
+    }
+    
+    .warning-text {
+        font-size: 0.8rem;
     }
 }
 
