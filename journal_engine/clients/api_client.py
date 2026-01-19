@@ -27,6 +27,30 @@ class CloudflareClient:
             print(f"API 連線發生例外狀況: {e}")
             return []
 
+    def fetch_active_users(self) -> list:
+        """
+        [新增] 獲取目前系統中所有擁有投資組合快照的使用者 Email 清單。
+        此功能用於確保即使使用者刪除了所有交易紀錄，GitHub Actions 仍然能偵測到該使用者，
+        並為其執行一次『空快照』上傳，以徹底清除前端顯示的殘留數據。
+        """
+        # 使用 Portfolio API 的子路徑 /users (需搭配 Worker 路由支援)
+        url = f"{WORKER_API_URL_PORTFOLIO}/users"
+        print(f"正在同步使用者快照清單: {url}")
+        try:
+            resp = requests.get(url, headers=API_HEADERS)
+            if resp.status_code == 200:
+                api_json = resp.json()
+                if api_json.get('success'):
+                    users = api_json.get('data', [])
+                    print(f"成功取得 {len(users)} 位擁有快照數據的使用者")
+                    return users
+            
+            # 若 Worker 尚未更新此路徑，回傳空清單，程序將退回僅處理有紀錄之使用者的模式
+            return []
+        except Exception as e:
+            print(f"同步使用者清單時發生錯誤: {e}")
+            return []
+
     def upload_portfolio(self, snapshot: PortfolioSnapshot, target_user_id: str = None):
         """
         上傳計算結果至 Cloudflare D1
@@ -35,7 +59,7 @@ class CloudflareClient:
         """
         print(f"計算完成，正在上傳 {target_user_id if target_user_id else 'System'} 的投資組合至 Cloudflare D1...")
         
-        # [關鍵修改]：包裝 payload，加入 target_user_id 以支援多使用者資料隔離
+        # 包裝 payload，加入 target_user_id 以支援多使用者資料隔離
         # 如果有 target_user_id，則採用代理上傳格式；否則維持原樣
         payload = {
             "target_user_id": target_user_id,
