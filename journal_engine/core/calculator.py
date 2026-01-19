@@ -141,7 +141,7 @@ class PortfolioCalculator:
         prev_total_equity = 0.0
         
         # Benchmark 計算所需 (使用自訂標的)
-        first_benchmark_price = None
+        first_benchmark_val_twd = None # MODIFIED: 改用 TWD 價值對齊，確保匯率波動一致性
 
         # 用於存儲每個標的最新的活躍當日損益
         last_active_daily_pnls = {}
@@ -161,10 +161,13 @@ class PortfolioCalculator:
             except: 
                 fx = DEFAULT_FX_RATE
             
-            # 取得自訂基準價格用於 Benchmark 計算
+            # 取得自訂基準價格
             benchmark_p = self.market.get_price(self.benchmark_ticker, d)
-            if first_benchmark_price is None and benchmark_p > 0:
-                first_benchmark_price = benchmark_p
+            # MODIFIED: 基準點必須與投資組合一樣轉換為基準幣別 (TWD)
+            curr_benchmark_val_twd = benchmark_p * fx 
+
+            if first_benchmark_val_twd is None and curr_benchmark_val_twd > 0:
+                first_benchmark_val_twd = curr_benchmark_val_twd # # MODIFIED
             
             # 取得昨日匯率與當日交易
             prev_date = d - timedelta(days=1)
@@ -300,14 +303,15 @@ class PortfolioCalculator:
             cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
             
-            # 計算自訂標的的 Benchmark TWR
-            benchmark_twr = (benchmark_p / first_benchmark_price - 1) * 100 if first_benchmark_price else 0.0
+            # [修復] 計算自訂標的的 Benchmark TWR (對齊基準幣別與匯率)
+            # MODIFIED: 使用 (當前幣值 / 初始幣值) 計算，確保與投資組合邏輯完全一致
+            benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
             history_data.append({
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2), # 存儲基準回報
+                "benchmark_twr": round(benchmark_twr, 2), # 存儲與匯率對齊後的基準回報
                 "fx_rate": round(fx, 4)
             })
 
