@@ -33,7 +33,31 @@
         </div>
         
         <div class="right-controls">
-          <!-- 日期選擇器 - 常態顯示 -->
+          <!-- ✅ 新增：基準標的輸入框 -->
+          <div class="benchmark-selector" v-if="chartType === 'twr'">
+            <label class="benchmark-label">基準標的</label>
+            <div class="benchmark-input-group">
+              <input 
+                type="text" 
+                v-model="benchmarkInput" 
+                placeholder="例: SPY, QQQ, 0050.TW"
+                @keyup.enter="handleBenchmarkChange"
+                :disabled="isChangingBenchmark"
+                class="benchmark-input"
+              />
+              <button 
+                @click="handleBenchmarkChange"
+                :disabled="isChangingBenchmark || !benchmarkInput || benchmarkInput === portfolioStore.selectedBenchmark"
+                class="btn-apply"
+                title="套用新的基準標的並重新計算"
+              >
+                <span v-if="isChangingBenchmark">⏳</span>
+                <span v-else>✓</span>
+              </button>
+            </div>
+          </div>
+          
+          <!-- 日期選擇器 -->
           <div class="date-range-selector">
             <div class="date-input-group">
               <label>起始日期</label>
@@ -76,8 +100,12 @@
 import { ref, onMounted, watch, nextTick, onUnmounted, computed } from 'vue';
 import Chart from 'chart.js/auto';
 import { usePortfolioStore } from '../stores/portfolio';
+import { useToast } from '../composables/useToast';
 
 const store = usePortfolioStore();
+const portfolioStore = usePortfolioStore();
+const { addToast } = useToast();
+
 const canvas = ref(null);
 let myChart = null;
 let resizeObserver = null;
@@ -88,6 +116,10 @@ const displayedData = ref([]);
 const baselineData = ref(null);
 const customStartDate = ref('');
 const customEndDate = ref('');
+
+// ✅ 新增：基準標的相關狀態
+const benchmarkInput = ref(portfolioStore.selectedBenchmark);
+const isChangingBenchmark = ref(false);
 
 // 計算今天的日期字串
 const todayStr = computed(() => {
@@ -103,6 +135,44 @@ const timeRanges = [
   { value: '1Y', label: '1Y' },
   { value: 'ALL', label: '全部' }
 ];
+
+// ✅ 新增：處理基準標的變更
+const handleBenchmarkChange = async () => {
+  const newBenchmark = benchmarkInput.value.trim().toUpperCase();
+  
+  if (!newBenchmark) {
+    addToast('請輸入基準標的代碼', 'error');
+    return;
+  }
+  
+  if (newBenchmark === portfolioStore.selectedBenchmark) {
+    addToast('基準標的未變更', 'info');
+    return;
+  }
+  
+  if (!confirm(`確定要將基準標的從 ${portfolioStore.selectedBenchmark} 改為 ${newBenchmark} 嗎？\n\n這將重新計算所有報酬率數據，約需 1-3 分鐘。`)) {
+    benchmarkInput.value = portfolioStore.selectedBenchmark;
+    return;
+  }
+  
+  isChangingBenchmark.value = true;
+  
+  try {
+    addToast(`🔄 正在切換基準標的至 ${newBenchmark}...`, 'info');
+    await portfolioStore.triggerUpdate(newBenchmark);
+    addToast(`✅ 已觸發重新計算！系統將在背景處理，完成後自動更新圖表。`, 'success');
+  } catch (error) {
+    addToast(`❌ 切換失敗: ${error.message}`, 'error');
+    benchmarkInput.value = portfolioStore.selectedBenchmark;
+  } finally {
+    isChangingBenchmark.value = false;
+  }
+};
+
+// ✅ 監聽 Store 中的 selectedBenchmark 變化，同步更新輸入框
+watch(() => portfolioStore.selectedBenchmark, (newVal) => {
+  benchmarkInput.value = newVal;
+});
 
 const switchTimeRange = (range) => {
     timeRange.value = range;
@@ -225,7 +295,6 @@ const drawChart = () => {
     };
 
     if (chartType.value === 'asset') {
-        // ✅ 資產曲線顯示實際值
         const assetData = displayedData.value.map(d => d.total_value);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
@@ -241,7 +310,6 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        // ✅ 修正：直接顯示 net_profit 絕對值，不減去 baseline
         const pnlData = displayedData.value.map(d => d.net_profit);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
@@ -260,6 +328,9 @@ const drawChart = () => {
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
+        // ✅ 動態顯示當前的基準標的名稱
+        const benchmarkLabel = `${portfolioStore.selectedBenchmark} (%)`;
+        
         datasets = [
             {
                 label: 'TWR (%)',
@@ -269,7 +340,7 @@ const drawChart = () => {
                 ...common
             },
             {
-                label: 'SPY (%)',
+                label: benchmarkLabel, // ✅ 使用動態標籤
                 data: displayedData.value.map(d => d.benchmark_twr - baseBenchmark),
                 borderColor: '#94a3b8',
                 borderDash: [5, 5],
@@ -330,7 +401,6 @@ const drawChart = () => {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
                                 } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
-                                    // ✅ 資產和損益都顯示實際值，損益加正負號
                                     const sign = (chartType.value === 'pnl' && context.parsed.y >= 0) ? '+' : 
                                                  (chartType.value === 'pnl' && context.parsed.y < 0) ? '' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
@@ -379,7 +449,6 @@ const drawChart = () => {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
                             } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
-                                // ✅ 資產和損益都顯示實際值
                                 const sign = (chartType.value === 'pnl' && value >= 0) ? '+' : 
                                              (chartType.value === 'pnl' && value < 0) ? '' : '';
                                 return sign + value.toLocaleString('zh-TW', {
@@ -466,12 +535,96 @@ onUnmounted(() => {
     justify-content: space-between;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;
 }
 
 .right-controls {
     display: flex;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;
+}
+
+/* ✅ 新增：基準標的選擇器樣式 */
+.benchmark-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 8px 12px;
+    border: 2px solid var(--primary);
+    animation: highlight-border 2s ease-in-out;
+}
+
+@keyframes highlight-border {
+  0%, 100% { border-color: var(--primary); }
+  50% { border-color: var(--warning); }
+}
+
+.benchmark-label {
+    font-size: 0.7rem;
+    color: var(--text-sub);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.benchmark-input-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.benchmark-input {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    min-width: 140px;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+}
+
+.benchmark-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.benchmark-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-apply {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.btn-apply:hover:not(:disabled) {
+    background: var(--primary-dark);
+    transform: scale(1.05);
+}
+
+.btn-apply:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .toggle-pills,
@@ -624,6 +777,15 @@ canvas {
         gap: 12px;
     }
     
+    .benchmark-selector {
+        width: 100%;
+    }
+    
+    .benchmark-input {
+        flex: 1;
+        min-width: auto;
+    }
+    
     .date-range-selector {
         width: 100%;
         justify-content: center;
@@ -674,6 +836,14 @@ canvas {
     
     .date-separator {
         display: none;
+    }
+    
+    .benchmark-input-group {
+        width: 100%;
+    }
+    
+    .benchmark-input {
+        font-size: 0.8rem;
     }
 }
 </style>
