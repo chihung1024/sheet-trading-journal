@@ -140,9 +140,14 @@ class PortfolioCalculator:
         cumulative_twr_factor = 1.0
         prev_total_equity = 0.0
         
-        # ✅ 修正：Benchmark 使用逐日累積計算 (方案二)
-        benchmark_twr_factor = 1.0
-        prev_benchmark_price = None
+        # ✅ [關鍵修正] 使用 portfolio-journal 的直接比較法
+        # 獲取 benchmark 的起始價格 (第一天)
+        first_date = date_range[0] if len(date_range) > 0 else datetime.now()
+        benchmark_start_price = self.market.get_price(self.benchmark_ticker, first_date)
+        
+        if benchmark_start_price <= 0:
+            logger.warning(f"Benchmark {self.benchmark_ticker} 的起始價格無效，將跳過 Benchmark 計算")
+            benchmark_start_price = None
 
         # 用於存儲每個標的最新的活躍當日損益
         last_active_daily_pnls = {}
@@ -161,20 +166,6 @@ class PortfolioCalculator:
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
             except: 
                 fx = DEFAULT_FX_RATE
-            
-            # ✅ 修正：逐日計算 Benchmark 報酬率
-            benchmark_price = self.market.get_price(self.benchmark_ticker, d)
-            
-            if prev_benchmark_price is not None and prev_benchmark_price > 0 and benchmark_price > 0:
-                daily_benchmark_return = (benchmark_price - prev_benchmark_price) / prev_benchmark_price
-                benchmark_twr_factor *= (1 + daily_benchmark_return)
-            
-            # 更新前一日價格（確保有效價格才更新）
-            if benchmark_price > 0:
-                prev_benchmark_price = benchmark_price
-            
-            # 計算累積報酬率（百分比）
-            benchmark_twr = (benchmark_twr_factor - 1) * 100
             
             # 取得昨日匯率與當日交易
             prev_date = d - timedelta(days=1)
@@ -309,12 +300,20 @@ class PortfolioCalculator:
             daily_return = (total_pnl - prev_pnl) / adj_equity if adj_equity > 1.0 else 0.0
             cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
+            
+            # ✅ [關鍵修正] 使用直接比較法計算 Benchmark TWR
+            benchmark_twr = 0.0
+            if benchmark_start_price and benchmark_start_price > 0:
+                current_benchmark_price = self.market.get_price(self.benchmark_ticker, d)
+                if current_benchmark_price > 0:
+                    # 直接計算：(當前價 / 起始價 - 1) * 100
+                    benchmark_twr = ((current_benchmark_price / benchmark_start_price) - 1) * 100
 
             history_data.append({
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2), # ✅ 使用逐日累積的基準報酬
+                "benchmark_twr": round(benchmark_twr, 2), # ✅ 使用直接比較的結果
                 "fx_rate": round(fx, 4)
             })
 
