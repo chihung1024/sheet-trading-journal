@@ -16,11 +16,9 @@
             <input type="text" v-model="form.symbol" @change="checkHoldings" placeholder="輸入代碼 (如 NVDA)" :disabled="isEditing" class="input-lg uppercase">
         </div>
         
-        <!-- ✅ 新增：策略標籤輸入 -->
         <div class="form-group full">
             <label>策略標籤 (Groups)</label>
             
-            <!-- ✅ 賣出時的智慧檢核 -->
             <div v-if="form.txn_type === 'SELL' && holdingGroups.length > 0" class="smart-sell-options">
                 <span class="hint">⚠️ 此標的目前持倉於以下群組，請勾選要賣出的部位：</span>
                 <div class="checkbox-group">
@@ -31,7 +29,6 @@
                 </div>
             </div>
             
-            <!-- ✅ 標籤晶片輸入器 -->
             <div class="tag-input-container" :class="{ disabled: form.txn_type === 'SELL' && holdingGroups.length > 0 }">
                 <div class="tags-list">
                     <span v-for="(tag, idx) in tagsArray" :key="idx" class="tag-chip">
@@ -51,7 +48,6 @@
                 </div>
             </div>
             
-            <!-- ✅ 快速標籤建議 -->
             <div class="quick-tags" v-if="form.txn_type !== 'SELL' || holdingGroups.length === 0">
                 <span v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">{{ t }}</span>
             </div>
@@ -89,7 +85,7 @@
     <div class="action-buttons">
         <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
         <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
-            {{ loading ? '處理中...' : (isEditing ? '更新交易' : '送出委託') }}
+            {{ loading ? '處理中...' : (isEditing ? '送出委託' : '送出委託') }}
         </button>
     </div>
   </div>
@@ -100,7 +96,6 @@ import { reactive, ref, computed, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
-import { CONFIG } from '../config';
 
 const store = usePortfolioStore();
 const auth = useAuthStore();
@@ -109,7 +104,6 @@ const loading = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
 
-// ✅ 新增：標籤相關狀態
 const tagInput = ref('');
 const selectedSellGroups = ref([]);
 const holdingGroups = ref([]);
@@ -123,26 +117,21 @@ const form = reactive({
     fee: 0, 
     tax: 0, 
     total_amount: '',
-    tag: '' // ✅ 新增
+    tag: '' 
 });
 
-// ✅ 解析 tag 字串為陣列
 const tagsArray = computed(() => {
     return (form.tag || '').split(/[,;]/).map(t=>t.trim()).filter(t=>t);
 });
 
-// ✅ 常見標籤建議 (從系統中已存在的群組提取)
 const commonTags = computed(() => {
     return store.availableGroups.filter(g => g !== 'all' && !tagsArray.value.includes(g));
 });
 
-// ✅ 當輸入 Symbol 改變時，檢查持倉 (Smart Sell)
 const checkHoldings = () => {
     if (form.txn_type === 'SELL' && form.symbol) {
         holdingGroups.value = store.getGroupsWithHolding(form.symbol.toUpperCase());
         selectedSellGroups.value = [];
-        
-        // 如果是在編輯模式，嘗試回填
         if (isEditing.value) {
             const currentTags = (form.tag || '').split(',').map(t=>t.trim());
             selectedSellGroups.value = holdingGroups.value.filter(g => currentTags.includes(g));
@@ -181,7 +170,6 @@ const pushTag = (t) => {
     }
 };
 
-// ✅ 監聽類型變化
 watch(() => form.txn_type, () => checkHoldings());
 
 const setTxnType = (type) => { 
@@ -194,29 +182,21 @@ const calcPriceFromInputs = () => {
     const total = parseFloat(form.total_amount) || 0;
     const fee = parseFloat(form.fee) || 0;
     const tax = parseFloat(form.tax) || 0;
-    
     if (qty <= 0 || total <= 0) return;
-    
     let avgCost = 0;
-    
-    if (form.txn_type === 'BUY') {
-        avgCost = (total + fee + tax) / qty;
-    } else if (form.txn_type === 'SELL') {
-        avgCost = (total - fee - tax) / qty;
-    } else {
-        avgCost = (total - tax) / qty;
-    }
-    
+    if (form.txn_type === 'BUY') { avgCost = (total + fee + tax) / qty; } 
+    else if (form.txn_type === 'SELL') { avgCost = (total - fee - tax) / qty; } 
+    else { avgCost = (total - tax) / qty; }
     form.price = parseFloat(avgCost.toFixed(4));
 };
 
+// MODIFIED: 大幅簡化 submit 邏輯，改為呼叫 Store Action
 const submit = async () => {
     if (!form.symbol || !form.qty || !form.price) { 
         addToast("請填寫完整資料", "error"); 
         return; 
     }
     
-    // ✅ 賣出檢核：必須至少勾選一個群組
     if (form.txn_type === 'SELL' && holdingGroups.value.length > 0 && selectedSellGroups.value.length === 0) {
         addToast("請勾選要賣出的群組", "error");
         return;
@@ -230,37 +210,25 @@ const submit = async () => {
     
     loading.value = true;
     try {
-        const method = isEditing.value ? "PUT" : "POST";
-        const payload = { ...form, id: isEditing.value ? editingId.value : undefined };
+        // MODIFIED: 數據轉換
+        const payload = { ...form };
         ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
         
-        const res = await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
-            method, 
-            headers: { 
-                'Authorization': `Bearer ${auth.token}`, 
-                'Content-Type': 'application/json' 
-            },
-            body: JSON.stringify(payload)
-        });
-        
-        if (res.status === 401) {
-            addToast("身份驗證失敗，請重新登入", "error");
-            setTimeout(() => auth.logout(), 2000);
-            return;
+        // MODIFIED: 呼叫 Store 封裝好的 Action
+        let success = false;
+        if (isEditing.value) {
+            payload.id = editingId.value;
+            success = await store.updateRecord(payload);
+        } else {
+            success = await store.addRecord(payload);
         }
         
-        const json = await res.json();
-        
-        if (json.success) {
-            addToast(isEditing.value ? "更新成功" : "新增成功", "success");
+        if (success) {
             resetForm(); 
-            store.fetchRecords();
-        } else { 
-            addToast(json.error || "操作失敗", "error"); 
+            // 不需要再手動 fetchRecords()，Store Action 內部已處理
         }
     } catch(e) { 
         console.error('❌ 提交錯誤:', e);
-        addToast("連線錯誤，請稍後再試", "error"); 
     } finally { 
         loading.value = false; 
     }
@@ -275,7 +243,7 @@ const resetForm = () => {
     form.fee = 0; 
     form.tax = 0; 
     form.total_amount = '';
-    form.tag = ''; // ✅ 清除標籤
+    form.tag = ''; 
     form.txn_type = 'BUY';
     holdingGroups.value = [];
     selectedSellGroups.value = [];
@@ -293,6 +261,7 @@ defineExpose({ setupForm });
 </script>
 
 <style scoped>
+/* 原有樣式保持不變 */
 .trade-panel { border: 1px solid var(--border-color); box-shadow: var(--shadow-card); background: var(--bg-card); padding: 24px; }
 .panel-title { margin-bottom: 24px; font-size: 1.3rem; color: var(--text-main); font-weight: 700; }
 .trade-type-switch { display: flex; background: var(--bg-secondary); padding: 4px; border-radius: 12px; margin-bottom: 24px; }
@@ -311,8 +280,6 @@ input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px
 input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 0.7; }
 .uppercase { text-transform: uppercase; }
 .dual-input { display: flex; gap: 12px; }
-
-/* ✅ 標籤輸入器樣式 */
 .tag-input-container { border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: var(--bg-card); display: flex; flex-wrap: wrap; gap: 6px; min-height: 46px; }
 .tag-input-container.disabled { opacity: 0.6; pointer-events: none; }
 .tags-list { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; align-items: center; }
@@ -323,15 +290,12 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .quick-tags { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-tag { font-size: 0.8rem; color: var(--text-sub); border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 12px; cursor: pointer; transition: all 0.2s; }
 .quick-tag:hover { border-color: var(--primary); color: var(--primary); }
-
-/* ✅ 智慧賣出檢核樣式 */
 .smart-sell-options { background: rgba(245, 158, 11, 0.1); border: 1px dashed var(--warning); padding: 12px; border-radius: 8px; margin-bottom: 12px; }
 .hint { display: block; font-size: 0.85rem; color: var(--warning); margin-bottom: 8px; font-weight: 600; }
 .checkbox-group { display: flex; gap: 12px; flex-wrap: wrap; }
 .tag-checkbox { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .tag-checkbox input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
 .tag-name { font-size: 0.95rem; font-weight: 500; color: var(--text-main); }
-
 .summary-box { background: var(--bg-secondary); padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 24px; border: 1px dashed var(--border-color); }
 .summary-label { font-size: 0.95rem; color: var(--text-sub); margin-bottom: 8px; font-weight: 500; }
 .summary-value { background: transparent; border: none; text-align: center; font-size: 2rem; font-weight: 700; color: var(--text-main); padding: 0; width: 100%; box-shadow: none; }
