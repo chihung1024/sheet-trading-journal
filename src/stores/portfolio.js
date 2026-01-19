@@ -78,15 +78,23 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         loading.value = true;
         
         try {
-            await Promise.all([
-                fetchSnapshot().catch(err => {
+            // 1. 先抓取交易紀錄 (這是數據的真實來源)
+            await fetchRecords().catch(err => {
+                console.error('❌ [fetchRecords] 錯誤:', err);
+                throw err;
+            });
+            
+            // 2. 根據紀錄結果決定是否抓取快照
+            // 如果紀錄歸零，直接清空本地快照狀態，不再向 API 請求舊數據
+            if (records.value && records.value.length > 0) {
+                await fetchSnapshot().catch(err => {
                     console.error('❌ [fetchSnapshot] 錯誤:', err);
-                }),
-                fetchRecords().catch(err => {
-                    console.error('❌ [fetchRecords] 錯誤:', err);
-                })
-            ]);
-            console.log('✅ [fetchAll] 數據載入完成');
+                });
+                console.log('✅ [fetchAll] 數據載入完成 (包含快照)');
+            } else {
+                resetData(); 
+                console.log('ℹ️ [fetchAll] 無交易紀錄，已強制重置本地數據');
+            }
         } catch (error) {
             console.error('❌ [fetchAll] 發生嚴重錯誤:', error);
             connectionStatus.value = 'error';
