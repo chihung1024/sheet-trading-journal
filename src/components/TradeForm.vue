@@ -1,6 +1,6 @@
 <template>
-  <div class="card trade-panel no-padding-mobile" id="trade-form-anchor">
-    <h3 class="panel-title">{{ isEditing ? '編輯交易紀錄' : '快速新增交易' }}</h3>
+  <div class="card trade-panel" id="trade-form-anchor">
+    <h3 class="panel-title">{{ isEditing ? '編輯交易' : '快速下單' }}</h3>
     
     <div class="trade-type-switch">
         <button v-for="t in ['BUY', 'SELL', 'DIV']" :key="t"
@@ -13,21 +13,14 @@
     <div class="form-grid">
         <div class="form-group full">
             <label>交易標的</label>
-            <input 
-              type="text" 
-              v-model="form.symbol" 
-              @change="checkHoldings" 
-              placeholder="輸入代碼 (如 NVDA)" 
-              :disabled="isEditing" 
-              class="input-lg uppercase"
-            >
+            <input type="text" v-model="form.symbol" @change="checkHoldings" placeholder="輸入代碼 (如 NVDA)" :disabled="isEditing" class="input-lg uppercase">
         </div>
         
         <div class="form-group full">
             <label>策略標籤 (Groups)</label>
             
             <div v-if="form.txn_type === 'SELL' && holdingGroups.length > 0" class="smart-sell-options">
-                <span class="hint">⚠️ 此標的目前持倉於以下群組，請勾選：</span>
+                <span class="hint">⚠️ 此標的目前持倉於以下群組，請勾選要賣出的部位：</span>
                 <div class="checkbox-group">
                     <label v-for="g in holdingGroups" :key="g" class="tag-checkbox">
                         <input type="checkbox" :value="g" v-model="selectedSellGroups" @change="updateTagsFromCheckboxes">
@@ -48,7 +41,7 @@
                         @keydown.enter.prevent="addTag"
                         @keydown.tab.prevent="addTag"
                         @blur="addTag"
-                        placeholder="新增標籤..."
+                        placeholder="輸入標籤後按 Enter..."
                         class="tag-input-field"
                         :disabled="form.txn_type === 'SELL' && holdingGroups.length > 0"
                     >
@@ -61,38 +54,38 @@
         </div>
         
         <div class="form-group">
-            <label>交易日期</label>
+            <label>日期</label>
             <input type="date" v-model="form.txn_date" class="input-md">
         </div>
         
         <div class="form-group">
             <label>成交單價 (USD)</label>
-            <input type="number" v-model="form.price" @input="calcTotalFromInputs" placeholder="0.00" class="input-md" step="0.0001">
+            <input type="number" v-model="form.price" placeholder="0.00" class="input-md" step="0.0001">
         </div>
 
         <div class="form-group">
-            <label>成交股數</label>
-            <input type="number" v-model="form.qty" @input="calcTotalFromInputs" placeholder="0" class="input-md" step="0.0001">
+            <label>股數</label>
+            <input type="number" v-model="form.qty" @input="calcPriceFromInputs" placeholder="0" class="input-md" step="0.0001">
         </div>
 
         <div class="form-group">
-            <label>相關費用 (USD)</label>
+            <label>費用 (Fee/Tax)</label>
             <div class="dual-input">
-                <input type="number" v-model="form.fee" @input="calcTotalFromInputs" placeholder="手續費" step="0.01">
-                <input type="number" v-model="form.tax" @input="calcTotalFromInputs" placeholder="稅金" step="0.01">
+                <input type="number" v-model="form.fee" @input="calcPriceFromInputs" placeholder="手續費" step="0.01">
+                <input type="number" v-model="form.tax" @input="calcPriceFromInputs" placeholder="稅金" step="0.01">
             </div>
         </div>
     </div>
 
     <div class="summary-box">
-        <div class="summary-label">預估總金額 (USD)</div>
-        <input type="number" v-model="form.total_amount" @input="calcPriceFromTotal" class="summary-value" step="0.01" placeholder="0.00">
+        <div class="summary-label">交易總金額 (USD)</div>
+        <input type="number" v-model="form.total_amount" @input="calcPriceFromInputs" class="summary-value" step="0.01" placeholder="0.00">
     </div>
     
     <div class="action-buttons">
         <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
         <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
-            {{ loading ? '傳送中...' : (isEditing ? '更新紀錄' : '送出委託') }}
+            {{ loading ? '處理中...' : (isEditing ? '送出委託' : '送出委託') }}
         </button>
     </div>
   </div>
@@ -184,53 +177,44 @@ const setTxnType = (type) => {
     checkHoldings();
 };
 
-// MODIFIED: 增加雙向計算邏輯
-const calcTotalFromInputs = () => {
-    const qty = parseFloat(form.qty) || 0;
-    const price = parseFloat(form.price) || 0;
-    const fee = parseFloat(form.fee) || 0;
-    const tax = parseFloat(form.tax) || 0;
-    if (qty <= 0 || price <= 0) return;
-    
-    let total = 0;
-    if (form.txn_type === 'BUY') total = (qty * price) + fee + tax;
-    else if (form.txn_type === 'SELL') total = (qty * price) - fee - tax;
-    else total = (qty * price) - tax;
-    
-    form.total_amount = parseFloat(total.toFixed(2));
-};
-
-const calcPriceFromTotal = () => {
+const calcPriceFromInputs = () => {
     const qty = parseFloat(form.qty) || 0;
     const total = parseFloat(form.total_amount) || 0;
     const fee = parseFloat(form.fee) || 0;
     const tax = parseFloat(form.tax) || 0;
     if (qty <= 0 || total <= 0) return;
-
-    let price = 0;
-    if (form.txn_type === 'BUY') price = (total - fee - tax) / qty;
-    else if (form.txn_type === 'SELL') price = (total + fee + tax) / qty;
-    else price = (total + tax) / qty;
-    
-    form.price = parseFloat(price.toFixed(4));
+    let avgCost = 0;
+    if (form.txn_type === 'BUY') { avgCost = (total + fee + tax) / qty; } 
+    else if (form.txn_type === 'SELL') { avgCost = (total - fee - tax) / qty; } 
+    else { avgCost = (total - tax) / qty; }
+    form.price = parseFloat(avgCost.toFixed(4));
 };
 
+// MODIFIED: 大幅簡化 submit 邏輯，改為呼叫 Store Action
 const submit = async () => {
     if (!form.symbol || !form.qty || !form.price) { 
-        addToast("請填寫完整交易資料", "error"); 
+        addToast("請填寫完整資料", "error"); 
         return; 
     }
     
     if (form.txn_type === 'SELL' && holdingGroups.value.length > 0 && selectedSellGroups.value.length === 0) {
-        addToast("請先勾選要扣除持倉的群組", "error");
+        addToast("請勾選要賣出的群組", "error");
+        return;
+    }
+    
+    if (!auth.token || auth.isTokenExpired()) {
+        addToast("登入已過期，請重新登入", "error");
+        setTimeout(() => auth.logout(), 2000);
         return;
     }
     
     loading.value = true;
     try {
+        // MODIFIED: 數據轉換
         const payload = { ...form };
         ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
         
+        // MODIFIED: 呼叫 Store 封裝好的 Action
         let success = false;
         if (isEditing.value) {
             payload.id = editingId.value;
@@ -240,11 +224,11 @@ const submit = async () => {
         }
         
         if (success) {
-            resetForm();
-            // 在 App.vue 的 handleEditRecord 中已經處理了捲動
+            resetForm(); 
+            // 不需要再手動 fetchRecords()，Store Action 內部已處理
         }
     } catch(e) { 
-        console.error('Submit Error:', e);
+        console.error('❌ 提交錯誤:', e);
     } finally { 
         loading.value = false; 
     }
@@ -277,62 +261,59 @@ defineExpose({ setupForm });
 </script>
 
 <style scoped>
-/* MODIFIED: 基礎容器樣式適配行動端 */
-.trade-panel { padding: 24px; border: 1px solid var(--border-color); }
-.panel-title { margin-bottom: 20px; font-size: 1.25rem; font-weight: 700; color: var(--text-main); }
-
+/* 原有樣式保持不變 */
+.trade-panel { border: 1px solid var(--border-color); box-shadow: var(--shadow-card); background: var(--bg-card); padding: 24px; }
+.panel-title { margin-bottom: 24px; font-size: 1.3rem; color: var(--text-main); font-weight: 700; }
 .trade-type-switch { display: flex; background: var(--bg-secondary); padding: 4px; border-radius: 12px; margin-bottom: 24px; }
-.switch-btn { flex: 1; border: none; background: transparent; padding: 12px; font-weight: 600; color: var(--text-sub); cursor: pointer; border-radius: 8px; transition: all 0.2s; font-size: 0.95rem; }
-.switch-btn.active { background: var(--bg-card); box-shadow: var(--shadow-sm); color: var(--text-main); }
+.switch-btn { flex: 1; border: none; background: transparent; padding: 10px; font-weight: 500; color: var(--text-sub); cursor: pointer; border-radius: 8px; transition: all 0.2s; font-size: 1rem; }
+.switch-btn.active { background: var(--bg-card); box-shadow: var(--shadow-sm); color: var(--text-main); font-weight: 600; }
 .switch-btn.buy.active { color: var(--primary); }
 .switch-btn.sell.active { color: var(--success); }
 .switch-btn.div.active { color: var(--warning); }
-
-/* MODIFIED: 網格系統重構 (Mobile First) */
-.form-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 20px; }
-.form-group { display: flex; flex-direction: column; gap: 6px; }
-.form-group.full { grid-column: 1 / -1; }
-
-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; padding-left: 2px; }
-input { padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 1rem; width: 100%; font-family: 'JetBrains Mono', monospace; transition: all 0.2s; color: var(--text-main); background: var(--bg-card); min-height: 46px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+.form-group { display: flex; flex-direction: column; gap: 8px; }
+.form-group.full { grid-column: span 2; }
+label { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; }
+input { padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1.05rem; width: 100%; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; transition: all 0.2s; color: var(--text-main); background: var(--bg-card); }
+input::placeholder { color: var(--text-sub); opacity: 0.6; }
 input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 0.7; }
 .uppercase { text-transform: uppercase; }
-
-.dual-input { display: flex; gap: 10px; }
-.dual-input input { flex: 1; }
-
-/* MODIFIED: 標籤輸入區域優化 */
-.tag-input-container { border: 1px solid var(--border-color); border-radius: 10px; padding: 8px; background: var(--bg-card); display: flex; flex-wrap: wrap; gap: 6px; min-height: 48px; }
+.dual-input { display: flex; gap: 12px; }
+.tag-input-container { border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: var(--bg-card); display: flex; flex-wrap: wrap; gap: 6px; min-height: 46px; }
+.tag-input-container.disabled { opacity: 0.6; pointer-events: none; }
 .tags-list { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; align-items: center; }
-.tag-chip { background: var(--bg-secondary); color: var(--primary); padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 6px; border: 1px solid rgba(59, 130, 246, 0.1); }
-.remove-tag { cursor: pointer; opacity: 0.5; font-weight: bold; font-size: 1.1rem; padding: 0 2px; }
+.tag-chip { background: var(--bg-secondary); color: var(--primary); padding: 4px 8px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.remove-tag { cursor: pointer; opacity: 0.6; font-weight: bold; font-size: 1.1rem; }
 .remove-tag:hover { opacity: 1; color: var(--danger); }
-.tag-input-field { border: none !important; outline: none; background: transparent; flex: 1; min-width: 80px; padding: 4px !important; min-height: unset !important; font-size: 0.9rem; }
-
-.quick-tags { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
-.quick-tag { font-size: 0.75rem; color: var(--text-sub); border: 1px solid var(--border-color); padding: 4px 10px; border-radius: 12px; cursor: pointer; }
-.quick-tag:active { background: var(--primary); color: white; border-color: var(--primary); }
-
-/* MODIFIED: 總覽區塊行動端視覺加強 */
-.summary-box { background: var(--bg-secondary); padding: 16px; border-radius: 14px; text-align: center; margin-bottom: 24px; border: 2px dashed var(--border-color); }
-.summary-label { font-size: 0.8rem; color: var(--text-sub); margin-bottom: 6px; font-weight: 700; text-transform: uppercase; }
-.summary-value { background: transparent !important; border: none !important; text-align: center; font-size: 1.8rem !important; font-weight: 800 !important; color: var(--text-main); padding: 0 !important; min-height: auto !important; box-shadow: none !important; }
-
-.action-buttons { display: flex; gap: 12px; }
-.btn { flex: 1; padding: 14px; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; font-size: 1rem; }
-.btn-submit { color: white; background: var(--primary); box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2); }
+.tag-input-field { border: none; outline: none; background: transparent; flex: 1; min-width: 100px; padding: 4px; color: var(--text-main); font-family: 'Inter', sans-serif; font-size: 0.95rem; }
+.quick-tags { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-tag { font-size: 0.8rem; color: var(--text-sub); border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 12px; cursor: pointer; transition: all 0.2s; }
+.quick-tag:hover { border-color: var(--primary); color: var(--primary); }
+.smart-sell-options { background: rgba(245, 158, 11, 0.1); border: 1px dashed var(--warning); padding: 12px; border-radius: 8px; margin-bottom: 12px; }
+.hint { display: block; font-size: 0.85rem; color: var(--warning); margin-bottom: 8px; font-weight: 600; }
+.checkbox-group { display: flex; gap: 12px; flex-wrap: wrap; }
+.tag-checkbox { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.tag-checkbox input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
+.tag-name { font-size: 0.95rem; font-weight: 500; color: var(--text-main); }
+.summary-box { background: var(--bg-secondary); padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 24px; border: 1px dashed var(--border-color); }
+.summary-label { font-size: 0.95rem; color: var(--text-sub); margin-bottom: 8px; font-weight: 500; }
+.summary-value { background: transparent; border: none; text-align: center; font-size: 2rem; font-weight: 700; color: var(--text-main); padding: 0; width: 100%; box-shadow: none; }
+.summary-value:focus { box-shadow: none; }
+.action-buttons { display: flex; gap: 16px; }
+.btn { flex: 1; padding: 14px; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 1.05rem; letter-spacing: 0.02em; }
+.btn-cancel { background: var(--bg-secondary); color: var(--text-sub); border: 1px solid var(--border-color); }
+.btn-cancel:hover { background: var(--border-color); color: var(--text-main); }
+.btn-submit { color: white; background: var(--primary); }
 .btn-submit.buy { background: var(--primary); }
 .btn-submit.sell { background: var(--success); }
 .btn-submit.div { background: var(--warning); }
-.btn-submit:active { transform: scale(0.97); opacity: 0.9; }
-
-/* MODIFIED: 行動端特定樣式中斷點 */
-@media (min-width: 640px) {
-    .form-grid { grid-template-columns: 1fr 1fr; }
-}
+.btn-submit:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: var(--shadow-card); }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 @media (max-width: 768px) {
-    .no-padding-mobile { padding: 16px !important; border-radius: 0; border-left: none; border-right: none; }
-    .panel-title { font-size: 1.15rem; }
+    .trade-panel { padding: 20px; }
+    .form-grid { gap: 16px; }
+    .panel-title { font-size: 1.2rem; }
 }
 </style>

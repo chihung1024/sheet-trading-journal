@@ -1,6 +1,6 @@
 <template>
   <div class="stats-grid">
-    <div class="stat-block primary-card full-width">
+    <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">總資產淨值</span>
         <span class="icon-box">💰</span>
@@ -14,25 +14,22 @@
             <span class="f-label">投入成本</span> 
             <span class="f-val">{{ formatNumber(stats.invested_capital) }}</span>
         </div>
-        <span class="badge-mini" :class="totalRoi >= 0 ? 'text-green' : 'text-red'">
-          {{ totalRoi >= 0 ? '+' : '' }}{{ totalRoi }}%
-        </span>
       </div>
     </div>
     
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">未實現損益</span>
-        <span class="icon-box-sm">📈</span>
+        <span class="icon-box">📈</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value-sm" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
+        <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
           {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
         </div>
       </div>
       <div class="stat-footer">
-        <span class="badge-compact" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
-            {{ roi }}%
+        <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
+            ROI: {{ roi }}%
         </span>
       </div>
     </div>
@@ -40,29 +37,29 @@
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">已實現損益</span>
-        <span class="icon-box-sm">💵</span>
+        <span class="icon-box">💵</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value-sm" :class="realizedPnL >= 0 ? 'text-green' : 'text-red'">
+        <div class="stat-value" :class="realizedPnL >= 0 ? 'text-green' : 'text-red'">
           {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
         </div>
       </div>
       <div class="stat-footer">
-        <span class="text-sub text-tiny">收益+配息</span>
+        <span class="text-sub text-xs">賣出收益 + 配息收入</span>
       </div>
     </div>
     
-    <div class="stat-block primary-card full-width highlight" :title="pnlTooltip">
+    <div class="stat-block" :title="pnlTooltip">
       <div class="stat-top">
-        <span class="stat-label label-bold">{{ pnlLabel }}</span>
+        <span class="stat-label">{{ pnlLabel }}</span>
         <span class="icon-box">⚡</span>
       </div>
-      <div class="stat-main row-layout">
+      <div class="stat-main column-layout">
         <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
           {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
         </div>
-        <div class="stat-roi-badge" :class="dailyPnL >= 0 ? 'bg-green-soft' : 'bg-red-soft'">
-          {{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%
+        <div class="stat-sub-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
+          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
         </div>
       </div>
       <div class="stat-footer">
@@ -72,29 +69,29 @@
     
     <div class="stat-block">
       <div class="stat-top">
-        <span class="stat-label">TWR</span>
-        <span class="icon-box-sm">🎯</span>
+        <span class="stat-label">時間加權報酬</span>
+        <span class="icon-box">🎯</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value-sm">{{ (stats.twr || 0).toFixed(2) }}<span class="percent">%</span></div>
+        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub text-tiny">策略表現</span>
+         <span class="text-sub">TWR (策略表現)</span>
       </div>
     </div>
     
     <div class="stat-block">
       <div class="stat-top">
-        <span class="stat-label">XIRR</span>
-        <span class="icon-box-sm">🚀</span>
+        <span class="stat-label">個人年化報酬</span>
+        <span class="icon-box">🚀</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value-sm" :class="(stats.xirr || 0) >= 0 ? 'text-green' : 'text-red'">
+        <div class="stat-value" :class="(stats.xirr || 0) >= 0 ? 'text-green' : 'text-red'">
           {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
         </div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub text-tiny">年化報酬</span>
+         <span class="text-sub">XIRR (資金加權)</span>
       </div>
     </div>
   </div>
@@ -106,29 +103,31 @@ import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
 const stats = computed(() => store.stats || {});
+const history = computed(() => store.history || []);
 const holdings = computed(() => store.holdings || []);
 
-// 損益邏輯計算
+// ✅ 修正：直接使用後端計算好的 total_pnl
 const totalPnL = computed(() => stats.value.total_pnl || 0);
+
+// 計算已實現損益 (從後端 API 獲取)
 const realizedPnL = computed(() => stats.value.realized_pnl || 0);
+
+// ✅ 修正：未實現損益 = 總損益 - 已實現損益
 const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
 
-// MODIFIED: 增加總資產報酬率計算屬性
-const totalRoi = computed(() => {
-  if (!stats.value.invested_capital || stats.value.invested_capital === 0) return '0.00';
-  return ((totalPnL.value / stats.value.invested_capital) * 100).toFixed(2);
-});
-
+// 計算 ROI
 const roi = computed(() => {
-  if (!stats.value.invested_capital || stats.value.invested_capital === 0) return '0.00';
+  if (!stats.value.invested_capital) return '0.00';
   return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
 });
 
-// 美股開盤偵測邏輯
+// 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
 const isUSMarketOpen = computed(() => {
   const now = new Date();
   const hour = now.getHours();
   const minute = now.getMinutes();
+  
+  // 晚上 9:30 後 或 凌晨 5:00 前
   if (hour >= 21 || hour < 5) {
     if (hour === 21 && minute < 30) return false;
     return true;
@@ -136,22 +135,45 @@ const isUSMarketOpen = computed(() => {
   return false;
 });
 
-const pnlLabel = computed(() => isUSMarketOpen.value ? '美股盤中損益' : '今日損益');
-const pnlDescription = computed(() => isUSMarketOpen.value ? '包含股價、匯率即時波動' : '對比昨日收盤之總變動');
-const pnlTooltip = computed(() => '採用 Modified Dietz 方法，精確對齊當日交易與匯率變化');
-
-const dailyPnL = computed(() => {
-  return holdings.value.reduce((sum, holding) => sum + (holding.daily_pl_twd || 0), 0);
+// 動態標題
+const pnlLabel = computed(() => {
+  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益';
 });
 
+// 動態說明
+const pnlDescription = computed(() => {
+  if (isUSMarketOpen.value) {
+    return '包含今日股價、匯率及交易影響';
+  } else {
+    return '包含昨日股價、今日匯率變化';
+  }
+});
+
+// Tooltip 完整說明
+const pnlTooltip = computed(() => {
+  return '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響';
+});
+
+// 核心修正：直接使用後端計算好的 daily_pl_twd
+// 後端使用 Modified Dietz 方法，公式：daily_pl = ending_value - beginning_value - cashflow
+const dailyPnL = computed(() => {
+  // 直接加總所有持股的 daily_pl_twd
+  return holdings.value.reduce((sum, holding) => {
+    return sum + (holding.daily_pl_twd || 0);
+  }, 0);
+});
+
+// 計算今日損益百分比
 const dailyRoi = computed(() => {
+  // 使用昨日總資產作為基準
+  // 昨日總資產 = 今日總資產 - 今日損益
   const yesterdayValue = stats.value.total_value - dailyPnL.value;
-  // MODIFIED: 增加防禦性除零檢查
-  if (!yesterdayValue || yesterdayValue <= 0) return '0.00';
+  
+  if (!yesterdayValue || yesterdayValue === 0) return '0.00';
   return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
 });
 
-// 數值動畫 Hook 優化
+// 數字動畫
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -170,170 +192,198 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 </script>
 
 <style scoped>
-/* MODIFIED: 全方位響應式樣式調整 */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 16px; /* 縮小間距使畫面不鬆散 */
+    gap: 20px;
 }
 
 .stat-block {
     background: var(--bg-card);
-    padding: 16px;
-    border-radius: 16px;
+    padding: 18px 20px;
+    border-radius: var(--radius);
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-card);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 110px;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    min-height: 120px;
+    transition: all 0.2s ease;
     position: relative;
     overflow: hidden;
-    user-select: none; /* 防止點擊時選中文字 */
 }
 
-/* MODIFIED: 新增行動端觸碰回饋 */
-.stat-block:active {
-    transform: scale(0.96);
-    background: var(--bg-secondary);
-}
-
-.stat-block.primary-card {
-    border-left: 4px solid var(--primary);
-}
-
-.stat-block.highlight {
-    border-left: 4px solid var(--warning);
-    background: linear-gradient(145deg, var(--bg-card), var(--bg-secondary));
+.stat-block:hover { 
+    transform: translateY(-2px); 
+    box-shadow: var(--shadow-lg); 
 }
 
 .stat-top { 
     display: flex; 
     justify-content: space-between; 
     align-items: center; 
-    margin-bottom: 6px; 
+    margin-bottom: 10px; 
 }
 
 .stat-label { 
-    font-size: 0.75rem; 
+    font-size: 0.9rem; 
     color: var(--text-sub); 
-    font-weight: 700; 
+    font-weight: 600; 
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
-.stat-label.label-bold {
-    color: var(--text-main);
-}
-
-.icon-box, .icon-box-sm { 
-    width: 32px; 
-    height: 32px; 
-    border-radius: 8px; 
+.icon-box { 
+    width: 36px; 
+    height: 36px; 
+    border-radius: 10px; 
     background: var(--bg-secondary);
     display: flex; 
     align-items: center; 
     justify-content: center; 
-    font-size: 1.1rem;
+    font-size: 1.2rem;
+    transition: transform 0.2s ease;
 }
 
-.icon-box-sm {
-    width: 28px;
-    height: 28px;
-    font-size: 0.9rem;
-    opacity: 0.7;
+.stat-block:hover .icon-box {
+    transform: scale(1.1);
 }
 
 .stat-main { 
     display: flex; 
     align-items: baseline; 
-    gap: 4px; 
-    margin-bottom: 8px; 
+    gap: 6px; 
+    margin-bottom: 10px; 
+    flex-grow: 1;
 }
 
-.stat-main.row-layout {
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
+.stat-main.column-layout {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
 }
 
 .stat-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: var(--text-main);
-    line-height: 1;
-    letter-spacing: -0.04em;
-}
-
-.stat-value-sm {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1.25rem;
+    font-size: 1.8rem;
     font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
 }
 
 .stat-value.big {
-    font-size: 1.85rem;
+    font-size: 2rem;
 }
 
-/* MODIFIED: 新增數值變動百分比樣式 */
-.stat-roi-badge {
-    padding: 2px 8px;
-    border-radius: 6px;
+.stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.9rem;
-    font-weight: 700;
+    font-size: 1.05rem;
+    font-weight: 600;
+    opacity: 0.9;
+    margin-top: 2px;
 }
 
-.bg-green-soft { background: rgba(16, 185, 129, 0.15); color: var(--success); }
-.bg-red-soft { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+.stat-sub-text {
+    font-size: 0.8rem;
+    color: var(--text-sub);
+    font-weight: 500;
+    margin-top: 2px;
+    opacity: 0.9;
+}
 
 .unit-text, .percent { 
-    font-size: 0.8rem; 
+    font-size: 0.95rem; 
     color: var(--text-sub); 
-    font-weight: 600; 
+    font-weight: 500; 
 }
 
 .stat-footer {
-    padding-top: 8px;
-    border-top: 1px dashed var(--border-color); /* 改為虛線增加設計感 */
-    font-size: 0.75rem;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.85rem;
     display: flex; 
     align-items: center; 
     justify-content: space-between;
 }
 
-.footer-item { display: flex; align-items: center; gap: 4px; }
-.f-val { font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.footer-item { 
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
+}
+
+.f-label {
+    color: var(--text-sub);
+}
+
+.f-val { 
+    font-weight: 600; 
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-main);
+}
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
-.text-tiny { font-size: 0.7rem; opacity: 0.8; }
+.text-sub { color: var(--text-sub); }
+.text-xs { font-size: 0.8rem; }
 
-.badge-mini { font-weight: 800; font-size: 0.7rem; }
-
-.badge-compact { 
-    padding: 1px 6px; 
-    border-radius: 4px; 
-    font-weight: 700; 
-    font-size: 0.75rem; 
+.badge { 
+    padding: 3px 10px; 
+    border-radius: 16px; 
+    font-weight: 600; 
+    font-size: 0.8rem; 
+    display: inline-flex; 
+    align-items: center; 
 }
 
-.badge-green { background: var(--success); color: white; }
-.badge-red { background: var(--danger); color: white; }
+.badge-green { 
+    background: rgba(16, 185, 129, 0.1); 
+    color: var(--success);
+    border: 1px solid var(--success);
+}
 
-/* MODIFIED: 手機端佈局邏輯重構 */
-@media (max-width: 1024px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .full-width { grid-column: span 2; }
+.badge-red { 
+    background: rgba(239, 68, 68, 0.1); 
+    color: var(--danger);
+    border: 1px solid var(--danger);
+}
+
+@media (max-width: 1200px) { 
+    .stats-grid { 
+        grid-template-columns: repeat(2, 1fr);
+    } 
+}
+
+@media (max-width: 768px) { 
+    .stats-grid { 
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+    
+    .stat-block {
+        min-height: 110px;
+        padding: 16px 18px;
+    }
+    
+    .stat-value {
+        font-size: 1.6rem;
+    }
+    
+    .stat-value.big {
+        font-size: 1.8rem;
+    }
 }
 
 @media (max-width: 480px) {
-    .stats-grid { gap: 8px; }
-    .stat-block { padding: 12px; min-height: 100px; }
-    .stat-value { font-size: 1.4rem; }
-    .stat-value.big { font-size: 1.6rem; }
-    .stat-value-sm { font-size: 1.15rem; }
+    .icon-box {
+        width: 32px;
+        height: 32px;
+        font-size: 1.1rem;
+    }
+    
+    .stat-label {
+        font-size: 0.8rem;
+    }
 }
 </style>
