@@ -13,10 +13,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const isPolling = ref(false);
     let pollTimer = null;
 
-    // ✅ 新增：自訂基準標的 (從 localStorage 讀取，預設 SPY)
+    // ✅ 自訂基準標的 (從 localStorage 讀取，預設 SPY)
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
 
-    // ✅ 新增：當前選擇的群組
+    // ✅ 當前選擇的群組
     const currentGroup = ref('all');
 
     const getToken = () => {
@@ -60,7 +60,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 新增：清空本地數據狀態 (用於 BUG 修復：紀錄歸零時)
+    // ✅ 清空本地數據狀態 (用於 BUG 修復：紀錄歸零時)
     const resetData = () => {
         rawData.value = null;
         records.value = [];
@@ -78,14 +78,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         loading.value = true;
         
         try {
-            // 1. 先抓取交易紀錄 (這是數據的真實來源)
+            // 1. 先抓取交易紀錄
             await fetchRecords().catch(err => {
                 console.error('❌ [fetchRecords] 錯誤:', err);
                 throw err;
             });
             
             // 2. 根據紀錄結果決定是否抓取快照
-            // 如果紀錄歸零，直接清空本地快照狀態，不再向 API 請求舊數據
             if (records.value && records.value.length > 0) {
                 await fetchSnapshot().catch(err => {
                     console.error('❌ [fetchSnapshot] 錯誤:', err);
@@ -100,27 +99,20 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             connectionStatus.value = 'error';
         } finally {
             loading.value = false;
-            console.log('🏁 [fetchAll] loading 狀態已重置為 false');
         }
     };
 
     const fetchSnapshot = async () => {
-        console.log('📊 [fetchSnapshot] 開始請求...');
         try {
             const json = await fetchWithAuth('/api/portfolio');
-            console.log('📊 [fetchSnapshot] API 回應:', json);
-            
             if (json && json.success && json.data) {
-                // 如果回傳的是空數據結構，視為需要重置
                 if (!json.data.updated_at || (json.data.holdings && json.data.holdings.length === 0 && records.value.length === 0)) {
                     resetData();
                     return;
                 }
                 rawData.value = json.data; 
                 lastUpdate.value = json.data.updated_at;
-                console.log('✅ [fetchSnapshot] 數據已更新');
             } else {
-                console.warn('⚠️ [fetchSnapshot] 數據格式異常或無資料');
                 resetData();
             }
         } catch (error) {
@@ -130,21 +122,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const fetchRecords = async () => {
-        console.log('📝 [fetchRecords] 開始請求...');
         try {
             const json = await fetchWithAuth('/api/records');
-            console.log('📝 [fetchRecords] API 回應:', json);
-            
             if (json && json.success) {
                 records.value = json.data || [];
-                console.log('✅ [fetchRecords] 數據已更新，共', records.value.length, '筆');
-                
-                // 如果紀錄真的清空了，確保 Snapshot 也被清理
                 if (records.value.length === 0) {
                     resetData();
                 }
-            } else {
-                console.warn('⚠️ [fetchRecords] 數據格式異常:', json);
             }
         } catch (error) {
             console.error('❌ [fetchRecords] 請求失敗:', error);
@@ -152,7 +136,39 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 新增：執行刪除紀錄 (含 BUG 修復連鎖反應)
+    /**
+     * ✅ 新增交易紀錄 (對接 0->1 自動觸發邏輯)
+     */
+    const addRecord = async (recordData) => {
+        const { addToast } = useToast();
+        try {
+            const json = await fetchWithAuth('/api/records', {
+                method: 'POST',
+                body: JSON.stringify(recordData)
+            });
+
+            if (json && json.success) {
+                addToast("交易紀錄已新增", "success");
+                
+                // 立即更新紀錄列表
+                await fetchRecords();
+
+                // 核心邏輯：偵測 0 變 1 的自動觸發
+                if (json.autoUpdated) {
+                    addToast("正在為您的首筆交易建立快照，請稍候...", "info");
+                    startPolling(); // 開始輪詢等待計算結果
+                }
+                
+                return true;
+            }
+            return false;
+        } catch (e) {
+            addToast(`新增失敗: ${e.message}`, "error");
+            return false;
+        }
+    };
+
+    // ✅ 執行刪除紀錄
     const deleteRecord = async (id) => {
         const { addToast } = useToast();
         try {
@@ -164,14 +180,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (json && json.success) {
                 addToast("刪除成功", "success");
                 
-                // [關鍵修復] 如果收到重置信號，立即秒殺本地狀態
                 if (json.message === "RELOAD_UI") {
                     resetData();
                     addToast("所有數據已清空", "info");
                 } else {
-                    // 否則觸發輪詢等待計算結果
                     await fetchRecords();
-                    startPolling();
+                    // 只有在紀錄 > 0 的情況下才輪詢
+                    if (records.value.length > 0) {
+                        startPolling();
+                    }
                 }
                 return true;
             }
@@ -182,7 +199,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 可用群組列表
     const availableGroups = computed(() => {
         if (!rawData.value || !rawData.value.groups) return ['all'];
         return Object.keys(rawData.value.groups).sort((a, b) => {
@@ -192,7 +208,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         });
     });
 
-    // ✅ 動態取得當前群組數據
     const currentGroupData = computed(() => {
         if (!rawData.value) return {};
         if (rawData.value.groups && rawData.value.groups[currentGroup.value]) {
@@ -201,31 +216,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         return rawData.value;
     });
 
-    // Getters 改為依賴 currentGroupData
     const stats = computed(() => currentGroupData.value.summary || {});
     const holdings = computed(() => currentGroupData.value.holdings || []);
     const history = computed(() => currentGroupData.value.history || []);
     const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
-    // ✅ 切換群組 Action
     const setGroup = (group) => {
         if (availableGroups.value.includes(group)) {
             currentGroup.value = group;
-            console.log(`✅ 已切換至群組: ${group}`);
         }
-    };
-
-    // ✅ 取得某支股票存在於哪些群組 (用於賣出時智慧判斷)
-    const getGroupsWithHolding = (symbol) => {
-        if (!rawData.value || !rawData.value.groups) return [];
-        const groups = [];
-        for (const [groupName, data] of Object.entries(rawData.value.groups)) {
-            if (groupName === 'all') continue;
-            const hasStock = data.holdings.some(h => h.symbol === symbol && h.qty > 0);
-            if (hasStock) groups.push(groupName);
-        }
-        return groups;
     };
 
     const startPolling = () => {
@@ -239,7 +239,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
         pollTimer = setInterval(async () => {
             if (Date.now() - startTime > 180000) {
-                console.warn('⚠️ [SmartPolling] 更新超時，停止輪詢');
                 stopPolling();
                 addToast("⚠️ 更新等待超時，請稍後手動重新整理", "error");
                 return;
@@ -247,17 +246,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
             try {
                 const json = await fetchWithAuth('/api/portfolio');
-                
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
-                    
                     if (newTime !== initialTime) {
-                        console.log('✨ [SmartPolling] 偵測到新數據！時間:', newTime);
+                        console.log('✨ [SmartPolling] 偵測到新數據！');
                         stopPolling();
                         await fetchAll();
                         addToast("✅ 數據已更新完畢！", "success");
-                    } else {
-                        console.log('💤 [SmartPolling] 數據尚未變更...');
                     }
                 }
             } catch (e) {
@@ -274,12 +269,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 修改：支援傳入自訂 Benchmark
     const triggerUpdate = async (benchmark = null) => {
         const token = getToken();
         if (!token) throw new Error("請先登入"); 
         
-        // 如果有傳入標的，則更新 Store 並持久化
         const targetBenchmark = benchmark || selectedBenchmark.value;
         if (benchmark) {
             selectedBenchmark.value = benchmark;
@@ -293,7 +286,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                // ✅ 關鍵：將標的傳給 Worker
                 body: JSON.stringify({ benchmark: targetBenchmark })
             });
             
@@ -305,7 +297,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 throw new Error(errorData.error || '後端無回應');
             }
         } catch (e) { 
-            console.error('Trigger failed:', e);
             throw e; 
         }
     };
@@ -323,13 +314,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         isPolling,
         currentGroup,
         availableGroups,
-        selectedBenchmark, // ✅ 匯出供 UI 綁定
+        selectedBenchmark,
         setGroup,
-        getGroupsWithHolding,
         fetchAll, 
         fetchRecords, 
-        deleteRecord, // ✅ 匯出供組件使用
+        addRecord,      // ✅ 匯出
+        deleteRecord, 
         triggerUpdate,
-        resetData     // ✅ 匯出供緊急重置使用
+        resetData
     };
 });
