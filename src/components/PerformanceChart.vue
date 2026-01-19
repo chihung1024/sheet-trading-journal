@@ -81,7 +81,6 @@
             </div>
           </div>
           
-          <!-- ✅ [關鍵修正] 數據筆數顯示，防止跳行 -->
           <div class="chart-info" v-if="displayedData.length > 0">
             <span class="info-text">
               共 {{ displayedData.length }} 筆數據
@@ -271,37 +270,6 @@ const filterData = (startDate, endDate = new Date()) => {
     drawChart();
 };
 
-// ✅ [關鍵修正] 優化數字格式化函數
-const formatYAxisValue = (value, type) => {
-    if (type === 'twr') {
-        // 報酬率：使用百分比
-        const sign = value >= 0 ? '+' : '';
-        return sign + value.toFixed(1) + '%';
-    } else {
-        // 損益/資產：智能簡化顯示
-        const absValue = Math.abs(value);
-        const sign = (type === 'pnl' && value >= 0) ? '+' : 
-                     (type === 'pnl' && value < 0) ? '-' : '';
-        
-        let formatted;
-        if (absValue >= 1000000) {
-            // 大於 100 萬：顯示為 "XXM"
-            formatted = (absValue / 1000000).toFixed(1) + 'M';
-        } else if (absValue >= 10000) {
-            // 1萬到10萬之間：顯示為 "XXK"
-            formatted = (absValue / 1000).toFixed(0) + 'K';
-        } else if (absValue >= 1000) {
-            // 1000到1萬之間：顯示為 "X.XK"
-            formatted = (absValue / 1000).toFixed(1) + 'K';
-        } else {
-            // 小於 1000：直接顯示
-            formatted = absValue.toFixed(0);
-        }
-        
-        return sign + formatted;
-    }
-};
-
 const drawChart = () => {
     if (!canvas.value) return;
     const ctx = canvas.value.getContext('2d');
@@ -349,7 +317,7 @@ const drawChart = () => {
         gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
         
         datasets = [{
-            label: '淾損益 (TWD)',
+            label: '淨損益 (TWD)',
             data: pnlData,
             borderColor: '#10b981',
             backgroundColor: gradient,
@@ -476,9 +444,18 @@ const drawChart = () => {
                         },
                         color: getComputedStyle(document.documentElement)
                             .getPropertyValue('--text-sub').trim(),
-                        // ✅ [關鍵修正] 使用新的格式化函數
                         callback: function(value) {
-                            return formatYAxisValue(value, chartType.value);
+                            if (chartType.value === 'twr') {
+                                const sign = value >= 0 ? '+' : '';
+                                return sign + value.toFixed(1) + '%';
+                            } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
+                                const sign = (chartType.value === 'pnl' && value >= 0) ? '+' : 
+                                             (chartType.value === 'pnl' && value < 0) ? '' : '';
+                                return sign + value.toLocaleString('zh-TW', {
+                                    notation: 'compact',
+                                    compactDisplay: 'short'
+                                });
+                            }
                         }
                     }
                 }
@@ -685,23 +662,17 @@ onUnmounted(() => {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-/* ✅ [關鍵修正] 數據筆數顯示，防止跳行 */
 .chart-info {
     display: flex;
     align-items: center;
-    justify-content: center;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-    padding: 8px 16px;
-    min-width: 120px; /* ✅ 固定最小寬度 */
+    gap: 8px;
 }
 
 .info-text {
     font-size: 0.8rem;
     color: var(--text-sub);
     font-weight: 500;
-    white-space: nowrap; /* ✅ 防止文字換行 */
-    font-family: 'JetBrains Mono', monospace; /* ✅ 使用等寬字體 */
+    white-space: nowrap;
 }
 
 .date-range-selector {
@@ -828,7 +799,6 @@ canvas {
     
     .chart-info {
         justify-content: center;
-        width: 100%;
     }
 }
 

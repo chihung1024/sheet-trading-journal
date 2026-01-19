@@ -140,28 +140,8 @@ class PortfolioCalculator:
         cumulative_twr_factor = 1.0
         prev_total_equity = 0.0
         
-        # ✅ [關鍵修正] 獲取 benchmark 的起始價格與起始匯率（台幣計價）
-        first_date = date_range[0] if len(date_range) > 0 else datetime.now()
-        benchmark_start_price_usd = self.market.get_price(self.benchmark_ticker, first_date)
-        
-        # 取得起始日的匯率
-        try:
-            start_fx = self.market.fx_rates.asof(first_date)
-            if pd.isna(start_fx): 
-                start_fx = DEFAULT_FX_RATE
-        except: 
-            start_fx = DEFAULT_FX_RATE
-        
-        # ✅ 計算 benchmark 的起始台幣價值
-        benchmark_start_price_twd = benchmark_start_price_usd * start_fx if benchmark_start_price_usd > 0 else None
-        
-        if not benchmark_start_price_twd or benchmark_start_price_twd <= 0:
-            logger.warning(f"Benchmark {self.benchmark_ticker} 的起始價格無效（USD: {benchmark_start_price_usd}, FX: {start_fx}），將跳過 Benchmark 計算")
-            benchmark_start_price_twd = None
-        
-        # ✅ [關鍵修正] 新增 Benchmark 的每日複利累積因子
-        cumulative_benchmark_factor = 1.0
-        prev_benchmark_price_twd = benchmark_start_price_twd
+        # Benchmark 計算所需 (使用自訂標的)
+        first_benchmark_price = None
 
         # 用於存儲每個標的最新的活躍當日損益
         last_active_daily_pnls = {}
@@ -180,6 +160,11 @@ class PortfolioCalculator:
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
             except: 
                 fx = DEFAULT_FX_RATE
+            
+            # 取得自訂基準價格用於 Benchmark 計算
+            benchmark_p = self.market.get_price(self.benchmark_ticker, d)
+            if first_benchmark_price is None and benchmark_p > 0:
+                first_benchmark_price = benchmark_p
             
             # 取得昨日匯率與當日交易
             prev_date = d - timedelta(days=1)
@@ -315,30 +300,14 @@ class PortfolioCalculator:
             cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
             
-            # ✅ [關鍵修正] 使用每日複利累積計算 Benchmark TWR（台幣計價）
-            benchmark_twr = 0.0
-            if benchmark_start_price_twd and benchmark_start_price_twd > 0:
-                current_benchmark_price_usd = self.market.get_price(self.benchmark_ticker, d)
-                if current_benchmark_price_usd > 0:
-                    # ✅ 計算當日 benchmark 的台幣價值
-                    current_benchmark_price_twd = current_benchmark_price_usd * fx
-                    
-                    # ✅ 計算每日報酬率（與 TWR 相同的累積方式）
-                    if prev_benchmark_price_twd and prev_benchmark_price_twd > 0:
-                        daily_benchmark_return = (current_benchmark_price_twd / prev_benchmark_price_twd) - 1
-                        cumulative_benchmark_factor *= (1 + daily_benchmark_return)
-                    
-                    # ✅ 最終的 Benchmark TWR
-                    benchmark_twr = (cumulative_benchmark_factor - 1) * 100
-                    
-                    # ✅ 更新前一日價格
-                    prev_benchmark_price_twd = current_benchmark_price_twd
+            # 計算自訂標的的 Benchmark TWR
+            benchmark_twr = (benchmark_p / first_benchmark_price - 1) * 100 if first_benchmark_price else 0.0
 
             history_data.append({
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2), # ✅ 台幣計價的 Benchmark
+                "benchmark_twr": round(benchmark_twr, 2), # 存儲基準回報
                 "fx_rate": round(fx, 4)
             })
 
@@ -385,7 +354,7 @@ class PortfolioCalculator:
             total_pnl=round(history_data[-1]['net_profit'], 0),
             twr=history_data[-1]['twr'], xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
-            benchmark_twr=history_data[-1]['benchmark_twr'] # ✅ 台幣計價的基準報酬
+            benchmark_twr=history_data[-1]['benchmark_twr'] # 基準回報最終值
         )
         
         return PortfolioGroupData(
