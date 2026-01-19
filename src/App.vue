@@ -9,7 +9,6 @@
           <h1>Trading Journal <span class="badge">PRO</span></h1>
         </div>
 
-        <!-- ✅ 新增：群組選擇器 -->
         <div class="group-selector" v-if="portfolioStore.availableGroups.length > 1">
           <span class="selector-label">策略群組:</span>
           <div class="select-wrapper">
@@ -61,7 +60,6 @@
         </div>
       </header>
       
-      <!-- ✅ 新增：群組管理彈窗 -->
       <div v-if="showGroupModal" class="modal-overlay" @click.self="showGroupModal=false">
         <div class="modal-card">
           <h3>管理策略群組</h3>
@@ -143,12 +141,12 @@
 </template>
 
 <script setup>
-import { usePWA } from './composables/usePWA';
 import { ref, onMounted, computed, nextTick, reactive } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
+import { usePWA } from './composables/usePWA'; // 確保 PWA 監控被使用
 import { CONFIG } from './config';
 
 import LoginOverlay from './components/LoginOverlay.vue';
@@ -169,7 +167,10 @@ const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 
-// ✅ 新增：群組管理狀態
+// 初始化 PWA 相關監控 (例如更新提醒)
+const { needRefresh, updateServiceWorker } = usePWA();
+
+// 群組管理狀態
 const showGroupModal = ref(false);
 const groupRenameMap = reactive({});
 
@@ -188,7 +189,7 @@ const scrollToDividends = () => {
   }
 };
 
-// ✅ 新增：群組更名功能
+// 群組更名功能
 const renameGroup = async (oldName) => {
   const newName = groupRenameMap[oldName];
   if(!newName || !confirm(`確定將 "${oldName}" 更名為 "${newName}" 嗎？這將更新所有相關紀錄。`)) return;
@@ -208,7 +209,10 @@ const renameGroup = async (oldName) => {
       
       await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${authStore.token}`, 'Content-Type': 'application/json' },
+        headers: { 
+            'Authorization': `Bearer ${authStore.token}`, 
+            'Content-Type': 'application/json' 
+        },
         body: JSON.stringify({ ...r, tag: newTagStr })
       });
       count++;
@@ -259,13 +263,20 @@ const handleLogout = () => {
   }
 };
 
+// 核心生命週期：處理初始化數據載入
 onMounted(async () => {
   console.log('🚀 App.vue mounted');
+  
+  // 1. 初始化身份驗證 (從 LocalStorage 恢復)
   const isLoggedIn = authStore.initAuth();
+  
   if (isLoggedIn) {
-    console.log('🔐 已登入，開始載入投資組合數據...');
+    console.log('🔐 已登入，執行初始化 fetchAll...');
+    // 調用已優化為「順序執行」的 fetchAll，確保 0 筆紀錄時能徹底清空 UI
     await portfolioStore.fetchAll();
   }
+  
+  // 2. 移除初次載入的 Loading 動畫
   await nextTick();
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
@@ -274,6 +285,7 @@ onMounted(async () => {
       setTimeout(() => loadingEl.remove(), 300);
     }, 500);
   }
+  
   console.log('✅ App 初始化完成');
 });
 </script>
@@ -327,7 +339,6 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .badge { background: var(--text-main); color: var(--bg-card); font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
 .logo-icon { font-size: 1.5rem; }
 
-/* ✅ 群組選擇器樣式 */
 .group-selector { display: flex; align-items: center; gap: 8px; margin: 0 20px; background: var(--bg-secondary); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color); }
 .selector-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; }
 .select-wrapper { display: flex; gap: 8px; }
@@ -335,7 +346,6 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .btn-edit-group { background: transparent; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-sub); font-size: 0.8rem; padding: 2px 6px; }
 .btn-edit-group:hover { background: var(--bg-card); color: var(--primary); }
 
-/* ✅ Modal 樣式 */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; display: flex; align-items: center; justify-content: center; }
 .modal-card { background: var(--bg-card); padding: 24px; border-radius: 12px; width: 400px; max-width: 90%; box-shadow: var(--shadow-lg); }
 .modal-desc { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 16px; }
