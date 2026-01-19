@@ -111,8 +111,23 @@ async function authenticate(request, env) {
   }
 }
 
+/**
+ * 獲取投資組合快照
+ * 修正：增加紀錄筆數檢查，若無紀錄則回傳空值，防止死而復生 bug
+ */
 async function handleGetPortfolio(env, user) {
   try {
+    // 1. 優先檢查交易紀錄是否存在 (唯一真理來源)
+    const recordCheck = await env.DB.prepare(
+      "SELECT COUNT(*) as total FROM records WHERE user_id = ?"
+    ).bind(user.email).first();
+
+    // 2. 如果紀錄為 0，直接回傳空模板，無視可能殘留的舊快照
+    if (!recordCheck || recordCheck.total === 0) {
+      return jsonResponse({ success: true, data: { summary: {}, holdings: [], history: [] } });
+    }
+
+    // 3. 有紀錄才讀取最新快照
     const result = await env.DB.prepare(
       "SELECT json_data FROM portfolio_snapshots WHERE user_id = ? ORDER BY id DESC LIMIT 1"
     ).bind(user.email).first();
@@ -206,12 +221,12 @@ async function handleUpdateRecord(req, env, user) {
 
 /**
  * 修正後的刪除邏輯：
- * 刪除後檢查該使用者是否還有剩餘交易，若為 0 則連帶清空快照資料。
+ * 刪除後檢查該使用者是否還有剩餘交易，若為 0 則「連帶清空」快照資料。
  */
 async function handleDeleteRecord(req, env, user) {
   const { id } = await req.json();
   
-  // 1. 執行刪除
+  // 1. 執行刪除交易紀錄
   await env.DB.prepare("DELETE FROM records WHERE id = ? AND user_id = ?").bind(id, user.email).run();
 
   // 2. 檢查該使用者是否還有剩餘任何紀錄 (包括 BUY, SELL, DIV)
@@ -220,13 +235,12 @@ async function handleDeleteRecord(req, env, user) {
   ).bind(user.email).first();
 
   if (check.total === 0) {
-    // 3. 若紀錄歸零，執行連鎖清理（清空該使用者的快照）
-    // 這能確保前端在重新整理後，因為 handleGetPortfolio 找不到資料而回傳空物件
+    // 3. 若紀錄歸零，強制清空該使用者的所有快照，確保資料一致
     await env.DB.prepare(
       "DELETE FROM portfolio_snapshots WHERE user_id = ?"
     ).bind(user.email).run();
 
-    // 提示前端：紀錄已完全清空
+    // 提示前端執行 RELOAD_UI 清空本地緩存
     return jsonResponse({ success: true, message: "RELOAD_UI" });
   }
 
