@@ -20,30 +20,17 @@ def setup_logging():
         ]
     )
 
-def get_trigger_payload():
-    """從 GitHub Action 的事件檔案中讀取 Payload"""
-    event_path = os.environ.get('GITHUB_EVENT_PATH')
-    print(f"[DEBUG] GITHUB_EVENT_PATH: {event_path}")
+def get_benchmark_from_env():
+    """
+    從環境變數讀取 CUSTOM_BENCHMARK
+    優先序：
+    1. CUSTOM_BENCHMARK 環境變數 (workflow_dispatch inputs)
+    2. 預設值 SPY
+    """
+    custom_benchmark = os.environ.get('CUSTOM_BENCHMARK', 'SPY').strip().upper()
+    target_user_id = os.environ.get('TARGET_USER_ID', '').strip()
     
-    if event_path and os.path.exists(event_path):
-        try:
-            with open(event_path, 'r') as f:
-                event_data = json.load(f)
-                print(f"[DEBUG] GitHub Event 完整內容: {json.dumps(event_data, indent=2)}")
-                
-                # ✅ repository_dispatch 的 payload 在 client_payload 中
-                client_payload = event_data.get('client_payload', {})
-                print(f"[DEBUG] client_payload: {client_payload}")
-                
-                return client_payload
-        except Exception as e:
-            print(f"[錯誤] 解析 GitHub Event Payload 失敗: {e}")
-            import traceback
-            traceback.print_exc()
-    else:
-        print(f"[DEBUG] GITHUB_EVENT_PATH 不存在或未設定")
-    
-    return {}
+    return custom_benchmark, target_user_id
 
 def main():
     # 1. 初始化日誌系統
@@ -61,21 +48,15 @@ def main():
     api_client = CloudflareClient()
     market_client = MarketDataClient()
     
-    # 4. ✅ 讀取觸發參數 (自訂 Benchmark 與 目標使用者)
-    payload = get_trigger_payload()
-    custom_benchmark = payload.get('custom_benchmark', 'SPY')
-    target_user_id = payload.get('target_user_id') # 若 Worker 有傳入特定的 userId
+    # 4. ✅ 從環境變數讀取 benchmark 與目標使用者
+    custom_benchmark, target_user_id = get_benchmark_from_env()
     
-    # ✅ 增加調試日誌
-    logger.info(f"觸發參數 (Raw Payload): {payload}")
     logger.info(f"觸發參數: Benchmark={custom_benchmark}, TargetUser={target_user_id if target_user_id else 'ALL'}")
 
     # 5. 獲取交易紀錄
     logger.info("正在從 Cloudflare 獲取原始交易紀錄...")
     records = api_client.fetch_records()
     
-    # [修復 BUG]：即使 records 是空的，也不能直接 return，
-    # 否則最後一位使用者刪除紀錄後，舊的快照永遠不會被清空。
     df = pd.DataFrame(records) if records else pd.DataFrame()
     
     # 6. 資料前處理與分組準備
@@ -99,7 +80,6 @@ def main():
         df = df.sort_values('Date')
         user_list = df['user_id'].unique().tolist()
     
-    # 如果有指定的目標使用者但他在紀錄中已不存在 (被刪光了)，也要加入處理清單以執行重置
     if target_user_id and target_user_id not in user_list:
         user_list.append(target_user_id)
 
@@ -107,14 +87,13 @@ def main():
         logger.warning("目前無任何待處理的使用者紀錄，程序結束。")
         return
 
-    # 7. 動態計算數據抓取起始日期：最早交易日往前推 3 個月
+    # 7. 動態計算數據抓取起始日期
     if not df.empty:
         earliest_transaction_date = df['Date'].min()
         fetch_start_date = earliest_transaction_date - timedelta(days=90)
         logger.info(f"最早交易日期: {earliest_transaction_date.strftime('%Y-%m-%d')}")
         logger.info(f"數據抓取起始日期: {fetch_start_date.strftime('%Y-%m-%d')} (往前推 3 個月)")
     else:
-        # 如果沒有交易紀錄，預設抓取最近 3 個月數據
         fetch_start_date = datetime.now() - timedelta(days=90)
         logger.info(f"無交易紀錄，預設抓取起始日期: {fetch_start_date.strftime('%Y-%m-%d')}")
     
@@ -134,10 +113,8 @@ def main():
         try:
             logger.info(f"--- 正在處理使用者: {user_email} ---")
             
-            # 篩選該使用者的交易紀錄
             user_df = df[df['user_id'] == user_email].copy() if not df.empty else pd.DataFrame()
             
-            # [修復 BUG]：如果紀錄為空，產生「空狀態」快照以上傳覆蓋
             calculator = PortfolioCalculator(user_df, market_client, benchmark_ticker=custom_benchmark)
             user_snapshot = calculator.run()
             
