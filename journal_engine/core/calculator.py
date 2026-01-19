@@ -158,6 +158,10 @@ class PortfolioCalculator:
         if not benchmark_start_price_twd or benchmark_start_price_twd <= 0:
             logger.warning(f"Benchmark {self.benchmark_ticker} 的起始價格無效（USD: {benchmark_start_price_usd}, FX: {start_fx}），將跳過 Benchmark 計算")
             benchmark_start_price_twd = None
+        
+        # ✅ [關鍵修正] 新增 Benchmark 的每日複利累積因子
+        cumulative_benchmark_factor = 1.0
+        prev_benchmark_price_twd = benchmark_start_price_twd
 
         # 用於存儲每個標的最新的活躍當日損益
         last_active_daily_pnls = {}
@@ -311,15 +315,24 @@ class PortfolioCalculator:
             cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
             
-            # ✅ [關鍵修正] 使用台幣計價的 Benchmark TWR（包含匯率變動）
+            # ✅ [關鍵修正] 使用每日複利累積計算 Benchmark TWR（台幣計價）
             benchmark_twr = 0.0
             if benchmark_start_price_twd and benchmark_start_price_twd > 0:
                 current_benchmark_price_usd = self.market.get_price(self.benchmark_ticker, d)
                 if current_benchmark_price_usd > 0:
                     # ✅ 計算當日 benchmark 的台幣價值
                     current_benchmark_price_twd = current_benchmark_price_usd * fx
-                    # ✅ 直接計算：(當前台幣價 / 起始台幣價 - 1) * 100
-                    benchmark_twr = ((current_benchmark_price_twd / benchmark_start_price_twd) - 1) * 100
+                    
+                    # ✅ 計算每日報酬率（與 TWR 相同的累積方式）
+                    if prev_benchmark_price_twd and prev_benchmark_price_twd > 0:
+                        daily_benchmark_return = (current_benchmark_price_twd / prev_benchmark_price_twd) - 1
+                        cumulative_benchmark_factor *= (1 + daily_benchmark_return)
+                    
+                    # ✅ 最終的 Benchmark TWR
+                    benchmark_twr = (cumulative_benchmark_factor - 1) * 100
+                    
+                    # ✅ 更新前一日價格
+                    prev_benchmark_price_twd = current_benchmark_price_twd
 
             history_data.append({
                 "date": date_str, "total_value": round(total_mkt_val, 0),
