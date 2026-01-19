@@ -19,14 +19,45 @@ class PortfolioCalculator:
         """執行多群組投資組合計算主流程"""
         logger.info("=== 開始執行多群組投資組合計算 ===")
         
-        # 1. 全域復權處理 (只做一次)
+        # 1. 處理無紀錄的情況：回傳空快照以重置後端數據 (解決 Bug 關鍵)
+        if self.df is None or self.df.empty:
+            logger.warning("無交易紀錄，產出重置快照以清除舊數據。")
+            
+            # 建立全零的 Summary
+            empty_summary = PortfolioSummary(
+                total_value=0.0,
+                invested_capital=0.0,
+                total_pnl=0.0,
+                twr=0.0,
+                xirr=0.0,
+                realized_pnl=0.0,
+                benchmark_twr=0.0
+            )
+            
+            # 建立空的群組數據
+            empty_group_data = PortfolioGroupData(
+                summary=empty_summary,
+                holdings=[],
+                history=[],
+                pending_dividends=[]
+            )
+            
+            # 回傳完整的空快照物件
+            return PortfolioSnapshot(
+                updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                base_currency=BASE_CURRENCY,
+                exchange_rate=DEFAULT_FX_RATE,
+                summary=empty_summary,
+                holdings=[],
+                history=[],
+                pending_dividends=[],
+                groups={'all': empty_group_data}
+            )
+        
+        # 2. 全域復權處理 (只做一次)
         self._back_adjust_transactions_global()
         
-        # 2. 準備日期範圍
-        if self.df.empty:
-            logger.error("無交易紀錄可供計算")
-            return None
-            
+        # 3. 準備日期範圍
         start_date = self.df['Date'].min()
         end_date = datetime.now()
         date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
@@ -36,7 +67,7 @@ class PortfolioCalculator:
         if not self.market.fx_rates.empty:
             current_fx = float(self.market.fx_rates.iloc[-1])
         
-        # 3. 識別所有群組
+        # 4. 識別所有群組
         all_tags = set()
         for tags_str in self.df['Tag'].dropna().unique():
             if not tags_str: 
@@ -47,7 +78,7 @@ class PortfolioCalculator:
         groups_to_calc = ['all'] + sorted(list(all_tags))
         logger.info(f"識別到的群組: {groups_to_calc}")
 
-        # 4. 迴圈計算每個群組
+        # 5. 迴圈計算每個群組
         final_groups_data = {}
         
         for group_name in groups_to_calc:
@@ -69,7 +100,7 @@ class PortfolioCalculator:
             group_result = self._calculate_single_portfolio(group_df, date_range, current_fx)
             final_groups_data[group_name] = group_result
 
-        # 5. 組合最終結果
+        # 6. 組合最終結果
         all_data = final_groups_data.get('all')
         if not all_data:
             logger.error("無法產出 'all' 群組的總體數據")
@@ -287,7 +318,7 @@ class PortfolioCalculator:
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2), # 補齊此欄位
+                "benchmark_twr": round(benchmark_twr, 2), 
                 "fx_rate": round(fx, 4)
             })
 
@@ -334,7 +365,7 @@ class PortfolioCalculator:
             total_pnl=round(history_data[-1]['net_profit'], 0),
             twr=history_data[-1]['twr'], xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
-            benchmark_twr=history_data[-1]['benchmark_twr'] # 使用最後一天的基準報酬
+            benchmark_twr=history_data[-1]['benchmark_twr']
         )
         
         return PortfolioGroupData(
