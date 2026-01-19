@@ -2,6 +2,7 @@ import pandas as pd
 import logging
 import sys
 import os
+import json
 from datetime import timedelta
 from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.market_data import MarketDataClient
@@ -19,12 +20,25 @@ def setup_logging():
         ]
     )
 
+def get_trigger_payload():
+    """從 GitHub Action 的事件檔案中讀取 Payload"""
+    event_path = os.environ.get('GITHUB_EVENT_PATH')
+    if event_path and os.path.exists(event_path):
+        try:
+            with open(event_path, 'r') as f:
+                event_data = json.load(f)
+                # 取得由 Worker 傳過來的 client_payload
+                return event_data.get('client_payload', {})
+        except Exception as e:
+            print(f"解析 GitHub Event Payload 失敗: {e}")
+    return {}
+
 def main():
     # 1. 初始化日誌系統
     setup_logging()
     logger = logging.getLogger("main")
     
-    logger.info("=== 啟動交易日誌更新程序 (多人隔離版) ===")
+    logger.info("=== 啟動交易日誌更新程序 (多人隔離 & 自訂基準版) ===")
 
     # 2. 安全性檢查
     if not API_KEY:
@@ -35,80 +49,81 @@ def main():
     api_client = CloudflareClient()
     market_client = MarketDataClient()
     
-    # 4. 獲取交易紀錄
+    # 4. 讀取觸發參數 (自訂 Benchmark 與 目標使用者)
+    payload = get_trigger_payload()
+    custom_benchmark = payload.get('custom_benchmark', 'SPY')
+    target_user_id = payload.get('target_user_id') # 若 Worker 有傳入特定的 userId
+    
+    logger.info(f"觸發參數: Benchmark={custom_benchmark}, TargetUser={target_user_id if target_user_id else 'ALL'}")
+
+    # 5. 獲取交易紀錄
     logger.info("正在從 Cloudflare 獲取原始交易紀錄...")
     records = api_client.fetch_records()
     
-    # [改善方案]：不再因為 records 為空就結束，因為我們可能需要處理「剛刪除所有紀錄」的使用者
-    if not records:
-        logger.info("目前資料庫中無任何交易紀錄，將檢查是否需要清理過期快照。")
-
-    # 5. 資料前處理
-    if records:
-        df = pd.DataFrame(records)
-    else:
-        # 建立具備欄位結構的空 DataFrame，避免後續處理出錯
-        df = pd.DataFrame(columns=[
-            'user_id', 'txn_date', 'symbol', 'txn_type', 
-            'qty', 'price', 'fee', 'tax', 'tag'
-        ])
+    # [修復 BUG]：即使 records 是空的，也不能直接 return，
+    # 否則最後一位使用者刪除紀錄後，舊的快照永遠不會被清空。
+    df = pd.DataFrame(records) if records else pd.DataFrame()
     
-    # 統一欄位名稱與型態
-    df.rename(columns={
-        'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type', 
-        'qty': 'Qty', 'price': 'Price', 'fee': 'Commission', 
-        'tax': 'Tax', 'tag': 'Tag'
-    }, inplace=True)
-    
-    df['Date'] = pd.to_datetime(df['Date'])
-    df['Qty'] = pd.to_numeric(df['Qty'], errors='coerce')
-    df['Price'] = pd.to_numeric(df['Price'], errors='coerce')
-    df['Commission'] = pd.to_numeric(df['Commission'].fillna(0), errors='coerce')
-    df['Tax'] = pd.to_numeric(df['Tax'].fillna(0), errors='coerce') 
-    df = df.sort_values('Date')
-    
-    # 6. 下載市場數據 (僅在有標的時執行)
+    # 6. 資料前處理與分組準備
+    user_list = []
     if not df.empty:
-        start_date = df['Date'].min()
-        fetch_start_date = start_date - timedelta(days=100)
-        unique_tickers = df['Symbol'].dropna().unique().tolist()
+        if 'user_id' not in df.columns:
+            logger.error("交易紀錄中缺少 user_id 欄位，請檢查 API 回傳內容。")
+            return
+
+        df.rename(columns={
+            'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type', 
+            'qty': 'Qty', 'price': 'Price', 'fee': 'Commission', 
+            'tax': 'Tax', 'tag': 'Tag'
+        }, inplace=True)
         
-        if unique_tickers:
-            logger.info(f"開始下載全域市場數據。最早交易日: {start_date.date()}, 標的數: {len(unique_tickers)}")
-            market_client.download_data(unique_tickers, fetch_start_date)
+        df['Date'] = pd.to_datetime(df['Date'])
+        df['Qty'] = pd.to_numeric(df['Qty'])
+        df['Price'] = pd.to_numeric(df['Price'])
+        df['Commission'] = pd.to_numeric(df['Commission'].fillna(0))
+        df['Tax'] = pd.to_numeric(df['Tax'].fillna(0)) 
+        df = df.sort_values('Date')
+        user_list = df['user_id'].unique().tolist()
     
-    # ==========================================
-    # [關鍵修改] 核心計算：整合「紀錄」與「快照」使用者清單
-    # ==========================================
+    # 如果有指定的目標使用者但他在紀錄中已不存在 (被刪光了)，也要加入處理清單以執行重置
+    if target_user_id and target_user_id not in user_list:
+        user_list.append(target_user_id)
+
+    if not user_list:
+        logger.warning("目前無任何待處理的使用者紀錄，程序結束。")
+        return
+
+    # 7. 下載市場數據 (包含基準標的)
+    fetch_start_date = datetime.now() - timedelta(days=365*5) # 預設抓取 5 年數據以利計算
+    unique_tickers = df['Symbol'].unique().tolist() if not df.empty else []
     
-    # 獲取所有需要處理的使用者 (包含有交易的人，以及目前已有快照的人)
-    users_with_records = set(df['user_id'].unique()) if 'user_id' in df.columns else set()
+    # 確保 Benchmark 也被下載
+    if custom_benchmark not in unique_tickers:
+        unique_tickers.append(custom_benchmark)
     
-    # 呼叫 api_client 新增的 fetch_active_users 方法 (將在下一個檔案提供)
-    users_with_snapshots = set(api_client.fetch_active_users())
+    logger.info(f"開始下載全域市場數據。標的數: {len(unique_tickers)}, 基準: {custom_benchmark}")
+    market_client.download_data(unique_tickers, fetch_start_date)
     
-    # 取聯集，確保「剛刪除所有紀錄」的人也會被處理到
-    user_list = sorted(list(users_with_records.union(users_with_snapshots)))
-    
-    logger.info(f"偵測到需維護的使用者共 {len(user_list)} 位，開始批次處理...")
+    # 8. 批次處理每位使用者
+    logger.info(f"準備處理 {len(user_list)} 位使用者...")
 
     for user_email in user_list:
         try:
             logger.info(f"--- 正在處理使用者: {user_email} ---")
             
-            # 篩選該使用者的交易紀錄 (若已刪除則會是空 DF)
+            # 篩選該使用者的交易紀錄
             user_df = df[df['user_id'] == user_email].copy() if not df.empty else pd.DataFrame()
             
-            # 執行計算 (若 user_df 為空，Calculator 將產出「重置快照」)
-            calculator = PortfolioCalculator(user_df, market_client)
+            # [修復 BUG]：如果紀錄為空，產生「空狀態」快照以上傳覆蓋
+            calculator = PortfolioCalculator(user_df, market_client, benchmark_ticker=custom_benchmark)
             user_snapshot = calculator.run()
             
             if user_snapshot:
-                logger.info(f"正在上傳 {user_email} 的快照數據 (包含清理狀態)...")
+                logger.info(f"計算完成，正在上傳 {user_email} 的快照數據 (Benchmark: {custom_benchmark})...")
                 api_client.upload_portfolio(user_snapshot, target_user_id=user_email)
-                logger.info(f"使用者 {user_email} 處理/重置成功。")
+                logger.info(f"使用者 {user_email} 處理成功。")
             else:
-                logger.warning(f"使用者 {user_email} 處理失敗，未產生快照。")
+                logger.warning(f"使用者 {user_email} 未能產生效快照數據。")
                 
         except Exception as u_err:
             logger.error(f"處理使用者 {user_email} 時發生未預期錯誤: {u_err}")
@@ -116,6 +131,7 @@ def main():
     logger.info("=== 所有使用者處理程序執行完畢 ===")
 
 if __name__ == "__main__":
+    from datetime import datetime
     try:
         main()
     except Exception as e:
