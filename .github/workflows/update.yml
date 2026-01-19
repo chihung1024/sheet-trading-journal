@@ -1,57 +1,50 @@
-name: Update Portfolio Snapshots
+name: Update Portfolio Data
 
 on:
-  # 支援定時自動更新 (例如每天凌晨)
   schedule:
-    - cron: '0 21 * * *' # 每天 UTC 21:00 (台北時間凌晨 5:00)
-    
-  # 支援從 GitHub 介面手動觸發
+    # 每天 UTC 0 點 (台灣時間早上 8 點) 自動執行
+    - cron: '0 0 * * *'
+  
+  # 允許手動點擊按鈕執行
   workflow_dispatch:
-    inputs:
-      target_user_id:
-        description: '特定使用者 Email (留空則更新全部)'
-        required: false
-        default: ''
-      benchmark:
-        description: '基準指數 (如 SPY, QQQ)'
-        required: false
-        default: 'SPY'
 
-  # 支援從 Cloudflare Worker 透過 API 觸發 (本次新增重點)
-  repository_dispatch:
-    types: [trigger-update]
+permissions:
+  contents: write
 
 jobs:
-  update-snapshots:
+  run-and-upload:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    # 1. 下載程式碼
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          cache: 'pip'
+    # 2. 設定 Python 環境
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    # 3. 安裝套件 (修改後：加入 Cache 機制)
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        # 使用 requirements.txt 的 hash 作為快取金鑰
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
-      - name: Run update script
-        env:
-          # 資料庫與 API 金鑰 (請確保已在 GitHub Repo Settings > Secrets 中設定)
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
-          API_SECRET: ${{ secrets.API_SECRET }}
-          WORKER_URL: ${{ secrets.WORKER_URL }}
-          
-          # 邏輯參數處理
-          # 優先順序：API 觸發 (client_payload) > 手動觸發 (inputs) > 預設為空 (全部更新)
-          TARGET_USER_ID: ${{ github.event.client_payload.target_user_id || github.event.inputs.target_user_id || '' }}
-          BENCHMARK_SYMBOL: ${{ github.event.client_payload.custom_benchmark || github.event.inputs.benchmark || 'SPY' }}
-          
-        run: python main.py
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # 4. [核心步驟] 執行 Python 腳本
+    # 這一步現在會直接將結果 POST 到 Cloudflare D1 資料庫
+    - name: Run calculation & Upload to API
+      env:
+        # 這裡非常重要，必須傳入 Secret 才能通過 Worker 的驗證
+        API_KEY: ${{ secrets.API_KEY }}
+      run: python main.py
