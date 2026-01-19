@@ -23,14 +23,26 @@ def setup_logging():
 def get_trigger_payload():
     """從 GitHub Action 的事件檔案中讀取 Payload"""
     event_path = os.environ.get('GITHUB_EVENT_PATH')
+    print(f"[DEBUG] GITHUB_EVENT_PATH: {event_path}")
+    
     if event_path and os.path.exists(event_path):
         try:
             with open(event_path, 'r') as f:
                 event_data = json.load(f)
-                # 取得由 Worker 傳過來的 client_payload
-                return event_data.get('client_payload', {})
+                print(f"[DEBUG] GitHub Event 完整內容: {json.dumps(event_data, indent=2)}")
+                
+                # ✅ repository_dispatch 的 payload 在 client_payload 中
+                client_payload = event_data.get('client_payload', {})
+                print(f"[DEBUG] client_payload: {client_payload}")
+                
+                return client_payload
         except Exception as e:
-            print(f"解析 GitHub Event Payload 失敗: {e}")
+            print(f"[錯誤] 解析 GitHub Event Payload 失敗: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print(f"[DEBUG] GITHUB_EVENT_PATH 不存在或未設定")
+    
     return {}
 
 def main():
@@ -49,11 +61,13 @@ def main():
     api_client = CloudflareClient()
     market_client = MarketDataClient()
     
-    # 4. 讀取觸發參數 (自訂 Benchmark 與 目標使用者)
+    # 4. ✅ 讀取觸發參數 (自訂 Benchmark 與 目標使用者)
     payload = get_trigger_payload()
     custom_benchmark = payload.get('custom_benchmark', 'SPY')
     target_user_id = payload.get('target_user_id') # 若 Worker 有傳入特定的 userId
     
+    # ✅ 增加調試日誌
+    logger.info(f"觸發參數 (Raw Payload): {payload}")
     logger.info(f"觸發參數: Benchmark={custom_benchmark}, TargetUser={target_user_id if target_user_id else 'ALL'}")
 
     # 5. 獲取交易紀錄
@@ -106,7 +120,7 @@ def main():
     
     unique_tickers = df['Symbol'].unique().tolist() if not df.empty else []
     
-    # 確保 Benchmark 也被下載
+    # ✅ 確保 Benchmark 也被下載
     if custom_benchmark not in unique_tickers:
         unique_tickers.append(custom_benchmark)
     
