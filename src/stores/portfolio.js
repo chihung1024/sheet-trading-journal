@@ -65,7 +65,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         rawData.value = null;
         records.value = [];
         lastUpdate.value = '';
-        console.log('🧹 [resetData] 本地投資組合數據已清空');
+        console.log('Sweep [resetData] 本地投資組合數據已清空');
     };
 
     const fetchAll = async () => {
@@ -108,19 +108,20 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             const json = await fetchWithAuth('/api/portfolio');
             
             if (json && json.success && json.data) {
-                // MODIFIED: 只有在完全沒有紀錄且回傳空快照時才執行重置。
-                // 如果有交易紀錄但沒有快照時間，視為「計算中」，不應執行 resetData 導致儀表板閃爍歸零。
-                if (!json.data.updated_at) {
-                    if (records.value.length === 0) {
-                        resetData();
+                // MODIFIED: 只有在確實有時間戳時才更新介面數據
+                if (json.data.updated_at) {
+                    // MODIFIED: 增加過期數據檢查。如果已有紀錄但快照中持倉為空，視為計算中的過期快照，不予更新 lastUpdate。
+                    if (records.value.length > 0 && (!json.data.holdings || json.data.holdings.length === 0)) {
+                        console.log('⏳ [fetchSnapshot] 快照數據與交易紀錄不匹配 (空持倉)，略過更新');
+                        return;
                     }
-                    console.log('⏳ [fetchSnapshot] 數據計算中，暫不更新介面');
-                    return;
+                    rawData.value = json.data; 
+                    lastUpdate.value = json.data.updated_at;
+                    console.log('✅ [fetchSnapshot] 數據已更新時間:', lastUpdate.value);
+                } else if (records.value.length === 0) {
+                    // 只有在完全無交易紀錄且快照也為空時，才執行重置
+                    resetData();
                 }
-
-                rawData.value = json.data; 
-                lastUpdate.value = json.data.updated_at;
-                console.log('✅ [fetchSnapshot] 數據已更新時間:', lastUpdate.value);
             } else {
                 console.warn('⚠️ [fetchSnapshot] 數據格式異常');
                 if (records.value.length === 0) resetData();
@@ -165,7 +166,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             
             if (json && json.success) {
                 addToast("新增成功", "success");
-                await fetchRecords();
+                // MODIFIED: 插入後先拉一次紀錄以建立 records.value.length 的狀態
+                await fetchRecords(); 
                 
                 if (json.auto_update) {
                     handleAutoUpdateSignal("🚀 這是您的第一筆交易，系統正自動啟動背景計算...");
@@ -273,7 +275,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         console.log('⌛ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
-        const initialTime = lastUpdate.value;
+        // MODIFIED: 捕捉當前基準時間，如果是首次更新則為空
+        const initialTime = lastUpdate.value; 
         const { addToast } = useToast(); 
 
         pollTimer = setInterval(async () => {
@@ -290,15 +293,20 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
                     
-                    // MODIFIED: 核心修復點。必須確保 newTime 存在且有效，才判定為更新完成。
-                    // 解決了 newTime 為 undefined 時 (undefined !== "") 誤判為更新成功的 Bug。
-                    if (newTime && newTime !== initialTime) {
-                        console.log('✨ [SmartPolling] 偵測到新數據！時間:', newTime);
+                    // MODIFIED: 核心檢查條件。必須同時滿足：
+                    // 1. newTime 必須存在且不等於初始值。
+                    // 2. 如果目前已有紀錄 (records > 0)，新抓到的快照不能是空的 (holdings > 0)。
+                    // 這能有效防止首筆交易時，輪詢抓到之前刪除紀錄後留下的「0持倉過期快照」。
+                    const isNewTimestamp = newTime && (newTime !== initialTime);
+                    const hasValidContent = (records.value.length === 0) || (json.data.holdings && json.data.holdings.length > 0);
+
+                    if (isNewTimestamp && hasValidContent) {
+                        console.log('✨ [SmartPolling] 偵測到有效新數據！時間:', newTime);
                         stopPolling();
                         await fetchAll();
                         addToast("✅ 數據已更新完畢！", "success");
                     } else {
-                        console.log('💤 [SmartPolling] 數據尚未產生或未變更 (每 5 秒檢查中)'); 
+                        console.log('💤 [SmartPolling] 數據尚未產生或內容尚未匹配 (每 5 秒檢查中)...'); 
                     }
                 }
             } catch (e) {
