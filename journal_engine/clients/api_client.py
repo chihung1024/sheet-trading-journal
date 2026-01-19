@@ -1,58 +1,66 @@
 import requests
-import json
-from ..config import WORKER_API_URL_RECORDS, WORKER_API_URL_PORTFOLIO, API_HEADERS
-from ..models import PortfolioSnapshot
+import logging
+from journal_engine.config import (
+    WORKER_API_URL_RECORDS, 
+    WORKER_API_URL_PORTFOLIO, 
+    API_HEADERS
+)
 
 class CloudflareClient:
-    def fetch_records(self) -> list:
-        """從 Worker API 獲取交易紀錄"""
-        print(f"正在連線至 API: {WORKER_API_URL_RECORDS}")
-        try:
-            resp = requests.get(WORKER_API_URL_RECORDS, headers=API_HEADERS)
-            
-            if resp.status_code != 200:
-                print(f"API 連線失敗 [Status: {resp.status_code}]: {resp.text}")
-                return []
+    def __init__(self):
+        self.logger = logging.getLogger("api_client")
 
-            api_json = resp.json()
-            if not api_json.get('success'):
-                print(f"API 回傳錯誤: {api_json.get('error')}")
+    def fetch_records(self):
+        """從 Cloudflare D1 獲取所有交易紀錄"""
+        try:
+            self.logger.info(f"正在請求交易紀錄: {WORKER_API_URL_RECORDS}")
+            response = requests.get(WORKER_API_URL_RECORDS, headers=API_HEADERS)
+            response.raise_for_status()
+            data = response.json()
+            if data.get('success'):
+                return data.get('data', [])
+            else:
+                self.logger.error(f"獲取紀錄失敗: {data.get('error')}")
                 return []
-                
-            records = api_json.get('data', [])
-            print(f"成功取得 {len(records)} 筆交易紀錄")
-            return records
-            
         except Exception as e:
-            print(f"API 連線發生例外狀況: {e}")
+            self.logger.error(f"連線至 Cloudflare 發生錯誤: {e}")
             return []
 
-    def upload_portfolio(self, snapshot: PortfolioSnapshot, target_user_id: str = None):
+    def upload_portfolio(self, portfolio_data, target_user_id=None):
         """
-        上傳計算結果至 Cloudflare D1
-        :param snapshot: 計算好的快照物件 (Pydantic Model)
-        :param target_user_id: (選填) 指定這份資料屬於哪個使用者 Email，供管理員代理上傳使用
+        上傳計算後的投資組合快照至 Cloudflare
+        :param portfolio_data: 計算出的 JSON 格式數據
+        :param target_user_id: 選填。指定此快照所屬的使用者 Email (用於多人隔離)
         """
-        print(f"計算完成，正在上傳 {target_user_id if target_user_id else 'System'} 的投資組合至 Cloudflare D1...")
-        
-        # [關鍵修改]：包裝 payload，加入 target_user_id 以支援多使用者資料隔離
-        # 如果有 target_user_id，則採用代理上傳格式；否則維持原樣
-        payload = {
-            "target_user_id": target_user_id,
-            "data": snapshot.model_dump()
-        }
-        
         try:
+            # 構造傳輸 Payload
+            # 如果提供了 target_user_id，將原始數據包裹在 data 欄位中，並附帶 target_user_id
+            # Worker 的 handleUploadPortfolio 會根據此結構來決定存入哪個使用者的空間
+            if target_user_id:
+                payload = {
+                    "target_user_id": target_user_id,
+                    "data": portfolio_data
+                }
+            else:
+                # 若無指定使用者（如管理員全域更新），則直接發送原始數據
+                payload = portfolio_data
+
+            self.logger.info(f"正在上傳快照數據至: {WORKER_API_URL_PORTFOLIO} (目標使用者: {target_user_id if target_user_id else 'Default'})")
+            
             response = requests.post(
                 WORKER_API_URL_PORTFOLIO, 
                 json=payload, 
                 headers=API_HEADERS
             )
+            response.raise_for_status()
             
-            if response.status_code == 200:
-                print(f"上傳成功! Worker 回應: {response.text}")
+            result = response.json()
+            if result.get('success'):
+                self.logger.info("快照上傳成功。")
+                return True
             else:
-                print(f"上傳失敗 [{response.status_code}]: {response.text}")
-                
+                self.logger.error(f"快照上傳失敗: {result.get('error')}")
+                return False
         except Exception as e:
-            print(f"上傳過程發生錯誤: {e}")
+            self.logger.error(f"上傳快照至 Cloudflare 發生錯誤: {e}")
+            return False
