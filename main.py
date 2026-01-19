@@ -3,7 +3,7 @@ import logging
 import sys
 import os
 import json
-from datetime import timedelta
+from datetime import timedelta, datetime
 from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.core.calculator import PortfolioCalculator
@@ -93,8 +93,17 @@ def main():
         logger.warning("目前無任何待處理的使用者紀錄，程序結束。")
         return
 
-    # 7. 下載市場數據 (包含基準標的)
-    fetch_start_date = datetime.now() - timedelta(days=365*5) # 預設抓取 5 年數據以利計算
+    # 7. 動態計算數據抓取起始日期：最早交易日往前推 3 個月
+    if not df.empty:
+        earliest_transaction_date = df['Date'].min()
+        fetch_start_date = earliest_transaction_date - timedelta(days=90)
+        logger.info(f"最早交易日期: {earliest_transaction_date.strftime('%Y-%m-%d')}")
+        logger.info(f"數據抓取起始日期: {fetch_start_date.strftime('%Y-%m-%d')} (往前推 3 個月)")
+    else:
+        # 如果沒有交易紀錄，預設抓取最近 3 個月數據
+        fetch_start_date = datetime.now() - timedelta(days=90)
+        logger.info(f"無交易紀錄，預設抓取起始日期: {fetch_start_date.strftime('%Y-%m-%d')}")
+    
     unique_tickers = df['Symbol'].unique().tolist() if not df.empty else []
     
     # 確保 Benchmark 也被下載
@@ -123,7 +132,7 @@ def main():
                 api_client.upload_portfolio(user_snapshot, target_user_id=user_email)
                 logger.info(f"使用者 {user_email} 處理成功。")
             else:
-                logger.warning(f"使用者 {user_email} 未能產生效快照數據。")
+                logger.warning(f"使用者 {user_email} 未能產生有效快照數據。")
                 
         except Exception as u_err:
             logger.error(f"處理使用者 {user_email} 時發生未預期錯誤: {u_err}")
@@ -131,7 +140,6 @@ def main():
     logger.info("=== 所有使用者處理程序執行完畢 ===")
 
 if __name__ == "__main__":
-    from datetime import datetime
     try:
         main()
     except Exception as e:
