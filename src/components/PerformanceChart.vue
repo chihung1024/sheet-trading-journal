@@ -251,24 +251,9 @@ const filterData = (startDate, endDate = new Date()) => {
         }
     }
     
-    // ===== [核心修正] 當起日比第一筆記錄還早時，模擬一個前一天的0值 =====
+    // 如果沒找到（startDate 早於所有數據），使用第一個數據點
     if (!baseline && fullHistory.length > 0) {
-        // 獲取第一筆記錄的日期
-        const firstRecordDate = new Date(fullHistory[0].date.replace(/-/g, '/'));
-        
-        // 創建一個虛擬的 baseline（第一筆記錄的前一天）
-        const virtualBaselineDate = new Date(firstRecordDate);
-        virtualBaselineDate.setDate(virtualBaselineDate.getDate() - 1);
-        
-        // 虛擬 baseline 的數值設為第一筆記錄的數值
-        // 這樣相減或相除後，第一筆記錄會顯示為 0
-        baseline = {
-            date: virtualBaselineDate.toISOString().split('T')[0],
-            total_value: fullHistory[0].total_value,
-            net_profit: fullHistory[0].net_profit,
-            twr: fullHistory[0].twr,
-            benchmark_twr: fullHistory[0].benchmark_twr
-        };
+        baseline = fullHistory[0];
     }
     
     baselineData.value = baseline;
@@ -331,14 +316,17 @@ const drawChart = () => {
         }];
     } else if (chartType.value === 'pnl') {
         // 損益圖：包含 baseline，相對於 baseline 歸零
+        // 確保 baseline 不在 displayedData 中（不會重複）
         let dataWithBaseline = [];
         
         // 檢查 baseline 是否已經在 displayedData 中
         const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
         
         if (baselineInDisplayed) {
+            // 如果 baseline 已在 displayedData 中，直接使用 displayedData
             dataWithBaseline = displayedData.value;
         } else {
+            // 如果 baseline 不在 displayedData 中，在前面加上 baseline
             dataWithBaseline = [baselineData.value, ...displayedData.value];
         }
         
@@ -364,14 +352,17 @@ const drawChart = () => {
         }];
     } else {
         // 報酬率圖：包含 baseline，相對於 baseline 歸零
+        // 確保 baseline 不在 displayedData 中（不會重複）
         let dataWithBaseline = [];
         
         // 檢查 baseline 是否已經在 displayedData 中
         const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
         
         if (baselineInDisplayed) {
+            // 如果 baseline 已在 displayedData 中，直接使用 displayedData
             dataWithBaseline = displayedData.value;
         } else {
+            // 如果 baseline 不在 displayedData 中，在前面加上 baseline
             dataWithBaseline = [baselineData.value, ...displayedData.value];
         }
         
