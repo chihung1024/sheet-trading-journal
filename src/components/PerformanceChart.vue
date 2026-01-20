@@ -246,7 +246,7 @@ const filterData = (startDate, endDate = new Date()) => {
     
     baselineData.value = baseline;
 
-    // ===== [修正] displayedData 應包含 baseline（作為歸零點）+ >= startDate 的數據 =====
+    // displayedData 應包含 baseline（作為歸零點）+ >= startDate 的數據
     const filteredData = fullHistory.filter(d => {
         const date = new Date(d.date.replace(/-/g, '/'));
         const dayOfWeek = date.getDay();
@@ -288,14 +288,16 @@ const drawChart = () => {
     };
 
     if (chartType.value === 'asset') {
-        const assetData = displayedData.value.map(d => d.total_value);
+        // ===== [修正] 資產圖表：相對於 baseline 歸零 =====
+        const baselineAsset = baselineData.value.total_value;
+        const assetData = displayedData.value.map(d => d.total_value - baselineAsset);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
         
         datasets = [{
-            label: '總資產 (TWD)',
+            label: '總資產變化 (TWD)',
             data: assetData,
             borderColor: '#3b82f6',
             backgroundColor: gradient,
@@ -303,14 +305,16 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        const pnlData = displayedData.value.map(d => d.net_profit);
+        // ===== [修正] 損益圖表：相對於 baseline 歸零 =====
+        const baselinePnl = baselineData.value.net_profit;
+        const pnlData = displayedData.value.map(d => d.net_profit - baselinePnl);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
         gradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
         gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
         
         datasets = [{
-            label: '淨損益 (TWD)',
+            label: '淨損益變化 (TWD)',
             data: pnlData,
             borderColor: '#10b981',
             backgroundColor: gradient,
@@ -392,8 +396,7 @@ const drawChart = () => {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
                                 } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
-                                    const sign = (chartType.value === 'pnl' && context.parsed.y >= 0) ? '+' : 
-                                                 (chartType.value === 'pnl' && context.parsed.y < 0) ? '' : '';
+                                    const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
@@ -440,8 +443,7 @@ const drawChart = () => {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
                             } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
-                                const sign = (chartType.value === 'pnl' && value >= 0) ? '+' : 
-                                             (chartType.value === 'pnl' && value < 0) ? '' : '';
+                                const sign = value >= 0 ? '+' : '';
                                 return sign + value.toLocaleString('zh-TW', {
                                     notation: 'compact',
                                     compactDisplay: 'short'
