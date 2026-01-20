@@ -361,12 +361,16 @@ class PortfolioCalculator:
                 cost = h['cost_basis_twd']
                 current_holdings_cost_sum += cost
                 
+                # ===== [新增] 計算當日價格變動百分比 =====
+                daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
+                
                 final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency="USD", qty=round(h['qty'], 2),
                     market_value_twd=round(mkt_val, 0), pnl_twd=round(mkt_val - cost, 0),
                     pnl_percent=round((mkt_val - cost) / cost * 100, 2) if cost > 0 else 0,
                     current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2),
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
+                    daily_change_percent=daily_change_pct,  # 新增的欄位
                     daily_pl_twd=round(last_active_daily_pnls.get(sym, 0.0), 0)
                 ))
         
