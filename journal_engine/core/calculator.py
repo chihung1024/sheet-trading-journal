@@ -137,10 +137,12 @@ class PortfolioCalculator:
         confirmed_dividends = set()
         dividend_history = []
         xirr_cashflows = []
-        cumulative_twr_factor = 1.0
-        prev_total_equity = 0.0
         
-        # Benchmark 計算所需 (使用自訂標的)
+        # ===== [核心修正] 改用標準 TWR 計算方式（與舊專案對齊）=====
+        cumulative_twr_factor = 1.0
+        last_market_value_twd = 0.0  # 前一日的市值（用於 TWR 計算）
+        
+        # Benchmark 計算所需
         first_benchmark_val_twd = None
 
         # 用於存儲每個標的最新的活躍當日損益
@@ -163,13 +165,12 @@ class PortfolioCalculator:
             
             # 取得自訂基準價格
             benchmark_p = self.market.get_price(self.benchmark_ticker, d)
-            # 基準點必須與投資組合一樣轉換為基準幣別 (TWD)
             curr_benchmark_val_twd = benchmark_p * fx 
 
             if first_benchmark_val_twd is None and curr_benchmark_val_twd > 0:
                 first_benchmark_val_twd = curr_benchmark_val_twd
             
-            # 取得昨日匯率與當日交易
+            # 取得昨日匯率
             prev_date = d - timedelta(days=1)
             try:
                 prev_fx = self.market.fx_rates.asof(prev_date)
@@ -187,9 +188,10 @@ class PortfolioCalculator:
                         'prev_price': self.market.get_price(sym, prev_date)
                     }
 
-            # 處理當日交易
-            daily_cashflows = {}
+            # ===== [關鍵] 計算當日「淨現金流」（用於 TWR）=====
+            daily_net_cashflow_twd = 0.0
             
+            # 處理當日交易
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
                 daily_txns['priority'] = daily_txns['Type'].map(priority_map).fillna(99)
@@ -200,9 +202,6 @@ class PortfolioCalculator:
                 if sym not in holdings:
                     holdings[sym] = {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': row['Tag']}
                     fifo_queues[sym] = deque()
-                
-                if sym not in daily_cashflows:
-                    daily_cashflows[sym] = {'buy_cost': 0.0, 'sell_proceeds': 0.0, 'div_received': 0.0}
 
                 if row['Type'] == 'BUY':
                     cost_usd = (row['Qty'] * row['Price']) + row['Commission'] + row['Tax']
@@ -216,7 +215,7 @@ class PortfolioCalculator:
                     })
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
-                    daily_cashflows[sym]['buy_cost'] += cost_twd
+                    daily_net_cashflow_twd += cost_twd  # BUY = 正現金流（資金流入投組）
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]: continue
@@ -242,19 +241,17 @@ class PortfolioCalculator:
                     invested_capital -= cost_sold_twd
                     total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
-                    daily_cashflows[sym]['sell_proceeds'] += proceeds_twd
+                    daily_net_cashflow_twd -= proceeds_twd  # SELL = 負現金流（資金流出投組）
 
                 elif row['Type'] == 'DIV':
                     div_twd = row['Price'] * fx
-                    # ===== [修正 1/3] DIV 交易：移除對 TWR 的現金流影響 =====
-                    # 原本：total_realized_pnl_twd += div_twd
-                    # 原本：xirr_cashflows.append({'date': d, 'amount': div_twd})
-                    # 原本：daily_cashflows[sym]['div_received'] += div_twd
-                    # 理由：使用 Adj Close 時，股息已反映在價格序列中，不應再加到現金流
-                    # 保留紀錄供明細顯示
-                    pass
+                    # ===== [修正] 配息計入已實現損益與 XIRR =====
+                    total_realized_pnl_twd += div_twd
+                    xirr_cashflows.append({'date': d, 'amount': div_twd})
+                    # ===== [關鍵] 配息在 TWR 計算中作為「負現金流」=====
+                    daily_net_cashflow_twd -= div_twd
 
-            # 處理自動配息與標的損益
+            # 處理自動配息
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
@@ -276,44 +273,57 @@ class PortfolioCalculator:
                         'total_net_twd': round(total_net_twd, 0),
                         'fx_rate': fx, 'status': 'confirmed' if is_confirmed else 'pending'
                     })
-                    # ===== [修正 2/3] 自動配息：移除對 TWR 的現金流影響 =====
-                    # if not is_confirmed:
-                    #     total_realized_pnl_twd += total_net_twd
-                    #     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
-                    #     if sym not in daily_cashflows: daily_cashflows[sym] = {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0}
-                    #     daily_cashflows[sym]['div_received'] += total_net_twd
-                    # 理由同上：Adj Close 已包含股息再投資效果
+                    
+                    if not is_confirmed:
+                        # ===== [修正] 自動配息計入已實現損益與 XIRR =====
+                        total_realized_pnl_twd += total_net_twd
+                        xirr_cashflows.append({'date': d, 'amount': total_net_twd})
+                        # ===== [關鍵] 配息在 TWR 計算中作為「負現金流」=====
+                        daily_net_cashflow_twd -= total_net_twd
 
-                # 計算該標的今日的損益貢獻
-                curr_p = self.market.get_price(sym, d)
-                prev_info = start_of_day_state.get(sym, {'qty': 0.0, 'prev_price': curr_p})
-                cf = daily_cashflows.get(sym, {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0})
-                
-                end_val = h_data['qty'] * curr_p * fx
-                start_val = prev_info['qty'] * prev_info['prev_price'] * prev_fx
-                daily_pnl = (end_val + cf['sell_proceeds'] + cf['div_received']) - (start_val + cf['buy_cost'])
-                
-                if abs(daily_pnl) > 1e-2 or not daily_txns[daily_txns['Symbol'] == sym].empty:
-                    last_active_daily_pnls[sym] = daily_pnl
-
-            # 每日組合估值與 TWR
-            total_mkt_val = sum(h['qty'] * self.market.get_price(s, d) * fx for s, h in holdings.items() if h['qty'] > 1e-6)
-            total_pnl = (total_mkt_val - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)) + total_realized_pnl_twd
-            current_total_equity = invested_capital + total_pnl
+            # ===== [核心] 每日 TWR 計算（標準方法，與舊專案對齊）=====
+            # 計算當日結束時的市值
+            current_market_value_twd = sum(
+                h['qty'] * self.market.get_price(s, d) * fx 
+                for s, h in holdings.items() if h['qty'] > 1e-6
+            )
             
-            prev_invested = history_data[-1]['invested'] if history_data else 0.0
-            prev_pnl = history_data[-1]['net_profit'] if history_data else 0.0
-            adj_equity = prev_total_equity + (invested_capital - prev_invested)
+            # 計算當日報酬率：(期末市值 - 淨現金流) / 期初市值
+            # 淨現金流 = BUY - SELL - DIV（負的 DIV 相當於加回配息）
+            daily_return = 0.0
+            if last_market_value_twd > 1e-9:
+                daily_return = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd - 1
+            elif daily_net_cashflow_twd > 1e-9:
+                # 第一筆投資或從零重建倉位
+                daily_return = current_market_value_twd / daily_net_cashflow_twd - 1
             
-            daily_return = (total_pnl - prev_pnl) / adj_equity if adj_equity > 1.0 else 0.0
+            # 累積 TWR
             cumulative_twr_factor *= (1 + daily_return)
-            prev_total_equity = current_total_equity
+            last_market_value_twd = current_market_value_twd
             
-            # 計算自訂標的的 Benchmark TWR (對齊基準幣別與匯率)
+            # 計算總損益（市值 - 成本 + 已實現）
+            total_pnl = (current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)) + total_realized_pnl_twd
+            
+            # 計算 Benchmark TWR
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
+            # ===== [新增] 計算每個標的的當日損益（供持倉表顯示）=====
+            for sym, h_data in holdings.items():
+                if h_data['qty'] > 1e-6:
+                    curr_p = self.market.get_price(sym, d)
+                    prev_info = start_of_day_state.get(sym, {'qty': 0.0, 'prev_price': curr_p})
+                    
+                    end_val = h_data['qty'] * curr_p * fx
+                    start_val = prev_info['qty'] * prev_info['prev_price'] * prev_fx
+                    
+                    # 標的的當日損益 = 期末值 - 期初值（不考慮交易，因為交易影響已在成本中）
+                    daily_pnl = end_val - start_val
+                    
+                    if abs(daily_pnl) > 1e-2 or not daily_txns[daily_txns['Symbol'] == sym].empty:
+                        last_active_daily_pnls[sym] = daily_pnl
+
             history_data.append({
-                "date": date_str, "total_value": round(total_mkt_val, 0),
+                "date": date_str, "total_value": round(current_market_value_twd, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
