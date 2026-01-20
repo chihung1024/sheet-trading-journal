@@ -229,25 +229,24 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
+    // ===== [修正] baseline 應為嚴格 < startDate 的最後一個數據點 =====
     let baseline = null;
-    for (let i = 0; i < fullHistory.length; i++) {
+    for (let i = fullHistory.length - 1; i >= 0; i--) {
         const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
-        if (date >= startDate) {
-            if (i > 0) {
-                baseline = fullHistory[i - 1];
-            } else {
-                baseline = fullHistory[i];
-            }
+        if (date < startDate) {
+            baseline = fullHistory[i];
             break;
         }
     }
     
+    // 如果沒找到（startDate 早於所有數據），使用第一個數據點
     if (!baseline && fullHistory.length > 0) {
         baseline = fullHistory[0];
     }
     
     baselineData.value = baseline;
 
+    // 過濾出 >= startDate 的所有工作日數據
     displayedData.value = fullHistory.filter(d => {
         const date = new Date(d.date.replace(/-/g, '/'));
         const dayOfWeek = date.getDay();
@@ -329,9 +328,7 @@ const drawChart = () => {
                 label: benchmarkLabel,
                 data: displayedData.value.map(d => ((1 + d.benchmark_twr/100) / (1 + baseBenchmark/100) - 1) * 100),
                 borderColor: '#94a3b8',
-                // ===== [修正] 移除虛線，改為實線 =====
-                // borderDash: [5, 5],  // 移除此行
-                borderWidth: 2.5,  // 與 TWR 線條寬度一致
+                borderWidth: 2.5,
                 pointRadius: 0,
                 pointHoverRadius: 4,
                 tension: 0.4
