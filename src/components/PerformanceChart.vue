@@ -210,8 +210,11 @@ const onDateChange = () => {
     return;
   }
   
-  const start = new Date(customStartDate.value);
-  const end = new Date(customEndDate.value);
+  const start = new Date(customStartDate.value.replace(/-/g, '/'));
+  start.setHours(0, 0, 0, 0);
+  
+  const end = new Date(customEndDate.value.replace(/-/g, '/'));
+  end.setHours(23, 59, 59, 999);
   
   if (end < start) {
     return;
@@ -229,11 +232,20 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
+    // 確保 startDate 和 endDate 沒有時間部分
+    const startDateOnly = new Date(startDate);
+    startDateOnly.setHours(0, 0, 0, 0);
+    
+    const endDateOnly = new Date(endDate);
+    endDateOnly.setHours(23, 59, 59, 999);
+
     // 尋找 baseline：嚴格 < startDate 的最後一個數據點
     let baseline = null;
     for (let i = fullHistory.length - 1; i >= 0; i--) {
-        const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
-        if (date < startDate) {
+        const itemDate = new Date(fullHistory[i].date.replace(/-/g, '/'));
+        itemDate.setHours(0, 0, 0, 0);
+        
+        if (itemDate < startDateOnly) {
             baseline = fullHistory[i];
             break;
         }
@@ -248,14 +260,12 @@ const filterData = (startDate, endDate = new Date()) => {
 
     // 過濾出 >= startDate 的所有工作日數據
     const filteredData = fullHistory.filter(d => {
-        const date = new Date(d.date.replace(/-/g, '/'));
-        const dayOfWeek = date.getDay();
-        return date >= startDate && date <= endDate && dayOfWeek !== 0 && dayOfWeek !== 6;
+        const itemDate = new Date(d.date.replace(/-/g, '/'));
+        itemDate.setHours(0, 0, 0, 0);
+        const dayOfWeek = itemDate.getDay();
+        return itemDate >= startDateOnly && itemDate <= endDateOnly && dayOfWeek !== 0 && dayOfWeek !== 6;
     });
     
-    // ===== [核心修正] 不同圖表類型的處理邏輯 =====
-    // 資產圖：不包含 baseline，直接從 T 日開始
-    // 損益與報酬率：包含 baseline（T-1），作為歸零點
     displayedData.value = filteredData;
     
     drawChart();
@@ -280,7 +290,6 @@ const drawChart = () => {
         pointBorderWidth: 2
     };
 
-    // ===== [核心修正] 不同圖表的資料處理 =====
     let chartData = [];
     let labels = [];
     
@@ -307,7 +316,19 @@ const drawChart = () => {
         }];
     } else if (chartType.value === 'pnl') {
         // 損益圖：包含 baseline，相對於 baseline 歸零
-        const dataWithBaseline = [baselineData.value, ...displayedData.value];
+        // 確保 baseline 不在 displayedData 中（不會重複）
+        let dataWithBaseline = [];
+        
+        // 檢查 baseline 是否已經在 displayedData 中
+        const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
+        
+        if (baselineInDisplayed) {
+            // 如果 baseline 已在 displayedData 中，直接使用 displayedData
+            dataWithBaseline = displayedData.value;
+        } else {
+            // 如果 baseline 不在 displayedData 中，在前面加上 baseline
+            dataWithBaseline = [baselineData.value, ...displayedData.value];
+        }
         
         labels = dataWithBaseline.map(d => {
             const date = new Date(d.date);
@@ -331,7 +352,19 @@ const drawChart = () => {
         }];
     } else {
         // 報酬率圖：包含 baseline，相對於 baseline 歸零
-        const dataWithBaseline = [baselineData.value, ...displayedData.value];
+        // 確保 baseline 不在 displayedData 中（不會重複）
+        let dataWithBaseline = [];
+        
+        // 檢查 baseline 是否已經在 displayedData 中
+        const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
+        
+        if (baselineInDisplayed) {
+            // 如果 baseline 已在 displayedData 中，直接使用 displayedData
+            dataWithBaseline = displayedData.value;
+        } else {
+            // 如果 baseline 不在 displayedData 中，在前面加上 baseline
+            dataWithBaseline = [baselineData.value, ...displayedData.value];
+        }
         
         labels = dataWithBaseline.map(d => {
             const date = new Date(d.date);
