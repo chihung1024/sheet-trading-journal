@@ -229,7 +229,7 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
-    // ===== [修正] baseline 應為嚴格 < startDate 的最後一個數據點 =====
+    // 尋找 baseline：嚴格 < startDate 的最後一個數據點
     let baseline = null;
     for (let i = fullHistory.length - 1; i >= 0; i--) {
         const date = new Date(fullHistory[i].date.replace(/-/g, '/'));
@@ -246,12 +246,19 @@ const filterData = (startDate, endDate = new Date()) => {
     
     baselineData.value = baseline;
 
-    // 過濾出 >= startDate 的所有工作日數據
-    displayedData.value = fullHistory.filter(d => {
+    // ===== [修正] displayedData 應包含 baseline（作為歸零點）+ >= startDate 的數據 =====
+    const filteredData = fullHistory.filter(d => {
         const date = new Date(d.date.replace(/-/g, '/'));
         const dayOfWeek = date.getDay();
         return date >= startDate && date <= endDate && dayOfWeek !== 0 && dayOfWeek !== 6;
     });
+    
+    // 在 filteredData 前面加入 baseline（如果 baseline 不在 filteredData 中）
+    if (baseline && !filteredData.some(d => d.date === baseline.date)) {
+        displayedData.value = [baseline, ...filteredData];
+    } else {
+        displayedData.value = filteredData;
+    }
     
     drawChart();
 };
