@@ -7,8 +7,8 @@
           <button :class="{active: chartType==='pnl'}" @click="chartType='pnl'" title="查看損益趨勢">
             損益
           </button>
-          <button :class="{active: chartType==='twr'}" @click="chartType='twr'" title="查看報酬率趨勢">
-            報酬率
+          <button :class="{active: chartType==='twr'}" @click="chartType='twr'" title="查看報酉率趨勢">
+            報酉率
           </button>
           <button :class="{active: chartType==='asset'}" @click="chartType='asset'" title="查看資產趨勢">
             資產
@@ -94,7 +94,6 @@ import Chart from 'chart.js/auto';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 
-// MODIFIED: 移除重複定義的 store 實例
 const portfolioStore = usePortfolioStore();
 const { addToast } = useToast();
 
@@ -109,11 +108,9 @@ const baselineData = ref(null);
 const customStartDate = ref('');
 const customEndDate = ref('');
 
-// ✅ 新增：基準標的相關狀態
 const benchmarkInput = ref(portfolioStore.selectedBenchmark);
 const isChangingBenchmark = ref(false);
 
-// 計算今天的日期字串
 const todayStr = computed(() => {
   const today = new Date();
   return today.toISOString().split('T')[0];
@@ -128,7 +125,6 @@ const timeRanges = [
   { value: 'ALL', label: '全部' }
 ];
 
-// ✅ 新增：處理基準標的變更
 const handleBenchmarkChange = async () => {
   const newBenchmark = benchmarkInput.value.trim().toUpperCase();
   
@@ -142,7 +138,7 @@ const handleBenchmarkChange = async () => {
     return;
   }
   
-  if (!confirm(`確定要將基準標的從 ${portfolioStore.selectedBenchmark} 改為 ${newBenchmark} 嗎？\n\n這將重新計算所有報酬率數據，約需 1-3 分鐘。`)) {
+  if (!confirm(`確定要將基準標的從 ${portfolioStore.selectedBenchmark} 改為 ${newBenchmark} 嗎？\n\n這將重新計算所有報酉率數據，約需 1-3 分鐘。`)) {
     benchmarkInput.value = portfolioStore.selectedBenchmark;
     return;
   }
@@ -161,7 +157,6 @@ const handleBenchmarkChange = async () => {
   }
 };
 
-// ✅ 監聽 Store 中的 selectedBenchmark 變化，同步更新輸入框
 watch(() => portfolioStore.selectedBenchmark, (newVal) => {
   benchmarkInput.value = newVal;
 });
@@ -227,7 +222,6 @@ const onDateChange = () => {
 };
 
 const filterData = (startDate, endDate = new Date()) => {
-    // MODIFIED: 使用統一後的 portfolioStore
     const fullHistory = portfolioStore.history || [];
     if (fullHistory.length === 0) {
         displayedData.value = [];
@@ -321,20 +315,22 @@ const drawChart = () => {
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
-        // ✅ 動態顯示當前的基準標的名稱
         const benchmarkLabel = `${portfolioStore.selectedBenchmark} (%)`;
         
+        // ===== [修正 3/3] 前端區間報酉計算：改為倍率相除 =====
+        // 原本： d.twr - baseTWR
+        // 正確：((1 + d.twr/100) / (1 + baseTWR/100) - 1) * 100
         datasets = [
             {
                 label: 'TWR (%)',
-                data: displayedData.value.map(d => d.twr - baseTWR),
+                data: displayedData.value.map(d => ((1 + d.twr/100) / (1 + baseTWR/100) - 1) * 100),
                 borderColor: '#8b5cf6',
                 backgroundColor: 'rgba(139, 92, 246, 0.1)',
                 ...common
             },
             {
-                label: benchmarkLabel, // ✅ 使用動態標籤
-                data: displayedData.value.map(d => d.benchmark_twr - baseBenchmark),
+                label: benchmarkLabel,
+                data: displayedData.value.map(d => ((1 + d.benchmark_twr/100) / (1 + baseBenchmark/100) - 1) * 100),
                 borderColor: '#94a3b8',
                 borderDash: [5, 5],
                 borderWidth: 2,
@@ -534,19 +530,18 @@ onUnmounted(() => {
 .right-controls {
     display: flex;
     align-items: center;
-    gap: 12px; /* MODIFIED: 縮小間距 */
+    gap: 12px;
     flex-wrap: wrap;
 }
 
-/* ✅ 新增：基準標的選擇器樣式 */
 .benchmark-selector {
     display: flex;
-    flex-direction: row; /* MODIFIED: 改為橫向佈局 */
-    align-items: center; /* MODIFIED: 垂直置中 */
-    gap: 8px; /* MODIFIED: 標籤與框的間距 */
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
     background: var(--bg-secondary);
     border-radius: 8px;
-    padding: 6px 12px; /* MODIFIED: 調整內邊距 */
+    padding: 6px 12px;
     border: 2px solid var(--primary);
     animation: highlight-border 2s ease-in-out;
 }
@@ -557,10 +552,10 @@ onUnmounted(() => {
 }
 
 .benchmark-label {
-    font-size: 0.85rem; /* MODIFIED: 字體稍微放大 */
-    color: var(--text-main); /* MODIFIED: 顏色加深 */
+    font-size: 0.85rem;
+    color: var(--text-main);
     font-weight: 700;
-    white-space: nowrap; /* MODIFIED: 防止換行 */
+    white-space: nowrap;
 }
 
 .benchmark-input-group {
@@ -570,15 +565,15 @@ onUnmounted(() => {
 }
 
 .benchmark-input {
-    padding: 6px 8px; /* MODIFIED: 微調內邊距 */
+    padding: 6px 8px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     background: var(--bg-card);
     color: var(--text-main);
-    font-size: 1rem; /* MODIFIED: 字體由 0.85 放大至 1rem */
+    font-size: 1rem;
     font-weight: 700;
     font-family: 'JetBrains Mono', monospace;
-    width: 80px; /* MODIFIED: 寬度由 140px 縮小至 80px (約一半) */
+    width: 80px;
     text-transform: uppercase;
     transition: all 0.2s ease;
 }
@@ -671,7 +666,7 @@ onUnmounted(() => {
 .date-range-selector {
     display: flex;
     align-items: center;
-    gap: 12px; /* MODIFIED: 增加區塊間距 */
+    gap: 12px;
     background: var(--bg-secondary);
     border-radius: 8px;
     padding: 6px 12px;
@@ -679,29 +674,29 @@ onUnmounted(() => {
 
 .date-input-group {
     display: flex;
-    flex-direction: row; /* MODIFIED: 改為橫向佈局 */
-    align-items: center; /* MODIFIED: 垂直置中 */
-    gap: 8px; /* MODIFIED: 標籤與框的間距 */
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
 }
 
 .date-input-group label {
-    font-size: 0.85rem; /* MODIFIED: 字體稍微放大 */
-    color: var(--text-main); /* MODIFIED: 顏色加深 */
+    font-size: 0.85rem;
+    color: var(--text-main);
     font-weight: 700;
     white-space: nowrap;
 }
 
 .date-input-group input[type="date"] {
-    padding: 6px 8px; /* MODIFIED: 增加內邊距 */
+    padding: 6px 8px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     background: var(--bg-card);
     color: var(--text-main);
-    font-size: 0.95rem; /* MODIFIED: 字體由 0.8 放大至 0.95rem */
+    font-size: 0.95rem;
     font-family: 'Inter', sans-serif;
     font-weight: 600;
     transition: all 0.2s ease;
-    width: 135px; /* MODIFIED: 固定寬度 */
+    width: 135px;
 }
 
 .date-input-group input[type="date"]:hover {
@@ -767,7 +762,7 @@ canvas {
     
     .right-controls {
         flex-direction: column;
-        align-items: stretch; /* MODIFIED: 手機端撐滿 */
+        align-items: stretch;
         gap: 12px;
     }
     
@@ -778,7 +773,7 @@ canvas {
     }
     
     .benchmark-input {
-        flex: 1; /* MODIFIED: 手機端框稍大一點方便點擊 */
+        flex: 1;
         min-width: 60px;
     }
     
