@@ -141,7 +141,7 @@ class PortfolioCalculator:
         prev_total_equity = 0.0
         
         # Benchmark 計算所需 (使用自訂標的)
-        first_benchmark_val_twd = None # MODIFIED: 改用 TWD 價值對齊，確保匯率波動一致性
+        first_benchmark_val_twd = None
 
         # 用於存儲每個標的最新的活躍當日損益
         last_active_daily_pnls = {}
@@ -163,11 +163,11 @@ class PortfolioCalculator:
             
             # 取得自訂基準價格
             benchmark_p = self.market.get_price(self.benchmark_ticker, d)
-            # MODIFIED: 基準點必須與投資組合一樣轉換為基準幣別 (TWD)
+            # 基準點必須與投資組合一樣轉換為基準幣別 (TWD)
             curr_benchmark_val_twd = benchmark_p * fx 
 
             if first_benchmark_val_twd is None and curr_benchmark_val_twd > 0:
-                first_benchmark_val_twd = curr_benchmark_val_twd # # MODIFIED
+                first_benchmark_val_twd = curr_benchmark_val_twd
             
             # 取得昨日匯率與當日交易
             prev_date = d - timedelta(days=1)
@@ -246,9 +246,13 @@ class PortfolioCalculator:
 
                 elif row['Type'] == 'DIV':
                     div_twd = row['Price'] * fx
-                    total_realized_pnl_twd += div_twd
-                    xirr_cashflows.append({'date': d, 'amount': div_twd})
-                    daily_cashflows[sym]['div_received'] += div_twd
+                    # ===== [修正 1/3] DIV 交易：移除對 TWR 的現金流影響 =====
+                    # 原本：total_realized_pnl_twd += div_twd
+                    # 原本：xirr_cashflows.append({'date': d, 'amount': div_twd})
+                    # 原本：daily_cashflows[sym]['div_received'] += div_twd
+                    # 理由：使用 Adj Close 時，股息已反映在價格序列中，不應再加到現金流
+                    # 保留紀錄供明細顯示
+                    pass
 
             # 處理自動配息與標的損益
             date_str = d.strftime('%Y-%m-%d')
@@ -272,11 +276,13 @@ class PortfolioCalculator:
                         'total_net_twd': round(total_net_twd, 0),
                         'fx_rate': fx, 'status': 'confirmed' if is_confirmed else 'pending'
                     })
-                    if not is_confirmed:
-                        total_realized_pnl_twd += total_net_twd
-                        xirr_cashflows.append({'date': d, 'amount': total_net_twd})
-                        if sym not in daily_cashflows: daily_cashflows[sym] = {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0}
-                        daily_cashflows[sym]['div_received'] += total_net_twd
+                    # ===== [修正 2/3] 自動配息：移除對 TWR 的現金流影響 =====
+                    # if not is_confirmed:
+                    #     total_realized_pnl_twd += total_net_twd
+                    #     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
+                    #     if sym not in daily_cashflows: daily_cashflows[sym] = {'buy_cost': 0, 'sell_proceeds': 0, 'div_received': 0}
+                    #     daily_cashflows[sym]['div_received'] += total_net_twd
+                    # 理由同上：Adj Close 已包含股息再投資效果
 
                 # 計算該標的今日的損益貢獻
                 curr_p = self.market.get_price(sym, d)
@@ -303,15 +309,14 @@ class PortfolioCalculator:
             cumulative_twr_factor *= (1 + daily_return)
             prev_total_equity = current_total_equity
             
-            # [修復] 計算自訂標的的 Benchmark TWR (對齊基準幣別與匯率)
-            # MODIFIED: 使用 (當前幣值 / 初始幣值) 計算，確保與投資組合邏輯完全一致
+            # 計算自訂標的的 Benchmark TWR (對齊基準幣別與匯率)
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
             history_data.append({
                 "date": date_str, "total_value": round(total_mkt_val, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2), # 存儲與匯率對齊後的基準回報
+                "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(fx, 4)
             })
 
@@ -358,7 +363,7 @@ class PortfolioCalculator:
             total_pnl=round(history_data[-1]['net_profit'], 0),
             twr=history_data[-1]['twr'], xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
-            benchmark_twr=history_data[-1]['benchmark_twr'] # 基準回報最終值
+            benchmark_twr=history_data[-1]['benchmark_twr']
         )
         
         return PortfolioGroupData(
