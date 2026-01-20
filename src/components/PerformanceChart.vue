@@ -7,8 +7,8 @@
           <button :class="{active: chartType==='pnl'}" @click="chartType='pnl'" title="查看損益趨勢">
             損益
           </button>
-          <button :class="{active: chartType==='twr'}" @click="chartType='twr'" title="查看報酉率趨勢">
-            報酉率
+          <button :class="{active: chartType==='twr'}" @click="chartType='twr'" title="查看報酬率趨勢">
+            報酬率
           </button>
           <button :class="{active: chartType==='asset'}" @click="chartType='asset'" title="查看資產趨勢">
             資產
@@ -75,7 +75,7 @@
           
           <div class="chart-info" v-if="displayedData.length > 0">
             <span class="info-text">
-              共 {{ displayedData.length }} 筆數據
+              共 {{ displayedData.length }} 筆資料
             </span>
           </div>
         </div>
@@ -138,7 +138,7 @@ const handleBenchmarkChange = async () => {
     return;
   }
   
-  if (!confirm(`確定要將基準標的從 ${portfolioStore.selectedBenchmark} 改為 ${newBenchmark} 嗎？\n\n這將重新計算所有報酉率數據，約需 1-3 分鐘。`)) {
+  if (!confirm(`確定要將基準標的從 ${portfolioStore.selectedBenchmark} 改為 ${newBenchmark} 嗎？\n\n這將重新計算所有報酬率資料，約需 1-3 分鐘。`)) {
     benchmarkInput.value = portfolioStore.selectedBenchmark;
     return;
   }
@@ -317,9 +317,6 @@ const drawChart = () => {
         
         const benchmarkLabel = `${portfolioStore.selectedBenchmark} (%)`;
         
-        // ===== [修正 3/3] 前端區間報酉計算：改為倍率相除 =====
-        // 原本： d.twr - baseTWR
-        // 正確：((1 + d.twr/100) / (1 + baseTWR/100) - 1) * 100
         datasets = [
             {
                 label: 'TWR (%)',
@@ -332,8 +329,9 @@ const drawChart = () => {
                 label: benchmarkLabel,
                 data: displayedData.value.map(d => ((1 + d.benchmark_twr/100) / (1 + baseBenchmark/100) - 1) * 100),
                 borderColor: '#94a3b8',
-                borderDash: [5, 5],
-                borderWidth: 2,
+                // ===== [修正] 移除虛線，改為實線 =====
+                // borderDash: [5, 5],  // 移除此行
+                borderWidth: 2.5,  // 與 TWR 線條寬度一致
                 pointRadius: 0,
                 pointHoverRadius: 4,
                 tension: 0.4
