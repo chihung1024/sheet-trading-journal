@@ -246,19 +246,17 @@ const filterData = (startDate, endDate = new Date()) => {
     
     baselineData.value = baseline;
 
-    // displayedData 應包含 baseline（作為歸零點）+ >= startDate 的數據
+    // 過濾出 >= startDate 的所有工作日數據
     const filteredData = fullHistory.filter(d => {
         const date = new Date(d.date.replace(/-/g, '/'));
         const dayOfWeek = date.getDay();
         return date >= startDate && date <= endDate && dayOfWeek !== 0 && dayOfWeek !== 6;
     });
     
-    // 在 filteredData 前面加入 baseline（如果 baseline 不在 filteredData 中）
-    if (baseline && !filteredData.some(d => d.date === baseline.date)) {
-        displayedData.value = [baseline, ...filteredData];
-    } else {
-        displayedData.value = filteredData;
-    }
+    // ===== [核心修正] 不同圖表類型的處理邏輯 =====
+    // 資產圖：不包含 baseline，直接從 T 日開始
+    // 損益與報酬率：包含 baseline（T-1），作為歸零點
+    displayedData.value = filteredData;
     
     drawChart();
 };
@@ -272,11 +270,6 @@ const drawChart = () => {
         return;
     }
 
-    const labels = displayedData.value.map(d => {
-        const date = new Date(d.date);
-        return date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' });
-    });
-    
     let datasets = [];
     const common = { 
         pointRadius: 0,
@@ -287,27 +280,42 @@ const drawChart = () => {
         pointBorderWidth: 2
     };
 
+    // ===== [核心修正] 不同圖表的資料處理 =====
+    let chartData = [];
+    let labels = [];
+    
     if (chartType.value === 'asset') {
-        // ===== [修正] 資產圖表：相對於 baseline 歸零 =====
-        const baselineAsset = baselineData.value.total_value;
-        const assetData = displayedData.value.map(d => d.total_value - baselineAsset);
+        // 資產圖：不包含 baseline，顯示絕對值
+        labels = displayedData.value.map(d => {
+            const date = new Date(d.date);
+            return date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' });
+        });
+        
+        chartData = displayedData.value.map(d => d.total_value);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
         
         datasets = [{
-            label: '總資產變化 (TWD)',
-            data: assetData,
+            label: '總資產 (TWD)',
+            data: chartData,
             borderColor: '#3b82f6',
             backgroundColor: gradient,
             fill: true,
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        // ===== [修正] 損益圖表：相對於 baseline 歸零 =====
+        // 損益圖：包含 baseline，相對於 baseline 歸零
+        const dataWithBaseline = [baselineData.value, ...displayedData.value];
+        
+        labels = dataWithBaseline.map(d => {
+            const date = new Date(d.date);
+            return date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' });
+        });
+        
         const baselinePnl = baselineData.value.net_profit;
-        const pnlData = displayedData.value.map(d => d.net_profit - baselinePnl);
+        chartData = dataWithBaseline.map(d => d.net_profit - baselinePnl);
         
         const gradient = ctx.createLinearGradient(0, 0, 0, 350);
         gradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
@@ -315,13 +323,21 @@ const drawChart = () => {
         
         datasets = [{
             label: '淨損益變化 (TWD)',
-            data: pnlData,
+            data: chartData,
             borderColor: '#10b981',
             backgroundColor: gradient,
             fill: true,
             ...common
         }];
     } else {
+        // 報酬率圖：包含 baseline，相對於 baseline 歸零
+        const dataWithBaseline = [baselineData.value, ...displayedData.value];
+        
+        labels = dataWithBaseline.map(d => {
+            const date = new Date(d.date);
+            return date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' });
+        });
+        
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
@@ -330,14 +346,14 @@ const drawChart = () => {
         datasets = [
             {
                 label: 'TWR (%)',
-                data: displayedData.value.map(d => ((1 + d.twr/100) / (1 + baseTWR/100) - 1) * 100),
+                data: dataWithBaseline.map(d => ((1 + d.twr/100) / (1 + baseTWR/100) - 1) * 100),
                 borderColor: '#8b5cf6',
                 backgroundColor: 'rgba(139, 92, 246, 0.1)',
                 ...common
             },
             {
                 label: benchmarkLabel,
-                data: displayedData.value.map(d => ((1 + d.benchmark_twr/100) / (1 + baseBenchmark/100) - 1) * 100),
+                data: dataWithBaseline.map(d => ((1 + d.benchmark_twr/100) / (1 + baseBenchmark/100) - 1) * 100),
                 borderColor: '#94a3b8',
                 borderWidth: 2.5,
                 pointRadius: 0,
@@ -395,9 +411,14 @@ const drawChart = () => {
                                 if (chartType.value === 'twr') {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toFixed(2) + '%';
-                                } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
+                                } else if (chartType.value === 'pnl') {
                                     const sign = context.parsed.y >= 0 ? '+' : '';
                                     label += sign + context.parsed.y.toLocaleString('zh-TW', {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0
+                                    });
+                                } else if (chartType.value === 'asset') {
+                                    label += context.parsed.y.toLocaleString('zh-TW', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
                                     });
@@ -442,9 +463,14 @@ const drawChart = () => {
                             if (chartType.value === 'twr') {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toFixed(1) + '%';
-                            } else if (chartType.value === 'asset' || chartType.value === 'pnl') {
+                            } else if (chartType.value === 'pnl') {
                                 const sign = value >= 0 ? '+' : '';
                                 return sign + value.toLocaleString('zh-TW', {
+                                    notation: 'compact',
+                                    compactDisplay: 'short'
+                                });
+                            } else if (chartType.value === 'asset') {
+                                return value.toLocaleString('zh-TW', {
                                     notation: 'compact',
                                     compactDisplay: 'short'
                                 });
