@@ -283,17 +283,26 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # ===== TWR 計算 =====
+            # ===== [修正] TWR 計算 - 處理當沖/清倉邊界情況 =====
             current_market_value_twd = sum(
                 h['qty'] * self.market.get_price(s, d) * fx 
                 for s, h in holdings.items() if h['qty'] > 1e-6
             )
             
             period_hpr_factor = 1.0
+            
+            # 情況 1：正常情況 - 期初有市值
             if last_market_value_twd > 1e-9:
                 period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
-            elif daily_net_cashflow_twd > 1e-9:
+            # 情況 2：首次投資 - 期初無市值但期末有市值
+            elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
                 period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
+            # 情況 3：當沖或清倉後收配息 - 期初期末都無市值
+            # ✅ 修正：這種情況不影響TWR，損益已計入realized_pnl
+            elif current_market_value_twd < 1e-9 and last_market_value_twd < 1e-9:
+                period_hpr_factor = 1.0
+                if abs(daily_net_cashflow_twd) > 1e-9:
+                    logger.info(f"[群組:{group_name}] {date_str} 當沖/清倉情況: CF={daily_net_cashflow_twd:.0f}, HPR設為1.0（不影響TWR）")
             
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
