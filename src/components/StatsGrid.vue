@@ -1,4 +1,4 @@
-<template>
+<![CDATA[<template>
   <div class="stats-grid">
     <div class="stat-block">
       <div class="stat-top">
@@ -104,7 +104,7 @@ import { usePortfolioStore } from '../stores/portfolio';
 const store = usePortfolioStore();
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
-const holdings = computed(() => store.holdings || []);
+const records = computed(() => store.records || []);
 
 // ✅ 修正：直接使用後端計算好的 total_pnl
 const totalPnL = computed(() => stats.value.total_pnl || 0);
@@ -137,68 +137,124 @@ const isUSMarketOpen = computed(() => {
 
 // 動態標題
 const pnlLabel = computed(() => {
-  return isUSMarketOpen.value ? '美股盤中損益' : '今日損益';
+  return isUSMarketOpen.value ? '美股盤中損益' : '當日損益';
 });
 
 // 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
-    return '包含今日股價、匯率及交易影響';
+    return '盤中損益（含交易+即時價格）';
   } else {
-    return '含昨晚交易+今日匯率變化';
+    return '昨晚美股交易損益+今日匯率';
   }
 });
 
 // Tooltip 完整說明
 const pnlTooltip = computed(() => {
-  return '顯示從前日收盤到現在的總損益變化，包含昨晚美股交易及今日匯率影響';
+  if (isUSMarketOpen.value) {
+    return '美股盤中：今日市值 - 昨日市值 - 今日現金流';
+  } else {
+    return '美股收盤：今日市值 - 前日市值 - 昨晚現金流';
+  }
 });
 
-// ✅ 最終修正：使用前日收盤市值作為基準
-// 逻輯：
-// - history[倍數第3筆] = 前天收盤 (2026-01-19)
-// - history[倍數第2筆] = 昨天收盤 (2026-01-20) 已含昨晚交易
-// - history[倍數第1筆] = 今天即時 (2026-01-21)
-// 
-// 用戶期望：看到「從前天收盤到現在」的總變化
-// = 今日市值 - 前天收盤市值
-// = (昨晚交易損益) + (今日匯率變化)
+// 獲取今天的日期字串 (YYYY-MM-DD)
+const getTodayDateString = () => {
+  const now = new Date();
+  return now.toISOString().split('T')[0];
+};
+
+// 獲取昨天的日期字串 (YYYY-MM-DD)
+const getYesterdayDateString = () => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return yesterday.toISOString().split('T')[0];
+};
+
+// 計算指定日期的淨現金流 (買入 - 賣出)
+const calculateCashFlow = (targetDate) => {
+  if (!records.value || records.value.length === 0) return 0;
+  
+  let cashFlow = 0;
+  
+  records.value.forEach(record => {
+    // 只計算目標日期的交易
+    if (record.date !== targetDate) return;
+    
+    const amount = Math.abs(record.total_cost_twd || 0);
+    
+    if (record.action === 'BUY') {
+      // 買入：現金流出（正數）
+      cashFlow += amount;
+    } else if (record.action === 'SELL') {
+      // 賣出：現金流入（負數）
+      cashFlow -= amount;
+    }
+  });
+  
+  return cashFlow;
+};
+
+// ✅ 最終方案：時段感知的當日損益計算
 const dailyPnL = computed(() => {
   const todayValue = stats.value.total_value || 0;
   
-  // 使用前天收盤作為基準（history 倍數第 3 筆）
-  let baseValue = 0;
-  let baseDate = '';
-  
-  if (history.value && history.value.length >= 3) {
-    // 有足夠數據，使用前天收盤
-    baseValue = history.value[history.value.length - 3].total_value || 0;
-    baseDate = history.value[history.value.length - 3].date || '';
-  } else if (history.value && history.value.length === 2) {
-    // 只有兩筆，使用昨天
-    baseValue = history.value[0].total_value || 0;
-    baseDate = history.value[0].date || '';
-  } else if (history.value && history.value.length === 1) {
-    // 只有一筆，第一天
-    baseValue = 0;
+  if (!history.value || history.value.length < 2) {
+    return 0;
   }
   
-  const pnl = todayValue - baseValue;
+  let baseValue = 0;
+  let cashFlow = 0;
+  let baseDate = '';
   
-  console.log(`[當日損益] 基準日=${baseDate}, 基準市值=${baseValue.toLocaleString()}, 今日=${todayValue.toLocaleString()}, 損益=${pnl.toLocaleString()}`);
+  if (isUSMarketOpen.value) {
+    // 🌙 美股交易中：使用昨日收盤 + 今日現金流
+    baseValue = history.value[history.value.length - 2].total_value || 0;
+    baseDate = history.value[history.value.length - 2].date || '';
+    cashFlow = calculateCashFlow(getTodayDateString());
+    
+    console.log(`[美股盤中] 基準=${baseDate}收盤, 基準市值=${baseValue.toLocaleString()}, 今日現金流=${cashFlow.toLocaleString()}, 今日市值=${todayValue.toLocaleString()}`);
+  } else {
+    // ☀️ 美股收盤後：使用前日收盤 + 昨晚現金流
+    if (history.value.length >= 3) {
+      baseValue = history.value[history.value.length - 3].total_value || 0;
+      baseDate = history.value[history.value.length - 3].date || '';
+    } else {
+      // 資料不足，使用昨日
+      baseValue = history.value[history.value.length - 2].total_value || 0;
+      baseDate = history.value[history.value.length - 2].date || '';
+    }
+    cashFlow = calculateCashFlow(getYesterdayDateString());
+    
+    console.log(`[美股收盤] 基準=${baseDate}收盤, 基準市值=${baseValue.toLocaleString()}, 昨晚現金流=${cashFlow.toLocaleString()}, 今日市值=${todayValue.toLocaleString()}`);
+  }
+  
+  // 當日損益 = 今日市值 - 基準市值 - 現金流
+  const pnl = todayValue - baseValue - cashFlow;
+  
+  console.log(`[當日損益] ${pnl.toLocaleString()} (${isUSMarketOpen.value ? '美股盤中' : '美股收盤'})`);
   
   return pnl;
 });
 
 // 計算今日損益百分比
 const dailyRoi = computed(() => {
-  // 使用前天收盤作為基準
   let baseValue = 0;
   
-  if (history.value && history.value.length >= 3) {
-    baseValue = history.value[history.value.length - 3].total_value || 0;
-  } else if (history.value && history.value.length === 2) {
-    baseValue = history.value[0].total_value || 0;
+  if (!history.value || history.value.length < 2) {
+    return '0.00';
+  }
+  
+  if (isUSMarketOpen.value) {
+    // 使用昨日收盤
+    baseValue = history.value[history.value.length - 2].total_value || 0;
+  } else {
+    // 使用前日收盤
+    if (history.value.length >= 3) {
+      baseValue = history.value[history.value.length - 3].total_value || 0;
+    } else {
+      baseValue = history.value[history.value.length - 2].total_value || 0;
+    }
   }
   
   if (!baseValue || baseValue === 0) return '0.00';
@@ -418,4 +474,4 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
         font-size: 0.8rem;
     }
 }
-</style>
+</style>]]>
