@@ -380,6 +380,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     return { 
         loading, 
+        rawData, // 🐛 添加 rawData 到導出
         stats, 
         holdings, 
         history, 
