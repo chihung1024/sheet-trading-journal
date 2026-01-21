@@ -145,43 +145,64 @@ const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
     return '包含今日股價、匯率及交易影響';
   } else {
-    return '包含昨日股價、今日匯率變化';
+    return '含昨晚交易+今日匯率變化';
   }
 });
 
 // Tooltip 完整說明
 const pnlTooltip = computed(() => {
-  return '後端使用 Modified Dietz 方法計算，正確處理跨日交易、股價變動及匯率影響';
+  return '顯示從前日收盤到現在的總損益變化，包含昨晚美股交易及今日匯率影響';
 });
 
-// ✅ 最終修正：恢復使用後端計算的 daily_pl_twd
-// 原因：
-// 1. 後端知道每筆交易的確切時點和持倉狀態
-// 2. 後端使用 Modified Dietz 方法處理日內交易
-// 3. 可正確分離股價變化、匯率影響、交易影響
-// 4. 前端無法從 history中分辨「昨日交易影響」 vs 「今日價格變化」
+// ✅ 最終修正：使用前日收盤市值作為基準
+// 逻輯：
+// - history[倍數第3筆] = 前天收盤 (2026-01-19)
+// - history[倍數第2筆] = 昨天收盤 (2026-01-20) 已含昨晚交易
+// - history[倍數第1筆] = 今天即時 (2026-01-21)
+// 
+// 用戶期望：看到「從前天收盤到現在」的總變化
+// = 今日市值 - 前天收盤市值
+// = (昨晚交易損益) + (今日匯率變化)
 const dailyPnL = computed(() => {
-  // 直接加總所有持股的 daily_pl_twd
-  // 這個值已經由後端正確計算，包含：
-  // - 股價變化 (前日收盤 -> 當前價格)
-  // - 匯率影響 (前日匯率 -> 當前匯率)
-  // - 交易影響 (使用 Modified Dietz 正確處理)
-  const dailyPlSum = holdings.value.reduce((sum, holding) => {
-    return sum + (holding.daily_pl_twd || 0);
-  }, 0);
+  const todayValue = stats.value.total_value || 0;
   
-  console.log(`[當日損益] 後端計算的 daily_pl_twd 總和 = ${dailyPlSum.toLocaleString()}`);
+  // 使用前天收盤作為基準（history 倍數第 3 筆）
+  let baseValue = 0;
+  let baseDate = '';
   
-  return dailyPlSum;
+  if (history.value && history.value.length >= 3) {
+    // 有足夠數據，使用前天收盤
+    baseValue = history.value[history.value.length - 3].total_value || 0;
+    baseDate = history.value[history.value.length - 3].date || '';
+  } else if (history.value && history.value.length === 2) {
+    // 只有兩筆，使用昨天
+    baseValue = history.value[0].total_value || 0;
+    baseDate = history.value[0].date || '';
+  } else if (history.value && history.value.length === 1) {
+    // 只有一筆，第一天
+    baseValue = 0;
+  }
+  
+  const pnl = todayValue - baseValue;
+  
+  console.log(`[當日損益] 基準日=${baseDate}, 基準市值=${baseValue.toLocaleString()}, 今日=${todayValue.toLocaleString()}, 損益=${pnl.toLocaleString()}`);
+  
+  return pnl;
 });
 
 // 計算今日損益百分比
 const dailyRoi = computed(() => {
-  // 使用昨日總資產作為基準
-  const yesterdayValue = stats.value.total_value - dailyPnL.value;
+  // 使用前天收盤作為基準
+  let baseValue = 0;
   
-  if (!yesterdayValue || yesterdayValue === 0) return '0.00';
-  return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
+  if (history.value && history.value.length >= 3) {
+    baseValue = history.value[history.value.length - 3].total_value || 0;
+  } else if (history.value && history.value.length === 2) {
+    baseValue = history.value[0].total_value || 0;
+  }
+  
+  if (!baseValue || baseValue === 0) return '0.00';
+  return ((dailyPnL.value / baseValue) * 100).toFixed(2);
 });
 
 // 數字動畫
