@@ -87,7 +87,7 @@ class PortfolioCalculator:
                 continue
 
             # 執行單一群組計算 (傳入動態匯率)
-            group_result = self._calculate_single_portfolio(group_df, date_range, current_fx)
+            group_result = self._calculate_single_portfolio(group_df, date_range, current_fx, group_name)
             final_groups_data[group_name] = group_result
 
         # 5. 組合最終結果
@@ -127,7 +127,7 @@ class PortfolioCalculator:
                 self.df.at[index, 'Qty'] = new_qty
                 self.df.at[index, 'Price'] = new_price
 
-    def _calculate_single_portfolio(self, df, date_range, current_fx):
+    def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown"):
         """單一群組的核心計算邏輯"""
         holdings = {}
         fifo_queues = {}
@@ -138,9 +138,9 @@ class PortfolioCalculator:
         dividend_history = []
         xirr_cashflows = []
         
-        # ===== 恢復舊專案的TWR計算邏輯 =====
+        # ===== TWR 計算變數 =====
         cumulative_twr_factor = 1.0
-        last_market_value_twd = 0.0  # 前一日的市值（用於TWR計算）
+        last_market_value_twd = 0.0
         
         # Benchmark 計算所需
         first_benchmark_val_twd = None
@@ -154,7 +154,13 @@ class PortfolioCalculator:
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             confirmed_dividends.add(key)
 
+        # ===== [診斷] 輸出第一筆交易 =====
+        if not df.empty:
+            first_tx = df.iloc[0]
+            logger.info(f"[群組:{group_name}] 第一筆交易: {first_tx['Date'].strftime('%Y-%m-%d')} {first_tx['Type']} {first_tx['Symbol']} Qty={first_tx['Qty']} Price={first_tx['Price']}")
+
         # 逐日計算
+        day_count = 0
         for d in date_range:
             current_date = d.date()
             try:
@@ -188,7 +194,7 @@ class PortfolioCalculator:
                         'prev_price': self.market.get_price(sym, prev_date)
                     }
 
-            # ===== 恢復舊專案的現金流定義（BUY=正，SELL/DIV=負） =====
+            # ===== 現金流計算 =====
             daily_net_cashflow_twd = 0.0
             
             # 處理當日交易
@@ -215,7 +221,6 @@ class PortfolioCalculator:
                     })
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
-                    # ✅ 舊專案定義：BUY = 正現金流（資金投入）
                     daily_net_cashflow_twd += cost_twd
 
                 elif row['Type'] == 'SELL':
@@ -242,14 +247,12 @@ class PortfolioCalculator:
                     invested_capital -= cost_sold_twd
                     total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
-                    # ✅ 舊專案定義：SELL = 負現金流（資金流出）
                     daily_net_cashflow_twd -= proceeds_twd
 
                 elif row['Type'] == 'DIV':
                     div_twd = row['Price'] * fx
                     total_realized_pnl_twd += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
-                    # ✅ 舊專案定義：DIV = 負現金流（配息收入）
                     daily_net_cashflow_twd -= div_twd
 
             # 處理自動配息
@@ -278,31 +281,34 @@ class PortfolioCalculator:
                     if not is_confirmed:
                         total_realized_pnl_twd += total_net_twd
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
-                        # ✅ 舊專案定義：自動配息 = 負現金流（配息收入）
                         daily_net_cashflow_twd -= total_net_twd
 
-            # ===== 恢復舊專案的TWR計算公式 =====
-            # 計算當日結束時的市值
+            # ===== TWR 計算 =====
             current_market_value_twd = sum(
                 h['qty'] * self.market.get_price(s, d) * fx 
                 for s, h in holdings.items() if h['qty'] > 1e-6
             )
             
-            # 舊專案的TWR公式：periodHprFactor = (MVE - CF) / MVB
-            # 其中 CF 按舊專案定義（BUY=正，SELL/DIV=負）
             period_hpr_factor = 1.0
             if last_market_value_twd > 1e-9:
                 period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
             elif daily_net_cashflow_twd > 1e-9:
-                # 首次投資情況
                 period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
             
-            # 檢查是否為有效值
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
             
+            # ===== [診斷] 輸出異常TWR值 =====
+            if period_hpr_factor < 0.01 or period_hpr_factor > 10.0:
+                logger.warning(f"[群組:{group_name}] {date_str} TWR異常: MVB={last_market_value_twd:.0f}, MVE={current_market_value_twd:.0f}, CF={daily_net_cashflow_twd:.0f}, HPR={period_hpr_factor:.4f}")
+            
+            # ===== [診斷] 輸出前10天和有交易的天數 =====
+            if day_count < 10 or len(daily_txns) > 0:
+                logger.info(f"[群組:{group_name}] {date_str}: MVB={last_market_value_twd:.0f}, MVE={current_market_value_twd:.0f}, CF={daily_net_cashflow_twd:.0f}, HPR={period_hpr_factor:.4f}, CumTWR={(cumulative_twr_factor * period_hpr_factor - 1)*100:.2f}%")
+            
             cumulative_twr_factor *= period_hpr_factor
             last_market_value_twd = current_market_value_twd
+            day_count += 1
             
             # 計算總損益（市值 - 成本 + 已實現）
             total_pnl = (current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)) + total_realized_pnl_twd
@@ -310,7 +316,7 @@ class PortfolioCalculator:
             # 計算 Benchmark TWR
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            # ===== 恢復舊專案的個股當日損益計算邏輯 =====
+            # ===== 個股當日損益計算 =====
             daily_cashflows_by_symbol = {}
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
@@ -319,11 +325,9 @@ class PortfolioCalculator:
                 
                 if row['Type'] == 'BUY':
                     cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * fx
-                    # ✅ 舊專案定義：買進 = 正現金流
                     daily_cashflows_by_symbol[sym] += cost_twd
                 elif row['Type'] == 'SELL':
                     proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * fx
-                    # ✅ 舊專案定義：賣出 = 負現金流
                     daily_cashflows_by_symbol[sym] -= proceeds_twd
 
             for sym, h_data in holdings.items():
@@ -334,8 +338,6 @@ class PortfolioCalculator:
                     end_val = h_data['qty'] * curr_p * fx
                     start_val = prev_info['qty'] * prev_info['prev_price'] * prev_fx
                     
-                    # ✅ 舊專案公式：daily_pl = ending_value - beginning_value - cashflow
-                    # 其中 cashflow 按舊定義（BUY=正，SELL=負）
                     cashflow = daily_cashflows_by_symbol.get(sym, 0.0)
                     daily_pnl = end_val - start_val - cashflow
                     
@@ -349,6 +351,10 @@ class PortfolioCalculator:
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(fx, 4)
             })
+
+        # ===== [診斷] 輸出最終TWR =====
+        final_twr = (cumulative_twr_factor - 1) * 100
+        logger.info(f"[群組:{group_name}] 最終TWR={final_twr:.2f}%, cumulative_factor={cumulative_twr_factor:.6f}")
 
         # --- 產生最終報表 ---
         final_holdings = []
