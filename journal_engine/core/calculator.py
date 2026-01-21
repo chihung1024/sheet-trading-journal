@@ -127,6 +127,13 @@ class PortfolioCalculator:
                 self.df.at[index, 'Qty'] = new_qty
                 self.df.at[index, 'Price'] = new_price
 
+    def _get_previous_trading_day(self, date):
+        """獲取前一個交易日（排除周末）"""
+        prev_date = date - timedelta(days=1)
+        while prev_date.weekday() >= 5:  # 5=周六, 6=周日
+            prev_date -= timedelta(days=1)
+        return prev_date
+
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown"):
         """單一群組的核心計算邏輯"""
         holdings = {}
@@ -153,6 +160,38 @@ class PortfolioCalculator:
         for _, row in div_txs.iterrows():
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             confirmed_dividends.add(key)
+
+        # ✨ 新增：在第一筆交易前一天補上虛擬 0 資產（排除周末）
+        if not df.empty:
+            first_tx_date = df['Date'].min()
+            prev_trading_day = self._get_previous_trading_day(first_tx_date)
+            prev_date_str = prev_trading_day.strftime('%Y-%m-%d')
+            
+            # 獲取前一天的匯率和基準價格
+            try:
+                prev_fx = self.market.fx_rates.asof(prev_trading_day)
+                if pd.isna(prev_fx): prev_fx = DEFAULT_FX_RATE
+            except: 
+                prev_fx = DEFAULT_FX_RATE
+            
+            prev_benchmark_p = self.market.get_price(self.benchmark_ticker, prev_trading_day)
+            prev_benchmark_val_twd = prev_benchmark_p * prev_fx
+            
+            if first_benchmark_val_twd is None and prev_benchmark_val_twd > 0:
+                first_benchmark_val_twd = prev_benchmark_val_twd
+            
+            # 插入虛擬 0 資產記錄
+            history_data.append({
+                "date": prev_date_str, 
+                "total_value": 0,
+                "invested": 0, 
+                "net_profit": 0,
+                "twr": 0.0, 
+                "benchmark_twr": 0.0,
+                "fx_rate": round(prev_fx, 4)
+            })
+            
+            logger.info(f"[群組:{group_name}] 已在 {prev_date_str} 補上虛擬 0 資產記錄（第一筆交易: {first_tx_date.strftime('%Y-%m-%d')})。")
 
         # ===== [診斷] 輸出第一筆交易 =====
         if not df.empty:
