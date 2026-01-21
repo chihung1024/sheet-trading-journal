@@ -3,8 +3,10 @@ name: Update Portfolio Data
 on:
   schedule:
     # 每天 UTC 0 點 (台灣時間早上 8 點) 自動執行
-    - cron: '0 0 * * *'
-  
+    - cron: '0 23 * * *'   # 07:00 CST - 晨間更新（雙市場收盤價）
+    - cron: '15 1 * * 1-5' # 09:15 CST - 台股開盤後（僅交易日）
+    - cron: '0 6 * * 1-5' # 14:00 CST - 台股收盤
+    - cron: '0 15 * * 1-5' # 23:00 CST - 美股開盤後
   # ✅ 使用 workflow_dispatch 並定義 inputs
   workflow_dispatch:
     inputs:
