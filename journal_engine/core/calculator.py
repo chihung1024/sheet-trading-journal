@@ -138,7 +138,7 @@ class PortfolioCalculator:
         dividend_history = []
         xirr_cashflows = []
         
-        # ===== [核心修正] 改用標準 TWR 計算方式（與舊專案對齊）=====
+        # ===== [核心修正] 使用標準 Modified Dietz TWR 計算方式 =====
         cumulative_twr_factor = 1.0
         last_market_value_twd = 0.0  # 前一日的市值（用於 TWR 計算）
         
@@ -188,7 +188,7 @@ class PortfolioCalculator:
                         'prev_price': self.market.get_price(sym, prev_date)
                     }
 
-            # ===== [關鍵] 計算當日「淨現金流」（用於 TWR）=====
+            # ===== [關鍵修正] 計算當日「淨現金流」（符合國際標準：流入=負，流出=正）=====
             daily_net_cashflow_twd = 0.0
             
             # 處理當日交易
@@ -215,7 +215,8 @@ class PortfolioCalculator:
                     })
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
-                    daily_net_cashflow_twd += cost_twd  # BUY = 正現金流（資金流入投組）
+                    # ✅ 修正：BUY = 負現金流（資金流入投組）
+                    daily_net_cashflow_twd -= cost_twd
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]: continue
@@ -241,15 +242,15 @@ class PortfolioCalculator:
                     invested_capital -= cost_sold_twd
                     total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
-                    daily_net_cashflow_twd -= proceeds_twd  # SELL = 負現金流（資金流出投組）
+                    # ✅ 修正：SELL = 正現金流（資金流出投組）
+                    daily_net_cashflow_twd += proceeds_twd
 
                 elif row['Type'] == 'DIV':
                     div_twd = row['Price'] * fx
-                    # ===== [修正] 配息計入已實現損益與 XIRR =====
                     total_realized_pnl_twd += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
-                    # ===== [關鍵] 配息在 TWR 計算中作為「負現金流」=====
-                    daily_net_cashflow_twd -= div_twd
+                    # ✅ 修正：DIV = 正現金流（資金流出投組）
+                    daily_net_cashflow_twd += div_twd
 
             # 處理自動配息
             date_str = d.strftime('%Y-%m-%d')
@@ -275,30 +276,39 @@ class PortfolioCalculator:
                     })
                     
                     if not is_confirmed:
-                        # ===== [修正] 自動配息計入已實現損益與 XIRR =====
                         total_realized_pnl_twd += total_net_twd
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
-                        # ===== [關鍵] 配息在 TWR 計算中作為「負現金流」=====
-                        daily_net_cashflow_twd -= total_net_twd
+                        # ✅ 修正：自動配息 = 正現金流（資金流出投組）
+                        daily_net_cashflow_twd += total_net_twd
 
-            # ===== [核心] 每日 TWR 計算（標準方法，與舊專案對齊）=====
+            # ===== [核心修正] 使用標準 Modified Dietz 公式計算 TWR =====
             # 計算當日結束時的市值
             current_market_value_twd = sum(
                 h['qty'] * self.market.get_price(s, d) * fx 
                 for s, h in holdings.items() if h['qty'] > 1e-6
             )
             
-            # 計算當日報酬率：(期末市值 - 淨現金流) / 期初市值
-            # 淨現金流 = BUY - SELL - DIV（負的 DIV 相當於加回配息）
+            # Modified Dietz 公式：R = (EMV - BMV - CF) / BMV
+            # 其中 CF 已按標準定義：流入為負，流出為正
             daily_return = 0.0
             if last_market_value_twd > 1e-9:
-                daily_return = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd - 1
-            elif daily_net_cashflow_twd > 1e-9:
-                # 第一筆投資或從零重建倉位
-                daily_return = current_market_value_twd / daily_net_cashflow_twd - 1
+                # 標準情況：期初市值 > 0
+                # daily_return = (期末市值 - 期初市值 - 淨現金流) / 期初市值
+                daily_return = (current_market_value_twd - last_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
+            elif abs(daily_net_cashflow_twd) > 1e-9:
+                # 特殊情況：期初市值為0（首次投資或清倉後重建倉位）
+                # 由於 CF < 0（買入），我們用 EMV + CF（因為CF是負數，相當於 EMV - |CF|）
+                # daily_return = (EMV - |CF|) / |CF|
+                daily_return = (current_market_value_twd + daily_net_cashflow_twd) / abs(daily_net_cashflow_twd) - 1
+            # 如果期初市值為0且當日無現金流，daily_return保持為0
             
-            # 累積 TWR
-            cumulative_twr_factor *= (1 + daily_return)
+            # 累積 TWR（防止異常值導致因子變負）
+            if daily_return > -0.99:  # 單日最大虧損限制在99%（防止計算錯誤）
+                cumulative_twr_factor *= (1 + daily_return)
+            else:
+                logger.warning(f"偵測到異常daily_return={daily_return:.4f}於{date_str}，已限制為-99%")
+                cumulative_twr_factor *= 0.01
+            
             last_market_value_twd = current_market_value_twd
             
             # 計算總損益（市值 - 成本 + 已實現）
@@ -307,8 +317,8 @@ class PortfolioCalculator:
             # 計算 Benchmark TWR
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            # ===== [修正] 計算每個標的的當日損益（使用 Modified Dietz 公式）=====
-            # 先計算每個標的的當日淨現金流
+            # ===== [同步修正] 計算每個標的的當日損益（使用 Modified Dietz 公式）=====
+            # 先計算每個標的的當日淨現金流（同樣遵循：流入=負，流出=正）
             daily_cashflows_by_symbol = {}
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
@@ -317,10 +327,12 @@ class PortfolioCalculator:
                 
                 if row['Type'] == 'BUY':
                     cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * fx
-                    daily_cashflows_by_symbol[sym] += cost_twd  # 買進 = 正現金流
+                    # ✅ 修正：買進 = 負現金流
+                    daily_cashflows_by_symbol[sym] -= cost_twd
                 elif row['Type'] == 'SELL':
                     proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * fx
-                    daily_cashflows_by_symbol[sym] -= proceeds_twd  # 賣出 = 負現金流
+                    # ✅ 修正：賣出 = 正現金流
+                    daily_cashflows_by_symbol[sym] += proceeds_twd
 
             for sym, h_data in holdings.items():
                 if h_data['qty'] > 1e-6:
@@ -330,7 +342,7 @@ class PortfolioCalculator:
                     end_val = h_data['qty'] * curr_p * fx
                     start_val = prev_info['qty'] * prev_info['prev_price'] * prev_fx
                     
-                    # ===== [修正] 使用 Modified Dietz 公式 =====
+                    # ✅ 修正：使用 Modified Dietz 公式
                     # daily_pl = ending_value - beginning_value - net_cashflow
                     cashflow = daily_cashflows_by_symbol.get(sym, 0.0)
                     daily_pnl = end_val - start_val - cashflow
@@ -361,7 +373,6 @@ class PortfolioCalculator:
                 cost = h['cost_basis_twd']
                 current_holdings_cost_sum += cost
                 
-                # ===== [新增] 計算當日價格變動百分比 =====
                 daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
                 
                 final_holdings.append(HoldingPosition(
@@ -370,7 +381,7 @@ class PortfolioCalculator:
                     pnl_percent=round((mkt_val - cost) / cost * 100, 2) if cost > 0 else 0,
                     current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2),
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
-                    daily_change_percent=daily_change_pct,  # 新增的欄位
+                    daily_change_percent=daily_change_pct,
                     daily_pl_twd=round(last_active_daily_pnls.get(sym, 0.0), 0)
                 ))
         
