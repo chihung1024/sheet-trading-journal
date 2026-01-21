@@ -65,6 +65,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         rawData.value = null;
         records.value = [];
         lastUpdate.value = '';
+        localStorage.removeItem('cached_records');
         console.log('🧹 [resetData] 本地投資組合數據已清空');
     };
 
@@ -137,15 +138,32 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // 🐛 修正：添加詳細日誌和 localStorage 緩存
     const fetchRecords = async () => {
         console.log('📝 [fetchRecords] 開始請求...');
         try {
             const json = await fetchWithAuth('/api/records');
+            
+            console.log('📝 [fetchRecords] API 回應:', json);
+            
             if (json && json.success) {
                 records.value = json.data || [];
+                
+                // 🔧 存儲到 localStorage
+                localStorage.setItem('cached_records', JSON.stringify(records.value));
+                
+                console.log(`✅ [fetchRecords] 成功載入 ${records.value.length} 筆記錄`);
+                
+                if (records.value.length > 0) {
+                    console.log('📝 [fetchRecords] 第一筆記錄:', records.value[0]);
+                    console.log('📝 [fetchRecords] 最近5筆日期:', records.value.slice(-5).map(r => r.date));
+                }
+                
                 if (records.value.length === 0) {
                     resetData();
                 }
+            } else {
+                console.warn('⚠️ [fetchRecords] API 返回格式異常:', json);
             }
         } catch (error) {
             console.error('❌ [fetchRecords] 請求失敗:', error);
