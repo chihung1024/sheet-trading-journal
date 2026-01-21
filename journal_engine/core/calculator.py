@@ -52,11 +52,6 @@ class PortfolioCalculator:
         # 1. 全域復權處理 (只做一次)
         self._back_adjust_transactions_global()
         
-        # 2. 準備日期範圍
-        start_date = self.df['Date'].min()
-        end_date = datetime.now()
-        date_range = pd.date_range(start=start_date, end=end_date, freq='D').normalize()
-        
         # 3. 識別所有群組
         all_tags = set()
         for tags_str in self.df['Tag'].dropna().unique():
@@ -86,8 +81,15 @@ class PortfolioCalculator:
                 logger.warning(f"群組 {group_name} 無交易紀錄，跳過")
                 continue
 
-            # 執行單一群組計算 (傳入動態匯率)
-            group_result = self._calculate_single_portfolio(group_df, date_range, current_fx, group_name)
+            # ✨ 每個群組使用自己的日期範圍
+            group_start_date = group_df['Date'].min()
+            group_end_date = datetime.now()
+            group_date_range = pd.date_range(start=group_start_date, end=group_end_date, freq='D').normalize()
+            
+            logger.info(f"[群組:{group_name}] 日期範圍: {group_start_date.strftime('%Y-%m-%d')} ~ {group_end_date.strftime('%Y-%m-%d')}")
+
+            # 執行單一群組計算 (傳入該群組的日期範圍)
+            group_result = self._calculate_single_portfolio(group_df, group_date_range, current_fx, group_name)
             final_groups_data[group_name] = group_result
 
         # 5. 組合最終結果
@@ -191,7 +193,7 @@ class PortfolioCalculator:
                 "fx_rate": round(prev_fx, 4)
             })
             
-            logger.info(f"[群組:{group_name}] 已在 {prev_date_str} 補上虛擬 0 資產記錄（第一筆交易: {first_tx_date.strftime('%Y-%m-%d')})。")
+            logger.info(f"[群組:{group_name}] 已在 {prev_date_str} 補上虛擬 0 資產記錄（第一筆交易: {first_tx_date.strftime('%Y-%m-%d')}）。")
 
         # ===== [診斷] 輸出第一筆交易 =====
         if not df.empty:
