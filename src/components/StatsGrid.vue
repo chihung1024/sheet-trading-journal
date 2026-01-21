@@ -106,8 +106,10 @@ const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 const records = computed(() => store.records || []);
 const rawData = computed(() => store.rawData || {});
+const holdings = computed(() => store.holdings || []);
+const currentGroup = computed(() => store.currentGroup);
 
-// ✅ 修正：直接使用後端計算好的 total_pnl
+// ✅ 修正：總損益從後端獲取
 const totalPnL = computed(() => stats.value.total_pnl || 0);
 
 // 計算已實現損益 (從後端 API 獲取)
@@ -144,7 +146,7 @@ const pnlLabel = computed(() => {
 // 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
-    return '盤中損益（含交易+即時價格）';
+    return '盤中損益(含交易+即時價格)';
   } else {
     return '昨晚美股交易損益+今日匯率';
   }
@@ -153,9 +155,9 @@ const pnlDescription = computed(() => {
 // Tooltip 完整說明
 const pnlTooltip = computed(() => {
   if (isUSMarketOpen.value) {
-    return '美股盤中：今日市值 - 昨日市值 - 今日現金流';
+    return '美股盤中:今日市值 - 昨日市值 - 今日現金流';
   } else {
-    return '美股收盤：今日市值 - 前日市值 - 昨晚現金流';
+    return '美股收盤:今日市值 - 前日市值 - 昨晚現金流';
   }
 });
 
@@ -172,17 +174,36 @@ const getYesterdayDateString = () => {
   return yesterday.toISOString().split('T')[0];
 };
 
-// 🐛 修正：使用 snapshot 中的匯率來計算 TWD 現金流
+// 🔧 修正：根據當前群組過濾出該群組的持股 symbols
+const getCurrentGroupSymbols = () => {
+  if (currentGroup.value === 'all') {
+    // 'all' 群組：包含所有交易
+    return null; // null 表示不過濾
+  }
+  
+  // 特定群組：只包含該群組當前持有的股票
+  return new Set(holdings.value.map(h => h.symbol));
+};
+
+// 🐛 修正：計算特定日期的現金流（只計算當前群組的交易）
 const calculateCashFlow = (targetDate) => {
   if (!records.value || records.value.length === 0) return 0;
   
-  // 🔧 從 rawData 中獲取匯率（後端計算快照時傲存储）
+  // 🔧 從 rawData 中獲取匯率（後端計算快照時儲存）
   const exchangeRate = rawData.value?.exchange_rate || 32; // 預設 32
+  
+  // 🔧 獲取當前群組的股票列表
+  const groupSymbols = getCurrentGroupSymbols();
   
   let cashFlow = 0;
   let matchCount = 0;
   
   records.value.forEach(record => {
+    // 🔧 如果不是 'all' 群組，則只處理該群組持有的股票
+    if (groupSymbols !== null && !groupSymbols.has(record.symbol)) {
+      return; // 跳過不屬於當前群組的交易
+    }
+    
     // 使用 txn_date
     const recordDate = record.txn_date ? record.txn_date.split('T')[0] : '';
     
@@ -210,7 +231,7 @@ const calculateCashFlow = (targetDate) => {
     }
   });
   
-  console.log(`[現金流計算] 日期=${targetDate}, 匯率=${exchangeRate.toFixed(2)}, 匹配筆數=${matchCount}, 淨現金流=${cashFlow.toLocaleString()} TWD`);
+  console.log(`[現金流計算-${currentGroup.value}] 日期=${targetDate}, 匯率=${exchangeRate.toFixed(2)}, 匹配筆數=${matchCount}, 淨現金流=${cashFlow.toLocaleString()} TWD`);
   
   return cashFlow;
 };
@@ -233,7 +254,7 @@ const dailyPnL = computed(() => {
     baseDate = history.value[history.value.length - 2].date || '';
     cashFlow = calculateCashFlow(getTodayDateString());
     
-    console.log(`[美股盤中] 基準=${baseDate}收盤, 基準市值=${baseValue.toLocaleString()}, 今日現金流=${cashFlow.toLocaleString()}, 今日市值=${todayValue.toLocaleString()}`);
+    console.log(`[美股盤中-${currentGroup.value}] 基準=${baseDate}收盤, 基準市值=${baseValue.toLocaleString()}, 今日現金流=${cashFlow.toLocaleString()}, 今日市值=${todayValue.toLocaleString()}`);
   } else {
     // ☀️ 美股收盤後：使用前日收盤 + 昨晚現金流
     if (history.value.length >= 3) {
@@ -246,13 +267,13 @@ const dailyPnL = computed(() => {
     }
     cashFlow = calculateCashFlow(getYesterdayDateString());
     
-    console.log(`[美股收盤] 基準=${baseDate}收盤, 基準市值=${baseValue.toLocaleString()}, 昨晚現金流=${cashFlow.toLocaleString()}, 今日市值=${todayValue.toLocaleString()}`);
+    console.log(`[美股收盤-${currentGroup.value}] 基準=${baseDate}收盤, 基準市值=${baseValue.toLocaleString()}, 昨晚現金流=${cashFlow.toLocaleString()}, 今日市值=${todayValue.toLocaleString()}`);
   }
   
   // 當日損益 = 今日市值 - 基準市值 - 現金流
   const pnl = todayValue - baseValue - cashFlow;
   
-  console.log(`[當日損益] ${pnl.toLocaleString()} (${isUSMarketOpen.value ? '美股盤中' : '美股收盤'})`);
+  console.log(`[當日損益-${currentGroup.value}] ${pnl.toLocaleString()} (${isUSMarketOpen.value ? '美股盤中' : '美股收盤'})`);
   
   return pnl;
 });
