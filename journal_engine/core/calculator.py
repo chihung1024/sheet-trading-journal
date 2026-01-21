@@ -22,6 +22,14 @@ class PortfolioCalculator:
         self.market = market_client
         self.benchmark_ticker = benchmark_ticker # 儲存自訂基準
 
+    def _is_taiwan_stock(self, symbol):
+        """判斷是否為台股（不需匯率轉換）"""
+        return symbol.endswith('.TW') or symbol.endswith('.TWO')
+
+    def _get_effective_fx_rate(self, symbol, fx_rate):
+        """根據標的取得有效匯率（台股回傳1.0，美股等其他標的回傳實際匯率）"""
+        return 1.0 if self._is_taiwan_stock(symbol) else fx_rate
+
     def run(self):
         """執行多群組投資組合計算主流程"""
         logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
@@ -177,7 +185,8 @@ class PortfolioCalculator:
                 prev_fx = DEFAULT_FX_RATE
             
             prev_benchmark_p = self.market.get_price(self.benchmark_ticker, prev_trading_day)
-            prev_benchmark_val_twd = prev_benchmark_p * prev_fx
+            effective_prev_fx = self._get_effective_fx_rate(self.benchmark_ticker, prev_fx)
+            prev_benchmark_val_twd = prev_benchmark_p * effective_prev_fx
             
             if first_benchmark_val_twd is None and prev_benchmark_val_twd > 0:
                 first_benchmark_val_twd = prev_benchmark_val_twd
@@ -212,7 +221,8 @@ class PortfolioCalculator:
             
             # 取得自訂基準價格
             benchmark_p = self.market.get_price(self.benchmark_ticker, d)
-            curr_benchmark_val_twd = benchmark_p * fx 
+            effective_benchmark_fx = self._get_effective_fx_rate(self.benchmark_ticker, fx)
+            curr_benchmark_val_twd = benchmark_p * effective_benchmark_fx
 
             if first_benchmark_val_twd is None and curr_benchmark_val_twd > 0:
                 first_benchmark_val_twd = curr_benchmark_val_twd
@@ -251,8 +261,9 @@ class PortfolioCalculator:
                     fifo_queues[sym] = deque()
 
                 if row['Type'] == 'BUY':
+                    effective_fx = self._get_effective_fx_rate(sym, fx)
                     cost_usd = (row['Qty'] * row['Price']) + row['Commission'] + row['Tax']
-                    cost_twd = cost_usd * fx
+                    cost_twd = cost_usd * effective_fx
                     holdings[sym]['qty'] += row['Qty']
                     holdings[sym]['cost_basis_usd'] += cost_usd
                     holdings[sym]['cost_basis_twd'] += cost_twd
@@ -266,7 +277,8 @@ class PortfolioCalculator:
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]: continue
-                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * fx
+                    effective_fx = self._get_effective_fx_rate(sym, fx)
+                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
                     remaining = row['Qty']
                     cost_sold_twd = 0.0
                     cost_sold_usd = 0.0
@@ -291,7 +303,8 @@ class PortfolioCalculator:
                     daily_net_cashflow_twd -= proceeds_twd
 
                 elif row['Type'] == 'DIV':
-                    div_twd = row['Price'] * fx
+                    effective_fx = self._get_effective_fx_rate(sym, fx)
+                    div_twd = row['Price'] * effective_fx
                     total_realized_pnl_twd += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
@@ -301,6 +314,7 @@ class PortfolioCalculator:
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
                 if div_per_share > 0 and h_data['qty'] > 1e-6:
+                    effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_key = f"{sym}_{date_str}"
                     is_confirmed = div_key in confirmed_dividends
                     split_factor = self.market.get_transaction_multiplier(sym, d)
@@ -308,7 +322,7 @@ class PortfolioCalculator:
                     shares_at_ex = h_data['qty'] / split_factor
                     total_gross = shares_at_ex * div_per_share
                     total_net_usd = total_gross * 0.7 
-                    total_net_twd = total_net_usd * fx
+                    total_net_twd = total_net_usd * effective_fx
 
                     dividend_history.append({
                         'symbol': sym, 'ex_date': date_str, 'shares_held': h_data['qty'],
@@ -326,7 +340,7 @@ class PortfolioCalculator:
 
             # ===== [修正] TWR 計算 - 處理當沖/清倉邊界情況 =====
             current_market_value_twd = sum(
-                h['qty'] * self.market.get_price(s, d) * fx 
+                h['qty'] * self.market.get_price(s, d) * self._get_effective_fx_rate(s, fx)
                 for s, h in holdings.items() if h['qty'] > 1e-6
             )
             
@@ -373,11 +387,13 @@ class PortfolioCalculator:
                 if sym not in daily_cashflows_by_symbol:
                     daily_cashflows_by_symbol[sym] = 0.0
                 
+                effective_fx = self._get_effective_fx_rate(sym, fx)
+                
                 if row['Type'] == 'BUY':
-                    cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * fx
+                    cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * effective_fx
                     daily_cashflows_by_symbol[sym] += cost_twd
                 elif row['Type'] == 'SELL':
-                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * fx
+                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
                     daily_cashflows_by_symbol[sym] -= proceeds_twd
 
             for sym, h_data in holdings.items():
@@ -385,8 +401,11 @@ class PortfolioCalculator:
                     curr_p = self.market.get_price(sym, d)
                     prev_info = start_of_day_state.get(sym, {'qty': 0.0, 'prev_price': curr_p})
                     
-                    end_val = h_data['qty'] * curr_p * fx
-                    start_val = prev_info['qty'] * prev_info['prev_price'] * prev_fx
+                    effective_fx = self._get_effective_fx_rate(sym, fx)
+                    effective_prev_fx = self._get_effective_fx_rate(sym, prev_fx)
+                    
+                    end_val = h_data['qty'] * curr_p * effective_fx
+                    start_val = prev_info['qty'] * prev_info['prev_price'] * effective_prev_fx
                     
                     cashflow = daily_cashflows_by_symbol.get(sym, 0.0)
                     daily_pnl = end_val - start_val - cashflow
@@ -417,7 +436,8 @@ class PortfolioCalculator:
                     curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
                     if len(stock_data) >= 2: prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
 
-                mkt_val = h['qty'] * curr_p * current_fx
+                effective_fx = self._get_effective_fx_rate(sym, current_fx)
+                mkt_val = h['qty'] * curr_p * effective_fx
                 cost = h['cost_basis_twd']
                 current_holdings_cost_sum += cost
                 
