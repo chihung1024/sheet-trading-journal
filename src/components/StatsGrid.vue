@@ -161,45 +161,63 @@ const dailyPnL = computed(() => {
   // 1. 獲取今日總資產
   const todayValue = stats.value.total_value || 0;
   
-  // 2. 從 history中獲取昨日總資產
+  // 2. 從 history 中獲取昨日總資產
   let yesterdayValue = 0;
+  let yesterdayDate = '';
   if (history.value && history.value.length >= 2) {
-    // history 最後一筆是今天，倍數第二筆是昨天
     yesterdayValue = history.value[history.value.length - 2].total_value || 0;
+    yesterdayDate = history.value[history.value.length - 2].date || '';
   } else if (history.value && history.value.length === 1) {
-    // 只有一筆記錄，表示今天是第一天
     yesterdayValue = 0;
+  }
+  
+  // 🔍 調試：輸出 history 最後兩筆
+  if (history.value && history.value.length >= 2) {
+    const last = history.value[history.value.length - 1];
+    const prev = history.value[history.value.length - 2];
+    console.log(`📅 [History] 昨日=${prev.date} 市值=${prev.total_value.toLocaleString()}, 今日=${last.date} 市值=${last.total_value.toLocaleString()}`);
   }
   
   // 3. 計算今日淨現金流 (BUY為正，SELL/DIV為負)
   const todayDate = new Date().toISOString().split('T')[0];
   let netCashFlow = 0;
+  let todayTxCount = 0;
+  
+  console.log(`🔍 [日期比對] todayDate=${todayDate}, 總交易筆數=${records.value.length}`);
   
   if (records.value && records.value.length > 0) {
-    records.value.forEach(record => {
+    records.value.forEach((record, index) => {
       const recordDate = record.txn_date;
+      
+      // 🔍 輸出前 5 筆交易的日期
+      if (index < 5) {
+        console.log(`  交易${index}: ${recordDate} ${record.txn_type} ${record.symbol} (format: ${typeof recordDate})`);
+      }
+      
       if (recordDate === todayDate) {
+        todayTxCount++;
         const totalAmount = record.qty * record.price + record.fee + record.tax;
         
         if (record.txn_type === 'BUY') {
-          // BUY: 現金流入 (正值)
           netCashFlow += totalAmount;
+          console.log(`  ✅ BUY ${record.symbol}: +${totalAmount.toLocaleString()}`);
         } else if (record.txn_type === 'SELL') {
-          // SELL: 現金流出 (負值)
-          netCashFlow -= (totalAmount - record.fee - record.tax);
+          const proceeds = totalAmount - record.fee - record.tax;
+          netCashFlow -= proceeds;
+          console.log(`  ✅ SELL ${record.symbol}: -${proceeds.toLocaleString()}`);
         } else if (record.txn_type === 'DIV') {
-          // DIV: 配息流入 (負值，因為增加資產)
           netCashFlow -= totalAmount;
+          console.log(`  ✅ DIV ${record.symbol}: -${totalAmount.toLocaleString()}`);
         }
       }
     });
   }
   
+  console.log(`💰 [現金流統計] 今日交易筆數=${todayTxCount}, 淨現金流=${netCashFlow.toLocaleString()}`);
+  
   // 4. 應用 Modified Dietz 公式
-  // daily_pl = 期末市值 - 期初市值 - 淨現金流
   const pnl = todayValue - yesterdayValue - netCashFlow;
   
-  // ✅ 調試輸出
   console.log(`[當日損益] 今日=${todayValue.toLocaleString()}, 昨日=${yesterdayValue.toLocaleString()}, 現金流=${netCashFlow.toLocaleString()}, 損益=${pnl.toLocaleString()}`);
   
   return pnl;
@@ -207,7 +225,6 @@ const dailyPnL = computed(() => {
 
 // 計算今日損益百分比
 const dailyRoi = computed(() => {
-  // 使用昨日總資產作為基準
   let yesterdayValue = 0;
   if (history.value && history.value.length >= 2) {
     yesterdayValue = history.value[history.value.length - 2].total_value || 0;
