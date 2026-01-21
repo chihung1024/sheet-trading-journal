@@ -1,4 +1,4 @@
-<![CDATA[<template>
+<template>
   <div class="stats-grid">
     <div class="stat-block">
       <div class="stat-top">
@@ -474,4 +474,4 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
         font-size: 0.8rem;
     }
 }
-</style>]]>
+</style>
