@@ -171,7 +171,7 @@ const getYesterdayDateString = () => {
   return yesterday.toISOString().split('T')[0];
 };
 
-// 🔧 修正：計算指定日期的淨現金流 (買入 - 賣出)，支援帶時間戳的日期格式
+// 🐛 修正：使用正確的欄位名稱 txn_date 而非 date
 const calculateCashFlow = (targetDate) => {
   if (!records.value || records.value.length === 0) return 0;
   
@@ -179,8 +179,8 @@ const calculateCashFlow = (targetDate) => {
   let matchCount = 0;
   
   records.value.forEach(record => {
-    // 🔧 修正：支援 "YYYY-MM-DD" 和 "YYYY-MM-DDTHH:mm:ss" 兩種格式
-    const recordDate = record.date ? record.date.split('T')[0] : '';
+    // 🔧 修正：使用 txn_date 而非 date，支援帶時間戳的格式
+    const recordDate = record.txn_date ? record.txn_date.split('T')[0] : '';
     
     // 只計算目標日期的交易
     if (recordDate !== targetDate) return;
@@ -188,10 +188,10 @@ const calculateCashFlow = (targetDate) => {
     matchCount++;
     const amount = Math.abs(record.total_cost_twd || 0);
     
-    if (record.action === 'BUY') {
+    if (record.txn_type === 'BUY') {
       // 買入：現金流出（正數）
       cashFlow += amount;
-    } else if (record.action === 'SELL') {
+    } else if (record.txn_type === 'SELL') {
       // 賣出：現金流入（負數）
       cashFlow -= amount;
     }
