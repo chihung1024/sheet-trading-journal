@@ -105,6 +105,7 @@ const store = usePortfolioStore();
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 const holdings = computed(() => store.holdings || []);
+const records = computed(() => store.records || []);
 
 // ✅ 修正：直接使用後端計算好的 total_pnl
 const totalPnL = computed(() => stats.value.total_pnl || 0);
@@ -154,20 +155,63 @@ const pnlTooltip = computed(() => {
   return '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響';
 });
 
-// 核心修正：直接使用後端計算好的 daily_pl_twd
-// 後端使用 Modified Dietz 方法，公式：daily_pl = ending_value - beginning_value - cashflow
+// ✅ 重大修正：使用 Modified Dietz 方法計算當日損益
+// 公式：daily_pl = 今日總資產 - 昨日總資產 - 今日淨現金流
 const dailyPnL = computed(() => {
-  // 直接加總所有持股的 daily_pl_twd
-  return holdings.value.reduce((sum, holding) => {
-    return sum + (holding.daily_pl_twd || 0);
-  }, 0);
+  // 1. 獲取今日總資產
+  const todayValue = stats.value.total_value || 0;
+  
+  // 2. 從 history中獲取昨日總資產
+  let yesterdayValue = 0;
+  if (history.value && history.value.length >= 2) {
+    // history 最後一筆是今天，倍數第二筆是昨天
+    yesterdayValue = history.value[history.value.length - 2].total_value || 0;
+  } else if (history.value && history.value.length === 1) {
+    // 只有一筆記錄，表示今天是第一天
+    yesterdayValue = 0;
+  }
+  
+  // 3. 計算今日淨現金流 (BUY為正，SELL/DIV為負)
+  const todayDate = new Date().toISOString().split('T')[0];
+  let netCashFlow = 0;
+  
+  if (records.value && records.value.length > 0) {
+    records.value.forEach(record => {
+      const recordDate = record.txn_date;
+      if (recordDate === todayDate) {
+        const totalAmount = record.qty * record.price + record.fee + record.tax;
+        
+        if (record.txn_type === 'BUY') {
+          // BUY: 現金流入 (正值)
+          netCashFlow += totalAmount;
+        } else if (record.txn_type === 'SELL') {
+          // SELL: 現金流出 (負值)
+          netCashFlow -= (totalAmount - record.fee - record.tax);
+        } else if (record.txn_type === 'DIV') {
+          // DIV: 配息流入 (負值，因為增加資產)
+          netCashFlow -= totalAmount;
+        }
+      }
+    });
+  }
+  
+  // 4. 應用 Modified Dietz 公式
+  // daily_pl = 期末市值 - 期初市值 - 淨現金流
+  const pnl = todayValue - yesterdayValue - netCashFlow;
+  
+  // ✅ 調試輸出
+  console.log(`[當日損益] 今日=${todayValue.toLocaleString()}, 昨日=${yesterdayValue.toLocaleString()}, 現金流=${netCashFlow.toLocaleString()}, 損益=${pnl.toLocaleString()}`);
+  
+  return pnl;
 });
 
 // 計算今日損益百分比
 const dailyRoi = computed(() => {
   // 使用昨日總資產作為基準
-  // 昨日總資產 = 今日總資產 - 今日損益
-  const yesterdayValue = stats.value.total_value - dailyPnL.value;
+  let yesterdayValue = 0;
+  if (history.value && history.value.length >= 2) {
+    yesterdayValue = history.value[history.value.length - 2].total_value || 0;
+  }
   
   if (!yesterdayValue || yesterdayValue === 0) return '0.00';
   return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
