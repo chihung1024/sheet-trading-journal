@@ -105,7 +105,6 @@ const store = usePortfolioStore();
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 const holdings = computed(() => store.holdings || []);
-const records = computed(() => store.records || []);
 
 // ✅ 修正：直接使用後端計算好的 total_pnl
 const totalPnL = computed(() => stats.value.total_pnl || 0);
@@ -152,83 +151,34 @@ const pnlDescription = computed(() => {
 
 // Tooltip 完整說明
 const pnlTooltip = computed(() => {
-  return '使用 Modified Dietz 方法計算，正確處理當日交易、股價變動及匯率影響';
+  return '後端使用 Modified Dietz 方法計算，正確處理跨日交易、股價變動及匯率影響';
 });
 
-// ✅ 重大修正：使用 Modified Dietz 方法計算當日損益
-// 公式：daily_pl = 今日總資產 - 昨日總資產 - 今日淨現金流
+// ✅ 最終修正：恢復使用後端計算的 daily_pl_twd
+// 原因：
+// 1. 後端知道每筆交易的確切時點和持倉狀態
+// 2. 後端使用 Modified Dietz 方法處理日內交易
+// 3. 可正確分離股價變化、匯率影響、交易影響
+// 4. 前端無法從 history中分辨「昨日交易影響」 vs 「今日價格變化」
 const dailyPnL = computed(() => {
-  // 1. 獲取今日總資產
-  const todayValue = stats.value.total_value || 0;
+  // 直接加總所有持股的 daily_pl_twd
+  // 這個值已經由後端正確計算，包含：
+  // - 股價變化 (前日收盤 -> 當前價格)
+  // - 匯率影響 (前日匯率 -> 當前匯率)
+  // - 交易影響 (使用 Modified Dietz 正確處理)
+  const dailyPlSum = holdings.value.reduce((sum, holding) => {
+    return sum + (holding.daily_pl_twd || 0);
+  }, 0);
   
-  // 2. 從 history 中獲取昨日總資產
-  let yesterdayValue = 0;
-  let yesterdayDate = '';
-  if (history.value && history.value.length >= 2) {
-    yesterdayValue = history.value[history.value.length - 2].total_value || 0;
-    yesterdayDate = history.value[history.value.length - 2].date || '';
-  } else if (history.value && history.value.length === 1) {
-    yesterdayValue = 0;
-  }
+  console.log(`[當日損益] 後端計算的 daily_pl_twd 總和 = ${dailyPlSum.toLocaleString()}`);
   
-  // 🔍 調試：輸出 history 最後兩筆
-  if (history.value && history.value.length >= 2) {
-    const last = history.value[history.value.length - 1];
-    const prev = history.value[history.value.length - 2];
-    console.log(`📅 [History] 昨日=${prev.date} 市值=${prev.total_value.toLocaleString()}, 今日=${last.date} 市值=${last.total_value.toLocaleString()}`);
-  }
-  
-  // 3. 計算今日淨現金流 (BUY為正，SELL/DIV為負)
-  const todayDate = new Date().toISOString().split('T')[0];
-  let netCashFlow = 0;
-  let todayTxCount = 0;
-  
-  console.log(`🔍 [日期比對] todayDate=${todayDate}, 總交易筆數=${records.value.length}`);
-  
-  if (records.value && records.value.length > 0) {
-    records.value.forEach((record, index) => {
-      const recordDate = record.txn_date;
-      
-      // 🔍 輸出前 5 筆交易的日期
-      if (index < 5) {
-        console.log(`  交易${index}: ${recordDate} ${record.txn_type} ${record.symbol} (format: ${typeof recordDate})`);
-      }
-      
-      if (recordDate === todayDate) {
-        todayTxCount++;
-        const totalAmount = record.qty * record.price + record.fee + record.tax;
-        
-        if (record.txn_type === 'BUY') {
-          netCashFlow += totalAmount;
-          console.log(`  ✅ BUY ${record.symbol}: +${totalAmount.toLocaleString()}`);
-        } else if (record.txn_type === 'SELL') {
-          const proceeds = totalAmount - record.fee - record.tax;
-          netCashFlow -= proceeds;
-          console.log(`  ✅ SELL ${record.symbol}: -${proceeds.toLocaleString()}`);
-        } else if (record.txn_type === 'DIV') {
-          netCashFlow -= totalAmount;
-          console.log(`  ✅ DIV ${record.symbol}: -${totalAmount.toLocaleString()}`);
-        }
-      }
-    });
-  }
-  
-  console.log(`💰 [現金流統計] 今日交易筆數=${todayTxCount}, 淨現金流=${netCashFlow.toLocaleString()}`);
-  
-  // 4. 應用 Modified Dietz 公式
-  const pnl = todayValue - yesterdayValue - netCashFlow;
-  
-  console.log(`[當日損益] 今日=${todayValue.toLocaleString()}, 昨日=${yesterdayValue.toLocaleString()}, 現金流=${netCashFlow.toLocaleString()}, 損益=${pnl.toLocaleString()}`);
-  
-  return pnl;
+  return dailyPlSum;
 });
 
 // 計算今日損益百分比
 const dailyRoi = computed(() => {
-  let yesterdayValue = 0;
-  if (history.value && history.value.length >= 2) {
-    yesterdayValue = history.value[history.value.length - 2].total_value || 0;
-  }
+  // 使用昨日總資產作為基準
+  const yesterdayValue = stats.value.total_value - dailyPnL.value;
   
   if (!yesterdayValue || yesterdayValue === 0) return '0.00';
   return ((dailyPnL.value / yesterdayValue) * 100).toFixed(2);
