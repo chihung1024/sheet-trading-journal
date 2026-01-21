@@ -380,19 +380,38 @@ class PortfolioCalculator:
             # 計算 Benchmark TWR
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            # ===== 個股當日損益計算 - 簡化為：價格變動 × 持倉數量 =====
+            # ===== 個股當日損益計算 - 與儀表板一致：今日市值 - 昨日市值 - 今日現金流 =====
+            daily_cashflows_by_symbol = {}
+            for _, row in daily_txns.iterrows():
+                sym = row['Symbol']
+                if sym not in daily_cashflows_by_symbol:
+                    daily_cashflows_by_symbol[sym] = 0.0
+                
+                effective_fx = self._get_effective_fx_rate(sym, fx)
+                
+                if row['Type'] == 'BUY':
+                    cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * effective_fx
+                    daily_cashflows_by_symbol[sym] += cost_twd
+                elif row['Type'] == 'SELL':
+                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
+                    daily_cashflows_by_symbol[sym] -= proceeds_twd
+
             for sym, h_data in holdings.items():
                 if h_data['qty'] > 1e-6:
                     curr_p = self.market.get_price(sym, d)
-                    prev_p = self.market.get_price(sym, prev_date)
+                    prev_info = start_of_day_state.get(sym, {'qty': 0.0, 'prev_price': curr_p})
                     
-                    # 當日損益 = 價格變動 × 當前持倉數量 × 匯率
                     effective_fx = self._get_effective_fx_rate(sym, fx)
-                    price_change = curr_p - prev_p
-                    daily_pnl = price_change * h_data['qty'] * effective_fx
+                    effective_prev_fx = self._get_effective_fx_rate(sym, prev_fx)
                     
-                    # 更新最新的當日損益
-                    last_active_daily_pnls[sym] = daily_pnl
+                    end_val = h_data['qty'] * curr_p * effective_fx
+                    start_val = prev_info['qty'] * prev_info['prev_price'] * effective_prev_fx
+                    
+                    cashflow = daily_cashflows_by_symbol.get(sym, 0.0)
+                    daily_pnl = end_val - start_val - cashflow
+                    
+                    if abs(daily_pnl) > 1e-2 or not daily_txns[daily_txns['Symbol'] == sym].empty:
+                        last_active_daily_pnls[sym] = daily_pnl
 
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
