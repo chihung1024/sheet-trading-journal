@@ -171,7 +171,7 @@ const getYesterdayDateString = () => {
   return yesterday.toISOString().split('T')[0];
 };
 
-// 🐛 修正：使用正確的欄位名稱 txn_date 而非 date
+// 🐛 修正：手動計算總成本 total_cost_twd = qty * price + fee + tax
 const calculateCashFlow = (targetDate) => {
   if (!records.value || records.value.length === 0) return 0;
   
@@ -186,14 +186,20 @@ const calculateCashFlow = (targetDate) => {
     if (recordDate !== targetDate) return;
     
     matchCount++;
-    const amount = Math.abs(record.total_cost_twd || 0);
+    
+    // 🐛 修正：手動計算總成本
+    const qty = record.qty || 0;
+    const price = record.price || 0;
+    const fee = record.fee || 0;
+    const tax = record.tax || 0;
+    const totalCost = qty * price + fee + tax;
     
     if (record.txn_type === 'BUY') {
       // 買入：現金流出（正數）
-      cashFlow += amount;
+      cashFlow += totalCost;
     } else if (record.txn_type === 'SELL') {
       // 賣出：現金流入（負數）
-      cashFlow -= amount;
+      cashFlow -= totalCost;
     }
   });
   
