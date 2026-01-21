@@ -105,6 +105,7 @@ const store = usePortfolioStore();
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 const records = computed(() => store.records || []);
+const rawData = computed(() => store.rawData || {});
 
 // ✅ 修正：直接使用後端計算好的 total_pnl
 const totalPnL = computed(() => stats.value.total_pnl || 0);
@@ -171,15 +172,18 @@ const getYesterdayDateString = () => {
   return yesterday.toISOString().split('T')[0];
 };
 
-// 🐛 修正：手動計算總成本 total_cost_twd = qty * price + fee + tax
+// 🐛 修正：使用 snapshot 中的匯率來計算 TWD 現金流
 const calculateCashFlow = (targetDate) => {
   if (!records.value || records.value.length === 0) return 0;
+  
+  // 🔧 從 rawData 中獲取匯率（後端計算快照時傲存储）
+  const exchangeRate = rawData.value?.exchange_rate || 32; // 預設 32
   
   let cashFlow = 0;
   let matchCount = 0;
   
   records.value.forEach(record => {
-    // 🔧 修正：使用 txn_date 而非 date，支援帶時間戳的格式
+    // 使用 txn_date
     const recordDate = record.txn_date ? record.txn_date.split('T')[0] : '';
     
     // 只計算目標日期的交易
@@ -187,23 +191,26 @@ const calculateCashFlow = (targetDate) => {
     
     matchCount++;
     
-    // 🐛 修正：手動計算總成本
+    // 計算 USD 成本
     const qty = record.qty || 0;
     const price = record.price || 0;
     const fee = record.fee || 0;
     const tax = record.tax || 0;
-    const totalCost = qty * price + fee + tax;
+    const totalCostUSD = qty * price + fee + tax;
+    
+    // 🔧 轉換為 TWD
+    const totalCostTWD = totalCostUSD * exchangeRate;
     
     if (record.txn_type === 'BUY') {
       // 買入：現金流出（正數）
-      cashFlow += totalCost;
+      cashFlow += totalCostTWD;
     } else if (record.txn_type === 'SELL') {
       // 賣出：現金流入（負數）
-      cashFlow -= totalCost;
+      cashFlow -= totalCostTWD;
     }
   });
   
-  console.log(`[現金流計算] 日期=${targetDate}, 匹配筆數=${matchCount}, 淨現金流=${cashFlow.toLocaleString()}`);
+  console.log(`[現金流計算] 日期=${targetDate}, 匯率=${exchangeRate.toFixed(2)}, 匹配筆數=${matchCount}, 淨現金流=${cashFlow.toLocaleString()} TWD`);
   
   return cashFlow;
 };
