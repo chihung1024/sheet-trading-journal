@@ -162,9 +162,6 @@ class PortfolioCalculator:
         # Benchmark 計算所需
         first_benchmark_val_twd = None
 
-        # 用於存儲每個標的最新的活躍當日損益
-        last_active_daily_pnls = {}
-
         # 預掃描確認配息
         div_txs = df[df['Type'] == 'DIV']
         for _, row in div_txs.iterrows():
@@ -211,6 +208,10 @@ class PortfolioCalculator:
 
         # 逐日計算
         day_count = 0
+        last_date = None
+        last_fx = current_fx
+        last_prev_fx = current_fx
+        
         for d in date_range:
             current_date = d.date()
             try:
@@ -236,23 +237,14 @@ class PortfolioCalculator:
 
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             
-            # 紀錄今日交易前的持倉狀態
-            start_of_day_state = {}
-            for sym, h in holdings.items():
-                if h['qty'] > 1e-6:
-                    start_of_day_state[sym] = {
-                        'qty': h['qty'], 
-                        'prev_price': self.market.get_price(sym, prev_date)
-                    }
-
-            # ===== 現金流計算 =====
-            daily_net_cashflow_twd = 0.0
-            
             # 處理當日交易
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
                 daily_txns['priority'] = daily_txns['Type'].map(priority_map).fillna(99)
                 daily_txns = daily_txns.sort_values(by='priority', kind='stable')
+            
+            # ===== 現金流計算 =====
+            daily_net_cashflow_twd = 0.0
             
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
@@ -380,39 +372,6 @@ class PortfolioCalculator:
             # 計算 Benchmark TWR
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            # ===== 個股當日損益計算 - 與儀表板一致：今日市值 - 昨日市值 - 今日現金流 =====
-            daily_cashflows_by_symbol = {}
-            for _, row in daily_txns.iterrows():
-                sym = row['Symbol']
-                if sym not in daily_cashflows_by_symbol:
-                    daily_cashflows_by_symbol[sym] = 0.0
-                
-                effective_fx = self._get_effective_fx_rate(sym, fx)
-                
-                if row['Type'] == 'BUY':
-                    cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * effective_fx
-                    daily_cashflows_by_symbol[sym] += cost_twd
-                elif row['Type'] == 'SELL':
-                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
-                    daily_cashflows_by_symbol[sym] -= proceeds_twd
-
-            for sym, h_data in holdings.items():
-                if h_data['qty'] > 1e-6:
-                    curr_p = self.market.get_price(sym, d)
-                    prev_info = start_of_day_state.get(sym, {'qty': 0.0, 'prev_price': curr_p})
-                    
-                    effective_fx = self._get_effective_fx_rate(sym, fx)
-                    effective_prev_fx = self._get_effective_fx_rate(sym, prev_fx)
-                    
-                    end_val = h_data['qty'] * curr_p * effective_fx
-                    start_val = prev_info['qty'] * prev_info['prev_price'] * effective_prev_fx
-                    
-                    cashflow = daily_cashflows_by_symbol.get(sym, 0.0)
-                    daily_pnl = end_val - start_val - cashflow
-                    
-                    if abs(daily_pnl) > 1e-2 or not daily_txns[daily_txns['Symbol'] == sym].empty:
-                        last_active_daily_pnls[sym] = daily_pnl
-
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
@@ -420,10 +379,82 @@ class PortfolioCalculator:
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(fx, 4)
             })
+            
+            # 記錄最後一天的資訊
+            last_date = d
+            last_fx = fx
+            last_prev_fx = prev_fx
 
         # ===== [診斷] 輸出最終TWR =====
         final_twr = (cumulative_twr_factor - 1) * 100
         logger.info(f"[群組:{group_name}] 最終TWR={final_twr:.2f}%, cumulative_factor={cumulative_twr_factor:.6f}")
+
+        # ===== ✨ 在循環結束後，統一計算所有持倉的最後一天當日損益 =====
+        final_daily_pnls = {}
+        if last_date is not None:
+            # 獲取最後一天的交易
+            last_date_obj = last_date.date()
+            last_day_txns = df[df['Date'].dt.date == last_date_obj].copy()
+            
+            # 計算最後一天每個標的現金流
+            daily_cashflows_by_symbol = {}
+            for _, row in last_day_txns.iterrows():
+                sym = row['Symbol']
+                if sym not in daily_cashflows_by_symbol:
+                    daily_cashflows_by_symbol[sym] = 0.0
+                
+                effective_fx = self._get_effective_fx_rate(sym, last_fx)
+                
+                if row['Type'] == 'BUY':
+                    cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * effective_fx
+                    daily_cashflows_by_symbol[sym] += cost_twd
+                elif row['Type'] == 'SELL':
+                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
+                    daily_cashflows_by_symbol[sym] -= proceeds_twd
+            
+            # 獲取前一天的持倉狀態（使用歷史記錄）
+            prev_date = last_date - timedelta(days=1)
+            prev_day_holdings = {}
+            
+            # 重新計算前一天的持倉
+            temp_holdings = {}
+            temp_fifo = {}
+            for _, row in df[df['Date'] <= prev_date].iterrows():
+                sym = row['Symbol']
+                if sym not in temp_holdings:
+                    temp_holdings[sym] = {'qty': 0.0}
+                    temp_fifo[sym] = deque()
+                
+                if row['Type'] == 'BUY':
+                    temp_holdings[sym]['qty'] += row['Qty']
+                elif row['Type'] == 'SELL':
+                    temp_holdings[sym]['qty'] -= row['Qty']
+            
+            for sym, h in temp_holdings.items():
+                if h['qty'] > 1e-6:
+                    prev_day_holdings[sym] = {
+                        'qty': h['qty'],
+                        'prev_price': self.market.get_price(sym, prev_date)
+                    }
+            
+            # 計算所有當前持倉的當日損益
+            for sym, h_data in holdings.items():
+                if h_data['qty'] > 1e-6:
+                    curr_p = self.market.get_price(sym, last_date)
+                    prev_info = prev_day_holdings.get(sym, {'qty': 0.0, 'prev_price': curr_p})
+                    
+                    effective_fx = self._get_effective_fx_rate(sym, last_fx)
+                    effective_prev_fx = self._get_effective_fx_rate(sym, last_prev_fx)
+                    
+                    end_val = h_data['qty'] * curr_p * effective_fx
+                    start_val = prev_info['qty'] * prev_info['prev_price'] * effective_prev_fx
+                    
+                    cashflow = daily_cashflows_by_symbol.get(sym, 0.0)
+                    daily_pnl = end_val - start_val - cashflow
+                    
+                    final_daily_pnls[sym] = daily_pnl
+                    
+                    logger.info(f"[群組:{group_name}] {sym} 當日損益: 今日={end_val:.0f}, 昨日={start_val:.0f}, 現金流={cashflow:.0f}, 損益={daily_pnl:.0f}")
 
         # --- 產生最終報表 ---
         final_holdings = []
@@ -450,7 +481,7 @@ class PortfolioCalculator:
                     current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2),
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
                     daily_change_percent=daily_change_pct,
-                    daily_pl_twd=round(last_active_daily_pnls.get(sym, 0.0), 0)
+                    daily_pl_twd=round(final_daily_pnls.get(sym, 0.0), 0)
                 ))
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
