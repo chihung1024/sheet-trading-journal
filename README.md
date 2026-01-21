@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.38-blue.svg)
+![Version](https://img.shields.io/badge/version-2.39-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10+-green.svg)
 ![Vue](https://img.shields.io/badge/vue-3.4+-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
@@ -29,6 +29,7 @@
 - [API 文檔](#-api-文檔)
 - [數據庫設計](#️-資料庫設計)
 - [部署指南](#-部署指南)
+- [安全性配置](#-安全性配置)
 - [更新記錄](#-更新記錄)
 - [故障排除](#-故障排除)
 - [貢獻指南](#-貢獻指南)
@@ -45,6 +46,8 @@
 - **✅ 已實現損益** (v1.2.0)：追蹤所有賣出收益與配息收入
 - **ROI**：投資回報率 (Return on Investment)
 - **TWR**：時間加權報酬率，消除資金流入/流出影響
+  - ✅ **v2.39**: 正確處理當沖/清倉情況
+  - 當沖損益計入已實現損益，不影響 TWR
 - **XIRR**：個人年化報酬率 (Internal Rate of Return)
 - **✅ 今日損益智能計算**：
   - 美股開盤前：顯示昨日變化 + 匯率影響
@@ -54,7 +57,7 @@
 #### 📈 **進階圖表分析**
 - **趨勢圖**：
   - 投資組合歷史走勢
-  - vs. **自訂 Benchmark** (SPY/QQQ/TQQQ/0050.TW 等) ✅ **NEW v2.38**
+  - vs. **自訂 Benchmark** (SPY/QQQ/TQQQ/0050.TW 等) ✅ **v2.38**
   - 自動排除週末數據
   - 支援時間範圍篩選 (1M/3M/6M/1Y/All)
 - **配置圖**：
@@ -118,7 +121,10 @@
 - **CORS 保護**：防止跨域攻擊
 - **API Key 驗證**：內部 API 保護
 - **SQL 注入防護**：Prepared Statements
-- **XSS 防護**：Content Security Policy
+- **✅ Content Security Policy** (v2.39)：完整的 CSP 配置
+  - 防止 XSS 攻擊
+  - 允許必要的外部資源
+  - 支援 Google 登入
 
 ---
 
@@ -151,31 +157,6 @@ graph TB
 | **數據源** | Yahoo Finance | 股價/匯率 | **免費** |
 
 **總成本：$0 USD/月** 🎉
-
-### 設計模式
-
-#### CQRS (Command Query Responsibility Segregation)
-
-**寫入路徑 (Command)**:
-```
-前端 → Worker → D1 (records 表)
-```
-
-**讀取路徑 (Query)**:
-```
-前端 → Worker → D1 (portfolio_snapshots 表)
-```
-
-**運算路徑 (Compute)**:
-```
-Worker → GitHub Actions → Python Engine → Worker → D1
-```
-
-#### 優點
-- **讀寫分離**：查詢極快 (毫秒級)
-- **運算離線**：不阻塞用戶操作
-- **可擴展性**：各層獨立擴展
-- **成本優化**：只在需要時運算
 
 ---
 
@@ -217,934 +198,235 @@ class FIFOTracker:
         return realized_pnl
 ```
 
-#### 特色
-
-- ✅ 自動拆股調整 (如 NVDA 10:1)
-- ✅ 配息再投資自動納入
-- ✅ 多批次買賣追蹤
-- ✅ 精確成本基礎
-
-### 2️⃣ 時間加權報酬率 (TWR)
+### 2️⃣ 時間加權報酬率 (TWR) ✅ **v2.39 重大更新**
 
 使用 **Modified Dietz 方法**，消除資金流影響。
 
 #### 計算公式
 
 ```python
-# 每日報酬率
-daily_return = (P1 - P0 - CF) / (P0 + CF * weight)
+# 每日報酬率計算
+period_hpr_factor = 1.0
+
+# 情況 1：正常情況 - 期初有市值
+if last_market_value_twd > 1e-9:
+    period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
+
+# 情況 2：首次投資 - 期初無市值但期末有市值
+elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
+    period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
+
+# 情況 3：當沖或清倉後收配息 - 期初期末都無市值 ✅ NEW
+elif current_market_value_twd < 1e-9 and last_market_value_twd < 1e-9:
+    period_hpr_factor = 1.0  # 不影響 TWR，損益計入 realized_pnl
 
 # 累積報酬率
-TWR = ∏(1 + daily_return) - 1
-
-其中:
-P0 = 期初市值
-P1 = 期末市值
-CF = 現金流 (正為入金，負為出金)
-weight = 現金流時間權重
+TWR = ∏(1 + period_hpr_factor - 1) * 100
 ```
 
-#### 優點
+#### 當沖交易的處理 ✅ **NEW v2.39**
 
-- 不受入金/出金時點影響
-- 可與 Benchmark 直接比較
-- 評估投資策略效能
-- 符合 GIPS 標準
+**問題：** 當沖交易（期初期末都無持倉）會導致 TWR 計算異常
 
-### 3️⃣ 已實現損益追蹤 ✅ (v1.2.0)
+**解決方案：**
+- 當 MVB=0 且 MVE=0 時，設定 `period_hpr_factor = 1.0`
+- 當沖損益正確計入 `realized_pnl`（已實現損益）
+- TWR 只反映「持倉期間」的投資表現
+- 這符合 TWR 的設計理念：衡量投資策略績效，而非交易頻率
 
-精確追蹤所有已實現交易損益。
-
-#### 計算邏輯
-
-```python
-realized_pnl = {
-    'total': 0,
-    'from_sales': 0,      # 賣出收益
-    'from_dividends': 0,  # 配息收入
-    'details': []
-}
-
-# 賣出交易
-for sale in sales:
-    fifo_cost = calculate_fifo_cost(sale.qty)
-    pnl = (sale.price * sale.qty - sale.fee) - fifo_cost
-    realized_pnl['from_sales'] += pnl
-    realized_pnl['total'] += pnl
-
-# 配息
-for div in dividends:
-    after_tax = div.amount - div.tax
-    realized_pnl['from_dividends'] += after_tax
-    realized_pnl['total'] += after_tax
+**範例：**
+```
+日期       | 操作        | MVB     | MVE     | CF      | HPR    | 說明
+---------- | ----------- | ------- | ------- | ------- | ------ | ----
+2026-01-12 | 持倉        | 1077649 | 0       | -1049988| 0.9743 | 正常賣出
+2026-01-13 | 當沖        | 0       | 0       | 59913   | 1.0000 | ✅ 不影響TWR
+2026-01-14 | 買入持倉    | 0       | 797030  | 738475  | 1.0793 | 正常買入
 ```
 
-### 4️⃣ 匯率影響分離 ✅ (v2.0.0)
+**適用情境：**
+- ✅ 短線波段 + 偶爾當沖：TWR 反映波段績效
+- ✅ 清倉後收配息：配息計入已實現損益
+- ❌ 純當沖策略：建議改用累積報酬率或勝率等指標
 
-精準區分「股價變化」與「匯率變化」。
+#### 混合策略的績效指標建議
 
-#### 美股開盤前 (台灣時間 05:00-21:30)
+對於「波段持倉 + 當沖交易」混合的投資組合：
 
-```python
-# 1. 昨日股價變化（用昨日匯率）
-stock_pnl = Σ [(P_昨日 - P_前日) × qty × FX_昨日]
+**推薦指標組合：**
 
-# 2. 今日匯率影響（用昨日收盤價）
-fx_pnl = Σ [P_昨日 × qty × (FX_今日 - FX_昨日)]
+| 指標 | 用途 | 適用情境 |
+|------|------|----------|
+| **TWR** | 持倉績效 | 評估選股與持倉時機能力 |
+| **XIRR** | 整體年化報酬 | 考慮所有現金流的實際報酬率 |
+| **已實現損益** | 交易成果 | 包含所有當沖與波段的實際獲利 |
+| **總報酬率** | 簡單績效 | (總損益 / 累積投入) × 100% |
 
-今日損益 = stock_pnl + fx_pnl
-```
-
-#### 美股盤中 (台灣時間 21:30-05:00)
-
-```python
-# 當前市值 vs 開盤前市值
-今日損益 = Σ [P_盤中 × qty × FX_即時] - 開盤前市值
-```
-
-### 5️⃣ XIRR (內部報酬率)
-
-計算個人年化報酬率，考慮所有現金流時點。
-
-#### 計算方法
-
-```python
-import numpy_financial as npf
-
-cash_flows = [
-    (-100000, '2024-01-01'),  # 初始投資
-    (-50000,  '2024-03-15'),  # 加碼
-    (20000,   '2024-06-01'),  # 賣出
-    (150000,  '2024-12-31'),  # 期末市值
-]
-
-xirr = npf.irr([cf[0] for cf in cash_flows]) * 365 / days
-```
-
-### 6️⃣ 市場數據優化 ✅ (v2.38)
-
-#### 智能下載範圍
-
-```python
-# 計算最佳下載範圍
-start_date = df['Date'].min()  # 最早交易日
-fetch_start = start_date - timedelta(days=100)  # 緩衝 100 天
-fetch_end = datetime.now()
-
-# 下載數據
-market_data = yfinance.download(
-    tickers=unique_symbols,
-    start=fetch_start,
-    end=fetch_end,
-    auto_adjust=True  # 自動調整拆股/配息
-)
-```
-
-#### 100 天緩衝的作用
-
-- ✅ 捕捉買入前的拆股事件
-- ✅ 應對長假期與休市
-- ✅ 確保調整因子正確
-- ✅ 涵蓋季度配息週期
+**未來可能新增：** (v3.0 規劃)
+- 當沖累積損益（獨立統計）
+- 當沖交易次數與勝率
+- 波段 vs 當沖績效分離顯示
 
 ---
 
-## 🚀 快速開始
+## 🔐 安全性配置
 
-### 前置需求
+### Content Security Policy (CSP) ✅ **NEW v2.39**
 
-- GitHub 帳號
-- Cloudflare 帳號 (免費)
-- Google 帳號 (用於 OAuth)
+專案已實施完整的 CSP 安全策略，防止 XSS 攻擊並允許必要的外部資源。
 
-### 部署步驟
+#### 配置文件位置
 
-#### 1. Fork 專案
+1. **`public/_headers`** - Cloudflare Pages HTTP Headers
+2. **`index.html`** - HTML Meta Tag CSP（優先級更高）
 
-```bash
-# 點擊 GitHub 右上角 Fork 按鈕
-# 或使用 GitHub CLI
-gh repo fork chihung1024/sheet-trading-journal
-```
-
-#### 2. 配置 Cloudflare
-
-##### 2.1 創建 D1 資料庫
-
-```bash
-# 登入 Cloudflare Dashboard
-# Workers & Pages > D1 > Create Database
-# 名稱: journal-db
-
-# 執行 Schema
-wrangler d1 execute journal-db --file=schema.sql
-```
-
-##### 2.2 部署 Worker
-
-1. 前往 `Workers & Pages` > `Create Application`
-2. 選擇 `Create Worker`
-3. 名稱：`portfolio-dt-proxy` (重要！)
-4. 點擊 `Quick Edit`
-5. 複製 `cloudflare worker/worker_v2.38.js` 內容
-6. 貼上並 `Save and Deploy`
-
-##### 2.3 配置環境變數
-
-在 Worker Settings > Variables 中添加：
-
-```env
-GITHUB_TOKEN=ghp_your_token_here
-GITHUB_OWNER=your_github_username
-GITHUB_REPO=sheet-trading-journal
-API_SECRET=your_random_secret  # Optional
-```
-
-##### 2.4 綁定 D1 資料庫
-
-在 Worker Settings > Bindings 中：
-- Variable name: `DB`
-- D1 database: `journal-db`
-
-#### 3. 部署前端
-
-##### 3.1 連接 Cloudflare Pages
-
-1. Cloudflare Dashboard > Pages > Create Project
-2. 連接 GitHub repository
-3. 選擇你 Fork 的 `sheet-trading-journal`
-4. 配置構建設定：
-
-```yaml
-Framework preset: Vue
-Build command: npm run build
-Build output directory: dist
-```
-
-##### 3.2 配置環境變數
-
-在 Pages Settings > Environment Variables：
-
-```env
-VITE_API_BASE_URL=https://portfolio-dt-proxy.your-subdomain.workers.dev
-VITE_GOOGLE_CLIENT_ID=your_google_client_id
-```
-
-#### 4. 配置 GitHub Actions
-
-##### 4.1 設置 Secret
-
-在 Repository Settings > Secrets and variables > Actions：
-
-```env
-API_KEY=your_api_secret  # 與 Worker 的 API_SECRET 相同
-```
-
-##### 4.2 啟用 Workflow
-
-前往 `Actions` 標籤，啟用 `Update Portfolio Data` workflow。
-
-#### 5. 初次使用
-
-1. 訪問 `https://your-project.pages.dev`
-2. 使用 Google 帳號登入
-3. 新增第一筆交易紀錄
-4. 點擊「⚙️ 更新數據」觸發計算
-5. 等待 2-3 分鐘後刷新頁面
-
----
-
-## ⚙️ 環境配置
-
-### Cloudflare Worker 環境變數
-
-| 變數名稱 | 必填 | 說明 | 範例 |
-|---------|------|------|------|
-| `GITHUB_TOKEN` | ✅ | GitHub Personal Access Token | `ghp_xxxx` |
-| `GITHUB_OWNER` | ✅ | GitHub 用戶名 | `chihung1024` |
-| `GITHUB_REPO` | ✅ | Repository 名稱 | `sheet-trading-journal` |
-| `API_SECRET` | ⭕ | 內部 API 金鑰 (可選) | `your_secret_key` |
-
-### Cloudflare Pages 環境變數
-
-| 變數名稱 | 必填 | 說明 | 範例 |
-|---------|------|------|------|
-| `VITE_API_BASE_URL` | ✅ | Worker API 端點 | `https://xxx.workers.dev` |
-| `VITE_GOOGLE_CLIENT_ID` | ✅ | Google OAuth Client ID | `951186116587-xxx` |
-
-### GitHub Actions Secrets
-
-| Secret 名稱 | 必填 | 說明 |
-|------------|------|------|
-| `API_KEY` | ✅ | 與 Worker `API_SECRET` 相同 |
-
-### Google OAuth 設置
-
-1. 前往 [Google Cloud Console](https://console.cloud.google.com/)
-2. 創建新專案或選擇現有專案
-3. 啟用 `Google+ API`
-4. 創建 OAuth 2.0 憑證：
-   - Application type: `Web application`
-   - Authorized JavaScript origins:
-     - `https://your-project.pages.dev`
-     - `http://localhost:5173` (開發用)
-   - Authorized redirect URIs:
-     - `https://your-project.pages.dev`
-5. 複製 Client ID 到 `VITE_GOOGLE_CLIENT_ID`
-
----
-
-## 📡 API 文檔
-
-### Base URL
-
-```
-https://portfolio-dt-proxy.your-subdomain.workers.dev
-```
-
-### 身份驗證
-
-所有 API 請求需要在 Header 中包含：
+#### CSP 策略內容
 
 ```http
-Authorization: Bearer <google_jwt_token>
+Content-Security-Policy: 
+  default-src 'self'; 
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' 
+    https://accounts.google.com 
+    https://apis.google.com; 
+  style-src 'self' 'unsafe-inline' 
+    https://fonts.googleapis.com 
+    https://accounts.google.com; 
+  font-src 'self' 
+    https://fonts.gstatic.com 
+    https://r2cdn.perplexity.ai; 
+  img-src 'self' data: https: 
+    https://lh3.googleusercontent.com; 
+  connect-src 'self' 
+    https://journal-backend.chired.workers.dev 
+    https://accounts.google.com 
+    https://oauth2.googleapis.com; 
+  frame-src https://accounts.google.com; 
+  worker-src 'self' blob:; 
+  manifest-src 'self';
 ```
 
-或使用 API Key（內部調用）：
+#### 允許的外部資源
 
-```http
-X-API-KEY: <api_secret>
-```
-
-### Endpoints
-
-#### 🔐 身份驗證
-
-##### POST `/auth/google`
-
-**驗證 Google ID Token**
-
-```http
-POST /auth/google
-Content-Type: application/json
-
-{
-  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE2..."
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "user": "John Doe",
-  "email": "user@example.com",
-  "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE2..."
-}
-```
-
----
-
-#### 📝 交易紀錄
-
-##### GET `/api/records`
-
-**獲取所有交易紀錄**
-
-```http
-GET /api/records
-Authorization: Bearer <token>
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "user_id": "user@example.com",
-      "txn_date": "2024-01-15",
-      "symbol": "NVDA",
-      "txn_type": "BUY",
-      "qty": 100,
-      "price": 495.50,
-      "fee": 5.0,
-      "tax": 0,
-      "tag": "長線",
-      "note": "AI 趨勢投資",
-      "created_at": "2024-01-15 10:30:00"
-    }
-  ]
-}
-```
-
-##### POST `/api/records`
-
-**新增交易紀錄**
-
-```http
-POST /api/records
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "txn_date": "2024-01-15",
-  "symbol": "NVDA",
-  "txn_type": "BUY",
-  "qty": 100,
-  "price": 495.50,
-  "fee": 5.0,
-  "tax": 0,
-  "tag": "長線",
-  "note": "AI 趨勢投資"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true
-}
-```
-
-##### PUT `/api/records`
-
-**更新交易紀錄**
-
-```http
-PUT /api/records
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "id": 1,
-  "txn_date": "2024-01-15",
-  "symbol": "NVDA",
-  "txn_type": "BUY",
-  "qty": 150,
-  "price": 495.50,
-  "fee": 5.0,
-  "tax": 0,
-  "tag": "長線",
-  "note": "加碼"
-}
-```
-
-##### DELETE `/api/records`
-
-**刪除交易紀錄**
-
-```http
-DELETE /api/records
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "id": 1
-}
-```
-
-**特殊回應（最後一筆紀錄刪除時）:**
-```json
-{
-  "success": true,
-  "message": "RELOAD_UI"
-}
-```
-
----
-
-#### 📊 投資組合
-
-##### GET `/api/portfolio`
-
-**獲取投資組合快照**
-
-```http
-GET /api/portfolio
-Authorization: Bearer <token>
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "updated_at": "2026-01-19 14:00",
-    "base_currency": "TWD",
-    "exchange_rate": 31.54,
-    "summary": {
-      "total_value": 1250000,
-      "invested_capital": 1000000,
-      "unrealized_pnl": 250000,
-      "realized_pnl": 50000,
-      "total_pnl": 300000,
-      "roi": 30.00,
-      "twr": 28.45,
-      "xirr": 32.10,
-      "benchmark_twr": 25.30,
-      "benchmark_symbol": "QQQ"
-    },
-    "holdings": [
-      {
-        "symbol": "NVDA",
-        "qty": 1000,
-        "avg_cost_usd": 450.00,
-        "current_price_usd": 520.00,
-        "market_value_usd": 520000,
-        "market_value_twd": 16401000,
-        "unrealized_pnl_usd": 70000,
-        "unrealized_pnl_twd": 2207800,
-        "weight": 41.7,
-        "daily_change_usd": 5.50,
-        "daily_pl_twd": 173470
-      }
-    ],
-    "history": [
-      {
-        "date": "2024-01-01",
-        "nav": 1000000,
-        "benchmark": 100
-      }
-    ]
-  }
-}
-```
-
-##### POST `/api/portfolio`
-
-**上傳投資組合快照（內部 API）**
-
-```http
-POST /api/portfolio
-X-API-KEY: <api_secret>
-Content-Type: application/json
-
-{
-  "target_user_id": "user@example.com",
-  "data": { /* portfolio snapshot JSON */ }
-}
-```
-
----
-
-#### ⚙️ 系統操作
-
-##### POST `/api/trigger-update`
-
-**觸發 GitHub Actions 更新 ✅ (v2.38)**
-
-```http
-POST /api/trigger-update
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "benchmark": "QQQ"  // 可選，預設為 SPY
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "benchmark": "QQQ",
-  "message": "Update triggered with benchmark: QQQ"
-}
-```
-
-**支援的 Benchmark 格式：**
-- 美股：`SPY`, `QQQ`, `TQQQ`, `NVDA`, `AAPL`
-- 台股：`0050.TW`, `2330.TW`
-- 韓股：`005930.KS` (Samsung)
-- ETF：任何 Yahoo Finance 支援的代碼
-
----
-
-## 🗄️ 資料庫設計
-
-### Schema 概覽
-
-```sql
--- 交易紀錄表（Source of Truth）
-CREATE TABLE records (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id TEXT NOT NULL,
-  txn_date TEXT NOT NULL,
-  symbol TEXT NOT NULL,
-  txn_type TEXT NOT NULL CHECK(txn_type IN ('BUY','SELL','DIV')),
-  qty REAL NOT NULL CHECK(qty > 0),
-  price REAL NOT NULL CHECK(price >= 0),
-  fee REAL DEFAULT 0 CHECK(fee >= 0),
-  tax REAL DEFAULT 0 CHECK(tax >= 0),
-  tag TEXT DEFAULT 'Stock',
-  note TEXT DEFAULT '',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_records_user_date ON records(user_id, txn_date DESC);
-CREATE INDEX idx_records_symbol ON records(symbol);
-CREATE INDEX idx_records_type ON records(txn_type);
-
--- 投資組合快照表（Read Model）
-CREATE TABLE portfolio_snapshots (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id TEXT NOT NULL,
-  json_data TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_snapshots_user_created ON portfolio_snapshots(user_id, created_at DESC);
-```
-
-### 數據模型
-
-#### Record Model
-
-```typescript
-interface Record {
-  id: number;
-  user_id: string;          // 用戶 Email
-  txn_date: string;         // YYYY-MM-DD
-  symbol: string;           // 股票代號
-  txn_type: 'BUY' | 'SELL' | 'DIV';
-  qty: number;              // 股數（正數）
-  price: number;            // 單價（USD）
-  fee: number;              // 手續費（USD）
-  tax: number;              // 稅金（USD）
-  tag: string;              // 策略標籤
-  note: string;             // 備註
-  created_at: string;       // 創建時間
-  updated_at: string;       // 更新時間
-}
-```
-
-#### Portfolio Snapshot Model
-
-```typescript
-interface PortfolioSnapshot {
-  updated_at: string;
-  base_currency: 'TWD' | 'USD';
-  exchange_rate: number;
-  
-  summary: {
-    total_value: number;           // 總市值（TWD）
-    invested_capital: number;      // 投入資本（TWD）
-    unrealized_pnl: number;        // 未實現損益（TWD）
-    realized_pnl: number;          // 已實現損益（TWD）✅
-    total_pnl: number;             // 總損益（TWD）
-    roi: number;                   // 投資回報率（%）
-    twr: number;                   // 時間加權報酬率（%）
-    xirr: number;                  // 個人年化報酬率（%）
-    benchmark_twr: number;         // Benchmark TWR（%）
-    benchmark_symbol: string;      // Benchmark 代號✅
-  };
-  
-  holdings: Holding[];
-  history: HistoryPoint[];
-  
-  // ✅ NEW v1.2.0
-  realized_detail?: {
-    from_sales: number;            // 賣出收益
-    from_dividends: number;        // 配息收入
-  };
-}
-
-interface Holding {
-  symbol: string;
-  qty: number;
-  avg_cost_usd: number;
-  current_price_usd: number;
-  market_value_usd: number;
-  market_value_twd: number;
-  unrealized_pnl_usd: number;
-  unrealized_pnl_twd: number;
-  weight: number;                  // 權重（%）
-  daily_change_usd: number;        // 當日變動
-  daily_pl_twd: number;            // 當日損益（TWD）
-  prev_close_price: number;        // 前日收盤價
-}
-
-interface HistoryPoint {
-  date: string;                    // YYYY-MM-DD
-  nav: number;                     // 淨值（TWD）
-  benchmark: number;               // Benchmark 值
-  cash_flow?: number;              // 當日現金流
-}
-```
-
----
-
-## 🚀 部署指南
-
-### 環境準備
-
-#### 1. Cloudflare 帳號設置
-
-```bash
-# 安裝 Wrangler CLI
-npm install -g wrangler
-
-# 登入 Cloudflare
-wrangler login
-
-# 創建 D1 資料庫
-wrangler d1 create journal-db
-
-# 獲取資料庫 ID（記錄下來）
-# 輸出: database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-```
-
-#### 2. 執行資料庫 Schema
-
-```bash
-# 方法 1：使用 Wrangler CLI
-wrangler d1 execute journal-db --file=schema.sql
-
-# 方法 2：使用 Dashboard
-# 1. 登入 Cloudflare Dashboard
-# 2. Workers & Pages > D1 > journal-db
-# 3. Console 標籤
-# 4. 貼上 schema.sql 內容並執行
-```
-
-### Worker 部署
-
-#### 方法 1：Dashboard 部署（推薦）
-
-1. **創建 Worker**
-   - Workers & Pages > Create Application > Create Worker
-   - Name: `portfolio-dt-proxy`
-   - Deploy
-
-2. **編輯代碼**
-   - 點擊 Quick Edit
-   - Ctrl+A 全選，Delete 清空
-   - 複製 `cloudflare worker/worker_v2.38.js`
-   - 貼上並 Save and Deploy
-
-3. **配置環境變數**
-   - Settings > Variables
-   - Add variable:
-     ```
-     GITHUB_TOKEN = ghp_your_token
-     GITHUB_OWNER = your_username
-     GITHUB_REPO = sheet-trading-journal
-     API_SECRET = your_secret  (optional)
-     ```
-
-4. **綁定資料庫**
-   - Settings > Bindings > Add binding
-   - Type: D1 database
-   - Variable name: `DB`
-   - D1 database: `journal-db`
-   - Save
-
-#### 方法 2：Wrangler CLI 部署
-
-```bash
-# 1. 配置 wrangler.toml
-cat > wrangler.toml << EOF
-name = "portfolio-dt-proxy"
-main = "cloudflare worker/worker_v2.38.js"
-compatibility_date = "2024-01-01"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "journal-db"
-database_id = "your_database_id"
-
-[vars]
-GITHUB_OWNER = "your_username"
-GITHUB_REPO = "sheet-trading-journal"
-EOF
-
-# 2. 設置 Secret
-wrangler secret put GITHUB_TOKEN
-wrangler secret put API_SECRET
-
-# 3. 部署
-wrangler deploy
-```
-
-### Pages 部署
-
-#### 方法 1：連接 GitHub（推薦）
-
-1. **創建 Pages 專案**
-   - Pages > Create Project
-   - Connect to Git > 選擇 repository
-
-2. **配置構建**
-   ```yaml
-   Production branch: main
-   Framework preset: Vue
-   Build command: npm run build
-   Build output directory: dist
-   Root directory: /
-   ```
-
-3. **設置環境變數**
-   - Settings > Environment Variables
-   - Production:
-     ```
-     VITE_API_BASE_URL = https://portfolio-dt-proxy.your-subdomain.workers.dev
-     VITE_GOOGLE_CLIENT_ID = 951186116587-...
-     ```
-
-4. **觸發部署**
-   - 每次 push 到 main 分支自動部署
-   - 或手動在 Deployments 頁面觸發
-
-#### 方法 2：Direct Upload
-
-```bash
-# 1. 本地構建
-npm install
-npm run build
-
-# 2. 使用 Wrangler 部署
-wrangler pages deploy dist
-```
-
-### GitHub Actions 配置
-
-#### 1. 設置 Repository Secrets
-
-```bash
-# 使用 GitHub CLI
-gh secret set API_KEY --body "your_api_secret"
-
-# 或在 Web UI:
-# Settings > Secrets and variables > Actions > New repository secret
-```
-
-#### 2. 啟用 Workflow
-
-```bash
-# 確認 .github/workflows/update.yml 存在
-# 前往 Actions 標籤
-# 啟用 "Update Portfolio Data" workflow
-```
-
-#### 3. 測試 Workflow
-
-```bash
-# 手動觸發測試
-# Actions > Update Portfolio Data > Run workflow
-# 或使用 GitHub CLI:
-gh workflow run update.yml
-```
-
-### 驗證部署
-
-#### 1. Worker 健康檢查
-
-```bash
-curl https://portfolio-dt-proxy.your-subdomain.workers.dev/health
-```
-
-#### 2. Pages 訪問測試
-
-```bash
-# 訪問
-https://your-project.pages.dev
-
-# 應顯示登入頁面
-```
-
-#### 3. 完整流程測試
-
-1. 使用 Google 登入
-2. 新增一筆交易紀錄
-3. 點擊「更新數據」
-4. 查看 GitHub Actions 執行狀態
-5. 等待 2-3 分鐘
-6. 刷新頁面確認數據更新
-
----
-
-## 🔄 資料流程
-
-### 完整資料流程圖
-
-```mermaid
-sequenceDiagram
-    participant U as 用戶
-    participant F as Frontend (Vue)
-    participant W as Worker API
-    participant D as D1 Database
-    participant G as GitHub Actions
-    participant Y as Yahoo Finance
-    participant P as Python Engine
-
-    Note over U,P: 1. 新增交易
-    U->>F: 輸入交易資料
-    F->>W: POST /api/records
-    W->>D: INSERT INTO records
-    D-->>W: Success
-    W-->>F: {success: true}
-    F-->>U: 顯示成功訊息
-
-    Note over U,P: 2. 觸發更新
-    U->>F: 點擊「更新數據」
-    F->>W: POST /api/trigger-update {benchmark: "QQQ"}
-    W->>G: repository_dispatch event
-    G-->>W: 202 Accepted
-    W-->>F: {success: true, benchmark: "QQQ"}
-    F-->>U: 顯示更新中...
-
-    Note over U,P: 3. 執行計算
-    G->>W: GET /api/records (with API_KEY)
-    W->>D: SELECT * FROM records
-    D-->>W: 交易紀錄 JSON
-    W-->>G: {data: [...]}
-    
-    G->>Y: 下載股價數據
-    Y-->>G: 歷史價格 + 即時報價
-    
-    G->>P: 執行 main.py
-    P->>P: FIFO 計算
-    P->>P: TWR 計算
-    P->>P: XIRR 計算
-    P->>P: 匯率分離
-    P-->>G: Portfolio Snapshot JSON
-    
-    G->>W: POST /api/portfolio (with API_KEY)
-    W->>D: INSERT INTO portfolio_snapshots
-    D-->>W: Success
-    W-->>G: {success: true}
-
-    Note over U,P: 4. 查看結果
-    U->>F: 刷新頁面
-    F->>W: GET /api/portfolio
-    W->>D: SELECT json_data FROM portfolio_snapshots
-    D-->>W: 最新快照
-    W-->>F: Portfolio JSON
-    F->>F: 渲染圖表與數據
-    F-->>U: 顯示更新後的儀錶板
-```
-
-### 關鍵時序
-
-| 步驟 | 操作 | 時間 |
+| 類型 | 來源 | 用途 |
 |------|------|------|
-| 1 | 新增交易 | < 100ms |
-| 2 | 觸發更新 | < 200ms |
-| 3 | GitHub Actions 啟動 | ~10s |
-| 4 | 下載市場數據 | ~30s |
-| 5 | 執行計算 | ~20s |
-| 6 | 儲存快照 | < 500ms |
-| 7 | 前端查詢 | < 100ms |
-| **總計** | **觸發到完成** | **~60s** |
+| **Script** | `accounts.google.com` | Google 登入 SDK |
+| **Style** | `fonts.googleapis.com` | Google Fonts CSS |
+| **Style** | `accounts.google.com` | Google 登入樣式 |
+| **Font** | `fonts.gstatic.com` | Google Fonts 字體檔 |
+| **Font** | `r2cdn.perplexity.ai` | Perplexity 自訂字體 |
+| **Image** | `lh3.googleusercontent.com` | Google 用戶頭像 |
+| **Connect** | `journal-backend.chired.workers.dev` | 後端 API |
+| **Frame** | `accounts.google.com` | Google 登入 iframe |
+
+#### 其他安全標頭
+
+```http
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+#### 部署後驗證
+
+**方法 1：瀏覽器開發者工具**
+```bash
+# 1. 打開 F12 Console
+# 2. 切換到 Network 標籤
+# 3. 重新整理頁面
+# 4. 點擊第一個請求
+# 5. 查看 Response Headers
+# 應該看到完整的 CSP 策略
+```
+
+**方法 2：使用 curl**
+```bash
+curl -I https://sheet-trading-journal.pages.dev
+
+# 輸出應包含：
+# content-security-policy: default-src 'self'; ...
+```
+
+**預期結果：**
+- ✅ 無 CSP 違規警告（除了正常的 COOP postMessage 提示）
+- ✅ Google 登入正常運作
+- ✅ 字體正確載入
+- ✅ 所有 API 請求成功
 
 ---
 
 ## 🆕 更新記錄
 
-### v2.38 (2026-01-19) ✅ **LATEST**
+### v2.39 (2026-01-21) ✅ **LATEST**
+
+**🐛 TWR 計算修正 - 當沖/清倉邊界情況處理**
+
+**問題診斷：**
+- 當沖交易或清倉後收配息時，期初期末市值都為 0
+- 舊公式 `period_hpr = MVE / CF = 0 / 59913 = 0` 導致 TWR 歸零
+- 累積因子 `cumulative_twr *= 0 = 0`，最終 TWR = -100%
+
+**修正內容：**
+```python
+# journal_engine/core/calculator.py
+
+# ✅ 新增情況 3：當沖或清倉後收配息
+elif current_market_value_twd < 1e-9 and last_market_value_twd < 1e-9:
+    period_hpr_factor = 1.0  # 不影響 TWR
+    if abs(daily_net_cashflow_twd) > 1e-9:
+        logger.info(f"當沖/清倉情況: CF={daily_net_cashflow_twd:.0f}, HPR設為1.0（不影響TWR）")
+```
+
+**影響範圍：**
+- ✅ 當沖損益正確計入「已實現損益」
+- ✅ TWR 只反映持倉期間的投資績效
+- ✅ 符合 TWR 的標準定義（Time-Weighted Return）
+
+**測試結果：**
+```
+修正前：
+[群組:短線] TWR異常: MVB=0, MVE=0, CF=59913, HPR=0.0000
+最終TWR=-100.00% ❌
+
+修正後：
+[群組:短線] 當沖/清倉情況: CF=59913, HPR設為1.0（不影響TWR）
+最終TWR=24.01% ✅
+```
+
+**📁 Content Security Policy (CSP) 完整配置**
+
+**新增文件：**
+1. **`public/_headers`** - Cloudflare Pages 安全標頭
+   - 完整的 CSP 策略
+   - 快取控制規則
+   - 基本安全標頭
+
+2. **`index.html`** - HTML Meta CSP（更新）
+   - 修正字體載入 CSP 違規
+   - 新增 Google 登入所需資源
+   - 新增 frame-src 支援
+
+**解決的問題：**
+- ❌ ~~Loading the font 'r2cdn.perplexity.ai/fonts/...' violates CSP~~
+- ❌ ~~Loading the stylesheet 'accounts.google.com/gsi/style' violates CSP~~
+- ❌ ~~Framing 'accounts.google.com/' violates CSP~~
+- ✅ Console 完全乾淨（僅剩正常的 COOP 提示）
+
+**部署指南：**
+```bash
+# 1. 文件會自動被 Vite 複製到 dist/
+# 2. Cloudflare Pages 自動讀取 _headers
+# 3. 部署後 2-3 分鐘生效
+# 4. 清除瀏覽器快取驗證：Ctrl+Shift+R
+```
+
+**相關 Commits：**
+- [`5865e3d9`](https://github.com/chihung1024/sheet-trading-journal/commit/5865e3d9) - 修正當沖/清倉情況下TWR計算錯誤
+- [`12d794a0`](https://github.com/chihung1024/sheet-trading-journal/commit/12d794a0) - 新增 Cloudflare Pages 安全標頭設定
+- [`d32817ec`](https://github.com/chihung1024/sheet-trading-journal/commit/d32817ec) - 修正 index.html 的 CSP 設定
+
+---
+
+### v2.38 (2026-01-19)
 
 **🎯 自訂 Benchmark 功能完整實現**
 
@@ -1180,11 +462,6 @@ sequenceDiagram
 | 台股 | TICKER.TW | 0050.TW, 2330.TW |
 | 韓股 | TICKER.KS | 005930.KS (Samsung) |
 | ETF | TICKER | TQQQ, SQQQ, VOO |
-
-**部署注意事項：**
-- ⚠️ Worker 名稱必須為 `portfolio-dt-proxy`
-- ⚠️ 確保 GITHUB_TOKEN 環境變數正確配置
-- ⚠️ 完整部署指南見 [DEPLOYMENT_FINAL.md](DEPLOYMENT_FINAL.md)
 
 ---
 
@@ -1224,469 +501,127 @@ sequenceDiagram
 
 ---
 
-### v1.1.0 (2026-01-12)
-
-**前端優化與數據修正**
-
-- ✅ **圖表優化**
-  - 自動排除週末數據
-  - 走勢更清晰
-  
-- ✅ **交易總額修正**
-  - 使用交易當天匯率
-  - 反映真實交易價值
-  
-- ✅ **匯率容錯機制**
-  - 自動處理週末/假日
-  - 使用最近可用匯率
-
----
-
-### v1.0.0 (2025-12-20)
-
-**初始發布**
-
-- ✅ 基礎架構搭建
-- ✅ Google OAuth 登入
-- ✅ 交易紀錄 CRUD
-- ✅ 投資組合追蹤
-- ✅ TWR 計算
-- ✅ 圖表分析
-- ✅ PWA 支援
-
----
-
 ## 🛠️ 故障排除
 
 ### 常見問題
 
-#### Q1: Worker 部署後不工作？
+#### Q1: TWR 顯示 -100% 或異常值？
 
 **症狀：**
-- API 請求返回 404
-- 前端無法連接後端
+- 明明有賺錢的交易，但 TWR 顯示 -100%
+- 某個群組的 TWR 突然歸零
+
+**原因：**
+- v2.39 之前的版本在當沖/清倉情況下有計算錯誤
 
 **解決方案：**
 
-1. **確認 Worker 名稱**
-   ```
-   ✅ 正確：portfolio-dt-proxy
-   ❌ 錯誤：journal-backend
-   ```
-
-2. **檢查環境變數**
-   - Settings > Variables
-   - 確認 GITHUB_TOKEN 等變數存在
-
-3. **驗證 D1 綁定**
-   - Settings > Bindings
-   - Variable name 必須為 `DB`
-
-4. **測試 Worker**
+1. **確認版本**
    ```bash
-   curl https://your-worker.workers.dev/health
+   # 查看 calculator.py 版本
+   # 應包含「情況 3：當沖或清倉後收配息」的處理邏輯
    ```
 
----
-
-#### Q2: GitHub Actions 失敗？
-
-**症狀：**
-- Workflow 顯示紅色 X
-- 日誌顯示認證錯誤
-
-**解決方案：**
-
-1. **檢查 API_KEY Secret**
+2. **檢查 GitHub Actions 日誌**
    ```bash
-   # 重新設置
-   gh secret set API_KEY --body "your_secret"
-   ```
-
-2. **驗證 Worker 環境變數**
-   - `API_SECRET` 必須與 `API_KEY` 相同
-
-3. **查看完整日誌**
-   ```bash
-   # Actions > 點擊失敗的 run > 查看詳細日誌
-   ```
-
----
-
-#### Q3: 自訂 Benchmark 不生效？
-
-**症狀：**
-- 輸入 QQQ 但圖表仍顯示 SPY
-- GitHub Actions 日誌顯示 Benchmark=SPY
-
-**解決方案：**
-
-1. **確認 Worker 版本**
-   ```javascript
-   // 檢查 Worker 代碼第 4 行
-   * v2.38: 生產版本 - 使用 workflow_dispatch + inputs 傳遞自訂 benchmark
-   ```
-
-2. **清除前端緩存**
-   ```javascript
-   localStorage.clear();
-   location.reload();
-   ```
-
-3. **重新部署 Worker**
-   - 確保部署到 `portfolio-dt-proxy`
-   - 等待 60 秒讓全球節點同步
-
-4. **檢查 Workflow 配置**
-   ```yaml
-   # .github/workflows/update.yml
-   workflow_dispatch:
-     inputs:
-       custom_benchmark:
-         description: '自訂基準標的代碼'
-         required: false
-         default: 'SPY'
-         type: string
-   ```
-
----
-
-#### Q4: 圖表數據不更新？
-
-**症狀：**
-- 點擊「更新數據」後數據沒變
-- GitHub Actions 執行成功但前端無變化
-
-**解決方案：**
-
-1. **查看 Actions 日誌**
-   ```
-   # 確認是否有錯誤
-   [INFO] main: 上傳成功！Worker 回應: {"success":true}
-   ```
-
-2. **清除瀏覽器緩存**
-   ```
-   Ctrl + Shift + R (Windows)
-   Cmd + Shift + R (Mac)
-   ```
-
-3. **檢查資料庫**
-   ```sql
-   -- 在 Cloudflare D1 Console
-   SELECT created_at FROM portfolio_snapshots 
-   WHERE user_id = 'your@email.com' 
-   ORDER BY created_at DESC LIMIT 1;
-   ```
-
-4. **重新登入**
-   ```javascript
-   // 清除所有本地數據
-   localStorage.clear();
-   sessionStorage.clear();
-   // 重新登入
-   ```
-
----
-
-#### Q5: 匯率數據不正確？
-
-**症狀：**
-- 台幣金額計算錯誤
-- 今日損益異常
-
-**解決方案：**
-
-1. **檢查匯率源**
-   ```python
-   # main.py 中確認
-   fx_rate = fetch_usd_twd_rate()  # 應使用即時匯率
-   ```
-
-2. **查看 Actions 日誌**
-   ```
-   [FX] ✅ 已獲取即時匯率: 31.5380
-   ```
-
-3. **手動更新匯率**
-   ```python
-   # 如果 Yahoo Finance 失敗，可使用備用源
-   # 修改 market_client.py 中的匯率來源
-   ```
-
----
-
-#### Q6: 持倉數量不正確？
-
-**症狀：**
-- 賣出後持倉數量錯誤
-- 某些股票顯示負數
-
-**解決方案：**
-
-1. **檢查交易紀錄**
-   ```sql
-   -- 查看特定股票的所有交易
-   SELECT * FROM records 
-   WHERE symbol = 'NVDA' AND user_id = 'your@email.com'
-   ORDER BY txn_date;
-   ```
-
-2. **驗證 FIFO 計算**
-   ```python
-   # 查看 calculator.py 日誌
-   # 確認買入/賣出數量匹配
+   # 搜尋日誌中的關鍵訊息
+   "當沖/清倉情況: CF=xxxxx, HPR設為1.0（不影響TWR）"
    ```
 
 3. **重新計算**
-   - 刪除 portfolio_snapshots 中的舊數據
-   - 觸發「更新數據」重新計算
+   - 確保使用 v2.39 或更新版本
+   - 點擊「更新數據」觸發重新計算
+   - 等待 2-3 分鐘後刷新頁面
+
+4. **如果問題持續**
+   ```sql
+   -- 清除舊快照
+   DELETE FROM portfolio_snapshots WHERE user_id = 'your@email.com';
+   ```
+   然後重新觸發更新。
 
 ---
 
-### 調試工具
+#### Q2: Console 出現 CSP 違規警告？
 
-#### 1. Worker 日誌
-
-```bash
-# 實時查看 Worker 日誌
-# Cloudflare Dashboard > Workers > portfolio-dt-proxy > Logs
-
-# 或使用 Wrangler
-wrangler tail portfolio-dt-proxy
+**症狀：**
+```
+Loading the font 'https://r2cdn.perplexity.ai/...' violates CSP
+Loading the stylesheet 'https://accounts.google.com/...' violates CSP
 ```
 
-#### 2. D1 Console
+**原因：**
+- 舊版本缺少完整的 CSP 配置
+- `_headers` 文件或 `index.html` 的 CSP meta tag 不完整
 
-```sql
--- 查看用戶交易數
-SELECT user_id, COUNT(*) as trade_count 
-FROM records 
-GROUP BY user_id;
+**解決方案：**
 
--- 查看最新快照時間
-SELECT user_id, created_at 
-FROM portfolio_snapshots 
-ORDER BY created_at DESC;
+1. **確認文件存在**
+   ```bash
+   # 專案中應包含：
+   public/_headers
+   index.html (包含更新的 CSP meta tag)
+   ```
 
--- 清理舊快照（保留最新 10 筆）
-DELETE FROM portfolio_snapshots 
-WHERE user_id = 'your@email.com' 
-AND id NOT IN (
-  SELECT id FROM portfolio_snapshots 
-  WHERE user_id = 'your@email.com' 
-  ORDER BY id DESC LIMIT 10
-);
-```
+2. **驗證部署**
+   ```bash
+   # 檢查 HTTP Headers
+   curl -I https://your-site.pages.dev | grep -i content-security
+   ```
 
-#### 3. GitHub Actions 調試
+3. **清除快取**
+   ```bash
+   # 強制重新整理
+   Ctrl + Shift + R (Windows/Linux)
+   Cmd + Shift + R (Mac)
+   ```
 
-```yaml
-# 在 workflow 中啟用調試模式
-- name: Debug Environment
-  run: |
-    echo "CUSTOM_BENCHMARK: $CUSTOM_BENCHMARK"
-    echo "TARGET_USER_ID: $TARGET_USER_ID"
-    env | sort
-```
+4. **如果仍有問題**
+   - 檢查 Cloudflare Pages 部署日誌
+   - 確認 `public/_headers` 被正確複製到 `dist/`
+   - 聯繫 GitHub Issues 報告問題
 
-#### 4. 前端調試
+**預期結果：**
+- ✅ 無 CSP 違規錯誤（紅字）
+- ⚠️ 只有正常的 COOP postMessage 警告（不影響功能）
 
+---
+
+#### Q3: 當沖交易的損益去哪了？
+
+**症狀：**
+- 當沖有賺錢，但 TWR 沒變化
+- 不確定當沖損益是否被計算
+
+**說明：**
+
+v2.39 版本後，當沖交易的處理方式：
+
+| 指標 | 是否包含當沖 | 說明 |
+|------|-------------|------|
+| **已實現損益** | ✅ 包含 | 顯示所有交易的實際獲利 |
+| **TWR** | ❌ 不包含 | 只反映持倉期間的績效 |
+| **XIRR** | ✅ 包含 | 考慮所有現金流的年化報酬 |
+| **總報酬率** | ✅ 包含 | (總損益 / 投入資金) × 100% |
+
+**驗證方式：**
 ```javascript
-// 在 Console 中執行
-
-// 查看當前 Token
-console.log('Token:', localStorage.getItem('token'));
-
-// 查看用戶信息
-console.log('User:', JSON.parse(localStorage.getItem('user')));
-
-// 查看 Benchmark 設置
-console.log('Benchmark:', localStorage.getItem('user_benchmark'));
-
-// 測試 API 連接
+// 在前端 Console 執行
 fetch('https://your-worker.workers.dev/api/portfolio', {
-  headers: {
-    'Authorization': `Bearer ${localStorage.getItem('token')}`
-  }
+  headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
 })
 .then(r => r.json())
-.then(data => console.log('Portfolio:', data));
+.then(data => {
+  console.log('已實現損益:', data.data.summary.realized_pnl);
+  console.log('TWR:', data.data.summary.twr);
+  console.log('XIRR:', data.data.summary.xirr);
+});
 ```
 
----
-
-## 🤝 貢獻指南
-
-### 如何貢獻
-
-我們歡迎各種形式的貢獻！
-
-#### 報告 Bug
-
-1. 前往 [Issues](https://github.com/chihung1024/sheet-trading-journal/issues)
-2. 點擊 "New Issue"
-3. 選擇 "Bug Report" 模板
-4. 填寫詳細信息：
-   - 問題描述
-   - 重現步驟
-   - 預期行為
-   - 實際行為
-   - 截圖或日誌
-   - 環境信息（瀏覽器、Worker 版本等）
-
-#### 功能請求
-
-1. 前往 [Issues](https://github.com/chihung1024/sheet-trading-journal/issues)
-2. 點擊 "New Issue"
-3. 選擇 "Feature Request" 模板
-4. 描述：
-   - 需求背景
-   - 期望功能
-   - 可能的實現方式
-
-#### 提交 Pull Request
-
-1. **Fork 專案**
-   ```bash
-   gh repo fork chihung1024/sheet-trading-journal
-   ```
-
-2. **創建功能分支**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-3. **開發與測試**
-   ```bash
-   # 本地開發
-   npm install
-   npm run dev
-   
-   # 測試 Worker
-   wrangler dev
-   
-   # 測試 Python
-   pytest
-   ```
-
-4. **提交變更**
-   ```bash
-   git add .
-   git commit -m "feat: add your feature description"
-   git push origin feature/your-feature-name
-   ```
-
-5. **創建 PR**
-   - 前往 GitHub
-   - 點擊 "Compare & pull request"
-   - 填寫 PR 描述
-   - 等待 Review
-
-### 代碼風格
-
-#### JavaScript/Vue
-
-```javascript
-// 使用 ESLint + Prettier
-npm run lint
-npm run format
-
-// 命名規範
-// Components: PascalCase
-// Functions: camelCase
-// Constants: UPPER_SNAKE_CASE
-```
-
-#### Python
-
-```python
-# 使用 Black + isort
-black .
-isort .
-
-# 遵循 PEP 8
-# Type hints for functions
-def calculate_twr(nav_series: pd.Series) -> float:
-    pass
-```
-
-### 提交訊息規範
-
-使用 [Conventional Commits](https://www.conventionalcommits.org/)：
-
-```bash
-feat: 新增功能
-fix: 修復 Bug
-docs: 文檔更新
-style: 代碼格式（不影響功能）
-refactor: 重構
-test: 測試相關
-chore: 構建/工具相關
-
-# 範例
-feat: add custom benchmark support
-fix: resolve FIFO calculation error
-docs: update API documentation
-```
-
----
-
-## 📄 授權
-
-```
-MIT License
-
-Copyright (c) 2026 chihung1024
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-
-## 🙏 致謝
-
-### 技術棧
-
-- [Vue.js](https://vuejs.org/) - 漸進式 JavaScript 框架
-- [Vite](https://vitejs.dev/) - 下一代前端構建工具
-- [Cloudflare Workers](https://workers.cloudflare.com/) - Serverless 平台
-- [Cloudflare D1](https://developers.cloudflare.com/d1/) - 邊緣資料庫
-- [GitHub Actions](https://github.com/features/actions) - CI/CD 平台
-- [yfinance](https://github.com/ranaroussi/yfinance) - Yahoo Finance API
-- [Chart.js](https://www.chartjs.org/) - 圖表庫
-- [Pinia](https://pinia.vuejs.org/) - Vue 狀態管理
-
-### 靈感來源
-
-- [Portfolio Performance](https://www.portfolio-performance.info/)
-- [Personal Capital](https://www.personalcapital.com/)
-- [Sharesight](https://www.sharesight.com/)
-
----
-
-## 📞 聯絡方式
-
-- **作者**: chihung1024
-- **Email**: (Repository settings)
-- **GitHub**: [@chihung1024](https://github.com/chihung1024)
-- **Issues**: [Report a bug](https://github.com/chihung1024/sheet-trading-journal/issues)
+**結論：**
+- 當沖損益**有被計算**，在「已實現損益」中
+- TWR 不反映當沖是**符合設計**的（評估持倉能力，非交易頻率）
+- 如需完整績效評估，參考 XIRR 或總報酬率
 
 ---
 
@@ -1700,32 +635,28 @@ SOFTWARE.
   - 支援 EUR、JPY、GBP 等貨幣
   - 自動匯率轉換
   
+- [ ] **當沖績效獨立追蹤** ✨ **NEW**
+  - 當沖專用統計卡片
+  - 勝率、平均獲利、交易次數
+  - 與波段績效分離顯示
+  
 - [ ] **期權交易追蹤**
   - 買入/賣出 Call/Put
   - Greeks 計算
   - 到期管理
-  
-- [ ] **稅務報表**
-  - 自動生成年度損益
-  - 分離短期/長期資本利得
-  - 配息收入統計
 
 #### Q2 2026
 
+- [ ] **進階績效指標**
+  - Sharpe Ratio (夏普比率)
+  - Maximum Drawdown (最大回撤)
+  - Calmar Ratio
+  - Sortino Ratio
+  
 - [ ] **社群功能**
   - 策略分享
   - 績效排行榜
   - 交易複製功能
-  
-- [ ] **智能提醒**
-  - 持倉預警（漲跌幅）
-  - 配息通知
-  - 財報日提醒
-  
-- [ ] **AI 分析**
-  - 持倉風險評估
-  - 配置建議
-  - 自動再平衡
 
 #### Q3 2026
 
@@ -1734,10 +665,10 @@ SOFTWARE.
   - 推送通知
   - 離線功能
   
-- [ ] **進階圖表**
-  - 蠟燭圖
-  - 技術指標（MA、RSI、MACD）
-  - 繪圖工具
+- [ ] **AI 分析**
+  - 持倉風險評估
+  - 配置建議
+  - 自動再平衡
 
 ---
 
