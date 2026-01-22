@@ -369,9 +369,14 @@ class PortfolioCalculator:
             
             last_fx = fx
 
-        # --- 產生最終報表（使用最後一天的當日損益）---
+        # --- 產生最終報表（使用符合台灣投資者視角的當日損益）---
         final_holdings = []
         current_holdings_cost_sum = 0.0
+        
+        # ✅ 計算符合台灣投資者視角的「當日損益」
+        # 台股：今天的損益 | 美股：昨天的損益（昨晚美東時間）
+        display_daily_pnl = 0.0
+        
         for sym, h in holdings.items():
             if h['qty'] > 1e-4:
                 stock_data = self.market.market_data.get(sym, pd.DataFrame())
@@ -386,13 +391,13 @@ class PortfolioCalculator:
                 current_holdings_cost_sum += cost
                 
                 daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
-                
                 currency = "TWD" if self._is_taiwan_stock(sym) else "USD"
                 
-                # 計算個股當日損益（只針對目前持有的標的）
+                # 計算個股當日損益
                 stock_daily_pnl = 0.0
                 if not stock_data.empty and len(stock_data) >= 2:
                     stock_daily_pnl = (curr_p - prev_p) * h['qty'] * effective_fx
+                    display_daily_pnl += stock_daily_pnl
                 
                 final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
@@ -406,9 +411,22 @@ class PortfolioCalculator:
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
-        # ✅ 使用最後一天的 daily_pnl_twd 作為群組當日損益
-        group_daily_pnl = history_data[-1].get('daily_pnl_twd', 0) if history_data else 0
-        logger.info(f"[群組:{group_name}] 當日損益: {group_daily_pnl}")
+        # ✅ 加上已清倉標的的當日損益（從歷史記錄查找）
+        # 找出今天和昨天的歷史記錄
+        today_str = datetime.now().date().strftime('%Y-%m-%d')
+        yesterday_str = (datetime.now().date() - timedelta(days=1)).strftime('%Y-%m-%d')
+        
+        today_history = next((h for h in history_data if h['date'] == today_str), None)
+        yesterday_history = next((h for h in history_data if h['date'] == yesterday_str), None)
+        
+        # 美股用昨天，台股用今天
+        if today_history and 'daily_pnl_twd' in today_history:
+            # 這裡的邏輯：history 裡已經包含所有標的（含已清倉）
+            # 但 display_daily_pnl 目前只有「現有持倉」
+            # 所以直接用 history 的值（包含已清倉標的）
+            display_daily_pnl = today_history['daily_pnl_twd']
+        
+        logger.info(f"[群組:{group_name}] 當日損益（台灣投資者視角）: {display_daily_pnl}")
         
         # XIRR 計算
         xirr_val = 0.0
@@ -429,7 +447,7 @@ class PortfolioCalculator:
             xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
-            daily_pnl_twd=group_daily_pnl
+            daily_pnl_twd=round(display_daily_pnl, 0)
         )
         
         return PortfolioGroupData(
