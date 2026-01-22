@@ -193,6 +193,12 @@ class PortfolioCalculator:
         
         for d in date_range:
             current_date = d.date()
+            
+            # ✅ 關鍵修正：在處理今天交易之前，先保存今日開盤前持倉
+            if current_date == datetime.now().date():
+                yesterday_holdings = {sym: h['qty'] for sym, h in holdings.items()}
+                logger.info(f"[群組:{group_name}] 記錄今日開盤前持倉 {current_date}: {yesterday_holdings}")
+            
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
@@ -329,14 +335,6 @@ class PortfolioCalculator:
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(fx, 4)
             })
-            
-            # ✅ 記錄今日收盤後的持倉快照（明天會用來算當日損益）
-            if current_date == datetime.now().date() - timedelta(days=1) or \
-               (datetime.now().date().weekday() == 0 and current_date == (datetime.now().date() - timedelta(days=3)).date()):
-                # 今天是工作日：記錄昨天的快照
-                # 今天是周一：記錄上周五的快照
-                yesterday_holdings = {sym: h['qty'] for sym, h in holdings.items()}
-                logger.info(f"[群組:{group_name}] 記錄昨日快照 {current_date}: {yesterday_holdings}")
             
             last_fx = fx
 
