@@ -98,7 +98,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, provide } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
@@ -173,10 +173,11 @@ const getYesterdayDateString = () => {
   return yesterday.toISOString().split('T')[0];
 };
 
-// 🐛 修正：計算特定日期的現金流（按群組 Tag 過濾）
+// 🔧 修正：計算特定日期的現金流（按群組過濾）
 const calculateCashFlow = (targetDate) => {
   if (!records.value || records.value.length === 0) return 0;
   
+  // 🔧 從 rawData 中獲取匯率（後端計算快照時儲存）
   const exchangeRate = rawData.value?.exchange_rate || 32;
   
   let cashFlow = 0;
@@ -206,7 +207,7 @@ const calculateCashFlow = (targetDate) => {
     const tax = record.tax || 0;
     const totalCostUSD = qty * price + fee + tax;
     
-    // 轉換為 TWD
+    // 🔧 轉換為 TWD
     const totalCostTWD = totalCostUSD * exchangeRate;
     
     if (record.txn_type === 'BUY') {
@@ -288,6 +289,9 @@ const dailyRoi = computed(() => {
   if (!baseValue || baseValue === 0) return '0.00';
   return ((dailyPnL.value / baseValue) * 100).toFixed(2);
 });
+
+// ✨ 導出當日損益供 HoldingsTable 使用
+provide('portfolioDailyPnL', dailyPnL);
 
 // 數字動畫
 const useAnimatedNumber = (targetVal) => {
