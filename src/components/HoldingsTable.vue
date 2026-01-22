@@ -49,8 +49,8 @@
                     <th @click="sortBy('market_value_twd')" class="text-right sortable">
                         市值 (TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
                     </th>
-                    <th @click="sortBy('daily_pl_twd')" class="text-right sortable">
-                        當日損益 <span class="sort-icon">{{ getSortIcon('daily_pl_twd') }}</span>
+                    <th @click="sortBy('computed_daily_pl')" class="text-right sortable">
+                        當日損益 <span class="sort-icon">{{ getSortIcon('computed_daily_pl') }}</span>
                     </th>
                     <th @click="sortBy('pnl_twd')" class="text-right sortable">
                         總損益 <span class="sort-icon">{{ getSortIcon('pnl_twd') }}</span>
@@ -90,10 +90,10 @@
                         </div>
                     </td>
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
-                    <td class="text-right font-num" :class="getTrendClass(h.daily_pl_twd)">
+                    <td class="text-right font-num" :class="getTrendClass(h.computed_daily_pl)">
                         <div class="daily-pnl-wrapper">
                             <span class="pnl-value">
-                                {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
+                                {{ h.computed_daily_pl >= 0 ? '+' : '' }}{{ formatNumber(h.computed_daily_pl, 0) }}
                             </span>
                         </div>
                     </td>
@@ -119,7 +119,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, inject, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
@@ -133,6 +133,9 @@ const highlightedSymbol = ref(null);
 const displayLimit = ref(50);
 const scrollTop = ref(0);
 
+// ✨ 接收前端計算的總當日損益
+const portfolioDailyPnL = inject('portfolioDailyPnL', ref(0));
+
 const safeNum = (val) => {
     if (val === undefined || val === null || isNaN(val)) return '0.00';
     return Number(val).toFixed(2);
@@ -145,6 +148,22 @@ const formatNumber = (num, d=0) => {
 
 const totalMarketValue = computed(() => {
     return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
+});
+
+// ✨ 計算個股當日損益：總當日損益 × (個股市值 / 總市值)
+const holdingsWithComputedDaily = computed(() => {
+    const total = portfolioDailyPnL.value || 0;
+    const totalMV = totalMarketValue.value || 1;
+    
+    return store.holdings.map(h => {
+        const ratio = (h.market_value_twd || 0) / totalMV;
+        const computed_daily_pl = total * ratio;
+        
+        return {
+            ...h,
+            computed_daily_pl
+        };
+    });
 });
 
 const sortBy = (key) => {
@@ -162,7 +181,7 @@ const getSortIcon = (key) => {
 };
 
 const filteredHoldings = computed(() => {
-    let result = store.holdings;
+    let result = holdingsWithComputedDaily.value;
     
     if (searchQuery.value) {
         result = result.filter(h => 
