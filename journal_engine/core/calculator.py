@@ -29,19 +29,6 @@ class PortfolioCalculator:
     def _get_effective_fx_rate(self, symbol, fx_rate):
         """根據標的取得有效匯率（台股回傳1.0，美股等其他標的回傳實際匯率）"""
         return 1.0 if self._is_taiwan_stock(symbol) else fx_rate
-    
-    def _is_us_market_open(self):
-        """判斷目前是否為美股盤中時間（台灣時間 21:30 - 05:00）"""
-        now = datetime.now()
-        hour = now.hour
-        minute = now.minute
-        
-        # 晚上 9:30 後 或 凌晨 5:00 前
-        if hour >= 21 or hour < 5:
-            if hour == 21 and minute < 30:
-                return False
-            return True
-        return False
 
     def run(self):
         """執行多群組投資組合計算主流程"""
@@ -379,24 +366,12 @@ class PortfolioCalculator:
             last_date = d
             last_fx = fx
 
-        # ===== ✅ 簡化個股當日損益計算：直接基於價格變化 =====
+        # ===== ✅ 修復：正確計算個股當日損益（參考舊專案邏輯）=====
         final_daily_pnls = {}
-        is_market_open = self._is_us_market_open()
         
-        logger.info(f"[群組:{group_name}] 當前時段: {'美股盤中' if is_market_open else '美股收盤後'}")
-        
-        # 使用實際日曆日期
+        # 使用實際日期
         today = datetime.now().date()
         yesterday = today - timedelta(days=1)
-        day_before_yesterday = today - timedelta(days=2)
-        
-        # 根據時段選擇基準日期和現金流日期
-        if is_market_open:
-            base_date_for_calc = pd.Timestamp(yesterday)
-            cashflow_date_for_calc = today
-        else:
-            base_date_for_calc = pd.Timestamp(day_before_yesterday)
-            cashflow_date_for_calc = yesterday
         
         # 獲取匯率
         try:
@@ -406,58 +381,64 @@ class PortfolioCalculator:
             today_fx = DEFAULT_FX_RATE
         
         try:
-            base_fx = self.market.fx_rates.asof(base_date_for_calc)
-            if pd.isna(base_fx): base_fx = today_fx
+            yesterday_fx = self.market.fx_rates.asof(pd.Timestamp(yesterday))
+            if pd.isna(yesterday_fx): yesterday_fx = today_fx
         except: 
-            base_fx = today_fx
+            yesterday_fx = today_fx
         
-        # 獲取現金流日期的交易
-        cashflow_txns = df[df['Date'].dt.date == cashflow_date_for_calc].copy()
+        # 獲取今日交易記錄
+        today_txns = df[df['Date'].dt.date == today].copy()
         
-        logger.info(f"[群組:{group_name}] 當日損益計算: base_date={base_date_for_calc.strftime('%Y-%m-%d')}, cashflow_date={cashflow_date_for_calc}, 現金流交易筆數={len(cashflow_txns)}")
+        logger.info(f"[群組:{group_name}] 當日損益計算: today={today}, yesterday={yesterday}, 今日交易筆數={len(today_txns)}")
         
-        # 計算每個標的的現金流
-        daily_cashflows_by_symbol = {}
-        for _, row in cashflow_txns.iterrows():
-            sym = row['Symbol']
-            if sym not in daily_cashflows_by_symbol:
-                daily_cashflows_by_symbol[sym] = 0.0
-            
-            # 使用現金流日期的匯率
-            try:
-                cf_fx = self.market.fx_rates.asof(pd.Timestamp(cashflow_date_for_calc))
-                if pd.isna(cf_fx): cf_fx = today_fx
-            except:
-                cf_fx = today_fx
-                
-            effective_fx = self._get_effective_fx_rate(sym, cf_fx)
-            
-            if row['Type'] == 'BUY':
-                cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * effective_fx
-                daily_cashflows_by_symbol[sym] += cost_twd
-            elif row['Type'] == 'SELL':
-                proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
-                daily_cashflows_by_symbol[sym] -= proceeds_twd
-        
-        # ✨ 簡化邏輯：直接用價格變化×當前持倉計算
+        # 對每個持倉標的計算當日損益
         for sym, h_data in holdings.items():
             if h_data['qty'] > 1e-6:
-                # 今日價格
+                # 1. 獲取價格
                 today_price = self.market.get_price(sym, pd.Timestamp(today))
-                today_fx_effective = self._get_effective_fx_rate(sym, today_fx)
+                yesterday_price = self.market.get_price(sym, pd.Timestamp(yesterday))
                 
-                # 基準日價格
-                base_price = self.market.get_price(sym, base_date_for_calc)
-                base_fx_effective = self._get_effective_fx_rate(sym, base_fx)
+                # 2. 計算今日的數量變化和現金流
+                daily_qty_change = 0.0
+                daily_cashflow_twd = 0.0
                 
-                # 當日損益 = 價格變化 × 當前持倉數量 × 匯率 - 現金流
-                price_change_twd = (today_price * today_fx_effective - base_price * base_fx_effective) * h_data['qty']
-                cashflow = daily_cashflows_by_symbol.get(sym, 0.0)
-                daily_pnl = price_change_twd - cashflow
+                sym_txns_today = today_txns[today_txns['Symbol'] == sym]
+                for _, row in sym_txns_today.iterrows():
+                    effective_fx = self._get_effective_fx_rate(sym, today_fx)
+                    
+                    if row['Type'] == 'BUY':
+                        cost_usd = (row['Qty'] * row['Price']) + row['Commission'] + row['Tax']
+                        cost_twd = cost_usd * effective_fx
+                        daily_qty_change += row['Qty']
+                        daily_cashflow_twd += cost_twd
+                    elif row['Type'] == 'SELL':
+                        proceeds_usd = (row['Qty'] * row['Price']) - row['Commission'] - row['Tax']
+                        proceeds_twd = proceeds_usd * effective_fx
+                        daily_qty_change -= row['Qty']
+                        daily_cashflow_twd -= proceeds_twd
+                
+                # 3. ⭐ 關鍵：計算日初持倉（扣除今日變化）
+                qty_start_of_day = h_data['qty'] - daily_qty_change
+                
+                # 4. 計算市值變化
+                effective_fx_today = self._get_effective_fx_rate(sym, today_fx)
+                effective_fx_yesterday = self._get_effective_fx_rate(sym, yesterday_fx)
+                
+                beginning_market_value_twd = qty_start_of_day * yesterday_price * effective_fx_yesterday
+                ending_market_value_twd = h_data['qty'] * today_price * effective_fx_today
+                
+                # 5. 當日損益 = 日末市值 - 日初市值 - 現金流
+                daily_pnl = ending_market_value_twd - beginning_market_value_twd - daily_cashflow_twd
                 
                 final_daily_pnls[sym] = daily_pnl
                 
-                logger.info(f"[群組:{group_name}] {sym} 當日損益: 今日價={today_price:.2f}, 基準價={base_price:.2f}, 持倉={h_data['qty']:.2f}, 價差損益={price_change_twd:.0f}, 現金流={cashflow:.0f}, 總損益={daily_pnl:.0f}")
+                logger.info(
+                    f"[群組:{group_name}] {sym} 當日損益計算: "
+                    f"日初qty={qty_start_of_day:.2f}, 日末qty={h_data['qty']:.2f}, "
+                    f"昨價={yesterday_price:.2f}, 今價={today_price:.2f}, "
+                    f"日初市值={beginning_market_value_twd:.0f}, 日末市值={ending_market_value_twd:.0f}, "
+                    f"現金流={daily_cashflow_twd:.0f}, 當日損益={daily_pnl:.0f}"
+                )
 
         # --- 產生最終報表 ---
         final_holdings = []
