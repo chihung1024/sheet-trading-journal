@@ -275,6 +275,101 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
+    // ✨ 當日損益計算（共享給 StatsGrid 和 HoldingsTable）
+    const dailyPnL = computed(() => {
+        const todayValue = stats.value.total_value || 0;
+        
+        if (!history.value || history.value.length < 2) {
+            return 0;
+        }
+        
+        // 判斷是否為美股盤中時間 (台灣時間 21:30 - 05:00)
+        const now = new Date();
+        const hour = now.getHours();
+        const minute = now.getMinutes();
+        let isUSMarketOpen = false;
+        
+        if (hour >= 21 || hour < 5) {
+            if (hour === 21 && minute < 30) {
+                isUSMarketOpen = false;
+            } else {
+                isUSMarketOpen = true;
+            }
+        }
+        
+        let baseValue = 0;
+        let cashFlow = 0;
+        
+        // 獲取今天和昨天的日期字串
+        const todayStr = now.toISOString().split('T')[0];
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        
+        if (isUSMarketOpen) {
+            // 🌙 美股交易中：使用昨日收盤 + 今日現金流
+            baseValue = history.value[history.value.length - 2].total_value || 0;
+            cashFlow = calculateCashFlow(todayStr);
+        } else {
+            // ☀️ 美股收盤後：使用前日收盤 + 昨晚現金流
+            if (history.value.length >= 3) {
+                baseValue = history.value[history.value.length - 3].total_value || 0;
+            } else {
+                baseValue = history.value[history.value.length - 2].total_value || 0;
+            }
+            cashFlow = calculateCashFlow(yesterdayStr);
+        }
+        
+        // 當日損益 = 今日市值 - 基準市值 - 現金流
+        const pnl = todayValue - baseValue - cashFlow;
+        
+        return pnl;
+    });
+
+    // 輔助函數：計算特定日期的現金流
+    const calculateCashFlow = (targetDate) => {
+        if (!records.value || records.value.length === 0) return 0;
+        
+        // 從 rawData 中獲取匯率
+        const exchangeRate = rawData.value?.exchange_rate || 32;
+        
+        let cashFlow = 0;
+        
+        records.value.forEach(record => {
+            // 按群組過濾
+            if (currentGroup.value !== 'all') {
+                const recordTags = (record.tag || '').split(/[,;]/).map(t => t.trim());
+                if (!recordTags.includes(currentGroup.value)) {
+                    return;
+                }
+            }
+            
+            // 使用 txn_date
+            const recordDate = record.txn_date ? record.txn_date.split('T')[0] : '';
+            
+            // 只計算目標日期的交易
+            if (recordDate !== targetDate) return;
+            
+            // 計算 USD 成本
+            const qty = record.qty || 0;
+            const price = record.price || 0;
+            const fee = record.fee || 0;
+            const tax = record.tax || 0;
+            const totalCostUSD = qty * price + fee + tax;
+            
+            // 轉換為 TWD
+            const totalCostTWD = totalCostUSD * exchangeRate;
+            
+            if (record.txn_type === 'BUY') {
+                cashFlow += totalCostTWD;
+            } else if (record.txn_type === 'SELL') {
+                cashFlow -= totalCostTWD;
+            }
+        });
+        
+        return cashFlow;
+    };
+
     const setGroup = (group) => {
         if (availableGroups.value.includes(group)) {
             currentGroup.value = group;
@@ -295,7 +390,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const startPolling = () => {
         if (isPolling.value) return;
         
-        console.log('⌛ [SmartPolling] 開始監控數據更新...');
+        console.log('⏰ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
         // MODIFIED: 獲取初始狀態的時間戳
@@ -380,14 +475,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     return { 
         loading, 
-        rawData, // 🐛 添加 rawData 到導出
+        rawData,
         stats, 
         holdings, 
         history, 
         records, 
         pending_dividends,
         lastUpdate, 
-        unrealizedPnL, 
+        unrealizedPnL,
+        dailyPnL, // ✨ 導出當日損益
         connectionStatus,
         isPolling,
         currentGroup,
