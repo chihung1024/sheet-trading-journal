@@ -173,17 +173,24 @@ const getYesterdayDateString = () => {
   return yesterday.toISOString().split('T')[0];
 };
 
-// 🔧 修正：計算特定日期的現金流（不過濾群組，因為需要計算所有賣出交易）
+// 🐛 修正：計算特定日期的現金流（按群組 Tag 過濾）
 const calculateCashFlow = (targetDate) => {
   if (!records.value || records.value.length === 0) return 0;
   
-  // 🔧 從 rawData 中獲取匯率（後端計算快照時儲存）
   const exchangeRate = rawData.value?.exchange_rate || 32;
   
   let cashFlow = 0;
   let matchCount = 0;
   
   records.value.forEach(record => {
+    // ✅ 按群組過濾：基於交易記錄的 Tag
+    if (currentGroup.value !== 'all') {
+      const recordTags = (record.tag || '').split(/[,;]/).map(t => t.trim());
+      if (!recordTags.includes(currentGroup.value)) {
+        return; // 跳過不屬於當前群組的交易
+      }
+    }
+    
     // 使用 txn_date
     const recordDate = record.txn_date ? record.txn_date.split('T')[0] : '';
     
@@ -199,7 +206,7 @@ const calculateCashFlow = (targetDate) => {
     const tax = record.tax || 0;
     const totalCostUSD = qty * price + fee + tax;
     
-    // 🔧 轉換為 TWD
+    // 轉換為 TWD
     const totalCostTWD = totalCostUSD * exchangeRate;
     
     if (record.txn_type === 'BUY') {
