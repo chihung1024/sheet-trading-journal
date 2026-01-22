@@ -6,17 +6,14 @@ import { useToast } from '../composables/useToast';
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
-    const rawData = ref(null); // 儲存原始完整資料 (包含 groups)
+    const rawData = ref(null);
     const records = ref([]);
     const lastUpdate = ref('');
     const connectionStatus = ref('connected'); 
     const isPolling = ref(false);
     let pollTimer = null;
 
-    // ✅ 自訂基準標的 (從 localStorage 讀取，預設 SPY)
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
-
-    // ✅ 當前選擇的群組
     const currentGroup = ref('all');
 
     const getToken = () => {
@@ -60,7 +57,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 清空本地數據狀態
     const resetData = () => {
         rawData.value = null;
         records.value = [];
@@ -79,13 +75,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         loading.value = true;
         
         try {
-            // 1. 先抓取交易紀錄
             await fetchRecords().catch(err => {
                 console.error('❌ [fetchRecords] 錯誤:', err);
                 throw err;
             });
             
-            // 2. 根據紀錄結果決定是否抓取快照
             if (records.value && records.value.length > 0) {
                 await fetchSnapshot().catch(err => {
                     console.error('❌ [fetchSnapshot] 錯誤:', err);
@@ -109,7 +103,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             const json = await fetchWithAuth('/api/portfolio');
             
             if (json && json.success && json.data) {
-                // MODIFIED: 強化重置判斷，如果後端回傳空數據且前端無紀錄，立即重置 UI
                 if (!json.data.updated_at) {
                     if (records.value.length === 0) {
                         resetData();
@@ -120,7 +113,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     return;
                 }
 
-                // MODIFIED: 防止在刪除後抓到「舊的」非空快照
                 if (records.value.length === 0 && json.data.holdings && json.data.holdings.length > 0) {
                     console.warn('⏳ [fetchSnapshot] 偵測到殘留的舊快照資料，略過更新');
                     return;
@@ -138,7 +130,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // 🐛 修正：添加詳細日誌和 localStorage 緩存
     const fetchRecords = async () => {
         console.log('📝 [fetchRecords] 開始請求...');
         try {
@@ -148,10 +139,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             
             if (json && json.success) {
                 records.value = json.data || [];
-                
-                // 🔧 存儲到 localStorage
                 localStorage.setItem('cached_records', JSON.stringify(records.value));
-                
                 console.log(`✅ [fetchRecords] 成功載入 ${records.value.length} 筆記錄`);
                 
                 if (records.value.length > 0) {
@@ -171,14 +159,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 統一的自動更新觸發器
     const handleAutoUpdateSignal = (message = "✨ 系統正自動同步股價與數據，請稍候...") => {
         const { addToast } = useToast();
         addToast(message, "info");
         startPolling(); 
     };
 
-    // ✅ 封裝新增交易紀錄
     const addRecord = async (formData) => {
         const { addToast } = useToast();
         try {
@@ -203,7 +189,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 封裝更新交易紀錄
     const updateRecord = async (formData) => {
         const { addToast } = useToast();
         try {
@@ -223,7 +208,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // ✅ 執行刪除紀錄
     const deleteRecord = async (id) => {
         const { addToast } = useToast();
         try {
@@ -235,10 +219,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (json && json.success) {
                 addToast("刪除成功", "success");
                 
-                // [關鍵修復] 如果收到重置信號，立即進入輪詢以監控後端清理進度
                 if (json.message === "RELOAD_UI") {
-                    records.value = []; // 先清空列表
-                    handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據..."); // MODIFIED: 同步觸發輪詢
+                    records.value = [];
+                    handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據...");
                 } else {
                     await fetchRecords();
                     startPolling();
@@ -275,100 +258,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
-    // ✨ 當日損益計算（共享給 StatsGrid 和 HoldingsTable）
+    // ✨ 當日損益：直接使用後端算好的 daily_pnl_twd（統一口徑）
     const dailyPnL = computed(() => {
-        const todayValue = stats.value.total_value || 0;
-        
-        if (!history.value || history.value.length < 2) {
-            return 0;
-        }
-        
-        // 判斷是否為美股盤中時間 (台灣時間 21:30 - 05:00)
-        const now = new Date();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
-        let isUSMarketOpen = false;
-        
-        if (hour >= 21 || hour < 5) {
-            if (hour === 21 && minute < 30) {
-                isUSMarketOpen = false;
-            } else {
-                isUSMarketOpen = true;
-            }
-        }
-        
-        let baseValue = 0;
-        let cashFlow = 0;
-        
-        // 獲取今天和昨天的日期字串
-        const todayStr = now.toISOString().split('T')[0];
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split('T')[0];
-        
-        if (isUSMarketOpen) {
-            // 🌙 美股交易中：使用昨日收盤 + 今日現金流
-            baseValue = history.value[history.value.length - 2].total_value || 0;
-            cashFlow = calculateCashFlow(todayStr);
-        } else {
-            // ☀️ 美股收盤後：使用前日收盤 + 昨晚現金流
-            if (history.value.length >= 3) {
-                baseValue = history.value[history.value.length - 3].total_value || 0;
-            } else {
-                baseValue = history.value[history.value.length - 2].total_value || 0;
-            }
-            cashFlow = calculateCashFlow(yesterdayStr);
-        }
-        
-        // 當日損益 = 今日市值 - 基準市值 - 現金流
-        const pnl = todayValue - baseValue - cashFlow;
-        
-        return pnl;
+        return stats.value.daily_pnl_twd || 0;
     });
-
-    // 輔助函數：計算特定日期的現金流
-    const calculateCashFlow = (targetDate) => {
-        if (!records.value || records.value.length === 0) return 0;
-        
-        // 從 rawData 中獲取匯率
-        const exchangeRate = rawData.value?.exchange_rate || 32;
-        
-        let cashFlow = 0;
-        
-        records.value.forEach(record => {
-            // 按群組過濾
-            if (currentGroup.value !== 'all') {
-                const recordTags = (record.tag || '').split(/[,;]/).map(t => t.trim());
-                if (!recordTags.includes(currentGroup.value)) {
-                    return;
-                }
-            }
-            
-            // 使用 txn_date
-            const recordDate = record.txn_date ? record.txn_date.split('T')[0] : '';
-            
-            // 只計算目標日期的交易
-            if (recordDate !== targetDate) return;
-            
-            // 計算 USD 成本
-            const qty = record.qty || 0;
-            const price = record.price || 0;
-            const fee = record.fee || 0;
-            const tax = record.tax || 0;
-            const totalCostUSD = qty * price + fee + tax;
-            
-            // 轉換為 TWD
-            const totalCostTWD = totalCostUSD * exchangeRate;
-            
-            if (record.txn_type === 'BUY') {
-                cashFlow += totalCostTWD;
-            } else if (record.txn_type === 'SELL') {
-                cashFlow -= totalCostTWD;
-            }
-        });
-        
-        return cashFlow;
-    };
 
     const setGroup = (group) => {
         if (availableGroups.value.includes(group)) {
@@ -393,7 +286,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         console.log('⏰ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
-        // MODIFIED: 獲取初始狀態的時間戳
         const initialTime = lastUpdate.value; 
         const { addToast } = useToast(); 
 
@@ -410,16 +302,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
                     
-                    // MODIFIED: 核心判斷邏輯
-                    // 1. 標準更新：時間戳變更且有新內容。
                     const isNewData = newTime && (newTime !== initialTime) && (json.data.holdings?.length > 0 || records.value.length === 0);
-                    // 2. 重置更新：當交易紀錄為 0 且後端回傳的快照時間消失（即回傳空對象），判定重置完成。
                     const isResetConfirmed = (records.value.length === 0) && !newTime;
 
                     if (isNewData || isResetConfirmed) {
                         console.log('✨ [SmartPolling] 狀態已同步！更新/重置成功');
                         stopPolling();
-                        await fetchAll(); // 執行最終同步以歸零 UI
+                        await fetchAll();
                         if (isResetConfirmed) addToast("✅ 所有資產數據已歸零", "success");
                         else addToast("✅ 數據已更新完畢！", "success");
                     } else {
@@ -483,7 +372,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         pending_dividends,
         lastUpdate, 
         unrealizedPnL,
-        dailyPnL, // ✨ 導出當日損益
+        dailyPnL,
         connectionStatus,
         isPolling,
         currentGroup,

@@ -20,7 +20,7 @@ class PortfolioCalculator:
         """
         self.df = transactions_df
         self.market = market_client
-        self.benchmark_ticker = benchmark_ticker # 儲存自訂基準
+        self.benchmark_ticker = benchmark_ticker
 
     def _is_taiwan_stock(self, symbol):
         """判斷是否為台股（不需匯率轉換）"""
@@ -29,35 +29,20 @@ class PortfolioCalculator:
     def _get_effective_fx_rate(self, symbol, fx_rate):
         """根據標的取得有效匯率（台股回傳1.0，美股等其他標的回傳實際匯率）"""
         return 1.0 if self._is_taiwan_stock(symbol) else fx_rate
-    
-    def _is_us_market_open(self):
-        """判斷目前是否為美股盤中時間（台灣時間 21:30 - 05:00）"""
-        now = datetime.now()
-        hour = now.hour
-        minute = now.minute
-        
-        # 晚上 9:30 後 或 凌晨 5:00 前
-        if hour >= 21 or hour < 5:
-            if hour == 21 and minute < 30:
-                return False
-            return True
-        return False
 
     def run(self):
         """執行多群組投資組合計算主流程"""
         logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
         
-        # 取得最新匯率
         current_fx = DEFAULT_FX_RATE
         if not self.market.fx_rates.empty:
             current_fx = float(self.market.fx_rates.iloc[-1])
 
-        # [修復 BUG]：處理完全無交易紀錄的邊際情況，回傳空快照而非 None
         if self.df.empty:
             logger.warning("無交易紀錄，產生空快照以重置數據。")
             empty_summary = PortfolioSummary(
                 total_value=0, invested_capital=0, total_pnl=0, 
-                twr=0, xirr=0, realized_pnl=0, benchmark_twr=0
+                twr=0, xirr=0, realized_pnl=0, benchmark_twr=0, daily_pnl_twd=0
             )
             return PortfolioSnapshot(
                 updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -70,10 +55,8 @@ class PortfolioCalculator:
                 groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
             )
             
-        # 1. 全域復權處理 (只做一次)
         self._back_adjust_transactions_global()
         
-        # 3. 識別所有群組
         all_tags = set()
         for tags_str in self.df['Tag'].dropna().unique():
             if not tags_str: 
@@ -84,7 +67,6 @@ class PortfolioCalculator:
         groups_to_calc = ['all'] + sorted(list(all_tags))
         logger.info(f"識別到的群組: {groups_to_calc}")
 
-        # 4. 迴圈計算每個群組
         final_groups_data = {}
         
         for group_name in groups_to_calc:
@@ -102,18 +84,15 @@ class PortfolioCalculator:
                 logger.warning(f"群組 {group_name} 無交易紀錄，跳過")
                 continue
 
-            # ✨ 每個群組使用自己的日期範圍
             group_start_date = group_df['Date'].min()
             group_end_date = datetime.now()
             group_date_range = pd.date_range(start=group_start_date, end=group_end_date, freq='D').normalize()
             
             logger.info(f"[群組:{group_name}] 日期範圍: {group_start_date.strftime('%Y-%m-%d')} ~ {group_end_date.strftime('%Y-%m-%d')}")
 
-            # 執行單一群組計算 (傳入該群組的日期範圍)
             group_result = self._calculate_single_portfolio(group_df, group_date_range, current_fx, group_name)
             final_groups_data[group_name] = group_result
 
-        # 5. 組合最終結果
         all_data = final_groups_data.get('all')
         if not all_data:
             logger.error("無法產出 'all' 群組的總體數據")
@@ -153,7 +132,7 @@ class PortfolioCalculator:
     def _get_previous_trading_day(self, date):
         """獲取前一個交易日（排除周末）"""
         prev_date = date - timedelta(days=1)
-        while prev_date.weekday() >= 5:  # 5=周六, 6=周日
+        while prev_date.weekday() >= 5:
             prev_date -= timedelta(days=1)
         return prev_date
 
@@ -168,26 +147,20 @@ class PortfolioCalculator:
         dividend_history = []
         xirr_cashflows = []
         
-        # ===== TWR 計算變數 =====
         cumulative_twr_factor = 1.0
         last_market_value_twd = 0.0
-        
-        # Benchmark 計算所需
         first_benchmark_val_twd = None
 
-        # 預掃描確認配息
         div_txs = df[df['Type'] == 'DIV']
         for _, row in div_txs.iterrows():
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             confirmed_dividends.add(key)
 
-        # ✨ 新增：在第一筆交易前一天補上虛擬 0 資產（排除周末）
         if not df.empty:
             first_tx_date = df['Date'].min()
             prev_trading_day = self._get_previous_trading_day(first_tx_date)
             prev_date_str = prev_trading_day.strftime('%Y-%m-%d')
             
-            # 獲取前一天的匯率和基準價格
             try:
                 prev_fx = self.market.fx_rates.asof(prev_trading_day)
                 if pd.isna(prev_fx): prev_fx = DEFAULT_FX_RATE
@@ -201,7 +174,6 @@ class PortfolioCalculator:
             if first_benchmark_val_twd is None and prev_benchmark_val_twd > 0:
                 first_benchmark_val_twd = prev_benchmark_val_twd
             
-            # 插入虛擬 0 資產記錄
             history_data.append({
                 "date": prev_date_str, 
                 "total_value": 0,
@@ -214,9 +186,6 @@ class PortfolioCalculator:
             
             logger.info(f"[群組:{group_name}] 已在 {prev_date_str} 補上虛擬 0 資產記錄（第一筆交易: {first_tx_date.strftime('%Y-%m-%d')}）。")
 
-        # 逐日計算
-        day_count = 0
-        last_date = None
         last_fx = current_fx
         
         for d in date_range:
@@ -227,30 +196,20 @@ class PortfolioCalculator:
             except: 
                 fx = DEFAULT_FX_RATE
             
-            # 取得自訂基準價格
             benchmark_p = self.market.get_price(self.benchmark_ticker, d)
             effective_benchmark_fx = self._get_effective_fx_rate(self.benchmark_ticker, fx)
             curr_benchmark_val_twd = benchmark_p * effective_benchmark_fx
 
             if first_benchmark_val_twd is None and curr_benchmark_val_twd > 0:
                 first_benchmark_val_twd = curr_benchmark_val_twd
-            
-            # 取得昨日匯率
-            prev_date = d - timedelta(days=1)
-            try:
-                prev_fx = self.market.fx_rates.asof(prev_date)
-                if pd.isna(prev_fx): prev_fx = fx
-            except: prev_fx = fx
 
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             
-            # 處理當日交易
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
                 daily_txns['priority'] = daily_txns['Type'].map(priority_map).fillna(99)
                 daily_txns = daily_txns.sort_values(by='priority', kind='stable')
             
-            # ===== 現金流計算 =====
             daily_net_cashflow_twd = 0.0
             
             for _, row in daily_txns.iterrows():
@@ -308,7 +267,6 @@ class PortfolioCalculator:
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
-            # 處理自動配息
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
@@ -337,7 +295,6 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # ===== [修正] TWR 計算 - 處理當沖/清倉邊界情況 =====
             current_market_value_twd = sum(
                 h['qty'] * self.market.get_price(s, d) * self._get_effective_fx_rate(s, fx)
                 for s, h in holdings.items() if h['qty'] > 1e-6
@@ -345,13 +302,10 @@ class PortfolioCalculator:
             
             period_hpr_factor = 1.0
             
-            # 情況 1：正常情況 - 期初有市值
             if last_market_value_twd > 1e-9:
                 period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
-            # 情況 2：首次投資 - 期初無市值但期末有市值
             elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
                 period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
-            # 情況 3：當沖或清倉後收配息 - 期初期末都無市值
             elif current_market_value_twd < 1e-9 and last_market_value_twd < 1e-9:
                 period_hpr_factor = 1.0
             
@@ -360,12 +314,9 @@ class PortfolioCalculator:
             
             cumulative_twr_factor *= period_hpr_factor
             last_market_value_twd = current_market_value_twd
-            day_count += 1
             
-            # 計算總損益（市值 - 成本 + 已實現）
             total_pnl = (current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)) + total_realized_pnl_twd
             
-            # 計算 Benchmark TWR
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
             history_data.append({
@@ -376,88 +327,71 @@ class PortfolioCalculator:
                 "fx_rate": round(fx, 4)
             })
             
-            last_date = d
             last_fx = fx
 
-        # ===== ✅ 簡化個股當日損益計算：直接基於價格變化 =====
+        # ===== ✅ 當日損益：統一口徑 Δ市值 - 當日淨現金流 =====
         final_daily_pnls = {}
-        is_market_open = self._is_us_market_open()
+        today_str = datetime.now().strftime('%Y-%m-%d')
         
-        logger.info(f"[群組:{group_name}] 當前時段: {'美股盤中' if is_market_open else '美股收盤後'}")
-        
-        # 使用實際日曆日期
-        today = datetime.now().date()
-        yesterday = today - timedelta(days=1)
-        day_before_yesterday = today - timedelta(days=2)
-        
-        # 根據時段選擇基準日期和現金流日期
-        if is_market_open:
-            base_date_for_calc = pd.Timestamp(yesterday)
-            cashflow_date_for_calc = today
-        else:
-            base_date_for_calc = pd.Timestamp(day_before_yesterday)
-            cashflow_date_for_calc = yesterday
-        
-        # 獲取匯率
-        try:
-            today_fx = self.market.fx_rates.asof(pd.Timestamp(today))
-            if pd.isna(today_fx): today_fx = DEFAULT_FX_RATE
-        except: 
-            today_fx = DEFAULT_FX_RATE
-        
-        try:
-            base_fx = self.market.fx_rates.asof(base_date_for_calc)
-            if pd.isna(base_fx): base_fx = today_fx
-        except: 
-            base_fx = today_fx
-        
-        # 獲取現金流日期的交易
-        cashflow_txns = df[df['Date'].dt.date == cashflow_date_for_calc].copy()
-        
-        logger.info(f"[群組:{group_name}] 當日損益計算: base_date={base_date_for_calc.strftime('%Y-%m-%d')}, cashflow_date={cashflow_date_for_calc}, 現金流交易筆數={len(cashflow_txns)}")
-        
-        # 計算每個標的的現金流
-        daily_cashflows_by_symbol = {}
-        for _, row in cashflow_txns.iterrows():
-            sym = row['Symbol']
-            if sym not in daily_cashflows_by_symbol:
-                daily_cashflows_by_symbol[sym] = 0.0
+        # 從 history 取最近兩個交易日的總市值
+        if len(history_data) >= 2:
+            today_total_value = history_data[-1]['total_value']
+            prev_total_value = history_data[-2]['total_value']
             
-            # 使用現金流日期的匯率
-            try:
-                cf_fx = self.market.fx_rates.asof(pd.Timestamp(cashflow_date_for_calc))
-                if pd.isna(cf_fx): cf_fx = today_fx
-            except:
-                cf_fx = today_fx
+            # 計算今天的交易現金流
+            today_txns = df[df['Date'].dt.date == datetime.now().date()].copy()
+            today_group_cashflow = 0.0
+            
+            for _, row in today_txns.iterrows():
+                sym = row['Symbol']
+                effective_fx = self._get_effective_fx_rate(sym, current_fx)
                 
-            effective_fx = self._get_effective_fx_rate(sym, cf_fx)
+                if row['Type'] == 'BUY':
+                    cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * effective_fx
+                    today_group_cashflow += cost_twd
+                elif row['Type'] == 'SELL':
+                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
+                    today_group_cashflow -= proceeds_twd
+                elif row['Type'] == 'DIV':
+                    div_twd = row['Price'] * effective_fx
+                    today_group_cashflow -= div_twd
             
-            if row['Type'] == 'BUY':
-                cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * effective_fx
-                daily_cashflows_by_symbol[sym] += cost_twd
-            elif row['Type'] == 'SELL':
-                proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
-                daily_cashflows_by_symbol[sym] -= proceeds_twd
-        
-        # ✨ 簡化邏輯：直接用價格變化×當前持倉計算
+            # 群組當日損益 = Δ總市值 - 當日淨現金流
+            group_daily_pnl = (today_total_value - prev_total_value) - today_group_cashflow
+            logger.info(f"[群組:{group_name}] 當日損益: 今日市值={today_total_value}, 昨日市值={prev_total_value}, 現金流={today_group_cashflow}, 損益={group_daily_pnl}")
+        else:
+            group_daily_pnl = 0.0
+
+        # 個股當日損益：用最近兩個交易日價格
         for sym, h_data in holdings.items():
             if h_data['qty'] > 1e-6:
-                # 今日價格
-                today_price = self.market.get_price(sym, pd.Timestamp(today))
-                today_fx_effective = self._get_effective_fx_rate(sym, today_fx)
-                
-                # 基準日價格
-                base_price = self.market.get_price(sym, base_date_for_calc)
-                base_fx_effective = self._get_effective_fx_rate(sym, base_fx)
-                
-                # 當日損益 = 價格變化 × 當前持倉數量 × 匯率 - 現金流
-                price_change_twd = (today_price * today_fx_effective - base_price * base_fx_effective) * h_data['qty']
-                cashflow = daily_cashflows_by_symbol.get(sym, 0.0)
-                daily_pnl = price_change_twd - cashflow
-                
-                final_daily_pnls[sym] = daily_pnl
-                
-                logger.info(f"[群組:{group_name}] {sym} 當日損益: 今日價={today_price:.2f}, 基準價={base_price:.2f}, 持倉={h_data['qty']:.2f}, 價差損益={price_change_twd:.0f}, 現金流={cashflow:.0f}, 總損益={daily_pnl:.0f}")
+                stock_data = self.market.market_data.get(sym, pd.DataFrame())
+                if not stock_data.empty and len(stock_data) >= 2:
+                    curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+                    prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
+                    
+                    effective_fx = self._get_effective_fx_rate(sym, current_fx)
+                    
+                    # 計算該標的今天的現金流
+                    sym_cashflow = 0.0
+                    for _, row in today_txns.iterrows():
+                        if row['Symbol'] == sym:
+                            row_fx = self._get_effective_fx_rate(sym, current_fx)
+                            if row['Type'] == 'BUY':
+                                sym_cashflow += ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * row_fx
+                            elif row['Type'] == 'SELL':
+                                sym_cashflow -= ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * row_fx
+                            elif row['Type'] == 'DIV':
+                                sym_cashflow -= row['Price'] * row_fx
+                    
+                    # 個股當日損益 = (今日價 - 昨收價) × 持股數 × 匯率 - 現金流
+                    price_change_twd = (curr_p - prev_p) * h_data['qty'] * effective_fx
+                    daily_pnl = price_change_twd - sym_cashflow
+                    final_daily_pnls[sym] = daily_pnl
+                    
+                    logger.info(f"[{sym}] 今日價={curr_p:.2f}, 昨收={prev_p:.2f}, 持倉={h_data['qty']:.2f}, 價差損益={price_change_twd:.0f}, 現金流={sym_cashflow:.0f}, 當日損益={daily_pnl:.0f}")
+                else:
+                    final_daily_pnls[sym] = 0.0
 
         # --- 產生最終報表 ---
         final_holdings = []
@@ -477,11 +411,14 @@ class PortfolioCalculator:
                 
                 daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
                 
+                # ✅ 修正 currency 欄位
+                currency = "TWD" if self._is_taiwan_stock(sym) else "USD"
+                
                 final_holdings.append(HoldingPosition(
-                    symbol=sym, tag=h['tag'], currency="USD", qty=round(h['qty'], 2),
+                    symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
                     market_value_twd=round(mkt_val, 0), pnl_twd=round(mkt_val - cost, 0),
                     pnl_percent=round((mkt_val - cost) / cost * 100, 2) if cost > 0 else 0,
-                    current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2),
+                    current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
                     daily_change_percent=daily_change_pct,
                     daily_pl_twd=round(final_daily_pnls.get(sym, 0.0), 0)
@@ -503,10 +440,12 @@ class PortfolioCalculator:
         summary = PortfolioSummary(
             total_value=round(sum(h.market_value_twd for h in final_holdings), 0),
             invested_capital=round(current_holdings_cost_sum, 0),
-            total_pnl=round(history_data[-1]['net_profit'], 0),
-            twr=history_data[-1]['twr'], xirr=xirr_val,
+            total_pnl=round(history_data[-1]['net_profit'], 0) if history_data else 0,
+            twr=history_data[-1]['twr'] if history_data else 0,
+            xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
-            benchmark_twr=history_data[-1]['benchmark_twr']
+            benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
+            daily_pnl_twd=round(group_daily_pnl, 0)
         )
         
         return PortfolioGroupData(

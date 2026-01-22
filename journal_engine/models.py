@@ -31,6 +31,8 @@ class PortfolioSummary(BaseModel):
     xirr: float = 0.0
     realized_pnl: float
     benchmark_twr: float
+    # ✅ 新增：當日損益（TWD），口徑：Δ市值 - 當日淨現金流
+    daily_pnl_twd: float = 0.0
 
 class HoldingPosition(BaseModel):
     symbol: str
@@ -62,7 +64,6 @@ class DividendRecord(BaseModel):
     notes: Optional[str] = None
     record_id: Optional[int] = None
 
-# ✅ 新增：單一群組的完整數據結構
 class PortfolioGroupData(BaseModel):
     """單一策略群組的完整投資組合數據"""
     summary: PortfolioSummary
