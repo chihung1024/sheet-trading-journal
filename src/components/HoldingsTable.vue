@@ -49,8 +49,8 @@
                     <th @click="sortBy('market_value_twd')" class="text-right sortable">
                         市值 (TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
                     </th>
-                    <th @click="sortBy('computed_daily_pl')" class="text-right sortable">
-                        當日損益 <span class="sort-icon">{{ getSortIcon('computed_daily_pl') }}</span>
+                    <th @click="sortBy('daily_pl_twd')" class="text-right sortable">
+                        當日損益 <span class="sort-icon">{{ getSortIcon('daily_pl_twd') }}</span>
                     </th>
                     <th @click="sortBy('pnl_twd')" class="text-right sortable">
                         總損益 <span class="sort-icon">{{ getSortIcon('pnl_twd') }}</span>
@@ -90,10 +90,10 @@
                         </div>
                     </td>
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
-                    <td class="text-right font-num" :class="getTrendClass(h.computed_daily_pl)">
+                    <td class="text-right font-num" :class="getTrendClass(h.daily_pl_twd)">
                         <div class="daily-pnl-wrapper">
                             <span class="pnl-value">
-                                {{ h.computed_daily_pl >= 0 ? '+' : '' }}{{ formatNumber(h.computed_daily_pl, 0) }}
+                                {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
                             </span>
                         </div>
                     </td>
@@ -145,45 +145,9 @@ const totalMarketValue = computed(() => {
     return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
 });
 
-// ✅ 統一使用 Portfolio Store 中的 dailyPnL，確保計算邏輯一致
-const portfolioDailyPnL = computed(() => store.dailyPnL || 0);
-
-// ✅ 計算個股當日損益：總當日損益 × (個股市值 / 總市值)
-const holdingsWithComputedDaily = computed(() => {
-    const totalPnL = portfolioDailyPnL.value;
-    const totalMV = totalMarketValue.value || 1;
-    
-    console.log(`[📊 HoldingsTable] 當日損益分配: 總損益=${totalPnL.toLocaleString()}, 總市值=${totalMV.toLocaleString()}`);
-    
-    return store.holdings.map(h => {
-        const ratio = (h.market_value_twd || 0) / totalMV;
-        const computed_daily_pl = totalPnL * ratio;
-        
-        console.log(`  - ${h.symbol}: 市值=${h.market_value_twd?.toLocaleString()}, 比例=${(ratio*100).toFixed(2)}%, 損益=${computed_daily_pl.toFixed(0)}`);
-        
-        return {
-            ...h,
-            computed_daily_pl
-        };
-    });
-});
-
-const sortBy = (key) => {
-    if (sortKey.value === key) {
-        sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
-    } else {
-        sortKey.value = key;
-        sortOrder.value = 'desc';
-    }
-};
-
-const getSortIcon = (key) => {
-    if (sortKey.value !== key) return '⇕';
-    return sortOrder.value === 'asc' ? '↑' : '↓';
-};
-
+// ✅ 直接使用後端計算好的 holdings 數據，不再重新計算
 const filteredHoldings = computed(() => {
-    let result = holdingsWithComputedDaily.value;
+    let result = store.holdings;
     
     if (searchQuery.value) {
         result = result.filter(h => 
@@ -215,6 +179,20 @@ const visibleHoldings = computed(() => {
     }
     return filteredHoldings.value.slice(0, displayLimit.value);
 });
+
+const sortBy = (key) => {
+    if (sortKey.value === key) {
+        sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortKey.value = key;
+        sortOrder.value = 'desc';
+    }
+};
+
+const getSortIcon = (key) => {
+    if (sortKey.value !== key) return '⇕';
+    return sortOrder.value === 'asc' ? '↑' : '↓';
+};
 
 const getTrendClass = (val, isBg = false) => {
     const num = Number(val) || 0;
