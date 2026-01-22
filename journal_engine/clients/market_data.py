@@ -84,33 +84,25 @@ class MarketDataClient:
                     # 標準化日期格式
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
                     
-                    # ✅ [修復] 使用 2天日線獲取最新收盤價
-                    # 原因：1分鐘 K 線在盤前/盤中時無法獲取數據
-                    # 方案：使用 2天日線確保能拿到最新收盤價
+                    # ✅ [新增] 強制抓取即時報價 (1分鐘 K線)
+                    # 解決盤中 Daily 資料未更新，導致損益不動的問題
                     try:
-                        # 抓取最近 2 天的日線數據
-                        latest_data = ticker_obj.history(period="2d", interval="1d", auto_adjust=False)
+                        # 只抓取最近 1 天的 1 分鐘資料
+                        intraday = ticker_obj.history(period="1d", interval="1m")
                         
-                        if not latest_data.empty and len(latest_data) > 0:
-                            # 取最後一筆（最新收盤價）
-                            latest_row = latest_data.iloc[-1]
-                            latest_close = float(latest_row['Close'])
-                            latest_adj_close = float(latest_row['Adj Close'])
-                            latest_date = latest_data.index[-1]
+                        if not intraday.empty:
+                            latest_price = float(intraday['Close'].iloc[-1])
+                            last_date = hist.index[-1]
                             
-                            # 查找 hist 中對應的日期
-                            if latest_date in hist.index:
-                                # 直接覆蓋
-                                hist.at[latest_date, 'Close'] = latest_close
-                                hist.at[latest_date, 'Adj Close'] = latest_adj_close
-                                print(f"[{t}] ✅ 最新收盤價: {latest_close:.2f} ({latest_date.strftime('%Y-%m-%d')})")
-                            else:
-                                # 如果是新的交易日，附加到 hist
-                                new_row = latest_row.copy()
-                                hist = pd.concat([hist, pd.DataFrame([new_row], index=[latest_date])])
-                                print(f"[{t}] ✅ 新增最新交易日: {latest_close:.2f} ({latest_date.strftime('%Y-%m-%d')})")
+                            # 如果日線最後一筆存在，就用即時價覆蓋 Close 和 Adj Close
+                            # 這樣能確保 calculator.py 抓到的價格是當下最新的
+                            hist.at[last_date, 'Close'] = latest_price
+                            hist.at[last_date, 'Adj Close'] = latest_price
+                            
+                            print(f"[{t}] ✅ 即時報價覆蓋: {latest_price:.2f}")
                     except Exception as e:
-                        print(f"[{t}] ⚠️ 獲取最新收盤價失敗: {e}")
+                        # 抓不到即時資料就維持原本的日線，不報錯以免影響流程
+                        pass
 
                     # 準備數據：計算調整因子
                     hist_adj = self._prepare_data(t, hist)
