@@ -119,7 +119,7 @@
 </template>
 
 <script setup>
-import { computed, ref, inject, onMounted, onUnmounted } from 'vue';
+import { computed, ref, inject, onMounted, onUnmounted, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
@@ -134,7 +134,12 @@ const displayLimit = ref(50);
 const scrollTop = ref(0);
 
 // ✨ 接收前端計算的總當日損益
-const portfolioDailyPnL = inject('portfolioDailyPnL', ref(0));
+const portfolioDailyPnL = inject('portfolioDailyPnL', computed(() => 0));
+
+// 🐛 Debug: 監控 inject 值
+watch(portfolioDailyPnL, (newVal) => {
+    console.log(`[📥 HoldingsTable] portfolioDailyPnL 更新: ${newVal?.toLocaleString() || 0}`);
+}, { immediate: true });
 
 const safeNum = (val) => {
     if (val === undefined || val === null || isNaN(val)) return '0.00';
@@ -152,12 +157,16 @@ const totalMarketValue = computed(() => {
 
 // ✨ 計算個股當日損益：總當日損益 × (個股市值 / 總市值)
 const holdingsWithComputedDaily = computed(() => {
-    const total = portfolioDailyPnL.value || 0;
+    const totalPnL = portfolioDailyPnL.value || 0;
     const totalMV = totalMarketValue.value || 1;
+    
+    console.log(`[📊 HoldingsTable] 當日損益分配: 總損益=${totalPnL.toLocaleString()}, 總市值=${totalMV.toLocaleString()}`);
     
     return store.holdings.map(h => {
         const ratio = (h.market_value_twd || 0) / totalMV;
-        const computed_daily_pl = total * ratio;
+        const computed_daily_pl = totalPnL * ratio;
+        
+        console.log(`  - ${h.symbol}: 市值=${h.market_value_twd?.toLocaleString()}, 比例=${(ratio*100).toFixed(2)}%, 損益=${computed_daily_pl.toFixed(0)}`);
         
         return {
             ...h,
@@ -237,6 +246,7 @@ const handleScroll = () => {
 };
 
 onMounted(() => {
+    console.log(`[✅ HoldingsTable] 組件已掛載`);
     if (tableContainer.value) {
         tableContainer.value.addEventListener('scroll', handleScroll);
     }
