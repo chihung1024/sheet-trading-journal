@@ -104,10 +104,7 @@ import { usePortfolioStore } from '../stores/portfolio';
 const store = usePortfolioStore();
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
-const records = computed(() => store.records || []);
-const rawData = computed(() => store.rawData || {});
 const holdings = computed(() => store.holdings || []);
-const currentGroup = computed(() => store.currentGroup);
 
 // ✅ 修正：總損益從後端獲取
 const totalPnL = computed(() => stats.value.total_pnl || 0);
@@ -161,121 +158,20 @@ const pnlTooltip = computed(() => {
   }
 });
 
-// 獲取今天的日期字串 (YYYY-MM-DD)
-const getTodayDateString = () => {
-  const now = new Date();
-  return now.toISOString().split('T')[0];
-};
-
-// 獲取昨天的日期字串 (YYYY-MM-DD)
-const getYesterdayDateString = () => {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  return yesterday.toISOString().split('T')[0];
-};
-
-// 🔧 修正：根據當前群組過濾出該群組的持股 symbols
-const getCurrentGroupSymbols = () => {
-  if (currentGroup.value === 'all') {
-    // 'all' 群組：包含所有交易
-    return null; // null 表示不過濾
-  }
-  
-  // 特定群組：只包含該群組當前持有的股票
-  return new Set(holdings.value.map(h => h.symbol));
-};
-
-// 🐛 修正：計算特定日期的現金流（只計算當前群組的交易）
-const calculateCashFlow = (targetDate) => {
-  if (!records.value || records.value.length === 0) return 0;
-  
-  // 🔧 從 rawData 中獲取匯率（後端計算快照時儲存）
-  const exchangeRate = rawData.value?.exchange_rate || 32; // 預設 32
-  
-  // 🔧 獲取當前群組的股票列表
-  const groupSymbols = getCurrentGroupSymbols();
-  
-  let cashFlow = 0;
-  let matchCount = 0;
-  
-  records.value.forEach(record => {
-    // 🔧 如果不是 'all' 群組，則只處理該群組持有的股票
-    if (groupSymbols !== null && !groupSymbols.has(record.symbol)) {
-      return; // 跳過不屬於當前群組的交易
-    }
-    
-    // 使用 txn_date
-    const recordDate = record.txn_date ? record.txn_date.split('T')[0] : '';
-    
-    // 只計算目標日期的交易
-    if (recordDate !== targetDate) return;
-    
-    matchCount++;
-    
-    // 計算 USD 成本
-    const qty = record.qty || 0;
-    const price = record.price || 0;
-    const fee = record.fee || 0;
-    const tax = record.tax || 0;
-    const totalCostUSD = qty * price + fee + tax;
-    
-    // 🔧 轉換為 TWD
-    const totalCostTWD = totalCostUSD * exchangeRate;
-    
-    if (record.txn_type === 'BUY') {
-      // 買入：現金流出（正數）
-      cashFlow += totalCostTWD;
-    } else if (record.txn_type === 'SELL') {
-      // 賣出：現金流入（負數）
-      cashFlow -= totalCostTWD;
-    }
-  });
-  
-  console.log(`[現金流計算-${currentGroup.value}] 日期=${targetDate}, 匯率=${exchangeRate.toFixed(2)}, 匹配筆數=${matchCount}, 淨現金流=${cashFlow.toLocaleString()} TWD`);
-  
-  return cashFlow;
-};
-
-// ✅ 最終方案：時段感知的當日損益計算
+// ✅ 最終方案：直接使用後端計算的 daily_pl_twd
 const dailyPnL = computed(() => {
-  const todayValue = stats.value.total_value || 0;
-  
-  if (!history.value || history.value.length < 2) {
+  if (!holdings.value || holdings.value.length === 0) {
     return 0;
   }
   
-  let baseValue = 0;
-  let cashFlow = 0;
-  let baseDate = '';
+  // 直接加總所有持倉的當日損益
+  const totalDailyPnL = holdings.value.reduce((sum, holding) => {
+    return sum + (holding.daily_pl_twd || 0);
+  }, 0);
   
-  if (isUSMarketOpen.value) {
-    // 🌙 美股交易中：使用昨日收盤 + 今日現金流
-    baseValue = history.value[history.value.length - 2].total_value || 0;
-    baseDate = history.value[history.value.length - 2].date || '';
-    cashFlow = calculateCashFlow(getTodayDateString());
-    
-    console.log(`[美股盤中-${currentGroup.value}] 基準=${baseDate}收盤, 基準市值=${baseValue.toLocaleString()}, 今日現金流=${cashFlow.toLocaleString()}, 今日市值=${todayValue.toLocaleString()}`);
-  } else {
-    // ☀️ 美股收盤後：使用前日收盤 + 昨晚現金流
-    if (history.value.length >= 3) {
-      baseValue = history.value[history.value.length - 3].total_value || 0;
-      baseDate = history.value[history.value.length - 3].date || '';
-    } else {
-      // 資料不足，使用昨日
-      baseValue = history.value[history.value.length - 2].total_value || 0;
-      baseDate = history.value[history.value.length - 2].date || '';
-    }
-    cashFlow = calculateCashFlow(getYesterdayDateString());
-    
-    console.log(`[美股收盤-${currentGroup.value}] 基準=${baseDate}收盤, 基準市值=${baseValue.toLocaleString()}, 昨晚現金流=${cashFlow.toLocaleString()}, 今日市值=${todayValue.toLocaleString()}`);
-  }
+  console.log(`[當日損益] 群組持倉數=${holdings.value.length}, 總當日損益=${totalDailyPnL.toLocaleString()} (${isUSMarketOpen.value ? '美股盤中' : '美股收盤'})`);
   
-  // 當日損益 = 今日市值 - 基準市值 - 現金流
-  const pnl = todayValue - baseValue - cashFlow;
-  
-  console.log(`[當日損益-${currentGroup.value}] ${pnl.toLocaleString()} (${isUSMarketOpen.value ? '美股盤中' : '美股收盤'})`);
-  
-  return pnl;
+  return totalDailyPnL;
 });
 
 // 計算今日損益百分比
