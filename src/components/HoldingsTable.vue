@@ -145,86 +145,12 @@ const totalMarketValue = computed(() => {
     return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
 });
 
-// ✨ 重新計算當日損益（與 StatsGrid 相同邏輯）
-const portfolioDailyPnL = computed(() => {
-    const todayValue = store.stats?.total_value || 0;
-    const history = store.history || [];
-    
-    if (history.length < 2) return 0;
-    
-    // 判斷是否為美股盤中時間
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
-    const isUSMarketOpen = (hour >= 21 || hour < 5) && !(hour === 21 && minute < 30);
-    
-    let baseValue = 0;
-    let cashFlow = 0;
-    
-    if (isUSMarketOpen) {
-        // 美股盤中：使用昨日收盤
-        baseValue = history[history.length - 2].total_value || 0;
-        cashFlow = calculateCashFlow(getTodayDateString());
-    } else {
-        // 美股收盤：使用前日收盤
-        if (history.length >= 3) {
-            baseValue = history[history.length - 3].total_value || 0;
-        } else {
-            baseValue = history[history.length - 2].total_value || 0;
-        }
-        cashFlow = calculateCashFlow(getYesterdayDateString());
-    }
-    
-    return todayValue - baseValue - cashFlow;
-});
+// ✅ 統一使用 Portfolio Store 中的 dailyPnL，確保計算邏輯一致
+const portfolioDailyPnL = computed(() => store.dailyPnL || 0);
 
-const getTodayDateString = () => {
-    return new Date().toISOString().split('T')[0];
-};
-
-const getYesterdayDateString = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split('T')[0];
-};
-
-const calculateCashFlow = (targetDate) => {
-    const records = store.records || [];
-    const exchangeRate = store.rawData?.exchange_rate || 32;
-    const currentGroup = store.currentGroup;
-    
-    let cashFlow = 0;
-    
-    records.forEach(record => {
-        // 按群組過濾
-        if (currentGroup !== 'all') {
-            const recordTags = (record.tag || '').split(/[,;]/).map(t => t.trim());
-            if (!recordTags.includes(currentGroup)) return;
-        }
-        
-        const recordDate = record.txn_date ? record.txn_date.split('T')[0] : '';
-        if (recordDate !== targetDate) return;
-        
-        const qty = record.qty || 0;
-        const price = record.price || 0;
-        const fee = record.fee || 0;
-        const tax = record.tax || 0;
-        const totalCostUSD = qty * price + fee + tax;
-        const totalCostTWD = totalCostUSD * exchangeRate;
-        
-        if (record.txn_type === 'BUY') {
-            cashFlow += totalCostTWD;
-        } else if (record.txn_type === 'SELL') {
-            cashFlow -= totalCostTWD;
-        }
-    });
-    
-    return cashFlow;
-};
-
-// ✨ 計算個股當日損益：總當日損益 × (個股市值 / 總市值)
+// ✅ 計算個股當日損益：總當日損益 × (個股市值 / 總市值)
 const holdingsWithComputedDaily = computed(() => {
-    const totalPnL = portfolioDailyPnL.value || 0;
+    const totalPnL = portfolioDailyPnL.value;
     const totalMV = totalMarketValue.value || 1;
     
     console.log(`[📊 HoldingsTable] 當日損益分配: 總損益=${totalPnL.toLocaleString()}, 總市值=${totalMV.toLocaleString()}`);
