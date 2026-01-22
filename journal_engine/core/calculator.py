@@ -150,9 +150,6 @@ class PortfolioCalculator:
         cumulative_twr_factor = 1.0
         last_market_value_twd = 0.0
         first_benchmark_val_twd = None
-        
-        # ✅ 新增：追蹤昨日持倉快照（用於當日損益計算）
-        yesterday_holdings = {}
 
         div_txs = df[df['Type'] == 'DIV']
         for _, row in div_txs.iterrows():
@@ -194,10 +191,8 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
-            # ✅ 關鍵修正：在處理今天交易之前，先保存今日開盤前持倉
-            if current_date == datetime.now().date():
-                yesterday_holdings = {sym: h['qty'] for sym, h in holdings.items()}
-                logger.info(f"[群組:{group_name}] 記錄今日開盤前持倉 {current_date}: {yesterday_holdings}")
+            # ✅ 關鍵修正：每天都記錄開盤前持倉快照（用於計算當日損益）
+            today_open_holdings = {sym: h['qty'] for sym, h in holdings.items()}
             
             try:
                 fx = self.market.fx_rates.asof(d)
@@ -328,69 +323,53 @@ class PortfolioCalculator:
             
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
+            # ===== ✅ 計算當日損益（使用開盤前快照 + 今日交易）=====
+            daily_pnl_for_this_day = 0.0
+            
+            # 取得所有相關標的（開盤前持有 + 今日交易）
+            all_symbols_today = set(today_open_holdings.keys()) | set(daily_txns['Symbol'].unique())
+            
+            for sym in all_symbols_today:
+                stock_data = self.market.market_data.get(sym, pd.DataFrame())
+                if stock_data.empty or len(stock_data) < 2:
+                    continue
+                
+                curr_p = float(stock_data.loc[:d].iloc[-1]['Close_Adjusted']) if len(stock_data.loc[:d]) > 0 else 0.0
+                prev_p = float(stock_data.loc[:d].iloc[-2]['Close_Adjusted']) if len(stock_data.loc[:d]) >= 2 else 0.0
+                
+                if curr_p == 0.0 or prev_p == 0.0:
+                    continue
+                
+                effective_fx = self._get_effective_fx_rate(sym, fx)
+                
+                # 1. 開盤前持倉的價差損益
+                open_qty = today_open_holdings.get(sym, 0.0)
+                price_change_pnl = (curr_p - prev_p) * open_qty * effective_fx
+                
+                # 2. 今日交易的損益
+                today_trade_pnl = 0.0
+                for _, row in daily_txns[daily_txns['Symbol'] == sym].iterrows():
+                    row_fx = self._get_effective_fx_rate(sym, fx)
+                    
+                    if row['Type'] == 'BUY':
+                        buy_qty = row['Qty']
+                        buy_price = row['Price']
+                        today_trade_pnl += (curr_p - buy_price) * buy_qty * row_fx
+                
+                daily_pnl_for_this_day += (price_change_pnl + today_trade_pnl)
+
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
-                "fx_rate": round(fx, 4)
+                "fx_rate": round(fx, 4),
+                "daily_pnl_twd": round(daily_pnl_for_this_day, 0)  # ✅ 新增：每日的當日損益
             })
             
             last_fx = fx
 
-        # ===== ✅ 個股當日損益計算（正確處理當天有交易的情況）=====
-        final_daily_pnls = {}
-        today_txns = df[df['Date'].dt.date == datetime.now().date()].copy()
-        
-        # 取得所有相關標的（包括今天交易的 + 昨天持有的）
-        all_symbols_for_daily_calc = set(holdings.keys()) | set(yesterday_holdings.keys()) | set(today_txns['Symbol'].unique())
-
-        for sym in all_symbols_for_daily_calc:
-            stock_data = self.market.market_data.get(sym, pd.DataFrame())
-            if stock_data.empty or len(stock_data) < 2:
-                final_daily_pnls[sym] = 0.0
-                continue
-            
-            curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
-            prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
-            effective_fx = self._get_effective_fx_rate(sym, current_fx)
-            
-            # 1. 昨日持倉的價差損益
-            yesterday_qty = yesterday_holdings.get(sym, 0.0)
-            price_change_pnl = (curr_p - prev_p) * yesterday_qty * effective_fx
-            
-            # 2. 今日交易的損益
-            today_trade_pnl = 0.0
-            for _, row in today_txns[today_txns['Symbol'] == sym].iterrows():
-                row_fx = self._get_effective_fx_rate(sym, current_fx)
-                
-                if row['Type'] == 'BUY':
-                    # 買入後價格上漲的損益
-                    buy_qty = row['Qty']
-                    buy_price = row['Price']
-                    today_trade_pnl += (curr_p - buy_price) * buy_qty * row_fx
-                    
-                elif row['Type'] == 'SELL':
-                    # 賣出部位在今天的價差損益（已在 price_change_pnl 計算）
-                    # 這裡不重複計算，賣出損益已計入已實現損益
-                    pass
-                    
-                elif row['Type'] == 'DIV':
-                    # 配息不影響股價當日損益
-                    pass
-            
-            # 3. 總當日損益
-            daily_pnl = price_change_pnl + today_trade_pnl
-            final_daily_pnls[sym] = daily_pnl
-            
-            if abs(daily_pnl) > 0.01:  # 只記錄有損益的
-                logger.info(
-                    f"[{sym}] 今價={curr_p:.2f} 昨收={prev_p:.2f} | "
-                    f"昨持倉={yesterday_qty:.2f} 價差損益={price_change_pnl:.0f} | "
-                    f"今交易損益={today_trade_pnl:.0f} | 當日損益={daily_pnl:.0f}"
-                )
-
-        # --- 產生最終報表 ---
+        # --- 產生最終報表（使用最後一天的當日損益）---
         final_holdings = []
         current_holdings_cost_sum = 0.0
         for sym, h in holdings.items():
@@ -410,6 +389,11 @@ class PortfolioCalculator:
                 
                 currency = "TWD" if self._is_taiwan_stock(sym) else "USD"
                 
+                # 計算個股當日損益（只針對目前持有的標的）
+                stock_daily_pnl = 0.0
+                if not stock_data.empty and len(stock_data) >= 2:
+                    stock_daily_pnl = (curr_p - prev_p) * h['qty'] * effective_fx
+                
                 final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
                     market_value_twd=round(mkt_val, 0), pnl_twd=round(mkt_val - cost, 0),
@@ -417,14 +401,14 @@ class PortfolioCalculator:
                     current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
                     daily_change_percent=daily_change_pct,
-                    daily_pl_twd=round(final_daily_pnls.get(sym, 0.0), 0)
+                    daily_pl_twd=round(stock_daily_pnl, 0)
                 ))
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
-        # ===== ✅ 群組當日損益 = 所有標的當日損益加總（包括已賣出的）=====
-        group_daily_pnl = sum(final_daily_pnls.values())
-        logger.info(f"[群組:{group_name}] 當日損益(所有標的): {group_daily_pnl}")
+        # ✅ 使用最後一天的 daily_pnl_twd 作為群組當日損益
+        group_daily_pnl = history_data[-1].get('daily_pnl_twd', 0) if history_data else 0
+        logger.info(f"[群組:{group_name}] 當日損益: {group_daily_pnl}")
         
         # XIRR 計算
         xirr_val = 0.0
@@ -445,7 +429,7 @@ class PortfolioCalculator:
             xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
-            daily_pnl_twd=round(group_daily_pnl, 0)
+            daily_pnl_twd=group_daily_pnl
         )
         
         return PortfolioGroupData(
