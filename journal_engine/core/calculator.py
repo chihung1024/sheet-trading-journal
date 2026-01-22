@@ -366,43 +366,56 @@ class PortfolioCalculator:
             last_date = d
             last_fx = fx
 
-        # ===== ✅ 修復：正確計算個股當日損益（參考舊專案邏輯）=====
+        # ===== ✅ 修復：使用市場數據的最後交易日計算當日損益 =====
         final_daily_pnls = {}
         
-        # 使用實際日期
-        today = datetime.now().date()
-        yesterday = today - timedelta(days=1)
-        
-        # 獲取匯率
-        try:
-            today_fx = self.market.fx_rates.asof(pd.Timestamp(today))
-            if pd.isna(today_fx): today_fx = DEFAULT_FX_RATE
-        except: 
-            today_fx = DEFAULT_FX_RATE
-        
-        try:
-            yesterday_fx = self.market.fx_rates.asof(pd.Timestamp(yesterday))
-            if pd.isna(yesterday_fx): yesterday_fx = today_fx
-        except: 
-            yesterday_fx = today_fx
-        
-        # 獲取今日交易記錄
-        today_txns = df[df['Date'].dt.date == today].copy()
-        
-        logger.info(f"[群組:{group_name}] 當日損益計算: today={today}, yesterday={yesterday}, 今日交易筆數={len(today_txns)}")
+        logger.info(f"[群組:{group_name}] 當日損益計算: 開始獲取市場數據最後交易日")
         
         # 對每個持倉標的計算當日損益
         for sym, h_data in holdings.items():
             if h_data['qty'] > 1e-6:
-                # 1. 獲取價格
-                today_price = self.market.get_price(sym, pd.Timestamp(today))
-                yesterday_price = self.market.get_price(sym, pd.Timestamp(yesterday))
+                # 1. ⭐ 獲取該標的市場數據最後交易日
+                stock_data = self.market.market_data.get(sym, pd.DataFrame())
+                if stock_data.empty:
+                    logger.warning(f"[群組:{group_name}] {sym} 無市場數據，跳過當日損益計算")
+                    final_daily_pnls[sym] = 0.0
+                    continue
                 
-                # 2. 計算今日的數量變化和現金流
+                # 使用市場數據的最後日期作為「今天」
+                last_trading_day = stock_data.index[-1]
+                
+                # 獲取前一個交易日
+                if len(stock_data) >= 2:
+                    prev_trading_day = stock_data.index[-2]
+                else:
+                    # 只有一筆數據，使用同一天（當日損益 = 0）
+                    prev_trading_day = last_trading_day
+                
+                # 2. 獲取價格
+                today_price = self.market.get_price(sym, last_trading_day)
+                yesterday_price = self.market.get_price(sym, prev_trading_day)
+                
+                # 3. 獲取匯率
+                try:
+                    today_fx = self.market.fx_rates.asof(last_trading_day)
+                    if pd.isna(today_fx): today_fx = current_fx
+                except: 
+                    today_fx = current_fx
+                
+                try:
+                    yesterday_fx = self.market.fx_rates.asof(prev_trading_day)
+                    if pd.isna(yesterday_fx): yesterday_fx = today_fx
+                except: 
+                    yesterday_fx = today_fx
+                
+                # 4. 計算今日的數量變化和現金流
                 daily_qty_change = 0.0
                 daily_cashflow_twd = 0.0
                 
-                sym_txns_today = today_txns[today_txns['Symbol'] == sym]
+                # 獲取最後交易日的交易記錄
+                last_trading_day_date = last_trading_day.date()
+                sym_txns_today = df[(df['Date'].dt.date == last_trading_day_date) & (df['Symbol'] == sym)]
+                
                 for _, row in sym_txns_today.iterrows():
                     effective_fx = self._get_effective_fx_rate(sym, today_fx)
                     
@@ -417,23 +430,24 @@ class PortfolioCalculator:
                         daily_qty_change -= row['Qty']
                         daily_cashflow_twd -= proceeds_twd
                 
-                # 3. ⭐ 關鍵：計算日初持倉（扣除今日變化）
+                # 5. ⚭ 關鍵：計算日初持倉（扣除今日變化）
                 qty_start_of_day = h_data['qty'] - daily_qty_change
                 
-                # 4. 計算市值變化
+                # 6. 計算市值變化
                 effective_fx_today = self._get_effective_fx_rate(sym, today_fx)
                 effective_fx_yesterday = self._get_effective_fx_rate(sym, yesterday_fx)
                 
                 beginning_market_value_twd = qty_start_of_day * yesterday_price * effective_fx_yesterday
                 ending_market_value_twd = h_data['qty'] * today_price * effective_fx_today
                 
-                # 5. 當日損益 = 日末市值 - 日初市值 - 現金流
+                # 7. 當日損益 = 日末市值 - 日初市值 - 現金流
                 daily_pnl = ending_market_value_twd - beginning_market_value_twd - daily_cashflow_twd
                 
                 final_daily_pnls[sym] = daily_pnl
                 
                 logger.info(
                     f"[群組:{group_name}] {sym} 當日損益計算: "
+                    f"最後交易日={last_trading_day.strftime('%Y-%m-%d')}, "
                     f"日初qty={qty_start_of_day:.2f}, 日末qty={h_data['qty']:.2f}, "
                     f"昨價={yesterday_price:.2f}, 今價={today_price:.2f}, "
                     f"日初市值={beginning_market_value_twd:.0f}, 日末市值={ending_market_value_twd:.0f}, "
