@@ -23,11 +23,11 @@ class PortfolioCalculator:
         self.benchmark_ticker = benchmark_ticker
 
     def _is_taiwan_stock(self, symbol):
-        """判斷是否為台股（不需匯率轉換）"""
+        """判斷是否為台股(不需匯率轉換)"""
         return symbol.endswith('.TW') or symbol.endswith('.TWO')
 
     def _get_effective_fx_rate(self, symbol, fx_rate):
-        """根據標的取得有效匯率（台股回傳1.0，美股等其他標的回傳實際匯率）"""
+        """根據標的取得有效匯率(台股回傳1.0,美股等其他標的回傳實際匯率)"""
         return 1.0 if self._is_taiwan_stock(symbol) else fx_rate
 
     def run(self):
@@ -39,7 +39,7 @@ class PortfolioCalculator:
             current_fx = float(self.market.fx_rates.iloc[-1])
 
         if self.df.empty:
-            logger.warning("無交易紀錄，產生空快照以重置數據。")
+            logger.warning("無交易紀錄,產生空快照以重置數據。")
             empty_summary = PortfolioSummary(
                 total_value=0, invested_capital=0, total_pnl=0, 
                 twr=0, xirr=0, realized_pnl=0, benchmark_twr=0, daily_pnl_twd=0
@@ -81,7 +81,7 @@ class PortfolioCalculator:
                 group_df = self.df[mask].copy()
             
             if group_df.empty:
-                logger.warning(f"群組 {group_name} 無交易紀錄，跳過")
+                logger.warning(f"群組 {group_name} 無交易紀錄,跳過")
                 continue
 
             group_start_date = group_df['Date'].min()
@@ -130,7 +130,7 @@ class PortfolioCalculator:
                 self.df.at[index, 'Price'] = new_price
 
     def _get_previous_trading_day(self, date):
-        """獲取前一個交易日（排除周末）"""
+        """獲取前一個交易日(排除周末)"""
         prev_date = date - timedelta(days=1)
         while prev_date.weekday() >= 5:
             prev_date -= timedelta(days=1)
@@ -184,7 +184,7 @@ class PortfolioCalculator:
                 "fx_rate": round(prev_fx, 4)
             })
             
-            logger.info(f"[群組:{group_name}] 已在 {prev_date_str} 補上虛擬 0 資產記錄（第一筆交易: {first_tx_date.strftime('%Y-%m-%d')}）。")
+            logger.info(f"[群組:{group_name}] 已在 {prev_date_str} 補上虛擬 0 資產記錄(第一筆交易: {first_tx_date.strftime('%Y-%m-%d')})。")
 
         last_fx = current_fx
         
@@ -329,40 +329,10 @@ class PortfolioCalculator:
             
             last_fx = fx
 
-        # ===== ✅ 當日損益：統一口徑 Δ市值 - 當日淨現金流 =====
+        # ===== ✅ 個股當日損益計算 =====
         final_daily_pnls = {}
-        today_str = datetime.now().strftime('%Y-%m-%d')
-        
-        # 從 history 取最近兩個交易日的總市值
-        if len(history_data) >= 2:
-            today_total_value = history_data[-1]['total_value']
-            prev_total_value = history_data[-2]['total_value']
-            
-            # 計算今天的交易現金流
-            today_txns = df[df['Date'].dt.date == datetime.now().date()].copy()
-            today_group_cashflow = 0.0
-            
-            for _, row in today_txns.iterrows():
-                sym = row['Symbol']
-                effective_fx = self._get_effective_fx_rate(sym, current_fx)
-                
-                if row['Type'] == 'BUY':
-                    cost_twd = ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * effective_fx
-                    today_group_cashflow += cost_twd
-                elif row['Type'] == 'SELL':
-                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
-                    today_group_cashflow -= proceeds_twd
-                elif row['Type'] == 'DIV':
-                    div_twd = row['Price'] * effective_fx
-                    today_group_cashflow -= div_twd
-            
-            # 群組當日損益 = Δ總市值 - 當日淨現金流
-            group_daily_pnl = (today_total_value - prev_total_value) - today_group_cashflow
-            logger.info(f"[群組:{group_name}] 當日損益: 今日市值={today_total_value}, 昨日市值={prev_total_value}, 現金流={today_group_cashflow}, 損益={group_daily_pnl}")
-        else:
-            group_daily_pnl = 0.0
+        today_txns = df[df['Date'].dt.date == datetime.now().date()].copy()
 
-        # 個股當日損益：用最近兩個交易日價格
         for sym, h_data in holdings.items():
             if h_data['qty'] > 1e-6:
                 stock_data = self.market.market_data.get(sym, pd.DataFrame())
@@ -425,6 +395,10 @@ class PortfolioCalculator:
                 ))
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
+        
+        # ===== ✅ 群組當日損益 = 所有持倉當日損益加總 =====
+        group_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
+        logger.info(f"[群組:{group_name}] 當日損益(持倉加總): {group_daily_pnl}")
         
         # XIRR 計算
         xirr_val = 0.0
