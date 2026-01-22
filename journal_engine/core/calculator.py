@@ -385,42 +385,48 @@ class PortfolioCalculator:
             last_date = d
             last_fx = fx
 
-        # ===== ✅ 使用儀表板邏輯計算個股當日損益（時段感知）=====
+        # ===== ✅ 使用實際日曆日期計算個股當日損益（時段感知）=====
         final_daily_pnls = {}
         is_market_open = self._is_us_market_open()
         
         logger.info(f"[群組:{group_name}] 當前時段: {'美股盤中' if is_market_open else '美股收盤後'}")
         
         if last_date is not None and len(date_range) >= 2:
-            # 根據時段選擇基準日期
+            # ✨ 使用實際日曆日期來計算，而不是 last_date
+            today = datetime.now().date()
+            yesterday = today - timedelta(days=1)
+            day_before_yesterday = today - timedelta(days=2)
+            
+            # 根據時段選擇基準日期和現金流日期
             if is_market_open:
                 # 🌙 美股盤中：使用昨日 + 今日現金流
-                base_date = last_date - timedelta(days=1)
-                cashflow_date = last_date
+                base_date_for_calc = pd.Timestamp(yesterday)
+                cashflow_date_for_calc = today
             else:
                 # ☀️ 美股收盤後：使用前日 + 昨晚現金流
-                base_date = last_date - timedelta(days=2)
-                cashflow_date = last_date - timedelta(days=1)
+                base_date_for_calc = pd.Timestamp(day_before_yesterday)
+                cashflow_date_for_calc = yesterday
             
             # 獲取基準日的持倉快照
-            base_day_holdings = holdings_history.get(base_date, {})
+            base_day_holdings = holdings_history.get(base_date_for_calc, {})
             
             # 獲取今天和基準日的匯率
             try:
-                today_fx = self.market.fx_rates.asof(last_date)
+                today_fx = self.market.fx_rates.asof(pd.Timestamp(today))
                 if pd.isna(today_fx): today_fx = DEFAULT_FX_RATE
             except: 
                 today_fx = DEFAULT_FX_RATE
             
             try:
-                base_fx = self.market.fx_rates.asof(base_date)
+                base_fx = self.market.fx_rates.asof(base_date_for_calc)
                 if pd.isna(base_fx): base_fx = today_fx
             except: 
                 base_fx = today_fx
             
-            # 獲取現金流日期的交易
-            cashflow_date_obj = cashflow_date.date()
-            cashflow_txns = df[df['Date'].dt.date == cashflow_date_obj].copy()
+            # 獲取現金流日期的交易（使用實際日期）
+            cashflow_txns = df[df['Date'].dt.date == cashflow_date_for_calc].copy()
+            
+            logger.info(f"[群組:{group_name}] 當日損益計算: base_date={base_date_for_calc.strftime('%Y-%m-%d')}, cashflow_date={cashflow_date_for_calc}, 現金流交易筆數={len(cashflow_txns)}")
             
             # 計算每個標的的現金流
             daily_cashflows_by_symbol = {}
@@ -431,7 +437,7 @@ class PortfolioCalculator:
                 
                 # 使用現金流日期的匯率
                 try:
-                    cf_fx = self.market.fx_rates.asof(cashflow_date)
+                    cf_fx = self.market.fx_rates.asof(pd.Timestamp(cashflow_date_for_calc))
                     if pd.isna(cf_fx): cf_fx = today_fx
                 except:
                     cf_fx = today_fx
@@ -448,14 +454,14 @@ class PortfolioCalculator:
             # 計算所有當前持倉的當日損益
             for sym, h_data in holdings.items():
                 if h_data['qty'] > 1e-6:
-                    # 今日價格和市值
-                    today_price = self.market.get_price(sym, last_date)
+                    # 今日價格和市值（使用最新價格）
+                    today_price = self.market.get_price(sym, pd.Timestamp(today))
                     today_fx_effective = self._get_effective_fx_rate(sym, today_fx)
                     today_value = h_data['qty'] * today_price * today_fx_effective
                     
                     # 基準日持倉和市值
                     base_qty = base_day_holdings.get(sym, 0.0)
-                    base_price = self.market.get_price(sym, base_date)
+                    base_price = self.market.get_price(sym, base_date_for_calc)
                     base_fx_effective = self._get_effective_fx_rate(sym, base_fx)
                     base_value = base_qty * base_price * base_fx_effective
                     
