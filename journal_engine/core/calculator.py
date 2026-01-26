@@ -191,9 +191,6 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
-            # ✅ 關鍵修正:每天都記錄開盤前持倉快照(用於計算當日損益)
-            today_open_holdings = {sym: h['qty'] for sym, h in holdings.items()}
-            
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
@@ -323,48 +320,12 @@ class PortfolioCalculator:
             
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            # ===== ✅ 計算當日損益(使用開盤前快照 + 今日交易)=====
-            daily_pnl_for_this_day = 0.0
-            
-            # 取得所有相關標的(開盤前持有 + 今日交易)
-            all_symbols_today = set(today_open_holdings.keys()) | set(daily_txns['Symbol'].unique())
-            
-            for sym in all_symbols_today:
-                stock_data = self.market.market_data.get(sym, pd.DataFrame())
-                if stock_data.empty or len(stock_data) < 2:
-                    continue
-                
-                curr_p = float(stock_data.loc[:d].iloc[-1]['Close_Adjusted']) if len(stock_data.loc[:d]) > 0 else 0.0
-                prev_p = float(stock_data.loc[:d].iloc[-2]['Close_Adjusted']) if len(stock_data.loc[:d]) >= 2 else 0.0
-                
-                if curr_p == 0.0 or prev_p == 0.0:
-                    continue
-                
-                effective_fx = self._get_effective_fx_rate(sym, fx)
-                
-                # 1. 開盤前持倉的價差損益
-                open_qty = today_open_holdings.get(sym, 0.0)
-                price_change_pnl = (curr_p - prev_p) * open_qty * effective_fx
-                
-                # 2. 今日交易的損益
-                today_trade_pnl = 0.0
-                for _, row in daily_txns[daily_txns['Symbol'] == sym].iterrows():
-                    row_fx = self._get_effective_fx_rate(sym, fx)
-                    
-                    if row['Type'] == 'BUY':
-                        buy_qty = row['Qty']
-                        buy_price = row['Price']
-                        today_trade_pnl += (curr_p - buy_price) * buy_qty * row_fx
-                
-                daily_pnl_for_this_day += (price_change_pnl + today_trade_pnl)
-
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
-                "fx_rate": round(fx, 4),
-                "daily_pnl_twd": round(daily_pnl_for_this_day, 0)  # ✅ 新增:每日的當日損益
+                "fx_rate": round(fx, 4)
             })
             
             last_fx = fx
@@ -373,9 +334,7 @@ class PortfolioCalculator:
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
-        # ✅ 當日損益計算:只計算「現有持倉」的當日損益
-        display_daily_pnl = 0.0
-        
+        # ✅ 個股當日損益：只計算「仍持有」的部位
         for sym, h in holdings.items():
             if h['qty'] > 1e-4:
                 stock_data = self.market.market_data.get(sym, pd.DataFrame())
@@ -396,7 +355,6 @@ class PortfolioCalculator:
                 stock_daily_pnl = 0.0
                 if not stock_data.empty and len(stock_data) >= 2:
                     stock_daily_pnl = (curr_p - prev_p) * h['qty'] * effective_fx
-                    display_daily_pnl += stock_daily_pnl
                 
                 final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
@@ -410,10 +368,10 @@ class PortfolioCalculator:
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
-        # ✅ 已清倉時,當日損益固定為 0
-        if len(final_holdings) == 0:
-            display_daily_pnl = 0.0
-            logger.info(f"[群組:{group_name}] 已清倉,當日損益設為 0")
+        # ✅ 總當日損益 = 今日總損益 - 昨日總損益（完美處理所有情境）
+        today_total_pnl = history_data[-1]['net_profit'] if history_data else 0
+        yesterday_total_pnl = history_data[-2]['net_profit'] if len(history_data) >= 2 else 0
+        display_daily_pnl = today_total_pnl - yesterday_total_pnl
         
         logger.info(f"[群組:{group_name}] 當日損益(台灣投資者視角): {display_daily_pnl}")
         
