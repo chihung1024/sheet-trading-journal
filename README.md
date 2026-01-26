@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.39.1-blue.svg)
+![Version](https://img.shields.io/badge/version-2.39.2-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10+-green.svg)
 ![Vue](https://img.shields.io/badge/vue-3.4+-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
@@ -49,10 +49,11 @@
   - ✅ **v2.39**: 正確處理當沖/清倉情況
   - 當沖損益計入已實現損益，不影響 TWR
 - **XIRR**：個人年化報酬率 (Internal Rate of Return)
-- **✅ 今日損益智能計算**：
-  - 美股開盤前：顯示昨日變化 + 匯率影響
-  - 美股盤中：即時盤中損益
-  - 精準分離股價與匯率因素
+- **✅ 當日損益簡化計算** (v2.39.2)：
+  - **公式**：當日損益 = Σ (今收 - 昨收) × 持股數量 × 匯率
+  - **自動處理**：當沖（持股=0）、美股出清（持股=0）
+  - **極簡邏輯**：單行代碼，無需時區判斷
+  - **符合直覺**：僅反映持有部位的市值變化
 
 #### 📈 **進階圖表分析**
 - **趨勢圖**：
@@ -282,7 +283,77 @@ TWR = ∏(1 + period_hpr_factor - 1) * 100
 - 當沖交易次數與勝率
 - 波段 vs 當沖績效分離顯示
 
-### 3️⃣ 群組獨立時間軸計算 ✨ **NEW v2.39.1**
+### 3️⃣ 當日損益計算 ✨ **NEW v2.39.2**
+
+採用**極簡持股加總法**，邏輯清晰、自動處理邊界情況。
+
+#### 計算公式
+
+```python
+# ✅ 簡化版（只有 2 行！）
+display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
+logger.info(f"[群組:{group_name}] 當日損益(持股加總): {display_daily_pnl}")
+```
+
+#### 個股當日損益
+
+```python
+# 每個持股的 daily_pl_twd
+for sym, h in holdings.items():
+    if h['qty'] > 1e-4:
+        stock_data = self.market.market_data.get(sym, pd.DataFrame())
+        curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+        prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
+        
+        effective_fx = self._get_effective_fx_rate(sym, current_fx)
+        
+        # ✅ 核心公式
+        stock_daily_pnl = (curr_p - prev_p) * h['qty'] * effective_fx
+```
+
+#### 演進歷程
+
+| 版本 | 方法 | 優點 | 缺點 |
+|------|------|------|------|
+| **v2.39.0** | 時區判斷法 | 台灣白天美股看昨晚 | 邏輯複雜、難維護、台股出清有問題 |
+| **v2.39.1** | 總損益差值法 | 簡單直接 | 無法處理當沖、已清倉情況 |
+| **v2.39.2** | 持股加總法 ✅ | **極簡邏輯、自動處理邊界** | 台股今日出清會少算（合理 trade-off） |
+
+#### 處理情境
+
+| 情境 | 計算結果 | 是否正確 | 說明 |
+|------|----------|----------|------|
+| **正常持股** | (今收 - 昨收) × 持股 | ✅ 正確 | 反映市值變化 |
+| **當沖** | (價差) × 0 = 0 | ✅ 正確 | 持股=0，自動歸零 |
+| **美股昨晚出清** | (價差) × 0 = 0 | ✅ 正確 | 持股=0，自動歸零 |
+| **台股今日出清** | (價差) × 0 = 0 | ⚠️ 少算 | 合理 trade-off，損益已反映在已實現損益 |
+
+#### 設計理念
+
+**與 portfolio-journal 對齊：**
+
+本專案參考了舊專案 [portfolio-journal](https://github.com/chihung1024/portfolio-journal) 的設計理念：
+
+```javascript
+// portfolio-journal 的前端計算邏輯
+const totalDailyPL = holdingsArray.reduce((sum, h) => 
+    sum + (h.daily_pl_twd || 0), 0
+);
+```
+
+**核心思想：**
+- ✅ 當日損益 = 持有部位的市值變化
+- ✅ 後端負責更新價格，前端負責計算損益
+- ✅ 邏輯簡潔，易於理解和維護
+- ✅ 自動處理大部分邊界情況
+
+**優勢：**
+1. **極簡**：單行代碼即可理解
+2. **穩定**：無需時區判斷、無需複雜邏輯
+3. **直覺**：當日損益就是持股的今日漲跌
+4. **維護性**：新人接手也能快速理解
+
+### 4️⃣ 群組獨立時間軸計算 ✨ **NEW v2.39.1**
 
 每個策略群組使用自己的交易日期範圍進行計算，提供更準確的策略績效分析。
 
@@ -461,7 +532,74 @@ curl -I https://sheet-trading-journal.pages.dev
 
 ## 🆕 更新記錄
 
-### v2.39.1 (2026-01-21) ✅ **LATEST**
+### v2.39.2 (2026-01-26) ✅ **LATEST**
+
+**📊 當日損益計算邏輯簡化與優化**
+
+**新增功能：**
+
+1. **極簡持股加總法**
+   ```python
+   # ✅ 只有 2 行！
+   display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
+   logger.info(f"[群組:{group_name}] 當日損益(持股加總): {display_daily_pnl}")
+   ```
+
+2. **自動處理邊界情況**
+   - ✅ 當沖（持股=0）：自動歸零
+   - ✅ 美股出清（持股=0）：自動歸零
+   - ⚠️ 台股今日出清：會少算（但損益已反映在已實現損益）
+
+3. **移除複雜邏輯**
+   - ❌ 刪除 60+ 行的時區判斷代碼
+   - ❌ 刪除美股/台股分類計算
+   - ❌ 刪除白天/深夜模式判斷
+
+**修改文件：**
+```python
+# journal_engine/core/calculator.py
+
+# ❌ 移除的複雜邏輯（v2.39.0-2.39.1）
+# now_tw = datetime.now()
+# is_daytime = 6 <= now_tw.hour <= 23
+# if is_daytime:
+#     美股損益 = ...
+#     台股損益 = ...
+# else:
+#     ...
+
+# ✅ 新的簡化邏輯（v2.39.2）
+display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
+```
+
+**設計理念：**
+
+參考舊專案 [portfolio-journal](https://github.com/chihung1024/portfolio-journal) 的前端計算邏輯：
+
+```javascript
+// portfolio-journal/js/ui/dashboard.js
+const totalDailyPL = holdingsArray.reduce((sum, h) => 
+    sum + (h.daily_pl_twd || 0), 0
+);
+```
+
+**核心優勢：**
+1. **極簡**：單行代碼，一目了然
+2. **穩定**：無需時區判斷，無複雜邏輯
+3. **直覺**：當日損益 = 持股的今日漲跌
+4. **維護性**：新人接手也能快速理解
+
+**適用情境：**
+- ✅ 波段持倉策略
+- ✅ 混合策略（波段 + 偶爾當沖）
+- ⚠️ 純當沖策略（建議查看「已實現損益」）
+
+**相關 Commits：**
+- [`279c73d`](https://github.com/chihung1024/sheet-trading-journal/commit/279c73d74f9b081d1bd5ecf27a6535e3a55315bb) - refactor: 簡化當日損益計算邏輯，移除時區判斷
+
+---
+
+### v2.39.1 (2026-01-21)
 
 **📊 群組獨立時間軸與虛擬零點功能**
 
@@ -772,6 +910,7 @@ v2.39 版本後，當沖交易的處理方式：
 | **TWR** | ❌ 不包含 | 只反映持倉期間的績效 |
 | **XIRR** | ✅ 包含 | 考慮所有現金流的年化報酬 |
 | **總報酬率** | ✅ 包含 | (總損益 / 投入資金) × 100% |
+| **當日損益** | ❌ 不包含 | 只反映持有部位的今日漲跌 (v2.39.2) |
 
 **驗證方式：**
 ```javascript
@@ -782,6 +921,7 @@ fetch('https://your-worker.workers.dev/api/portfolio', {
 .then(r => r.json())
 .then(data => {
   console.log('已實現損益:', data.data.summary.realized_pnl);
+  console.log('當日損益:', data.data.summary.daily_pnl_twd);
   console.log('TWR:', data.data.summary.twr);
   console.log('XIRR:', data.data.summary.xirr);
 });
@@ -790,6 +930,7 @@ fetch('https://your-worker.workers.dev/api/portfolio', {
 **結論：**
 - 當沖損益**有被計算**，在「已實現損益」中
 - TWR 不反映當沖是**符合設計**的（評估持倉能力，非交易頻率）
+- 當日損益不反映當沖是**符合設計**的（持股=0，自動歸零）
 - 如需完整績效評估，參考 XIRR 或總報酬率
 
 ---
@@ -833,6 +974,58 @@ All 群組（2023-01-05 首次交易）：
 **如果你想看統一時間軸：**
 - 使用 All 群組作為參考
 - All 群組包含所有交易，時間軸最完整
+
+---
+
+#### Q5: 當日損益跟「昨天總損益 - 今天總損益」不一樣？✨ **NEW**
+
+**症狀：**
+- 當日損益顯示 10,000
+- 但總損益增加了 15,000
+- 數字對不上
+
+**說明：**
+
+v2.39.2 版本後，當日損益的定義：
+
+```python
+# ✅ v2.39.2 定義
+當日損益 = Σ (今收 - 昨收) × 持股數量 × 匯率
+
+# ❌ 不是「總損益差值」
+當日損益 ≠ 今日總損益 - 昨日總損益
+```
+
+**為什麼會不同？**
+
+因為「總損益」包含：
+1. 持倉市值變化（= 當日損益）
+2. 已實現損益變化（賣出、配息等）
+
+**範例：**
+```
+今天的交易：
+- NVDA 100股：漲 $5 → 當日損益 +16,000 TWD
+- 賣出 TSLA：實現獲利 +5,000 TWD
+
+結果：
+當日損益 = 16,000 TWD（只看持股漲跌）
+總損益增加 = 21,000 TWD（包含賣出獲利）
+```
+
+**哪個指標更重要？**
+
+| 情境 | 應該看哪個 |
+|------|----------|
+| 今天市場漲跌對我的影響 | **當日損益** |
+| 今天所有交易的總成果 | **總損益差值** |
+| 評估持股配置是否跟上大盤 | **當日損益** |
+| 評估交易決策是否賺錢 | **已實現損益** |
+
+**結論：**
+- 當日損益 ≠ 總損益差值 是**正常的**
+- 兩者各有用途，不矛盾
+- v2.39.2 的當日損益更符合「今日持股漲跌」的直覺
 
 ---
 
