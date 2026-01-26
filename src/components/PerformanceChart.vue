@@ -190,7 +190,7 @@ const filterData = (startDate, endDate = new Date()) => {
     if (fullHistory.length === 0) {
         displayedData.value = [];
         baselineData.value = null;
-        drawChart();
+        drawChart(); // Clear chart
         return;
     }
 
@@ -228,6 +228,7 @@ const drawChart = () => {
 
     if (displayedData.value.length === 0 || !baselineData.value) return;
 
+    // RWD 設定：檢查視窗寬度，動態調整字體
     const isMobile = window.innerWidth < 768;
     const fontSize = isMobile ? 10 : 12;
 
@@ -236,7 +237,7 @@ const drawChart = () => {
         pointRadius: 0, 
         pointHoverRadius: 5, 
         borderWidth: 2, 
-        tension: 0.2,
+        tension: 0.2, /* 稍微平滑 */
         pointBackgroundColor: 'white',
         pointBorderWidth: 2
     };
@@ -244,6 +245,7 @@ const drawChart = () => {
     let chartData = [];
     let labels = [];
     
+    // 準備數據 (確保包含 baseline 以正確計算起始點 0%)
     let dataWithBaseline = [];
     const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
     if (baselineInDisplayed) {
@@ -258,7 +260,9 @@ const drawChart = () => {
     });
 
     if (chartType.value === 'asset') {
+        // 資產模式 (絕對值)
         chartData = displayedData.value.map(d => d.total_value);
+        // 重設 labels 對應 displayedData
         labels = displayedData.value.map(d => {
             const date = new Date(d.date);
             return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
@@ -277,6 +281,7 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
+        // 損益模式 (相對值)
         const baselinePnl = baselineData.value.net_profit;
         chartData = dataWithBaseline.map(d => d.net_profit - baselinePnl);
         
@@ -293,6 +298,7 @@ const drawChart = () => {
             ...common
         }];
     } else {
+        // TWR 模式 (百分比)
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
@@ -325,8 +331,8 @@ const drawChart = () => {
             responsive: true,
             maintainAspectRatio: false,
             layout: {
-                // ⚠️ 修正：增加內距防止邊界裁切錯誤
-                padding: { left: 0, right: 10, top: 20, bottom: 0 }
+                // ✅ 修正重點：增加 padding，防止曲線或標籤貼齊邊界時被裁切
+                padding: { left: 5, right: 10, top: 20, bottom: 0 }
             },
             plugins: {
                 legend: {
@@ -364,9 +370,9 @@ const drawChart = () => {
                     ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: isMobile ? 5 : 10, font: { size: fontSize } }
                 },
                 y: {
-                    position: 'right',
+                    position: 'right', // 軸線放右側避免遮擋最新數據
                     grid: { color: 'rgba(200, 200, 200, 0.1)' },
-                    // ⚠️ 修正：增加 grace 空間防止曲線頂到天花板
+                    // ✅ 修正重點：grace: '5%'，讓最高點上方保留空間，不會頂到天花板
                     grace: '5%',
                     ticks: {
                         font: { size: fontSize, family: 'JetBrains Mono' },
@@ -417,6 +423,8 @@ onUnmounted(() => {
 }
 
 .chart-header { margin-bottom: 12px; display: flex; flex-direction: column; gap: 12px; }
+
+/* 頂部區域：標題 + 圖表類型 */
 .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 
 .title-group { display: flex; align-items: center; gap: 12px; }
@@ -424,6 +432,7 @@ onUnmounted(() => {
 .loading-badge { font-size: 0.8rem; color: var(--primary); display: flex; align-items: center; gap: 6px; }
 .spinner-sm { width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
 
+/* 捲動容器：Pills (手機優化) */
 .toggle-pills-scroll, .time-pills-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; max-width: 100%; }
 .toggle-pills-scroll::-webkit-scrollbar, .time-pills-scroll::-webkit-scrollbar { display: none; }
 
@@ -431,6 +440,7 @@ onUnmounted(() => {
 .toggle-pills button { border: none; background: transparent; padding: 6px 14px; font-size: 0.9rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; font-weight: 500; }
 .toggle-pills button.active { background: var(--bg-card); color: var(--primary); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 
+/* 控制列：時間 + 右側工具 */
 .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .time-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
 .time-pills button { border: none; background: transparent; padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; }
@@ -439,6 +449,7 @@ onUnmounted(() => {
 
 .right-controls { display: flex; gap: 10px; align-items: center; }
 
+/* 基準輸入框 (Compact) */
 .benchmark-selector { display: flex; align-items: center; gap: 6px; }
 .control-label { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); }
 .input-group-merged { display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; background: var(--bg-card); }
@@ -447,29 +458,32 @@ onUnmounted(() => {
 .btn-icon-apply { border: none; background: var(--bg-secondary); color: var(--success); cursor: pointer; padding: 0 8px; font-weight: bold; border-left: 1px solid var(--border-color); }
 .btn-icon-apply:disabled { color: var(--text-sub); cursor: not-allowed; }
 
+/* 日期選擇器 */
 .date-range-selector { display: flex; align-items: center; gap: 6px; background: var(--bg-secondary); padding: 4px 8px; border-radius: 6px; }
 .date-input { border: none; background: transparent; font-size: 0.85rem; width: 110px; color: var(--text-main); font-family: 'JetBrains Mono', monospace; }
 .date-sep { font-size: 0.8rem; color: var(--text-sub); }
 
-/* ⚠️ 修正：明確設定高度與 overflow，解決 Boundary Error */
+/* 圖表畫布 */
 .canvas-box { 
     flex-grow: 1; 
     position: relative; 
     width: 100%; 
-    height: 350px; /* 固定高度比 min-height 更穩定 */
-    overflow: hidden; /* 防止 canvas 溢出 */
-}
+    /* ✅ 修正重點：設定固定高度與 overflow，避免 Chart.js 在 Flexbox 中計算錯誤 */
+    height: 350px; 
+    overflow: hidden; 
+} 
 
 .no-data-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); color: var(--text-sub); font-size: 1rem; }
 
 .chart-footer { margin-top: 8px; text-align: right; border-top: 1px solid var(--border-color); padding-top: 8px; }
 .info-text { font-size: 0.75rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 
+/* RWD Mobile */
 @media (max-width: 768px) {
     .inner-chart-layout { padding: 16px; }
     .header-top { flex-direction: column; align-items: flex-start; gap: 12px; }
-    .toggle-pills-scroll { width: 100%; }
-    .toggle-pills { width: max-content; }
+    .toggle-pills-scroll { width: 100%; } 
+    .toggle-pills { width: max-content; } 
     
     .controls-row { flex-direction: column; align-items: flex-start; gap: 12px; }
     .time-pills-scroll { width: 100%; }
