@@ -13,6 +13,7 @@
     
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
     <meta http-equiv="Content-Security-Policy" 
           content="default-src 'self'; 
                    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; 
@@ -33,7 +34,6 @@
     <meta name="apple-mobile-web-app-title" content="Journal">
     
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png">
-    
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
     
@@ -64,8 +64,10 @@
       body { 
         margin: 0; 
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-        background-color: var(--loading-bg); /* 確保背景色與 App 一致 */
-        overflow: hidden; /* 載入中禁止捲動 */
+        background-color: var(--loading-bg);
+        /* ⚠️ 修正：移除 overflow: hidden 以恢復捲動，改為僅隱藏水平捲動 */
+        overflow-x: hidden; 
+        overflow-y: auto;
       }
       
       #app-loading {
