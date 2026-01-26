@@ -8,15 +8,12 @@
   },
   "dependencies": {
     "vue": "^3.4.21",
-    "vue-router": "^4.3.0",
     "pinia": "^2.1.7",
     "chart.js": "^4.4.1",
-    "vue-chartjs": "^5.3.0",
     "date-fns": "^3.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
-    "vite": "^5.1.4",
-    "vite-plugin-pwa": "^0.19.2"
+    "vite": "^5.1.4"
   }
 }
