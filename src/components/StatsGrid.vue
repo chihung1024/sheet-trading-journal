@@ -1,9 +1,9 @@
 <template>
   <div class="stats-grid">
-    <div class="stat-block">
+    <div class="stat-block primary-block">
       <div class="stat-top">
         <span class="stat-label">總資產淨值</span>
-        <span class="icon-box">💰</span>
+        <span class="icon-box highlight">💰</span>
       </div>
       <div class="stat-main">
         <div class="stat-value big">{{ displayTotalValue }}</div>
@@ -17,13 +17,13 @@
       </div>
     </div>
     
-    <div class="stat-block">
+    <div class="stat-block" :class="getPnlBgClass(unrealizedPnL)">
       <div class="stat-top">
         <span class="stat-label">未實現損益</span>
         <span class="icon-box">📈</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
+        <div class="stat-value" :class="getPnlTextClass(unrealizedPnL)">
           {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
         </div>
       </div>
@@ -34,36 +34,36 @@
       </div>
     </div>
     
-    <div class="stat-block">
+    <div class="stat-block" :class="getPnlBgClass(realizedPnL)">
       <div class="stat-top">
         <span class="stat-label">已實現損益</span>
         <span class="icon-box">💵</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value" :class="realizedPnL >= 0 ? 'text-green' : 'text-red'">
+        <div class="stat-value" :class="getPnlTextClass(realizedPnL)">
           {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
         </div>
       </div>
       <div class="stat-footer">
-        <span class="text-sub text-xs">賣出收益 + 配息收入</span>
+        <span class="text-sub text-xs footer-desc">賣出收益 + 配息</span>
       </div>
     </div>
     
-    <div class="stat-block" :title="pnlTooltip">
+    <div class="stat-block" :class="getPnlBgClass(dailyPnL)" :title="pnlTooltip">
       <div class="stat-top">
         <span class="stat-label">{{ pnlLabel }}</span>
-        <span class="icon-box">⚡</span>
+        <span class="icon-box" :class="{ 'pulse-icon': isUSMarketOpen }">⚡</span>
       </div>
       <div class="stat-main column-layout">
-        <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
+        <div class="stat-value" :class="getPnlTextClass(dailyPnL)">
           {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
         </div>
-        <div class="stat-sub-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
+        <div class="stat-sub-value" :class="getPnlTextClass(dailyPnL)">
           ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
         </div>
       </div>
       <div class="stat-footer">
-        <span class="text-sub text-xs">{{ pnlDescription }}</span>
+        <span class="text-sub text-xs footer-desc">{{ pnlDescription }}</span>
       </div>
     </div>
     
@@ -76,22 +76,22 @@
         <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub">TWR (策略表現)</span>
+         <span class="text-sub text-xs">TWR (策略表現)</span>
       </div>
     </div>
     
-    <div class="stat-block">
+    <div class="stat-block" :class="getPnlBgClass(stats.xirr)">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
         <span class="icon-box">🚀</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value" :class="(stats.xirr || 0) >= 0 ? 'text-green' : 'text-red'">
+        <div class="stat-value" :class="getPnlTextClass(stats.xirr)">
           {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
         </div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub">XIRR (資金加權)</span>
+         <span class="text-sub text-xs">XIRR (資金加權)</span>
       </div>
     </div>
   </div>
@@ -201,18 +201,31 @@ const displayRealized = useAnimatedNumber(realizedPnL);
 const displayDaily = useAnimatedNumber(dailyPnL);
 
 const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
+
+// 樣式輔助函數
+const getPnlTextClass = (val) => {
+    const num = Number(val) || 0;
+    return num >= 0 ? 'text-green' : 'text-red';
+};
+
+const getPnlBgClass = (val) => {
+    const num = Number(val) || 0;
+    if (num === 0) return '';
+    return num > 0 ? 'bg-gradient-green' : 'bg-gradient-red';
+};
 </script>
 
 <style scoped>
+/* 核心 Grid 佈局 */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, 1fr); /* 桌面版維持 3 欄 */
     gap: 20px;
 }
 
 .stat-block {
     background: var(--bg-card);
-    padding: 18px 20px;
+    padding: 20px;
     border-radius: var(--radius);
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-card);
@@ -225,16 +238,34 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     overflow: hidden;
 }
 
+/* 懸停效果 */
 .stat-block:hover { 
-    transform: translateY(-2px); 
+    transform: translateY(-3px); 
     box-shadow: var(--shadow-lg); 
 }
 
+/* 特殊卡片樣式：總資產 */
+.primary-block {
+    border-left: 4px solid var(--primary);
+}
+
+/* 背景微漸層 */
+.bg-gradient-green {
+    background: linear-gradient(145deg, var(--bg-card) 40%, rgba(16, 185, 129, 0.05) 100%);
+    border-bottom: 2px solid rgba(16, 185, 129, 0.2);
+}
+
+.bg-gradient-red {
+    background: linear-gradient(145deg, var(--bg-card) 40%, rgba(239, 68, 68, 0.05) 100%);
+    border-bottom: 2px solid rgba(239, 68, 68, 0.2);
+}
+
+/* 頂部區域 */
 .stat-top { 
     display: flex; 
     justify-content: space-between; 
     align-items: center; 
-    margin-bottom: 10px; 
+    margin-bottom: 12px; 
 }
 
 .stat-label { 
@@ -242,37 +273,49 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     color: var(--text-sub); 
     font-weight: 600; 
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.02em;
 }
 
+/* Icon Box 優化 */
 .icon-box { 
-    width: 36px; 
-    height: 36px; 
+    width: 38px; 
+    height: 38px; 
     border-radius: 10px; 
     background: var(--bg-secondary);
     display: flex; 
     align-items: center; 
     justify-content: center; 
-    font-size: 1.2rem;
-    transition: transform 0.2s ease;
+    font-size: 1.25rem;
+    transition: transform 0.2s ease, background 0.2s;
 }
 
-.stat-block:hover .icon-box {
-    transform: scale(1.1);
+.icon-box.highlight {
+    background: rgba(59, 130, 246, 0.1);
 }
 
+.pulse-icon {
+    animation: pulse-light 2s infinite;
+}
+
+@keyframes pulse-light {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* 主要數值區 */
 .stat-main { 
     display: flex; 
     align-items: baseline; 
     gap: 6px; 
-    margin-bottom: 10px; 
+    margin-bottom: 8px; 
     flex-grow: 1;
 }
 
 .stat-main.column-layout {
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
+    gap: 0px;
 }
 
 .stat-value {
@@ -281,54 +324,51 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     font-weight: 700;
     color: var(--text-main);
     line-height: 1.1;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.02em;
 }
 
 .stat-value.big {
-    font-size: 2rem;
+    font-size: 2.2rem;
+    background: linear-gradient(90deg, var(--text-main), var(--text-sub));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
 }
 
 .stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.05rem;
+    font-size: 1rem;
     font-weight: 600;
-    opacity: 0.9;
-    margin-top: 2px;
-}
-
-.stat-sub-text {
-    font-size: 0.8rem;
-    color: var(--text-sub);
-    font-weight: 500;
-    margin-top: 2px;
-    opacity: 0.9;
+    opacity: 0.85;
+    margin-top: 4px;
 }
 
 .unit-text, .percent { 
-    font-size: 0.95rem; 
+    font-size: 0.85rem; 
     color: var(--text-sub); 
     font-weight: 500; 
 }
 
+/* 底部區域 */
 .stat-footer {
-    padding-top: 10px;
+    padding-top: 12px;
     border-top: 1px solid var(--border-color);
     font-size: 0.85rem;
     display: flex; 
     align-items: center; 
     justify-content: space-between;
+    min-height: 32px; /* 確保高度一致 */
 }
 
 .footer-item { 
     display: flex; 
     align-items: center; 
     gap: 6px; 
+    width: 100%;
+    justify-content: space-between;
 }
 
-.f-label {
-    color: var(--text-sub);
-}
-
+.f-label { color: var(--text-sub); }
 .f-val { 
     font-weight: 600; 
     font-family: 'JetBrains Mono', monospace;
@@ -340,9 +380,10 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 .text-sub { color: var(--text-sub); }
 .text-xs { font-size: 0.8rem; }
 
+/* 徽章樣式 */
 .badge { 
-    padding: 3px 10px; 
-    border-radius: 16px; 
+    padding: 2px 8px; 
+    border-radius: 6px; 
     font-weight: 600; 
     font-size: 0.8rem; 
     display: inline-flex; 
@@ -350,52 +391,67 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 }
 
 .badge-green { 
-    background: rgba(16, 185, 129, 0.1); 
+    background: rgba(16, 185, 129, 0.12); 
     color: var(--success);
-    border: 1px solid var(--success);
 }
 
 .badge-red { 
-    background: rgba(239, 68, 68, 0.1); 
+    background: rgba(239, 68, 68, 0.12); 
     color: var(--danger);
-    border: 1px solid var(--danger);
 }
 
-@media (max-width: 1200px) { 
+/* RWD: 中尺寸螢幕 (Tablets) */
+@media (max-width: 1024px) { 
     .stats-grid { 
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, 1fr); /* 改為 2 欄 */
+        gap: 16px;
     } 
+    .stat-value.big { font-size: 2rem; }
 }
 
+/* RWD: 手機版優化 (Mobile) */
 @media (max-width: 768px) { 
     .stats-grid { 
-        grid-template-columns: 1fr;
-        gap: 14px;
+        grid-template-columns: repeat(2, 1fr); /* 強制維持 2 欄，增加資訊密度 */
+        gap: 12px;
     }
     
     .stat-block {
-        min-height: 110px;
-        padding: 16px 18px;
+        padding: 14px;
+        min-height: 100px;
     }
     
-    .stat-value {
-        font-size: 1.6rem;
+    /* 總資產在手機上獨佔一行，突顯重要性 */
+    .stat-block:first-child {
+        grid-column: span 2; 
     }
-    
-    .stat-value.big {
-        font-size: 1.8rem;
-    }
-}
 
-@media (max-width: 480px) {
-    .icon-box {
-        width: 32px;
-        height: 32px;
-        font-size: 1.1rem;
+    .stat-top { margin-bottom: 8px; }
+    .stat-label { font-size: 0.75rem; }
+    
+    .icon-box { 
+        width: 30px; 
+        height: 30px; 
+        font-size: 1rem;
+        border-radius: 8px;
     }
     
-    .stat-label {
-        font-size: 0.8rem;
+    .stat-value { font-size: 1.4rem; }
+    .stat-value.big { font-size: 1.8rem; }
+    .stat-sub-value { font-size: 0.9rem; }
+    
+    .stat-footer { 
+        padding-top: 8px; 
+        min-height: auto;
+    }
+    
+    /* 手機上隱藏過長說明，保持簡潔 */
+    .footer-desc {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+        display: block;
     }
 }
 </style>
