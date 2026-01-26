@@ -11,8 +11,8 @@
             <h1 class="mobile-only">Journal</h1>
           </div>
 
-          <div class="group-selector desktop-only" v-if="portfolioStore.availableGroups.length > 1">
-            <span class="selector-label">群組:</span>
+          <div class="group-selector" v-if="portfolioStore.availableGroups.length > 1">
+            <span class="selector-label desktop-only">群組:</span>
             <div class="select-wrapper">
               <select :value="portfolioStore.currentGroup" @change="e => portfolioStore.setGroup(e.target.value)">
                 <option value="all">全部</option>
@@ -36,15 +36,6 @@
             <span class="dot"></span> <span class="desktop-only">連線正常</span>
           </div>
           
-          <button 
-            v-if="isMobileView && portfolioStore.availableGroups.length > 1"
-            class="mobile-group-btn" 
-            @click="showGroupSwitchModal = true"
-            title="切換群組"
-          >
-            📂
-          </button>
-
           <button 
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
@@ -79,28 +70,6 @@
           </div>
           <div class="modal-footer">
             <button @click="showGroupModal=false">關閉</button>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="showGroupSwitchModal" class="modal-overlay" @click.self="showGroupSwitchModal=false">
-        <div class="modal-card mobile-modal">
-          <h3>切換策略群組</h3>
-          <div class="group-switch-list">
-            <button 
-              v-for="g in portfolioStore.availableGroups" 
-              :key="g" 
-              class="group-switch-item"
-              :class="{ active: portfolioStore.currentGroup === g }"
-              @click="handleGroupSwitch(g)"
-            >
-              <span>{{ g === 'all' ? '全部 (All Portfolios)' : g }}</span>
-              <span v-if="portfolioStore.currentGroup === g" class="check-icon">✓</span>
-            </button>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-secondary" @click="showGroupModal=true; showGroupSwitchModal=false">管理名稱</button>
-            <button @click="showGroupSwitchModal=false">取消</button>
           </div>
         </div>
       </div>
@@ -218,17 +187,16 @@ const { needRefresh, updateServiceWorker } = usePWA();
 const isMobileView = ref(false);
 const showMobileTrade = ref(false);
 
-// 群組管理
-const showGroupModal = ref(false);
-const showGroupSwitchModal = ref(false); // ✨ 新增
-const groupRenameMap = reactive({});
-
 const updateMedia = () => {
   isMobileView.value = window.innerWidth < 1024;
   if (!isMobileView.value) {
     showMobileTrade.value = false; // 桌面版重置狀態
   }
 };
+
+// 群組管理
+const showGroupModal = ref(false);
+const groupRenameMap = reactive({});
 
 const hasPendingDividends = computed(() => portfolioStore.pending_dividends?.length > 0);
 const pendingDividendsCount = computed(() => portfolioStore.pending_dividends ? portfolioStore.pending_dividends.length : 0);
@@ -237,7 +205,7 @@ const userInitial = computed(() => authStore.user?.name ? authStore.user.name.ch
 
 // 方法
 const scrollToDividends = () => {
-  showMobileTrade.value = false;
+  showMobileTrade.value = false; // 關閉側邊欄以防遮擋
   nextTick(() => {
     const dividendSection = document.querySelector('.section-dividends');
     if (dividendSection) {
@@ -248,6 +216,7 @@ const scrollToDividends = () => {
 
 const openMobileTrade = () => {
     showMobileTrade.value = true;
+    // 重置表單為新增模式
     if (tradeFormRef.value && tradeFormRef.value.resetForm) {
         tradeFormRef.value.resetForm();
     }
@@ -257,12 +226,6 @@ const onTradeSubmitted = () => {
     if (isMobileView.value) {
         showMobileTrade.value = false;
     }
-};
-
-// ✨ 新增：處理群組切換
-const handleGroupSwitch = (group) => {
-  portfolioStore.setGroup(group);
-  showGroupSwitchModal.value = false;
 };
 
 const renameGroup = async (oldName) => {
@@ -280,10 +243,12 @@ const renameGroup = async (oldName) => {
     for(const r of targetRecords) {
       let tags = (r.tag || '').split(/[,;]/).map(t=>t.trim());
       tags = tags.map(t => t === oldName ? newName : t);
+      const newTagStr = tags.join(', ');
+      
       await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${authStore.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...r, tag: tags.join(', ') })
+        body: JSON.stringify({ ...r, tag: newTagStr })
       });
       count++;
     }
@@ -316,10 +281,13 @@ const handleEditRecord = (record) => {
     showMobileTrade.value = true;
   }
   
+  // 等待 DOM/Modal 渲染完成後再填充數據
   nextTick(() => {
     if (tradeFormRef.value) {
       tradeFormRef.value.setupForm(record);
+      
       if (!isMobileView.value) {
+        // 桌面版滾動到側邊欄
         document.querySelector('.side-column')?.scrollIntoView({ behavior: 'smooth' });
       }
     }
@@ -409,18 +377,6 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .select-wrapper { display: flex; align-items: center; gap: 4px; }
 .select-wrapper select { background: transparent; border: none; font-size: 0.9rem; color: var(--text-main); font-weight: 600; outline: none; max-width: 120px; }
 
-/* ✨ 改善：手機版群組切換按鈕 */
-.mobile-group-btn {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  width: 36px; height: 36px;
-  border-radius: 8px;
-  align-items: center; justify-content: center;
-  cursor: pointer;
-  font-size: 1.2rem;
-  display: flex; /* 確保 icon 垂直置中 */
-}
-
 .nav-status { display: flex; align-items: center; gap: 12px; }
 .status-indicator { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 500; }
 .status-indicator.ready { color: var(--success); }
@@ -451,18 +407,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); }
 .chart-wrapper.chart-full { height: 450px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 
-/* ✨ 改善：Desktop Sticky Panel (固定右側) */
-.sticky-panel { 
-  position: sticky; 
-  top: calc(var(--header-height) + 24px); 
-  display: flex; 
-  flex-direction: column; 
-  gap: 20px; 
-  /* 關鍵修正：限制高度並允許滾動，避免視窗太小表單被切掉 */
-  max-height: calc(100vh - 120px); 
-  overflow-y: auto;
-  scrollbar-width: thin; /* Firefox 變細 */
-}
+.sticky-panel { position: sticky; top: calc(var(--header-height) + 24px); display: flex; flex-direction: column; gap: 20px; }
 
 /* FAB Button */
 .fab-btn {
@@ -504,12 +449,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .btn-close-sheet { background: none; border: none; font-size: 1.5rem; color: var(--text-sub); cursor: pointer; padding: 4px; }
 
 /* Mobile Sheet Content Adjustments */
-/* 手機版 Sheet 內的 panel 不需要 sticky，改為靜態以允許自然滾動 */
-.mobile-sheet .sticky-panel { 
-    position: static; 
-    padding: 20px; 
-    max-height: none; /* 移除高度限制 */
-}
+.mobile-sheet .sticky-panel { position: static; padding: 20px; }
 
 /* Utilities */
 .desktop-only { display: inline-block; }
@@ -518,26 +458,12 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; display: flex; align-items: center; justify-content: center; }
 .modal-card { background: var(--bg-card); padding: 24px; border-radius: 16px; width: 90%; max-width: 400px; }
 .modal-desc { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 16px; }
-
-/* Group Switch List (Mobile) */
-.group-switch-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; max-height: 50vh; overflow-y: auto; }
-.group-switch-item {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 16px; background: var(--bg-secondary);
-  border: 1px solid var(--border-color); border-radius: 8px;
-  cursor: pointer; font-weight: 500; font-size: 1rem; color: var(--text-main);
-  transition: all 0.2s;
-}
-.group-switch-item.active { background: rgba(59, 130, 246, 0.05); border-color: var(--primary); color: var(--primary); }
-.check-icon { color: var(--primary); font-weight: bold; }
-
 .group-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
 .group-item { display: flex; gap: 8px; }
 .group-item input { flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); color: var(--text-main); }
 .btn-sm { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .btn-sm:disabled { opacity: 0.5; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 10px; }
-.btn-secondary { background: var(--bg-secondary); color: var(--text-sub); border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+.modal-footer { display: flex; justify-content: flex-end; }
 
 /* Dividend Alert */
 .dividend-alert { border-left: 4px solid var(--warning); background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05)); }
@@ -563,11 +489,10 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   .mobile-only { display: inline-block; }
   
   .top-nav { padding: 0 16px; height: 56px; }
-  .nav-status { gap: 8px; } /* 縮小按鈕間距 */
+  .nav-status { gap: 12px; }
   .group-selector { max-width: 140px; }
   .select-wrapper select { max-width: 100%; }
   
-  /* 更新按鈕在手機上縮小 */
   .action-trigger-btn { padding: 8px; border-radius: 50%; justify-content: center; width: 36px; height: 36px; }
   .action-trigger-btn span:first-child { margin: 0; font-size: 1.1rem; }
   
@@ -577,6 +502,6 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 @media (max-width: 480px) {
   .nav-brand h1 { font-size: 1.1rem; }
-  .group-selector { display: none; } /* 原本的下拉選單隱藏 */
+  .group-selector { display: none; } /* 極小螢幕隱藏群組選擇，節省空間 */
 }
 </style>
