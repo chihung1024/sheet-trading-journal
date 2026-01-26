@@ -1,83 +1,89 @@
 <template>
-  <div class="stats-grid">
-    <div v-for="i in 4" :key="i" class="stat-block skeleton-card">
-      <div class="stat-top">
-        <div class="skeleton skeleton-text skeleton-label"></div>
-        <div class="skeleton skeleton-icon"></div>
+  <div class="stats-grid-skeleton">
+    <div v-for="i in 6" :key="i" class="stat-card-skeleton">
+      <div class="skeleton-top">
+        <div class="skeleton-shimmer skeleton-label"></div>
+        <div class="skeleton-shimmer skeleton-icon"></div>
       </div>
-      <div class="stat-main">
-        <div class="skeleton skeleton-text skeleton-value"></div>
+      
+      <div class="skeleton-main">
+        <div class="skeleton-shimmer skeleton-value"></div>
+        <div v-if="i % 2 === 0" class="skeleton-shimmer skeleton-sub-value"></div>
       </div>
-      <div class="stat-footer">
-        <div class="skeleton skeleton-text skeleton-footer-text"></div>
+      
+      <div class="skeleton-footer">
+        <div class="skeleton-shimmer skeleton-footer-text"></div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.stats-grid {
+/* 網格佈局 - 必須與 StatsGrid.vue 完全一致 */
+.stats-grid-skeleton {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 24px;
+    width: 100%;
 }
 
-.stat-block {
+.stat-card-skeleton {
     background: var(--bg-card);
-    padding: 24px;
-    border-radius: var(--radius);
+    padding: 20px;
+    border-radius: var(--radius); /* 16px */
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 150px;
+    min-height: 140px; /* 與真實卡片高度一致 */
+    position: relative;
+    overflow: hidden;
 }
 
-.stat-top {
+.skeleton-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 12px;
 }
 
-.stat-main {
-    margin-bottom: 12px;
+.skeleton-main {
     flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
 }
 
-.stat-footer {
+.skeleton-footer {
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
 }
 
-.skeleton {
+/* 骨架屏動畫與樣式 */
+.skeleton-shimmer {
     background: linear-gradient(
         90deg,
-        var(--bg-secondary) 25%,
+        var(--bg-secondary) 0%,
         var(--border-color) 50%,
-        var(--bg-secondary) 75%
+        var(--bg-secondary) 100%
     );
     background-size: 200% 100%;
-    animation: skeleton-loading 1.5s ease-in-out infinite;
-    border-radius: 8px;
+    animation: shimmer 1.5s infinite linear;
+    border-radius: 6px;
 }
 
-@keyframes skeleton-loading {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
 }
 
-.skeleton-text {
-    height: 16px;
-}
-
+/* 各部位尺寸模擬 */
 .skeleton-label {
-    width: 80px;
+    width: 30%;
+    height: 14px;
 }
 
 .skeleton-icon {
@@ -87,31 +93,41 @@
 }
 
 .skeleton-value {
-    height: 32px;
-    width: 140px;
+    width: 70%;
+    height: 32px; /* 模擬大字體 */
+}
+
+.skeleton-sub-value {
+    width: 40%;
+    height: 16px;
 }
 
 .skeleton-footer-text {
-    width: 100px;
-    height: 14px;
+    width: 50%;
+    height: 12px;
 }
 
-/* 響應式 */
-@media (max-width: 1400px) {
-    .stats-grid {
+/* 響應式設定 - 與 StatsGrid.vue 同步 */
+@media (max-width: 1200px) { 
+    .stats-grid-skeleton { 
         grid-template-columns: repeat(2, 1fr);
-    }
+        gap: 20px;
+    } 
 }
 
-@media (max-width: 768px) {
-    .stats-grid {
+@media (max-width: 640px) { 
+    .stats-grid-skeleton { 
         grid-template-columns: 1fr;
         gap: 16px;
     }
     
-    .stat-block {
-        min-height: 130px;
-        padding: 20px;
+    .stat-card-skeleton {
+        min-height: 120px;
+        padding: 16px;
+    }
+    
+    .skeleton-value {
+        height: 28px;
     }
 }
 </style>
