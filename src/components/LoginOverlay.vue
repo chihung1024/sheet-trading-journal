@@ -1,22 +1,31 @@
 <template>
   <div class="login-overlay">
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+
     <div class="login-card">
       <div class="logo-section">
-        <span class="logo">📊</span>
+        <div class="logo-circle">
+          <span class="logo">📊</span>
+        </div>
         <h1>Trading Journal</h1>
-        <p class="subtitle">專業交易日誌系統</p>
+        <p class="subtitle">專業交易日誌與績效追蹤</p>
       </div>
 
       <div v-if="error" class="error-message">
-        <strong>❌ 登入失敗</strong>
-        <p>{{ error }}</p>
+        <div class="error-icon">⚠️</div>
+        <div class="error-content">
+          <strong>登入失敗</strong>
+          <p>{{ error }}</p>
+        </div>
       </div>
 
-      <!-- Google 登入按鈕容器 -->
-      <div class="google-btn-container" ref="googleBtn"></div>
+      <div class="google-wrapper">
+        <div class="google-btn-container" ref="googleBtn"></div>
+      </div>
 
       <div class="footer-text">
-        <small>🔒 安全且私密的登入方式</small>
+        <span class="lock-icon">🔒</span> 安全且私密的登入方式
       </div>
     </div>
   </div>
@@ -25,12 +34,12 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import { usePortfolioStore } from '../stores/portfolio'; // ✅ 1. 新增引入
+import { usePortfolioStore } from '../stores/portfolio'; 
 import { CONFIG } from '../config';
 
 const googleBtn = ref(null);
 const authStore = useAuthStore();
-const portfolioStore = usePortfolioStore(); // ✅ 2. 宣告 store 實例
+const portfolioStore = usePortfolioStore(); 
 const error = ref('');
 
 onMounted(() => {
@@ -87,7 +96,7 @@ const initGoogleSignIn = () => {
       size: 'large',
       width: '280',
       text: 'signin_with',
-      shape: 'rectangular',
+      shape: 'pill', // 優化為圓角 pill 形狀
       logo_alignment: 'left'
     });
 
@@ -99,7 +108,6 @@ const initGoogleSignIn = () => {
 };
 </script>
 
-
 <style scoped>
 .login-overlay {
   position: fixed;
@@ -107,35 +115,72 @@ const initGoogleSignIn = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: radial-gradient(circle at top left, #1e293b 0%, #0f172a 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
   padding: 20px;
-  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* 動態背景光暈 */
+.bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  z-index: 0;
+  opacity: 0.6;
+  animation: floatOrb 10s infinite ease-in-out;
+}
+
+.orb-1 {
+  width: 300px;
+  height: 300px;
+  background: rgba(59, 130, 246, 0.2); /* Blue */
+  top: -50px;
+  left: -50px;
+  animation-delay: 0s;
+}
+
+.orb-2 {
+  width: 400px;
+  height: 400px;
+  background: rgba(139, 92, 246, 0.15); /* Purple */
+  bottom: -100px;
+  right: -100px;
+  animation-delay: -5s;
+}
+
+@keyframes floatOrb {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(20px, 30px); }
 }
 
 .login-card {
-  background: white;
+  position: relative;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: 24px;
   padding: 48px 40px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   max-width: 400px;
   width: 100%;
   text-align: center;
-  animation: slideUp 0.5s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
-@keyframes slideUp {
+@keyframes slideUpFade {
   from {
     opacity: 0;
-    transform: translateY(30px);
+    transform: translateY(40px) scale(0.95);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -143,72 +188,112 @@ const initGoogleSignIn = () => {
   margin-bottom: 32px;
 }
 
+.logo-circle {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px auto;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
 .logo {
-  font-size: 4rem;
+  font-size: 3rem;
   display: block;
-  margin-bottom: 16px;
 }
 
 .login-card h1 {
   font-size: 1.75rem;
-  font-weight: 700;
-  color: #1f2937;
+  font-weight: 800;
+  color: #1e293b;
   margin: 0 0 8px 0;
+  letter-spacing: -0.025em;
 }
 
 .subtitle {
-  color: #6b7280;
-  font-size: 0.95rem;
+  color: #64748b;
+  font-size: 1rem;
   margin: 0;
+  font-weight: 500;
 }
 
 .error-message {
-  background: #fee2e2;
+  background: #fef2f2;
   color: #991b1b;
-  padding: 16px;
+  padding: 12px 16px;
   border-radius: 12px;
   margin-bottom: 24px;
   text-align: left;
-  border: 1px solid #fecaca;
-}
-
-.error-message strong {
-  display: block;
-  margin-bottom: 8px;
-}
-
-.error-message p {
-  margin: 0;
+  border: 1px solid #fee2e2;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   font-size: 0.9rem;
-  line-height: 1.5;
+}
+
+.error-icon {
+  font-size: 1.2rem;
+}
+
+.error-content strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.error-content p {
+  margin: 0;
+  opacity: 0.9;
 }
 
 /* Google 按鈕容器 */
-.google-btn-container {
+.google-wrapper {
   display: flex;
   justify-content: center;
-  margin: 32px 0;
+  margin: 24px 0 32px 0;
   min-height: 50px;
 }
 
 .footer-text {
-  color: #9ca3af;
+  color: #94a3b8;
   font-size: 0.85rem;
-  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.lock-icon {
+  font-size: 0.9rem;
 }
 
 /* 響應式設計 */
 @media (max-width: 480px) {
   .login-card {
     padding: 32px 24px;
+    margin: 16px;
+    width: auto;
+  }
+
+  .logo-circle {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 16px;
   }
 
   .logo {
-    font-size: 3rem;
+    font-size: 2.5rem;
   }
 
   .login-card h1 {
     font-size: 1.5rem;
+  }
+  
+  .subtitle {
+    font-size: 0.9rem;
   }
 }
 </style>
