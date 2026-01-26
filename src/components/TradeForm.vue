@@ -331,7 +331,7 @@ defineExpose({ setupForm });
 
 <style scoped>
 /* ========================================
-   🎯 全局規範
+   🎯 全局規範 - 8pt spacing system
    ======================================== */
 .trade-panel {
     border: 1px solid var(--border-color);
@@ -427,9 +427,9 @@ defineExpose({ setupForm });
 }
 
 .form-label {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--text-sub);
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -659,9 +659,9 @@ defineExpose({ setupForm });
 }
 
 .summary-label {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: var(--text-sub);
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -786,26 +786,28 @@ defineExpose({ setupForm });
 
 @media (max-width: 768px) {
     .trade-panel {
-        padding: 20px 16px;
-        padding-bottom: 24px;
+        padding: 16px;
+        padding-bottom: 96px; /* 預留固定按鈕空間 */
     }
     
     .panel-title {
-        font-size: 1.15rem;
+        font-size: 1.1rem;
         margin-bottom: 16px;
     }
     
-    /* 🎯 Segmented Control 縮小 */
+    /* 🎯 Segmented Control 縮至 36px */
     .trade-type-switch {
-        margin-bottom: 20px;
+        margin-bottom: 16px;
         padding: 3px;
-        border-radius: 10px;
+        border-radius: 8px;
     }
     
     .switch-btn {
-        padding: 8px 6px;
-        min-height: 38px;
-        font-size: 0.9rem;
+        padding: 6px;
+        min-height: 36px;
+        font-size: 0.85rem;
+        gap: 4px;
+        border-radius: 6px;
     }
     
     .switch-icon {
@@ -813,59 +815,87 @@ defineExpose({ setupForm });
     }
     
     .switch-label {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
     }
     
-    /* 📋 表單佈局 */
+    /* 📋 表單佈局 - 8pt grid */
     .form-grid {
-        gap: 16px;
+        gap: 12px;
         margin-bottom: 16px;
     }
     
+    .form-group {
+        gap: 6px;
+    }
+    
     .form-label {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
     }
     
     .input-field {
-        padding: 12px;
+        padding: 10px 12px;
         font-size: 0.95rem;
+        min-height: 42px;
+        border-radius: 8px;
     }
     
-    /* 🏷️ 標籤 */
+    /* 🏷️ 標籤緊湊化 */
     .tag-chip {
-        font-size: 0.8rem;
-        padding: 5px 8px;
-    }
-    
-    .quick-tag {
         font-size: 0.75rem;
         padding: 4px 8px;
     }
     
-    /* 💰 總金額 */
+    .quick-tag {
+        font-size: 0.7rem;
+        padding: 3px 8px;
+    }
+    
+    /* 💰 總金額 sticky */
     .summary-section {
-        padding: 14px;
-        margin-bottom: 16px;
+        position: sticky;
+        bottom: 68px; /* 按鈕高度 + gap */
+        z-index: 10;
+        padding: 12px;
+        margin-bottom: 12px;
+        background: var(--bg-card);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.1);
     }
     
     .summary-label {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
     }
     
     .summary-value {
-        font-size: 1.4rem;
-        min-width: 100px;
+        font-size: 1.3rem;
+        min-width: 90px;
     }
     
-    /* 🚀 按鈕 */
+    .summary-currency {
+        font-size: 0.85rem;
+    }
+    
+    /* 🚀 固定底部按鈕 + safe-area */
     .action-buttons {
-        gap: 10px;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 12px;
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
+        background: var(--bg-card);
+        border-top: 1px solid var(--border-color);
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+        gap: 8px;
+        z-index: 20;
+        backdrop-filter: blur(10px);
     }
     
     .btn {
-        padding: 13px 14px;
+        padding: 12px;
         min-height: 46px;
-        font-size: 0.95rem;
+        font-size: 0.9rem;
+        border-radius: 10px;
     }
     
     .btn-icon {
@@ -873,26 +903,26 @@ defineExpose({ setupForm });
     }
     
     .btn-text {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
     }
 }
 
 /* 👍 極小手機 */
 @media (max-width: 480px) {
     .trade-panel {
-        padding: 16px 14px;
-        padding-bottom: 20px;
+        padding: 12px;
+        padding-bottom: 88px;
     }
     
     .panel-title {
-        font-size: 1.1rem;
-        margin-bottom: 14px;
+        font-size: 1.05rem;
+        margin-bottom: 12px;
     }
     
     .switch-btn {
-        padding: 8px 4px;
-        min-height: 36px;
-        gap: 4px;
+        padding: 6px 4px;
+        min-height: 34px;
+        gap: 3px;
     }
     
     .switch-icon {
@@ -900,25 +930,36 @@ defineExpose({ setupForm });
     }
     
     .switch-label {
-        font-size: 0.8rem;
+        font-size: 0.75rem;
     }
     
     .form-grid {
-        gap: 14px;
+        gap: 10px;
     }
     
     .input-field {
-        padding: 11px;
+        padding: 9px 10px;
         font-size: 0.9rem;
+        min-height: 40px;
+    }
+    
+    .summary-section {
+        bottom: 64px;
+        padding: 10px;
     }
     
     .summary-value {
-        font-size: 1.3rem;
+        font-size: 1.2rem;
+    }
+    
+    .action-buttons {
+        padding: 10px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
     }
     
     .btn {
         min-height: 44px;
-        font-size: 0.9rem;
+        padding: 10px;
     }
 }
 
