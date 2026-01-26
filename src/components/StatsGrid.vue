@@ -103,20 +103,30 @@ import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
 
+// 直接從 store 獲取數據
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 
+// 總損益：從後端獲取
 const totalPnL = computed(() => stats.value.total_pnl || 0);
+
+// 已實現損益：從後端獲取
 const realizedPnL = computed(() => stats.value.realized_pnl || 0);
+
+// 未實現損益 = 總損益 - 已實現損益
 const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
 
+// ROI 計算
 const roi = computed(() => {
   if (!stats.value.invested_capital) return '0.00';
   return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
 });
 
+// 當日損益：統一使用 store.dailyPnL
 const dailyPnL = computed(() => store.dailyPnL || 0);
 
+// 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
+// 簡易判斷，不考慮日光節約時間細節，僅做視覺提示切換
 const isUSMarketOpen = computed(() => {
   const now = new Date();
   const hour = now.getHours();
@@ -129,10 +139,12 @@ const isUSMarketOpen = computed(() => {
   return false;
 });
 
+// 動態標題
 const pnlLabel = computed(() => {
   return isUSMarketOpen.value ? '美股盤中損益' : '當日損益';
 });
 
+// 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
     return '盤中損益(含交易+即時價格)';
@@ -141,6 +153,7 @@ const pnlDescription = computed(() => {
   }
 });
 
+// Tooltip 完整說明
 const pnlTooltip = computed(() => {
   if (isUSMarketOpen.value) {
     return '美股盤中:今日市值 - 昨日市值 - 今日現金流';
@@ -149,13 +162,19 @@ const pnlTooltip = computed(() => {
   }
 });
 
+// 計算今日損益百分比
 const dailyRoi = computed(() => {
   let baseValue = 0;
-  if (!history.value || history.value.length < 2) return '0.00';
+  
+  if (!history.value || history.value.length < 2) {
+    return '0.00';
+  }
   
   if (isUSMarketOpen.value) {
+    // 使用昨日收盤
     baseValue = history.value[history.value.length - 2].total_value || 0;
   } else {
+    // 使用前日收盤
     if (history.value.length >= 3) {
       baseValue = history.value[history.value.length - 3].total_value || 0;
     } else {
@@ -167,12 +186,16 @@ const dailyRoi = computed(() => {
   return ((dailyPnL.value / baseValue) * 100).toFixed(2);
 });
 
+// 數字動畫 Hook
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
     if (newVal == null) return;
     current.value = Number(newVal);
   }, { immediate: true });
+  
+  // 這裡使用簡單的直接賦值配合 CSS 數字字型優化，
+  // 若需要漸變動畫可引入 gsap 或 tween.js，為保持輕量使用原生響應式
   return computed(() => Math.round(current.value).toLocaleString('zh-TW'));
 };
 
@@ -189,6 +212,12 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 24px;
+    animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .stat-block {
@@ -239,13 +268,17 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.stat-block:hover .icon-box { transform: scale(1.15) rotate(5deg); }
+.stat-block:hover .icon-box {
+    transform: scale(1.15) rotate(5deg);
+}
 
-/* Icon specific bg colors for better visuals */
+/* Specific colors for icons */
 .icon-box.net-worth { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
 .icon-box.unrealized { background: rgba(16, 185, 129, 0.1); color: #10b981; }
 .icon-box.realized { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
 .icon-box.daily { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+.icon-box.twr { background: rgba(236, 72, 153, 0.1); color: #ec4899; }
+.icon-box.xirr { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
 
 .stat-main { 
     display: flex; 
@@ -268,18 +301,27 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     color: var(--text-main);
     line-height: 1.1;
     letter-spacing: -0.03em;
+    transition: color 0.3s ease;
 }
 
-.stat-value.big { font-size: 2rem; }
+.stat-value.big {
+    font-size: 2rem;
+}
 
 .stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
     font-size: 1rem;
     font-weight: 600;
     opacity: 0.9;
+    margin-top: 2px;
 }
 
-.unit-text, .percent { font-size: 0.9rem; color: var(--text-sub); font-weight: 500; margin-left: 4px; }
+.unit-text, .percent { 
+    font-size: 0.9rem; 
+    color: var(--text-sub); 
+    font-weight: 500; 
+    margin-left: 4px;
+}
 
 .stat-footer {
     padding-top: 12px;
@@ -290,9 +332,19 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     justify-content: space-between;
 }
 
-.footer-item { display: flex; align-items: center; gap: 6px; }
+.footer-item { 
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
+}
+
 .f-label { color: var(--text-sub); }
-.f-val { font-weight: 600; font-family: 'JetBrains Mono', monospace; color: var(--text-main); }
+
+.f-val { 
+    font-weight: 600; 
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-main);
+}
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
@@ -306,19 +358,53 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     font-size: 0.8rem; 
     display: inline-flex; 
     align-items: center; 
+    transition: all 0.2s ease;
 }
 
-.badge-green { background: rgba(16, 185, 129, 0.15); color: var(--success); }
-.badge-red { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+.badge-green { 
+    background: rgba(16, 185, 129, 0.15); 
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
 
-@media (max-width: 1024px) { 
-    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; } 
+.badge-red { 
+    background: rgba(239, 68, 68, 0.15); 
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* RWD Breakpoints */
+@media (max-width: 1200px) { 
+    .stats-grid { 
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    } 
 }
 
 @media (max-width: 640px) { 
-    .stats-grid { grid-template-columns: 1fr; gap: 16px; }
-    .stat-block { padding: 16px; min-height: 120px; }
-    .stat-value { font-size: 1.6rem; }
-    .stat-value.big { font-size: 1.8rem; }
+    .stats-grid { 
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    
+    .stat-block {
+        min-height: 120px;
+        padding: 16px;
+    }
+    
+    .stat-value {
+        font-size: 1.6rem;
+    }
+    
+    .stat-value.big {
+        font-size: 1.8rem;
+    }
+    
+    .icon-box {
+        width: 32px;
+        height: 32px;
+        font-size: 1.1rem;
+        border-radius: 8px;
+    }
 }
 </style>
