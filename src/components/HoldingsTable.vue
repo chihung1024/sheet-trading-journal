@@ -20,42 +20,41 @@
             </div>
             
             <div class="filter-group">
-                <label class="filter-label">顯示:</label>
                 <select v-model="filterStatus" class="filter-select">
                     <option value="all">全部持倉</option>
-                    <option value="profit">獲利</option>
-                    <option value="loss">虧損</option>
+                    <option value="profit">獲利中</option>
+                    <option value="loss">虧損中</option>
                 </select>
             </div>
         </div>
     </div>
     
-    <div class="table-container" ref="tableContainer">
+    <div class="table-container desktop-view" ref="tableContainer">
         <table>
             <thead>
                 <tr>
-                    <th @click="sortBy('symbol')" class="sortable">
+                    <th @click="sortBy('symbol')" class="sortable sticky-th">
                         代碼 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
                     </th>
-                    <th @click="sortBy('qty')" class="text-right sortable">
+                    <th @click="sortBy('qty')" class="text-right sortable sticky-th">
                         股數 <span class="sort-icon">{{ getSortIcon('qty') }}</span>
                     </th>
-                    <th @click="sortBy('avg_cost_usd')" class="text-right sortable">
-                        成本 (USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
+                    <th @click="sortBy('avg_cost_usd')" class="text-right sortable sticky-th">
+                        成本(USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
                     </th>
-                    <th @click="sortBy('current_price_origin')" class="text-right sortable">
-                        現價 / 當日變動 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
+                    <th @click="sortBy('current_price_origin')" class="text-right sortable sticky-th">
+                        現價/漲跌 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
                     </th>
-                    <th @click="sortBy('market_value_twd')" class="text-right sortable">
-                        市值 (TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
+                    <th @click="sortBy('market_value_twd')" class="text-right sortable sticky-th">
+                        市值(TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
                     </th>
-                    <th @click="sortBy('daily_pl_twd')" class="text-right sortable">
+                    <th @click="sortBy('daily_pl_twd')" class="text-right sortable sticky-th">
                         當日損益 <span class="sort-icon">{{ getSortIcon('daily_pl_twd') }}</span>
                     </th>
-                    <th @click="sortBy('pnl_twd')" class="text-right sortable">
+                    <th @click="sortBy('pnl_twd')" class="text-right sortable sticky-th">
                         總損益 <span class="sort-icon">{{ getSortIcon('pnl_twd') }}</span>
                     </th>
-                    <th @click="sortBy('pnl_percent')" class="text-right sortable">
+                    <th @click="sortBy('pnl_percent')" class="text-right sortable sticky-th">
                         報酬率 <span class="sort-icon">{{ getSortIcon('pnl_percent') }}</span>
                     </th>
                 </tr>
@@ -91,16 +90,10 @@
                     </td>
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
                     <td class="text-right font-num" :class="getTrendClass(h.daily_pl_twd)">
-                        <div class="daily-pnl-wrapper">
-                            <span class="pnl-value">
-                                {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
-                            </span>
-                        </div>
+                        {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
                     </td>
                     <td class="text-right font-num" :class="getTrendClass(h.pnl_twd)">
-                        <span class="pnl-value">
-                            {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
-                        </span>
+                        {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
                     </td>
                     <td class="text-right font-num">
                         <span class="roi-badge" :class="getTrendClass(h.pnl_percent, true)">
@@ -110,6 +103,70 @@
                 </tr>
             </tbody>
         </table>
+    </div>
+
+    <div class="mobile-view">
+        <div v-if="filteredHoldings.length === 0" class="empty-state">
+            <div class="empty-icon">📊</div>
+            <div>目前無持倉數據</div>
+        </div>
+        
+        <div 
+            v-for="h in visibleHoldings" 
+            :key="h.symbol + '_mob'" 
+            class="mobile-card"
+            @click="highlightRow(h.symbol)"
+        >
+            <div class="m-card-header">
+                <div class="m-symbol-group">
+                    <span class="m-symbol">{{ h.symbol }}</span>
+                    <span class="m-fire" v-if="h.pnl_percent > 50">🔥</span>
+                </div>
+                <div class="m-price-group">
+                    <span class="m-price">{{ formatNumber(h.current_price_origin, 2) }}</span>
+                    <span class="m-change" :class="getTrendClass(h.daily_change_usd)">
+                         {{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%
+                    </span>
+                </div>
+            </div>
+
+            <div class="m-card-grid">
+                <div class="m-grid-item">
+                    <span class="m-label">持有股數</span>
+                    <span class="m-val">{{ formatNumber(h.qty, 2) }}</span>
+                </div>
+                <div class="m-grid-item text-right">
+                    <span class="m-label">平均成本</span>
+                    <span class="m-val">{{ formatNumber(h.avg_cost_usd, 2) }}</span>
+                </div>
+                <div class="m-grid-item">
+                    <span class="m-label">台幣市值</span>
+                    <span class="m-val font-bold">{{ formatNumber(h.market_value_twd, 0) }}</span>
+                </div>
+                <div class="m-grid-item text-right">
+                    <span class="m-label">總報酬率</span>
+                    <span class="m-badge-sm" :class="getTrendClass(h.pnl_percent, true)">
+                        {{ h.pnl_percent >= 0 ? '+' : '' }}{{ safeNum(h.pnl_percent) }}%
+                    </span>
+                </div>
+            </div>
+
+            <div class="m-card-footer">
+                <div class="m-footer-item">
+                    <span class="m-footer-label">當日</span>
+                    <span class="m-footer-val" :class="getTrendClass(h.daily_pl_twd)">
+                        {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
+                    </span>
+                </div>
+                <div class="m-divider"></div>
+                <div class="m-footer-item right">
+                    <span class="m-footer-label">總損益</span>
+                    <span class="m-footer-val" :class="getTrendClass(h.pnl_twd)">
+                        {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
+                    </span>
+                </div>
+            </div>
+        </div>
     </div>
     
     <div class="scroll-hint" v-if="filteredHoldings.length > displayLimit">
@@ -145,7 +202,7 @@ const totalMarketValue = computed(() => {
     return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
 });
 
-// ✅ 直接使用後端計算好的 holdings 數據，不再重新計算
+// 使用 store 計算好的數據
 const filteredHoldings = computed(() => {
     let result = store.holdings;
     
@@ -208,336 +265,144 @@ const highlightRow = (symbol) => {
 };
 
 const handleScroll = () => {
-    if (!tableContainer.value) return;
-    const { scrollTop: top, scrollHeight, clientHeight } = tableContainer.value;
-    
-    if (scrollHeight - top - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
-        displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
+    // 檢測桌面版表格捲動
+    if (tableContainer.value) {
+        const { scrollTop: top, scrollHeight, clientHeight } = tableContainer.value;
+        if (scrollHeight - top - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
+            displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
+        }
+    }
+    // 注意：手機版使用 Window 捲動檢測通常在 App.vue 或更高層處理，這裡簡化處理
+    if (window.innerWidth < 768 && (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
+         if (displayLimit.value < filteredHoldings.value.length) {
+            displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
+         }
     }
 };
 
 onMounted(() => {
-    console.log(`[✅ HoldingsTable] 組件已掛載`);
     if (tableContainer.value) {
         tableContainer.value.addEventListener('scroll', handleScroll);
     }
+    window.addEventListener('scroll', handleScroll);
 });
 
 onUnmounted(() => {
     if (tableContainer.value) {
         tableContainer.value.removeEventListener('scroll', handleScroll);
     }
+    window.removeEventListener('scroll', handleScroll);
 });
 </script>
 
 <style scoped>
+/* 共用樣式 */
 .card-header { 
     display: flex; 
     justify-content: space-between; 
-    align-items: flex-start;
-    margin-bottom: 24px; 
+    align-items: flex-end;
+    margin-bottom: 16px; 
     padding-bottom: 16px; 
     border-bottom: 1px solid var(--border-color);
     flex-wrap: wrap;
     gap: 16px;
 }
+.header-left { display: flex; flex-direction: column; gap: 8px; }
+.header-controls { display: flex; gap: 12px; align-items: center; }
 
-.header-left {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.header-controls {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.search-box {
-    position: relative;
-    min-width: 200px;
-}
-
-.search-icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-sub);
-    pointer-events: none;
-}
-
-.search-input {
-    width: 100%;
-    padding: 8px 12px 8px 36px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-size: 1rem;
-    background: var(--bg-secondary);
-    color: var(--text-main);
-    transition: all 0.2s ease;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: var(--primary);
-    background: var(--bg-card);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.filter-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.filter-label {
-    font-size: 0.95rem;
-    color: var(--text-sub);
-    font-weight: 600;
-}
-
-.filter-select {
-    padding: 8px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--bg-secondary);
-    color: var(--text-main);
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.filter-select:hover {
-    border-color: var(--primary);
-}
-
-.filter-select:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
+h3 { margin: 0; font-size: 1.125rem; }
 
 .summary-info { 
     font-family: 'JetBrains Mono', monospace; 
-    font-size: 1rem; 
+    font-size: 0.95rem; 
     background: var(--bg-secondary); 
-    padding: 8px 14px; 
-    border-radius: 8px; 
+    padding: 6px 12px; 
+    border-radius: 6px; 
     color: var(--text-main);
     border: 1px solid var(--border-color);
-}
-
-.table-container { 
-    overflow-x: auto; 
-    max-height: 600px;
-    overflow-y: auto;
-}
-
-.table-container::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-.table-container::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
-    border-radius: 4px;
-}
-
-.table-container::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 4px;
-}
-
-.table-container::-webkit-scrollbar-thumb:hover {
-    background: var(--text-sub);
-}
-
-.sort-icon { 
-    font-size: 0.85rem; 
-    margin-left: 4px; 
-    opacity: 0.5; 
-    transition: opacity 0.2s;
-}
-
-th.sortable { 
-    cursor: pointer; 
-    transition: all 0.2s;
-    user-select: none;
-}
-
-th.sortable:hover { 
-    color: var(--primary); 
-    background: var(--bg-card);
-}
-
-th.sortable:hover .sort-icon {
-    opacity: 1;
-}
-
-.row-item {
-    transition: all 0.2s ease;
-    cursor: pointer;
-}
-
-.row-item:hover {
-    background-color: var(--bg-secondary) !important;
-    transform: scale(1.01);
-}
-
-.row-item.highlighted {
-    background: rgba(59, 130, 246, 0.1);
-    animation: pulse-highlight 0.5s ease;
-}
-
-@keyframes pulse-highlight {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.02); }
-}
-
-.col-symbol { 
-    width: 120px; 
-}
-
-.symbol-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.symbol-text { 
-    font-weight: 700; 
-    font-size: 1.05rem; 
-    background: var(--bg-secondary); 
-    color: var(--primary); 
-    padding: 6px 12px; 
-    border-radius: 8px; 
     display: inline-block;
-    transition: all 0.2s ease;
 }
 
-.row-item:hover .symbol-text {
-    background: var(--primary);
-    color: white;
-    transform: translateX(4px);
-}
+.search-box { position: relative; width: 220px; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-sub); pointer-events: none; }
+.search-input { width: 100%; padding: 8px 10px 8px 32px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.95rem; background: var(--bg-secondary); color: var(--text-main); }
+.search-input:focus { outline: none; border-color: var(--primary); background: var(--bg-card); }
 
-.symbol-badge {
-    font-size: 1rem;
-    animation: bounce 1s ease infinite;
-}
+.filter-select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-main); font-size: 0.95rem; cursor: pointer; }
 
-@keyframes bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-4px); }
-}
+/* 桌面版表格 (Desktop Table) */
+.table-container { overflow-x: auto; max-height: 600px; overflow-y: auto; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: 0.85rem; font-weight: 600; background: var(--bg-card); z-index: 10; white-space: nowrap; }
+.sticky-th { position: sticky; top: 0; } /* 固定表頭 */
+td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
+.row-item { transition: background 0.2s; cursor: pointer; }
+.row-item:hover { background-color: var(--bg-secondary); }
 
-.price-change {
-    font-size: 0.85rem;
-    margin-top: 4px;
-    font-weight: 600;
-}
+.symbol-text { font-weight: 700; color: var(--primary); font-family: 'JetBrains Mono', monospace; }
+.symbol-badge { margin-left: 6px; font-size: 0.8rem; }
+.price-change { font-size: 0.85rem; margin-top: 2px; }
 
-.daily-pnl-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-}
-
+/* 數字格式 */
 .text-right { text-align: right; }
-.text-sub { color: var(--text-sub); font-size: 0.95rem; }
-.font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.text-sub { color: var(--text-sub); }
+.font-num { font-family: 'JetBrains Mono', monospace; }
 .font-bold { font-weight: 700; }
+.text-green { color: var(--success); }
+.text-red { color: var(--danger); }
+.bg-green { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+.bg-red { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
 
-.pnl-value {
-    display: inline-block;
-    transition: all 0.2s ease;
+.roi-badge { padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; display: inline-block; min-width: 68px; text-align: center; }
+
+/* 手機版視圖 (Mobile View) - 預設隱藏 */
+.mobile-view { display: none; }
+
+/* Mobile Card Styling */
+.mobile-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    transition: transform 0.2s;
 }
+.mobile-card:active { transform: scale(0.98); background: var(--bg-secondary); }
 
-.row-item:hover .pnl-value {
-    transform: scale(1.1);
-    font-weight: 700;
-}
+.m-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--border-color); }
+.m-symbol { font-size: 1.2rem; font-weight: 700; color: var(--primary); font-family: 'JetBrains Mono', monospace; }
+.m-price-group { text-align: right; }
+.m-price { display: block; font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; }
+.m-change { font-size: 0.85rem; font-weight: 500; }
 
-.text-green { 
-    color: var(--success);
-    font-weight: 600;
-}
+.m-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.m-grid-item { display: flex; flex-direction: column; }
+.m-label { font-size: 0.75rem; color: var(--text-sub); margin-bottom: 2px; }
+.m-val { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--text-main); }
+.m-badge-sm { font-size: 0.85rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; display: inline-block; }
 
-.text-red { 
-    color: var(--danger);
-    font-weight: 600;
-}
+.m-card-footer { background: var(--bg-secondary); margin: 0 -16px -16px -16px; padding: 10px 16px; border-radius: 0 0 12px 12px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); }
+.m-footer-item { display: flex; align-items: baseline; gap: 6px; }
+.m-footer-item.right { flex-direction: row-reverse; }
+.m-footer-label { font-size: 0.8rem; color: var(--text-sub); }
+.m-footer-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1rem; }
+.m-divider { width: 1px; height: 16px; background: var(--border-color); }
 
-.roi-badge { 
-    display: inline-block; 
-    min-width: 72px; 
-    text-align: center; 
-    padding: 6px 10px; 
-    border-radius: 8px; 
-    font-weight: 600; 
-    font-size: 0.95rem;
-    transition: all 0.2s ease;
-}
+.scroll-hint { text-align: center; padding: 12px; font-size: 0.9rem; color: var(--text-sub); }
+.empty-state { text-align: center; padding: 40px; color: var(--text-sub); }
+.empty-icon { font-size: 2.5rem; margin-bottom: 8px; opacity: 0.5; }
 
-.row-item:hover .roi-badge {
-    transform: scale(1.05);
-}
-
-.roi-badge.bg-green { 
-    background: rgba(16, 185, 129, 0.15); 
-    color: var(--success);
-    border: 1px solid var(--success);
-}
-
-.roi-badge.bg-red { 
-    background: rgba(239, 68, 68, 0.15); 
-    color: var(--danger);
-    border: 1px solid var(--danger);
-}
-
-.empty-state { 
-    text-align: center; 
-    padding: 80px 20px; 
-    color: var(--text-sub);
-}
-
-.empty-icon {
-    font-size: 3rem;
-    margin-bottom: 16px;
-    opacity: 0.5;
-}
-
-.scroll-hint {
-    text-align: center;
-    padding: 12px;
-    font-size: 0.95rem;
-    color: var(--text-sub);
-    background: var(--bg-secondary);
-    border-radius: 0 0 var(--radius) var(--radius);
-    font-family: 'JetBrains Mono', monospace;
-}
-
+/* RWD Media Queries */
 @media (max-width: 768px) {
-    .card-header {
-        flex-direction: column;
-        align-items: stretch;
-    }
+    .desktop-view { display: none; } /* 隱藏桌面表格 */
+    .mobile-view { display: block; } /* 顯示手機卡片 */
     
-    .header-controls {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .search-box,
-    .filter-select {
-        width: 100%;
-    }
-    
-    .table-container {
-        max-height: 400px;
-    }
+    .card-header { flex-direction: column; align-items: stretch; gap: 12px; }
+    .header-left { flex-direction: row; justify-content: space-between; align-items: center; }
+    .summary-info { font-size: 0.85rem; padding: 4px 8px; margin: 0; }
+    .header-controls { flex-direction: column; width: 100%; }
+    .search-box { width: 100%; }
+    .filter-select { width: 100%; }
 }
 </style>
