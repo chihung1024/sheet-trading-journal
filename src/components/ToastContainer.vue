@@ -1,104 +1,236 @@
 <template>
   <div class="toast-container">
-    <TransitionGroup name="toast">
+    <TransitionGroup name="toast-list" tag="div" class="toast-wrapper">
       <div 
         v-for="toast in toasts" 
-        :key="toast.id" 
-        class="toast-item"
-        :class="toast.type"
+        :key="toast.id"
+        class="toast-card"
+        :class="[toast.type, { 'is-paused': hoveredId === toast.id }]"
+        @click="removeToast(toast.id)"
+        @mouseenter="hoveredId = toast.id"
+        @mouseleave="hoveredId = null"
       >
         <div class="toast-icon">
-          <span v-if="toast.type === 'success'">✅</span>
-          <span v-else-if="toast.type === 'error'">❌</span>
-          <span v-else-if="toast.type === 'warning'">⚠️</span>
-          <span v-else>ℹ️</span>
+          <span v-if="toast.type === 'success'">✓</span>
+          <span v-else-if="toast.type === 'error'">✕</span>
+          <span v-else-if="toast.type === 'warning'">!</span>
+          <span v-else>ℹ</span>
         </div>
-        <span class="message">{{ toast.message }}</span>
-        <button class="close-btn" @click="removeToast(toast.id)">×</button>
+
+        <div class="toast-content">
+          <p class="toast-message">{{ toast.message }}</p>
+        </div>
+
+        <button class="btn-close" aria-label="Close">×</button>
+
+        <div class="progress-track" v-if="toast.timeout > 0">
+          <div 
+            class="progress-fill" 
+            :style="{ animationDuration: `${toast.timeout}ms` }"
+          ></div>
+        </div>
       </div>
     </TransitionGroup>
   </div>
 </template>
 
 <script setup>
+import { ref } from 'vue';
 import { useToast } from '../composables/useToast';
 
-// 使用與 App.vue 相同的 composable，因為 state 是全域共用的
+// 取得全域 Toast 狀態
 const { toasts, removeToast } = useToast();
+
+// 用於控制暫停倒數 (雖然 CSS animation-play-state 可以處理，但 JS 狀態可用於擴充邏輯)
+const hoveredId = ref(null);
+
 </script>
 
 <style scoped>
+/* Container Positioning */
 .toast-container {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
   z-index: 9999;
+  pointer-events: none; /* Allow clicks to pass through empty areas */
   display: flex;
   flex-direction: column;
   gap: 12px;
-  pointer-events: none; /* 讓點擊穿透容器 */
+  
+  /* Desktop Position: Bottom Right */
+  bottom: 24px;
+  right: 24px;
+  width: 360px;
+  max-width: 90vw;
 }
 
-.toast-item {
-  pointer-events: auto; /* 恢復卡片的點擊事件 */
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-left-width: 4px;
-  border-radius: 8px;
-  padding: 12px 16px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+.toast-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-end; /* Align cards to right on desktop */
+}
+
+/* Toast Card Base */
+.toast-card {
+  pointer-events: auto; /* Re-enable clicks on cards */
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+  transform-origin: center right;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.toast-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Type Variants */
+.toast-card.success { border-left: 4px solid var(--success); background: linear-gradient(to right, rgba(16, 185, 129, 0.05), var(--bg-card)); }
+.toast-card.success .toast-icon { color: var(--success); background: rgba(16, 185, 129, 0.1); }
+.toast-card.success .progress-fill { background: var(--success); }
+
+.toast-card.error { border-left: 4px solid var(--danger); background: linear-gradient(to right, rgba(239, 68, 68, 0.05), var(--bg-card)); }
+.toast-card.error .toast-icon { color: var(--danger); background: rgba(239, 68, 68, 0.1); }
+.toast-card.error .progress-fill { background: var(--danger); }
+
+.toast-card.warning { border-left: 4px solid var(--warning); background: linear-gradient(to right, rgba(245, 158, 11, 0.05), var(--bg-card)); }
+.toast-card.warning .toast-icon { color: var(--warning); background: rgba(245, 158, 11, 0.1); }
+.toast-card.warning .progress-fill { background: var(--warning); }
+
+.toast-card.info { border-left: 4px solid var(--primary); background: linear-gradient(to right, rgba(59, 130, 246, 0.05), var(--bg-card)); }
+.toast-card.info .toast-icon { color: var(--primary); background: rgba(59, 130, 246, 0.1); }
+.toast-card.info .progress-fill { background: var(--primary); }
+
+/* Icon */
+.toast-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 300px;
-  max-width: 400px;
-  color: var(--text-main, #1f2937);
-  animation: slideIn 0.3s ease-out;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
-/* 類型樣式 */
-.toast-item.success { border-left-color: #10b981; }
-.toast-item.error { border-left-color: #ef4444; }
-.toast-item.warning { border-left-color: #f59e0b; }
-.toast-item.info { border-left-color: #3b82f6; }
+/* Content */
+.toast-content {
+  flex: 1;
+  padding-right: 12px;
+}
 
-.toast-icon { font-size: 1.2rem; }
-.message { font-size: 0.95rem; flex: 1; line-height: 1.4; }
+.toast-message {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-main);
+  line-height: 1.4;
+  font-weight: 500;
+}
 
-.close-btn {
+/* Close Button */
+.btn-close {
   background: transparent;
   border: none;
-  cursor: pointer;
-  font-size: 1.4rem;
-  color: #9ca3af;
+  color: var(--text-sub);
+  font-size: 1.2rem;
   line-height: 1;
-  padding: 0 4px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  margin-top: 2px;
 }
-.close-btn:hover { color: #4b5563; }
+.btn-close:hover { opacity: 1; }
 
-/* Vue Transition 動畫 */
-.toast-enter-active,
-.toast-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+/* Progress Bar */
+.progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: rgba(0,0,0,0.05);
 }
-.toast-enter-from {
+
+.progress-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  animation-name: progress-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* Pause animation on hover */
+.toast-card.is-paused .progress-fill {
+  animation-play-state: paused;
+}
+
+@keyframes progress-shrink {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Transition Animations (Vue TransitionGroup) */
+.toast-list-enter-active,
+.toast-list-leave-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-list-enter-from {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateX(30px) scale(0.9);
 }
-.toast-leave-to {
+
+.toast-list-leave-to {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateX(30px) scale(0.9);
 }
 
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+.toast-list-move {
+  transition: transform 0.4s ease;
 }
 
-/* Dark mode 適配 (若全域有定義變數) */
-:global(.dark-mode) .toast-item {
-  background: #1f2937;
-  border-color: #374151;
-  color: #f3f4f6;
+/* RWD: Mobile Bottom Center */
+@media (max-width: 768px) {
+  .toast-container {
+    right: 16px;
+    left: 16px;
+    bottom: 24px; /* Above bottom nav if any */
+    width: auto;
+    max-width: none;
+    align-items: center;
+  }
+  
+  .toast-wrapper {
+    align-items: center;
+    width: 100%;
+  }
+  
+  .toast-card {
+    width: 100%;
+    max-width: 400px; /* Prevent overly wide toasts on tablets */
+    transform-origin: center bottom;
+  }
+  
+  /* Adjust animation for mobile (slide up) */
+  .toast-list-enter-from,
+  .toast-list-leave-to {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
 }
 </style>
