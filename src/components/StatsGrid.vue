@@ -3,7 +3,7 @@
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">總資產淨值</span>
-        <span class="icon-box">💰</span>
+        <span class="icon-box net-worth">💰</span>
       </div>
       <div class="stat-main">
         <div class="stat-value big">{{ displayTotalValue }}</div>
@@ -20,7 +20,7 @@
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">未實現損益</span>
-        <span class="icon-box">📈</span>
+        <span class="icon-box unrealized">📈</span>
       </div>
       <div class="stat-main">
         <div class="stat-value" :class="unrealizedPnL >= 0 ? 'text-green' : 'text-red'">
@@ -37,7 +37,7 @@
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">已實現損益</span>
-        <span class="icon-box">💵</span>
+        <span class="icon-box realized">💵</span>
       </div>
       <div class="stat-main">
         <div class="stat-value" :class="realizedPnL >= 0 ? 'text-green' : 'text-red'">
@@ -52,7 +52,7 @@
     <div class="stat-block" :title="pnlTooltip">
       <div class="stat-top">
         <span class="stat-label">{{ pnlLabel }}</span>
-        <span class="icon-box">⚡</span>
+        <span class="icon-box daily">⚡</span>
       </div>
       <div class="stat-main column-layout">
         <div class="stat-value" :class="dailyPnL >= 0 ? 'text-green' : 'text-red'">
@@ -70,7 +70,7 @@
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">時間加權報酬</span>
-        <span class="icon-box">🎯</span>
+        <span class="icon-box twr">🎯</span>
       </div>
       <div class="stat-main">
         <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
@@ -83,7 +83,7 @@
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
-        <span class="icon-box">🚀</span>
+        <span class="icon-box xirr">🚀</span>
       </div>
       <div class="stat-main">
         <div class="stat-value" :class="(stats.xirr || 0) >= 0 ? 'text-green' : 'text-red'">
@@ -103,29 +103,20 @@ import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
 
-// ✅ 直接從 store 獲取數據，不再重複計算
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 
-// ✅ 總損益：從後端獲取
 const totalPnL = computed(() => stats.value.total_pnl || 0);
-
-// ✅ 已實現損益：從後端獲取
 const realizedPnL = computed(() => stats.value.realized_pnl || 0);
-
-// ✅ 未實現損益 = 總損益 - 已實現損益
 const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
 
-// ✅ ROI 計算
 const roi = computed(() => {
   if (!stats.value.invested_capital) return '0.00';
   return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
 });
 
-// ✅ 當日損益：統一使用 store.dailyPnL
 const dailyPnL = computed(() => store.dailyPnL || 0);
 
-// ✅ 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
 const isUSMarketOpen = computed(() => {
   const now = new Date();
   const hour = now.getHours();
@@ -138,12 +129,10 @@ const isUSMarketOpen = computed(() => {
   return false;
 });
 
-// 動態標題
 const pnlLabel = computed(() => {
   return isUSMarketOpen.value ? '美股盤中損益' : '當日損益';
 });
 
-// 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
     return '盤中損益(含交易+即時價格)';
@@ -152,7 +141,6 @@ const pnlDescription = computed(() => {
   }
 });
 
-// Tooltip 完整說明
 const pnlTooltip = computed(() => {
   if (isUSMarketOpen.value) {
     return '美股盤中:今日市值 - 昨日市值 - 今日現金流';
@@ -161,19 +149,13 @@ const pnlTooltip = computed(() => {
   }
 });
 
-// ✅ 計算今日損益百分比
 const dailyRoi = computed(() => {
   let baseValue = 0;
-  
-  if (!history.value || history.value.length < 2) {
-    return '0.00';
-  }
+  if (!history.value || history.value.length < 2) return '0.00';
   
   if (isUSMarketOpen.value) {
-    // 使用昨日收盤
     baseValue = history.value[history.value.length - 2].total_value || 0;
   } else {
-    // 使用前日收盤
     if (history.value.length >= 3) {
       baseValue = history.value[history.value.length - 3].total_value || 0;
     } else {
@@ -185,7 +167,6 @@ const dailyRoi = computed(() => {
   return ((dailyPnL.value / baseValue) * 100).toFixed(2);
 });
 
-// 數字動畫
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -207,34 +188,35 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
+    gap: 24px;
 }
 
 .stat-block {
     background: var(--bg-card);
-    padding: 18px 20px;
+    padding: 20px;
     border-radius: var(--radius);
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 120px;
-    transition: all 0.2s ease;
+    min-height: 140px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
 }
 
 .stat-block:hover { 
-    transform: translateY(-2px); 
+    transform: translateY(-4px); 
     box-shadow: var(--shadow-lg); 
+    border-color: var(--primary);
 }
 
 .stat-top { 
     display: flex; 
     justify-content: space-between; 
     align-items: center; 
-    margin-bottom: 10px; 
+    margin-bottom: 12px; 
 }
 
 .stat-label { 
@@ -246,72 +228,61 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 }
 
 .icon-box { 
-    width: 36px; 
-    height: 36px; 
-    border-radius: 10px; 
+    width: 40px; 
+    height: 40px; 
+    border-radius: 12px; 
     background: var(--bg-secondary);
     display: flex; 
     align-items: center; 
     justify-content: center; 
-    font-size: 1.2rem;
-    transition: transform 0.2s ease;
+    font-size: 1.25rem;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.stat-block:hover .icon-box {
-    transform: scale(1.1);
-}
+.stat-block:hover .icon-box { transform: scale(1.15) rotate(5deg); }
+
+/* Icon specific bg colors for better visuals */
+.icon-box.net-worth { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.icon-box.unrealized { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.icon-box.realized { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.icon-box.daily { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
 
 .stat-main { 
     display: flex; 
     align-items: baseline; 
     gap: 6px; 
-    margin-bottom: 10px; 
+    margin-bottom: 16px; 
     flex-grow: 1;
 }
 
 .stat-main.column-layout {
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
+    gap: 4px;
 }
 
 .stat-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.8rem;
+    font-size: 1.75rem;
     font-weight: 700;
     color: var(--text-main);
     line-height: 1.1;
     letter-spacing: -0.03em;
 }
 
-.stat-value.big {
-    font-size: 2rem;
-}
+.stat-value.big { font-size: 2rem; }
 
 .stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.05rem;
+    font-size: 1rem;
     font-weight: 600;
     opacity: 0.9;
-    margin-top: 2px;
 }
 
-.stat-sub-text {
-    font-size: 0.8rem;
-    color: var(--text-sub);
-    font-weight: 500;
-    margin-top: 2px;
-    opacity: 0.9;
-}
-
-.unit-text, .percent { 
-    font-size: 0.95rem; 
-    color: var(--text-sub); 
-    font-weight: 500; 
-}
+.unit-text, .percent { font-size: 0.9rem; color: var(--text-sub); font-weight: 500; margin-left: 4px; }
 
 .stat-footer {
-    padding-top: 10px;
+    padding-top: 12px;
     border-top: 1px solid var(--border-color);
     font-size: 0.85rem;
     display: flex; 
@@ -319,21 +290,9 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
     justify-content: space-between;
 }
 
-.footer-item { 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-}
-
-.f-label {
-    color: var(--text-sub);
-}
-
-.f-val { 
-    font-weight: 600; 
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--text-main);
-}
+.footer-item { display: flex; align-items: center; gap: 6px; }
+.f-label { color: var(--text-sub); }
+.f-val { font-weight: 600; font-family: 'JetBrains Mono', monospace; color: var(--text-main); }
 
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
@@ -341,61 +300,25 @@ const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 .text-xs { font-size: 0.8rem; }
 
 .badge { 
-    padding: 3px 10px; 
-    border-radius: 16px; 
+    padding: 2px 8px; 
+    border-radius: 6px; 
     font-weight: 600; 
     font-size: 0.8rem; 
     display: inline-flex; 
     align-items: center; 
 }
 
-.badge-green { 
-    background: rgba(16, 185, 129, 0.1); 
-    color: var(--success);
-    border: 1px solid var(--success);
+.badge-green { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+.badge-red { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+
+@media (max-width: 1024px) { 
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; } 
 }
 
-.badge-red { 
-    background: rgba(239, 68, 68, 0.1); 
-    color: var(--danger);
-    border: 1px solid var(--danger);
-}
-
-@media (max-width: 1200px) { 
-    .stats-grid { 
-        grid-template-columns: repeat(2, 1fr);
-    } 
-}
-
-@media (max-width: 768px) { 
-    .stats-grid { 
-        grid-template-columns: 1fr;
-        gap: 14px;
-    }
-    
-    .stat-block {
-        min-height: 110px;
-        padding: 16px 18px;
-    }
-    
-    .stat-value {
-        font-size: 1.6rem;
-    }
-    
-    .stat-value.big {
-        font-size: 1.8rem;
-    }
-}
-
-@media (max-width: 480px) {
-    .icon-box {
-        width: 32px;
-        height: 32px;
-        font-size: 1.1rem;
-    }
-    
-    .stat-label {
-        font-size: 0.8rem;
-    }
+@media (max-width: 640px) { 
+    .stats-grid { grid-template-columns: 1fr; gap: 16px; }
+    .stat-block { padding: 16px; min-height: 120px; }
+    .stat-value { font-size: 1.6rem; }
+    .stat-value.big { font-size: 1.8rem; }
 }
 </style>
