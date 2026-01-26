@@ -238,7 +238,7 @@ const handleTriggerUpdate = async () => {
   try {
     addToast("🚀 正在請求 GitHub Actions...", "info");
     await portfolioStore.triggerUpdate();
-    addToast("✅ 已觸發！系統將在背景監控，更新完成後自動刷新。", "success");
+    addToast("✅ 已觸發！系統將在背景監控,更新完成後自動刷新。", "success");
   } catch (error) {
     addToast(`❌ 觸發失敗: ${error.message}`, "error");
   }
@@ -416,31 +416,252 @@ tr:hover td { background-color: var(--bg-secondary); transition: background 0.15
 .toast-slide-enter-from { transform: translateX(100%); opacity: 0; }
 .toast-slide-leave-to { transform: translateX(100%); opacity: 0; }
 
+/* ===== 桌面端保持原樣 ===== */
+
+/* ===== 手機端優化 (參考 portfolio-journal 設計精華) ===== */
 @media (max-width: 1024px) {
-  .content-container { grid-template-columns: 1fr; padding: 20px; gap: 20px; }
+  /* 📱 主佈局改為單列 */
+  .content-container { 
+    grid-template-columns: 1fr; 
+    padding: 16px; /* 更緊湊的外邊距 */
+    gap: 16px; /* 縮小卡片間距 */
+  }
+  
+  /* 📱 側邊欄移至上方 */
   .side-column { order: -1; }
-  .section-charts { display: block; }
-  .sticky-panel { position: static; }
+  
+  /* 📱 取消黏性定位 */
+  .sticky-panel { 
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+  
+  /* 📱 卡片間距優化 */
+  .main-column { gap: 16px; }
+  
+  /* 📱 隱藏桌面專用元素 */
   .desktop-only { display: none; }
+  
+  /* 📱 卡片內邊距優化 */
+  .card { 
+    padding: 16px; 
+    border-radius: var(--radius-md); /* 稍小的圓角 */
+  }
+  
+  /* 📱 圖表高度適配 */
+  .chart-wrapper.chart-full { 
+    height: 380px; /* 適中的圖表高度 */
+  }
 }
+
 @media (max-width: 768px) {
-  .top-nav { padding: 0 16px; height: 56px; }
-  .nav-brand h1 { font-size: 1.1rem; }
-  .logo-icon { font-size: 1.3rem; }
-  .status-indicator { font-size: 0.8rem; }
-  .content-container { padding: 16px; }
-  .chart-wrapper.chart-full { height: 350px; }
-  .toast-container { bottom: 16px; right: 16px; left: 16px; }
-  .toast { min-width: auto; }
-  .group-selector { margin: 0 10px; padding: 4px 8px; }
-  .selector-label { font-size: 0.75rem; }
-  .select-wrapper select { font-size: 0.85rem; }
+  /* 📱 導航欄優化 */
+  .top-nav { 
+    padding: 0 12px; 
+    height: 60px; /* 稍高的導航欄，更易點擊 */
+    flex-wrap: wrap; /* 允許換行 */
+  }
+  
+  /* 📱 Logo 尺寸 */
+  .nav-brand h1 { font-size: 1.15rem; }
+  .logo-icon { font-size: 1.4rem; }
+  .badge { font-size: 0.65rem; padding: 1px 6px; }
+  
+  /* 📱 群組選擇器優化 */
+  .group-selector { 
+    margin: 0 8px; 
+    padding: 6px 10px;
+    flex: 1 1 auto; /* 允許彈性伸縮 */
+    min-width: 0; /* 防止溢出 */
+  }
+  .selector-label { 
+    font-size: 0.75rem;
+    display: none; /* 手機端隱藏標籤,節省空間 */
+  }
+  .select-wrapper select { 
+    font-size: 0.85rem;
+    max-width: 150px; /* 限制最大寬度 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .btn-edit-group { 
+    padding: 4px 8px;
+    min-width: 32px; /* 確保觸控區域足夠大 */
+    min-height: 32px;
+  }
+  
+  /* 📱 狀態指示器優化 */
+  .nav-status { 
+    gap: 12px; 
+    font-size: 0.85rem;
+    flex-wrap: wrap; /* 允許換行 */
+  }
+  .status-indicator { 
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  
+  /* 📱 按鈕觸控優化 */
+  .action-trigger-btn { 
+    padding: 10px 12px; /* 更大的觸控區域 */
+    font-size: 0.9rem;
+    min-height: 44px; /* iOS 建議的最小觸控高度 */
+  }
+  .theme-toggle { 
+    width: 44px; 
+    height: 44px; 
+    font-size: 1.1rem;
+  }
+  
+  /* 📱 頭像優化 */
+  .avatar, .avatar-img { 
+    width: 40px; 
+    height: 40px;
+  }
+  
+  /* 📱 內容區域優化 */
+  .content-container { 
+    padding: 12px; 
+    gap: 12px;
+  }
+  
+  /* 📱 卡片更緊湊 */
+  .card { 
+    padding: 14px; 
+    border-radius: var(--radius-sm);
+  }
+  .card h3 { 
+    font-size: 1rem; 
+    margin-bottom: 14px;
+  }
+  
+  /* 📱 圖表高度縮小 */
+  .chart-wrapper.chart-full { height: 320px; }
+  
+  /* 📱 表格字體縮小 */
+  th { 
+    font-size: 0.75rem; 
+    padding: 10px 12px;
+  }
+  td { 
+    padding: 12px; 
+    font-size: 0.9rem;
+  }
+  
+  /* 📱 Toast 通知優化 */
+  .toast-container { 
+    bottom: 16px; 
+    right: 12px; 
+    left: 12px; /* 左右都留邊距 */
+    max-width: calc(100% - 24px);
+  }
+  .toast { 
+    min-width: auto; 
+    width: 100%; /* 全寬 */
+    padding: 14px 16px;
+  }
+  .toast-msg { font-size: 0.9rem; }
+  
+  /* 📱 Modal 優化 */
+  .modal-card { 
+    width: calc(100% - 32px); 
+    max-width: none;
+    padding: 20px;
+  }
+  .modal-desc { font-size: 0.85rem; }
+  .group-item input { 
+    padding: 10px; 
+    font-size: 0.95rem;
+  }
+  .btn-sm { 
+    padding: 10px 14px; 
+    font-size: 0.9rem;
+    min-width: 60px; /* 確保按鈕足夠大 */
+  }
 }
+
 @media (max-width: 480px) {
-  .nav-status { gap: 12px; }
-  .status-indicator:not(.loading):not(.ready) { display: none; }
-  .theme-toggle { width: 36px; height: 36px; font-size: 1rem; }
-  .chart-wrapper.chart-full { height: 300px; }
-  .group-selector { display: none; }
+  /* 📱 極小屏幕優化 */
+  .nav-brand h1 { font-size: 1rem; }
+  .badge { display: none; } /* 隱藏 PRO 標籤節省空間 */
+  
+  /* 📱 隱藏次要狀態指示器 */
+  .status-indicator:not(.loading):not(.polling) { display: none; }
+  
+  /* 📱 按鈕文字簡化 */
+  .action-trigger-btn span:last-child { 
+    display: none; /* 只顯示圖標 */
+  }
+  .action-trigger-btn { 
+    padding: 10px; 
+    min-width: 44px;
+  }
+  
+  /* 📱 群組選擇器調整 */
+  .group-selector { 
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    padding: 12px;
+    background: var(--bg-card);
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+    z-index: 50;
+    justify-content: center;
+  }
+  .select-wrapper { gap: 12px; }
+  .select-wrapper select { 
+    font-size: 0.95rem;
+    max-width: none;
+  }
+  
+  /* 📱 內容下方留出空間給固定選擇器 */
+  .main-wrapper { padding-bottom: 70px; }
+  
+  /* 📱 圖表進一步縮小 */
+  .chart-wrapper.chart-full { height: 280px; }
+  
+  /* 📱 Toast 更緊湊 */
+  .toast { padding: 12px 14px; }
+  .toast-icon { 
+    width: 20px; 
+    height: 20px;
+    font-size: 0.8rem;
+  }
+  .toast-msg { font-size: 0.85rem; }
+}
+
+/* ===== 觸控優化 (所有手機設備) ===== */
+@media (hover: none) and (pointer: coarse) {
+  /* 確保所有可點擊元素有足夠的觸控區域 */
+  button, a, .clickable { 
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* 增加表格行的觸控區域 */
+  tr { cursor: pointer; }
+  td { padding: 16px 12px; }
+  
+  /* 移除 hover 效果（觸控設備不需要） */
+  .card:hover,
+  .btn:hover,
+  .theme-toggle:hover,
+  .user-profile:hover {
+    transform: none;
+  }
+  
+  /* 添加 active 狀態以提供觸控反饋 */
+  button:active,
+  .btn:active {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
 }
 </style>
