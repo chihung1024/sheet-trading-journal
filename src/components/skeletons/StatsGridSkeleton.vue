@@ -1,117 +1,149 @@
 <template>
-  <div class="stats-grid">
-    <div v-for="i in 4" :key="i" class="stat-block skeleton-card">
-      <div class="stat-top">
-        <div class="skeleton skeleton-text skeleton-label"></div>
-        <div class="skeleton skeleton-icon"></div>
+  <div class="skeleton-grid">
+    <div 
+      v-for="(i, index) in 6" 
+      :key="i" 
+      class="s-card" 
+      :class="{ 'span-two-mobile': index === 0 }"
+    >
+      <div class="s-top">
+        <div class="s-block s-label"></div>
+        <div class="s-block s-icon"></div>
       </div>
-      <div class="stat-main">
-        <div class="skeleton skeleton-text skeleton-value"></div>
+
+      <div class="s-main">
+        <div class="s-block s-value" :class="{ 's-value-lg': index === 0 }"></div>
+        <div class="s-block s-unit" v-if="index === 0"></div>
       </div>
-      <div class="stat-footer">
-        <div class="skeleton skeleton-text skeleton-footer-text"></div>
+
+      <div class="s-footer">
+        <div class="s-block s-sub"></div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.stats-grid {
+/* Grid 佈局 - 必須與 StatsGrid.vue 完全一致 */
+.skeleton-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 24px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    width: 100%;
 }
 
-.stat-block {
+/* 卡片容器樣式 */
+.s-card {
     background: var(--bg-card);
-    padding: 24px;
-    border-radius: var(--radius);
+    padding: 20px;
+    border-radius: 16px; /* 對應 var(--radius) */
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-card);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 150px;
+    min-height: 120px;
+    box-sizing: border-box;
 }
 
-.stat-top {
+/* 內部元素佈局 */
+.s-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 12px;
 }
 
-.stat-main {
+.s-main {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
     margin-bottom: 12px;
     flex-grow: 1;
 }
 
-.stat-footer {
+.s-footer {
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
 }
 
-.skeleton {
+/* 骨架元素尺寸 */
+.s-block {
+    border-radius: 6px;
+    /* 流光動畫基底 */
+    background: #e2e8f0;
     background: linear-gradient(
         90deg,
-        var(--bg-secondary) 25%,
-        var(--border-color) 50%,
-        var(--bg-secondary) 75%
+        var(--skeleton-bg) 25%,
+        var(--skeleton-highlight) 37%,
+        var(--skeleton-bg) 63%
     );
-    background-size: 200% 100%;
-    animation: skeleton-loading 1.5s ease-in-out infinite;
-    border-radius: 8px;
+    background-size: 400% 100%;
+    animation: shimmer 1.5s ease infinite;
 }
 
-@keyframes skeleton-loading {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
+.s-label { width: 80px; height: 14px; }
+.s-icon { width: 38px; height: 38px; border-radius: 10px; }
+
+.s-value { width: 60%; height: 28px; border-radius: 4px; }
+.s-value-lg { width: 70%; height: 36px; } /* 總資產數字較大 */
+.s-unit { width: 30px; height: 14px; }
+
+.s-sub { width: 40%; height: 12px; }
+
+/* 動畫定義 */
+@keyframes shimmer {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
 }
 
-.skeleton-text {
-    height: 16px;
+/* 顏色變數適配 */
+:root {
+    --skeleton-bg: #f1f5f9;
+    --skeleton-highlight: #e2e8f0;
 }
 
-.skeleton-label {
-    width: 80px;
+:global(.dark) .s-card {
+    background: var(--bg-card);
+    border-color: var(--border-color);
 }
 
-.skeleton-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
+:global(.dark) .s-block {
+    --skeleton-bg: #1e293b;
+    --skeleton-highlight: #334155;
 }
 
-.skeleton-value {
-    height: 32px;
-    width: 140px;
-}
-
-.skeleton-footer-text {
-    width: 100px;
-    height: 14px;
-}
-
-/* 響應式 */
-@media (max-width: 1400px) {
-    .stats-grid {
+/* RWD: Tablet (< 1024px) */
+@media (max-width: 1024px) {
+    .skeleton-grid {
         grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 768px) {
-    .stats-grid {
-        grid-template-columns: 1fr;
         gap: 16px;
     }
-    
-    .stat-block {
-        min-height: 130px;
-        padding: 20px;
+}
+
+/* RWD: Mobile (< 768px) */
+@media (max-width: 768px) {
+    .skeleton-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
     }
+
+    .s-card {
+        padding: 14px;
+        min-height: 100px;
+    }
+
+    /* 關鍵：總資產卡片橫跨兩欄，防止 CLS */
+    .span-two-mobile {
+        grid-column: span 2;
+    }
+
+    /* 手機版尺寸微調 */
+    .s-icon { width: 30px; height: 30px; border-radius: 8px; }
+    .s-value { height: 24px; }
+    .s-value-lg { height: 30px; }
+    .s-label { width: 60px; }
 }
 </style>
