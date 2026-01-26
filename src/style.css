@@ -1,0 +1,197 @@
+/* =========================================
+   1. Design Tokens (CSS Variables)
+   ========================================= */
+
+:root {
+  /* --- Light Mode (Default) --- */
+  
+  /* 品牌色系 */
+  --primary: #3b82f6;       /* Blue 500 */
+  --primary-dark: #2563eb;  /* Blue 600 */
+  --success: #10b981;       /* Emerald 500 */
+  --warning: #f59e0b;       /* Amber 500 */
+  --danger: #ef4444;        /* Red 500 */
+  
+  /* 為了 rgba() 使用的 RGB 值 */
+  --primary-rgb: 59, 130, 246;
+  
+  /* 背景色系 */
+  --bg-app: #f1f5f9;        /* Slate 100 - 整體背景偏灰白，減少刺眼 */
+  --bg-card: #ffffff;       /* 純白卡片 */
+  --bg-secondary: #f8fafc;  /* Slate 50 - 用於表頭或次要區塊 */
+  
+  /* 文字色系 */
+  --text-main: #0f172a;     /* Slate 900 - 深黑藍 */
+  --text-sub: #64748b;      /* Slate 500 - 次要灰 */
+  --text-inverse: #ffffff;
+  
+  /* 邊框與裝飾 */
+  --border-color: #e2e8f0;  /* Slate 200 */
+  --radius: 16px;           /* 卡片圓角 */
+  --radius-sm: 8px;         /* 按鈕/輸入框圓角 */
+  
+  /* 陰影系統 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  
+  /* 骨架屏顏色 */
+  --skeleton-bg: #f1f5f9;
+  --skeleton-highlight: #e2e8f0;
+}
+
+/* --- Dark Mode (Overrides) --- */
+html.dark {
+  /* 品牌色系 (微調為更適合深色的亮度) */
+  --primary: #60a5fa;       /* Blue 400 */
+  --primary-dark: #3b82f6;  /* Blue 500 */
+  --success: #34d399;       /* Emerald 400 */
+  --warning: #fbbf24;       /* Amber 400 */
+  --danger: #f87171;        /* Red 400 */
+  
+  --primary-rgb: 96, 165, 250;
+  
+  /* 背景色系 */
+  --bg-app: #0f172a;        /* Slate 900 - 深邃藍黑 */
+  --bg-card: #1e293b;       /* Slate 800 - 卡片背景 */
+  --bg-secondary: #334155;  /* Slate 700 - 次要區塊 */
+  
+  /* 文字色系 */
+  --text-main: #f1f5f9;     /* Slate 100 */
+  --text-sub: #94a3b8;      /* Slate 400 */
+  
+  /* 邊框與裝飾 */
+  --border-color: #334155;  /* Slate 700 */
+  
+  /* 陰影系統 (深色模式陰影需加重) */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+
+  /* 骨架屏顏色 */
+  --skeleton-bg: #1e293b;
+  --skeleton-highlight: #334155;
+}
+
+/* =========================================
+   2. Base Styles (基礎設定)
+   ========================================= */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  line-height: 1.6;
+  font-size: 16px;
+  
+  /* 平滑字體渲染 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* 背景色切換時的過渡動畫 */
+  transition: background-color 0.3s ease, color 0.3s ease;
+  
+  /* 移除手機版點擊高亮 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 數據字體 (表格、金額、圖表) */
+code, pre, .font-num {
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, 'Courier New', monospace;
+}
+
+/* =========================================
+   3. Custom Scrollbar (自訂捲軸)
+   ========================================= */
+
+/* Webkit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* Slate 300 */
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; /* Slate 400 */
+}
+
+/* Dark Mode Scrollbar */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569; /* Slate 600 */
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b; /* Slate 500 */
+}
+
+/* =========================================
+   4. Global Utilities (全域工具類)
+   ========================================= */
+
+/* 隱藏元素但保留空間 (Visually Hidden) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* 文字截斷 (Ellipsis) */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 玻璃質感背景 (Glassmorphism) */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+html.dark .glass {
+  background: rgba(30, 41, 59, 0.7);
+}
+
+/* 強制文字顏色 (用於狀態) */
+.text-green { color: var(--success); }
+.text-red { color: var(--danger); }
+.text-blue { color: var(--primary); }
+.text-orange { color: var(--warning); }
+
+/* RWD 輔助類 */
+@media (max-width: 768px) {
+  .hidden-mobile {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .hidden-desktop {
+    display: none !important;
+  }
+}
