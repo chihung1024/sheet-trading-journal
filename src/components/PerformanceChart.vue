@@ -213,6 +213,8 @@ const chartOptions = computed(() => {
           borderDash: [4, 4],
           drawBorder: false
         },
+        // [修正] 加入 grace 設定，上下各預留 10% 空間，避免線條頂到邊界
+        grace: '10%',
         ticks: {
           color: textColor,
           font: { family: 'JetBrains Mono', size: 11 },
