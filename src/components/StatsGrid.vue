@@ -1,457 +1,371 @@
 <template>
-  <div class="stats-grid">
-    <div class="stat-block primary-block">
-      <div class="stat-top">
-        <span class="stat-label">總資產淨值</span>
-        <span class="icon-box highlight">💰</span>
+  <div class="card dividend-manager">
+    <div class="card-header">
+      <div class="header-content">
+        <h3>待確認配息</h3>
+        <span class="badge-count" v-if="localDividends.length > 0">{{ localDividends.length }} 筆</span>
       </div>
-      <div class="stat-main">
-        <div class="stat-value big">{{ displayTotalValue }}</div>
-        <div class="unit-text">TWD</div>
-      </div>
-      <div class="stat-footer">
-        <div class="footer-item">
-            <span class="f-label">投入成本</span> 
-            <span class="f-val">{{ formatNumber(stats.invested_capital) }}</span>
-        </div>
+      <div class="header-actions">
+        <button class="btn-refresh" @click="fetchDividends" :disabled="loading" title="重新檢查配息">
+          <span :class="{ 'spinning': loading }">↻</span>
+        </button>
       </div>
     </div>
-    
-    <div class="stat-block" :class="getPnlBgClass(unrealizedPnL)">
-      <div class="stat-top">
-        <span class="stat-label">未實現損益</span>
-        <span class="icon-box">📈</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(unrealizedPnL)">
-          {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
-            ROI: {{ roi }}%
-        </span>
-      </div>
-    </div>
-    
-    <div class="stat-block" :class="getPnlBgClass(realizedPnL)">
-      <div class="stat-top">
-        <span class="stat-label">已實現損益</span>
-        <span class="icon-box">💵</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(realizedPnL)">
-          {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs footer-desc">賣出收益 + 配息</span>
-      </div>
-    </div>
-    
-    <div class="stat-block" :class="getPnlBgClass(dailyPnL)" :title="pnlTooltip">
-      <div class="stat-top">
-        <span class="stat-label">{{ pnlLabel }}</span>
-        <span class="icon-box" :class="{ 'pulse-icon': isUSMarketOpen }">⚡</span>
-      </div>
-      <div class="stat-main column-layout">
-        <div class="stat-value" :class="getPnlTextClass(dailyPnL)">
-          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
-        </div>
-        <div class="stat-sub-value" :class="getPnlTextClass(dailyPnL)">
-          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs footer-desc">{{ pnlDescription }}</span>
-      </div>
-    </div>
-    
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">時間加權報酬</span>
-        <span class="icon-box">🎯</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub text-xs">TWR (策略表現)</span>
+
+    <div class="table-container desktop-view">
+      <table v-if="localDividends.length > 0">
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>代碼</th>
+            <th class="text-right" width="140">實發總額 (USD)</th>
+            <th class="text-right" width="120">稅金</th>
+            <th class="text-right">淨額</th>
+            <th class="text-right" width="140">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="div in localDividends" :key="div.id" class="div-row">
+            <td class="date-cell">{{ formatDate(div.date) }}</td>
+            <td><span class="symbol-badge">{{ div.symbol }}</span></td>
+            
+            <td class="text-right">
+                <input 
+                  type="number" 
+                  v-model.number="div.amount" 
+                  class="inline-input font-num" 
+                  step="0.01"
+                  placeholder="0.00"
+                >
+            </td>
+            <td class="text-right">
+                <input 
+                  type="number" 
+                  v-model.number="div.tax" 
+                  class="inline-input font-num text-sub" 
+                  step="0.01"
+                  placeholder="0.00"
+                >
+            </td>
+            
+            <td class="text-right font-num font-bold text-success">
+                {{ formatNumber((div.amount || 0) - (div.tax || 0), 2) }}
+            </td>
+            <td class="actions-cell">
+              <button class="btn-confirm" @click="confirmDividend(div)" :disabled="processingId === div.id">
+                {{ processingId === div.id ? '...' : '確認' }}
+              </button>
+              <button class="btn-delete" @click="deleteDividend(div.id)" :disabled="processingId === div.id">
+                ✕
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <div v-else class="empty-state">
+        <div class="empty-icon">🎉</div>
+        <p>目前沒有待確認的配息紀錄</p>
       </div>
     </div>
-    
-    <div class="stat-block" :class="getPnlBgClass(stats.xirr)">
-      <div class="stat-top">
-        <span class="stat-label">個人年化報酬</span>
-        <span class="icon-box">🚀</span>
+
+    <div class="mobile-view">
+      <div v-if="localDividends.length === 0" class="empty-state">
+        <div class="empty-icon">🎉</div>
+        <p>目前沒有待確認的配息</p>
       </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(stats.xirr)">
-          {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
+
+      <div v-else class="mobile-cards">
+        <div v-for="div in localDividends" :key="'mob_'+div.id" class="div-card">
+          <div class="card-top">
+            <div class="card-date">{{ formatDate(div.date) }}</div>
+            <div class="symbol-badge">{{ div.symbol }}</div>
+          </div>
+          
+          <div class="card-main">
+            <div class="edit-row">
+                <label>總額 (USD)</label>
+                <input 
+                  type="number" 
+                  v-model.number="div.amount" 
+                  class="mobile-input font-num"
+                  step="0.01"
+                  placeholder="輸入總額"
+                >
+            </div>
+            <div class="edit-row">
+                <label>稅金 (USD)</label>
+                <input 
+                  type="number" 
+                  v-model.number="div.tax" 
+                  class="mobile-input font-num"
+                  step="0.01"
+                  placeholder="輸入稅金"
+                >
+            </div>
+            
+            <div class="amount-row">
+              <span class="label">淨額試算</span>
+              <span class="value text-success font-num">
+                ${{ formatNumber((div.amount || 0) - (div.tax || 0), 2) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <button class="btn-card-delete" @click="deleteDividend(div.id)" :disabled="processingId === div.id">
+              刪除
+            </button>
+            <button class="btn-card-confirm" @click="confirmDividend(div)" :disabled="processingId === div.id">
+              {{ processingId === div.id ? '處理中...' : '確認入帳' }}
+            </button>
+          </div>
         </div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub text-xs">XIRR (資金加權)</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import { useToast } from '../composables/useToast';
+import { CONFIG } from '../config';
 
 const store = usePortfolioStore();
+const { addToast } = useToast();
 
-// ✅ 直接從 store 獲取數據，不再重複計算
-const stats = computed(() => store.stats || {});
-const history = computed(() => store.history || []);
+const loading = ref(false);
+const processingId = ref(null);
+const localDividends = ref([]);
 
-// ✅ 總損益：從後端獲取
-const totalPnL = computed(() => stats.value.total_pnl || 0);
-
-// ✅ 已實現損益：從後端獲取
-const realizedPnL = computed(() => stats.value.realized_pnl || 0);
-
-// ✅ 未實現損益 = 總損益 - 已實現損益
-const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
-
-// ✅ ROI 計算
-const roi = computed(() => {
-  if (!stats.value.invested_capital) return '0.00';
-  return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
-});
-
-// ✅ 當日損益：統一使用 store.dailyPnL
-const dailyPnL = computed(() => store.dailyPnL || 0);
-
-// ✅ 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
-const isUSMarketOpen = computed(() => {
-  const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  
-  if (hour >= 21 || hour < 5) {
-    if (hour === 21 && minute < 30) return false;
-    return true;
-  }
-  return false;
-});
-
-// 動態標題
-const pnlLabel = computed(() => {
-  return isUSMarketOpen.value ? '美股盤中損益' : '當日損益';
-});
-
-// 動態說明
-const pnlDescription = computed(() => {
-  if (isUSMarketOpen.value) {
-    return '盤中損益(含交易+即時價格)';
-  } else {
-    return '昨晚美股交易損益+今日匯率';
-  }
-});
-
-// Tooltip 完整說明
-const pnlTooltip = computed(() => {
-  if (isUSMarketOpen.value) {
-    return '美股盤中:今日市值 - 昨日市值 - 今日現金流';
-  } else {
-    return '美股收盤:今日市值 - 前日市值 - 昨晚現金流';
-  }
-});
-
-// ✅ 計算今日損益百分比
-const dailyRoi = computed(() => {
-  let baseValue = 0;
-  
-  if (!history.value || history.value.length < 2) {
-    return '0.00';
-  }
-  
-  if (isUSMarketOpen.value) {
-    // 使用昨日收盤
-    baseValue = history.value[history.value.length - 2].total_value || 0;
-  } else {
-    // 使用前日收盤
-    if (history.value.length >= 3) {
-      baseValue = history.value[history.value.length - 3].total_value || 0;
+watch(() => store.pending_dividends, (newVal) => {
+    if (newVal && newVal.length > 0) {
+        localDividends.value = newVal.map(d => {
+            const gross = Number(d.total_gross) || 0;
+            const net = Number(d.total_net_usd) || 0;
+            const calculatedTax = parseFloat((gross - net).toFixed(2));
+            
+            return {
+                ...d,
+                amount: d.amount !== undefined ? d.amount : gross,
+                tax: d.tax !== undefined ? d.tax : calculatedTax
+            };
+        });
     } else {
-      baseValue = history.value[history.value.length - 2].total_value || 0;
+        localDividends.value = [];
     }
+}, { immediate: true, deep: true });
+
+const fetchDividends = async () => {
+  loading.value = true;
+  try {
+    await store.fetchAll(); 
+    addToast('已刷新配息資訊', 'success');
+  } catch (e) {
+    addToast('刷新失敗', 'error');
+  } finally {
+    loading.value = false;
   }
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' });
+};
+
+const formatNumber = (val, d=2) => {
+  return Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+};
+
+const confirmDividend = async (div) => {
+  const finalAmount = Number(div.amount) || 0;
+  const finalTax = Number(div.tax) || 0;
+  const netAmount = finalAmount - finalTax;
   
-  if (!baseValue || baseValue === 0) return '0.00';
-  return ((dailyPnL.value / baseValue) * 100).toFixed(2);
-});
+  if (!confirm(`確認將 ${div.symbol} 的配息 USD ${formatNumber(netAmount)} 入帳嗎？`)) return;
+  
+  processingId.value = div.id;
+  try {
+    const record = {
+      txn_date: div.date,
+      symbol: div.symbol,
+      txn_type: 'DIV',
+      qty: 0,
+      price: 0,
+      fee: 0,
+      tax: finalTax,
+      total_amount: finalAmount,
+      tag: 'Auto-Dividend'
+    };
 
-// 數字動畫
-const useAnimatedNumber = (targetVal) => {
-  const current = ref(0);
-  watch(targetVal, (newVal) => {
-    if (newVal == null) return;
-    current.value = Number(newVal);
-  }, { immediate: true });
-  return computed(() => Math.round(current.value).toLocaleString('zh-TW'));
+    const success = await store.addRecord(record);
+    if (success) {
+      await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
+        method: 'DELETE',
+        headers: { 
+            'Authorization': `Bearer ${store.token || localStorage.getItem('token')}` 
+        }
+      }).catch(err => console.warn('刪除 pending 失敗', err));
+
+      addToast(`${div.symbol} 配息已入帳`, 'success');
+      localDividends.value = localDividends.value.filter(d => d.id !== div.id);
+      setTimeout(async () => { await store.fetchAll(); }, 500);
+    }
+  } catch (e) {
+    console.error(e);
+    addToast('入帳失敗', 'error');
+  } finally {
+    processingId.value = null;
+  }
 };
 
-const displayTotalValue = useAnimatedNumber(computed(() => stats.value.total_value));
-const displayUnrealized = useAnimatedNumber(unrealizedPnL);
-const displayRealized = useAnimatedNumber(realizedPnL);
-const displayDaily = useAnimatedNumber(dailyPnL);
-
-const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
-
-// 樣式輔助函數
-const getPnlTextClass = (val) => {
-    const num = Number(val) || 0;
-    return num >= 0 ? 'text-green' : 'text-red';
-};
-
-const getPnlBgClass = (val) => {
-    const num = Number(val) || 0;
-    if (num === 0) return '';
-    return num > 0 ? 'bg-gradient-green' : 'bg-gradient-red';
+const deleteDividend = async (id) => {
+  if (!confirm('確定要忽略這筆配息嗎？(將從列表中移除)')) return;
+  
+  processingId.value = id;
+  try {
+    const res = await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${id}`, {
+        method: 'DELETE',
+        headers: { 
+            'Authorization': `Bearer ${store.token || localStorage.getItem('token')}` 
+        }
+    });
+    
+    if (res.ok) {
+        addToast('已移除', 'info');
+        localDividends.value = localDividends.value.filter(d => d.id !== id);
+        if (store.rawData && store.rawData.pending_dividends) {
+            store.rawData.pending_dividends = store.rawData.pending_dividends.filter(d => d.id !== id);
+        }
+    } else {
+        throw new Error('API delete failed');
+    }
+  } catch (e) {
+    addToast('移除失敗', 'error');
+  } finally {
+    processingId.value = null;
+  }
 };
 </script>
 
 <style scoped>
-/* 核心 Grid 佈局 */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr); /* 桌面版維持 3 欄 */
-    gap: 20px;
+.dividend-manager {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 24px;
+  border-left: 4px solid var(--warning);
 }
 
-.stat-block {
-    background: var(--bg-card);
-    padding: 20px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-card);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 120px;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(to right, rgba(245, 158, 11, 0.05), transparent);
 }
 
-/* 懸停效果 */
-.stat-block:hover { 
-    transform: translateY(-3px); 
-    box-shadow: var(--shadow-lg); 
-}
+.header-content { display: flex; align-items: center; gap: 12px; }
+h3 { margin: 0; font-size: 1.1rem; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
+h3::before { content: '💰'; font-size: 1.2rem; }
+.badge-count { background: var(--warning); color: white; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
 
-/* 特殊卡片樣式：總資產 */
-.primary-block {
-    border-left: 4px solid var(--primary);
+.btn-refresh {
+  background: transparent; border: 1px solid var(--border-color); width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-sub); transition: all 0.2s;
 }
+.btn-refresh:hover:not(:disabled) { background: var(--bg-secondary); color: var(--primary); border-color: var(--primary); }
+.spinning { animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { from {transform: rotate(0deg);} to {transform: rotate(360deg);} }
 
-/* 背景微漸層 */
-.bg-gradient-green {
-    background: linear-gradient(145deg, var(--bg-card) 40%, rgba(16, 185, 129, 0.05) 100%);
-    border-bottom: 2px solid rgba(16, 185, 129, 0.2);
-}
+/* 桌面版表格樣式 */
+.table-container { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 12px 20px; font-size: 0.85rem; color: var(--text-sub); font-weight: 600; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+td { padding: 12px 20px; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; color: var(--text-main); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
 
-.bg-gradient-red {
-    background: linear-gradient(145deg, var(--bg-card) 40%, rgba(239, 68, 68, 0.05) 100%);
-    border-bottom: 2px solid rgba(239, 68, 68, 0.2);
-}
-
-/* 頂部區域 */
-.stat-top { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    margin-bottom: 12px; 
-}
-
-.stat-label { 
-    font-size: 0.9rem; 
-    color: var(--text-sub); 
-    font-weight: 600; 
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-}
-
-/* Icon Box 優化 */
-.icon-box { 
-    width: 38px; 
-    height: 38px; 
-    border-radius: 10px; 
-    background: var(--bg-secondary);
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    font-size: 1.25rem;
-    transition: transform 0.2s ease, background 0.2s;
-}
-
-.icon-box.highlight {
-    background: rgba(59, 130, 246, 0.1);
-}
-
-.pulse-icon {
-    animation: pulse-light 2s infinite;
-}
-
-@keyframes pulse-light {
-    0% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.7; transform: scale(1.1); }
-    100% { opacity: 1; transform: scale(1); }
-}
-
-/* 主要數值區 */
-.stat-main { 
-    display: flex; 
-    align-items: baseline; 
-    gap: 6px; 
-    margin-bottom: 8px; 
-    flex-grow: 1;
-}
-
-.stat-main.column-layout {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0px;
-}
-
-.stat-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1.8rem;
-    font-weight: 700;
+.inline-input {
+    width: 100%;
+    padding: 6px;
+    border: 1px solid transparent;
+    border-bottom: 1px dashed var(--border-color);
+    background: transparent;
+    text-align: right;
+    font-size: 0.95rem;
     color: var(--text-main);
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-}
-
-.stat-value.big {
-    font-size: 2.2rem;
-    background: linear-gradient(90deg, var(--text-main), var(--text-sub));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    display: inline-block;
-}
-
-.stat-sub-value {
+    transition: all 0.2s;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1rem;
-    font-weight: 600;
-    opacity: 0.85;
-    margin-top: 4px;
+}
+.inline-input:focus { outline: none; border-bottom-color: var(--primary); background: var(--bg-secondary); }
+.inline-input:hover { border-bottom-color: var(--text-sub); }
+
+.symbol-badge { font-weight: 700; color: var(--primary); background: rgba(59, 130, 246, 0.1); padding: 4px 8px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; display: inline-block; }
+.text-right { text-align: right; }
+.font-num { font-family: 'JetBrains Mono', monospace; }
+.font-bold { font-weight: 700; }
+.text-sub { color: var(--text-sub); }
+.text-success { color: var(--success); }
+
+.actions-cell { display: flex; justify-content: flex-end; gap: 8px; }
+.btn-confirm { background: var(--success); color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.btn-confirm:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.btn-delete { background: transparent; border: 1px solid var(--border-color); color: var(--text-sub); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.btn-delete:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); color: var(--danger); border-color: var(--danger); }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Mobile View */
+.mobile-view { display: none; }
+.mobile-cards { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.div-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; }
+
+.card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.card-date { font-size: 0.9rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+
+.card-main { margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+/* ⚠️ 關鍵修正：手機版改為垂直堆疊 */
+.edit-row { 
+    display: flex; 
+    flex-direction: column; /* 垂直排列 */
+    align-items: stretch;   /* 填滿寬度 */
+    gap: 8px; 
 }
 
-.unit-text, .percent { 
+.edit-row label { 
     font-size: 0.85rem; 
     color: var(--text-sub); 
-    font-weight: 500; 
+    font-weight: 600;
 }
 
-/* 底部區域 */
-.stat-footer {
-    padding-top: 12px;
-    border-top: 1px solid var(--border-color);
-    font-size: 0.85rem;
-    display: flex; 
-    align-items: center; 
-    justify-content: space-between;
-    min-height: 32px; /* 確保高度一致 */
-}
-
-.footer-item { 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-    width: 100%;
-    justify-content: space-between;
-}
-
-.f-label { color: var(--text-sub); }
-.f-val { 
-    font-weight: 600; 
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--text-main);
-}
-
-.text-green { color: var(--success); }
-.text-red { color: var(--danger); }
-.text-sub { color: var(--text-sub); }
-.text-xs { font-size: 0.8rem; }
-
-/* 徽章樣式 */
-.badge { 
-    padding: 2px 8px; 
+.mobile-input { 
+    width: 100%; /* 確保不超過容器 */
+    padding: 10px; 
+    border: 1px solid var(--border-color); 
     border-radius: 6px; 
-    font-weight: 600; 
-    font-size: 0.8rem; 
-    display: inline-flex; 
-    align-items: center; 
+    text-align: right; 
+    font-size: 1rem; 
+    background: var(--bg-card);
+    color: var(--text-main);
+    box-sizing: border-box; /* 確保 padding 包含在寬度內 */
 }
+.mobile-input:focus { outline: none; border-color: var(--primary); }
 
-.badge-green { 
-    background: rgba(16, 185, 129, 0.12); 
-    color: var(--success);
-}
+.amount-row { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px dashed var(--border-color); margin-top: 4px; }
+.amount-row .label { font-size: 0.95rem; font-weight: 600; color: var(--text-main); }
+.amount-row .value { font-size: 1.4rem; font-weight: 700; }
 
-.badge-red { 
-    background: rgba(239, 68, 68, 0.12); 
-    color: var(--danger);
-}
+.card-actions { display: flex; gap: 12px; }
+.btn-card-delete { flex: 1; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-sub); border-radius: 8px; font-weight: 600; cursor: pointer; }
+.btn-card-confirm { flex: 2; padding: 12px; background: var(--success); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2); }
 
-/* RWD: 中尺寸螢幕 (Tablets) */
-@media (max-width: 1024px) { 
-    .stats-grid { 
-        grid-template-columns: repeat(2, 1fr); /* 改為 2 欄 */
-        gap: 16px;
-    } 
-    .stat-value.big { font-size: 2rem; }
-}
-
-/* RWD: 手機版優化 (Mobile) */
-@media (max-width: 768px) { 
-    .stats-grid { 
-        grid-template-columns: repeat(2, 1fr); /* 強制維持 2 欄，增加資訊密度 */
-        gap: 12px;
-    }
-    
-    .stat-block {
-        padding: 14px;
-        min-height: 100px;
-    }
-    
-    /* 總資產在手機上獨佔一行，突顯重要性 */
-    .stat-block:first-child {
-        grid-column: span 2; 
-    }
-
-    .stat-top { margin-bottom: 8px; }
-    .stat-label { font-size: 0.75rem; }
-    
-    .icon-box { 
-        width: 30px; 
-        height: 30px; 
-        font-size: 1rem;
-        border-radius: 8px;
-    }
-    
-    .stat-value { font-size: 1.4rem; }
-    .stat-value.big { font-size: 1.8rem; }
-    .stat-sub-value { font-size: 0.9rem; }
-    
-    .stat-footer { 
-        padding-top: 8px; 
-        min-height: auto;
-    }
-    
-    /* 手機上隱藏過長說明，保持簡潔 */
-    .footer-desc {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 100%;
-        display: block;
-    }
+@media (max-width: 768px) {
+  .desktop-view { display: none; }
+  .mobile-view { display: block; }
+  .card-header { padding: 12px 16px; }
 }
 </style>
