@@ -1,52 +1,16 @@
 {
-  "name": "Trading Journal Pro",
-  "short_name": "TJ Pro",
-  "description": "專業的交易日誌與投資組合管理系統",
+  "name": "Trading Journal PRO",
+  "short_name": "Journal",
+  "description": "專業級個人交易日誌與績效分析系統",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f1f5f9",
+  "background_color": "#0f172a",
   "theme_color": "#3b82f6",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icons/icon-72x72.png",
-      "sizes": "72x72",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-96x96.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-128x128.png",
-      "sizes": "128x128",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-144x144.png",
-      "sizes": "144x144",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-152x152.png",
-      "sizes": "152x152",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
       "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-384x384.png",
-      "sizes": "384x384",
       "type": "image/png",
       "purpose": "any maskable"
     },
@@ -57,36 +21,34 @@
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/desktop-1.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
-    },
-    {
-      "src": "/screenshots/mobile-1.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "form_factor": "narrow"
-    }
+  "categories": [
+    "finance",
+    "productivity",
+    "utilities"
   ],
-  "categories": ["finance", "productivity", "business"],
   "shortcuts": [
     {
       "name": "新增交易",
-      "short_name": "新交易",
-      "description": "快速新增一筆交易記錄",
-      "url": "/#trade-form-anchor",
-      "icons": [{ "src": "/icons/shortcut-trade.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "查看持倉",
-      "short_name": "持倉",
-      "description": "查看目前持倉狀況",
-      "url": "/#holdings",
-      "icons": [{ "src": "/icons/shortcut-holdings.png", "sizes": "96x96" }]
+      "short_name": "記帳",
+      "description": "快速開啟新增交易表單",
+      "url": "/?action=new",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     }
   ],
-  "prefer_related_applications": false
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile-dashboard.png",
+      "sizes": "1170x2532",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "行動版儀表板"
+    },
+    {
+      "src": "/screenshots/desktop-dashboard.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "桌面版分析視圖"
+    }
+  ]
 }
