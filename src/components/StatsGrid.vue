@@ -1,107 +1,110 @@
 <template>
   <div class="stats-grid">
-    <div class="stat-block hero-block hover-lift">
-      <div class="stat-content">
-        <div class="stat-top">
-          <span class="stat-label">總資產淨值 (Net Worth)</span>
-          <span class="icon-box glow-icon">💰</span>
+    <div class="stat-card hero-card">
+      <div class="card-header">
+        <span class="label">Total Net Worth</span>
+        <span class="icon-box">💰</span>
+      </div>
+      
+      <div class="card-body">
+        <div class="main-value-group">
+          <span class="currency">NT$</span>
+          <span class="value-hero">{{ displayTotalValue }}</span>
         </div>
-        <div class="stat-main">
-          <div class="stat-value hero-text">{{ displayTotalValue }}</div>
-          <span class="currency-tag">TWD</span>
-        </div>
-        <div class="stat-footer">
-          <div class="footer-row">
-            <span class="f-label">投入成本</span> 
-            <span class="f-val">{{ formatNumber(stats.invested_capital) }}</span>
+        
+        <div class="progress-section">
+          <div class="progress-info">
+            <span class="sub-label">Invested: {{ formatNumber(stats.invested_capital) }}</span>
+            <span class="sub-label">{{ capitalRatio.toFixed(1) }}% Utilized</span>
           </div>
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill" :style="{ width: capitalRatio + '%' }"></div>
+          <div class="progress-track">
+            <div class="progress-fill" :style="{ width: `${capitalRatio}%` }"></div>
           </div>
         </div>
       </div>
     </div>
-    
-    <div class="stat-block hover-lift" :class="getPnlClass(unrealizedPnL)">
-      <div class="stat-top">
-        <span class="stat-label">未實現損益 (Unrealized)</span>
-        <span class="icon-box">📈</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(unrealizedPnL)">
-          <span class="trend-arrow">{{ getTrendArrow(unrealizedPnL) }}</span>
-          {{ displayUnrealized }}
-        </div>
-      </div>
-      <div class="stat-footer">
-        <div class="roi-badge" :class="getPnlClass(roi)">
-          ROI: {{ roi }}%
-        </div>
-      </div>
-    </div>
-    
-    <div class="stat-block hover-lift">
-      <div class="stat-top">
-        <span class="stat-label">已實現損益 (Realized)</span>
-        <span class="icon-box">💵</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(realizedPnL)">
-          <span class="trend-arrow">{{ getTrendArrow(realizedPnL) }}</span>
-          {{ displayRealized }}
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs">含賣出價差 + 股息收入</span>
-      </div>
-    </div>
-    
-    <div class="stat-block hover-lift" :title="pnlTooltip">
-      <div class="stat-top">
-        <span class="stat-label">
-          {{ pnlLabel }}
-          <span v-if="isUSMarketOpen" class="live-dot"></span>
+
+    <div class="stat-card">
+      <div class="card-header">
+        <span class="label">
+          Daily P&L
+          <span v-if="isUSMarketOpen" class="live-indicator" title="Market Open"></span>
         </span>
         <span class="icon-box">⚡</span>
       </div>
-      <div class="stat-main column-layout">
-        <div class="stat-value" :class="getPnlTextClass(dailyPnL)">
-          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
+      <div class="card-body">
+        <div class="value-group" :class="getPnlColor(dailyPnL)">
+          <span class="value-lg">
+            {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
+          </span>
+          <span class="trend-pill" :class="getPnlBg(dailyRoi)">
+            {{ dailyPnL >= 0 ? '▲' : '▼' }} {{ Math.abs(dailyRoi).toFixed(2) }}%
+          </span>
         </div>
-        <div class="stat-sub-value" :class="getPnlTextClass(dailyPnL)">
-          {{ dailyPnL >= 0 ? '▲' : '▼' }} {{ Math.abs(dailyRoi) }}%
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs">{{ pnlDescription }}</span>
+        <p class="desc-text">{{ isUSMarketOpen ? 'Live Market Data' : 'Previous Close' }}</p>
       </div>
     </div>
-    
-    <div class="stat-block hover-lift">
-      <div class="stat-top">
-        <span class="stat-label">時間加權報酬 (TWR)</span>
+
+    <div class="stat-card">
+      <div class="card-header">
+        <span class="label">Unrealized P&L</span>
+        <span class="icon-box">📈</span>
+      </div>
+      <div class="card-body">
+        <div class="value-group" :class="getPnlColor(unrealizedPnL)">
+          <span class="value-lg">
+            {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
+          </span>
+          <span class="trend-pill" :class="getPnlBg(roi)">
+            {{ roi >= 0 ? '▲' : '▼' }} {{ Math.abs(roi).toFixed(2) }}%
+          </span>
+        </div>
+        <p class="desc-text">Paper value based on holdings</p>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="card-header">
+        <span class="label">Realized P&L</span>
+        <span class="icon-box">💵</span>
+      </div>
+      <div class="card-body">
+        <div class="value-group" :class="getPnlColor(realizedPnL)">
+          <span class="value-lg">
+            {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
+          </span>
+        </div>
+        <p class="desc-text">Includes dividends & closed trades</p>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="card-header">
+        <span class="label">TWR (Time-Weighted)</span>
         <span class="icon-box">🎯</span>
       </div>
-      <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub text-xs">排除資金進出影響的策略表現</span>
+      <div class="card-body">
+        <div class="value-group">
+          <span class="value-lg" :class="getPnlColor(stats.twr)">
+            {{ (stats.twr || 0) >= 0 ? '+' : '' }}{{ (stats.twr || 0).toFixed(2) }}<small>%</small>
+          </span>
+        </div>
+        <p class="desc-text">Strategy performance excluding cashflows</p>
       </div>
     </div>
-    
-    <div class="stat-block hover-lift">
-      <div class="stat-top">
-        <span class="stat-label">年化報酬率 (XIRR)</span>
+
+    <div class="stat-card">
+      <div class="card-header">
+        <span class="label">XIRR (Annualized)</span>
         <span class="icon-box">🚀</span>
       </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(stats.xirr)">
-          {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
+      <div class="card-body">
+        <div class="value-group">
+          <span class="value-lg" :class="getPnlColor(stats.xirr)">
+            {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<small>%</small>
+          </span>
         </div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub text-xs">考量資金時間價值的真實回報</span>
+        <p class="desc-text">Money-weighted return rate</p>
       </div>
     </div>
   </div>
@@ -113,16 +116,17 @@ import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
 
-// 核心數據
+// Core Data
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 
-// 計算屬性
+// Computations
 const totalPnL = computed(() => stats.value.total_pnl || 0);
 const realizedPnL = computed(() => stats.value.realized_pnl || 0);
 const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
+const dailyPnL = computed(() => store.dailyPnL || 0);
 
-// 資金比例 (用於進度條：成本佔總值比例)
+// Ratios
 const capitalRatio = computed(() => {
     const total = stats.value.total_value || 1;
     const capital = stats.value.invested_capital || 0;
@@ -131,84 +135,56 @@ const capitalRatio = computed(() => {
 });
 
 const roi = computed(() => {
-  if (!stats.value.invested_capital) return '0.00';
-  return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
+  if (!stats.value.invested_capital) return 0;
+  return (unrealizedPnL.value / stats.value.invested_capital) * 100;
 });
-
-const dailyPnL = computed(() => store.dailyPnL || 0);
-
-// 市場狀態判斷
-const isUSMarketOpen = computed(() => {
-  const now = new Date();
-  const day = now.getDay();
-  // 週末不開盤
-  if (day === 0 || day === 6) return false;
-  
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  
-  // 簡單判斷美股時段 (夏令 21:30 - 04:00, 冬令 22:30...)
-  // 這裡採用寬鬆判斷：21:00 ~ 05:00
-  if (hour >= 21 || hour < 5) {
-    return true;
-  }
-  return false;
-});
-
-const pnlLabel = computed(() => isUSMarketOpen.value ? '美股盤中損益' : '當日損益');
-const pnlDescription = computed(() => isUSMarketOpen.value ? '即時報價計算中' : '昨日收盤結算');
-const pnlTooltip = computed(() => isUSMarketOpen.value ? '今日市值 - 昨日市值 - 今日現金流' : '今日市值 - 前日市值 - 昨晚現金流');
 
 const dailyRoi = computed(() => {
   let baseValue = 0;
-  if (!history.value || history.value.length < 2) return '0.00';
-  
-  if (isUSMarketOpen.value) {
-    baseValue = history.value[history.value.length - 2].total_value || 0;
-  } else {
-    // 若已有今日收盤資料(長度不變但資料更新)，base 應為前一筆
-    // 這裡簡化邏輯：取倒數第二筆作為基準
-    baseValue = history.value[history.value.length - 2].total_value || 0;
-  }
-  
-  if (!baseValue || baseValue === 0) return '0.00';
-  return ((dailyPnL.value / baseValue) * 100).toFixed(2);
+  if (!history.value || history.value.length < 2) return 0;
+  // Fallback simplified logic for daily ROI base
+  baseValue = history.value[history.value.length - 2].total_value || 1;
+  return (dailyPnL.value / baseValue) * 100;
 });
 
-// 工具函數
-const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
-const getPnlClass = (val) => Number(val) >= 0 ? 'status-up' : 'status-down';
-const getPnlTextClass = (val) => Number(val) >= 0 ? 'text-green' : 'text-red';
-const getTrendArrow = (val) => Number(val) >= 0 ? '▲' : '▼';
+// Market Status
+const isUSMarketOpen = computed(() => {
+  const now = new Date();
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false;
+  const hour = now.getHours();
+  // Simple check: 21:00 - 05:00
+  return hour >= 21 || hour < 5;
+});
 
-// 數字動畫 Hook
+// Utilities
+const formatNumber = (num) => Number(num||0).toLocaleString('en-US');
+const getPnlColor = (val) => Number(val) >= 0 ? 'text-success' : 'text-danger';
+const getPnlBg = (val) => Number(val) >= 0 ? 'bg-success-light' : 'bg-danger-light';
+
+// Animated Number Hook (EaseOut)
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
-    if (newVal == null) return;
     const start = current.value;
-    const end = Number(newVal);
-    const duration = 800;
+    const end = Number(newVal) || 0;
+    const duration = 1000;
     const startTime = performance.now();
 
     const animate = (currentTime) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      // EaseOutQuart
-      const ease = 1 - Math.pow(1 - progress, 4);
+      const ease = 1 - Math.pow(1 - progress, 3); // Cubic ease out
       
       current.value = start + (end - start) * ease;
 
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        current.value = end;
-      }
+      if (progress < 1) requestAnimationFrame(animate);
+      else current.value = end;
     };
     requestAnimationFrame(animate);
   }, { immediate: true });
   
-  return computed(() => Math.round(current.value).toLocaleString('zh-TW'));
+  return computed(() => Math.round(current.value).toLocaleString('en-US'));
 };
 
 const displayTotalValue = useAnimatedNumber(computed(() => stats.value.total_value));
@@ -221,178 +197,181 @@ const displayDaily = useAnimatedNumber(dailyPnL);
 <style scoped>
 /* Grid Layout */
 .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  width: 100%;
 }
 
-/* Card Base Styles */
-.stat-block {
-    background: var(--bg-card);
-    padding: 20px 24px;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-sm);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 140px;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+/* Base Card Style */
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  min-height: 150px;
 }
 
-.stat-block:hover {
-    box-shadow: var(--shadow-card);
-    border-color: var(--border-highlight);
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-hover);
 }
 
-/* Hero Block Special Styling */
-.hero-block {
-    background: linear-gradient(145deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
-    border: 1px solid var(--primary-light);
-    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.08);
-}
-.hero-block::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; width: 4px; height: 100%;
-    background: var(--primary);
+/* Header */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
-/* Typography & Layout */
-.stat-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 12px;
-}
-
-.stat-label {
-    font-size: 0.85rem;
-    color: var(--text-sub);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .icon-box {
-    width: 40px; height: 40px;
-    border-radius: 10px;
-    background: var(--bg-secondary);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.4rem;
-    color: var(--text-main);
-    transition: transform 0.3s ease;
-}
-.stat-block:hover .icon-box { transform: rotate(10deg) scale(1.1); }
-.glow-icon { text-shadow: 0 0 15px rgba(255, 215, 0, 0.4); }
-
-.stat-main {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    margin-bottom: 16px;
-    flex-grow: 1;
-}
-.stat-main.column-layout { flex-direction: column; gap: 4px; }
-
-.stat-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--text-main);
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-}
-.hero-text { font-size: 2.2rem; color: var(--primary-dark); }
-html.dark .hero-text { color: var(--primary); }
-
-.currency-tag, .percent {
-    font-size: 0.9rem;
-    color: var(--text-sub);
-    font-weight: 600;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-app);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: var(--text-secondary);
 }
 
-.stat-sub-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1rem;
-    font-weight: 600;
+/* Values Typography */
+.value-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-/* Trend Colors */
-.text-green { color: var(--success); }
-.text-red { color: var(--danger); }
-.status-up .icon-box { background: var(--success-bg); color: var(--success); }
-.status-down .icon-box { background: var(--danger-bg); color: var(--danger); }
-.trend-arrow { font-size: 0.8em; margin-right: 4px; }
-
-/* Footer & Badges */
-.stat-footer {
-    padding-top: 12px;
-    border-top: 1px solid var(--border-color);
-    font-size: 0.85rem;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+.value-lg {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
-.footer-row { display: flex; justify-content: space-between; align-items: center; }
 
-.roi-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: 99px;
-    font-weight: 700;
-    font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
+.currency {
+  font-size: 1rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-right: 4px;
 }
-.roi-badge.status-up { background: var(--success-bg); color: var(--success); }
-.roi-badge.status-down { background: var(--danger-bg); color: var(--danger); }
 
-/* Progress Bar */
-.progress-bar-bg {
-    width: 100%; height: 4px;
-    background: var(--bg-secondary);
-    border-radius: 2px;
-    overflow: hidden;
+.desc-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 8px;
 }
-.progress-bar-fill {
-    height: 100%;
-    background: var(--primary);
-    border-radius: 2px;
-    transition: width 1s ease-out;
+
+/* Trend Pills */
+.trend-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Colors from App.vue variables */
+.text-success { color: var(--c-success); }
+.text-danger { color: var(--c-danger); }
+.bg-success-light { background: rgba(16, 185, 129, 0.1); color: var(--c-success); }
+.bg-danger-light { background: rgba(239, 68, 68, 0.1); color: var(--c-danger); }
+
+/* Hero Card Special Styling */
+.hero-card {
+  grid-column: span 1; /* Default grid flow */
+  background: linear-gradient(145deg, var(--bg-card), var(--bg-app));
+  border: 1px solid var(--c-brand-light);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 4px; height: 100%;
+  background: var(--c-brand);
+}
+
+.value-hero {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+/* Progress Bar in Hero */
+.progress-section {
+  margin-top: 16px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--border-base);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--c-brand);
+  border-radius: 3px;
+  transition: width 1s ease-out;
 }
 
 /* Live Indicator */
-.live-dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    background: var(--danger);
-    border-radius: 50%;
-    margin-left: 6px;
-    animation: pulse 1.5s infinite;
+.live-indicator {
+  width: 6px; height: 6px;
+  background: var(--c-danger);
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
 }
 
-/* Animations */
 @keyframes pulse {
-    0% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-    70% { transform: scale(1.1); opacity: 0.7; box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-    100% { transform: scale(1); opacity: 1; }
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
 
 /* Responsive */
 @media (max-width: 1280px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .hero-block { grid-column: span 2; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero-card { grid-column: span 2; }
 }
 
 @media (max-width: 768px) {
-    .stats-grid { grid-template-columns: 1fr; gap: 16px; }
-    .hero-block { grid-column: auto; }
-    .stat-block { padding: 16px; min-height: auto; }
-    .stat-value { font-size: 1.5rem; }
-    .hero-text { font-size: 2rem; }
+  .stats-grid { grid-template-columns: 1fr; gap: 16px; }
+  .hero-card { grid-column: auto; }
+  .stat-card { padding: 16px; min-height: auto; }
+  .value-lg { font-size: 1.4rem; }
+  .value-hero { font-size: 1.8rem; }
 }
 </style>
