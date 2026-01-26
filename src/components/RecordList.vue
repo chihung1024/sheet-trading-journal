@@ -1,20 +1,25 @@
 <template>
-  <div class="card">
+  <div class="card record-list-card">
     <div class="card-header">
-        <h3>交易紀錄列表</h3>
-        
-        <div class="toolbar">
-             <div class="search-box">
-                <span class="icon">🔍</span>
-                <input 
-                    type="text" 
-                    v-model="searchQuery" 
-                    placeholder="搜尋代碼..." 
-                    class="search-input"
-                >
-             </div>
-             
-             <div class="filters">
+      <div class="header-left">
+        <h3 class="card-title">
+            <span class="icon">📝</span> 交易紀錄列表
+        </h3>
+      </div>
+      
+      <div class="toolbar">
+         <div class="search-wrapper">
+            <span class="search-icon">🔍</span>
+            <input 
+                type="text" 
+                v-model="searchQuery" 
+                placeholder="搜尋代碼..." 
+                class="search-input"
+            >
+         </div>
+         
+         <div class="filters-wrapper">
+             <div class="select-group">
                  <select v-model="filterType" class="filter-select">
                     <option value="ALL">所有類型</option>
                     <option value="BUY">買入</option>
@@ -26,67 +31,73 @@
                     <option value="ALL">所有年份</option>
                     <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
                 </select>
-                
-                <select v-model="itemsPerPage" class="filter-select">
-                    <option :value="10">每頁 10 筆</option>
-                    <option :value="20">每頁 20 筆</option>
-                    <option :value="50">每頁 50 筆</option>
-                    <option :value="100">每頁 100 筆</option>
-                </select>
              </div>
-             
-             <button class="btn-refresh" @click="refreshData" :disabled="isRefreshing">
-                <span class="refresh-icon" :class="{ spinning: isRefreshing }">↺</span>
-                刷新
-             </button>
-        </div>
+            
+            <button class="btn-refresh" @click="refreshData" :disabled="isRefreshing" title="刷新數據">
+                <span class="refresh-icon" :class="{ spinning: isRefreshing }">⟳</span>
+                <span class="desktop-only">刷新</span>
+            </button>
+         </div>
+      </div>
     </div>
 
-    <div class="stats-summary">
-        <div class="stat-item">
-            <span class="stat-label">總交易筆數</span>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <span class="stat-label">總筆數</span>
             <span class="stat-value">{{ processedRecords.length }}</span>
         </div>
-        <div class="stat-item">
-            <span class="stat-label">買入筆數</span>
+        <div class="stat-card">
+            <span class="stat-label">買入</span>
             <span class="stat-value text-primary">{{ buyCount }}</span>
         </div>
-        <div class="stat-item">
-            <span class="stat-label">賣出筆數</span>
+        <div class="stat-card">
+            <span class="stat-label">賣出</span>
             <span class="stat-value text-success">{{ sellCount }}</span>
         </div>
-        <div class="stat-item">
-            <span class="stat-label">配息筆數</span>
+        <div class="stat-card">
+            <span class="stat-label">配息</span>
             <span class="stat-value text-warning">{{ divCount }}</span>
         </div>
     </div>
 
+    <div class="list-controls">
+        <span class="list-info">顯示第 {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, processedRecords.length) }} 筆，共 {{ processedRecords.length }} 筆</span>
+        <select v-model="itemsPerPage" class="per-page-select">
+            <option :value="10">10 筆/頁</option>
+            <option :value="20">20 筆/頁</option>
+            <option :value="50">50 筆/頁</option>
+            <option :value="100">100 筆/頁</option>
+        </select>
+    </div>
+
     <div class="table-container" ref="tableRef">
-        <table>
+        <table class="responsive-table">
             <thead>
                 <tr>
-                    <th @click="sortBy('txn_date')" class="sortable">
+                    <th @click="sortBy('txn_date')" class="sortable col-date">
                         日期 <span class="sort-icon">{{ getSortIcon('txn_date') }}</span>
                     </th>
-                    <th @click="sortBy('symbol')" class="sortable">
-                        代碼 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
+                    <th @click="sortBy('symbol')" class="sortable col-symbol">
+                        標的 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
                     </th>
-                    <th @click="sortBy('txn_type')" class="sortable">
+                    <th @click="sortBy('txn_type')" class="sortable col-type">
                         類型 <span class="sort-icon">{{ getSortIcon('txn_type') }}</span>
                     </th>
-                    <th class="text-right">股數</th>
-                    <th class="text-right">單價 (USD)</th>
-                    <th @click="sortBy('total_amount_twd')" class="text-right sortable">
+                    <th class="text-right mobile-hide">股數</th>
+                    <th class="text-right mobile-hide">單價(USD)</th>
+                    <th @click="sortBy('total_amount_twd')" class="text-right sortable col-amount">
                         總額 (TWD) <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
                     </th>
-                    <th class="text-right">操作</th>
+                    <th class="text-right col-action">操作</th>
                 </tr>
             </thead>
             <tbody>
                 <tr v-if="paginatedRecords.length === 0">
                     <td colspan="7" class="empty-state">
-                        <div class="empty-icon">📋</div>
-                        <div>無符合條件的紀錄</div>
+                        <div class="empty-content">
+                            <span class="empty-icon">📭</span>
+                            <p>無符合條件的紀錄</p>
+                        </div>
                     </td>
                 </tr>
                 <tr 
@@ -95,49 +106,72 @@
                     class="record-row"
                     :class="{ 'editing': editingId === r.id }"
                 >
-                    <td class="date-cell">
-                        <span class="date-text">{{ formatDate(r.txn_date) }}</span>
+                    <td class="col-date" data-label="日期">
+                        <div class="date-wrapper">
+                            <span class="date-day">{{ formatDate(r.txn_date) }}</span>
+                            <span class="date-year mobile-only">{{ r.txn_date.substring(0,4) }}</span>
+                        </div>
                     </td>
-                    <td>
-                        <span class="symbol-badge">{{ r.symbol }}</span>
+
+                    <td class="col-symbol" data-label="標的">
+                        <div class="symbol-wrapper">
+                            <span class="symbol-badge">{{ r.symbol }}</span>
+                            <span class="tag-badge" v-if="r.tag">#{{ r.tag }}</span>
+                        </div>
                     </td>
-                    <td>
-                        <span class="type-badge" :class="r.txn_type.toLowerCase()">
+
+                    <td class="col-type" data-label="類型">
+                        <span class="type-pill" :class="r.txn_type.toLowerCase()">
                             {{ getTypeLabel(r.txn_type) }}
                         </span>
                     </td>
-                    <td class="text-right font-num">{{ formatNumber(r.qty, 2) }}</td>
-                    <td class="text-right font-num">{{ formatNumber(r.price, 4) }}</td>
-                    <td class="text-right font-num font-bold">
-                        NT${{ formatNumber(getTotalAmountTWD(r), 0) }}
+
+                    <td class="text-right font-num mobile-hide" data-label="股數">
+                        {{ formatNumber(r.qty, 2) }}
                     </td>
-                    <td class="text-right actions">
-                        <button 
-                            class="btn-icon edit" 
-                            @click="editRecord(r)"
-                            title="編輯"
-                        >
-                            ✎
-                        </button>
-                        <button 
-                            class="btn-icon delete" 
-                            @click="deleteRecord(r.id)"
-                            title="刪除"
-                        >
-                            ✕
-                        </button>
+
+                    <td class="text-right font-num mobile-hide" data-label="單價">
+                        {{ formatNumber(r.price, 4) }}
+                    </td>
+
+                    <td class="text-right font-num col-amount" data-label="總額(TWD)">
+                        <div class="amount-wrapper">
+                            <span class="main-amount">NT${{ formatNumber(getTotalAmountTWD(r), 0) }}</span>
+                            <div class="mobile-details mobile-only">
+                                {{ formatNumber(r.qty, 2) }} 股 @ ${{ formatNumber(r.price, 2) }}
+                            </div>
+                        </div>
+                    </td>
+
+                    <td class="col-action" data-label="操作">
+                        <div class="action-group">
+                            <button 
+                                class="btn-icon edit" 
+                                @click="editRecord(r)"
+                                title="編輯"
+                            >
+                                ✎
+                            </button>
+                            <button 
+                                class="btn-icon delete" 
+                                @click="deleteRecord(r.id)"
+                                title="刪除"
+                            >
+                                ✕
+                            </button>
+                        </div>
                     </td>
                 </tr>
             </tbody>
         </table>
     </div>
 
-    <div class="pagination" v-if="totalPages > 1">
-        <button class="page-btn" @click="goToPage(1)" :disabled="currentPage === 1">
-            ««
+    <div class="pagination-container" v-if="totalPages > 1">
+        <button class="page-btn" @click="goToPage(1)" :disabled="currentPage === 1" title="第一頁">
+            «
         </button>
-        <button class="page-btn" @click="prevPage" :disabled="currentPage === 1">
-            ←
+        <button class="page-btn" @click="prevPage" :disabled="currentPage === 1" title="上一頁">
+            ‹
         </button>
         
         <div class="page-numbers">
@@ -152,16 +186,12 @@
             </button>
         </div>
         
-        <button class="page-btn" @click="nextPage" :disabled="currentPage === totalPages">
-            →
+        <button class="page-btn" @click="nextPage" :disabled="currentPage === totalPages" title="下一頁">
+            ›
         </button>
-        <button class="page-btn" @click="goToPage(totalPages)" :disabled="currentPage === totalPages">
-            »»
+        <button class="page-btn" @click="goToPage(totalPages)" :disabled="currentPage === totalPages" title="最後一頁">
+            »
         </button>
-        
-        <span class="page-info">
-            第 {{ currentPage }} / {{ totalPages }} 頁
-        </span>
     </div>
   </div>
 </template>
@@ -186,6 +216,7 @@ const sortOrder = ref('desc');
 const isRefreshing = ref(false);
 const editingId = ref(null);
 
+// Formatters
 const formatNumber = (num, d=2) => {
     if (num === undefined || num === null || isNaN(num)) return '0.00';
     return Number(num).toLocaleString('en-US', { 
@@ -212,6 +243,7 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
+// Calculations
 const fxRateMap = computed(() => {
     const map = {};
     if (store.history && store.history.length > 0) {
@@ -243,6 +275,7 @@ const calculateTotalAmountUSD = (record) => {
     const price = Number(record.price) || 0;
     const commission = Number(record.fee || record.commission) || 0;
     const tax = Number(record.tax) || 0;
+    // Base amount logic: usually we want absolute value for transaction size
     const baseAmount = Math.abs(qty * price);
     const totalUSD = baseAmount + commission + tax;
     return totalUSD;
@@ -254,36 +287,13 @@ const getTotalAmountTWD = (record) => {
     return usdAmount * fxRate;
 };
 
+// Filters & Data Processing
 const availableYears = computed(() => {
     const years = new Set(
         store.records.map(r => r.txn_date.substring(0, 4))
     );
     return Array.from(years).sort().reverse();
 });
-
-const buyCount = computed(() => 
-    processedRecords.value.filter(r => r.txn_type === 'BUY').length
-);
-const sellCount = computed(() => 
-    processedRecords.value.filter(r => r.txn_type === 'SELL').length
-);
-const divCount = computed(() => 
-    processedRecords.value.filter(r => r.txn_type === 'DIV').length
-);
-
-const sortBy = (key) => {
-    if (sortKey.value === key) {
-        sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
-    } else {
-        sortKey.value = key;
-        sortOrder.value = 'desc';
-    }
-};
-
-const getSortIcon = (key) => {
-    if (sortKey.value !== key) return '⇅';
-    return sortOrder.value === 'asc' ? '↑' : '↓';
-};
 
 const processedRecords = computed(() => {
     let result = store.records.filter(r => {
@@ -301,6 +311,7 @@ const processedRecords = computed(() => {
         return matchSearch && matchType && matchYear && matchGroup;
     });
 
+    // Sorting
     result.sort((a, b) => {
         let valA, valB;
         if (sortKey.value === 'total_amount_twd') {
@@ -310,16 +321,22 @@ const processedRecords = computed(() => {
             valA = a[sortKey.value];
             valB = b[sortKey.value];
         }
+        
+        // Date sorting logic
         if (sortKey.value === 'txn_date') {
             return sortOrder.value === 'asc' 
                 ? new Date(valA) - new Date(valB) 
                 : new Date(valB) - new Date(valA);
         }
+        
+        // String sorting
         if (typeof valA === 'string') {
             return sortOrder.value === 'asc' 
                 ? valA.localeCompare(valB) 
                 : valB.localeCompare(valA);
         }
+        
+        // Number sorting
         valA = Number(valA) || 0;
         valB = Number(valB) || 0;
         return sortOrder.value === 'asc' ? valA - valB : valB - valA;
@@ -327,22 +344,29 @@ const processedRecords = computed(() => {
     return result;
 });
 
+// Stats Counters
+const buyCount = computed(() => processedRecords.value.filter(r => r.txn_type === 'BUY').length);
+const sellCount = computed(() => processedRecords.value.filter(r => r.txn_type === 'SELL').length);
+const divCount = computed(() => processedRecords.value.filter(r => r.txn_type === 'DIV').length);
+
+// Pagination Logic
 const paginatedRecords = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage.value;
     return processedRecords.value.slice(start, start + itemsPerPage.value);
 });
 
-const totalPages = computed(() => 
-    Math.ceil(processedRecords.value.length / itemsPerPage.value) || 1
-);
+const totalPages = computed(() => Math.ceil(processedRecords.value.length / itemsPerPage.value) || 1);
 
 const visiblePages = computed(() => {
     const pages = [];
     const total = totalPages.value;
     const current = currentPage.value;
+    
+    // Simple logic for small page counts
     if (total <= 7) {
         for (let i = 1; i <= total; i++) pages.push(i);
     } else {
+        // Logic for large page counts with ellipsis
         if (current <= 4) {
             for (let i = 1; i <= 5; i++) pages.push(i);
             pages.push('...');
@@ -362,31 +386,27 @@ const visiblePages = computed(() => {
     return pages;
 });
 
-const prevPage = () => { 
-    if (currentPage.value > 1) {
-        currentPage.value--;
-        scrollToTop();
-    }
-};
-
-const nextPage = () => { 
-    if (currentPage.value < totalPages.value) {
-        currentPage.value++;
-        scrollToTop();
-    }
-};
-
-const goToPage = (page) => {
-    if (page !== '...' && page >= 1 && page <= totalPages.value) {
-        currentPage.value = page;
-        scrollToTop();
-    }
-};
+// UI Actions
+const prevPage = () => { if (currentPage.value > 1) { currentPage.value--; scrollToTop(); } };
+const nextPage = () => { if (currentPage.value < totalPages.value) { currentPage.value++; scrollToTop(); } };
+const goToPage = (page) => { if (page !== '...' && page >= 1 && page <= totalPages.value) { currentPage.value = page; scrollToTop(); } };
 
 const scrollToTop = () => {
-    if (tableRef.value) {
-        tableRef.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (tableRef.value) tableRef.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+const sortBy = (key) => {
+    if (sortKey.value === key) {
+        sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortKey.value = key;
+        sortOrder.value = 'desc';
     }
+};
+
+const getSortIcon = (key) => {
+    if (sortKey.value !== key) return '';
+    return sortOrder.value === 'asc' ? '↑' : '↓';
 };
 
 const refreshData = async () => {
@@ -407,93 +427,235 @@ const editRecord = (record) => {
     setTimeout(() => { editingId.value = null; }, 2000);
 };
 
-// 【關鍵修改】: 調用 Store 封裝好的刪除邏輯以確保連鎖反應正確
 const deleteRecord = async (id) => {
-    if (!confirm("確定要刪除這筆紀錄嗎？")) return;
+    if (!confirm("確定要刪除這筆紀錄嗎？\n此操作無法復原。")) return;
     await store.deleteRecord(id);
 };
 
-watch([searchQuery, filterType, filterYear, itemsPerPage], () => {
-    currentPage.value = 1;
-});
+// Watchers
+watch([searchQuery, filterType, filterYear, itemsPerPage], () => { currentPage.value = 1; });
+watch(() => store.currentGroup, () => { currentPage.value = 1; });
 
-watch(() => store.currentGroup, () => {
-    currentPage.value = 1;
-});
 </script>
 
 <style scoped>
-.card-header { display: flex; flex-direction: column; gap: 20px; margin-bottom: 24px; }
-.card-header h3 { margin: 0; padding-left: 12px; border-left: 4px solid var(--primary); }
-.toolbar { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; background: var(--bg-secondary); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); }
-.search-box { position: relative; flex: 1 1 240px; min-width: 200px; }
-.search-box .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-sub); pointer-events: none; }
-.search-input { width: 100%; padding: 10px 10px 10px 36px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: var(--bg-card); color: var(--text-main); transition: all 0.2s ease; }
-.search-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-.filters { display: flex; gap: 12px; flex-wrap: wrap; }
-.filter-select { padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); font-size: 1rem; color: var(--text-main); cursor: pointer; transition: all 0.2s ease; }
+/* Card Base */
+.record-list-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 600px;
+}
+
+/* Header */
+.card-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    background: rgba(var(--bg-secondary-rgb), 0.3);
+    flex-wrap: wrap;
+}
+
+.card-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.card-title .icon { font-size: 1.2rem; }
+
+/* Toolbar */
+.toolbar {
+    display: flex;
+    gap: 12px;
+    flex: 1;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.search-wrapper { position: relative; min-width: 200px; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-sub); pointer-events: none; }
+.search-input { width: 100%; padding: 8px 12px 8px 32px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-app); color: var(--text-main); font-size: 0.9rem; transition: all 0.2s; }
+.search-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); width: 220px; }
+
+.filters-wrapper { display: flex; gap: 8px; flex-wrap: wrap; }
+.select-group { display: flex; gap: 8px; }
+.filter-select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-app); color: var(--text-main); cursor: pointer; font-size: 0.9rem; }
 .filter-select:hover { border-color: var(--primary); }
-.filter-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-.btn-refresh { margin-left: auto; background: var(--bg-card); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 8px; cursor: pointer; color: var(--text-sub); font-size: 1rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 8px; }
-.btn-refresh:hover:not(:disabled) { color: var(--primary); border-color: var(--primary); background: rgba(59, 130, 246, 0.05); }
-.btn-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
-.refresh-icon { display: inline-block; font-size: 1.2rem; transition: transform 0.3s ease; }
+
+.btn-refresh { display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; color: var(--text-main); font-weight: 500; transition: all 0.2s; }
+.btn-refresh:hover:not(:disabled) { background: var(--bg-card); border-color: var(--primary); color: var(--primary); }
+.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+.refresh-icon { font-size: 1.1rem; display: inline-block; }
 .refresh-icon.spinning { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.stats-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-sm); }
-.stat-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.stat-label { font-size: 0.9rem; color: var(--text-sub); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.stat-value { font-size: 1.7rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text-main); }
-.stat-value.text-primary { color: var(--primary); }
-.stat-value.text-success { color: var(--success); }
-.stat-value.text-warning { color: var(--warning); }
-.table-container { overflow-x: auto; border-radius: var(--radius-sm); }
-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th { text-align: left; padding: 16px 20px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: 0.9rem; font-weight: 700; white-space: nowrap; background: var(--bg-secondary); transition: all 0.2s ease; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+/* Stats Grid */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 16px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+.stat-card { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.stat-label { font-size: 0.8rem; color: var(--text-sub); text-transform: uppercase; font-weight: 600; }
+.stat-value { font-size: 1.25rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.text-primary { color: var(--primary); }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+
+/* List Controls */
+.list-controls { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; font-size: 0.85rem; color: var(--text-sub); border-bottom: 1px solid var(--border-color); }
+.per-page-select { padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: transparent; color: var(--text-main); cursor: pointer; }
+
+/* Table */
+.table-container { flex: 1; overflow-x: auto; overflow-y: auto; }
+.responsive-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+
+th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+    color: var(--text-sub);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+    z-index: 2;
+}
+th.text-right { text-align: right; }
 th.sortable { cursor: pointer; user-select: none; }
-th.sortable:hover { color: var(--primary); background: var(--bg-card); }
-.sort-icon { margin-left: 4px; opacity: 0.5; font-size: 0.85rem; transition: opacity 0.2s; }
-th.sortable:hover .sort-icon { opacity: 1; }
-td { padding: 16px 20px; border-bottom: 1px solid var(--border-color); font-size: 1rem; }
-tr:last-child td { border-bottom: none; }
-.record-row { transition: all 0.2s ease; }
-.record-row:hover { background-color: var(--bg-secondary); }
-.record-row.editing { background: rgba(59, 130, 246, 0.1); animation: highlight-pulse 1s ease; }
-@keyframes highlight-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.01); } }
-.date-cell { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--text-sub); }
-.symbol-badge { display: inline-block; font-weight: 700; font-size: 1.05rem; padding: 6px 12px; background: var(--bg-secondary); color: var(--primary); border-radius: 8px; transition: all 0.2s ease; }
-.record-row:hover .symbol-badge { background: var(--primary); color: white; transform: translateX(4px); }
-.type-badge { font-size: 0.9rem; padding: 6px 12px; border-radius: 8px; font-weight: 700; text-transform: uppercase; display: inline-block; transition: all 0.2s ease; }
-.type-badge.buy { background: rgba(59, 130, 246, 0.15); color: var(--primary); border: 1px solid var(--primary); }
-.type-badge.sell { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); }
-.type-badge.div { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid var(--warning); }
+th.sortable:hover { color: var(--text-main); background: var(--border-color); }
+
+td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); color: var(--text-main); font-size: 0.95rem; vertical-align: middle; }
+.record-row:hover { background: var(--bg-secondary); }
+.record-row.editing { background: rgba(59, 130, 246, 0.1); }
+
+/* Columns */
+.col-date { width: 120px; }
+.date-day { font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+
+.col-symbol { width: 120px; }
+.symbol-wrapper { display: flex; align-items: center; gap: 8px; }
+.symbol-badge { font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--primary); background: rgba(59, 130, 246, 0.1); padding: 2px 6px; border-radius: 4px; }
+.tag-badge { font-size: 0.75rem; color: var(--text-sub); background: var(--bg-secondary); padding: 2px 4px; border-radius: 4px; border: 1px solid var(--border-color); }
+
+.col-type { width: 100px; }
+.type-pill { font-size: 0.8rem; padding: 4px 10px; border-radius: 99px; font-weight: 600; text-transform: uppercase; }
+.type-pill.buy { background: rgba(59, 130, 246, 0.15); color: var(--primary); }
+.type-pill.sell { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+.type-pill.div { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+
+.col-amount { font-weight: 700; font-family: 'JetBrains Mono', monospace; }
 .text-right { text-align: right; }
 .font-num { font-family: 'JetBrains Mono', monospace; }
-.font-bold { font-weight: 700; }
-.actions { display: flex; justify-content: flex-end; gap: 8px; }
-.btn-icon { border: none; background: var(--bg-secondary); cursor: pointer; color: var(--text-sub); font-size: 1.1rem; padding: 8px 10px; border-radius: 6px; transition: all 0.2s ease; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
-.btn-icon:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
-.btn-icon.edit:hover { background: var(--primary); color: white; }
-.btn-icon.delete:hover { background: var(--danger); color: white; }
-.pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 30px; flex-wrap: wrap; }
-.page-btn, .page-number { min-width: 36px; height: 36px; border: 1px solid var(--border-color); background: var(--bg-card); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-sub); font-weight: 500; transition: all 0.2s ease; padding: 0 8px; }
-.page-btn:hover:not(:disabled), .page-number:hover { border-color: var(--primary); color: var(--primary); background: rgba(59, 130, 246, 0.05); transform: translateY(-2px); }
-.page-number.active { background: var(--primary); color: white; border-color: var(--primary); font-weight: 700; }
-.page-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
-.page-numbers { display: flex; gap: 4px; }
-.page-info { font-size: 1rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; margin-left: 8px; padding: 8px 12px; background: var(--bg-secondary); border-radius: 8px; }
-.empty-state { text-align: center; padding: 80px 20px; color: var(--text-sub); }
-.empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.5; }
+
+.action-group { display: flex; justify-content: flex-end; gap: 6px; }
+.btn-icon { width: 28px; height: 28px; border: 1px solid transparent; background: transparent; border-radius: 6px; cursor: pointer; color: var(--text-sub); display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.btn-icon:hover { background: var(--bg-secondary); border-color: var(--border-color); color: var(--text-main); }
+.btn-icon.edit:hover { color: var(--primary); background: rgba(59, 130, 246, 0.1); }
+.btn-icon.delete:hover { color: var(--danger); background: rgba(239, 68, 68, 0.1); }
+
+/* Pagination */
+.pagination-container { padding: 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: center; gap: 6px; align-items: center; background: var(--bg-card); }
+.page-btn, .page-number { min-width: 32px; height: 32px; border: 1px solid var(--border-color); background: var(--bg-secondary); border-radius: 6px; cursor: pointer; color: var(--text-sub); display: flex; align-items: center; justify-content: center; font-size: 0.9rem; transition: all 0.2s; }
+.page-btn:hover:not(:disabled), .page-number:hover { border-color: var(--primary); color: var(--primary); background: var(--bg-card); }
+.page-number.active { background: var(--primary); color: white; border-color: var(--primary); }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Empty State */
+.empty-state { padding: 60px 20px; text-align: center; }
+.empty-content { color: var(--text-sub); }
+.empty-icon { font-size: 2.5rem; margin-bottom: 10px; display: block; opacity: 0.5; }
+
+/* Responsive Card View */
 @media (max-width: 768px) {
-    .toolbar { flex-direction: column; align-items: stretch; }
-    .search-box { flex: 1 1 100%; }
-    .filters { flex-direction: column; }
-    .filter-select { width: 100%; }
-    .btn-refresh { margin-left: 0; width: 100%; justify-content: center; }
-    .stats-summary { grid-template-columns: repeat(2, 1fr); }
-    .pagination { gap: 4px; }
-    .page-btn, .page-number { min-width: 32px; height: 32px; font-size: 0.85rem; }
-    .page-info { width: 100%; text-align: center; margin-left: 0; margin-top: 8px; }
+    .card-header { flex-direction: column; align-items: stretch; padding: 16px; }
+    .toolbar { flex-direction: column; width: 100%; }
+    .search-wrapper { width: 100%; }
+    .filters-wrapper { justify-content: space-between; }
+    .select-group { flex: 1; gap: 8px; }
+    .filter-select { flex: 1; }
+    .desktop-only { display: none; }
+    
+    .stats-grid { grid-template-columns: repeat(2, 1fr); padding: 12px; gap: 8px; }
+    
+    /* Table to Card Transformation */
+    .table-container { overflow: visible; }
+    .responsive-table, thead, tbody, th, td, tr { display: block; }
+    thead { display: none; }
+    
+    .record-row {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 12px;
+        padding: 12px;
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    td {
+        border: none;
+        padding: 4px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        text-align: right;
+    }
+    
+    td::before {
+        content: attr(data-label);
+        font-size: 0.85rem;
+        color: var(--text-sub);
+        font-weight: 500;
+        text-align: left;
+    }
+    
+    /* Mobile Column Overrides */
+    .col-date { grid-column: 1 / 2; order: 1; justify-content: flex-start; }
+    .col-symbol { grid-column: 2 / 3; order: 2; justify-content: flex-end; }
+    .col-symbol::before { display: none; } /* Hide label for symbol to save space */
+    
+    .col-type { grid-column: 1 / 2; order: 3; justify-content: flex-start; }
+    .col-amount { grid-column: 2 / 3; order: 4; justify-content: flex-end; }
+    .col-amount::before { display: none; } /* Use logic below for label */
+    
+    .col-action { 
+        grid-column: 1 / -1; 
+        order: 10; 
+        border-top: 1px solid var(--border-color); 
+        margin-top: 8px; 
+        padding-top: 8px !important;
+        justify-content: flex-end;
+    }
+    .col-action::before { display: none; }
+
+    .mobile-hide { display: none !important; }
+    .mobile-only { display: inline-block !important; }
+    
+    .date-wrapper { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+    .date-year { font-size: 0.75rem; color: var(--text-muted); }
+    
+    .amount-wrapper { display: flex; flex-direction: column; align-items: flex-end; }
+    .main-amount { font-size: 1rem; font-weight: 700; }
+    .mobile-details { font-size: 0.75rem; color: var(--text-sub); margin-top: 2px; }
 }
-@media (max-width: 480px) { .stats-summary { grid-template-columns: 1fr; } }
+
+@media (max-width: 480px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .list-info { display: none; } /* Hide text info on very small screens */
+    .list-controls { justify-content: center; }
+}
 </style>
