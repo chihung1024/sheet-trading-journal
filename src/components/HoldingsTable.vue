@@ -14,40 +14,39 @@
                 <input 
                     type="text" 
                     v-model="searchQuery" 
-                    placeholder="搜尋股票代碼..."
+                    placeholder="搜尋股票..."
                     class="search-input"
                 >
             </div>
             
             <div class="filter-group">
-                <label class="filter-label">顯示:</label>
                 <select v-model="filterStatus" class="filter-select">
                     <option value="all">全部持倉</option>
-                    <option value="profit">獲利</option>
-                    <option value="loss">虧損</option>
+                    <option value="profit">獲利中</option>
+                    <option value="loss">虧損中</option>
                 </select>
             </div>
         </div>
     </div>
     
-    <div class="table-container" ref="tableContainer">
+    <div class="table-container desktop-view" ref="tableContainer">
         <table>
             <thead>
                 <tr>
-                    <th @click="sortBy('symbol')" class="sortable">
+                    <th @click="sortBy('symbol')" class="sortable sticky-col">
                         代碼 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
                     </th>
                     <th @click="sortBy('qty')" class="text-right sortable">
                         股數 <span class="sort-icon">{{ getSortIcon('qty') }}</span>
                     </th>
                     <th @click="sortBy('avg_cost_usd')" class="text-right sortable">
-                        成本 (USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
+                        成本(USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
                     </th>
                     <th @click="sortBy('current_price_origin')" class="text-right sortable">
-                        現價 / 當日變動 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
+                        現價/變動 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
                     </th>
                     <th @click="sortBy('market_value_twd')" class="text-right sortable">
-                        市值 (TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
+                        市值(TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
                     </th>
                     <th @click="sortBy('daily_pl_twd')" class="text-right sortable">
                         當日損益 <span class="sort-icon">{{ getSortIcon('daily_pl_twd') }}</span>
@@ -74,33 +73,26 @@
                     @click="highlightRow(h.symbol)"
                     :class="{ 'highlighted': highlightedSymbol === h.symbol }"
                 >
-                    <td class="col-symbol">
+                    <td class="col-symbol sticky-col">
                         <div class="symbol-wrapper">
                             <span class="symbol-text">{{ h.symbol }}</span>
-                            <span class="symbol-badge" v-if="h.pnl_percent > 50">🔥</span>
+                            <span class="symbol-badge fire" v-if="h.pnl_percent > 30">🔥</span>
                         </div>
                     </td>
                     <td class="text-right font-num">{{ formatNumber(h.qty, 2) }}</td>
                     <td class="text-right font-num text-sub">{{ formatNumber(h.avg_cost_usd, 2) }}</td>
                     <td class="text-right font-num">
                         <div>{{ formatNumber(h.current_price_origin, 2) }}</div>
-                        <div class="price-change" :class="getTrendClass(h.daily_change_usd)">
+                        <div class="price-change text-xs" :class="getTrendClass(h.daily_change_usd)">
                             {{ h.daily_change_usd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_change_usd, 2) }}
-                            ({{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%)
                         </div>
                     </td>
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
                     <td class="text-right font-num" :class="getTrendClass(h.daily_pl_twd)">
-                        <div class="daily-pnl-wrapper">
-                            <span class="pnl-value">
-                                {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
-                            </span>
-                        </div>
+                        {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
                     </td>
                     <td class="text-right font-num" :class="getTrendClass(h.pnl_twd)">
-                        <span class="pnl-value">
-                            {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
-                        </span>
+                        {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
                     </td>
                     <td class="text-right font-num">
                         <span class="roi-badge" :class="getTrendClass(h.pnl_percent, true)">
@@ -111,9 +103,52 @@
             </tbody>
         </table>
     </div>
+
+    <div class="mobile-view">
+         <div v-if="filteredHoldings.length === 0" class="empty-state">
+            <div class="empty-icon">📊</div>
+            <div>目前無持倉數據</div>
+        </div>
+        <div v-for="h in visibleHoldings" :key="`mob-${h.symbol}`" class="holding-card" @click="highlightRow(h.symbol)">
+            <div class="card-top">
+                <div class="symbol-section">
+                    <span class="symbol-text">{{ h.symbol }}</span>
+                    <span class="qty-badge">{{ formatNumber(h.qty, 0) }} 股</span>
+                </div>
+                <div class="price-section">
+                    <div class="current-price">{{ formatNumber(h.current_price_origin, 2) }} USD</div>
+                    <div class="roi-badge-sm" :class="getTrendClass(h.pnl_percent, true)">
+                         {{ h.pnl_percent >= 0 ? '+' : '' }}{{ safeNum(h.pnl_percent) }}%
+                    </div>
+                </div>
+            </div>
+            <div class="card-grid">
+                <div class="grid-item">
+                    <span class="label">市值 (TWD)</span>
+                    <span class="value font-bold">{{ formatNumber(h.market_value_twd, 0) }}</span>
+                </div>
+                <div class="grid-item text-right">
+                    <span class="label">總損益</span>
+                    <span class="value" :class="getTrendClass(h.pnl_twd)">
+                        {{ h.pnl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.pnl_twd, 0) }}
+                    </span>
+                </div>
+                <div class="grid-item">
+                    <span class="label">成本</span>
+                    <span class="value text-sub">{{ formatNumber(h.avg_cost_usd, 2) }}</span>
+                </div>
+                <div class="grid-item text-right">
+                    <span class="label">當日損益</span>
+                    <span class="value" :class="getTrendClass(h.daily_pl_twd)">
+                        {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <div class="scroll-hint" v-if="filteredHoldings.length > displayLimit">
-        顯示 {{ visibleHoldings.length }} / {{ filteredHoldings.length }} 筆
+        顯示 {{ visibleHoldings.length }} / {{ filteredHoldings.length }} 筆 (捲動載入更多)
     </div>
   </div>
 </template>
@@ -145,7 +180,6 @@ const totalMarketValue = computed(() => {
     return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
 });
 
-// ✅ 直接使用後端計算好的 holdings 數據，不再重新計算
 const filteredHoldings = computed(() => {
     let result = store.holdings;
     
@@ -208,19 +242,29 @@ const highlightRow = (symbol) => {
 };
 
 const handleScroll = () => {
-    if (!tableContainer.value) return;
-    const { scrollTop: top, scrollHeight, clientHeight } = tableContainer.value;
-    
-    if (scrollHeight - top - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
-        displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
+    // 桌面版捲動
+    if (tableContainer.value) {
+        const { scrollTop, scrollHeight, clientHeight } = tableContainer.value;
+        if (scrollHeight - scrollTop - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
+            displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
+        }
     }
+    // Mobile scroll handling could be added to window or specific container if needed
 };
 
 onMounted(() => {
-    console.log(`[✅ HoldingsTable] 組件已掛載`);
     if (tableContainer.value) {
         tableContainer.value.addEventListener('scroll', handleScroll);
     }
+    window.addEventListener('scroll', () => {
+        if(window.innerWidth <= 768) {
+            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
+                 if(displayLimit.value < filteredHoldings.value.length) {
+                     displayLimit.value += 20;
+                 }
+            }
+        }
+    });
 });
 
 onUnmounted(() => {
@@ -232,312 +276,72 @@ onUnmounted(() => {
 
 <style scoped>
 .card-header { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: flex-start;
-    margin-bottom: 24px; 
-    padding-bottom: 16px; 
-    border-bottom: 1px solid var(--border-color);
-    flex-wrap: wrap;
-    gap: 16px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap; gap: 16px;
 }
-
-.header-left {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.header-controls {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.search-box {
-    position: relative;
-    min-width: 200px;
-}
-
-.search-icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-sub);
-    pointer-events: none;
-}
-
-.search-input {
-    width: 100%;
-    padding: 8px 12px 8px 36px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-size: 1rem;
-    background: var(--bg-secondary);
-    color: var(--text-main);
-    transition: all 0.2s ease;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: var(--primary);
-    background: var(--bg-card);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.filter-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.filter-label {
-    font-size: 0.95rem;
-    color: var(--text-sub);
-    font-weight: 600;
-}
-
-.filter-select {
-    padding: 8px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--bg-secondary);
-    color: var(--text-main);
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.filter-select:hover {
-    border-color: var(--primary);
-}
-
-.filter-select:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
+.header-left { display: flex; flex-direction: column; gap: 8px; }
+.header-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.search-box { position: relative; min-width: 200px; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-sub); }
+.search-input { width: 100%; padding: 8px 12px 8px 36px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.95rem; background: var(--bg-secondary); color: var(--text-main); }
+.search-input:focus { outline: none; border-color: var(--primary); background: var(--bg-card); }
 
 .summary-info { 
-    font-family: 'JetBrains Mono', monospace; 
-    font-size: 1rem; 
-    background: var(--bg-secondary); 
-    padding: 8px 14px; 
-    border-radius: 8px; 
-    color: var(--text-main);
-    border: 1px solid var(--border-color);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; 
+    background: var(--bg-secondary); padding: 6px 12px; border-radius: 6px; 
+    color: var(--text-main); border: 1px solid var(--border-color);
 }
 
-.table-container { 
-    overflow-x: auto; 
-    max-height: 600px;
-    overflow-y: auto;
-}
+/* Table View (Desktop) */
+.table-container { overflow-x: auto; max-height: 600px; overflow-y: auto; border-radius: 8px; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+th { position: sticky; top: 0; z-index: 10; padding: 12px 16px; background: var(--bg-secondary); border-bottom: 2px solid var(--border-color); white-space: nowrap; font-size: 0.85rem; color: var(--text-sub); cursor: pointer; }
+th.sticky-col { position: sticky; left: 0; z-index: 11; background: var(--bg-secondary); }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+td.sticky-col { position: sticky; left: 0; z-index: 9; background: var(--bg-card); border-right: 1px solid var(--border-color); }
+tr:hover td { background-color: var(--bg-secondary); }
+tr:hover td.sticky-col { background-color: var(--bg-secondary); }
 
-.table-container::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
+.symbol-text { font-weight: 700; color: var(--primary); background: rgba(59, 130, 246, 0.1); padding: 4px 8px; border-radius: 6px; }
+.symbol-badge.fire { margin-left: 6px; font-size: 0.9rem; }
+.price-change { font-size: 0.8rem; margin-top: 2px; }
 
-.table-container::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
-    border-radius: 4px;
-}
-
-.table-container::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 4px;
-}
-
-.table-container::-webkit-scrollbar-thumb:hover {
-    background: var(--text-sub);
-}
-
-.sort-icon { 
-    font-size: 0.85rem; 
-    margin-left: 4px; 
-    opacity: 0.5; 
-    transition: opacity 0.2s;
-}
-
-th.sortable { 
-    cursor: pointer; 
-    transition: all 0.2s;
-    user-select: none;
-}
-
-th.sortable:hover { 
-    color: var(--primary); 
-    background: var(--bg-card);
-}
-
-th.sortable:hover .sort-icon {
-    opacity: 1;
-}
-
-.row-item {
-    transition: all 0.2s ease;
-    cursor: pointer;
-}
-
-.row-item:hover {
-    background-color: var(--bg-secondary) !important;
-    transform: scale(1.01);
-}
-
-.row-item.highlighted {
-    background: rgba(59, 130, 246, 0.1);
-    animation: pulse-highlight 0.5s ease;
-}
-
-@keyframes pulse-highlight {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.02); }
-}
-
-.col-symbol { 
-    width: 120px; 
-}
-
-.symbol-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.symbol-text { 
-    font-weight: 700; 
-    font-size: 1.05rem; 
-    background: var(--bg-secondary); 
-    color: var(--primary); 
-    padding: 6px 12px; 
-    border-radius: 8px; 
-    display: inline-block;
-    transition: all 0.2s ease;
-}
-
-.row-item:hover .symbol-text {
-    background: var(--primary);
-    color: white;
-    transform: translateX(4px);
-}
-
-.symbol-badge {
-    font-size: 1rem;
-    animation: bounce 1s ease infinite;
-}
-
-@keyframes bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-4px); }
-}
-
-.price-change {
-    font-size: 0.85rem;
-    margin-top: 4px;
-    font-weight: 600;
-}
-
-.daily-pnl-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-}
+.roi-badge { display: inline-block; min-width: 70px; text-align: center; padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.9rem; }
+.roi-badge.bg-green { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+.roi-badge.bg-red { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
 
 .text-right { text-align: right; }
-.text-sub { color: var(--text-sub); font-size: 0.95rem; }
-.font-num { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.font-num { font-family: 'JetBrains Mono', monospace; }
+.text-green { color: var(--success); }
+.text-red { color: var(--danger); }
+.text-sub { color: var(--text-sub); }
 .font-bold { font-weight: 700; }
 
-.pnl-value {
-    display: inline-block;
-    transition: all 0.2s ease;
-}
+/* Mobile Card View */
+.mobile-view { display: none; }
+.holding-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow-sm); }
+.card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); }
+.symbol-section { display: flex; align-items: center; gap: 8px; }
+.qty-badge { font-size: 0.85rem; color: var(--text-sub); background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px; }
+.price-section { text-align: right; }
+.current-price { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 1rem; }
+.roi-badge-sm { font-size: 0.85rem; font-weight: 600; }
 
-.row-item:hover .pnl-value {
-    transform: scale(1.1);
-    font-weight: 700;
-}
+.card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
+.grid-item { display: flex; flex-direction: column; gap: 2px; }
+.grid-item .label { font-size: 0.8rem; color: var(--text-sub); }
+.grid-item .value { font-family: 'JetBrains Mono', monospace; font-size: 1rem; }
 
-.text-green { 
-    color: var(--success);
-    font-weight: 600;
-}
-
-.text-red { 
-    color: var(--danger);
-    font-weight: 600;
-}
-
-.roi-badge { 
-    display: inline-block; 
-    min-width: 72px; 
-    text-align: center; 
-    padding: 6px 10px; 
-    border-radius: 8px; 
-    font-weight: 600; 
-    font-size: 0.95rem;
-    transition: all 0.2s ease;
-}
-
-.row-item:hover .roi-badge {
-    transform: scale(1.05);
-}
-
-.roi-badge.bg-green { 
-    background: rgba(16, 185, 129, 0.15); 
-    color: var(--success);
-    border: 1px solid var(--success);
-}
-
-.roi-badge.bg-red { 
-    background: rgba(239, 68, 68, 0.15); 
-    color: var(--danger);
-    border: 1px solid var(--danger);
-}
-
-.empty-state { 
-    text-align: center; 
-    padding: 80px 20px; 
-    color: var(--text-sub);
-}
-
-.empty-icon {
-    font-size: 3rem;
-    margin-bottom: 16px;
-    opacity: 0.5;
-}
-
-.scroll-hint {
-    text-align: center;
-    padding: 12px;
-    font-size: 0.95rem;
-    color: var(--text-sub);
-    background: var(--bg-secondary);
-    border-radius: 0 0 var(--radius) var(--radius);
-    font-family: 'JetBrains Mono', monospace;
-}
+.empty-state { text-align: center; padding: 40px; color: var(--text-sub); }
+.empty-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; }
+.scroll-hint { text-align: center; padding: 12px; color: var(--text-sub); font-size: 0.85rem; }
 
 @media (max-width: 768px) {
-    .card-header {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .header-controls {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .search-box,
-    .filter-select {
-        width: 100%;
-    }
-    
-    .table-container {
-        max-height: 400px;
-    }
+    .desktop-view { display: none; }
+    .mobile-view { display: block; }
+    .header-controls { flex-direction: column; width: 100%; align-items: stretch; }
+    .search-box, .filter-select { width: 100%; }
+    .card-header { gap: 12px; }
 }
 </style>
