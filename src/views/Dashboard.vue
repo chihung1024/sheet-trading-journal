@@ -8,10 +8,10 @@
         </span>
       </div>
       <button 
-        @click="refreshData" 
+        @click="handleManualRefresh" 
         class="btn-refresh" 
-        :disabled="loading"
-        :class="{ 'spinning': loading }"
+        :disabled="isGlobalLoading"
+        :class="{ 'spinning': isGlobalLoading }"
       >
         <span class="icon">↻</span>
         <span class="text desktop-only">重新整理</span>
@@ -19,7 +19,7 @@
     </div>
 
     <section class="section-stats">
-      <StatsGridSkeleton v-if="loading && !stats.total_assets" />
+      <StatsGridSkeleton v-if="shouldShowSkeleton('stats')" />
       <StatsGrid v-else :stats="stats" />
     </section>
 
@@ -29,7 +29,7 @@
           <h3>資產淨值走勢</h3>
         </div>
         <div class="card-body">
-          <ChartSkeleton v-if="loading && !history.length" />
+          <ChartSkeleton v-if="shouldShowSkeleton('history')" />
           <PerformanceChart v-else :history="history" />
         </div>
       </div>
@@ -39,7 +39,7 @@
           <h3>資產配置</h3>
         </div>
         <div class="card-body">
-          <div v-if="loading && !holdings.length" class="pie-skeleton"></div>
+          <div v-if="shouldShowSkeleton('holdings')" class="pie-skeleton"></div>
           <PieChart v-else :holdings="holdings" />
         </div>
       </div>
@@ -49,14 +49,14 @@
       <div class="section-header">
         <h3>持倉明細</h3>
       </div>
-      <TableSkeleton v-if="loading && !holdings.length" />
+      <TableSkeleton v-if="shouldShowSkeleton('holdings')" />
       <HoldingsTable v-else :holdings="holdings" />
     </section>
   </div>
 </template>
 
 <script setup>
-import { onMounted, computed } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import { timeAgo } from '../utils/formatting';
@@ -64,7 +64,7 @@ import { timeAgo } from '../utils/formatting';
 // Components
 import StatsGrid from '../components/StatsGrid.vue';
 import PerformanceChart from '../components/PerformanceChart.vue';
-import PieChart from '../components/PieChart.vue'; // 需確保此組件存在
+import PieChart from '../components/PieChart.vue';
 import HoldingsTable from '../components/HoldingsTable.vue';
 
 // Skeletons
@@ -75,12 +75,32 @@ import TableSkeleton from '../components/skeletons/TableSkeleton.vue';
 const store = usePortfolioStore();
 const { addToast } = useToast();
 
+// [關鍵優化] 本地初始載入狀態，防止 onMounted 前的畫面閃爍
+const initLoading = ref(true);
+
 // Computed State
-const loading = computed(() => store.loading);
-const stats = computed(() => store.stats);
-const holdings = computed(() => store.holdings);
-const history = computed(() => store.history);
+const storeLoading = computed(() => store.loading);
+const stats = computed(() => store.stats || {}); // 確保不為 null
+const holdings = computed(() => store.holdings || []);
+const history = computed(() => store.history || []);
 const lastUpdate = computed(() => store.last_update);
+
+// 合併 Loading 狀態：Store 正在載入 OR 初始檢查尚未完成
+const isGlobalLoading = computed(() => storeLoading.value || initLoading.value);
+
+// [關鍵優化] 智慧判斷是否顯示骨架屏
+// 邏輯：(正在載入 且 無數據) -> 顯示骨架
+// 這樣可以達成 "Optimistic UI"：重新整理時若已有數據，不會閃回骨架屏，而是保留舊數據直到新數據更新
+const shouldShowSkeleton = (dataType) => {
+  if (!isGlobalLoading.value) return false; // 載入完成 -> 顯示真實數據
+
+  // 若正在載入，檢查是否有舊數據
+  if (dataType === 'stats') return !stats.value.total_assets;
+  if (dataType === 'history') return !history.value.length;
+  if (dataType === 'holdings') return !holdings.value.length;
+  
+  return true;
+};
 
 // Methods
 const formatTime = (date) => timeAgo(date);
@@ -88,21 +108,30 @@ const formatTime = (date) => timeAgo(date);
 const refreshData = async () => {
   try {
     await store.fetchAll();
-    addToast('數據已更新', 'success');
   } catch (e) {
-    addToast('更新失敗，請稍後再試', 'error');
+    console.error("Fetch failed", e);
+    // 錯誤由 store 或全域 handler 處理，這裡僅確保 loading 狀態解除
   }
 };
 
+const handleManualRefresh = async () => {
+  await refreshData();
+  addToast('數據已更新', 'success');
+};
+
 // Lifecycle
-onMounted(() => {
-  // 如果沒有數據，或是數據過期 (> 5分鐘)，則自動拉取
+onMounted(async () => {
+  // 判斷是否需要自動更新：無數據 或 數據過期 (> 5分鐘)
   const shouldFetch = !stats.value.total_assets || 
     (new Date() - new Date(store.last_update || 0) > 5 * 60 * 1000);
 
   if (shouldFetch) {
-    refreshData();
+    await refreshData();
   }
+  
+  // 只有在第一次檢查與請求都完成後，才解除 initLoading
+  // 這確保了使用者第一眼看到的一定是骨架屏(若需載入)或真實數據，絕不會是空狀態
+  initLoading.value = false;
 });
 </script>
 
@@ -206,14 +235,16 @@ onMounted(() => {
   position: relative;
 }
 
+/* Pie Skeleton */
 .pie-skeleton {
-  width: 200px;
-  height: 200px;
+  width: 220px;
+  height: 220px;
   border-radius: 50%;
-  background: var(--bg-secondary);
+  background: linear-gradient(90deg, var(--bg-secondary), var(--border-color), var(--bg-secondary));
+  background-size: 200% 100%;
   margin: auto;
-  opacity: 0.5;
-  animation: pulse 2s infinite;
+  opacity: 0.6;
+  animation: shimmer 1.5s infinite linear;
 }
 
 /* Holdings Section */
@@ -230,12 +261,12 @@ onMounted(() => {
 /* Animations */
 @keyframes spin { 100% { transform: rotate(360deg); } }
 @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes pulse { 50% { opacity: 0.3; } }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 
 /* RWD */
 @media (max-width: 1024px) {
   .section-charts {
-    grid-template-columns: 1fr; /* 平板/手機改為單欄 */
+    grid-template-columns: 1fr;
   }
   
   .sub-chart {
