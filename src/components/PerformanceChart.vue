@@ -34,8 +34,7 @@
         
         <div class="right-controls">
           <div class="benchmark-selector" v-if="chartType === 'twr'">
-            <label class="benchmark-label">基準標的</label>
-            <div class="benchmark-input-group">
+            <label class="benchmark-label">基準標的</label> <div class="benchmark-input-group">
               <input 
                 type="text" 
                 v-model="benchmarkInput" 
@@ -43,8 +42,7 @@
                 @keyup.enter="handleBenchmarkChange"
                 :disabled="isChangingBenchmark"
                 class="benchmark-input"
-              />
-              <button 
+              /> <button 
                 @click="handleBenchmarkChange"
                 :disabled="isChangingBenchmark || !benchmarkInput || benchmarkInput === portfolioStore.selectedBenchmark"
                 class="btn-apply"
@@ -56,27 +54,23 @@
             </div>
           </div>
           
-          <div class="date-range-selector" v-if="timeRange === 'CUSTOM'">
+          <div class="date-range-selector">
             <div class="date-input-group">
-              <label>起</label>
-              <input 
+              <label>起</label> <input 
                 type="date" 
                 v-model="customStartDate" 
                 @change="onDateChange"
                 :max="customEndDate || todayStr"
-              />
-            </div>
+              /> </div>
             <div class="date-separator">—</div>
             <div class="date-input-group">
-              <label>訖</label>
-              <input 
+              <label>訖</label> <input 
                 type="date" 
                 v-model="customEndDate" 
                 @change="onDateChange"
                 :min="customStartDate"
                 :max="todayStr"
-              />
-            </div>
+              /> </div>
           </div>
           
           <div class="chart-info" v-if="displayedData.length > 0">
@@ -238,12 +232,14 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
+    // 確保 startDate 和 endDate 沒有時間部分
     const startDateOnly = new Date(startDate);
     startDateOnly.setHours(0, 0, 0, 0);
     
     const endDateOnly = new Date(endDate);
     endDateOnly.setHours(23, 59, 59, 999);
 
+    // 尋找 baseline：嚴格 < startDate 的最後一個數據點
     let baseline = null;
     for (let i = fullHistory.length - 1; i >= 0; i--) {
         const itemDate = new Date(fullHistory[i].date.replace(/-/g, '/'));
@@ -255,12 +251,14 @@ const filterData = (startDate, endDate = new Date()) => {
         }
     }
     
+    // 如果沒找到（startDate 早於所有數據），使用第一個數據點
     if (!baseline && fullHistory.length > 0) {
         baseline = fullHistory[0];
     }
     
     baselineData.value = baseline;
 
+    // 過濾出 >= startDate 的所有工作日數據
     const filteredData = fullHistory.filter(d => {
         const itemDate = new Date(d.date.replace(/-/g, '/'));
         itemDate.setHours(0, 0, 0, 0);
@@ -296,6 +294,7 @@ const drawChart = () => {
     let labels = [];
     
     if (chartType.value === 'asset') {
+        // 資產圖：不包含 baseline，顯示絕對值
         labels = displayedData.value.map(d => {
             const date = new Date(d.date);
             return date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' });
@@ -316,13 +315,18 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
+        // 損益圖：包含 baseline，相對於 baseline 歸零
+        // 確保 baseline 不在 displayedData 中（不會重複）
         let dataWithBaseline = [];
         
+        // 檢查 baseline 是否已經在 displayedData 中
         const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
         
         if (baselineInDisplayed) {
+            // 如果 baseline 已在 displayedData 中，直接使用 displayedData
             dataWithBaseline = displayedData.value;
         } else {
+            // 如果 baseline 不在 displayedData 中，在前面加上 baseline
             dataWithBaseline = [baselineData.value, ...displayedData.value];
         }
         
@@ -347,13 +351,18 @@ const drawChart = () => {
             ...common
         }];
     } else {
+        // 報酬率圖：包含 baseline，相對於 baseline 歸零
+        // 確保 baseline 不在 displayedData 中（不會重複）
         let dataWithBaseline = [];
         
+        // 檢查 baseline 是否已經在 displayedData 中
         const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
         
         if (baselineInDisplayed) {
+            // 如果 baseline 已在 displayedData 中，直接使用 displayedData
             dataWithBaseline = displayedData.value;
         } else {
+            // 如果 baseline 不在 displayedData 中，在前面加上 baseline
             dataWithBaseline = [baselineData.value, ...displayedData.value];
         }
         
@@ -792,21 +801,61 @@ canvas {
     }
 }
 
-/* 📱 手機端深度優化 */
 @media (max-width: 768px) {
     .inner-chart-layout {
-        padding: 12px;
-    }
-    
-    .chart-header {
-        margin-bottom: 12px;
+        padding: 16px;
     }
     
     .title-row {
         flex-direction: column;
         align-items: flex-start;
-        gap: 8px;
-        margin-bottom: 10px;
+        gap: 12px;
+    }
+    
+    .controls-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    
+    .time-pills {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .right-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    
+    .benchmark-selector,
+    .date-range-selector {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .benchmark-input {
+        flex: 1;
+        min-width: 60px;
+    }
+    
+    .date-input-group input[type="date"] {
+        flex: 1;
+        width: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .toggle-pills,
+    .time-pills {
+        padding: 2px;
+    }
+    
+    .toggle-pills button,
+    .time-pills button {
+        padding: 6px 8px;
+        font-size: 0.75rem;
     }
     
     .chart-title {
@@ -815,143 +864,10 @@ canvas {
         border-left-width: 3px;
     }
     
-    /* 🎯 類型切換 pill 縮小 */
-    .toggle-pills {
-        width: 100%;
-        padding: 2px;
-        border-radius: 6px;
-    }
-    
-    .toggle-pills button {
-        padding: 5px 10px;
-        font-size: 0.75rem;
-        border-radius: 5px;
-    }
-    
-    .controls-row {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-    }
-    
-    /* 👉 時間區間水平滾動 */
-    .time-pills {
-        width: 100%;
-        overflow-x: auto;
-        overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-        padding: 2px;
-        border-radius: 6px;
-        gap: 3px;
-    }
-    
-    .time-pills::-webkit-scrollbar {
-        display: none;
-    }
-    
-    .time-pills button {
-        padding: 5px 12px;
-        font-size: 0.75rem;
-        white-space: nowrap;
-        flex-shrink: 0;
-        border-radius: 5px;
-    }
-    
-    .right-controls {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-    }
-    
-    /* 📊 基準標的選擇器 */
-    .benchmark-selector {
-        width: 100%;
-        justify-content: space-between;
-        padding: 5px 10px;
-    }
-    
-    .benchmark-label {
-        font-size: 0.75rem;
-    }
-    
-    .benchmark-input {
-        flex: 1;
-        min-width: 60px;
-        font-size: 0.9rem;
-        padding: 5px 7px;
-    }
-    
-    .btn-apply {
-        width: 30px;
-        height: 30px;
-        font-size: 0.95rem;
-    }
-    
-    /* 📅 日期選擇器縮減 30% */
-    .date-range-selector {
-        width: 100%;
-        justify-content: space-between;
-        padding: 5px 10px;
-        gap: 8px;
-    }
-    
-    .date-input-group {
-        gap: 6px;
-    }
-    
-    .date-input-group label {
-        font-size: 0.7rem;
-    }
-    
-    .date-input-group input[type="date"] {
-        flex: 1;
-        width: auto;
-        min-width: 100px;
-        font-size: 0.85rem;
-        padding: 5px 7px;
-    }
-    
-    .date-separator {
-        font-size: 0.85rem;
-    }
-    
-    .chart-info {
-        padding: 6px 10px;
-        background: var(--bg-secondary);
-        border-radius: 6px;
-    }
-    
-    .info-text {
-        font-size: 0.7rem;
-    }
-    
-    .canvas-box {
-        margin-top: 8px;
-    }
-}
-
-/* 👍 極小手機 */
-@media (max-width: 480px) {
-    .inner-chart-layout {
-        padding: 10px;
-    }
-    
-    .chart-title {
-        font-size: 0.95rem;
-        padding-left: 8px;
-    }
-    
-    .toggle-pills button,
-    .time-pills button {
-        padding: 4px 8px;
-        font-size: 0.7rem;
-    }
-    
     .date-range-selector {
         flex-direction: column;
-        gap: 6px;
-        padding: 6px 8px;
+        gap: 8px;
+        padding: 8px;
     }
     
     .date-input-group {
@@ -965,23 +881,6 @@ canvas {
     
     .benchmark-input-group {
         width: 100%;
-    }
-    
-    .benchmark-input {
-        font-size: 0.85rem;
-    }
-}
-
-/* 觸控優化 */
-@media (hover: none) and (pointer: coarse) {
-    .toggle-pills button:hover,
-    .time-pills button:hover {
-        color: var(--text-sub);
-    }
-    
-    .toggle-pills button:active,
-    .time-pills button:active {
-        transform: scale(0.97);
     }
 }
 </style>
