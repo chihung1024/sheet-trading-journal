@@ -1,55 +1,75 @@
-import { ref, watch } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 
+// [Singleton State]
+// 全域共用狀態，確保 Header 開關與圖表配色同步
 const isDark = ref(false);
+const STORAGE_KEY = 'theme_preference';
 
 export function useDarkMode() {
-  // 初始化 - 預設亮色，優先檢查保存的主題偏好
-  const initTheme = () => {
-    const savedTheme = localStorage.getItem('theme');
-    
-    if (savedTheme === 'dark') {
-      // 用戶之前選擇了深色模式
-      isDark.value = true;
+  /**
+   * 套用主題到 DOM
+   */
+  const applyTheme = (dark) => {
+    const root = document.documentElement;
+    if (dark) {
+      root.classList.add('dark');
     } else {
-      // 無保存設置或保存的是 'light'，默認使用亮色模式
-      isDark.value = false;
+      root.classList.remove('dark');
     }
-    
-    applyTheme();
+    isDark.value = dark;
   };
 
-  // 應用主題
-  const applyTheme = () => {
-    if (isDark.value) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  };
-
-  // 切換主題
+  /**
+   * 切換主題
+   */
   const toggleTheme = () => {
-    isDark.value = !isDark.value;
-    applyTheme();
+    const newVal = !isDark.value;
+    applyTheme(newVal);
+    localStorage.setItem(STORAGE_KEY, newVal ? 'dark' : 'light');
   };
 
-  // 監聽系統主題變化 (當用戶未保存偏好時)
-  if (typeof window !== 'undefined') {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-      // 僅當用戶未保存主題設置時才跟隨系統
-      if (!localStorage.getItem('theme')) {
-        isDark.value = e.matches;
-        applyTheme();
-      }
-    });
-  }
+  /**
+   * 初始化主題
+   * 優先順序：LocalStorage > 系統偏好 > 預設淺色
+   */
+  const initTheme = () => {
+    // 1. 檢查 LocalStorage
+    const stored = localStorage.getItem(STORAGE_KEY);
+    
+    if (stored) {
+      applyTheme(stored === 'dark');
+    } else {
+      // 2. 檢查系統偏好
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      applyTheme(systemPrefersDark);
+    }
+  };
 
-  // 初始化
-  if (typeof window !== 'undefined') {
+  /**
+   * 監聽系統主題變更
+   * 僅在用戶未手動設定過主題時生效
+   */
+  onMounted(() => {
     initTheme();
-  }
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    // 定義監聽器
+    const handler = (e) => {
+      // 如果用戶沒有手動覆蓋過設定 (localStorage 為空)，則隨系統變更
+      if (!localStorage.getItem(STORAGE_KEY)) {
+        applyTheme(e.matches);
+      }
+    };
+
+    // 現代瀏覽器使用 addEventListener
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handler);
+    } else {
+      // 舊版兼容
+      mediaQuery.addListener(handler);
+    }
+  });
 
   return {
     isDark,
