@@ -90,6 +90,7 @@
                   v-model.number="div.amount" 
                   class="mobile-input font-num"
                   step="0.01"
+                  placeholder="輸入總額"
                 >
             </div>
             <div class="edit-row">
@@ -99,6 +100,7 @@
                   v-model.number="div.tax" 
                   class="mobile-input font-num"
                   step="0.01"
+                  placeholder="輸入稅金"
                 >
             </div>
             
@@ -137,19 +139,15 @@ const loading = ref(false);
 const processingId = ref(null);
 const localDividends = ref([]);
 
-// ✅ 核心修正：監聽 Store 數據並初始化本地編輯狀態
-// 解決數據顯示為 0 的問題
 watch(() => store.pending_dividends, (newVal) => {
     if (newVal && newVal.length > 0) {
         localDividends.value = newVal.map(d => {
-            // 從 API 欄位 (total_gross, total_net_usd) 計算初始值
             const gross = Number(d.total_gross) || 0;
             const net = Number(d.total_net_usd) || 0;
             const calculatedTax = parseFloat((gross - net).toFixed(2));
             
             return {
                 ...d,
-                // 如果已經有編輯過的值則保留，否則使用 API 預設值
                 amount: d.amount !== undefined ? d.amount : gross,
                 tax: d.tax !== undefined ? d.tax : calculatedTax
             };
@@ -181,7 +179,6 @@ const formatNumber = (val, d=2) => {
 };
 
 const confirmDividend = async (div) => {
-  // 使用使用者編輯後的數值計算淨額
   const finalAmount = Number(div.amount) || 0;
   const finalTax = Number(div.tax) || 0;
   const netAmount = finalAmount - finalTax;
@@ -197,30 +194,23 @@ const confirmDividend = async (div) => {
       qty: 0,
       price: 0,
       fee: 0,
-      tax: finalTax,        // 使用編輯後的稅金
-      total_amount: finalAmount, // 使用編輯後的總額
+      tax: finalTax,
+      total_amount: finalAmount,
       tag: 'Auto-Dividend'
     };
 
     const success = await store.addRecord(record);
     if (success) {
-      // 手動呼叫刪除 API 移除待辦事項
       await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
         method: 'DELETE',
         headers: { 
             'Authorization': `Bearer ${store.token || localStorage.getItem('token')}` 
         }
-      }).catch(err => console.warn('刪除 pending 失敗 (可能是後端已自動處理)', err));
+      }).catch(err => console.warn('刪除 pending 失敗', err));
 
       addToast(`${div.symbol} 配息已入帳`, 'success');
-      
-      // 移除本地列表項目，避免等待 fetchAll 的延遲感
       localDividends.value = localDividends.value.filter(d => d.id !== div.id);
-      
-      // 背景刷新數據
-      setTimeout(async () => {
-          await store.fetchAll();
-      }, 500);
+      setTimeout(async () => { await store.fetchAll(); }, 500);
     }
   } catch (e) {
     console.error(e);
@@ -244,7 +234,6 @@ const deleteDividend = async (id) => {
     
     if (res.ok) {
         addToast('已移除', 'info');
-        // 同步更新本地與 Store
         localDividends.value = localDividends.value.filter(d => d.id !== id);
         if (store.rawData && store.rawData.pending_dividends) {
             store.rawData.pending_dividends = store.rawData.pending_dividends.filter(d => d.id !== id);
@@ -339,10 +328,22 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .card-main { margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px; }
 
-.edit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.edit-row label { font-size: 0.9rem; color: var(--text-sub); min-width: 80px; }
+/* ⚠️ 關鍵修正：手機版改為垂直堆疊 */
+.edit-row { 
+    display: flex; 
+    flex-direction: column; /* 垂直排列 */
+    align-items: stretch;   /* 填滿寬度 */
+    gap: 8px; 
+}
+
+.edit-row label { 
+    font-size: 0.85rem; 
+    color: var(--text-sub); 
+    font-weight: 600;
+}
+
 .mobile-input { 
-    flex: 1; 
+    width: 100%; /* 確保不超過容器 */
     padding: 10px; 
     border: 1px solid var(--border-color); 
     border-radius: 6px; 
@@ -350,6 +351,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     font-size: 1rem; 
     background: var(--bg-card);
     color: var(--text-main);
+    box-sizing: border-box; /* 確保 padding 包含在寬度內 */
 }
 .mobile-input:focus { outline: none; border-color: var(--primary); }
 
