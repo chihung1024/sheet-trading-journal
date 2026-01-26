@@ -25,7 +25,7 @@
         </div>
 
         <div class="nav-status">
-          <button class="icon-btn mobile-only" v-if="portfolioStore.availableGroups.length > 1" @click="showGroupSelectorMobile=true">
+          <button class="icon-btn mobile-only" v-if="portfolioStore.availableGroups.length > 1" @click="showGroupSelectorMobile=true" title="切換策略群組">
             📂
           </button>
 
@@ -85,14 +85,17 @@
 
       <div v-if="showGroupSelectorMobile" class="modal-overlay" @click.self="showGroupSelectorMobile=false">
         <div class="modal-card mobile-selector-card">
-           <h3>選擇策略群組</h3>
+           <div class="mobile-card-header">
+              <h3>選擇策略群組</h3>
+              <button class="close-btn" @click="showGroupSelectorMobile=false">✕</button>
+           </div>
            <div class="mobile-options">
               <button 
                 class="mobile-option-btn" 
                 :class="{ active: portfolioStore.currentGroup === 'all' }"
                 @click="portfolioStore.setGroup('all'); showGroupSelectorMobile=false"
               >
-                全部 (All)
+                全部 (All Portfolios)
               </button>
               <button 
                 v-for="g in portfolioStore.availableGroups.filter(x=>x!=='all')" 
@@ -102,6 +105,11 @@
                 @click="portfolioStore.setGroup(g); showGroupSelectorMobile=false"
               >
                 {{ g }}
+              </button>
+           </div>
+           <div class="mobile-card-footer">
+              <button class="btn-edit-group-mobile" @click="showGroupSelectorMobile=false; showGroupModal=true">
+                ✎ 管理群組名稱
               </button>
            </div>
         </div>
@@ -162,7 +170,7 @@
           </div>
         </aside>
 
-        <button class="btn-mobile-trade mobile-only" @click="showMobileSidebar=true">
+        <button class="btn-mobile-trade mobile-only" @click="showMobileSidebar=true" title="新增交易">
            <span>+</span>
         </button>
       </div>
@@ -206,10 +214,10 @@ const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 
-// PWA 監控
+// PWA Monitor
 const { needRefresh, updateServiceWorker } = usePWA();
 
-// UI 狀態
+// UI State
 const showGroupModal = ref(false);
 const showGroupSelectorMobile = ref(false);
 const showMobileSidebar = ref(false);
@@ -227,7 +235,7 @@ const scrollToDividends = () => {
   const dividendSection = document.querySelector('.section-dividends');
   if (dividendSection) {
     dividendSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    showMobileSidebar.value = false; // 手機版點擊後關閉側邊欄
+    showMobileSidebar.value = false; // Close sidebar on mobile after click
   }
 };
 
@@ -288,7 +296,7 @@ const handleTriggerUpdate = async () => {
 const handleEditRecord = (record) => {
   if (tradeFormRef.value) {
     tradeFormRef.value.setupForm(record);
-    // 手機版自動開啟側邊欄
+    // Auto open sidebar on mobile when editing
     if (window.innerWidth < 1024) {
       showMobileSidebar.value = true;
     } else {
@@ -374,7 +382,7 @@ html.dark {
 body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; transition: background-color 0.3s ease, color 0.3s ease; }
 
 .main-wrapper { min-height: 100vh; display: flex; flex-direction: column; position: relative; }
-.top-nav { background: var(--bg-card); border-bottom: 1px solid var(--border-color); padding: 0 32px; height: var(--header-height); display: flex; align-items: center; justify-content: space-between; z-index: 50; box-shadow: var(--shadow-sm); position: sticky; top: 0; }
+.top-nav { background: var(--bg-card); border-bottom: 1px solid var(--border-color); padding: 0 32px; height: var(--header-height); display: flex; align-items: center; justify-content: space-between; z-index: 50; box-shadow: var(--shadow-sm); position: sticky; top: 0; backdrop-filter: blur(8px); background: rgba(var(--bg-card), 0.9); }
 .nav-brand { display: flex; align-items: center; gap: 12px; }
 .nav-brand h1 { font-size: 1.45rem; font-weight: 700; margin: 0; color: var(--text-main); letter-spacing: -0.01em; }
 .badge { background: var(--text-main); color: var(--bg-card); font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
@@ -388,8 +396,8 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .btn-edit-group { background: transparent; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-sub); font-size: 0.8rem; padding: 2px 6px; }
 
 /* Modal */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
-.modal-card { background: var(--bg-card); padding: 24px; border-radius: 12px; width: 400px; max-width: 90%; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); animation: fadeIn 0.2s ease; }
+.modal-card { background: var(--bg-card); padding: 24px; border-radius: 12px; width: 400px; max-width: 90%; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 .modal-desc { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 16px; }
 .group-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .group-item { display: flex; gap: 8px; }
@@ -398,6 +406,9 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
 .modal-footer { display: flex; justify-content: flex-end; }
 .modal-footer button { padding: 8px 20px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; color: var(--text-main); font-weight: 600; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 /* Status & Actions */
 .nav-status { display: flex; align-items: center; gap: 16px; font-size: 0.95rem; font-weight: 500; }
@@ -417,7 +428,8 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .action-trigger-btn { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); border: none; border-radius: 8px; color: white; padding: 8px 14px; font-weight: 600; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2); }
 .action-trigger-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3); }
 .action-trigger-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; filter: grayscale(0.5); }
-.icon-btn { background: var(--bg-secondary); border: 1px solid var(--border-color); width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; }
+.icon-btn { background: var(--bg-secondary); border: 1px solid var(--border-color); width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; color: var(--text-main); }
+.icon-btn:hover { background: var(--bg-card); color: var(--primary); border-color: var(--primary); }
 
 .user-profile { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 4px 8px; border-radius: 99px; transition: background 0.2s; }
 .user-profile:hover { background: var(--bg-secondary); }
@@ -479,7 +491,7 @@ tr:hover td { background-color: var(--bg-secondary); }
 @media (max-width: 1024px) {
   .content-container { grid-template-columns: 1fr; padding: 20px; gap: 20px; }
   
-  /* 手機版側邊欄抽屜化 */
+  /* Sidebar Drawer Style */
   .side-column { 
     position: fixed; top: 0; right: 0; bottom: 0; width: 85%; max-width: 400px; 
     background: var(--bg-app); z-index: 200; transform: translateX(100%); 
@@ -492,27 +504,29 @@ tr:hover td { background-color: var(--bg-secondary); }
   .sidebar-backdrop { 
     display: block; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
     background: rgba(0,0,0,0.5); z-index: 199; backdrop-filter: blur(2px);
+    animation: fadeIn 0.3s ease;
   }
 
-  /* 浮動按鈕 */
+  /* Floating Action Button (FAB) */
   .btn-mobile-trade {
     display: flex; align-items: center; justify-content: center;
     position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
     border-radius: 50%; background: var(--primary); color: white;
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); border: none; z-index: 100;
-    font-size: 2rem; cursor: pointer; transition: transform 0.2s;
+    font-size: 2rem; cursor: pointer; transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .btn-mobile-trade:active { transform: scale(0.9); }
+  .btn-mobile-trade:hover { transform: scale(1.1); }
   
   .desktop-only { display: none; }
   .mobile-only { display: flex; }
   
   .mobile-sidebar-header { 
-    justify-content: space-between; align-items: center; margin-bottom: 20px; 
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; 
     border-bottom: 1px solid var(--border-color); padding-bottom: 12px;
   }
-  .mobile-sidebar-header h3 { margin: 0; font-size: 1.2rem; }
-  .close-btn { background: transparent; border: none; font-size: 1.5rem; color: var(--text-sub); cursor: pointer; }
+  .mobile-sidebar-header h3 { margin: 0; font-size: 1.2rem; color: var(--text-main); }
+  .close-btn { background: transparent; border: none; font-size: 1.5rem; color: var(--text-sub); cursor: pointer; padding: 4px; }
 }
 
 @media (max-width: 768px) {
@@ -520,14 +534,21 @@ tr:hover td { background-color: var(--bg-secondary); }
   .nav-brand h1 { font-size: 1.1rem; }
   .content-container { padding: 16px; }
   .chart-wrapper.chart-full { height: 320px; }
-  .toast-container { bottom: 80px; right: 16px; left: 16px; } /* 避開 FAB */
+  .toast-container { bottom: 80px; right: 16px; left: 16px; } /* Avoid FAB */
   .toast { min-width: auto; }
   
   /* Mobile Modal Style */
-  .mobile-selector-card { position: fixed; bottom: 0; left: 0; right: 0; width: 100%; max-width: 100%; border-radius: 16px 16px 0 0; padding: 24px; animation: slideUp 0.3s ease; }
+  .mobile-selector-card { position: fixed; bottom: 0; left: 0; right: 0; width: 100%; max-width: 100%; border-radius: 16px 16px 0 0; padding: 24px; animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); margin-bottom: 0; }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  .mobile-options { display: flex; flex-direction: column; gap: 8px; }
-  .mobile-option-btn { padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; color: var(--text-main); text-align: left; }
+  
+  .mobile-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .mobile-card-header h3 { margin: 0; font-size: 1.1rem; }
+  
+  .mobile-options { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; margin-bottom: 16px; }
+  .mobile-option-btn { padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; color: var(--text-main); text-align: left; transition: all 0.2s; }
   .mobile-option-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(59, 130, 246, 0.05); font-weight: 700; }
+  
+  .mobile-card-footer { border-top: 1px solid var(--border-color); padding-top: 16px; text-align: center; }
+  .btn-edit-group-mobile { background: transparent; border: none; color: var(--text-sub); font-size: 0.9rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; }
 }
 </style>
