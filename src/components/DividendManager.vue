@@ -3,7 +3,7 @@
     <div class="card-header">
       <div class="header-content">
         <h3>待確認配息</h3>
-        <span class="badge-count" v-if="dividends.length > 0">{{ dividends.length }} 筆</span>
+        <span class="badge-count" v-if="localDividends.length > 0">{{ localDividends.length }} 筆</span>
       </div>
       <div class="header-actions">
         <button class="btn-refresh" @click="fetchDividends" :disabled="loading" title="重新檢查配息">
@@ -13,7 +13,7 @@
     </div>
 
     <div class="table-container desktop-view">
-      <table v-if="dividends.length > 0">
+      <table v-if="localDividends.length > 0">
         <thead>
           <tr>
             <th>日期</th>
@@ -25,7 +25,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="div in dividends" :key="div.id" class="div-row">
+          <tr v-for="div in localDividends" :key="div.id" class="div-row">
             <td class="date-cell">{{ formatDate(div.date) }}</td>
             <td><span class="symbol-badge">{{ div.symbol }}</span></td>
             
@@ -70,13 +70,13 @@
     </div>
 
     <div class="mobile-view">
-      <div v-if="dividends.length === 0" class="empty-state">
+      <div v-if="localDividends.length === 0" class="empty-state">
         <div class="empty-icon">🎉</div>
         <p>目前沒有待確認的配息</p>
       </div>
 
       <div v-else class="mobile-cards">
-        <div v-for="div in dividends" :key="'mob_'+div.id" class="div-card">
+        <div v-for="div in localDividends" :key="'mob_'+div.id" class="div-card">
           <div class="card-top">
             <div class="card-date">{{ formatDate(div.date) }}</div>
             <div class="symbol-badge">{{ div.symbol }}</div>
@@ -125,7 +125,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
@@ -135,9 +135,29 @@ const { addToast } = useToast();
 
 const loading = ref(false);
 const processingId = ref(null);
+const localDividends = ref([]);
 
-// 直接使用 Store 的數據，因為是 Reactive 的，v-model 修改會直接反映在畫面上
-const dividends = computed(() => store.pending_dividends || []);
+// ✅ 核心修正：監聽 Store 數據並初始化本地編輯狀態
+// 解決數據顯示為 0 的問題
+watch(() => store.pending_dividends, (newVal) => {
+    if (newVal && newVal.length > 0) {
+        localDividends.value = newVal.map(d => {
+            // 從 API 欄位 (total_gross, total_net_usd) 計算初始值
+            const gross = Number(d.total_gross) || 0;
+            const net = Number(d.total_net_usd) || 0;
+            const calculatedTax = parseFloat((gross - net).toFixed(2));
+            
+            return {
+                ...d,
+                // 如果已經有編輯過的值則保留，否則使用 API 預設值
+                amount: d.amount !== undefined ? d.amount : gross,
+                tax: d.tax !== undefined ? d.tax : calculatedTax
+            };
+        });
+    } else {
+        localDividends.value = [];
+    }
+}, { immediate: true, deep: true });
 
 const fetchDividends = async () => {
   loading.value = true;
@@ -161,8 +181,10 @@ const formatNumber = (val, d=2) => {
 };
 
 const confirmDividend = async (div) => {
-  // 計算淨額
-  const netAmount = (Number(div.amount) || 0) - (Number(div.tax) || 0);
+  // 使用使用者編輯後的數值計算淨額
+  const finalAmount = Number(div.amount) || 0;
+  const finalTax = Number(div.tax) || 0;
+  const netAmount = finalAmount - finalTax;
   
   if (!confirm(`確認將 ${div.symbol} 的配息 USD ${formatNumber(netAmount)} 入帳嗎？`)) return;
   
@@ -175,15 +197,14 @@ const confirmDividend = async (div) => {
       qty: 0,
       price: 0,
       fee: 0,
-      tax: Number(div.tax) || 0,
-      total_amount: Number(div.amount) || 0,
+      tax: finalTax,        // 使用編輯後的稅金
+      total_amount: finalAmount, // 使用編輯後的總額
       tag: 'Auto-Dividend'
     };
 
     const success = await store.addRecord(record);
     if (success) {
-      // 假設後端沒有自動刪除，手動呼叫刪除 API
-      // 這裡的路徑需對應後端實作，若後端已有自動清除邏輯則可省略
+      // 手動呼叫刪除 API 移除待辦事項
       await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
         method: 'DELETE',
         headers: { 
@@ -193,17 +214,18 @@ const confirmDividend = async (div) => {
 
       addToast(`${div.symbol} 配息已入帳`, 'success');
       
-      // 稍等一下再刷新，確保後端數據已一致
+      // 移除本地列表項目，避免等待 fetchAll 的延遲感
+      localDividends.value = localDividends.value.filter(d => d.id !== div.id);
+      
+      // 背景刷新數據
       setTimeout(async () => {
           await store.fetchAll();
-          processingId.value = null;
       }, 500);
-    } else {
-        processingId.value = null;
     }
   } catch (e) {
     console.error(e);
     addToast('入帳失敗', 'error');
+  } finally {
     processingId.value = null;
   }
 };
@@ -222,17 +244,10 @@ const deleteDividend = async (id) => {
     
     if (res.ok) {
         addToast('已移除', 'info');
-        // 手動更新本地 Store 以獲得即時反饋
+        // 同步更新本地與 Store
+        localDividends.value = localDividends.value.filter(d => d.id !== id);
         if (store.rawData && store.rawData.pending_dividends) {
             store.rawData.pending_dividends = store.rawData.pending_dividends.filter(d => d.id !== id);
-        }
-        // 如果是在群組視圖下
-        if (store.rawData && store.rawData.groups) {
-             Object.values(store.rawData.groups).forEach(group => {
-                 if (group.pending_dividends) {
-                     group.pending_dividends = group.pending_dividends.filter(d => d.id !== id);
-                 }
-             });
         }
     } else {
         throw new Error('API delete failed');
