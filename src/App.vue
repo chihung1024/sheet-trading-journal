@@ -4,7 +4,7 @@
       <LoginOverlay v-if="!authStore.token" />
     </Transition>
     
-    <div v-else class="main-wrapper">
+    <div v-if="authStore.token" class="main-wrapper">
       <header class="top-nav glass-effect">
         <div class="nav-brand">
           <span class="logo-icon animate-bounce-slow">📊</span>
