@@ -1,23 +1,11 @@
-/* ========================================
-   微動畫系統 - Trading Journal
-   ======================================== */
+/* =========================================
+   1. Vue Transitions (頁面與組件切換)
+   ========================================= */
 
-/* 全局動畫配置 */
-:root {
-  --animation-duration-fast: 150ms;
-  --animation-duration-normal: 250ms;
-  --animation-duration-slow: 400ms;
-  --animation-timing: cubic-bezier(0.4, 0, 0.2, 1);
-  --animation-timing-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
-}
-
-/* ========================================
-   1. 淡入淡出動畫
-   ======================================== */
-
+/* 通用淡入淡出 (Fade) */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity var(--animation-duration-normal) var(--animation-timing);
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .fade-enter-from,
@@ -25,49 +13,22 @@
   opacity: 0;
 }
 
-/* ========================================
-   2. 滑動動畫
-   ======================================== */
-
-/* 從下往上滑入 */
+/* 向上滑入 (Slide Up - 用於 Modal/Bottom Sheet) */
 .slide-up-enter-active,
 .slide-up-leave-active {
-  transition: all var(--animation-duration-normal) var(--animation-timing);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
 }
 
-.slide-up-enter-from {
+.slide-up-enter-from,
+.slide-up-leave-to {
   transform: translateY(20px);
   opacity: 0;
 }
 
-.slide-up-leave-to {
-  transform: translateY(-20px);
-  opacity: 0;
-}
-
-/* 從右往左滑入 */
-.slide-left-enter-active,
-.slide-left-leave-active {
-  transition: all var(--animation-duration-normal) var(--animation-timing);
-}
-
-.slide-left-enter-from {
-  transform: translateX(20px);
-  opacity: 0;
-}
-
-.slide-left-leave-to {
-  transform: translateX(-20px);
-  opacity: 0;
-}
-
-/* ========================================
-   3. 縮放動畫
-   ======================================== */
-
+/* 縮放淡入 (Scale - 用於 Dialog/Alert) */
 .scale-enter-active,
 .scale-leave-active {
-  transition: all var(--animation-duration-fast) var(--animation-timing);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
 }
 
 .scale-enter-from,
@@ -76,82 +37,41 @@
   opacity: 0;
 }
 
-/* 彈跳縮放 */
-.bounce-enter-active {
-  animation: bounce-in var(--animation-duration-slow) var(--animation-timing-bounce);
-}
-
-.bounce-leave-active {
-  animation: bounce-out var(--animation-duration-normal) var(--animation-timing);
-}
-
-@keyframes bounce-in {
-  0% {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-  50% {
-    transform: scale(1.05);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes bounce-out {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-}
-
-/* ========================================
-   4. 列表項目動畫
-   ======================================== */
-
+/* 列表排序/過濾動畫 (List Move) */
+/* 應用於 <TransitionGroup name="list"> */
+.list-move,
 .list-enter-active,
 .list-leave-active {
-  transition: all var(--animation-duration-normal) var(--animation-timing);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.list-enter-from {
-  transform: translateX(-20px);
-  opacity: 0;
-}
-
+.list-enter-from,
 .list-leave-to {
-  transform: translateX(20px);
   opacity: 0;
+  transform: translateX(-20px);
 }
 
-.list-move {
-  transition: transform var(--animation-duration-normal) var(--animation-timing);
+/* 確保移除項目時，其他項目能平滑補位 */
+.list-leave-active {
+  position: absolute;
 }
 
-/* ========================================
-   5. 載入動畫
-   ======================================== */
+/* =========================================
+   2. Keyframes (關鍵影格動畫)
+   ========================================= */
 
-/* 脈衝動畫 */
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
+/* 骨架屏流光效果 (Shimmer) */
+/* 使用 transform 替代 background-position 可能更高效，但背景漸層動畫目前主流仍用 bg-pos */
+@keyframes shimmer {
+  0% {
+    background-position: 100% 50%;
   }
-  50% {
-    opacity: 0.5;
+  100% {
+    background-position: 0 50%;
   }
 }
 
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* 旋轉動畫 */
+/* 旋轉 (Spin - 用於 Loading) */
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -161,386 +81,89 @@
   }
 }
 
-.animate-spin {
-  animation: spin 1s linear infinite;
+/* 呼吸燈 (Pulse - 用於即時狀態圓點) */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb, 59, 130, 246), 0.4);
+    opacity: 1;
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--primary-rgb, 59, 130, 246), 0);
+    opacity: 0.8;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb, 59, 130, 246), 0);
+    opacity: 1;
+  }
 }
 
-/* 彈跳動畫 */
-@keyframes bounce {
+/* 浮動 (Float - 用於 Login 頁面裝飾) */
+@keyframes float {
   0%, 100% {
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-25%);
+    transform: translateY(-10px);
   }
 }
 
-.animate-bounce {
-  animation: bounce 1s infinite;
-}
+/* =========================================
+   3. Micro-interactions (互動微效)
+   ========================================= */
 
-/* ========================================
-   6. 懸停效果動畫
-   ======================================== */
-
-/* 上浮效果 */
+/* 懸停上浮 */
 .hover-lift {
-  transition: all var(--animation-duration-fast) var(--animation-timing);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease;
 }
 
 .hover-lift:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
-/* 輕微縮放 */
-.hover-scale {
-  transition: transform var(--animation-duration-fast) var(--animation-timing);
+/* 點擊縮放 (適合手機按鈕) */
+.active-scale {
+  transition: transform 0.1s ease;
 }
 
-.hover-scale:hover {
-  transform: scale(1.05);
+.active-scale:active {
+  transform: scale(0.97);
 }
 
-/* 旋轉效果 */
-.hover-rotate {
-  transition: transform var(--animation-duration-normal) var(--animation-timing);
-}
-
-.hover-rotate:hover {
-  transform: rotate(5deg);
-}
-
-/* ========================================
-   7. 數字滾動動畫
-   ======================================== */
-
-@keyframes number-roll {
-  0% {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.number-roll {
-  animation: number-roll var(--animation-duration-normal) var(--animation-timing);
-}
-
-/* ========================================
-   8. 閃爍高亮動畫
-   ======================================== */
-
-@keyframes flash-highlight {
-  0%, 100% {
-    background-color: transparent;
-  }
-  50% {
-    background-color: rgba(59, 130, 246, 0.2);
-  }
-}
-
-.flash-highlight {
-  animation: flash-highlight 1s ease;
-}
-
-/* ========================================
-   9. 震動效果
-   ======================================== */
-
-@keyframes shake {
-  0%, 100% {
-    transform: translateX(0);
-  }
-  10%, 30%, 50%, 70%, 90% {
-    transform: translateX(-4px);
-  }
-  20%, 40%, 60%, 80% {
-    transform: translateX(4px);
-  }
-}
-
-.animate-shake {
-  animation: shake 0.5s ease;
-}
-
-/* ========================================
-   10. 漸變背景動畫
-   ======================================== */
-
-@keyframes gradient-shift {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-shift 3s ease infinite;
-}
-
-/* ========================================
-   11. 進度條動畫
-   ======================================== */
-
-@keyframes progress-bar {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.progress-bar-animation::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
-  animation: progress-bar 1.5s ease infinite;
-}
-
-/* ========================================
-   12. Ripple 漣漪效果
-   ======================================== */
-
-@keyframes ripple {
-  0% {
-    transform: scale(0);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(4);
-    opacity: 0;
-  }
-}
-
-.ripple-effect {
+/* 點擊波紋容器 (預留給 JS 實現 Ripple 或純 CSS 偽元素) */
+.ripple-container {
   position: relative;
   overflow: hidden;
 }
 
-.ripple-effect::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
+/* =========================================
+   4. Loading Utilities (載入工具類)
+   ========================================= */
+
+/* 簡單的載入圈圈 */
+.spinner {
+  display: inline-block;
   width: 20px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  pointer-events: none;
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
 }
 
-.ripple-effect:active::after {
-  animation: ripple 0.6s ease-out;
+.spinner-primary {
+  border-color: rgba(59, 130, 246, 0.2);
+  border-top-color: #3b82f6;
 }
 
-/* ========================================
-   13. 打字機效果
-   ======================================== */
-
-@keyframes typing {
-  from {
-    width: 0;
-  }
-  to {
-    width: 100%;
-  }
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
 }
 
-@keyframes blink-caret {
-  from, to {
-    border-color: transparent;
-  }
-  50% {
-    border-color: currentColor;
-  }
-}
-
-.typewriter {
-  overflow: hidden;
-  border-right: 0.15em solid;
-  white-space: nowrap;
-  animation: 
-    typing 3.5s steps(40, end),
-    blink-caret 0.75s step-end infinite;
-}
-
-/* ========================================
-   14. 呼吸燈效果
-   ======================================== */
-
-@keyframes breathe {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.6;
-    transform: scale(0.98);
-  }
-}
-
-.animate-breathe {
-  animation: breathe 3s ease-in-out infinite;
-}
-
-/* ========================================
-   15. 滑入公告效果
-   ======================================== */
-
-@keyframes slide-notice {
-  0% {
-    transform: translateX(100%);
-  }
-  10%, 90% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-100%);
-  }
-}
-
-.slide-notice {
-  animation: slide-notice 10s linear infinite;
-}
-
-/* ========================================
-   16. 加載骨架屏動畫
-   ======================================== */
-
-@keyframes skeleton-loading {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-.skeleton-loading {
-  background: linear-gradient(
-    90deg,
-    var(--bg-secondary) 25%,
-    var(--border-color) 50%,
-    var(--bg-secondary) 75%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
-}
-
-/* ========================================
-   17. 數據更新閃爍
-   ======================================== */
-
-@keyframes data-update {
-  0% {
-    background-color: transparent;
-  }
-  50% {
-    background-color: rgba(16, 185, 129, 0.15);
-  }
-  100% {
-    background-color: transparent;
-  }
-}
-
-.data-update {
-  animation: data-update 1s ease;
-}
-
-/* ========================================
-   18. 錯誤震動
-   ======================================== */
-
-@keyframes error-shake {
-  0%, 100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-8px);
-  }
-  75% {
-    transform: translateX(8px);
-  }
-}
-
-.error-shake {
-  animation: error-shake 0.3s ease;
-}
-
-/* ========================================
-   19. 成功勾選動畫
-   ======================================== */
-
-@keyframes check-mark {
-  0% {
-    stroke-dashoffset: 100;
-  }
-  100% {
-    stroke-dashoffset: 0;
-  }
-}
-
-.check-mark-animation {
-  stroke-dasharray: 100;
-  animation: check-mark 0.5s ease forwards;
-}
-
-/* ========================================
-   20. 工具類
-   ======================================== */
-
-.transition-all {
-  transition: all var(--animation-duration-normal) var(--animation-timing);
-}
-
-.transition-fast {
-  transition: all var(--animation-duration-fast) var(--animation-timing);
-}
-
-.transition-slow {
-  transition: all var(--animation-duration-slow) var(--animation-timing);
-}
-
-.delay-100 {
-  animation-delay: 100ms;
-}
-
-.delay-200 {
-  animation-delay: 200ms;
-}
-
-.delay-300 {
-  animation-delay: 300ms;
-}
-
-/* 減少動畫（尊重用戶偏好） */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+.spinner-lg {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
 }
