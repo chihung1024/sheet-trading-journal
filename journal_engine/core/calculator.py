@@ -191,7 +191,7 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
-            # ✅ 關鍵修正：每天都記錄開盤前持倉快照（用於計算當日損益）
+            # ✅ 關鍵修正:每天都記錄開盤前持倉快照(用於計算當日損益)
             today_open_holdings = {sym: h['qty'] for sym, h in holdings.items()}
             
             try:
@@ -323,10 +323,10 @@ class PortfolioCalculator:
             
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            # ===== ✅ 計算當日損益（使用開盤前快照 + 今日交易）=====
+            # ===== ✅ 計算當日損益(使用開盤前快照 + 今日交易)=====
             daily_pnl_for_this_day = 0.0
             
-            # 取得所有相關標的（開盤前持有 + 今日交易）
+            # 取得所有相關標的(開盤前持有 + 今日交易)
             all_symbols_today = set(today_open_holdings.keys()) | set(daily_txns['Symbol'].unique())
             
             for sym in all_symbols_today:
@@ -364,7 +364,7 @@ class PortfolioCalculator:
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(fx, 4),
-                "daily_pnl_twd": round(daily_pnl_for_this_day, 0)  # ✅ 新增：每日的當日損益
+                "daily_pnl_twd": round(daily_pnl_for_this_day, 0)  # ✅ 新增:每日的當日損益
             })
             
             last_fx = fx
@@ -373,9 +373,8 @@ class PortfolioCalculator:
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
-        # ✅ 計算符合台灣投資者視角的「當日損益」
+        # ✅ 當日損益計算:只計算「現有持倉」的當日損益
         display_daily_pnl = 0.0
-        today_str = datetime.now().date().strftime('%Y-%m-%d')
         
         for sym, h in holdings.items():
             if h['qty'] > 1e-4:
@@ -411,16 +410,12 @@ class PortfolioCalculator:
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
-        # ✅ 如果已清倉，從歷史記錄中找最後一個有交易的日期
-        if len(final_holdings) == 0 and history_data:
-            # 已清倉，反向查找最後一個有損益的日期
-            for hist in reversed(history_data):
-                if 'daily_pnl_twd' in hist and abs(hist['daily_pnl_twd']) > 0.01:
-                    display_daily_pnl = hist['daily_pnl_twd']
-                    logger.info(f"[群組:{group_name}] 已清倉，使用 {hist['date']} 的當日損益: {display_daily_pnl}")
-                    break
+        # ✅ 已清倉時,當日損益固定為 0
+        if len(final_holdings) == 0:
+            display_daily_pnl = 0.0
+            logger.info(f"[群組:{group_name}] 已清倉,當日損益設為 0")
         
-        logger.info(f"[群組:{group_name}] 當日損益（台灣投資者視角）: {display_daily_pnl}")
+        logger.info(f"[群組:{group_name}] 當日損益(台灣投資者視角): {display_daily_pnl}")
         
         # XIRR 計算
         xirr_val = 0.0
