@@ -334,7 +334,7 @@ class PortfolioCalculator:
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
-        # ✅ 個股當日損益：只計算「仍持有」的部位
+        # ✅ 個股當日損益:只計算「仍持有」的部位
         for sym, h in holdings.items():
             if h['qty'] > 1e-4:
                 stock_data = self.market.market_data.get(sym, pd.DataFrame())
@@ -368,10 +368,44 @@ class PortfolioCalculator:
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
-        # ✅ 總當日損益 = 今日總損益 - 昨日總損益（完美處理所有情境）
-        today_total_pnl = history_data[-1]['net_profit'] if history_data else 0
-        yesterday_total_pnl = history_data[-2]['net_profit'] if len(history_data) >= 2 else 0
-        display_daily_pnl = today_total_pnl - yesterday_total_pnl
+        # ✅ 總當日損益：台灣投資者視角（美股看昨晚，台股看今天）
+        now_tw = datetime.now()  # CST 時區
+        is_daytime = 6 <= now_tw.hour <= 23  # 台灣白天 06:00-23:59
+        
+        display_daily_pnl = 0.0
+        
+        if len(history_data) >= 2:
+            if is_daytime:
+                # 台灣白天：分別計算美股和台股
+                us_stocks_pnl = 0.0
+                tw_stocks_pnl = 0.0
+                
+                # 美股：昨天 vs 前天
+                yesterday_pnl = history_data[-2]['net_profit']
+                day_before_yesterday_pnl = history_data[-3]['net_profit'] if len(history_data) >= 3 else 0
+                us_stocks_pnl = yesterday_pnl - day_before_yesterday_pnl
+                
+                # 台股：今天 vs 昨天（僅計算台股部分）
+                for sym, h in holdings.items():
+                    if h['qty'] > 1e-4 and self._is_taiwan_stock(sym):
+                        stock_data = self.market.market_data.get(sym, pd.DataFrame())
+                        if not stock_data.empty and len(stock_data) >= 2:
+                            curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
+                            prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
+                            effective_fx = self._get_effective_fx_rate(sym, current_fx)
+                            tw_stocks_pnl += (curr_p - prev_p) * h['qty'] * effective_fx
+                
+                display_daily_pnl = us_stocks_pnl + tw_stocks_pnl
+                logger.info(f"[群組:{group_name}] 台灣白天模式 - 美股損益:{round(us_stocks_pnl, 0)} + 台股損益:{round(tw_stocks_pnl, 0)} = {round(display_daily_pnl, 0)}")
+            else:
+                # 台灣深夜：全部看今天 vs 昨天
+                today_total_pnl = history_data[-1]['net_profit']
+                yesterday_total_pnl = history_data[-2]['net_profit']
+                display_daily_pnl = today_total_pnl - yesterday_total_pnl
+                logger.info(f"[群組:{group_name}] 台灣深夜模式 - 當日損益: {round(display_daily_pnl, 0)}")
+        else:
+            # 歷史數據不足
+            display_daily_pnl = 0.0
         
         logger.info(f"[群組:{group_name}] 當日損益(台灣投資者視角): {display_daily_pnl}")
         
