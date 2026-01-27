@@ -192,6 +192,8 @@ class PortfolioCalculator:
                 "total_value": 0,
                 "invested": 0, 
                 "net_profit": 0,
+                "realized_pnl": 0, # [v2.40]
+                "unrealized_pnl": 0, # [v2.40]
                 "twr": 0.0, 
                 "benchmark_twr": 0.0,
                 "fx_rate": round(prev_fx, 4)
@@ -329,13 +331,18 @@ class PortfolioCalculator:
             cumulative_twr_factor *= period_hpr_factor
             last_market_value_twd = current_market_value_twd
             
-            total_pnl = (current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)) + total_realized_pnl_twd
+            # [v2.40] Calculate separated PnL components
+            unrealized_pnl = current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)
+            total_pnl = unrealized_pnl + total_realized_pnl_twd
             
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
-                "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
+                "invested": round(invested_capital, 0), 
+                "net_profit": round(total_pnl, 0),
+                "realized_pnl": round(total_realized_pnl_twd, 0), # [v2.40]
+                "unrealized_pnl": round(unrealized_pnl, 0),       # [v2.40]
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(fx, 4)
