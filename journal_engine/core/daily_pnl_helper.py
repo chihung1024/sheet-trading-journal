@@ -28,61 +28,70 @@ class DailyPnLHelper:
 
     def get_price_strategy(self, current_stage, is_tw):
         """
-        Determine price strategy based on stage and market type.
-        Returns: (mode, description)
-        mode: 'YESTERDAY' or 'TODAY'
+        [Deprecated] 舊版價格策略判定，保留介面相容性。
+        實際邏輯已由 get_effective_display_date 取代。
         """
-        # Deprecated or simplified usage, logic moved to get_effective_display_date mostly
-        # But kept for compatibility if needed
         return 'TODAY', "Default Strategy"
 
     def get_effective_display_date(self, is_tw):
         """
-        [v2.41] 取得用於顯示當日損益的「有效日期」。
+        [v2.41 Update] 根據使用者定義的 5 個時段邏輯，決定「當日損益」的計算基準日期。
         
-        邏輯：
-        1. 美股 (is_tw=False)：
-           - T02 時段 (台股盤中/盤後, 美股未開盤)：有效日期 = 昨天 (因為還在看昨晚收盤的結果)
-             例如：台灣週二早上 10:00，美股週二還沒開，這時候看到的「今日」其實是美股的「週一」。
-             若昨天是買入日，那今日損益就該算 (昨收 - 成本)。
-           - T03/T04 時段 (美股盤中/盤後)：有效日期 = 今天
+        邏輯依據 (以台灣時間 TW 為準):
+        1. 00:00~05:00 (美股盤中, 台股盤前): 
+           - 美: 顯示當下交易日 (即昨天 TW) -> US Now
+           - 台: 顯示昨日收盤 -> TW Yesterday
+        2. 05:00~09:00 (美股盤後, 台股盤前):
+           - 美: 顯示剛收盤的交易日 -> US Today (which is yesterday TW)
+           - 台: 顯示昨日收盤 -> TW Yesterday
+        3. 09:00~13:30 (美股盤後, 台股盤中):
+           - 美: 顯示剛收盤的交易日 -> US Today
+           - 台: 顯示當下交易日 -> TW Today
+        4. 13:30~21:30 (美股盤前, 台股盤後):
+           - 美: 顯示剛收盤的交易日 -> US Today (still yesterday TW's night session)
+           - 台: 顯示剛收盤的交易日 -> TW Today
+        5. 21:30~23:59 (美股盤中, 台股盤後):
+           - 美: 顯示當下交易日 -> US Today
+           - 台: 顯示剛收盤的交易日 -> TW Today
            
-        2. 台股 (is_tw=True)：
-           - 基本上都是今天 (因為 00:00 就換日了，且開盤就在早上)
+        實作簡化:
+        - TW: 09:00 前算昨日，09:00 後算今日。
+        - US: 09:30 ET (開盤) 前算昨日，09:30 ET 後算今日。
+          (自動處理冬令 22:30 / 夏令 21:30 的開盤差異，確保邏輯一致)
         """
         now_tw = datetime.now(self.tz_tw)
-        today_date = now_tw.date()
         
         if is_tw:
-            return today_date
+            # 台股邏輯: 09:00 開盤前看昨天，開盤後看今天
+            if now_tw.time() < time(9, 0):
+                return now_tw.date() - timedelta(days=1)
+            else:
+                return now_tw.date()
         else:
-            # 美股邏輯
-            # 判斷是否在美股開盤前 (T02: TW 05:00 ~ 21:30)
-            # 簡單判定：如果現在時間 < 21:30 (冬令) 或 20:30 (夏令)，視為盤前
-            # 這裡用一個保守的判定：如果美股還沒開盤，就視為「展示昨日數據」
-            
+            # 美股邏輯: 依據美東時間判斷
             now_us = now_tw.astimezone(self.tz_us)
             
-            # 美股開盤時間 09:30
-            market_open_time = time(9, 30)
+            # 美股開盤判定 (09:30 ET)
+            # 若現在時間小於 09:30 (盤前)，視為「還在看上一個交易日的收盤結果」-> Return US Date - 1
+            # 若現在時間大於 09:30 (盤中/盤後)，視為「正在看當下交易日的結果」-> Return US Date
             
-            if now_us.time() < market_open_time:
-                # 尚未開盤 -> 有效日期為昨天 (或是上一個交易日，這裡先減一天，TransactionAnalyzer 會處理週末)
-                return today_date - timedelta(days=1)
+            # 案例: TW 10:00 (Tue) -> US 21:00 (Mon) -> Time > 09:30 -> Returns Mon (Correct)
+            # 案例: TW 23:00 (Tue) -> US 10:00 (Tue) -> Time > 09:30 -> Returns Tue (Correct)
+            # 案例: TW 08:00 (Tue) -> US 19:00 (Mon) -> Time > 09:30 -> Returns Mon (Correct)
+            # 案例: TW 14:00 (Tue) -> US 01:00 (Tue) -> Time < 09:30 -> Returns Tue - 1 = Mon (Correct)
+            
+            if now_us.time() < time(9, 30):
+                return now_us.date() - timedelta(days=1)
             else:
-                # 已開盤或盤後 -> 有效日期為今天
-                return today_date
+                return now_us.date()
 
     def is_market_open(self, market='US'):
-        """[Issue 6] 判斷市場是否開盤 (含週末判斷)"""
+        """判斷市場是否開盤 (含週末判斷)"""
         now_tw = datetime.now(self.tz_tw)
         if now_tw.weekday() >= 5: return False # 週末休市
         
         if market == 'US':
-            # [Issue 6] DST 動態開盤時間判定
             now_us = now_tw.astimezone(self.tz_us)
-            
-            # 簡單判斷交易時段 (9:30 - 16:00 ET)
             market_time = now_us.time()
             return time(9, 30) <= market_time <= time(16, 0)
         elif market == 'TW':
