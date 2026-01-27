@@ -31,16 +31,8 @@ class PortfolioSummary(BaseModel):
     xirr: float = 0.0
     realized_pnl: float
     benchmark_twr: float
-    
-    # 當日損益（TWD），口徑：Δ市值 + 當日已實現損益
+    # ✅ 新增：當日損益（TWD），口徑：Δ市值 - 當日淨現金流
     daily_pnl_twd: float = 0.0
-    
-    # ✅ v2.40 新增：時區與損益細項
-    realized_pnl_today: float = 0.0  # 當日已實現損益 (Fixed PnL)
-    daily_pnl_us: float = 0.0        # 美股未實現損益 (Floating PnL)
-    daily_pnl_tw: float = 0.0        # 台股未實現損益 (Floating PnL)
-    market_stage: str = ""           # 當前市場階段描述 (如: 美股盤中/台股盤後)
-    updated_at_tw: str = ""          # 台灣時間更新戳記 (HH:MM)
 
 class HoldingPosition(BaseModel):
     symbol: str
@@ -56,12 +48,6 @@ class HoldingPosition(BaseModel):
     daily_change_usd: float = 0.0
     daily_change_percent: float = 0.0
     daily_pl_twd: float = 0.0
-    
-    # ✅ v2.40 新增：交易活動與損益細節
-    realized_pnl_today: float = 0.0  # 個股當日已實現損益
-    today_buy_qty: float = 0.0       # 今日買入數量
-    today_sell_qty: float = 0.0      # 今日賣出數量
-    is_new_position: bool = False    # 是否為今日新建立的倉位
 
 class DividendRecord(BaseModel):
     symbol: str
@@ -96,5 +82,5 @@ class PortfolioSnapshot(BaseModel):
     history: List[Dict[str, Any]]
     pending_dividends: List[DividendRecord] = []
     
-    # 多群組資料字典 {group_name: PortfolioGroupData}
+    # ✅ 新增：多群組資料字典 {group_name: PortfolioGroupData}
     groups: Dict[str, PortfolioGroupData] = {}
