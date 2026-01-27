@@ -96,7 +96,7 @@ class PortfolioCalculator:
                 groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
             )
             
-        # [v2.40] 全域復權預處理
+        # [v2.46] 全域復權預處理
         self._back_adjust_transactions_global()
         
         # [v2.40] 獲取市場狀態
@@ -156,7 +156,7 @@ class PortfolioCalculator:
         )
 
     def _back_adjust_transactions_global(self):
-        """[v2.40] 全域復權處理 (Global Back-Adjust)"""
+        """[v2.46] 全域復權處理 - 台股與美股分別處理"""
         logger.info("正在進行全域交易數據復權處理...")
         for index, row in self.df.iterrows():
             sym = row['Symbol']
@@ -164,14 +164,33 @@ class PortfolioCalculator:
             if row['Type'] not in ['BUY', 'SELL']: 
                 continue
             
+            is_tw = self._is_taiwan_stock(sym)
             split_factor = self.market.get_transaction_multiplier(sym, date)
-            div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
+            
+            # [v2.46 重要修正] 台股不套用配息調整因子
+            # 原因：
+            # 1. 台股本身就是台幣計價，不需調整
+            # 2. yfinance 對台股的 Adj Close 處理方式不同
+            # 3. 套用 div_adj_factor 會導致價格被錯誤放大
+            if is_tw:
+                div_adj_factor = 1.0  # 台股不調整
+            else:
+                div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
             
             if split_factor != 1.0 or div_adj_factor != 1.0:
                 old_qty = row['Qty']
                 old_price = row['Price']
                 new_qty = old_qty * split_factor
                 new_price = (old_price / split_factor) * div_adj_factor
+                
+                if split_factor != 1.0 or div_adj_factor != 1.0:
+                    logger.debug(
+                        f"[{sym}] {date.strftime('%Y-%m-%d')}: "
+                        f"Qty {old_qty:.2f}->{new_qty:.2f}, "
+                        f"Price {old_price:.2f}->{new_price:.2f} "
+                        f"(split={split_factor:.2f}, div_adj={div_adj_factor:.4f})"
+                    )
+                
                 self.df.at[index, 'Qty'] = new_qty
                 self.df.at[index, 'Price'] = new_price
 
@@ -183,7 +202,7 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.44 Full Back-Adjustment)"""
+        """單一群組的核心計算邏輯 (v2.46 Taiwan Stock Fix)"""
         
         txn_analyzer = TransactionAnalyzer(df)
         
@@ -391,7 +410,7 @@ class PortfolioCalculator:
             
             last_fx = fx
 
-        # --- [v2.45 復權修正] 最終報表產生 - 使用 market.get_price() 確保復權 ---
+        # --- [v2.46] 最終報表產生 ---
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
@@ -420,7 +439,7 @@ class PortfolioCalculator:
 
             effective_fx = self._get_effective_fx_rate(sym, current_fx)
             
-            # [v2.45 關鍵修正] 使用 market.get_price() 取得復權後價格
+            # [v2.45] 使用 market.get_price() 取得復權後價格
             curr_p = self.market.get_price(sym, pd.Timestamp(effective_display_date))
             prev_date = effective_display_date - timedelta(days=1)
             while prev_date.weekday() >= 5:
@@ -462,7 +481,7 @@ class PortfolioCalculator:
         
         display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
         
-        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.45): {display_daily_pnl}")
+        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.46): {display_daily_pnl}")
         
         xirr_val = 0.0
         if xirr_cashflows:
