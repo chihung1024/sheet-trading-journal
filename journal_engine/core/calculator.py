@@ -203,6 +203,10 @@ class PortfolioCalculator:
 
         last_fx = current_fx
         
+        # [v2.42] 判斷該群組的主要市場屬性 (用於決定歷史數據的有效截止日)
+        # 簡單判定：如果有任何美股，就視為受美股時區影響
+        has_us_stock = any(not self._is_taiwan_stock(s) for s in df['Symbol'].unique())
+        
         for d in date_range:
             current_date = d.date()
             
@@ -337,16 +341,30 @@ class PortfolioCalculator:
             
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            history_data.append({
-                "date": date_str, "total_value": round(current_market_value_twd, 0),
-                "invested": round(invested_capital, 0), 
-                "net_profit": round(total_pnl, 0),
-                "realized_pnl": round(total_realized_pnl_twd, 0), # [v2.40]
-                "unrealized_pnl": round(unrealized_pnl, 0),       # [v2.40]
-                "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                "benchmark_twr": round(benchmark_twr, 2),
-                "fx_rate": round(fx, 4)
-            })
+            # [v2.42] 決定是否寫入歷史數據
+            # 如果是今日，且根據群組屬性判定今日尚未成為「有效交易日」，則不寫入
+            should_append_history = True
+            today_date = datetime.now().date()
+            if current_date == today_date:
+                # 取得美股的有效顯示日期
+                # 如果該群組含有美股，且現在美股有效日期 < 今天 (代表現在是美股盤前或剛開盤前的 T02 時段)
+                # 則今日的數據點其實只是昨收的重複 (加上匯率波動)，不應作為「今日」的歷史紀錄
+                effective_date_us = self.pnl_helper.get_effective_display_date(False)
+                if has_us_stock and effective_date_us < today_date:
+                    should_append_history = False
+                    logger.info(f"[群組:{group_name}] T02時段，跳過今日 ({today_date}) 的歷史數據點寫入，保持曲線日期對齊昨日。")
+
+            if should_append_history:
+                history_data.append({
+                    "date": date_str, "total_value": round(current_market_value_twd, 0),
+                    "invested": round(invested_capital, 0), 
+                    "net_profit": round(total_pnl, 0),
+                    "realized_pnl": round(total_realized_pnl_twd, 0), # [v2.40]
+                    "unrealized_pnl": round(unrealized_pnl, 0),       # [v2.40]
+                    "twr": round((cumulative_twr_factor - 1) * 100, 2), 
+                    "benchmark_twr": round(benchmark_twr, 2),
+                    "fx_rate": round(fx, 4)
+                })
             
             last_fx = fx
 
@@ -374,7 +392,6 @@ class PortfolioCalculator:
             effective_display_date = self.pnl_helper.get_effective_display_date(is_tw)
             
             # 獲取該標的在「有效日期」當天的交易 (用於補全 Tag 或其他資訊)
-            # 注意: 如果是美股昨天的交易，effective_display_date 會是昨天，這裡就能正確抓到昨天的交易
             sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == effective_display_date)]
             
             if not h['tag'] and not sym_txs.empty:
@@ -401,7 +418,6 @@ class PortfolioCalculator:
                         prev_p = float(valid_data.iloc[-2]['Close_Adjusted'])
             
             # 3. 使用 TransactionAnalyzer 分析持倉 (使用有效日期)
-            # 這會包含當天已出清的交易損益 (Realized PnL)
             position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx)
             
             # 4. 計算損益
@@ -454,11 +470,29 @@ class PortfolioCalculator:
                 xirr_val = round(xirr_res * 100, 2)
             except: pass
 
+        # [v2.42] Summary 取值邏輯修正
+        # 如果 history_data 因為 T02 被裁切，summary 需要使用當下最新的計算值 (final_holdings sum)
+        # 而非 history_data[-1] (因為那可能是昨天的值)
+        # 但 total_pnl 和 twr 依賴 history_data 的連續性
+        # 如果 history_data 少一天，summary 顯示的 "Total PnL" 應該是 "截至昨天" 還是 "即時"?
+        # User: "美股的淨值...歸在昨天的日期"
+        # Dashboard 顯示的是「即時狀態」，所以我們應該自行計算即時的 total_pnl
+        
+        # 計算即時的總 PnL (不依賴 history_data)
+        current_total_value = sum(h.market_value_twd for h in final_holdings)
+        current_invested = current_holdings_cost_sum
+        current_total_pnl = current_total_value - current_invested + total_realized_pnl_twd
+        
+        # TWR 比較麻煩，因為它是連乘。如果 history_data 沒有今天，TWR 就是昨天的。
+        # 這是合理的：T02 時段，報酬率曲線停在昨天。Dashboard 顯示的 TWR 也應該是昨天的。
+        # 但 Total Value 顯示的是今天的 (含匯差)。這會有點不一致。
+        # 為了符合「圖表歸在昨天」，Summary 的 TWR 使用 history_data[-1] 是正確的。
+        
         summary = PortfolioSummary(
-            total_value=round(sum(h.market_value_twd for h in final_holdings), 0),
-            invested_capital=round(current_holdings_cost_sum, 0),
-            total_pnl=round(history_data[-1]['net_profit'], 0) if history_data else 0,
-            twr=history_data[-1]['twr'] if history_data else 0,
+            total_value=round(current_total_value, 0),
+            invested_capital=round(current_invested, 0),
+            total_pnl=round(current_total_pnl, 0), # 這是即時的，包含今天匯差
+            twr=history_data[-1]['twr'] if history_data else 0, # 這是歷史的 (昨天)
             xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
