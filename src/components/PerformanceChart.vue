@@ -281,22 +281,60 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        // 損益模式 (相對值)
-        const baselinePnl = baselineData.value.net_profit;
-        chartData = dataWithBaseline.map(d => d.net_profit - baselinePnl);
+        // [v2.40] 支援已實現/未實現分離顯示
+        const hasBreakdown = dataWithBaseline.every(d => d.realized_pnl !== undefined);
         
-        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
-        gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
-        
-        datasets = [{
-            label: '淨損益',
-            data: chartData,
-            borderColor: '#10b981',
-            backgroundColor: gradient,
-            fill: true,
-            ...common
-        }];
+        if (hasBreakdown) {
+             const baseRealized = baselineData.value.realized_pnl || 0;
+             const baseUnrealized = baselineData.value.unrealized_pnl || 0;
+             
+             // Dataset 1: 已實現損益 (Area)
+             const realizedData = dataWithBaseline.map(d => (d.realized_pnl || 0) - baseRealized);
+             
+             // Dataset 2: 總損益 (Line)
+             // 這樣設計：綠色實體區域代表已實現獲利（入袋為安），綠色線條代表總獲利。
+             // 兩者差距即為未實現損益。如果總損益高於已實現，代表有浮盈；反之有浮虧。
+             const totalData = dataWithBaseline.map(d => (d.net_profit || 0) - baselineData.value.net_profit);
+             
+             datasets = [
+                {
+                    label: '已實現損益',
+                    data: realizedData,
+                    borderColor: 'rgba(34, 197, 94, 0.5)', // Green-500
+                    backgroundColor: 'rgba(34, 197, 94, 0.2)', // Green-500/20
+                    fill: 'origin', // 填滿至 X 軸
+                    order: 2, // 繪製在後層
+                    ...common,
+                    borderWidth: 1 // 區域邊框細一點
+                },
+                {
+                    label: '總淨損益',
+                    data: totalData,
+                    borderColor: '#10b981', // Emerald-500 (Original PnL Color)
+                    backgroundColor: 'transparent',
+                    fill: false, // 線圖不填滿
+                    order: 1, // 繪製在前層
+                    ...common
+                }
+             ];
+        } else {
+            // [v2.39] 舊版相容邏輯
+            const baselinePnl = baselineData.value.net_profit;
+            chartData = dataWithBaseline.map(d => d.net_profit - baselinePnl);
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
+            gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+            
+            datasets = [{
+                label: '淨損益',
+                data: chartData,
+                borderColor: '#10b981',
+                backgroundColor: gradient,
+                fill: true,
+                ...common
+            }];
+        }
     } else {
         // TWR 模式 (百分比)
         const baseTWR = baselineData.value.twr;
@@ -336,7 +374,7 @@ const drawChart = () => {
             },
             plugins: {
                 legend: {
-                    display: chartType.value === 'twr',
+                    display: chartType.value === 'twr' || (chartType.value === 'pnl' && datasets.length > 1), // PnL 雙層時顯示圖例
                     position: 'top',
                     align: 'end',
                     labels: { boxWidth: 10, padding: 10, font: { size: fontSize } }
@@ -360,6 +398,23 @@ const drawChart = () => {
                                 }
                             }
                             return label;
+                        },
+                        // [v2.40] 新增：如果是在 PnL 模式且有詳細數據，顯示未實現損益計算值
+                        afterBody: function(tooltipItems) {
+                             if (chartType.value === 'pnl' && tooltipItems.length > 1) {
+                                 // 假設 index 0 是 realized, index 1 是 total (基於 datasets order)
+                                 // 但 tooltipItems 順序可能不同。透過 datasetIndex 判斷
+                                 const realizedItem = tooltipItems.find(i => i.dataset.label === '已實現損益');
+                                 const totalItem = tooltipItems.find(i => i.dataset.label === '總淨損益');
+                                 
+                                 if (realizedItem && totalItem) {
+                                     const realized = realizedItem.parsed.y;
+                                     const total = totalItem.parsed.y;
+                                     const unrealized = total - realized;
+                                     return `----------------\n未實現: ${Math.round(unrealized).toLocaleString()}`;
+                                 }
+                             }
+                             return '';
                         }
                     }
                 }
