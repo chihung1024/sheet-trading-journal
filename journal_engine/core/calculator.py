@@ -377,25 +377,37 @@ class PortfolioCalculator:
             is_tw = self._is_taiwan_stock(sym)
             effective_fx = self._get_effective_fx_rate(sym, current_fx)
             
-            # 2. 決定價格模式 (TODAY vs YESTERDAY)
-            target_mode, mode_desc = self.pnl_helper.get_price_strategy(current_stage, is_tw)
+            # [v2.41] 取得動態的顯示用日期 (解決美股 T02 時段應顯示昨日損益的問題)
+            effective_display_date = self.pnl_helper.get_effective_display_date(is_tw)
             
-            # 3. 獲取價格
+            # 2. 決定價格模式 (TODAY vs YESTERDAY)
+            # 這裡其實不需要 get_price_strategy 了，因為已經由 effective_display_date 決定要看哪一天的價格
+            # 但為了獲取正確的 prev_p，我們直接基於 effective_display_date 查找
+            
+            # 3. 獲取價格 (基於 effective_display_date)
+            # curr_p: effective_display_date 的收盤價
+            # prev_p: effective_display_date 的前一交易日收盤價
+            
             curr_p = 0.0
             prev_p = 0.0
-            if not stock_data.empty:
-                if target_mode == 'TODAY':
-                    curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
-                    if len(stock_data) >= 2: 
-                        prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
-                else: # YESTERDAY
-                        if len(stock_data) >= 2:
-                            curr_p = float(stock_data.iloc[-2]['Close_Adjusted']) # 昨收當今價
-                            if len(stock_data) >= 3:
-                                prev_p = float(stock_data.iloc[-3]['Close_Adjusted']) # 前天收
             
-            # 4. 使用 TransactionAnalyzer 分析今日持倉
-            position_snap = txn_analyzer.analyze_today_position(sym, today_date, effective_fx)
+            if not stock_data.empty:
+                # 確保 index 是 datetime
+                if not isinstance(stock_data.index, pd.DatetimeIndex):
+                     stock_data.index = pd.to_datetime(stock_data.index)
+                
+                # 篩選截至有效日期的數據
+                valid_data = stock_data[stock_data.index.date <= effective_display_date]
+                
+                if len(valid_data) >= 1:
+                    curr_p = float(valid_data.iloc[-1]['Close_Adjusted'])
+                    if len(valid_data) >= 2:
+                        prev_p = float(valid_data.iloc[-2]['Close_Adjusted'])
+            
+            # 4. 使用 TransactionAnalyzer 分析持倉 (使用有效日期)
+            # 這會讓分析器回到 effective_display_date 當下去看倉位狀態
+            # 如果是美股 T02，日期會回到昨天，這樣昨天買入的交易就會被視為 "is_new_today"
+            position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx)
             
             # 5. 計算損益 (v2.40 核心邏輯)
             realized_pnl_today = position_snap.realized_pnl
