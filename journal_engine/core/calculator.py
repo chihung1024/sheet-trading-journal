@@ -354,72 +354,64 @@ class PortfolioCalculator:
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
-        today_date = datetime.now().date()
+        # [v2.41] 確定「有效交易日」集合，確保包含當天已出清的標的
+        effective_date_tw = self.pnl_helper.get_effective_display_date(True)
+        effective_date_us = self.pnl_helper.get_effective_display_date(False)
         
-        # [v2.40] 找出今日所有相關標的 (持有 + 今日有交易)
-        # 注意: 這裡的 holdings 是回測迴圈最後一天的狀態，即 '今日' 狀態
-        today_txns_df = df[df['Date'].dt.date == today_date]
+        # 取得這兩天的交易紀錄，以找出曾有持倉但已出清的標的
+        txns_tw_day = df[df['Date'].dt.date == effective_date_tw]
+        txns_us_day = df[df['Date'].dt.date == effective_date_us]
+        
         active_symbols = set([k for k, v in holdings.items() if v['qty'] > 1e-4])
-        active_symbols.update(today_txns_df['Symbol'].unique())
+        active_symbols.update(txns_tw_day['Symbol'].unique())
+        active_symbols.update(txns_us_day['Symbol'].unique())
 
         for sym in active_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
-            # 如果不在 holdings 裡 (例如當沖全賣光)，需要從交易紀錄找 tag (如果有)
-            if not h['tag'] and not today_txns_df.empty:
-                sym_txs = today_txns_df[today_txns_df['Symbol'] == sym]
-                if not sym_txs.empty:
-                    tags = sym_txs['Tag'].dropna()
-                    if not tags.empty:
-                        h['tag'] = tags.iloc[0]
+            
+            # [v2.41] 取得該標的之有效顯示日期
+            is_tw = self._is_taiwan_stock(sym)
+            effective_display_date = self.pnl_helper.get_effective_display_date(is_tw)
+            
+            # 獲取該標的在「有效日期」當天的交易 (用於補全 Tag 或其他資訊)
+            # 注意: 如果是美股昨天的交易，effective_display_date 會是昨天，這裡就能正確抓到昨天的交易
+            sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == effective_display_date)]
+            
+            if not h['tag'] and not sym_txs.empty:
+                tags = sym_txs['Tag'].dropna()
+                if not tags.empty:
+                    h['tag'] = tags.iloc[0]
 
             # 1. 獲取標的數據
             stock_data = self.market.market_data.get(sym, pd.DataFrame())
-            is_tw = self._is_taiwan_stock(sym)
             effective_fx = self._get_effective_fx_rate(sym, current_fx)
             
-            # [v2.41] 取得動態的顯示用日期 (解決美股 T02 時段應顯示昨日損益的問題)
-            effective_display_date = self.pnl_helper.get_effective_display_date(is_tw)
-            
-            # 2. 決定價格模式 (TODAY vs YESTERDAY)
-            # 這裡其實不需要 get_price_strategy 了，因為已經由 effective_display_date 決定要看哪一天的價格
-            # 但為了獲取正確的 prev_p，我們直接基於 effective_display_date 查找
-            
-            # 3. 獲取價格 (基於 effective_display_date)
-            # curr_p: effective_display_date 的收盤價
-            # prev_p: effective_display_date 的前一交易日收盤價
-            
+            # 2. 決定價格 (基於 effective_display_date)
             curr_p = 0.0
             prev_p = 0.0
             
             if not stock_data.empty:
-                # 確保 index 是 datetime
                 if not isinstance(stock_data.index, pd.DatetimeIndex):
                      stock_data.index = pd.to_datetime(stock_data.index)
                 
-                # 篩選截至有效日期的數據
                 valid_data = stock_data[stock_data.index.date <= effective_display_date]
-                
                 if len(valid_data) >= 1:
                     curr_p = float(valid_data.iloc[-1]['Close_Adjusted'])
                     if len(valid_data) >= 2:
                         prev_p = float(valid_data.iloc[-2]['Close_Adjusted'])
             
-            # 4. 使用 TransactionAnalyzer 分析持倉 (使用有效日期)
-            # 這會讓分析器回到 effective_display_date 當下去看倉位狀態
-            # 如果是美股 T02，日期會回到昨天，這樣昨天買入的交易就會被視為 "is_new_today"
+            # 3. 使用 TransactionAnalyzer 分析持倉 (使用有效日期)
+            # 這會包含當天已出清的交易損益 (Realized PnL)
             position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx)
             
-            # 5. 計算損益 (v2.40 核心邏輯)
+            # 4. 計算損益
             realized_pnl_today = position_snap.realized_pnl
             
-            # 未實現損益 (使用加權基準價)
             base_prev_close = prev_p 
             unrealized_pnl_today = 0.0
             
             if position_snap.qty > 0:
                 weighted_base = txn_analyzer.get_base_price_for_pnl(position_snap, base_prev_close)
-                # 未實現損益 = (現價 - 加權基準價) * 持股 * 匯率 (如為台股 fx=1)
-                # 注意: position_snap.qty 應該等於 h['qty'] (理論上)
                 unrealized_pnl_today = (curr_p - weighted_base) * position_snap.qty * effective_fx
             
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
@@ -432,7 +424,7 @@ class PortfolioCalculator:
             daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
             currency = "TWD" if is_tw else "USD"
             
-            # [v2.40] 即使持倉為 0 (當沖結清)，也應產生 HoldingPosition 項目
+            # [v2.40] 即使持倉為 0 (當沖/已出清)，只要當日有損益，也應產生 HoldingPosition
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
                  final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
@@ -441,7 +433,7 @@ class PortfolioCalculator:
                     current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
                     daily_change_percent=daily_change_pct,
-                    daily_pl_twd=round(total_daily_pnl, 0) # [v2.40] 使用新計算的精確當日損益
+                    daily_pl_twd=round(total_daily_pnl, 0)
                 ))
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
