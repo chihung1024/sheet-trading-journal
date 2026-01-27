@@ -32,6 +32,52 @@ class PortfolioCalculator:
     def _get_effective_fx_rate(self, symbol, fx_rate):
         """根據標的取得有效匯率(台股回傳1.0,美股等其他標的回傳實際匯率)"""
         return 1.0 if self._is_taiwan_stock(symbol) else fx_rate
+    
+    def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
+        """
+        [v2.43] 取得資產在特定日期的有效價格與匯率
+        根據資產類型（台股/美股）與當前市場狀態，決定使用哪個日期的價格與匯率
+        
+        邏輯：
+        - 台股：始終使用 target_date 的價格
+        - 美股：
+          - 如果 target_date 是今天，且美股有效日期 < 今天（T02/T03 時段）
+            -> 使用昨天的收盤價 + 今天的匯率
+          - 否則使用 target_date 的價格與匯率
+        """
+        stock_data = self.market.market_data.get(symbol, pd.DataFrame())
+        is_tw = self._is_taiwan_stock(symbol)
+        
+        if stock_data.empty:
+            return 0.0, current_fx
+        
+        if not isinstance(stock_data.index, pd.DatetimeIndex):
+            stock_data.index = pd.to_datetime(stock_data.index)
+        
+        # 決定實際要使用的價格日期
+        price_date = target_date
+        fx_to_use = current_fx
+        
+        # 美股特殊處理
+        if not is_tw:
+            today = datetime.now().date()
+            if target_date == today:
+                # 檢查美股的有效日期
+                effective_date_us = self.pnl_helper.get_effective_display_date(False)
+                if effective_date_us < today:
+                    # T02/T03 時段：使用昨天的收盤價
+                    price_date = effective_date_us
+                    # 但匯率使用今天的（當前的）
+                    fx_to_use = current_fx
+                    logger.debug(f"[{symbol}] T02/T03: 使用 {price_date} 價格 + {today} 匯率")
+        
+        # 取得價格
+        valid_data = stock_data[stock_data.index.date <= price_date]
+        if len(valid_data) >= 1:
+            price = float(valid_data.iloc[-1]['Close_Adjusted'])
+            return price, fx_to_use
+        
+        return 0.0, fx_to_use
 
     def run(self):
         """執行多群組投資組合計算主流程 (v2.40 Enhanced)"""
@@ -146,7 +192,7 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.40 Enhanced with TransactionAnalyzer)"""
+        """單一群組的核心計算邏輯 (v2.43 Per-Asset Effective Date Pricing)"""
         
         # [v2.40] Initialize TransactionAnalyzer for this group
         txn_analyzer = TransactionAnalyzer(df)
@@ -192,8 +238,8 @@ class PortfolioCalculator:
                 "total_value": 0,
                 "invested": 0, 
                 "net_profit": 0,
-                "realized_pnl": 0, # [v2.40]
-                "unrealized_pnl": 0, # [v2.40]
+                "realized_pnl": 0,
+                "unrealized_pnl": 0,
                 "twr": 0.0, 
                 "benchmark_twr": 0.0,
                 "fx_rate": round(prev_fx, 4)
@@ -202,10 +248,6 @@ class PortfolioCalculator:
             logger.info(f"[群組:{group_name}] 已在 {prev_date_str} 補上虛擬 0 資產記錄(第一筆交易: {first_tx_date.strftime('%Y-%m-%d')})。")
 
         last_fx = current_fx
-        
-        # [v2.42] 判斷該群組的主要市場屬性 (用於決定歷史數據的有效截止日)
-        # 簡單判定：如果有任何美股，就視為受美股時區影響
-        has_us_stock = any(not self._is_taiwan_stock(s) for s in df['Symbol'].unique())
         
         for d in date_range:
             current_date = d.date()
@@ -315,10 +357,12 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            current_market_value_twd = sum(
-                h['qty'] * self.market.get_price(s, d) * self._get_effective_fx_rate(s, fx)
-                for s, h in holdings.items() if h['qty'] > 1e-6
-            )
+            # [v2.43] 使用分資產的有效價格計算市值
+            current_market_value_twd = 0.0
+            for sym, h in holdings.items():
+                if h['qty'] > 1e-6:
+                    price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, fx)
+                    current_market_value_twd += h['qty'] * price * effective_fx
             
             period_hpr_factor = 1.0
             
@@ -335,48 +379,32 @@ class PortfolioCalculator:
             cumulative_twr_factor *= period_hpr_factor
             last_market_value_twd = current_market_value_twd
             
-            # [v2.40] Calculate separated PnL components
             unrealized_pnl = current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)
             total_pnl = unrealized_pnl + total_realized_pnl_twd
             
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            # [v2.42] 決定是否寫入歷史數據
-            # 如果是今日，且根據群組屬性判定今日尚未成為「有效交易日」，則不寫入
-            should_append_history = True
-            today_date = datetime.now().date()
-            if current_date == today_date:
-                # 取得美股的有效顯示日期
-                # 如果該群組含有美股，且現在美股有效日期 < 今天 (代表現在是美股盤前或剛開盤前的 T02 時段)
-                # 則今日的數據點其實只是昨收的重複 (加上匯率波動)，不應作為「今日」的歷史紀錄
-                effective_date_us = self.pnl_helper.get_effective_display_date(False)
-                if has_us_stock and effective_date_us < today_date:
-                    should_append_history = False
-                    logger.info(f"[群組:{group_name}] T02時段，跳過今日 ({today_date}) 的歷史數據點寫入，保持曲線日期對齊昨日。")
-
-            if should_append_history:
-                history_data.append({
-                    "date": date_str, "total_value": round(current_market_value_twd, 0),
-                    "invested": round(invested_capital, 0), 
-                    "net_profit": round(total_pnl, 0),
-                    "realized_pnl": round(total_realized_pnl_twd, 0), # [v2.40]
-                    "unrealized_pnl": round(unrealized_pnl, 0),       # [v2.40]
-                    "twr": round((cumulative_twr_factor - 1) * 100, 2), 
-                    "benchmark_twr": round(benchmark_twr, 2),
-                    "fx_rate": round(fx, 4)
-                })
+            # [v2.43] 始終寫入歷史數據（連續時間軸）
+            history_data.append({
+                "date": date_str, "total_value": round(current_market_value_twd, 0),
+                "invested": round(invested_capital, 0), 
+                "net_profit": round(total_pnl, 0),
+                "realized_pnl": round(total_realized_pnl_twd, 0),
+                "unrealized_pnl": round(unrealized_pnl, 0),
+                "twr": round((cumulative_twr_factor - 1) * 100, 2), 
+                "benchmark_twr": round(benchmark_twr, 2),
+                "fx_rate": round(fx, 4)
+            })
             
             last_fx = fx
 
-        # --- [v2.40] 最終報表產生 (整合 TransactionAnalyzer) ---
+        # --- [v2.43] 最終報表產生 ---
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
-        # [v2.41] 確定「有效交易日」集合，確保包含當天已出清的標的
         effective_date_tw = self.pnl_helper.get_effective_display_date(True)
         effective_date_us = self.pnl_helper.get_effective_display_date(False)
         
-        # 取得這兩天的交易紀錄，以找出曾有持倉但已出清的標的
         txns_tw_day = df[df['Date'].dt.date == effective_date_tw]
         txns_us_day = df[df['Date'].dt.date == effective_date_us]
         
@@ -387,11 +415,9 @@ class PortfolioCalculator:
         for sym in active_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
             
-            # [v2.41] 取得該標的之有效顯示日期
             is_tw = self._is_taiwan_stock(sym)
             effective_display_date = self.pnl_helper.get_effective_display_date(is_tw)
             
-            # 獲取該標的在「有效日期」當天的交易 (用於補全 Tag 或其他資訊)
             sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == effective_display_date)]
             
             if not h['tag'] and not sym_txs.empty:
@@ -399,11 +425,9 @@ class PortfolioCalculator:
                 if not tags.empty:
                     h['tag'] = tags.iloc[0]
 
-            # 1. 獲取標的數據
             stock_data = self.market.market_data.get(sym, pd.DataFrame())
             effective_fx = self._get_effective_fx_rate(sym, current_fx)
             
-            # 2. 決定價格 (基於 effective_display_date)
             curr_p = 0.0
             prev_p = 0.0
             
@@ -417,10 +441,8 @@ class PortfolioCalculator:
                     if len(valid_data) >= 2:
                         prev_p = float(valid_data.iloc[-2]['Close_Adjusted'])
             
-            # 3. 使用 TransactionAnalyzer 分析持倉 (使用有效日期)
             position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx)
             
-            # 4. 計算損益
             realized_pnl_today = position_snap.realized_pnl
             
             base_prev_close = prev_p 
@@ -432,7 +454,6 @@ class PortfolioCalculator:
             
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             
-            # 成本與市值
             cost = h['cost_basis_twd']
             current_holdings_cost_sum += cost
             mkt_val = h['qty'] * curr_p * effective_fx
@@ -440,7 +461,6 @@ class PortfolioCalculator:
             daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
             currency = "TWD" if is_tw else "USD"
             
-            # [v2.40] 即使持倉為 0 (當沖/已出清)，只要當日有損益，也應產生 HoldingPosition
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
                  final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
@@ -454,12 +474,10 @@ class PortfolioCalculator:
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
-        # ✅ 總當日損益 = 所有持股的 daily_pl_twd 加總
         display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
         
-        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.40): {display_daily_pnl}")
+        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.43): {display_daily_pnl}")
         
-        # XIRR 計算
         xirr_val = 0.0
         if xirr_cashflows:
             curr_val_sum = sum(h.market_value_twd for h in final_holdings)
@@ -470,29 +488,15 @@ class PortfolioCalculator:
                 xirr_val = round(xirr_res * 100, 2)
             except: pass
 
-        # [v2.42] Summary 取值邏輯修正
-        # 如果 history_data 因為 T02 被裁切，summary 需要使用當下最新的計算值 (final_holdings sum)
-        # 而非 history_data[-1] (因為那可能是昨天的值)
-        # 但 total_pnl 和 twr 依賴 history_data 的連續性
-        # 如果 history_data 少一天，summary 顯示的 "Total PnL" 應該是 "截至昨天" 還是 "即時"?
-        # User: "美股的淨值...歸在昨天的日期"
-        # Dashboard 顯示的是「即時狀態」，所以我們應該自行計算即時的 total_pnl
-        
-        # 計算即時的總 PnL (不依賴 history_data)
         current_total_value = sum(h.market_value_twd for h in final_holdings)
         current_invested = current_holdings_cost_sum
         current_total_pnl = current_total_value - current_invested + total_realized_pnl_twd
         
-        # TWR 比較麻煩，因為它是連乘。如果 history_data 沒有今天，TWR 就是昨天的。
-        # 這是合理的：T02 時段，報酬率曲線停在昨天。Dashboard 顯示的 TWR 也應該是昨天的。
-        # 但 Total Value 顯示的是今天的 (含匯差)。這會有點不一致。
-        # 為了符合「圖表歸在昨天」，Summary 的 TWR 使用 history_data[-1] 是正確的。
-        
         summary = PortfolioSummary(
             total_value=round(current_total_value, 0),
             invested_capital=round(current_invested, 0),
-            total_pnl=round(current_total_pnl, 0), # 這是即時的，包含今天匯差
-            twr=history_data[-1]['twr'] if history_data else 0, # 這是歷史的 (昨天)
+            total_pnl=round(current_total_pnl, 0),
+            twr=history_data[-1]['twr'] if history_data else 0,
             xirr=xirr_val,
             realized_pnl=round(total_realized_pnl_twd, 0),
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
