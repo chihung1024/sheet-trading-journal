@@ -136,7 +136,6 @@ class PortfolioCalculator:
             
             logger.info(f"[群組:{group_name}] 日期範圍: {group_start_date.strftime('%Y-%m-%d')} ~ {group_end_date.strftime('%Y-%m-%d')}")
 
-            # [v2.40] Pass current_stage to single portfolio calculation
             group_result = self._calculate_single_portfolio(group_df, group_date_range, current_fx, group_name, current_stage)
             final_groups_data[group_name] = group_result
 
@@ -321,6 +320,7 @@ class PortfolioCalculator:
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
+            # [v2.44 復權修正] 配息計算需考慮除息日到現在的分割因子
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
@@ -328,9 +328,11 @@ class PortfolioCalculator:
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_key = f"{sym}_{date_str}"
                     is_confirmed = div_key in confirmed_dividends
-                    split_factor = self.market.get_transaction_multiplier(sym, d)
                     
+                    # 關鍵：取得除息日到現在的分割因子，將當前股數還原到除息日的股數
+                    split_factor = self.market.get_transaction_multiplier(sym, d)
                     shares_at_ex = h_data['qty'] / split_factor
+                    
                     total_gross = shares_at_ex * div_per_share
                     total_net_usd = total_gross * 0.7 
                     total_net_twd = total_net_usd * effective_fx
@@ -468,7 +470,7 @@ class PortfolioCalculator:
         
         display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
         
-        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.43): {display_daily_pnl}")
+        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.44): {display_daily_pnl}")
         
         xirr_val = 0.0
         if xirr_cashflows:
