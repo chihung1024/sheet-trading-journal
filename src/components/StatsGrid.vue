@@ -1,457 +1,461 @@
 <template>
   <div class="stats-grid">
-    <div class="stat-block primary-block">
-      <div class="stat-top">
-        <span class="stat-label">總資產淨值</span>
-        <span class="icon-box highlight">💰</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value big">{{ displayTotalValue }}</div>
-        <div class="unit-text">TWD</div>
-      </div>
-      <div class="stat-footer">
-        <div class="footer-item">
-            <span class="f-label">投入成本</span> 
-            <span class="f-val">{{ formatNumber(stats.invested_capital) }}</span>
+    <StatsGridSkeleton v-if="loading" />
+
+    <template v-else>
+      <div class="stat-card primary">
+        <div class="stat-icon">💰</div>
+        <div class="stat-content">
+          <div class="stat-label">總資產 (NAV)</div>
+          <div class="stat-value">
+            {{ formatCurrency(summary.total_value) }}
+          </div>
+          <div class="stat-subtext">
+            投入成本: {{ formatCurrency(summary.invested_capital) }}
+          </div>
         </div>
       </div>
-    </div>
-    
-    <div class="stat-block" :class="getPnlBgClass(unrealizedPnL)">
-      <div class="stat-top">
-        <span class="stat-label">未實現損益</span>
-        <span class="icon-box">📈</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(unrealizedPnL)">
-          {{ unrealizedPnL >= 0 ? '+' : '' }}{{ displayUnrealized }}
+
+      <div class="stat-card" :class="dailyPnlClass">
+        <div class="stat-icon">
+          <span v-if="isLive" class="live-indicator">⚡</span>
+          <span v-else>📊</span>
+        </div>
+        <div class="stat-content">
+          <div class="stat-label-row">
+            <span class="stat-label">當日損益</span>
+            <span class="stage-badge" :class="{ 'pulse': isLive }">
+              {{ marketStageDisplay }}
+            </span>
+          </div>
+          
+          <div class="stat-value">
+            {{ formatCurrency(displayDailyPnl) }}
+          </div>
+
+          <div class="pnl-breakdown">
+            <div class="bd-group">
+              <span class="bd-label">未實現</span>
+              <div class="bd-row">
+                <span class="flag">🇺🇸</span>
+                <span :class="getPnlColor(liveUsPnl)">{{ formatCurrency(liveUsPnl) }}</span>
+              </div>
+              <div class="bd-row">
+                <span class="flag">🇹🇼</span>
+                <span :class="getPnlColor(liveTwPnl)">{{ formatCurrency(liveTwPnl) }}</span>
+              </div>
+            </div>
+            
+            <div class="bd-divider"></div>
+
+            <div class="bd-group">
+              <span class="bd-label">已實現</span>
+              <div class="bd-row realized">
+                <span class="icon">✅</span>
+                <span :class="getPnlColor(realizedPnlToday)">{{ formatCurrency(realizedPnlToday) }}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="stat-footer" v-if="lastUpdateStr">
+            更新: {{ lastUpdateStr }}
+          </div>
         </div>
       </div>
-      <div class="stat-footer">
-        <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
-            ROI: {{ roi }}%
-        </span>
-      </div>
-    </div>
-    
-    <div class="stat-block" :class="getPnlBgClass(realizedPnL)">
-      <div class="stat-top">
-        <span class="stat-label">已實現損益</span>
-        <span class="icon-box">💵</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(realizedPnL)">
-          {{ realizedPnL >= 0 ? '+' : '' }}{{ displayRealized }}
+
+      <div class="stat-card" :class="getTwrClass(summary.twr)">
+        <div class="stat-icon">📈</div>
+        <div class="stat-content">
+          <div class="stat-label">累積報酬 (TWR)</div>
+          <div class="stat-value">{{ formatPercent(summary.twr) }}</div>
+          <div class="stat-comparison">
+            vs. {{ benchmarkName }}: {{ formatPercent(summary.benchmark_twr) }}
+          </div>
         </div>
       </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs footer-desc">賣出收益 + 配息</span>
-      </div>
-    </div>
-    
-    <div class="stat-block" :class="getPnlBgClass(dailyPnL)" :title="pnlTooltip">
-      <div class="stat-top">
-        <span class="stat-label">{{ pnlLabel }}</span>
-        <span class="icon-box" :class="{ 'pulse-icon': isUSMarketOpen }">⚡</span>
-      </div>
-      <div class="stat-main column-layout">
-        <div class="stat-value" :class="getPnlTextClass(dailyPnL)">
-          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
-        </div>
-        <div class="stat-sub-value" :class="getPnlTextClass(dailyPnL)">
-          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
+
+      <div class="stat-card" :class="getPnlClass(summary.total_pnl)">
+        <div class="stat-icon">💎</div>
+        <div class="stat-content">
+          <div class="stat-label">總損益</div>
+          <div class="stat-value">
+            {{ formatCurrency(summary.total_pnl) }}
+          </div>
+          <div class="stat-subtext">
+            已實現: {{ formatCurrency(summary.realized_pnl) }}
+          </div>
         </div>
       </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs footer-desc">{{ pnlDescription }}</span>
-      </div>
-    </div>
-    
-    <div class="stat-block">
-      <div class="stat-top">
-        <span class="stat-label">時間加權報酬</span>
-        <span class="icon-box">🎯</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub text-xs">TWR (策略表現)</span>
-      </div>
-    </div>
-    
-    <div class="stat-block" :class="getPnlBgClass(stats.xirr)">
-      <div class="stat-top">
-        <span class="stat-label">個人年化報酬</span>
-        <span class="icon-box">🚀</span>
-      </div>
-      <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(stats.xirr)">
-          {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
-        </div>
-      </div>
-      <div class="stat-footer">
-         <span class="text-sub text-xs">XIRR (資金加權)</span>
-      </div>
-    </div>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import { useAuthStore } from '../stores/auth';
+import StatsGridSkeleton from './skeletons/StatsGridSkeleton.vue';
+import { CONFIG } from '../config';
 
-const store = usePortfolioStore();
-
-// ✅ 直接從 store 獲取數據，不再重複計算
-const stats = computed(() => store.stats || {});
-const history = computed(() => store.history || []);
-
-// ✅ 總損益：從後端獲取
-const totalPnL = computed(() => stats.value.total_pnl || 0);
-
-// ✅ 已實現損益：從後端獲取
-const realizedPnL = computed(() => stats.value.realized_pnl || 0);
-
-// ✅ 未實現損益 = 總損益 - 已實現損益
-const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
-
-// ✅ ROI 計算
-const roi = computed(() => {
-  if (!stats.value.invested_capital) return '0.00';
-  return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
+const props = defineProps({
+  loading: Boolean
 });
 
-// ✅ 當日損益：統一使用 store.dailyPnL
-const dailyPnL = computed(() => store.dailyPnL || 0);
+const portfolioStore = usePortfolioStore();
+const authStore = useAuthStore();
 
-// ✅ 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
-const isUSMarketOpen = computed(() => {
-  const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
+// 基礎數據引用
+const summary = computed(() => portfolioStore.summary || {});
+const holdings = computed(() => portfolioStore.holdings || []);
+const benchmarkName = 'SPY'; // 可改為從設定讀取
+
+// ==========================================
+// v2.40 核心邏輯: 前端補水 (Client-Side Hydration)
+// ==========================================
+
+const isLive = ref(false); // 是否處於即時輪詢模式
+const realtimeQuotes = ref({}); // 儲存前端抓到的即時報價
+const pollTimer = ref(null);
+const lastUpdateStr = ref('');
+
+// 1. 市場狀態顯示
+const marketStageDisplay = computed(() => {
+  return summary.value.market_stage || '休市中';
+});
+
+// 2. 當日已實現損益 (來自後端 TransactionAnalyzer 的精確計算)
+const realizedPnlToday = computed(() => {
+  return summary.value.realized_pnl_today || 0;
+});
+
+// 3. 台股未實現損益 (通常台股盤中無需頻繁更新，或後端已包含，此處可視需求擴充即時抓取)
+const liveTwPnl = computed(() => {
+  // 如果未來要支援台股即時，可在 fetchQuotes 中加入邏輯
+  return summary.value.daily_pnl_tw || 0;
+});
+
+// 4. 美股未實現損益 (增量更新核心)
+const liveUsPnl = computed(() => {
+  // A. 若無即時數據，回退至後端快照值
+  if (!isLive.value || Object.keys(realtimeQuotes.value).length === 0) {
+    return summary.value.daily_pnl_us || 0;
+  }
+
+  // B. 有即時數據，計算增量 (Delta)
+  let delta = 0;
+  let hasMatch = false;
+
+  holdings.value.forEach(h => {
+    // 僅針對美股且有抓到報價的標的
+    if (h.currency === 'USD' && realtimeQuotes.value[h.symbol]) {
+      const q = realtimeQuotes.value[h.symbol];
+      
+      // 核心：計算「即時價」與「後端基準價」的差額
+      // current_price_origin 是後端 calculator.py 寫入時的價格 (curr_p)
+      // 若後端使用昨收當基準，prev_close_price 則為基準價
+      // 這裡我們用比較安全的做法：計算 (新價 - 舊價) * 股數
+      
+      // 注意：後端的 daily_pnl_us 是基於 (curr_p - base_p) 計算的
+      // 我們要算的是 (live_price - curr_p) 的額外變動
+      
+      const backendRefPrice = h.current_price_origin || 0;
+      
+      if (backendRefPrice > 0) {
+        const priceDiff = q.price - backendRefPrice;
+        // 匯率：優先用 store 的，若無則預設 1 (美股通常需要轉 TWD)
+        const fx = portfolioStore.exchange_rate || 1.0; 
+        
+        delta += priceDiff * h.qty * fx;
+        hasMatch = true;
+      }
+    }
+  });
+
+  if (!hasMatch) return summary.value.daily_pnl_us || 0;
+
+  // 最終 PnL = 後端計算值 + 前端增量
+  return (summary.value.daily_pnl_us || 0) + Math.round(delta);
+});
+
+// 5. 總當日損益顯示
+const displayDailyPnl = computed(() => {
+  return liveUsPnl.value + liveTwPnl.value + realizedPnlToday.value;
+});
+
+// ==========================================
+// 即時報價抓取邏輯
+// ==========================================
+
+const fetchRealtimeQuotes = async () => {
+  // 找出所有持倉中的美股代碼
+  const symbols = holdings.value
+    .filter(h => h.currency === 'USD' && h.qty > 0)
+    .map(h => h.symbol);
+    
+  if (symbols.length === 0) return;
+
+  try {
+    const token = authStore.token;
+    if (!token) return;
+
+    // 呼叫 Worker v2.40 新增的 Proxy API
+    const res = await fetch(`${CONFIG.API_BASE_URL}/api/realtime-quotes?symbols=${symbols.join(',')}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      realtimeQuotes.value = data.quotes;
+      lastUpdateStr.value = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+  } catch (e) {
+    console.warn("Realtime quote fetch failed, falling back to snapshot data.", e);
+  }
+};
+
+// 監聽市場狀態以啟動/停止輪詢
+watch(() => summary.value.market_stage, (newStage) => {
+  // 判斷邏輯：只要狀態描述包含 "盤中" 且包含 "美股"，則啟動輪詢
+  // 也可以根據具體的 STAGE_CODE 判斷
+  const shouldLive = newStage && newStage.includes('美股盤中');
   
-  if (hour >= 21 || hour < 5) {
-    if (hour === 21 && minute < 30) return false;
-    return true;
-  }
-  return false;
-});
-
-// 動態標題
-const pnlLabel = computed(() => {
-  return isUSMarketOpen.value ? '美股盤中損益' : '當日損益';
-});
-
-// 動態說明
-const pnlDescription = computed(() => {
-  if (isUSMarketOpen.value) {
-    return '盤中損益(含交易+即時價格)';
+  if (shouldLive) {
+    if (!isLive.value) {
+      isLive.value = true;
+      fetchRealtimeQuotes(); // 立即抓一次
+      // 每 30 秒輪詢一次 (避免過於頻繁觸發 Rate Limit)
+      pollTimer.value = setInterval(fetchRealtimeQuotes, 30000); 
+    }
   } else {
-    return '昨晚美股交易損益+今日匯率';
-  }
-});
-
-// Tooltip 完整說明
-const pnlTooltip = computed(() => {
-  if (isUSMarketOpen.value) {
-    return '美股盤中:今日市值 - 昨日市值 - 今日現金流';
-  } else {
-    return '美股收盤:今日市值 - 前日市值 - 昨晚現金流';
-  }
-});
-
-// ✅ 計算今日損益百分比
-const dailyRoi = computed(() => {
-  let baseValue = 0;
-  
-  if (!history.value || history.value.length < 2) {
-    return '0.00';
-  }
-  
-  if (isUSMarketOpen.value) {
-    // 使用昨日收盤
-    baseValue = history.value[history.value.length - 2].total_value || 0;
-  } else {
-    // 使用前日收盤
-    if (history.value.length >= 3) {
-      baseValue = history.value[history.value.length - 3].total_value || 0;
-    } else {
-      baseValue = history.value[history.value.length - 2].total_value || 0;
+    isLive.value = false;
+    if (pollTimer.value) {
+      clearInterval(pollTimer.value);
+      pollTimer.value = null;
     }
   }
-  
-  if (!baseValue || baseValue === 0) return '0.00';
-  return ((dailyPnL.value / baseValue) * 100).toFixed(2);
+}, { immediate: true });
+
+onUnmounted(() => {
+  if (pollTimer.value) clearInterval(pollTimer.value);
 });
 
-// 數字動畫
-const useAnimatedNumber = (targetVal) => {
-  const current = ref(0);
-  watch(targetVal, (newVal) => {
-    if (newVal == null) return;
-    current.value = Number(newVal);
-  }, { immediate: true });
-  return computed(() => Math.round(current.value).toLocaleString('zh-TW'));
+// ==========================================
+// 輔助函式與樣式類別
+// ==========================================
+
+const formatCurrency = (val) => {
+  if (val === undefined || val === null) return '$0';
+  return new Intl.NumberFormat('zh-TW', {
+    style: 'currency',
+    currency: 'TWD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(val);
 };
 
-const displayTotalValue = useAnimatedNumber(computed(() => stats.value.total_value));
-const displayUnrealized = useAnimatedNumber(unrealizedPnL);
-const displayRealized = useAnimatedNumber(realizedPnL);
-const displayDaily = useAnimatedNumber(dailyPnL);
-
-const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
-
-// 樣式輔助函數
-const getPnlTextClass = (val) => {
-    const num = Number(val) || 0;
-    return num >= 0 ? 'text-green' : 'text-red';
+const formatPercent = (val) => {
+  if (val === undefined || val === null) return '0.00%';
+  const sign = val >= 0 ? '+' : '';
+  return `${sign}${Number(val).toFixed(2)}%`;
 };
 
-const getPnlBgClass = (val) => {
-    const num = Number(val) || 0;
-    if (num === 0) return '';
-    return num > 0 ? 'bg-gradient-green' : 'bg-gradient-red';
+const dailyPnlClass = computed(() => {
+  return displayDailyPnl.value >= 0 ? 'success' : 'danger';
+});
+
+const getPnlClass = (val) => (val >= 0 ? 'success' : 'danger');
+const getTwrClass = (val) => (val >= 0 ? 'success' : 'danger');
+
+const getPnlColor = (val) => {
+  if (val > 0) return 'text-success';
+  if (val < 0) return 'text-danger';
+  return 'text-neutral';
 };
 </script>
 
 <style scoped>
-/* 核心 Grid 佈局 */
 .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr); /* 桌面版維持 3 欄 */
-    gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
 }
 
-.stat-block {
-    background: var(--bg-card);
-    padding: 20px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-card);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 120px;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
+.stat-card {
+  background: var(--bg-primary);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
 }
 
-/* 懸停效果 */
-.stat-block:hover { 
-    transform: translateY(-3px); 
-    box-shadow: var(--shadow-lg); 
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
-/* 特殊卡片樣式：總資產 */
-.primary-block {
-    border-left: 4px solid var(--primary);
+.stat-card.primary {
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+  color: white;
+  border: none;
 }
 
-/* 背景微漸層 */
-.bg-gradient-green {
-    background: linear-gradient(145deg, var(--bg-card) 40%, rgba(16, 185, 129, 0.05) 100%);
-    border-bottom: 2px solid rgba(16, 185, 129, 0.2);
+.stat-card.primary .stat-label,
+.stat-card.primary .stat-value,
+.stat-card.primary .stat-subtext,
+.stat-card.primary .stat-icon {
+  color: white;
 }
 
-.bg-gradient-red {
-    background: linear-gradient(145deg, var(--bg-card) 40%, rgba(239, 68, 68, 0.05) 100%);
-    border-bottom: 2px solid rgba(239, 68, 68, 0.2);
+.stat-card.success { border-left: 4px solid var(--success-color); }
+.stat-card.danger { border-left: 4px solid var(--danger-color); }
+
+.stat-icon {
+  font-size: 2rem;
+  background: var(--bg-secondary);
+  width: 3.5rem;
+  height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  flex-shrink: 0;
 }
 
-/* 頂部區域 */
-.stat-top { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    margin-bottom: 12px; 
+.stat-card.primary .stat-icon {
+  background: rgba(255, 255, 255, 0.2);
 }
 
-.stat-label { 
-    font-size: 0.9rem; 
-    color: var(--text-sub); 
-    font-weight: 600; 
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
+.stat-content {
+  flex: 1;
+  min-width: 0;
 }
 
-/* Icon Box 優化 */
-.icon-box { 
-    width: 38px; 
-    height: 38px; 
-    border-radius: 10px; 
-    background: var(--bg-secondary);
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    font-size: 1.25rem;
-    transition: transform 0.2s ease, background 0.2s;
+.stat-label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
-.icon-box.highlight {
-    background: rgba(59, 130, 246, 0.1);
-}
-
-.pulse-icon {
-    animation: pulse-light 2s infinite;
-}
-
-@keyframes pulse-light {
-    0% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.7; transform: scale(1.1); }
-    100% { opacity: 1; transform: scale(1); }
-}
-
-/* 主要數值區 */
-.stat-main { 
-    display: flex; 
-    align-items: baseline; 
-    gap: 6px; 
-    margin-bottom: 8px; 
-    flex-grow: 1;
-}
-
-.stat-main.column-layout {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0px;
+.stat-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .stat-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--text-main);
-    line-height: 1.1;
-    letter-spacing: -0.02em;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  margin-bottom: 0.25rem;
 }
 
-.stat-value.big {
-    font-size: 2.2rem;
-    background: linear-gradient(90deg, var(--text-main), var(--text-sub));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    display: inline-block;
+.stat-subtext, .stat-comparison {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
 }
 
-.stat-sub-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1rem;
-    font-weight: 600;
-    opacity: 0.85;
-    margin-top: 4px;
+/* v2.40 新增樣式 */
+.live-indicator {
+  animation: pulse-yellow 2s infinite;
+  display: inline-block;
 }
 
-.unit-text, .percent { 
-    font-size: 0.85rem; 
-    color: var(--text-sub); 
-    font-weight: 500; 
+.stage-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
-/* 底部區域 */
+.stage-badge.pulse {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success-color);
+  animation: pulse-green 2s infinite;
+}
+
+.pnl-breakdown {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+}
+
+.bd-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.bd-label {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  margin-bottom: 0.1rem;
+}
+
+.bd-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 500;
+}
+
+.bd-row.realized {
+  color: var(--text-primary);
+}
+
+.bd-divider {
+  width: 1px;
+  background: var(--border-color);
+  height: auto;
+}
+
+.flag { font-size: 0.9rem; }
+.icon { font-size: 0.8rem; }
+
+.text-success { color: var(--success-color); }
+.text-danger { color: var(--danger-color); }
+.text-neutral { color: var(--text-secondary); }
+
 .stat-footer {
-    padding-top: 12px;
-    border-top: 1px solid var(--border-color);
-    font-size: 0.85rem;
-    display: flex; 
-    align-items: center; 
-    justify-content: space-between;
-    min-height: 32px; /* 確保高度一致 */
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  margin-top: 0.5rem;
+  text-align: right;
+  opacity: 0.7;
 }
 
-.footer-item { 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-    width: 100%;
-    justify-content: space-between;
+@keyframes pulse-green {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  70% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
-.f-label { color: var(--text-sub); }
-.f-val { 
-    font-weight: 600; 
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--text-main);
+@keyframes pulse-yellow {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
-.text-green { color: var(--success); }
-.text-red { color: var(--danger); }
-.text-sub { color: var(--text-sub); }
-.text-xs { font-size: 0.8rem; }
-
-/* 徽章樣式 */
-.badge { 
-    padding: 2px 8px; 
-    border-radius: 6px; 
-    font-weight: 600; 
-    font-size: 0.8rem; 
-    display: inline-flex; 
-    align-items: center; 
-}
-
-.badge-green { 
-    background: rgba(16, 185, 129, 0.12); 
-    color: var(--success);
-}
-
-.badge-red { 
-    background: rgba(239, 68, 68, 0.12); 
-    color: var(--danger);
-}
-
-/* RWD: 中尺寸螢幕 (Tablets) */
-@media (max-width: 1024px) { 
-    .stats-grid { 
-        grid-template-columns: repeat(2, 1fr); /* 改為 2 欄 */
-        gap: 16px;
-    } 
-    .stat-value.big { font-size: 2rem; }
-}
-
-/* RWD: 手機版優化 (Mobile) */
-@media (max-width: 768px) { 
-    .stats-grid { 
-        grid-template-columns: repeat(2, 1fr); /* 強制維持 2 欄，增加資訊密度 */
-        gap: 12px;
-    }
-    
-    .stat-block {
-        padding: 14px;
-        min-height: 100px;
-    }
-    
-    /* 總資產在手機上獨佔一行，突顯重要性 */
-    .stat-block:first-child {
-        grid-column: span 2; 
-    }
-
-    .stat-top { margin-bottom: 8px; }
-    .stat-label { font-size: 0.75rem; }
-    
-    .icon-box { 
-        width: 30px; 
-        height: 30px; 
-        font-size: 1rem;
-        border-radius: 8px;
-    }
-    
-    .stat-value { font-size: 1.4rem; }
-    .stat-value.big { font-size: 1.8rem; }
-    .stat-sub-value { font-size: 0.9rem; }
-    
-    .stat-footer { 
-        padding-top: 8px; 
-        min-height: auto;
-    }
-    
-    /* 手機上隱藏過長說明，保持簡潔 */
-    .footer-desc {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 100%;
-        display: block;
-    }
+/* RWD */
+@media (max-width: 640px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
 }
 </style>
