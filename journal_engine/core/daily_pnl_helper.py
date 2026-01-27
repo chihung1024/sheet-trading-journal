@@ -32,18 +32,46 @@ class DailyPnLHelper:
         Returns: (mode, description)
         mode: 'YESTERDAY' or 'TODAY'
         """
+        # Deprecated or simplified usage, logic moved to get_effective_display_date mostly
+        # But kept for compatibility if needed
+        return 'TODAY', "Default Strategy"
+
+    def get_effective_display_date(self, is_tw):
+        """
+        [v2.41] 取得用於顯示當日損益的「有效日期」。
+        
+        邏輯：
+        1. 美股 (is_tw=False)：
+           - T02 時段 (台股盤中/盤後, 美股未開盤)：有效日期 = 昨天 (因為還在看昨晚收盤的結果)
+             例如：台灣週二早上 10:00，美股週二還沒開，這時候看到的「今日」其實是美股的「週一」。
+             若昨天是買入日，那今日損益就該算 (昨收 - 成本)。
+           - T03/T04 時段 (美股盤中/盤後)：有效日期 = 今天
+           
+        2. 台股 (is_tw=True)：
+           - 基本上都是今天 (因為 00:00 就換日了，且開盤就在早上)
+        """
         now_tw = datetime.now(self.tz_tw)
+        today_date = now_tw.date()
         
         if is_tw:
-            # T01: 凌晨台股 (02:00) -> YESTERDAY
-            # 假設台股開盤前都算昨日收盤狀態
-            if 0 <= now_tw.hour < 9:
-                return 'YESTERDAY', "Before TW Open"
-            else:
-                return 'TODAY', "After/During TW Open"
+            return today_date
         else:
-            # 美股
-            return 'TODAY', "Default US Strategy"
+            # 美股邏輯
+            # 判斷是否在美股開盤前 (T02: TW 05:00 ~ 21:30)
+            # 簡單判定：如果現在時間 < 21:30 (冬令) 或 20:30 (夏令)，視為盤前
+            # 這裡用一個保守的判定：如果美股還沒開盤，就視為「展示昨日數據」
+            
+            now_us = now_tw.astimezone(self.tz_us)
+            
+            # 美股開盤時間 09:30
+            market_open_time = time(9, 30)
+            
+            if now_us.time() < market_open_time:
+                # 尚未開盤 -> 有效日期為昨天 (或是上一個交易日，這裡先減一天，TransactionAnalyzer 會處理週末)
+                return today_date - timedelta(days=1)
+            else:
+                # 已開盤或盤後 -> 有效日期為今天
+                return today_date
 
     def is_market_open(self, market='US'):
         """[Issue 6] 判斷市場是否開盤 (含週末判斷)"""
@@ -60,29 +88,3 @@ class DailyPnLHelper:
         elif market == 'TW':
             return time(9, 0) <= now_tw.time() <= time(13, 30)
         return False
-
-    def get_historical_pnl(self, stock_data, target_date, qty, fx=1.0):
-        """[Issue 2] 基於日期的精確查找 (解決 yfinance 更新延遲問題)"""
-        try:
-            if not isinstance(stock_data.index, pd.DatetimeIndex):
-                stock_data.index = pd.to_datetime(stock_data.index)
-            
-            # 尋找目標日期或最近的一個交易日 (由後往前找)
-            target_ts = pd.Timestamp(target_date)
-            # 篩選出不大於目標日期的數據
-            valid_data = stock_data[stock_data.index.date <= target_ts.date()]
-            
-            if len(valid_data) < 2:
-                return 0.0, 0.0, 0.0
-                
-            curr_row = valid_data.iloc[-1] # 目標日的收盤 (或最近交易日)
-            prev_row = valid_data.iloc[-2] # 前一日收盤
-            
-            curr_p = float(curr_row['Close_Adjusted'])
-            prev_p = float(prev_row['Close_Adjusted'])
-            
-            pnl = (curr_p - prev_p) * qty * fx
-            return pnl, curr_p, prev_p
-        except Exception as e:
-            logger.error(f"Historical PnL Error: {e}")
-            return 0.0, 0.0, 0.0
