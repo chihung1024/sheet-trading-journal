@@ -44,15 +44,10 @@ class PortfolioCalculator:
           - 如果 target_date 是今天，且美股有效日期 < 今天（T02/T03 時段）
             -> 使用昨天的收盤價 + 今天的匯率
           - 否則使用 target_date 的價格與匯率
+          
+        使用 market.get_price() 確保復權處理正確
         """
-        stock_data = self.market.market_data.get(symbol, pd.DataFrame())
         is_tw = self._is_taiwan_stock(symbol)
-        
-        if stock_data.empty:
-            return 0.0, current_fx
-        
-        if not isinstance(stock_data.index, pd.DatetimeIndex):
-            stock_data.index = pd.to_datetime(stock_data.index)
         
         # 決定實際要使用的價格日期
         price_date = target_date
@@ -71,13 +66,10 @@ class PortfolioCalculator:
                     fx_to_use = current_fx
                     logger.debug(f"[{symbol}] T02/T03: 使用 {price_date} 價格 + {today} 匯率")
         
-        # 取得價格
-        valid_data = stock_data[stock_data.index.date <= price_date]
-        if len(valid_data) >= 1:
-            price = float(valid_data.iloc[-1]['Close_Adjusted'])
-            return price, fx_to_use
+        # 使用 market.get_price() 取得復權後的價格
+        price = self.market.get_price(symbol, pd.Timestamp(price_date))
         
-        return 0.0, fx_to_use
+        return price, fx_to_use
 
     def run(self):
         """執行多群組投資組合計算主流程 (v2.40 Enhanced)"""
