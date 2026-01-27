@@ -153,6 +153,10 @@ class TransactionAnalyzer:
         if snapshot.qty < 1e-9:
             return 0.0
         
+        # 如果舊倉已耗盡，強制使用新倉成本為基準（視為今日新倉）
+        if snapshot.old_qty_remaining < 1e-9:
+            return snapshot.new_avg_cost if snapshot.new_qty_remaining > 0 else 0.0
+            
         if snapshot.is_new_today:
             return snapshot.avg_cost
         
@@ -160,10 +164,8 @@ class TransactionAnalyzer:
         new_qty = snapshot.new_qty_remaining
         total_qty = snapshot.qty
         
-        if total_qty < 1e-9:
-            return 0.0
-        
-        # 加權基準價
+        # 加權基準價 (混合 昨收 與 今日成本)
+        # 注意: 這裡的 yesterday_close 必須是還原後的價格(若有除權息)
         weighted_base = (
             old_qty * yesterday_close + 
             new_qty * snapshot.new_avg_cost
