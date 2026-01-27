@@ -183,9 +183,8 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.43 Per-Asset Effective Date Pricing)"""
+        """單一群組的核心計算邏輯 (v2.44 Full Back-Adjustment)"""
         
-        # [v2.40] Initialize TransactionAnalyzer for this group
         txn_analyzer = TransactionAnalyzer(df)
         
         holdings = {}
@@ -392,7 +391,7 @@ class PortfolioCalculator:
             
             last_fx = fx
 
-        # --- [v2.43] 最終報表產生 ---
+        # --- [v2.45 復權修正] 最終報表產生 - 使用 market.get_price() 確保復權 ---
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
@@ -419,21 +418,14 @@ class PortfolioCalculator:
                 if not tags.empty:
                     h['tag'] = tags.iloc[0]
 
-            stock_data = self.market.market_data.get(sym, pd.DataFrame())
             effective_fx = self._get_effective_fx_rate(sym, current_fx)
             
-            curr_p = 0.0
-            prev_p = 0.0
-            
-            if not stock_data.empty:
-                if not isinstance(stock_data.index, pd.DatetimeIndex):
-                     stock_data.index = pd.to_datetime(stock_data.index)
-                
-                valid_data = stock_data[stock_data.index.date <= effective_display_date]
-                if len(valid_data) >= 1:
-                    curr_p = float(valid_data.iloc[-1]['Close_Adjusted'])
-                    if len(valid_data) >= 2:
-                        prev_p = float(valid_data.iloc[-2]['Close_Adjusted'])
+            # [v2.45 關鍵修正] 使用 market.get_price() 取得復權後價格
+            curr_p = self.market.get_price(sym, pd.Timestamp(effective_display_date))
+            prev_date = effective_display_date - timedelta(days=1)
+            while prev_date.weekday() >= 5:
+                prev_date -= timedelta(days=1)
+            prev_p = self.market.get_price(sym, pd.Timestamp(prev_date))
             
             position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx)
             
@@ -470,7 +462,7 @@ class PortfolioCalculator:
         
         display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
         
-        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.44): {display_daily_pnl}")
+        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.45): {display_daily_pnl}")
         
         xirr_val = 0.0
         if xirr_cashflows:
