@@ -38,30 +38,27 @@ class PortfolioCalculator:
 
     def _get_effective_fx_rate(self, symbol, fx_rate):
         """
-        [v2.48] 根據標的取得有效匯率(台股回倳1.0,美股等其他標的回備實際匯率)
+        [v2.48] 根據標的取得有效匯率(台股回傳3.0,美股等其他標的回備實際匯率)
         現使用 CurrencyDetector 實現
         """
         return self.currency_detector.get_fx_multiplier(symbol, fx_rate)
     
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
         """
-        [v2.48 HOTFIX] 取得資產在特定日期的有效價格與匯率
-        根據資產類型（台股/美股）與當前市場狀態，決定使用哪個日期的價格與匯率
+        [v2.50 HOTFIX] 修復匯率對齊問題 - 價格與匯率必須對應同一天
         
-        邏輯：
+        核心邏輯：
         - 台股：始終使用 target_date 的價格 + 有效匯率 1.0
         - 美股：
           - 如果 target_date 是今天，且美股有效日期 < 今天（T02/T03 時段）
-            -> 使用昨天的收盤價 + 今天的匯率
+            -> 使用昨天的收盤價 + 昨天的匯率 (關鍵修復！)
           - 否則使用 target_date 的價格與匯率
-          
-        使用 market.get_price() 確保復權處理正確
         """
         is_tw = self._is_taiwan_stock(symbol)
         
         # 決定實際要使用的價格日期
         price_date = target_date
-        fx_to_use = current_fx
+        fx_date = target_date  # ✅ 新增：匯率日期也要對齊
         
         # 美股特殊處理
         if not is_tw:
@@ -72,15 +69,23 @@ class PortfolioCalculator:
                 if effective_date_us < today:
                     # T02/T03 時段：使用昨天的收盤價
                     price_date = effective_date_us
-                    # 但匯率使用今天的（當前的）
-                    fx_to_use = current_fx
-                    logger.debug(f"[{symbol}] T02/T03: 使用 {price_date} 價格 + {today} 匯率")
+                    # ✅ 關鍵修復：匯率也使用昨天的
+                    fx_date = effective_date_us
+                    logger.debug(f"[{symbol}] T02/T03: 使用 {price_date} 價格 + {fx_date} 匯率")
         
         # 使用 market.get_price() 取得復權後的價格
         price = self.market.get_price(symbol, pd.Timestamp(price_date))
         
-        # [v2.48 HOTFIX] 關鍵修復：使用 _get_effective_fx_rate 確保台股返回 1.0
-        effective_fx = self._get_effective_fx_rate(symbol, fx_to_use)
+        # ✅ 取得對應日期的匯率
+        try:
+            fx_for_date = self.market.fx_rates.asof(pd.Timestamp(fx_date))
+            if pd.isna(fx_for_date):
+                fx_for_date = DEFAULT_FX_RATE
+        except:
+            fx_for_date = DEFAULT_FX_RATE
+        
+        # ✅ 台股返回 1.0，美股返回實際匯率
+        effective_fx = self._get_effective_fx_rate(symbol, fx_for_date)
         
         return price, effective_fx
 
@@ -382,7 +387,7 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # [v2.48 HOTFIX] 使用修復後的函數計算市值（台股 effective_fx = 1.0）
+            # [v2.50 HOTFIX] 使用修復後的函數計算市值（台股 effective_fx = 1.0，美股匯率對齊）
             current_market_value_twd = 0.0
             for sym, h in holdings.items():
                 if h['qty'] > 1e-6:
@@ -498,7 +503,7 @@ class PortfolioCalculator:
         
         logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.48): {display_daily_pnl}")
         
-        # [v2.48] 骗證每日帳戶平衡
+        # [v2.48] 验證每日帳戶平衡
         self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
         
         xirr_val = 0.0
