@@ -27,9 +27,11 @@ class MarketDataClient:
         初始化市場數據客戶端
         - market_data: 存儲所有股票的歷史價格數據
         - fx_rates: 存儲匯率數據（USD/TWD）
+        - realtime_fx_rate: [v2.52] 存儲即時匯率，與歷史數據分離
         """
         self.market_data = {}
         self.fx_rates = pd.Series(dtype=float)
+        self.realtime_fx_rate = None  # [v2.52] 新增獨立的即時匯率存儲
 
     def download_data(self, tickers: list, start_date):
         """
@@ -56,15 +58,11 @@ class MarketDataClient:
                 # 按日重採樣並前向填充（處理週末/假日）
                 self.fx_rates = fx_hist['Close'].resample('D').ffill().apply(self._normalize_twd_per_usd)
 
-                # ✅ [修正] 強制鎖定台灣時間與使用 fast_info 獲取即時匯率
-                # 解決 Daily 資料在盤中可能不會即時更新的問題，並修正時區錯位
+                # ✅ [v2.52 FIX] 修正匯率更新邏輯
+                # 將即時匯率存入 self.realtime_fx_rate，而不覆蓋 self.fx_rates
+                # 這樣 calculator 可以在計算"今天"的資產時使用即時匯率，而歷史曲線保持不變
                 try:
                     print("[FX] 正在獲取即時匯率...")
-                    
-                    # 1. 定義正確的「台灣時間今天」
-                    tw_tz = pytz.timezone('Asia/Taipei')
-                    now_tw = datetime.now(tw_tz)
-                    today_ts = pd.Timestamp(now_tw.date()).normalize()
                     
                     latest_rate = None
                     
@@ -76,7 +74,6 @@ class MarketDataClient:
                             latest_rate = self._normalize_twd_per_usd(float(raw_price))
                             print(f"[FX] 使用 fast_info 獲取: {latest_rate:.4f}")
                     except Exception as e:
-                        # fast_info 偶爾會失敗，不影響流程，轉為備案
                         pass
 
                     # 3. 備案：抓取最近 1 天的 1 分鐘資料，取最後一筆
@@ -86,12 +83,12 @@ class MarketDataClient:
                             latest_rate = self._normalize_twd_per_usd(float(realtime_data['Close'].iloc[-1]))
                             print(f"[FX] 使用 1m K線 獲取: {latest_rate:.4f}")
 
-                    # 4. 更新數據 (強制覆蓋台灣時間的今天)
+                    # 4. 更新即時數據變數
                     if latest_rate is not None:
-                        self.fx_rates[today_ts] = latest_rate
-                        print(f"[FX] ✅ 已鎖定台灣時間 {today_ts.date()} 匯率: {latest_rate:.4f}")
+                        self.realtime_fx_rate = latest_rate
+                        print(f"[FX] ✅ 已獲取即時匯率: {latest_rate:.4f} (存儲於 realtime_fx_rate)")
                     else:
-                        print("[FX] ⚠️ 無法獲取即時數據，將使用前日收盤")
+                        print("[FX] ⚠️ 無法獲取即時數據，後續計算將依賴歷史收盤")
 
                 except Exception as e:
                     print(f"[FX] ⚠️ 即時匯率抓取失敗: {e}")
@@ -172,11 +169,6 @@ class MarketDataClient:
     def _prepare_data(self, symbol, df):
         """
         [v2.48] 準備股票數據：使用 AutoPriceSelector 智能選擇價格字段
-        
-        改進：
-        - 移除手動判斷台股/美股的邏輯
-        - 使用 AutoPriceSelector 自動檢測數據質量並選擇最佳價格字段
-        - 自動處理異常數據（如 Adj Close 異常放大）
         """
         df = df.copy()
         
@@ -192,58 +184,33 @@ class MarketDataClient:
         df['Close_Raw'] = df['Close']
         
         # ==================== 計算累積拆股因子 ====================
-        # 用途：將歷史交易的股數轉換為當前等價股數
-        # 例如：NVDA 拆股前買 100股，拆股 10:1 後應該顯示為 1000股
-        
         if 'Stock Splits' not in df.columns:
             df['Stock Splits'] = 0.0
         
-        # 將 0 替換為 1.0（表示沒有拆股）
         splits = df['Stock Splits'].replace(0, 1.0)
-        
-        # 反向累積計算：從最新日期往回累積
         splits_reversed = splits.iloc[::-1]
         cum_splits_reversed = splits_reversed.cumprod()
         cum_splits = cum_splits_reversed.iloc[::-1]
-        
-        # Shift(-1) 讓因子對齊到正確的日期
         df['Split_Factor'] = cum_splits.shift(-1).fillna(1.0)
         
         # ==================== 計算配息調整因子 ====================
-        # 根據選擇的價格源動態計算
         if metadata['price_source'] == 'Adj Close':
-            # 使用復權價格 → 計算配息調整因子
             df['Dividend_Adj_Factor'] = df['Adj Close'] / df['Close']
         else:
-            # 使用原始價格 → 不需要調整
             df['Dividend_Adj_Factor'] = 1.0
         
         return df
 
     def get_price(self, symbol, date):
-        """
-        取得指定日期的股票價格
-        
-        [v2.48] 使用 AutoPriceSelector 選擇的價格字段
-        
-        參數:
-            symbol: 股票代碼
-            date: 查詢日期（pd.Timestamp 或 datetime）
-        
-        返回:
-            調整後的收盤價（float）
-        """
+        """取得指定日期的股票價格 [v2.48] AutoPriceSelector"""
         if symbol not in self.market_data:
             return 0.0
         
         try:
             df = self.market_data[symbol]
-            
-            # 優先精確匹配日期
             if date in df.index:
                 return float(df.loc[date, 'Close_Adjusted'])
             
-            # 若找不到（如週末/假日），使用最近的前一個交易日價格
             idx = df.index.get_indexer([date], method='pad')[0]
             if idx != -1:
                 return float(df.iloc[idx]['Close_Adjusted'])
@@ -253,71 +220,32 @@ class MarketDataClient:
             return 0.0
 
     def get_transaction_multiplier(self, symbol, date):
-        """
-        取得交易日的拆股復權因子
-        
-        用途：將原始交易股數轉換為當前等價股數
-        
-        範例：
-        - 2024-01-02 買入 NVDA 100股 @ $492.44
-        - 2024-06-10 拆股 10:1
-        - get_transaction_multiplier('NVDA', '2024-01-02') = 10.0
-        - 調整後股數: 100 × 10 = 1000股
-        - 調整後價格: $492.44 / 10 = $49.24
-        - 總成本維持不變: 100×$492.44 = 1000×$49.24 = $49,244
-        
-        參數:
-            symbol: 股票代碼
-            date: 交易日期
-        
-        返回:
-            拆股因子（float，無拆股時為 1.0）
-        """
+        """取得交易日的拆股復權因子"""
         if symbol not in self.market_data:
             return 1.0
         
         try:
             df = self.market_data[symbol]
-            
-            # 精確匹配日期
             if date in df.index:
                 return float(df.loc[date, 'Split_Factor'])
             
-            # 若交易日在數據範圍之前（太早），使用最早的因子
             if date < df.index.min():
                 return float(df.iloc[0]['Split_Factor'])
             
-            # 若交易日在數據範圍之後（未來），使用最新的因子（通常是1.0）
             return float(df.iloc[-1]['Split_Factor'])
         except:
             return 1.0
 
     def get_dividend_adjustment_factor(self, symbol, date):
-        """
-        取得配息調整因子
-        
-        [v2.48] 根據 AutoPriceSelector 的選擇動態返回
-        
-        用途：將交易價格調整到選定價格體系
-        
-        參數:
-            symbol: 股票代碼
-            date: 交易日期
-        
-        返回:
-            配息調整因子（float，無配息時為 1.0）
-        """
+        """取得配息調整因子"""
         if symbol not in self.market_data:
             return 1.0
         
         try:
             df = self.market_data[symbol]
-            
-            # 精確匹配日期
             if date in df.index:
                 return float(df.loc[date, 'Dividend_Adj_Factor'])
             
-            # 若找不到，向前填補最近的因子
             idx = df.index.get_indexer([date], method='pad')[0]
             if idx != -1:
                 return float(df.iloc[idx]['Dividend_Adj_Factor'])
@@ -327,29 +255,7 @@ class MarketDataClient:
             return 1.0
 
     def get_dividend(self, symbol, date):
-        """
-        取得指定日期的配息金額（每股）
-        
-        用途：記錄配息明細（僅用於報表顯示）
-        
-        重要提醒：
-        - 此方法返回的是「除息日當天」的配息金額
-        - yfinance 記錄的日期是「Ex-Dividend Date」（除息日）
-        - 實際入帳日期（Payment Date）通常晚 1-2 週
-        - 配息金額已經是「拆股調整後」的金額
-        
-        注意：
-        - 當使用 Adj Close 計算市值時，配息效果已經包含在價格中
-        - 不應該將此配息再次累加到 realized_pnl（會導致雙重計算）
-        - 此方法僅用於產生配息明細報表
-        
-        參數:
-            symbol: 股票代碼
-            date: 查詢日期（除息日）
-        
-        返回:
-            每股配息金額（USD，稅前）
-        """
+        """取得指定日期的配息金額（每股）"""
         if symbol not in self.market_data:
             return 0.0
         
