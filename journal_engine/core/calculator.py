@@ -73,7 +73,9 @@ class PortfolioCalculator:
             return price, 1.0
         
         # === 美股邏輯 ===
-        today = datetime.now().date()
+        # ✅ [修正] 強制使用台灣時間定義 "今天"，確保與 market_data.py 對齊
+        # 避免在台灣時間 00:00-08:00 (UTC 昨天) 時被誤判為歷史日期
+        today = datetime.now(self.pnl_helper.tz_tw).date()
         
         if target_date == today:
             # ✅ 關鍵修復：今天的數據，匯率必須用 current_fx（最新即時）
@@ -408,7 +410,8 @@ class PortfolioCalculator:
                         daily_net_cashflow_twd -= total_net_twd
 
             # [v2.51 FIX] 計算市值時動態決定匯率：今天用即時，歷史用當日
-            today = datetime.now().date()
+            # [修正] 強制使用台灣時間定義 "今天"，確保與市場數據對齊
+            today = datetime.now(self.pnl_helper.tz_tw).date()
             fx_for_calculation = current_fx if current_date == today else fx
             
             current_market_value_twd = 0.0
