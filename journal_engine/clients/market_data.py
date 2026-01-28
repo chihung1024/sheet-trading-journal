@@ -1,7 +1,8 @@
 import pandas as pd
 import yfinance as yf
 import concurrent.futures
-from datetime import timedelta
+import pytz
+from datetime import datetime, timedelta
 from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
 from .auto_price_selector import AutoPriceSelector
 
@@ -55,22 +56,43 @@ class MarketDataClient:
                 # 按日重採樣並前向填充（處理週末/假日）
                 self.fx_rates = fx_hist['Close'].resample('D').ffill().apply(self._normalize_twd_per_usd)
 
-                # ✅ [新增] 強制抓取最新的即時匯率 (1分鐘K線)
-                # 解決 Daily 資料在盤中可能不會即時更新的問題
+                # ✅ [修正] 強制鎖定台灣時間與使用 fast_info 獲取即時匯率
+                # 解決 Daily 資料在盤中可能不會即時更新的問題，並修正時區錯位
                 try:
                     print("[FX] 正在獲取即時匯率...")
-                    # 抓取最近 1 天的 1 分鐘資料，取最後一筆
-                    realtime_data = fx.history(period="1d", interval="1m")
-                    if not realtime_data.empty:
-                        latest_rate = self._normalize_twd_per_usd(float(realtime_data['Close'].iloc[-1]))
-                        # 取得今日的標準化日期 (00:00:00)
-                        today = pd.Timestamp.now().normalize()
-                        
-                        # 覆蓋或新增今日匯率
-                        self.fx_rates[today] = latest_rate
-                        print(f"[FX] ✅ 已獲取即時匯率: {latest_rate:.4f} (已更新至今日數據)")
+                    
+                    # 1. 定義正確的「台灣時間今天」
+                    tw_tz = pytz.timezone('Asia/Taipei')
+                    now_tw = datetime.now(tw_tz)
+                    today_ts = pd.Timestamp(now_tw.date()).normalize()
+                    
+                    latest_rate = None
+                    
+                    # 2. 優先嘗試 fast_info (Yahoo Finance 新版 API，反應更快)
+                    try:
+                        # 嘗試獲取最後成交價
+                        raw_price = fx.fast_info.get('last_price') or fx.fast_info.get('regular_market_price')
+                        if raw_price:
+                            latest_rate = self._normalize_twd_per_usd(float(raw_price))
+                            print(f"[FX] 使用 fast_info 獲取: {latest_rate:.4f}")
+                    except Exception as e:
+                        # fast_info 偶爾會失敗，不影響流程，轉為備案
+                        pass
+
+                    # 3. 備案：抓取最近 1 天的 1 分鐘資料，取最後一筆
+                    if latest_rate is None:
+                        realtime_data = fx.history(period="1d", interval="1m")
+                        if not realtime_data.empty:
+                            latest_rate = self._normalize_twd_per_usd(float(realtime_data['Close'].iloc[-1]))
+                            print(f"[FX] 使用 1m K線 獲取: {latest_rate:.4f}")
+
+                    # 4. 更新數據 (強制覆蓋台灣時間的今天)
+                    if latest_rate is not None:
+                        self.fx_rates[today_ts] = latest_rate
+                        print(f"[FX] ✅ 已鎖定台灣時間 {today_ts.date()} 匯率: {latest_rate:.4f}")
                     else:
-                        print("[FX] ⚠️ 無法獲取即時數據，使用日線資料")
+                        print("[FX] ⚠️ 無法獲取即時數據，將使用前日收盤")
+
                 except Exception as e:
                     print(f"[FX] ⚠️ 即時匯率抓取失敗: {e}")
 
@@ -86,7 +108,7 @@ class MarketDataClient:
         # 確保包含 SPY（用於基準對比）
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
         
-        # 定義單個下載任務函數 (注意這裡的縮排是 8 個空格)
+        # 定義單個下載任務函數
         def fetch_single_ticker(t):
             try:
                 ticker_obj = yf.Ticker(t)
