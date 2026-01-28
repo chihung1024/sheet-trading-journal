@@ -231,6 +231,7 @@ const drawChart = () => {
     // RWD 設定：檢查視窗寬度，動態調整字體
     const isMobile = window.innerWidth < 768;
     const fontSize = isMobile ? 10 : 12;
+    const labelFontSize = isMobile ? 11 : 14; /* ✅ 最終數值標籤字體加大 */
 
     let datasets = [];
     const common = { 
@@ -292,28 +293,26 @@ const drawChart = () => {
              const realizedData = dataWithBaseline.map(d => (d.realized_pnl || 0) - baseRealized);
              
              // Dataset 2: 總損益 (Line)
-             // 這樣設計：綠色實體區域代表已實現獲利（入袋為安），綠色線條代表總獲利。
-             // 兩者差距即為未實現損益。如果總損益高於已實現，代表有浮盈；反之有浮虧。
              const totalData = dataWithBaseline.map(d => (d.net_profit || 0) - baselineData.value.net_profit);
              
              datasets = [
                 {
                     label: '已實現損益',
                     data: realizedData,
-                    borderColor: 'rgba(34, 197, 94, 0.5)', // Green-500
-                    backgroundColor: 'rgba(34, 197, 94, 0.2)', // Green-500/20
-                    fill: 'origin', // 填滿至 X 軸
-                    order: 2, // 繪製在後層
+                    borderColor: 'rgba(34, 197, 94, 0.5)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                    fill: 'origin',
+                    order: 2,
                     ...common,
-                    borderWidth: 1 // 區域邊框細一點
+                    borderWidth: 1
                 },
                 {
                     label: '總淨損益',
                     data: totalData,
-                    borderColor: '#10b981', // Emerald-500 (Original PnL Color)
+                    borderColor: '#10b981',
                     backgroundColor: 'transparent',
-                    fill: false, // 線圖不填滿
-                    order: 1, // 繪製在前層
+                    fill: false,
+                    order: 1,
                     ...common
                 }
              ];
@@ -356,7 +355,7 @@ const drawChart = () => {
                 borderWidth: 1.5,
                 borderDash: [4, 4],
                 pointRadius: 0,
-                tension: 0, /* ✅ IB 風格：直線 */
+                tension: 0,
                 fill: false
             }
         ];
@@ -369,7 +368,7 @@ const drawChart = () => {
             responsive: true,
             maintainAspectRatio: false,
             layout: {
-                padding: { left: 5, right: 60, top: 20, bottom: 0 } /* ✅ 右側 padding 增加留給標籤空間 */
+                padding: { left: 5, right: 80, top: 20, bottom: 0 } /* ✅ 右側 padding 增加至 80px */
             },
             plugins: {
                 legend: {
@@ -421,17 +420,9 @@ const drawChart = () => {
                     ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: isMobile ? 5 : 10, font: { size: fontSize } }
                 },
                 y: {
-                    position: 'right',
+                    display: false, /* ✅ 隱藏 Y 軸刻度，避免與標籤重疊 */
                     grid: { color: 'rgba(200, 200, 200, 0.1)' },
-                    grace: '5%',
-                    ticks: {
-                        font: { size: fontSize, family: 'JetBrains Mono' },
-                        callback: function(val) {
-                            if (chartType.value === 'twr') return val.toFixed(0) + '%';
-                            if (Math.abs(val) >= 1000) return (val/1000).toFixed(1) + 'k';
-                            return val;
-                        }
-                    }
+                    grace: '5%'
                 }
             },
             interaction: { mode: 'nearest', axis: 'x', intersect: false }
@@ -461,11 +452,11 @@ const drawChart = () => {
                         }
                         
                         ctx.save();
-                        ctx.font = 'bold 13px JetBrains Mono';
+                        ctx.font = `bold ${labelFontSize}px JetBrains Mono`; /* ✅ 使用動態字體大小 */
                         ctx.fillStyle = dataset.borderColor;
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'middle';
-                        ctx.fillText(displayValue, lastPoint.x + 8, lastPoint.y);
+                        ctx.fillText(displayValue, lastPoint.x + 10, lastPoint.y); /* ✅ 標籤左移 10px */
                         ctx.restore();
                     }
                 });
@@ -553,7 +544,7 @@ onUnmounted(() => {
     flex-grow: 1; 
     position: relative; 
     width: 100%; 
-    height: 350px; 
+    height: 450px; /* ✅ 桓面版高度從 350px 增加至 450px */
     overflow: hidden; 
 } 
 
@@ -580,6 +571,6 @@ onUnmounted(() => {
     .date-range-selector { width: 100%; justify-content: space-between; }
     .date-input { width: auto; flex: 1; }
     
-    .canvas-box { height: 300px; }
+    .canvas-box { height: 380px; } /* ✅ 手機版高度從 300px 增加至 380px */
 }
 </style>
