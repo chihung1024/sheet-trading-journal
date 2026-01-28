@@ -45,11 +45,11 @@ class PortfolioCalculator:
     
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
         """
-        [v2.43] 取得資產在特定日期的有效價格與匯率
+        [v2.48 HOTFIX] 取得資產在特定日期的有效價格與匯率
         根據資產類型（台股/美股）與當前市場狀態，決定使用哪個日期的價格與匯率
         
         邏輯：
-        - 台股：始終使用 target_date 的價格
+        - 台股：始終使用 target_date 的價格 + 有效匯率 1.0
         - 美股：
           - 如果 target_date 是今天，且美股有效日期 < 今天（T02/T03 時段）
             -> 使用昨天的收盤價 + 今天的匯率
@@ -79,7 +79,10 @@ class PortfolioCalculator:
         # 使用 market.get_price() 取得復權後的價格
         price = self.market.get_price(symbol, pd.Timestamp(price_date))
         
-        return price, fx_to_use
+        # [v2.48 HOTFIX] 關鍵修復：使用 _get_effective_fx_rate 確保台股返回 1.0
+        effective_fx = self._get_effective_fx_rate(symbol, fx_to_use)
+        
+        return price, effective_fx
 
     def run(self):
         """執行多群組投資組合計算主流程 (v2.48 Automated)"""
@@ -379,7 +382,7 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # [v2.43] 使用分資產的有效價格計算市值
+            # [v2.48 HOTFIX] 使用修復後的函數計算市值（台股 effective_fx = 1.0）
             current_market_value_twd = 0.0
             for sym, h in holdings.items():
                 if h['qty'] > 1e-6:
