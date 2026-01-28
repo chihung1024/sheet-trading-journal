@@ -8,6 +8,8 @@ from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, Divid
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 from .transaction_analyzer import TransactionAnalyzer, PositionSnapshot
 from .daily_pnl_helper import DailyPnLHelper
+from .currency_detector import CurrencyDetector  # [v2.48] 自动货币识别
+from .validator import PortfolioValidator  # [v2.48] 自动验证
 
 # 取得 logger 實例
 logger = logging.getLogger(__name__)
@@ -24,14 +26,22 @@ class PortfolioCalculator:
         self.market = market_client
         self.benchmark_ticker = benchmark_ticker
         self.pnl_helper = DailyPnLHelper()
+        self.currency_detector = CurrencyDetector()  # [v2.48] 新增
+        self.validator = PortfolioValidator()  # [v2.48] 新增
 
     def _is_taiwan_stock(self, symbol):
-        """判斷是否為台股(不需匯率轉換)"""
-        return symbol.endswith('.TW') or symbol.endswith('.TWO')
+        """
+        [v2.48] 判斷是否為台股(不需匯率轉換)
+        現使用 CurrencyDetector 實現
+        """
+        return self.currency_detector.is_base_currency(symbol)
 
     def _get_effective_fx_rate(self, symbol, fx_rate):
-        """根據標的取得有效匯率(台股回傳1.0,美股等其他標的回傳實際匯率)"""
-        return 1.0 if self._is_taiwan_stock(symbol) else fx_rate
+        """
+        [v2.48] 根據標的取得有效匯率(台股回倳1.0,美股等其他標的回備實際匯率)
+        現使用 CurrencyDetector 實現
+        """
+        return self.currency_detector.get_fx_multiplier(symbol, fx_rate)
     
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
         """
@@ -72,7 +82,7 @@ class PortfolioCalculator:
         return price, fx_to_use
 
     def run(self):
-        """執行多群組投資組合計算主流程 (v2.40 Enhanced)"""
+        """執行多群組投資組合計算主流程 (v2.48 Automated)"""
         logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
         
         current_fx = DEFAULT_FX_RATE
@@ -156,7 +166,10 @@ class PortfolioCalculator:
         )
 
     def _back_adjust_transactions_global(self):
-        """[v2.46] 全域復權處理 - 台股與美股分別處理"""
+        """
+        [v2.48] 全域復權處理 - 使用 AutoPriceSelector 自动选择的价格
+        台股与美股由 market_data.py 的 AutoPriceSelector 自动处理
+        """
         logger.info("正在進行全域交易數據復權處理...")
         for index, row in self.df.iterrows():
             sym = row['Symbol']
@@ -167,13 +180,10 @@ class PortfolioCalculator:
             is_tw = self._is_taiwan_stock(sym)
             split_factor = self.market.get_transaction_multiplier(sym, date)
             
-            # [v2.46 重要修正] 台股不套用配息調整因子
-            # 原因：
-            # 1. 台股本身就是台幣計價，不需調整
-            # 2. yfinance 對台股的 Adj Close 處理方式不同
-            # 3. 套用 div_adj_factor 會導致價格被錯誤放大
+            # [v2.48] 配息调整因子由 market_data.py 自动处理
+            # AutoPriceSelector 会自动决定是否使用 Adj Close
             if is_tw:
-                div_adj_factor = 1.0  # 台股不調整
+                div_adj_factor = 1.0  # 台股不调整
             else:
                 div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
             
@@ -202,7 +212,7 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.46 Taiwan Stock Fix)"""
+        """單一群組的核心計算邏輯 (v2.48 自动化优化)"""
         
         txn_analyzer = TransactionAnalyzer(df)
         
@@ -410,7 +420,7 @@ class PortfolioCalculator:
             
             last_fx = fx
 
-        # --- [v2.46] 最終報表產生 ---
+        # --- [v2.48] 最終報表產生 & 驗證 ---
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
@@ -464,7 +474,9 @@ class PortfolioCalculator:
             mkt_val = h['qty'] * curr_p * effective_fx
             
             daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
-            currency = "TWD" if is_tw else "USD"
+            
+            # [v2.48] 使用 CurrencyDetector 格式化
+            currency = self.currency_detector.detect(sym)
             
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
                  final_holdings.append(HoldingPosition(
@@ -481,7 +493,10 @@ class PortfolioCalculator:
         
         display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
         
-        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.46): {display_daily_pnl}")
+        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.48): {display_daily_pnl}")
+        
+        # [v2.48] 骗證每日帳戶平衡
+        self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
         
         xirr_val = 0.0
         if xirr_cashflows:
@@ -507,6 +522,9 @@ class PortfolioCalculator:
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
             daily_pnl_twd=round(display_daily_pnl, 0)
         )
+        
+        # [v2.48] 驗證 TWR 合理性
+        self.validator.validate_twr_calculation(history_data)
         
         return PortfolioGroupData(
             summary=summary, holdings=final_holdings, history=history_data,
