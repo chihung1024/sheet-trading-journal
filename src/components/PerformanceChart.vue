@@ -237,7 +237,7 @@ const drawChart = () => {
         pointRadius: 0, 
         pointHoverRadius: 5, 
         borderWidth: 2, 
-        tension: 0.2, /* 稍微平滑 */
+        tension: 0, /* ✅ IB 風格：直線圖，無平滑 */
         pointBackgroundColor: 'white',
         pointBorderWidth: 2
     };
@@ -356,7 +356,7 @@ const drawChart = () => {
                 borderWidth: 1.5,
                 borderDash: [4, 4],
                 pointRadius: 0,
-                tension: 0.2,
+                tension: 0, /* ✅ IB 風格：直線 */
                 fill: false
             }
         ];
@@ -369,12 +369,11 @@ const drawChart = () => {
             responsive: true,
             maintainAspectRatio: false,
             layout: {
-                // ✅ 修正重點：增加 padding，防止曲線或標籤貼齊邊界時被裁切
-                padding: { left: 5, right: 10, top: 20, bottom: 0 }
+                padding: { left: 5, right: 60, top: 20, bottom: 0 } /* ✅ 右側 padding 增加留給標籤空間 */
             },
             plugins: {
                 legend: {
-                    display: chartType.value === 'twr' || (chartType.value === 'pnl' && datasets.length > 1), // PnL 雙層時顯示圖例
+                    display: chartType.value === 'twr' || (chartType.value === 'pnl' && datasets.length > 1),
                     position: 'top',
                     align: 'end',
                     labels: { boxWidth: 10, padding: 10, font: { size: fontSize } }
@@ -399,11 +398,8 @@ const drawChart = () => {
                             }
                             return label;
                         },
-                        // [v2.40] 新增：如果是在 PnL 模式且有詳細數據，顯示未實現損益計算值
                         afterBody: function(tooltipItems) {
                              if (chartType.value === 'pnl' && tooltipItems.length > 1) {
-                                 // 假設 index 0 是 realized, index 1 是 total (基於 datasets order)
-                                 // 但 tooltipItems 順序可能不同。透過 datasetIndex 判斷
                                  const realizedItem = tooltipItems.find(i => i.dataset.label === '已實現損益');
                                  const totalItem = tooltipItems.find(i => i.dataset.label === '總淨損益');
                                  
@@ -425,9 +421,8 @@ const drawChart = () => {
                     ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: isMobile ? 5 : 10, font: { size: fontSize } }
                 },
                 y: {
-                    position: 'right', // 軸線放右側避免遮擋最新數據
+                    position: 'right',
                     grid: { color: 'rgba(200, 200, 200, 0.1)' },
-                    // ✅ 修正重點：grace: '5%'，讓最高點上方保留空間，不會頂到天花板
                     grace: '5%',
                     ticks: {
                         font: { size: fontSize, family: 'JetBrains Mono' },
@@ -440,7 +435,42 @@ const drawChart = () => {
                 }
             },
             interaction: { mode: 'nearest', axis: 'x', intersect: false }
-        }
+        },
+        plugins: [{
+            id: 'finalValueLabel',
+            afterDatasetsDraw(chart) {
+                const ctx = chart.ctx;
+                chart.data.datasets.forEach((dataset, i) => {
+                    const meta = chart.getDatasetMeta(i);
+                    if (!meta.hidden && dataset.data.length > 0) {
+                        const lastPoint = meta.data[meta.data.length - 1];
+                        const value = dataset.data[dataset.data.length - 1];
+                        
+                        let displayValue;
+                        if (chartType.value === 'twr') {
+                            displayValue = (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+                        } else {
+                            const absVal = Math.abs(value);
+                            if (absVal >= 1000000) {
+                                displayValue = (value > 0 ? '+' : '') + (value/1000000).toFixed(2) + 'M';
+                            } else if (absVal >= 1000) {
+                                displayValue = (value > 0 ? '+' : '') + (value/1000).toFixed(1) + 'k';
+                            } else {
+                                displayValue = Math.round(value).toLocaleString();
+                            }
+                        }
+                        
+                        ctx.save();
+                        ctx.font = 'bold 13px JetBrains Mono';
+                        ctx.fillStyle = dataset.borderColor;
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(displayValue, lastPoint.x + 8, lastPoint.y);
+                        ctx.restore();
+                    }
+                });
+            }
+        }]
     });
 };
 
@@ -523,7 +553,6 @@ onUnmounted(() => {
     flex-grow: 1; 
     position: relative; 
     width: 100%; 
-    /* ✅ 修正重點：設定固定高度與 overflow，避免 Chart.js 在 Flexbox 中計算錯誤 */
     height: 350px; 
     overflow: hidden; 
 } 
@@ -551,6 +580,6 @@ onUnmounted(() => {
     .date-range-selector { width: 100%; justify-content: space-between; }
     .date-input { width: auto; flex: 1; }
     
-    .canvas-box { height: 300px; } /* 手機高度稍減 */
+    .canvas-box { height: 300px; }
 }
 </style>
