@@ -45,41 +45,66 @@ class PortfolioCalculator:
     
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
         """
-        [v2.48 HOTFIX] 取得資產在特定日期的有效價格與匯率
-        根據資產類型（台股/美股）與當前市場狀態，決定使用哪個日期的價格與匯率
+        [v2.51 FIX] 修復匯率對齊問題 - 確保價格與匯率時點一致
         
-        邏輯：
+        核心原則：價格和匯率必須反映「相同時間點」的市場狀態
+        
+        修復邏輯：
         - 台股：始終使用 target_date 的價格 + 有效匯率 1.0
         - 美股：
-          - 如果 target_date 是今天，且美股有效日期 < 今天（T02/T03 時段）
-            -> 使用昨天的收盤價 + 今天的匯率
-          - 否則使用 target_date 的價格與匯率
-          
-        使用 market.get_price() 確保復權處理正確
+          - 今天的數據：強制使用 current_fx（最新即時匯率）
+            - T02/T03 時段（美股昨收）：價格用昨天，匯率用今天即時
+            - T04/T05 時段（美股今盤）：價格和匯率都用今天
+          - 歷史數據：價格和匯率都使用該日期的數據
+        
+        參數:
+            symbol: 股票代碼
+            target_date: 目標日期（通常是迴圈中的日期）
+            current_fx: 當前最新即時匯率（從 run() 傳入）
+        
+        返回:
+            (price, effective_fx): 調整後的價格和有效匯率
         """
         is_tw = self._is_taiwan_stock(symbol)
         
-        # 決定實際要使用的價格日期
-        price_date = target_date
-        fx_to_use = current_fx
+        # 台股：不需要複雜邏輯，直接使用目標日期
+        if is_tw:
+            price = self.market.get_price(symbol, pd.Timestamp(target_date))
+            return price, 1.0
         
-        # 美股特殊處理
-        if not is_tw:
-            today = datetime.now().date()
-            if target_date == today:
-                # 檢查美股的有效日期
-                effective_date_us = self.pnl_helper.get_effective_display_date(False)
-                if effective_date_us < today:
-                    # T02/T03 時段：使用昨天的收盤價
-                    price_date = effective_date_us
-                    # 但匯率使用今天的（當前的）
-                    fx_to_use = current_fx
-                    logger.debug(f"[{symbol}] T02/T03: 使用 {price_date} 價格 + {today} 匯率")
+        # === 美股邏輯 ===
+        today = datetime.now().date()
         
-        # 使用 market.get_price() 取得復權後的價格
-        price = self.market.get_price(symbol, pd.Timestamp(price_date))
+        if target_date == today:
+            # ✅ 關鍵修復：今天的數據，匯率必須用 current_fx（最新即時）
+            effective_date_us = self.pnl_helper.get_effective_display_date(False)
+            
+            if effective_date_us < today:
+                # T02/T03 時段：美股未開盤或剛開盤
+                # 價格：使用昨天的收盤價
+                # 匯率：使用今天的即時匯率 ← 這是關鍵修復
+                price = self.market.get_price(symbol, pd.Timestamp(effective_date_us))
+                fx_to_use = current_fx
+                logger.info(f"[v2.51 FX FIX] {symbol} T02/T03: 價格={effective_date_us}, 匯率=今日即時({current_fx:.4f})")
+            else:
+                # T04/T05 時段：美股盤中或收盤
+                # 價格和匯率都使用今天
+                price = self.market.get_price(symbol, pd.Timestamp(today))
+                fx_to_use = current_fx
+                logger.info(f"[v2.51 FX FIX] {symbol} T04/T05: 價格=今日, 匯率=今日即時({current_fx:.4f})")
+        else:
+            # 歷史日期：價格和匯率都使用該日期的數據
+            price = self.market.get_price(symbol, pd.Timestamp(target_date))
+            
+            # 從歷史匯率序列中獲取
+            try:
+                fx_to_use = self.market.fx_rates.asof(pd.Timestamp(target_date))
+                if pd.isna(fx_to_use):
+                    fx_to_use = DEFAULT_FX_RATE
+            except:
+                fx_to_use = DEFAULT_FX_RATE
         
-        # [v2.48 HOTFIX] 關鍵修復：使用 _get_effective_fx_rate 確保台股返回 1.0
+        # [v2.48] 使用 CurrencyDetector 確保美股返回實際匯率（不是1.0）
         effective_fx = self._get_effective_fx_rate(symbol, fx_to_use)
         
         return price, effective_fx
