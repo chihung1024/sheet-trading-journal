@@ -411,7 +411,7 @@ class PortfolioCalculator:
             current_market_value_twd = 0.0
             for sym, h in holdings.items():
                 if h['qty'] > 1e-6:
-                    price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, fx)
+                    price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, current_fx)
                     current_market_value_twd += h['qty'] * price * effective_fx
             
             period_hpr_factor = 1.0
