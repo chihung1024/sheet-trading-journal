@@ -6,6 +6,21 @@ from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
 from .auto_price_selector import AutoPriceSelector
 
 class MarketDataClient:
+    @staticmethod
+    def _normalize_twd_per_usd(rate: float) -> float:
+        """Normalize FX to 'TWD per 1 USD'.
+
+        Defensive guard: some data sources (or transforms) may return the inverse
+        (USD per 1 TWD), which is typically < 1.0.
+        """
+        try:
+            r = float(rate)
+            if r <= 0:
+                return DEFAULT_FX_RATE
+            return (1.0 / r) if r < 1.0 else r
+        except Exception:
+            return DEFAULT_FX_RATE
+
     def __init__(self):
         """
         初始化市場數據客戶端
@@ -38,7 +53,7 @@ class MarketDataClient:
                 # 標準化時區和日期格式
                 fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None).normalize()
                 # 按日重採樣並前向填充（處理週末/假日）
-                self.fx_rates = fx_hist['Close'].resample('D').ffill()
+                self.fx_rates = fx_hist['Close'].resample('D').ffill().apply(self._normalize_twd_per_usd)
 
                 # ✅ [新增] 強制抓取最新的即時匯率 (1分鐘K線)
                 # 解決 Daily 資料在盤中可能不會即時更新的問題
@@ -47,7 +62,7 @@ class MarketDataClient:
                     # 抓取最近 1 天的 1 分鐘資料，取最後一筆
                     realtime_data = fx.history(period="1d", interval="1m")
                     if not realtime_data.empty:
-                        latest_rate = float(realtime_data['Close'].iloc[-1])
+                        latest_rate = self._normalize_twd_per_usd(float(realtime_data['Close'].iloc[-1]))
                         # 取得今日的標準化日期 (00:00:00)
                         today = pd.Timestamp.now().normalize()
                         
