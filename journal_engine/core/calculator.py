@@ -407,11 +407,14 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # [v2.48 HOTFIX] 使用修復後的函數計算市值（台股 effective_fx = 1.0）
+            # [v2.51 FIX] 計算市值時動態決定匯率：今天用即時，歷史用當日
+            today = datetime.now().date()
+            fx_for_calculation = current_fx if current_date == today else fx
+            
             current_market_value_twd = 0.0
             for sym, h in holdings.items():
                 if h['qty'] > 1e-6:
-                    price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, current_fx)
+                    price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, fx_for_calculation)
                     current_market_value_twd += h['qty'] * price * effective_fx
             
             period_hpr_factor = 1.0
@@ -443,7 +446,7 @@ class PortfolioCalculator:
                 "unrealized_pnl": round(unrealized_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
-                "fx_rate": round(fx, 4)
+                "fx_rate": round(fx_for_calculation, 4)
             })
             
             last_fx = fx
