@@ -82,7 +82,7 @@
                         類型 <span class="sort-icon">{{ getSortIcon('txn_type') }}</span>
                     </th>
                     <th class="text-right">股數</th>
-                    <th class="text-right">單價 (USD)</th>
+                    <th class="text-right">單價</th>
                     <th @click="sortBy('total_amount_twd')" class="text-right sortable">
                         總額 (TWD) <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
                     </th>
@@ -253,6 +253,12 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
+// [v2.48] 判斷是否為台股
+const isTaiwanStock = (symbol) => {
+    const upper = symbol.toUpperCase();
+    return upper.endsWith('.TW') || upper.endsWith('.TWO');
+};
+
 // 計算邏輯
 const fxRateMap = computed(() => {
     const map = {};
@@ -279,10 +285,19 @@ const calculateTotalAmountUSD = (record) => {
     return Math.abs(qty * price) + commission + tax;
 };
 
+// [v2.48] 修复：台股不乘汇率
 const getTotalAmountTWD = (record) => {
-    const usdAmount = calculateTotalAmountUSD(record);
-    const fxRate = getFxRateByDate(record.txn_date);
-    return usdAmount * fxRate;
+    const baseAmount = calculateTotalAmountUSD(record);
+    
+    // 判断是否为台股
+    if (isTaiwanStock(record.symbol)) {
+        // 台股：Price 本身就是 TWD，不需要转换
+        return baseAmount;
+    } else {
+        // 美股/其他：需要乘以汇率转换为 TWD
+        const fxRate = getFxRateByDate(record.txn_date);
+        return baseAmount * fxRate;
+    }
 };
 
 const availableYears = computed(() => {
