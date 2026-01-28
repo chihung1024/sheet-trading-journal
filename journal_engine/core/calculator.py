@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import logging
+import pytz
 from collections import deque
 from datetime import datetime, timedelta
 from pyxirr import xirr
@@ -30,94 +31,109 @@ class PortfolioCalculator:
         self.validator = PortfolioValidator()  # [v2.48] 新增
 
     def _is_taiwan_stock(self, symbol):
-        """
-        [v2.48] 判斷是否為台股(不需匯率轉換)
-        現使用 CurrencyDetector 實現
-        """
+        """[v2.48] 判斷是否為台股(不需匯率轉換)"""
         return self.currency_detector.is_base_currency(symbol)
 
     def _get_effective_fx_rate(self, symbol, fx_rate):
-        """
-        [v2.48] 根據標的取得有效匯率(台股回倳1.0,美股等其他標的回備實際匯率)
-        現使用 CurrencyDetector 實現
-        """
+        """[v2.48] 根據標的取得有效匯率"""
         return self.currency_detector.get_fx_multiplier(symbol, fx_rate)
     
+    def _is_us_market_open(self, tw_datetime):
+        """
+        [v2.52] 判斷美股是否開盤 (台灣時間)
+        簡化邏輯：
+        - 週末：不開盤
+        - 交易時間：約 21:30/22:30 至 隔日 04:00/05:00
+        - 這裡使用 22:00 - 05:00 作為通用判斷區間
+        """
+        tw_hour = tw_datetime.hour
+        tw_weekday = tw_datetime.weekday()
+        
+        # 週末不開盤
+        if tw_weekday >= 5:
+            return False
+        
+        # 簡化判斷：22:00 之後到隔天 05:00 視為盤中
+        if tw_hour >= 22 or tw_hour < 5:
+            return True
+        
+        return False
+
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
         """
-        [v2.51 FIX] 修復匯率對齊問題 - 確保價格與匯率時點一致
-        
-        核心原則：價格和匯率必須反映「相同時間點」的市場狀態
+        [v2.52 徹底修復] 確保價格與匯率時點嚴格一致
         
         修復邏輯：
-        - 台股：始終使用 target_date 的價格 + 有效匯率 1.0
-        - 美股：
-          - 今天的數據：強制使用 current_fx（最新即時匯率）
-            - T02/T03 時段（美股昨收）：價格用昨天，匯率用今天即時
-            - T04/T05 時段（美股今盤）：價格和匯率都用今天
-          - 歷史數據：價格和匯率都使用該日期的數據
-        
-        參數:
-            symbol: 股票代碼
-            target_date: 目標日期（通常是迴圈中的日期）
-            current_fx: 當前最新即時匯率（從 run() 傳入）
-        
-        返回:
-            (price, effective_fx): 調整後的價格和有效匯率
+        1. 歷史日期：價格和匯率都使用該日期的收盤數據
+        2. 今天 (美股未開)：價格用昨天收盤，但匯率使用【今日即時】(current_fx)
+           - 修正重點：確保資產價值反映今日台幣波動，即便美股尚未開盤
+        3. 今天 (美股盤中/收盤)：價格和匯率都用今天即時數據
         """
         is_tw = self._is_taiwan_stock(symbol)
         
-        # 台股：不需要複雜邏輯，直接使用目標日期
         if is_tw:
+            # 台股簡單：不需要匯率，直接使用目標日期
             price = self.market.get_price(symbol, pd.Timestamp(target_date))
             return price, 1.0
         
         # === 美股邏輯 ===
-        # ✅ [修正] 強制使用台灣時間定義 "今天"，確保與 market_data.py 對齊
-        # 避免在台灣時間 00:00-08:00 (UTC 昨天) 時被誤判為歷史日期
-        today = datetime.now(self.pnl_helper.tz_tw).date()
+        tw_now = datetime.now(self.pnl_helper.tz_tw)
+        today = tw_now.date()
         
-        if target_date == today:
-            # ✅ 關鍵修復：今天的數據，匯率必須用 current_fx（最新即時）
-            effective_date_us = self.pnl_helper.get_effective_display_date(False)
-            
-            if effective_date_us < today:
-                # T02/T03 時段：美股未開盤或剛開盤
-                # 價格：使用昨天的收盤價
-                # 匯率：使用今天的即時匯率 ← 這是關鍵修復
-                price = self.market.get_price(symbol, pd.Timestamp(effective_date_us))
-                fx_to_use = current_fx
-                logger.info(f"[v2.51 FX FIX] {symbol} T02/T03: 價格={effective_date_us}, 匯率=今日即時({current_fx:.4f})")
-            else:
-                # T04/T05 時段：美股盤中或收盤
-                # 價格和匯率都使用今天
-                price = self.market.get_price(symbol, pd.Timestamp(today))
-                fx_to_use = current_fx
-                logger.info(f"[v2.51 FX FIX] {symbol} T04/T05: 價格=今日, 匯率=今日即時({current_fx:.4f})")
-        else:
-            # 歷史日期：價格和匯率都使用該日期的數據
+        # 情況 A: 歷史日期 (比今天早)
+        if target_date < today:
             price = self.market.get_price(symbol, pd.Timestamp(target_date))
-            
-            # 從歷史匯率序列中獲取
             try:
+                # ✅ 關鍵：歷史日期必須從歷史序列取值，嚴格對齊當日歷史匯率
                 fx_to_use = self.market.fx_rates.asof(pd.Timestamp(target_date))
                 if pd.isna(fx_to_use):
                     fx_to_use = DEFAULT_FX_RATE
             except:
                 fx_to_use = DEFAULT_FX_RATE
+            
+            return price, self._get_effective_fx_rate(symbol, fx_to_use)
         
-        # [v2.48] 使用 CurrencyDetector 確保美股返回實際匯率（不是1.0）
-        effective_fx = self._get_effective_fx_rate(symbol, fx_to_use)
+        # 情況 B: 今天的數據 (target_date == today)
+        us_open = self._is_us_market_open(tw_now)
         
-        return price, effective_fx
+        if not us_open:
+            # ✅ 美股未開盤：
+            # 價格：回退到「前一交易日」的收盤價
+            # 匯率：使用【今日即時匯率 (current_fx)】
+            # 結果：資產價值會隨今日台幣匯率波動，符合「美股尚未開盤，但資產受匯率影響」的邏輯
+            prev_date = today - timedelta(days=1)
+            while prev_date.weekday() >= 5:
+                prev_date -= timedelta(days=1)
+            
+            price = self.market.get_price(symbol, pd.Timestamp(prev_date))
+            
+            # 這裡使用 current_fx (即時匯率)，而不是歷史匯率
+            fx_to_use = current_fx
+            
+            logger.debug(f"[v2.52] {symbol} 美股未開: 使用昨日({prev_date})價格 ({price}) x 今日即時匯率 ({fx_to_use:.4f})")
+            return price, self._get_effective_fx_rate(symbol, fx_to_use)
+        
+        else:
+            # ✅ 美股盤中/已開盤：價格和匯率都用今天即時
+            price = self.market.get_price(symbol, pd.Timestamp(today))
+            fx_to_use = current_fx  # 使用傳入的即時匯率
+            
+            logger.debug(f"[v2.52] {symbol} 美股盤中: 使用今日即時價格 ({price}) x 今日即時匯率 ({fx_to_use:.4f})")
+            return price, self._get_effective_fx_rate(symbol, fx_to_use)
 
     def run(self):
-        """執行多群組投資組合計算主流程 (v2.48 Automated)"""
+        """執行多群組投資組合計算主流程 (v2.48 Automated + v2.52 FX Fix)"""
         logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
         
+        # [v2.52] 優先使用 market_data 中的即時匯率
+        # 這確保了 current_fx 變數持有的是最新的台幣匯率
         current_fx = DEFAULT_FX_RATE
-        if not self.market.fx_rates.empty:
+        if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
+            current_fx = self.market.realtime_fx_rate
+            logger.info(f"使用即時匯率進行計算: {current_fx:.4f}")
+        elif not self.market.fx_rates.empty:
             current_fx = float(self.market.fx_rates.iloc[-1])
+            logger.info(f"使用歷史收盤匯率進行計算 (無即時數據): {current_fx:.4f}")
 
         if self.df.empty:
             logger.warning("無交易紀錄,產生空快照以重置數據。")
@@ -196,10 +212,7 @@ class PortfolioCalculator:
         )
 
     def _back_adjust_transactions_global(self):
-        """
-        [v2.48] 全域復權處理 - 使用 AutoPriceSelector 自动选择的价格
-        台股与美股由 market_data.py 的 AutoPriceSelector 自动处理
-        """
+        """[v2.48] 全域復權處理"""
         logger.info("正在進行全域交易數據復權處理...")
         for index, row in self.df.iterrows():
             sym = row['Symbol']
@@ -210,10 +223,8 @@ class PortfolioCalculator:
             is_tw = self._is_taiwan_stock(sym)
             split_factor = self.market.get_transaction_multiplier(sym, date)
             
-            # [v2.48] 配息调整因子由 market_data.py 自动处理
-            # AutoPriceSelector 会自动决定是否使用 Adj Close
             if is_tw:
-                div_adj_factor = 1.0  # 台股不调整
+                div_adj_factor = 1.0
             else:
                 div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
             
@@ -222,14 +233,6 @@ class PortfolioCalculator:
                 old_price = row['Price']
                 new_qty = old_qty * split_factor
                 new_price = (old_price / split_factor) * div_adj_factor
-                
-                if split_factor != 1.0 or div_adj_factor != 1.0:
-                    logger.debug(
-                        f"[{sym}] {date.strftime('%Y-%m-%d')}: "
-                        f"Qty {old_qty:.2f}->{new_qty:.2f}, "
-                        f"Price {old_price:.2f}->{new_price:.2f} "
-                        f"(split={split_factor:.2f}, div_adj={div_adj_factor:.4f})"
-                    )
                 
                 self.df.at[index, 'Qty'] = new_qty
                 self.df.at[index, 'Price'] = new_price
@@ -242,7 +245,7 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.48 自动化优化)"""
+        """單一群組的核心計算邏輯 (v2.48 Automated)"""
         
         txn_analyzer = TransactionAnalyzer(df)
         
@@ -301,6 +304,7 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
+            # [v2.52 Fix] 在迴圈中，獲取當日對應的匯率 (供下單計算用)
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
@@ -378,7 +382,7 @@ class PortfolioCalculator:
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
-            # [v2.44 復權修正] 配息計算需考慮除息日到現在的分割因子
+            # [v2.44 復權修正] 配息計算
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
@@ -387,7 +391,6 @@ class PortfolioCalculator:
                     div_key = f"{sym}_{date_str}"
                     is_confirmed = div_key in confirmed_dividends
                     
-                    # 關鍵：取得除息日到現在的分割因子，將當前股數還原到除息日的股數
                     split_factor = self.market.get_transaction_multiplier(sym, d)
                     shares_at_ex = h_data['qty'] / split_factor
                     
@@ -409,16 +412,19 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # [v2.51 FIX] 計算市值時動態決定匯率：今天用即時，歷史用當日
-            # [修正] 強制使用台灣時間定義 "今天"，確保與市場數據對齊
-            today = datetime.now(self.pnl_helper.tz_tw).date()
-            fx_for_calculation = current_fx if current_date == today else fx
-            
+            # [v2.52 FIX] 計算市值時使用修復後的價格與匯率選擇邏輯
+            # _get_asset_effective_price_and_fx 會根據日期和市場狀態選擇正確的 FX
             current_market_value_twd = 0.0
+            
+            # 用於記錄日誌的 FX (取第一個持倉的 FX 即可)
+            logging_fx = fx
+            
             for sym, h in holdings.items():
                 if h['qty'] > 1e-6:
-                    price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, fx_for_calculation)
+                    # 傳入 current_fx (即時匯率)，方法內部會決定是否使用它
+                    price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, current_fx)
                     current_market_value_twd += h['qty'] * price * effective_fx
+                    logging_fx = effective_fx if not self._is_taiwan_stock(sym) else logging_fx
             
             period_hpr_factor = 1.0
             
@@ -440,7 +446,6 @@ class PortfolioCalculator:
             
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
-            # [v2.43] 始終寫入歷史數據（連續時間軸）
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
                 "invested": round(invested_capital, 0), 
@@ -449,7 +454,8 @@ class PortfolioCalculator:
                 "unrealized_pnl": round(unrealized_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
-                "fx_rate": round(fx_for_calculation, 4)
+                # 這裡記錄的 FX 僅供參考，實際計算已在上面完成
+                "fx_rate": round(logging_fx, 4)
             })
             
             last_fx = fx
@@ -483,7 +489,6 @@ class PortfolioCalculator:
 
             effective_fx = self._get_effective_fx_rate(sym, current_fx)
             
-            # [v2.45] 使用 market.get_price() 取得復權後價格
             curr_p = self.market.get_price(sym, pd.Timestamp(effective_display_date))
             prev_date = effective_display_date - timedelta(days=1)
             while prev_date.weekday() >= 5:
@@ -509,7 +514,6 @@ class PortfolioCalculator:
             
             daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
             
-            # [v2.48] 使用 CurrencyDetector 格式化
             currency = self.currency_detector.detect(sym)
             
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
@@ -529,7 +533,6 @@ class PortfolioCalculator:
         
         logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.48): {display_daily_pnl}")
         
-        # [v2.48] 验證每日帳戶平衡
         self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
         
         xirr_val = 0.0
@@ -557,7 +560,6 @@ class PortfolioCalculator:
             daily_pnl_twd=round(display_daily_pnl, 0)
         )
         
-        # [v2.48] 驗證 TWR 合理性
         self.validator.validate_twr_calculation(history_data)
         
         return PortfolioGroupData(
