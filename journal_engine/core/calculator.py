@@ -45,15 +45,13 @@ class PortfolioCalculator:
     
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
         """
-        [v2.48 HOTFIX] 取得資產在特定日期的有效價格與匯率
-        根據資產類型（台股/美股）與當前市場狀態，決定使用哪個日期的價格與匯率
+        [v2.49 FIX] 取得資產在特定日期的有效價格與匯率
+        修正對齊邏輯：確保歷史點的「價格」與「匯率」在時間軸上同步。
         
         邏輯：
-        - 台股：始終使用 target_date 的價格 + 有效匯率 1.0
-        - 美股：
-          - 如果 target_date 是今天，且美股有效日期 < 今天（T02/T03 時段）
-            -> 使用昨天的收盤價 + 今天的匯率
-          - 否則使用 target_date 的價格與匯率
+        - 台股：使用 target_date 的價格 + 有效匯率 1.0
+        - 美股：統一使用 target_date - 1 的收盤價 (US Close) 對應 target_date 的匯率。
+          這能解決「今日台幣貶值但曲線圖顯示獲利減少」的錯位問題（台灣時間 T 日看到的資產，應對應美國 T-1 收盤價）。
           
         使用 market.get_price() 確保復權處理正確
         """
@@ -63,18 +61,14 @@ class PortfolioCalculator:
         price_date = target_date
         fx_to_use = current_fx
         
-        # 美股特殊處理
+        # 美股特殊對齊處理
         if not is_tw:
-            today = datetime.now().date()
-            if target_date == today:
-                # 檢查美股的有效日期
-                effective_date_us = self.pnl_helper.get_effective_display_date(False)
-                if effective_date_us < today:
-                    # T02/T03 時段：使用昨天的收盤價
-                    price_date = effective_date_us
-                    # 但匯率使用今天的（當前的）
-                    fx_to_use = current_fx
-                    logger.debug(f"[{symbol}] T02/T03: 使用 {price_date} 價格 + {today} 匯率")
+            # 台灣時間 T 日看到的資產價值，其價格應來自美國 T-1 日的最新收盤
+            price_date = target_date - timedelta(days=1)
+            # 匯率使用目標日當天的匯率
+            fx_to_use = current_fx
+            
+            # 註：此處已合併 [v2.48] 的 Today 特殊判斷，確保歷史與今日邏輯一致
         
         # 使用 market.get_price() 取得復權後的價格
         price = self.market.get_price(symbol, pd.Timestamp(price_date))
@@ -215,7 +209,7 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.48 自动化优化)"""
+        """單一群組的核心計算邏輯 (v2.49 修正匯率對齊)"""
         
         txn_analyzer = TransactionAnalyzer(df)
         
@@ -242,8 +236,9 @@ class PortfolioCalculator:
             prev_trading_day = self._get_previous_trading_day(first_tx_date)
             prev_date_str = prev_trading_day.strftime('%Y-%m-%d')
             
+            # [v2.49 FIX] 虛擬點匯率亦應對齊該日結束時
             try:
-                prev_fx = self.market.fx_rates.asof(prev_trading_day)
+                prev_fx = self.market.fx_rates.asof(prev_trading_day.replace(hour=23, minute=59, second=59))
                 if pd.isna(prev_fx): prev_fx = DEFAULT_FX_RATE
             except: 
                 prev_fx = DEFAULT_FX_RATE
@@ -274,8 +269,15 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
+            # [v2.49 FIX] 修正匯率時間軸對齊：
+            # 確保歷史點使用的是該日結束時的匯率 (包含當天波動)，而非凌晨 00:00 的開盤匯率
             try:
-                fx = self.market.fx_rates.asof(d)
+                if current_date == datetime.now().date():
+                    fx = current_fx
+                else:
+                    lookup_time = d.replace(hour=23, minute=59, second=59)
+                    fx = self.market.fx_rates.asof(lookup_time)
+                
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
             except: 
                 fx = DEFAULT_FX_RATE
@@ -382,7 +384,7 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # [v2.48 HOTFIX] 使用修復後的函數計算市值（台股 effective_fx = 1.0）
+            # [v2.49 FIX] 使用修復後的對齊函數計算市值
             current_market_value_twd = 0.0
             for sym, h in holdings.items():
                 if h['qty'] > 1e-6:
