@@ -14,6 +14,10 @@ class MarketDataClient:
         self.market_data = {}
         self.fx_rates = pd.Series(dtype=float)
 
+    def _is_taiwan_stock(self, symbol):
+        """判斷是否為台股"""
+        return symbol.endswith('.TW') or symbol.endswith('.TWO')
+
     def download_data(self, tickers: list, start_date):
         """
         下載市場數據（股票價格 + 匯率）
@@ -84,7 +88,7 @@ class MarketDataClient:
                     # 標準化日期格式
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
                     
-                    # ✅ [新增] 強制抓取即時報價 (1分鐘 K線)
+                    # ✅ [新增] 強制抓取即時報價 (1分鐘 K 線)
                     # 解決盤中 Daily 資料未更新，導致損益不動的問題
                     try:
                         # 只抓取最近 1 天的 1 分鐘資料
@@ -133,30 +137,26 @@ class MarketDataClient:
 
     def _prepare_data(self, symbol, df):
         """
-        準備股票數據：計算各種調整因子
+        [v2.47] 準備股票數據：計算各種調整因子
         
-        核心概念：
-        - Close: 原始收盤價（未調整）
-        - Adj Close: 調整後收盤價（包含拆股+配息的總回報價格）
-        - Split_Factor: 累積拆股倍數（用於調整交易股數）
-        - Dividend_Adj_Factor: 配息調整因子（用於調整買入成本）
-        
-        為什麼需要這些調整？
-        1. 拆股會改變股數，需要調整歷史交易的股數
-        2. 配息會讓 Adj Close 與 Close 產生差異，需要調整成本基礎
-        3. 使用 Adj Close 可以得到平滑的總回報曲線（無斷層）
+        重要修正：台股與美股分別處理
+        - 美股：使用 Adj Close（包含拆股+配息調整）
+        - 台股：使用原始 Close（yfinance 的 Adj Close 有錯誤）
         """
         df = df.copy()
         
-        # ==================== 使用 Adj Close 作為主要價格 ====================
-        # Adj Close 已經包含：
-        # 1. 拆股調整：價格會自動縮放（如 10-for-1 拆股，價格除以10）
-        # 2. 配息調整：配息效果會「加回」到歷史價格中
-        # 
-        # 例如：QQQI 在 2024-03-01 買入時 Close=$50.80
-        #      之後累積配息 $4.00
-        #      當前的 Adj Close(2024-03-01) = $54.80（包含配息再投資效果）
-        df['Close_Adjusted'] = df['Adj Close']
+        is_tw = self._is_taiwan_stock(symbol)
+        
+        # [v2.47 關鍵修正] 台股與美股使用不同的價格數據
+        if is_tw:
+            # 台股：使用原始 Close 價格
+            # 原因：yfinance 對台股的 Adj Close 處理有嚴重錯誤
+            # 例如：Close=1000, Adj Close=89753 (錯誤放大 89.753 倍)
+            df['Close_Adjusted'] = df['Close']
+            print(f"[{symbol}] 台股使用原始 Close 價格")
+        else:
+            # 美股：使用 Adj Close（包含拆股+配息調整）
+            df['Close_Adjusted'] = df['Adj Close']
         
         # 保留原始 Close 用於參考（實際成交價）
         df['Close_Raw'] = df['Close']
@@ -172,47 +172,31 @@ class MarketDataClient:
         splits = df['Stock Splits'].replace(0, 1.0)
         
         # 反向累積計算：從最新日期往回累積
-        # 邏輯：某日的 Split_Factor = 該日之後所有拆股比率的乘積
-        # 例如：
-        #   2024-06-10: 拆股 10:1 → Split_Factor(2024-06-09) = 10
-        #   2024-06-10: → Split_Factor(2024-06-10) = 1
         splits_reversed = splits.iloc[::-1]
         cum_splits_reversed = splits_reversed.cumprod()
         cum_splits = cum_splits_reversed.iloc[::-1]
         
         # Shift(-1) 讓因子對齊到正確的日期
-        # 拆股日當天及之後的因子為 1.0（已經是拆股後的股數）
-        # 拆股日之前的因子為拆股比率（需要調整股數）
         df['Split_Factor'] = cum_splits.shift(-1).fillna(1.0)
         
         # ==================== 計算配息調整因子 ====================
-        # 用途：將買入成本調整到 Adj Close 的價格體系
-        # 
-        # 為什麼需要？
-        # - 你用 $50.80 買入（實際成交價 = Close）
-        # - 但 yfinance 會追溯調整歷史 Adj Close（加入配息效果）
-        # - 買入日的 Adj Close 會隨著之後的配息而增加
-        # - 為了讓成本基礎和市值使用同一個價格體系，需要調整成本
-        # 
-        # 公式：Dividend_Adj_Factor = Adj Close / Close
-        # 
-        # 範例：
-        #   買入日: Close=$50.80, Adj Close=$50.80 → Factor=1.0
-        #   （下載數據時）配息累積 $4
-        #   買入日: Close=$50.80（不變）, Adj Close=$54.80 → Factor=1.078
-        #   調整後成本: $50.80 × 1.078 = $54.80（對應當時的 Adj Close）
-        df['Dividend_Adj_Factor'] = df['Adj Close'] / df['Close']
+        if is_tw:
+            # [v2.47] 台股強制設為 1.0，不進行配息調整
+            df['Dividend_Adj_Factor'] = 1.0
+            print(f"[{symbol}] 台股配息調整因子設為 1.0")
+        else:
+            # 美股：正常計算 Adj Close / Close
+            df['Dividend_Adj_Factor'] = df['Adj Close'] / df['Close']
         
         return df
 
     def get_price(self, symbol, date):
         """
-        取得指定日期的股票價格（使用 Adj Close）
+        取得指定日期的股票價格
         
-        返回的價格特性：
-        - 包含拆股調整（連續性）
-        - 包含配息調整（總回報）
-        - 形成平滑曲線（無斷層）
+        [v2.47] 根據股票類型返回不同價格：
+        - 美股：使用 Adj Close（包含拆股+配息調整）
+        - 台股：使用原始 Close（避免 yfinance 錯誤）
         
         參數:
             symbol: 股票代碼
@@ -284,31 +268,21 @@ class MarketDataClient:
         """
         取得配息調整因子
         
-        用途：將交易價格調整到 Adj Close 的價格體系
+        [v2.47] 台股直接返回 1.0，不進行配息調整
         
-        核心邏輯：
-        - yfinance 的 Adj Close 會「追溯調整」歷史價格
-        - 當新配息發生時，所有歷史日期的 Adj Close 都會增加
-        - 為了讓買入成本對應到 Adj Close，需要同步調整
-        
-        範例：
-        - 2024-03-01 買入 QQQI @ $50.80（實際成交價）
-        - 之後累積配息 $4.00
-        - 當前 Adj Close(2024-03-01) = $54.80
-        - Dividend_Adj_Factor = 54.80 / 50.80 = 1.078
-        - 調整後買入價: $50.80 × 1.078 = $54.80
-        
-        這樣做的好處：
-        - 買入當天的成本 = 買入當天的市值（TWR = 0%）✅
-        - 圖表從買入日開始就是平滑的（無虛假盈虧）✅
+        用途：將交易價格調整到 Adj Close 的價格體系（僅限美股）
         
         參數:
             symbol: 股票代碼
             date: 交易日期
         
         返回:
-            配息調整因子（float，無配息時為 1.0）
+            配息調整因子（float，無配息或台股時為 1.0）
         """
+        # [v2.47] 台股直接返回 1.0
+        if self._is_taiwan_stock(symbol):
+            return 1.0
+        
         if symbol not in self.market_data:
             return 1.0
         
