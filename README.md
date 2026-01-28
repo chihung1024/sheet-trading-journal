@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.39.2-blue.svg)
+![Version](https://img.shields.io/badge/version-2.52.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10+-green.svg)
 ![Vue](https://img.shields.io/badge/vue-3.4+-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
@@ -11,7 +11,7 @@
 **現代化的投資組合追蹤與交易日誌系統**
 
 專為美股/台股/韓股投資者設計，採用全 Serverless 架構  
-高效能 | 低成本 | 即時數據 | PWA 支援
+高效能 | 低成本 | 即時數據 | PWA 支援 | 多人隔離
 
 [🌐 Live Demo](https://sheet-trading-journal.pages.dev/) | [📖 Documentation](https://github.com/chihung1024/sheet-trading-journal/blob/main/DEPLOYMENT_FINAL.md) | [🐛 Report Bug](https://github.com/chihung1024/sheet-trading-journal/issues)
 
@@ -23,6 +23,7 @@
 
 - [功能特色](#-功能特色)
 - [系統架構](#-系統架構)
+- [智能模組](#-智能模組-new-v248)
 - [核心金融演算法](#-核心金融演算法)
 - [快速開始](#-快速開始)
 - [環境配置](#-環境配置)
@@ -49,18 +50,20 @@
   - ✅ **v2.39**: 正確處理當沖/清倉情況
   - 當沖損益計入已實現損益，不影響 TWR
 - **XIRR**：個人年化報酬率 (Internal Rate of Return)
-- **✅ 當日損益簡化計算** (v2.39.2)：
-  - **公式**：當日損益 = Σ (今收 - 昨收) × 持股數量 × 匯率
-  - **自動處理**：當沖（持股=0）、美股出清（持股=0）
-  - **極簡邏輯**：單行代碼，無需時區判斷
-  - **符合直覺**：僅反映持有部位的市值變化
+- **✅ 當日損益精確計算** (v2.48)：
+  - **分離計算**：已實現損益 + 未實現損益
+  - **智能基準**：TransactionAnalyzer 加權基準價
+  - **自動處理**：當沖、清倉、盤前盤後
+  - **匯率對齊** (v2.52)：價格與匯率時點嚴格一致
 
 #### 📈 **進階圖表分析**
-- **趨勢圖**：
+- **趨勢圖** (v2.48 UI 優化)：
   - 投資組合歷史走勢
   - vs. **自訂 Benchmark** (SPY/QQQ/TQQQ/0050.TW 等) ✅ **v2.38**
   - ✅ **群組獨立時間軸** (v2.39.1)：每個群組從自己的第一筆交易日期開始顯示
-  - ✅ **虛擬零點起始** (v2.39.1)：第一筆交易前一天自動插入 0 資產記錄，讓增長軌跡更清晰
+  - ✅ **虛擬零點起始** (v2.39.1)：第一筆交易前一天自動插入 0 資產記錄
+  - **直線圖設計** (v2.48)：更清晰的視覺效果
+  - **IB 風格顯示** (v2.48)：區間最終數值標註
   - 自動排除週末數據
   - 支援時間範圍篩選 (1M/3M/6M/1Y/All)
 - **配置圖**：
@@ -71,7 +74,7 @@
 #### 💼 **持倉管理**
 - 即時市場價格更新
 - FIFO 成本基礎追蹤
-- 自動拆股/配息調整
+- 自動拆股/配息調整 (v2.46 全域復權)
 - 每檔持倉的：
   - 均價 (Average Cost)
   - 現價 (Current Price)
@@ -79,6 +82,7 @@
   - 市值 (Market Value)
   - 權重 (Weight %)
   - 今日變動 (Daily Change)
+  - 當日損益 (Daily P&L) - 含已實現 + 未實現
 
 #### 📝 **交易日記**
 - **CRUD 管理**：新增、編輯、刪除交易紀錄
@@ -95,7 +99,7 @@
   - 短線 (Short-term)
   - 動能選股 (Momentum)
   - 自定義標籤
-- **✅ 台幣總額正確顯示**：使用交易當天匯率轉換
+- **✅ 智能匯率處理** (v2.48)：台股交易自動識別，不乘匯率
 
 #### 🏷️ **策略群組管理** ✨ **v2.39.1**
 - **獨立時間軸**：每個群組使用自己的交易日期範圍
@@ -110,6 +114,12 @@
   - 每個群組有獨立的 TWR/XIRR 計算
   - 獨立的持倉清單與配息記錄
   - 可比較不同策略的績效差異
+
+#### 👥 **多人隔離架構** ✨ **NEW**
+- **用戶級別數據隔離**：每位用戶的交易數據完全獨立
+- **批次處理**：GitHub Actions 自動處理所有用戶
+- **獨立快照**：每位用戶有自己的 portfolio snapshot
+- **安全性**：基於 Google OAuth 的 user_id 識別
 
 ### 🎨 使用者體驗
 
@@ -154,9 +164,12 @@ graph TB
     A[用戶瀏覽器] -->|HTTPS| B[Cloudflare Pages<br/>Vue 3 SPA]
     B -->|API Calls| C[Cloudflare Workers<br/>Backend API]
     C -->|Read/Write| D[Cloudflare D1<br/>SQLite Database]
-    C -->|Trigger| E[GitHub Actions]
+    C -->|Trigger| E[GitHub Actions<br/>Multi-User Batch]
     E -->|Fetch Prices| F[Yahoo Finance API]
-    E -->|Calculate| G[Python Engine<br/>FIFO + TWR + XIRR]
+    E -->|Calculate| G[Python Engine<br/>智能模組]
+    G -->|Auto Validation| H[PortfolioValidator]
+    G -->|Currency Detection| I[CurrencyDetector]
+    G -->|Price Selection| J[AutoPriceSelector]
     G -->|Save Snapshot| C
     C -->|Return JSON| B
 ```
@@ -169,11 +182,121 @@ graph TB
 | **託管** | Cloudflare Pages | 全球 CDN 部署 | **免費** |
 | **後端** | Cloudflare Workers | Serverless API | **免費** (100k req/day) |
 | **資料庫** | Cloudflare D1 | 邊緣 SQLite | **免費** (5GB storage) |
-| **運算** | GitHub Actions | 定期計算 | **免費** (2000 min/month) |
+| **運算** | GitHub Actions | 定期計算 + 多人批次 | **免費** (2000 min/month) |
 | **身份驗證** | Google OAuth 2.0 | JWT Token | **免費** |
 | **數據源** | Yahoo Finance | 股價/匯率 | **免費** |
 
 **總成本：$0 USD/月** 🎉
+
+---
+
+## 🤖 智能模組 ✨ **NEW (v2.48)**
+
+### 1️⃣ CurrencyDetector - 自動貨幣識別
+
+**檔案位置**: `journal_engine/core/currency_detector.py`
+
+#### 功能特點
+
+- **自動市場識別**：根據股票代碼後綴自動判斷所屬市場
+- **智能匯率處理**：
+  - 台股 (.TW, .TWO) → 不需匯率轉換 (multiplier = 1.0)
+  - 美股 (無後綴) → 需要 USD/TWD 匯率轉換
+  - 韓股 (.KS, .KQ) → 需要 KRW/TWD 匯率轉換
+- **幣別檢測**：返回標的對應的貨幣代碼 (TWD, USD, KRW)
+
+#### 使用範例
+
+```python
+detector = CurrencyDetector()
+
+# 判斷是否為台股
+is_tw = detector.is_base_currency("2330.TW")  # True
+is_tw = detector.is_base_currency("AAPL")     # False
+
+# 取得有效匯率乘數
+fx_multiplier = detector.get_fx_multiplier("2330.TW", 32.5)  # 1.0 (台股)
+fx_multiplier = detector.get_fx_multiplier("AAPL", 32.5)     # 32.5 (美股)
+
+# 檢測幣別
+currency = detector.detect("0050.TW")  # "TWD"
+currency = detector.detect("NVDA")     # "USD"
+```
+
+#### 支援的市場後綴
+
+| 市場 | 後綴 | 基礎貨幣 |
+|------|------|---------|
+| 台灣證交所 | .TW | TWD |
+| 台灣櫃買中心 | .TWO | TWD |
+| 美國市場 | (無) | USD |
+| 韓國交易所 | .KS | KRW |
+| 韓國科斯達克 | .KQ | KRW |
+
+---
+
+### 2️⃣ PortfolioValidator - 自動驗證
+
+**檔案位置**: `journal_engine/core/validator.py`
+
+#### 功能特點
+
+- **每日資產平衡驗證**：確保持倉成本與投入資金一致
+- **TWR 計算驗證**：檢查時間加權報酬率的計算正確性
+- **異常自動告警**：發現不一致時自動記錄警告日誌
+
+#### 驗證邏輯
+
+```python
+validator = PortfolioValidator()
+
+# 驗證每日資產平衡
+validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
+# 檢查：sum(h['cost_basis_twd'] for h in holdings) ≈ invested_capital
+
+# 驗證 TWR 計算
+validator.validate_twr_calculation(history_data)
+# 檢查：每日 TWR 累積是否連續且合理
+```
+
+#### 自動檢測項目
+
+1. **資產平衡**：持倉成本總和 vs. 投入資金
+2. **TWR 連續性**：確保沒有跳躍或異常值
+3. **數值合理性**：檢查極端值 (如 TWR > 1000%)
+
+---
+
+### 3️⃣ AutoPriceSelector - 智能價格選擇
+
+**檔案位置**: `journal_engine/clients/auto_price_selector.py`
+
+#### 功能特點
+
+- **自動欄位選擇**：根據市場特性選擇正確的價格欄位
+- **台股特殊處理**：使用原始 `Close` 價格（非復權價）
+- **美股標準處理**：使用 `Adj Close` 復權價格
+- **容錯機制**：欄位缺失時自動降級處理
+
+#### 價格選擇邏輯
+
+```python
+selector = AutoPriceSelector()
+
+# 台股 - 使用原始收盤價
+price = selector.get_price(tw_stock_data, "2330.TW")
+# 優先順序: Close → Adj Close → 最後可用價格
+
+# 美股 - 使用復權價格
+price = selector.get_price(us_stock_data, "AAPL")
+# 優先順序: Adj Close → Close → 最後可用價格
+```
+
+#### 為什麼台股不用復權價？
+
+- **Yahoo Finance 台股數據問題**：`Adj Close` 可能包含不正確的除息調整
+- **台股交易習慣**：投資者習慣查看原始價格
+- **手動復權處理**：系統在 `_back_adjust_transactions_global()` 中手動處理台股拆股
 
 ---
 
@@ -215,7 +338,61 @@ class FIFOTracker:
         return realized_pnl
 ```
 
-### 2️⃣ 時間加權報酬率 (TWR) ✅ **v2.39 重大更新**
+---
+
+### 2️⃣ 全域復權處理 ✨ **v2.46**
+
+在計算開始前，統一處理所有交易的拆股與配息調整。
+
+#### 實現邏輯
+
+```python
+def _back_adjust_transactions_global(self):
+    """全域復權處理 - 統一調整歷史交易"""
+    for index, row in self.df.iterrows():
+        sym = row['Symbol']
+        date = row['Date']
+        
+        # 取得拆股倍數
+        split_factor = self.market.get_transaction_multiplier(sym, date)
+        
+        # 台股特殊處理：只處理拆股，不處理配息
+        is_tw = self._is_taiwan_stock(sym)
+        if is_tw:
+            div_adj_factor = 1.0
+        else:
+            div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
+        
+        # 調整數量與價格
+        if split_factor != 1.0 or div_adj_factor != 1.0:
+            new_qty = row['Qty'] * split_factor
+            new_price = (row['Price'] / split_factor) * div_adj_factor
+            
+            self.df.at[index, 'Qty'] = new_qty
+            self.df.at[index, 'Price'] = new_price
+```
+
+#### 處理範例
+
+**情境：NVDA 10:1 拆股 (2024-06-10)**
+
+```
+原始交易 (2024-01-15):
+- 買入 10 股 @ $500/股 = $5,000
+
+復權後 (2024-06-10 後查詢):
+- 買入 100 股 @ $50/股 = $5,000
+  (數量 × 10, 價格 ÷ 10, 總成本不變)
+```
+
+**影響**:
+- ✅ 所有歷史交易自動對齊當前股價
+- ✅ 持倉數量正確反映拆股後狀態
+- ✅ 配息計算基於正確的持股數 (v2.44)
+
+---
+
+### 3️⃣ 時間加權報酬率 (TWR) ✅ **v2.39 重大更新**
 
 使用 **Modified Dietz 方法**，消除資金流影響。
 
@@ -238,7 +415,7 @@ elif current_market_value_twd < 1e-9 and last_market_value_twd < 1e-9:
     period_hpr_factor = 1.0  # 不影響 TWR，損益計入 realized_pnl
 
 # 累積報酬率
-TWR = ∏(1 + period_hpr_factor - 1) * 100
+TWR = ∏(period_hpr_factor) - 1
 ```
 
 #### 當沖交易的處理 ✅ **NEW v2.39**
@@ -249,118 +426,136 @@ TWR = ∏(1 + period_hpr_factor - 1) * 100
 - 當 MVB=0 且 MVE=0 時，設定 `period_hpr_factor = 1.0`
 - 當沖損益正確計入 `realized_pnl`（已實現損益）
 - TWR 只反映「持倉期間」的投資表現
-- 這符合 TWR 的設計理念：衡量投資策略績效，而非交易頻率
 
-**範例：**
-```
-日期       | 操作        | MVB     | MVE     | CF      | HPR    | 說明
----------- | ----------- | ------- | ------- | ------- | ------ | ----
-2026-01-12 | 持倉        | 1077649 | 0       | -1049988| 0.9743 | 正常賣出
-2026-01-13 | 當沖        | 0       | 0       | 59913   | 1.0000 | ✅ 不影響TWR
-2026-01-14 | 買入持倉    | 0       | 797030  | 738475  | 1.0793 | 正常買入
-```
+---
 
-**適用情境：**
-- ✅ 短線波段 + 偶爾當沖：TWR 反映波段績效
-- ✅ 清倉後收配息：配息計入已實現損益
-- ❌ 純當沖策略：建議改用累積報酬率或勝率等指標
+### 4️⃣ 匯率對齊機制 ✨ **v2.52 徹底修復**
 
-#### 混合策略的績效指標建議
+確保資產價格與匯率的時點嚴格一致，解決「美股未開盤但台幣波動」的問題。
 
-對於「波段持倉 + 當沖交易」混合的投資組合：
-
-**推薦指標組合：**
-
-| 指標 | 用途 | 適用情境 |
-|------|------|----------|
-| **TWR** | 持倉績效 | 評估選股與持倉時機能力 |
-| **XIRR** | 整體年化報酬 | 考慮所有現金流的實際報酬率 |
-| **已實現損益** | 交易成果 | 包含所有當沖與波段的實際獲利 |
-| **總報酬率** | 簡單績效 | (總損益 / 累積投入) × 100% |
-
-**未來可能新增：** (v3.0 規劃)
-- 當沖累積損益（獨立統計）
-- 當沖交易次數與勝率
-- 波段 vs 當沖績效分離顯示
-
-### 3️⃣ 當日損益計算 ✨ **NEW v2.39.2**
-
-採用**極簡持股加總法**，邏輯清晰、自動處理邊界情況。
-
-#### 計算公式
+#### 核心邏輯
 
 ```python
-# ✅ 簡化版（只有 2 行！）
+def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
+    """
+    確保價格與匯率時點嚴格一致
+    
+    修復邏輯：
+    1. 歷史日期：價格和匯率都使用該日期的收盤數據
+    2. 今天 (美股未開)：價格用昨天收盤，但匯率使用【今日即時】(current_fx)
+       - 修正重點：確保資產價值反映今日台幣波動
+    3. 今天 (美股盤中/收盤)：價格和匯率都用今天即時數據
+    """
+    
+    is_tw = self._is_taiwan_stock(symbol)
+    if is_tw:
+        # 台股簡單：不需要匯率
+        price = self.market.get_price(symbol, pd.Timestamp(target_date))
+        return price, 1.0
+    
+    # === 美股邏輯 ===
+    tw_now = datetime.now(self.pnl_helper.tz_tw)
+    today = tw_now.date()
+    
+    # 情況 A: 歷史日期
+    if target_date < today:
+        price = self.market.get_price(symbol, pd.Timestamp(target_date))
+        fx_to_use = self.market.fx_rates.asof(pd.Timestamp(target_date))
+        return price, self._get_effective_fx_rate(symbol, fx_to_use)
+    
+    # 情況 B: 今天 - 美股未開盤
+    us_open = self._is_us_market_open(tw_now)
+    if not us_open:
+        # ✅ 價格：昨天收盤
+        # ✅ 匯率：今日即時 (current_fx)
+        prev_date = today - timedelta(days=1)
+        while prev_date.weekday() >= 5:
+            prev_date -= timedelta(days=1)
+        
+        price = self.market.get_price(symbol, pd.Timestamp(prev_date))
+        fx_to_use = current_fx  # 使用即時匯率
+        
+        return price, self._get_effective_fx_rate(symbol, fx_to_use)
+    
+    # 情況 C: 今天 - 美股盤中
+    else:
+        price = self.market.get_price(symbol, pd.Timestamp(today))
+        fx_to_use = current_fx
+        return price, self._get_effective_fx_rate(symbol, fx_to_use)
+```
+
+#### 實際效果
+
+**場景：台灣時間下午 2 點 (美股未開盤)**
+
+```
+情境：
+- 持有 AAPL 100 股
+- 美股昨日收盤價：$150
+- 昨日匯率：32.0
+- 今日即時匯率：32.5 (台幣貶值)
+
+修復前 (錯誤):
+資產價值 = 100 × $150 × 32.0 = NT$ 480,000
+❌ 無法反映今日台幣波動
+
+修復後 (正確):
+資產價值 = 100 × $150 × 32.5 = NT$ 487,500
+✅ 正確反映今日匯率影響
+```
+
+---
+
+### 5️⃣ 當日損益計算 ✨ **v2.48 完整實現**
+
+採用 **TransactionAnalyzer + 加權基準價** 方法，精確計算已實現與未實現損益。
+
+#### 核心實現
+
+```python
+# 1. 分析今日交易
+position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx)
+realized_pnl_today = position_snap.realized_pnl
+
+# 2. 計算未實現損益
+if position_snap.qty > 0:
+    # 使用加權基準價 (考慮今日買入)
+    weighted_base = txn_analyzer.get_base_price_for_pnl(position_snap, base_prev_close)
+    unrealized_pnl_today = (curr_p - weighted_base) * position_snap.qty * effective_fx
+
+# 3. 總當日損益
+total_daily_pnl = realized_pnl_today + unrealized_pnl_today
+
+# 4. 最終加總
 display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
-logger.info(f"[群組:{group_name}] 當日損益(持股加總): {display_daily_pnl}")
 ```
-
-#### 個股當日損益
-
-```python
-# 每個持股的 daily_pl_twd
-for sym, h in holdings.items():
-    if h['qty'] > 1e-4:
-        stock_data = self.market.market_data.get(sym, pd.DataFrame())
-        curr_p = float(stock_data.iloc[-1]['Close_Adjusted'])
-        prev_p = float(stock_data.iloc[-2]['Close_Adjusted'])
-        
-        effective_fx = self._get_effective_fx_rate(sym, current_fx)
-        
-        # ✅ 核心公式
-        stock_daily_pnl = (curr_p - prev_p) * h['qty'] * effective_fx
-```
-
-#### 演進歷程
-
-| 版本 | 方法 | 優點 | 缺點 |
-|------|------|------|------|
-| **v2.39.0** | 時區判斷法 | 台灣白天美股看昨晚 | 邏輯複雜、難維護、台股出清有問題 |
-| **v2.39.1** | 總損益差值法 | 簡單直接 | 無法處理當沖、已清倉情況 |
-| **v2.39.2** | 持股加總法 ✅ | **極簡邏輯、自動處理邊界** | 台股今日出清會少算（合理 trade-off） |
 
 #### 處理情境
 
-| 情境 | 計算結果 | 是否正確 | 說明 |
+| 情境 | 已實現損益 | 未實現損益 | 說明 |
 |------|----------|----------|------|
-| **正常持股** | (今收 - 昨收) × 持股 | ✅ 正確 | 反映市值變化 |
-| **當沖** | (價差) × 0 = 0 | ✅ 正確 | 持股=0，自動歸零 |
-| **美股昨晚出清** | (價差) × 0 = 0 | ✅ 正確 | 持股=0，自動歸零 |
-| **台股今日出清** | (價差) × 0 = 0 | ⚠️ 少算 | 合理 trade-off，損益已反映在已實現損益 |
+| **持倉未動** | 0 | (今收 - 昨收) × 持股 | 市值波動 |
+| **今日買入** | 0 | (今收 - 今買) × 持股 | 使用買入價作基準 |
+| **今日賣出** | 賣出損益 | (今收 - 昨收) × 剩餘持股 | FIFO 計算 |
+| **當沖** | 賣出損益 | 0 | 持股=0 |
+| **清倉** | 賣出損益 | 0 | 持股=0 |
 
-#### 設計理念
+#### 設計優勢
 
-**與 portfolio-journal 對齊：**
+1. **精確性**：分離已實現與未實現損益，邏輯清晰
+2. **智能基準**：當日買入使用買入價，避免虛增損益
+3. **自動處理**：TransactionAnalyzer 自動處理各種交易組合
+4. **維護性**：模組化設計，易於測試和調試
 
-本專案參考了舊專案 [portfolio-journal](https://github.com/chihung1024/portfolio-journal) 的設計理念：
+---
 
-```javascript
-// portfolio-journal 的前端計算邏輯
-const totalDailyPL = holdingsArray.reduce((sum, h) => 
-    sum + (h.daily_pl_twd || 0), 0
-);
-```
+### 6️⃣ 群組獨立時間軸計算 ✨ **v2.39.1**
 
-**核心思想：**
-- ✅ 當日損益 = 持有部位的市值變化
-- ✅ 後端負責更新價格，前端負責計算損益
-- ✅ 邏輯簡潔，易於理解和維護
-- ✅ 自動處理大部分邊界情況
-
-**優勢：**
-1. **極簡**：單行代碼即可理解
-2. **穩定**：無需時區判斷、無需複雜邏輯
-3. **直覺**：當日損益就是持股的今日漲跌
-4. **維護性**：新人接手也能快速理解
-
-### 4️⃣ 群組獨立時間軸計算 ✨ **NEW v2.39.1**
-
-每個策略群組使用自己的交易日期範圍進行計算，提供更準確的策略績效分析。
+每個策略群組使用自己的交易日期範圍進行計算。
 
 #### 計算邏輯
 
 ```python
-# 為每個群組計算獨立的日期範圍
 for group_name in groups_to_calc:
     if group_name == 'all':
         group_df = self.df.copy()
@@ -372,17 +567,12 @@ for group_name in groups_to_calc:
         group_df = self.df[mask].copy()
     
     # ✨ 每個群組使用自己的日期範圍
-    group_start_date = group_df['Date'].min()  # 該群組第一筆交易
-    group_end_date = datetime.now()            # 今天
+    group_start_date = group_df['Date'].min()
+    group_end_date = datetime.now()
     group_date_range = pd.date_range(start=group_start_date, end=group_end_date, freq='D')
-    
-    # 計算該群組的績效
-    group_result = self._calculate_single_portfolio(group_df, group_date_range, ...)
 ```
 
-#### 虛擬零點起始 ✨ **NEW v2.39.1**
-
-在每個群組的第一筆交易前一天（排除周末）自動插入 0 資產記錄。
+#### 虛擬零點起始
 
 ```python
 def _get_previous_trading_day(self, date):
@@ -392,70 +582,34 @@ def _get_previous_trading_day(self, date):
         prev_date -= timedelta(days=1)
     return prev_date
 
-# 在計算開始前插入虛擬零點
+# 插入虛擬 0 資產記錄
 if not df.empty:
     first_tx_date = df['Date'].min()
     prev_trading_day = self._get_previous_trading_day(first_tx_date)
     
-    # 插入虛擬 0 資產記錄
     history_data.append({
         "date": prev_date_str, 
         "total_value": 0,
         "invested": 0, 
-        "net_profit": 0,
-        "twr": 0.0, 
-        "benchmark_twr": 0.0,
-        "fx_rate": round(prev_fx, 4)
+        "twr": 0.0,
+        ...
     })
 ```
-
-#### 實際效果示例
-
-**假設場景：**
-- All 群組：第一筆交易 2023-01-05 (四)
-- 長線群組：第一筆交易 2024-03-11 (一)
-- 短線群組：第一筆交易 2024-06-14 (五)
-
-**圖表時間軸：**
-
-```
-All 群組：
-2023-01-04 (三) ────────→ 2026-01-21 (三)
-     ↑                          ↑
-  虛擬零點               當前時間
-  
-長線群組：
-2024-03-08 (五) ────────→ 2026-01-21 (三)
-     ↑                          ↑
-  虛擬零點               當前時間
-  (跳過周末)
-  
-短線群組：
-2024-06-13 (四) ────────→ 2026-01-21 (三)
-     ↑                          ↑
-  虛擬零點               當前時間
-```
-
-**優點：**
-1. **清晰呈現**：每個群組從自己開始投資的時間點顯示
-2. **獨立分析**：不同策略的績效軌跡更容易比較
-3. **視覺優化**：圖表從 0 開始，增長軌跡一目瞭然
-4. **資源節省**：不計算無交易的冗餘日期
 
 ---
 
 ## 🔐 安全性配置
 
-### Content Security Policy (CSP) ✅ **NEW v2.39**
+### Content Security Policy (CSP) ✅ **v2.39**
 
-專案已實施完整的 CSP 安全策略，防止 XSS 攻擊並允許必要的外部資源。
+專案已實施完整的 CSP 安全策略。
 
-#### 配置文件位置
+#### 配置文件
 
 1. **`public/_headers`** - Cloudflare Pages HTTP Headers
-2. **`index.html`** - HTML Meta Tag CSP（優先級更高）
+2. **`index.html`** - HTML Meta Tag CSP
 
-#### CSP 策略內容
+#### CSP 策略
 
 ```http
 Content-Security-Policy: 
@@ -464,568 +618,261 @@ Content-Security-Policy:
     https://accounts.google.com 
     https://apis.google.com; 
   style-src 'self' 'unsafe-inline' 
-    https://fonts.googleapis.com 
-    https://accounts.google.com; 
+    https://fonts.googleapis.com; 
   font-src 'self' 
     https://fonts.gstatic.com 
     https://r2cdn.perplexity.ai; 
   img-src 'self' data: https: 
     https://lh3.googleusercontent.com; 
   connect-src 'self' 
-    https://journal-backend.chired.workers.dev 
-    https://accounts.google.com 
-    https://oauth2.googleapis.com; 
-  frame-src https://accounts.google.com; 
-  worker-src 'self' blob:; 
-  manifest-src 'self';
+    https://journal-backend.chired.workers.dev; 
+  frame-src https://accounts.google.com;
 ```
-
-#### 允許的外部資源
-
-| 類型 | 來源 | 用途 |
-|------|------|------|
-| **Script** | `accounts.google.com` | Google 登入 SDK |
-| **Style** | `fonts.googleapis.com` | Google Fonts CSS |
-| **Style** | `accounts.google.com` | Google 登入樣式 |
-| **Font** | `fonts.gstatic.com` | Google Fonts 字體檔 |
-| **Font** | `r2cdn.perplexity.ai` | Perplexity 自訂字體 |
-| **Image** | `lh3.googleusercontent.com` | Google 用戶頭像 |
-| **Connect** | `journal-backend.chired.workers.dev` | 後端 API |
-| **Frame** | `accounts.google.com` | Google 登入 iframe |
-
-#### 其他安全標頭
-
-```http
-X-Content-Type-Options: nosniff
-X-Frame-Options: SAMEORIGIN
-X-XSS-Protection: 1; mode=block
-Referrer-Policy: strict-origin-when-cross-origin
-```
-
-#### 部署後驗證
-
-**方法 1：瀏覽器開發者工具**
-```bash
-# 1. 打開 F12 Console
-# 2. 切換到 Network 標籤
-# 3. 重新整理頁面
-# 4. 點擊第一個請求
-# 5. 查看 Response Headers
-# 應該看到完整的 CSP 策略
-```
-
-**方法 2：使用 curl**
-```bash
-curl -I https://sheet-trading-journal.pages.dev
-
-# 輸出應包含：
-# content-security-policy: default-src 'self'; ...
-```
-
-**預期結果：**
-- ✅ 無 CSP 違規警告（除了正常的 COOP postMessage 提示）
-- ✅ Google 登入正常運作
-- ✅ 字體正確載入
-- ✅ 所有 API 請求成功
 
 ---
 
 ## 🆕 更新記錄
 
-### v2.39.2 (2026-01-26) ✅ **LATEST**
+### v2.52 (2026-01-28) ✅ **LATEST**
 
-**📊 當日損益計算邏輯簡化與優化**
+**🔧 匯率對齊徹底修復**
+
+**修復內容：**
+```python
+def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
+    """
+    [v2.52 徹底修復] 確保價格與匯率時點嚴格一致
+    
+    修復邏輯：
+    1. 歷史日期：價格和匯率都使用該日期的收盤數據
+    2. 今天 (美股未開)：價格用昨天收盤，但匯率使用【今日即時】
+    3. 今天 (美股盤中)：價格和匯率都用今天即時數據
+    """
+```
+
+**影響範圍：**
+- ✅ 資產價值正確反映今日台幣波動
+- ✅ 歷史回測數據時點嚴格對齊
+- ✅ 解決「美股未開但台幣大漲」資產不動的問題
+
+**相關 Commits：**
+- [`64f1f82`](https://github.com/chihung1024/sheet-trading-journal/commit/64f1f82) - feat(v2.52): 新增專業級市場時段檢測器
+- [`c0256b7`](https://github.com/chihung1024/sheet-trading-journal/commit/c0256b7) - fix(config): correct EXCHANGE_SYMBOL to TWD=X
+
+---
+
+### v2.48-v2.49 (2026-01-28)
+
+**🤖 智能模組整合 + UI 優化**
 
 **新增功能：**
 
-1. **極簡持股加總法**
+1. **CurrencyDetector** - 自動貨幣識別
    ```python
-   # ✅ 只有 2 行！
-   display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
-   logger.info(f"[群組:{group_name}] 當日損益(持股加總): {display_daily_pnl}")
+   detector = CurrencyDetector()
+   is_tw = detector.is_base_currency(symbol)
+   fx_multiplier = detector.get_fx_multiplier(symbol, fx_rate)
    ```
 
-2. **自動處理邊界情況**
-   - ✅ 當沖（持股=0）：自動歸零
-   - ✅ 美股出清（持股=0）：自動歸零
-   - ⚠️ 台股今日出清：會少算（但損益已反映在已實現損益）
+2. **PortfolioValidator** - 自動驗證
+   ```python
+   validator = PortfolioValidator()
+   validator.validate_daily_balance(holdings, invested_capital, cost_sum)
+   validator.validate_twr_calculation(history_data)
+   ```
 
-3. **移除複雜邏輯**
-   - ❌ 刪除 60+ 行的時區判斷代碼
-   - ❌ 刪除美股/台股分類計算
-   - ❌ 刪除白天/深夜模式判斷
+3. **AutoPriceSelector** - 智能價格選擇
+   - 台股使用 `Close` (原始價格)
+   - 美股使用 `Adj Close` (復權價格)
 
-**修改文件：**
-```python
-# journal_engine/core/calculator.py
+**UI 改進：**
+- 直線圖取代曲線圖
+- IB 風格區間最終數值顯示
+- 隱藏 Y 軸刻度，增加圖表高度
 
-# ❌ 移除的複雜邏輯（v2.39.0-2.39.1）
-# now_tw = datetime.now()
-# is_daytime = 6 <= now_tw.hour <= 23
-# if is_daytime:
-#     美股損益 = ...
-#     台股損益 = ...
-# else:
-#     ...
-
-# ✅ 新的簡化邏輯（v2.39.2）
-display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
-```
-
-**設計理念：**
-
-參考舊專案 [portfolio-journal](https://github.com/chihung1024/portfolio-journal) 的前端計算邏輯：
-
-```javascript
-// portfolio-journal/js/ui/dashboard.js
-const totalDailyPL = holdingsArray.reduce((sum, h) => 
-    sum + (h.daily_pl_twd || 0), 0
-);
-```
-
-**核心優勢：**
-1. **極簡**：單行代碼，一目了然
-2. **穩定**：無需時區判斷，無複雜邏輯
-3. **直覺**：當日損益 = 持股的今日漲跌
-4. **維護性**：新人接手也能快速理解
-
-**適用情境：**
-- ✅ 波段持倉策略
-- ✅ 混合策略（波段 + 偶爾當沖）
-- ⚠️ 純當沖策略（建議查看「已實現損益」）
+**前端修復：**
+- 台股交易記錄不乘匯率 (RecordList)
+- Chart 數據台股使用 effective_fx_rate (1.0)
 
 **相關 Commits：**
-- [`279c73d`](https://github.com/chihung1024/sheet-trading-journal/commit/279c73d74f9b081d1bd5ecf27a6535e3a55315bb) - refactor: 簡化當日損益計算邏輯，移除時區判斷
+- [`2d89e48`](https://github.com/chihung1024/sheet-trading-journal/commit/2d89e48) - [v2.48 UI] Chart: 直線圖 + IB style
+- [`95c05d6`](https://github.com/chihung1024/sheet-trading-journal/commit/95c05d6) - feat: Add CurrencyDetector
+- [`9e9e022`](https://github.com/chihung1024/sheet-trading-journal/commit/9e9e022) - feat: Add PortfolioValidator
+
+---
+
+### v2.46 (2026-01-27)
+
+**📊 全域復權處理**
+
+**新增功能：**
+
+```python
+def _back_adjust_transactions_global(self):
+    """全域復權預處理 - 統一處理拆股與配息調整"""
+    for index, row in self.df.iterrows():
+        split_factor = self.market.get_transaction_multiplier(sym, date)
+        
+        # 台股特殊處理：只處理拆股
+        if is_tw:
+            div_adj_factor = 1.0
+        else:
+            div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
+        
+        new_qty = row['Qty'] * split_factor
+        new_price = (row['Price'] / split_factor) * div_adj_factor
+```
+
+**影響範圍：**
+- ✅ 所有歷史交易自動對齊當前股價
+- ✅ 持倉數量正確反映拆股狀態
+- ✅ 台股與美股差異化處理
+
+**相關 Commits：**
+- [`80a77fd`](https://github.com/chihung1024/sheet-trading-journal/commit/80a77fd) - Fix Taiwan stock back-adjustment
+- [`2fcb542`](https://github.com/chihung1024/sheet-trading-journal/commit/2fcb542) - Fix final holdings to use market.get_price()
+
+---
+
+### v2.44 (2026-01-27)
+
+**💰 配息計算修正**
+
+**修復內容：**
+
+```python
+# [v2.44 復權修正] 配息計算
+split_factor = self.market.get_transaction_multiplier(sym, d)
+shares_at_ex = h['qty'] / split_factor  # 還原除息日的持股數
+
+total_gross = shares_at_ex * div_per_share
+```
+
+**影響：**
+- ✅ 拆股後的配息金額正確計算
+- ✅ 避免配息金額膨脹
+
+**相關 Commits：**
+- [`7415320`](https://github.com/chihung1024/sheet-trading-journal/commit/7415320) - Restore dividend adjustment logic
+
+---
+
+### v2.40 (未明確日期)
+
+**📈 市場狀態獲取**
+
+```python
+# [v2.40] 獲取市場狀態
+current_stage, stage_desc = self.pnl_helper.get_market_stage()
+logger.info(f"當前市場狀態: {current_stage} ({stage_desc})")
+```
 
 ---
 
 ### v2.39.1 (2026-01-21)
 
-**📊 群組獨立時間軸與虛擬零點功能**
+**📊 群組獨立時間軸與虛擬零點**
 
 **新增功能：**
-
-1. **每個群組使用獨立的交易日期範圍**
-   - All 群組：從所有交易的最早日期開始
-   - 策略群組（長線/短線等）：從該群組第一筆交易開始
-   - 避免不同策略共用全局時間軸造成的視覺混淆
-
-2. **虛擬零點起始**
-   - 自動在每個群組第一筆交易前一天插入 0 資產記錄
-   - 智能排除周末：
-     - 如第一筆交易是周一，零點在上周五
-     - 如第一筆交易是周五，零點在周四
-   - 讓圖表從 0 開始顯示，增長軌跡更清晰直觀
-
-**修改文件：**
-```python
-# journal_engine/core/calculator.py
-
-def _get_previous_trading_day(self, date):
-    """獲取前一個交易日（排除周末）"""
-    prev_date = date - timedelta(days=1)
-    while prev_date.weekday() >= 5:  # 5=周六, 6=周日
-        prev_date -= timedelta(days=1)
-    return prev_date
-
-# 在 run() 方法中，為每個群組計算獨立日期範圍
-for group_name in groups_to_calc:
-    # ✨ 使用該群組自己的日期範圍
-    group_start_date = group_df['Date'].min()
-    group_end_date = datetime.now()
-    group_date_range = pd.date_range(start=group_start_date, end=group_end_date, freq='D')
-    
-    # 在 _calculate_single_portfolio() 開始時插入虛擬零點
-    first_tx_date = df['Date'].min()
-    prev_trading_day = self._get_previous_trading_day(first_tx_date)
-    history_data.append({...})  # 0 資產記錄
-```
-
-**視覺效果改善：**
-
-```
-修改前（所有群組共用時間軸）：
-圖表 X 軸: 2023-01-05 ────────────→ 2026-01-21
-長線群組:     (無數據) ──────→ (有數據)
-短線群組:              (無數據) ──→ (有數據)
-❌ 前面有大片空白區域
-
-修改後（群組獨立時間軸）：
-All 群組:  2023-01-04 (0) ─→ 2026-01-21
-長線群組:         2024-03-08 (0) ─→ 2026-01-21
-短線群組:                2024-06-13 (0) ─→ 2026-01-21
-✅ 每個群組都從自己開始，圖表飽滿
-```
+- 每個群組使用獨立的交易日期範圍
+- 虛擬零點起始（第一筆交易前一天補 0 資產）
+- 智能排除周末
 
 **相關 Commits：**
-- [`a1894f8d`](https://github.com/chihung1024/sheet-trading-journal/commit/a1894f8d) - 在每個群組第一筆交易前一天補上虛擬 0 資產（排除周末）
-- [`234dc9ba`](https://github.com/chihung1024/sheet-trading-journal/commit/234dc9ba) - 每個群組使用自己的交易日期範圍來計算 history
+- [`a1894f8`](https://github.com/chihung1024/sheet-trading-journal/commit/a1894f8) - 虛擬 0 資產記錄
+- [`234dc9b`](https://github.com/chihung1024/sheet-trading-journal/commit/234dc9b) - 群組獨立日期範圍
 
 ---
 
 ### v2.39 (2026-01-21)
 
-**🐛 TWR 計算修正 - 當沖/清倉邊界情況處理**
+**🐛 TWR 計算修正 - 當沖/清倉處理**
 
-**問題診斷：**
-- 當沖交易或清倉後收配息時，期初期末市值都為 0
-- 舊公式 `period_hpr = MVE / CF = 0 / 59913 = 0` 導致 TWR 歸零
-- 累積因子 `cumulative_twr *= 0 = 0`，最終 TWR = -100%
-
-**修正內容：**
+**修復內容：**
 ```python
-# journal_engine/core/calculator.py
-
-# ✅ 新增情況 3：當沖或清倉後收配息
+# 情況 3：當沖或清倉後收配息
 elif current_market_value_twd < 1e-9 and last_market_value_twd < 1e-9:
     period_hpr_factor = 1.0  # 不影響 TWR
-    if abs(daily_net_cashflow_twd) > 1e-9:
-        logger.info(f"當沖/清倉情況: CF={daily_net_cashflow_twd:.0f}, HPR設為1.0（不影響TWR）")
 ```
 
-**影響範圍：**
-- ✅ 當沖損益正確計入「已實現損益」
-- ✅ TWR 只反映持倉期間的投資績效
-- ✅ 符合 TWR 的標準定義（Time-Weighted Return）
-
-**測試結果：**
-```
-修正前：
-[群組:短線] TWR異常: MVB=0, MVE=0, CF=59913, HPR=0.0000
-最終TWR=-100.00% ❌
-
-修正後：
-[群組:短線] 當沖/清倉情況: CF=59913, HPR設為1.0（不影響TWR）
-最終TWR=24.01% ✅
-```
-
-**📁 Content Security Policy (CSP) 完整配置**
-
-**新增文件：**
-1. **`public/_headers`** - Cloudflare Pages 安全標頭
-   - 完整的 CSP 策略
-   - 快取控制規則
-   - 基本安全標頭
-
-2. **`index.html`** - HTML Meta CSP（更新）
-   - 修正字體載入 CSP 違規
-   - 新增 Google 登入所需資源
-   - 新增 frame-src 支援
-
-**解決的問題：**
-- ❌ ~~Loading the font 'r2cdn.perplexity.ai/fonts/...' violates CSP~~
-- ❌ ~~Loading the stylesheet 'accounts.google.com/gsi/style' violates CSP~~
-- ❌ ~~Framing 'accounts.google.com/' violates CSP~~
-- ✅ Console 完全乾淨（僅剩正常的 COOP 提示）
-
-**部署指南：**
-```bash
-# 1. 文件會自動被 Vite 複製到 dist/
-# 2. Cloudflare Pages 自動讀取 _headers
-# 3. 部署後 2-3 分鐘生效
-# 4. 清除瀏覽器快取驗證：Ctrl+Shift+R
-```
+**CSP 完整配置：**
+- 新增 `public/_headers`
+- 更新 `index.html` CSP meta tag
 
 **相關 Commits：**
-- [`5865e3d9`](https://github.com/chihung1024/sheet-trading-journal/commit/5865e3d9) - 修正當沖/清倉情況下TWR計算錯誤
-- [`12d794a0`](https://github.com/chihung1024/sheet-trading-journal/commit/12d794a0) - 新增 Cloudflare Pages 安全標頭設定
-- [`d32817ec`](https://github.com/chihung1024/sheet-trading-journal/commit/d32817ec) - 修正 index.html 的 CSP 設定
+- [`5865e3d`](https://github.com/chihung1024/sheet-trading-journal/commit/5865e3d) - 修正當沖 TWR
+- [`12d794a`](https://github.com/chihung1024/sheet-trading-journal/commit/12d794a) - 新增安全標頭
 
 ---
 
 ### v2.38 (2026-01-19)
 
-**🎯 自訂 Benchmark 功能完整實現**
+**🎯 自訂 Benchmark 功能**
 
-- ✅ **Worker v2.38 生產版本**
-  - 移除所有調試代碼
-  - 優化錯誤處理
-  - 代碼更簡潔易維護
-  
-- ✅ **前端 Benchmark 輸入**
-  - 報酬率模式下可自訂標的
-  - 支援美股/台股/韓股代碼
-  - 即時驗證與提示
-  
-- ✅ **GitHub Workflow 整合**
-  - 使用 workflow_dispatch + inputs
-  - 正確傳遞 custom_benchmark 參數
-  - 環境變數 CUSTOM_BENCHMARK 正確設置
-  
-- ✅ **Python 引擎適配**
-  - 自動下載 Benchmark 數據
-  - 即時報價覆蓋
-  - 計算引擎使用自訂基準
-  
-- ✅ **前端圖表更新**
-  - 圖表標籤顯示自訂 Benchmark
-  - localStorage 記憶用戶選擇
-  - 自動刷新機制
-
-**支援的 Benchmark 格式：**
-| 市場 | 格式 | 範例 |
-|------|------|------|
-| 美股 | TICKER | SPY, QQQ, NVDA, AAPL |
-| 台股 | TICKER.TW | 0050.TW, 2330.TW |
-| 韓股 | TICKER.KS | 005930.KS (Samsung) |
-| ETF | TICKER | TQQQ, SQQQ, VOO |
+- Worker v2.38 生產版本
+- 前端 Benchmark 輸入
+- GitHub Workflow 整合
+- 支援 SPY/QQQ/TQQQ/0050.TW 等
 
 ---
 
 ### v2.0.0 (2026-01-09)
 
-**匯率影響分離功能**
-
-- ✅ **精準計算今日損益**
-  - 美股開盤前：昨日股價變化 + 匯率影響
-  - 美股盤中：即時盤中損益
-  - 自動偵測市場狀態
-  
-- ✅ **XIRR 計算**
-  - 新增個人年化報酬率
-  - 考慮所有現金流時點
-  - 更精確的投資績效評估
+**匯率影響分離**
+- 精準計算今日損益
+- 新增 XIRR 計算
 
 ---
 
 ### v1.2.0 (2026-01-13)
 
 **已實現損益追蹤**
-
-- ✅ **新增已實現損益卡片**
-  - 顯示賣出收益 + 配息收入
-  - 獨立綠色主題設計
-  - 動畫數字顯示
-  
-- ✅ **6 欄 Grid 佈局**
-  - 儀錶板擴展為 6 卡片
-  - 響應式適配各螢幕
-  
-- ✅ **後端 FIFO 完整實現**
-  - 精確追蹤已實現損益
-  - 自動計算賣出收益
-  - 配息收入整合
+- 新增已實現損益卡片
+- 6 欄 Grid 佈局
+- FIFO 完整實現
 
 ---
 
 ## 🛠️ 故障排除
 
-### 常見問題
-
-#### Q1: TWR 顯示 -100% 或異常值？
-
-**症狀：**
-- 明明有賺錢的交易，但 TWR 顯示 -100%
-- 某個群組的 TWR 突然歸零
-
-**原因：**
-- v2.39 之前的版本在當沖/清倉情況下有計算錯誤
+### Q1: TWR 顯示 -100% 或異常值？
 
 **解決方案：**
-
-1. **確認版本**
-   ```bash
-   # 查看 calculator.py 版本
-   # 應包含「情況 3：當沖或清倉後收配息」的處理邏輯
-   ```
-
-2. **檢查 GitHub Actions 日誌**
-   ```bash
-   # 搜尋日誌中的關鍵訊息
-   "當沖/清倉情況: CF=xxxxx, HPR設為1.0（不影響TWR）"
-   ```
-
-3. **重新計算**
-   - 確保使用 v2.39 或更新版本
-   - 點擊「更新數據」觸發重新計算
-   - 等待 2-3 分鐘後刷新頁面
-
-4. **如果問題持續**
-   ```sql
-   -- 清除舊快照
-   DELETE FROM portfolio_snapshots WHERE user_id = 'your@email.com';
-   ```
-   然後重新觸發更新。
+1. 確認版本 ≥ v2.39
+2. 檢查 GitHub Actions 日誌
+3. 查找「當沖/清倉情況: HPR設為1.0」訊息
+4. 清除舊快照後重新計算
 
 ---
 
-#### Q2: Console 出現 CSP 違規警告？
+### Q2: 資產價值不隨台幣波動？
 
-**症狀：**
-```
-Loading the font 'https://r2cdn.perplexity.ai/...' violates CSP
-Loading the stylesheet 'https://accounts.google.com/...' violates CSP
-```
-
-**原因：**
-- 舊版本缺少完整的 CSP 配置
-- `_headers` 文件或 `index.html` 的 CSP meta tag 不完整
+**原因：** v2.52 之前的匯率對齊問題
 
 **解決方案：**
-
-1. **確認文件存在**
-   ```bash
-   # 專案中應包含：
-   public/_headers
-   index.html (包含更新的 CSP meta tag)
-   ```
-
-2. **驗證部署**
-   ```bash
-   # 檢查 HTTP Headers
-   curl -I https://your-site.pages.dev | grep -i content-security
-   ```
-
-3. **清除快取**
-   ```bash
-   # 強制重新整理
-   Ctrl + Shift + R (Windows/Linux)
-   Cmd + Shift + R (Mac)
-   ```
-
-4. **如果仍有問題**
-   - 檢查 Cloudflare Pages 部署日誌
-   - 確認 `public/_headers` 被正確複製到 `dist/`
-   - 聯繫 GitHub Issues 報告問題
-
-**預期結果：**
-- ✅ 無 CSP 違規錯誤（紅字）
-- ⚠️ 只有正常的 COOP postMessage 警告（不影響功能）
+1. 確認版本 ≥ v2.52
+2. 檢查 `_get_asset_effective_price_and_fx()` 方法
+3. 美股未開盤時應使用「今日即時匯率」
 
 ---
 
-#### Q3: 當沖交易的損益去哪了？
+### Q3: 當日損益計算不準？
 
-**症狀：**
-- 當沖有賺錢，但 TWR 沒變化
-- 不確定當沖損益是否被計算
-
-**說明：**
-
-v2.39 版本後，當沖交易的處理方式：
-
-| 指標 | 是否包含當沖 | 說明 |
-|------|-------------|------|
-| **已實現損益** | ✅ 包含 | 顯示所有交易的實際獲利 |
-| **TWR** | ❌ 不包含 | 只反映持倉期間的績效 |
-| **XIRR** | ✅ 包含 | 考慮所有現金流的年化報酬 |
-| **總報酬率** | ✅ 包含 | (總損益 / 投入資金) × 100% |
-| **當日損益** | ❌ 不包含 | 只反映持有部位的今日漲跌 (v2.39.2) |
-
-**驗證方式：**
-```javascript
-// 在前端 Console 執行
-fetch('https://your-worker.workers.dev/api/portfolio', {
-  headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-})
-.then(r => r.json())
-.then(data => {
-  console.log('已實現損益:', data.data.summary.realized_pnl);
-  console.log('當日損益:', data.data.summary.daily_pnl_twd);
-  console.log('TWR:', data.data.summary.twr);
-  console.log('XIRR:', data.data.summary.xirr);
-});
-```
-
-**結論：**
-- 當沖損益**有被計算**，在「已實現損益」中
-- TWR 不反映當沖是**符合設計**的（評估持倉能力，非交易頻率）
-- 當日損益不反映當沖是**符合設計**的（持股=0，自動歸零）
-- 如需完整績效評估，參考 XIRR 或總報酬率
+**檢查項目：**
+1. 使用 v2.48 版本（包含 TransactionAnalyzer）
+2. 確認 `display_daily_pnl = sum(h.daily_pl_twd)`
+3. 檢查已實現 + 未實現損益分離
 
 ---
 
-#### Q4: 為什麼不同群組的圖表時間軸不一樣？
+### Q4: 台股價格異常？
 
-**症狀：**
-- All 群組顯示從 2023 年開始
-- 長線群組顯示從 2024 年開始
-- 感覺不一致
+**原因：** 可能使用了錯誤的復權價格
 
-**說明：**
-
-✅ **這是正常的設計行為** (v2.39.1 新功能)
-
-**原因：**
-- 每個群組使用自己的第一筆交易日期作為起點
-- 避免無交易期間的空白區域
-- 讓每個群組的增長軌跡更清晰
-
-**範例：**
-```
-All 群組（2023-01-05 首次交易）：
-2023-01-04 ─────────→ 2026-01-21
-└─ 完整投資歷程 ─┘
-
-長線群組（2024-03-11 首次交易）：
-           2024-03-08 ─→ 2026-01-21
-           └─ 長線策略 ─┘
-
-短線群組（2024-06-14 首次交易）：
-                  2024-06-13 ─→ 2026-01-21
-                  └─ 短線策略 ─┘
-```
-
-**優點：**
-1. 各群組的圖表都很「飽滿」，沒有冗餘空白
-2. 可以清楚看到每個策略開始的時間點
-3. 比較不同策略時更有意義（相對於各自起點的表現）
-
-**如果你想看統一時間軸：**
-- 使用 All 群組作為參考
-- All 群組包含所有交易，時間軸最完整
-
----
-
-#### Q5: 當日損益跟「昨天總損益 - 今天總損益」不一樣？✨ **NEW**
-
-**症狀：**
-- 當日損益顯示 10,000
-- 但總損益增加了 15,000
-- 數字對不上
-
-**說明：**
-
-v2.39.2 版本後，當日損益的定義：
-
-```python
-# ✅ v2.39.2 定義
-當日損益 = Σ (今收 - 昨收) × 持股數量 × 匯率
-
-# ❌ 不是「總損益差值」
-當日損益 ≠ 今日總損益 - 昨日總損益
-```
-
-**為什麼會不同？**
-
-因為「總損益」包含：
-1. 持倉市值變化（= 當日損益）
-2. 已實現損益變化（賣出、配息等）
-
-**範例：**
-```
-今天的交易：
-- NVDA 100股：漲 $5 → 當日損益 +16,000 TWD
-- 賣出 TSLA：實現獲利 +5,000 TWD
-
-結果：
-當日損益 = 16,000 TWD（只看持股漲跌）
-總損益增加 = 21,000 TWD（包含賣出獲利）
-```
-
-**哪個指標更重要？**
-
-| 情境 | 應該看哪個 |
-|------|----------|
-| 今天市場漲跌對我的影響 | **當日損益** |
-| 今天所有交易的總成果 | **總損益差值** |
-| 評估持股配置是否跟上大盤 | **當日損益** |
-| 評估交易決策是否賺錢 | **已實現損益** |
-
-**結論：**
-- 當日損益 ≠ 總損益差值 是**正常的**
-- 兩者各有用途，不矛盾
-- v2.39.2 的當日損益更符合「今日持股漲跌」的直覺
+**解決方案：**
+1. 確認 AutoPriceSelector 已整合 (v2.48)
+2. 台股應使用 `Close` 而非 `Adj Close`
+3. 檢查 `market_data.py` 的 `get_price()` 方法
 
 ---
 
@@ -1035,50 +882,47 @@ v2.39.2 版本後，當日損益的定義：
 
 #### Q1 2026
 
-- [ ] **多幣別支援**
-  - 支援 EUR、JPY、GBP 等貨幣
-  - 自動匯率轉換
-  
-- [ ] **當沖績效獨立追蹤** ✨ **NEW**
-  - 當沖專用統計卡片
-  - 勝率、平均獲利、交易次數
-  - 與波段績效分離顯示
-  
+- [ ] **多幣別支援** (EUR, JPY, GBP)
+- [ ] **當沖績效獨立追蹤**
 - [ ] **期權交易追蹤**
-  - 買入/賣出 Call/Put
-  - Greeks 計算
-  - 到期管理
 
 #### Q2 2026
 
-- [ ] **進階績效指標**
-  - Sharpe Ratio (夏普比率)
-  - Maximum Drawdown (最大回撤)
-  - Calmar Ratio
-  - Sortino Ratio
-  
-- [ ] **社群功能**
-  - 策略分享
-  - 績效排行榜
-  - 交易複製功能
+- [ ] **進階績效指標** (Sharpe, Sortino, Calmar)
+- [ ] **社群功能** (策略分享、排行榜)
 
 #### Q3 2026
 
-- [ ] **移動應用**
-  - React Native App
-  - 推送通知
-  - 離線功能
-  
-- [ ] **AI 分析**
-  - 持倉風險評估
-  - 配置建議
-  - 自動再平衡
+- [ ] **移動應用** (React Native)
+- [ ] **AI 分析** (風險評估、配置建議)
+
+---
+
+## 📊 技術亮點總結
+
+### 🏆 核心優勢
+
+1. **零成本架構** - 100% Serverless，$0/月運行成本
+2. **智能化模組** - 自動識別、自動驗證、自動選擇
+3. **精確計算** - FIFO + TWR + XIRR + 復權處理
+4. **多人隔離** - 企業級數據隔離與批次處理
+5. **即時匯率** - 價格與匯率時點嚴格對齊 (v2.52)
+6. **完整安全** - CSP + OAuth 2.0 + JWT + CORS
+
+### 🎯 設計理念
+
+- **自動化優先** - 減少手動配置，智能模組自動處理
+- **精確性至上** - 每一筆計算都有驗證機制
+- **可維護性** - 模組化設計，易於擴展和調試
+- **用戶體驗** - PWA + 深色模式 + 響應式設計
 
 ---
 
 <div align="center">
 
 **Built with ❤️ by a quantitative trader for traders**
+
+**Current Version: v2.52.0 (2026-01-28)**
 
 [⭐ Star this project](https://github.com/chihung1024/sheet-trading-journal) | [🐛 Report bug](https://github.com/chihung1024/sheet-trading-journal/issues) | [💡 Request feature](https://github.com/chihung1024/sheet-trading-journal/issues)
 
