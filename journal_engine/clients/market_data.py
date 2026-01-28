@@ -3,6 +3,7 @@ import yfinance as yf
 import concurrent.futures
 from datetime import timedelta
 from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
+from .auto_price_selector import AutoPriceSelector
 
 class MarketDataClient:
     def __init__(self):
@@ -13,10 +14,6 @@ class MarketDataClient:
         """
         self.market_data = {}
         self.fx_rates = pd.Series(dtype=float)
-
-    def _is_taiwan_stock(self, symbol):
-        """判斷是否為台股"""
-        return symbol.endswith('.TW') or symbol.endswith('.TWO')
 
     def download_data(self, tickers: list, start_date):
         """
@@ -137,26 +134,22 @@ class MarketDataClient:
 
     def _prepare_data(self, symbol, df):
         """
-        [v2.47] 準備股票數據：計算各種調整因子
+        [v2.48] 準備股票數據：使用 AutoPriceSelector 智能選擇價格字段
         
-        重要修正：台股與美股分別處理
-        - 美股：使用 Adj Close（包含拆股+配息調整）
-        - 台股：使用原始 Close（yfinance 的 Adj Close 有錯誤）
+        改進：
+        - 移除手動判斷台股/美股的邏輯
+        - 使用 AutoPriceSelector 自動檢測數據質量並選擇最佳價格字段
+        - 自動處理異常數據（如 Adj Close 異常放大）
         """
         df = df.copy()
         
-        is_tw = self._is_taiwan_stock(symbol)
+        # ✅ 使用智能選擇器
+        selector = AutoPriceSelector(symbol, df)
+        df['Close_Adjusted'] = selector.get_adjusted_price_series()
         
-        # [v2.47 關鍵修正] 台股與美股使用不同的價格數據
-        if is_tw:
-            # 台股：使用原始 Close 價格
-            # 原因：yfinance 對台股的 Adj Close 處理有嚴重錯誤
-            # 例如：Close=1000, Adj Close=89753 (錯誤放大 89.753 倍)
-            df['Close_Adjusted'] = df['Close']
-            print(f"[{symbol}] 台股使用原始 Close 價格")
-        else:
-            # 美股：使用 Adj Close（包含拆股+配息調整）
-            df['Close_Adjusted'] = df['Adj Close']
+        # 記錄選擇結果（用於審計）
+        metadata = selector.get_metadata()
+        print(f"[{symbol}] 價格來源: {metadata['price_source']} - {metadata['selection_reason']}")
         
         # 保留原始 Close 用於參考（實際成交價）
         df['Close_Raw'] = df['Close']
@@ -180,13 +173,13 @@ class MarketDataClient:
         df['Split_Factor'] = cum_splits.shift(-1).fillna(1.0)
         
         # ==================== 計算配息調整因子 ====================
-        if is_tw:
-            # [v2.47] 台股強制設為 1.0，不進行配息調整
-            df['Dividend_Adj_Factor'] = 1.0
-            print(f"[{symbol}] 台股配息調整因子設為 1.0")
-        else:
-            # 美股：正常計算 Adj Close / Close
+        # 根據選擇的價格源動態計算
+        if metadata['price_source'] == 'Adj Close':
+            # 使用復權價格 → 計算配息調整因子
             df['Dividend_Adj_Factor'] = df['Adj Close'] / df['Close']
+        else:
+            # 使用原始價格 → 不需要調整
+            df['Dividend_Adj_Factor'] = 1.0
         
         return df
 
@@ -194,9 +187,7 @@ class MarketDataClient:
         """
         取得指定日期的股票價格
         
-        [v2.47] 根據股票類型返回不同價格：
-        - 美股：使用 Adj Close（包含拆股+配息調整）
-        - 台股：使用原始 Close（避免 yfinance 錯誤）
+        [v2.48] 使用 AutoPriceSelector 選擇的價格字段
         
         參數:
             symbol: 股票代碼
@@ -268,21 +259,17 @@ class MarketDataClient:
         """
         取得配息調整因子
         
-        [v2.47] 台股直接返回 1.0，不進行配息調整
+        [v2.48] 根據 AutoPriceSelector 的選擇動態返回
         
-        用途：將交易價格調整到 Adj Close 的價格體系（僅限美股）
+        用途：將交易價格調整到選定價格體系
         
         參數:
             symbol: 股票代碼
             date: 交易日期
         
         返回:
-            配息調整因子（float，無配息或台股時為 1.0）
+            配息調整因子（float，無配息時為 1.0）
         """
-        # [v2.47] 台股直接返回 1.0
-        if self._is_taiwan_stock(symbol):
-            return 1.0
-        
         if symbol not in self.market_data:
             return 1.0
         
