@@ -363,9 +363,15 @@ const formatNumber = (val, d = 2) => {
 };
 
 const confirmDividend = async (div) => {
-  // 防止重複點擊
+  // 🔥 增強防重複檢查：同時檢查已確認狀態和正在處理中
   if (isConfirmed(div.id)) {
+    console.warn(`⚠️ 配息 ${div.symbol} (ID: ${div.id}) 已確認，阻止重複操作`);
     addToast('此配息已確認入帳', 'info');
+    return;
+  }
+  
+  if (processingId.value === div.id) {
+    console.warn(`⚠️ 配息 ${div.symbol} (ID: ${div.id}) 正在處理中，阻止重複操作`);
     return;
   }
   
@@ -381,6 +387,10 @@ const confirmDividend = async (div) => {
   
   if (!confirm(`確認將 ${div.symbol} 的配息 ${currency} ${formatNumber(netAmount)} 入帳嗎？`)) return;
   
+  // 🔥 樂觀更新：在 API 調用前立即標記為已確認
+  console.log(`🔒 [防重複] 立即鎖定配息: ${div.symbol} (ID: ${div.id})`);
+  confirmedIds.value.add(div.id);
+  saveConfirmedIds();
   processingId.value = div.id;
   
   try {
@@ -427,21 +437,25 @@ const confirmDividend = async (div) => {
     const success = await store.addRecord(record);
     
     if (success) {
-      // ② 標記為已確認（立即生效）
-      confirmedIds.value.add(div.id);
-      // ③ 持久化到 localStorage
-      saveConfirmedIds();
-      
+      console.log(`✅ [成功] 配息 ${div.symbol} (ID: ${div.id}) 已成功入帳`);
       addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
       
-      // ④ 刷新所有數據（後端快照會在背景更新後自動更新）
+      // ② 刷新所有數據（後端快照會在背景更新後自動更新）
       await store.fetchAll();
       
     } else {
+      // 🔥 失敗時回滾已確認狀態
+      console.error(`❌ [失敗] 配息 ${div.symbol} (ID: ${div.id}) 入帳失敗，回滾狀態`);
+      confirmedIds.value.delete(div.id);
+      saveConfirmedIds();
       addToast('入帳失敗：無法新增記錄', 'error');
     }
   } catch (e) {
+    // 🔥 異常時回滾已確認狀態
     console.error('確認配息錯誤:', e);
+    console.error(`❌ [異常] 配息 ${div.symbol} (ID: ${div.id}) 發生異常，回滾狀態`);
+    confirmedIds.value.delete(div.id);
+    saveConfirmedIds();
     addToast(`入帳失敗: ${e.message || '未知錯誤'}`, 'error');
   } finally {
     processingId.value = null;
