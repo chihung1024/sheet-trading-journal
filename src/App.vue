@@ -26,6 +26,20 @@
         </div>
 
         <div class="nav-status">
+          <!-- ✨ 自動刷新指示器 -->
+          <div v-if="autoRefresh && !portfolioStore.loading && !portfolioStore.isPolling" 
+               class="auto-refresh-indicator" 
+               :class="{ paused: autoRefresh.isPaused.value }"
+               :title="autoRefresh.isPaused.value ? '已暫停自動刷新' : `下次更新: ${autoRefresh.formattedTimeRemaining()}`">
+            <span class="refresh-icon" @click="autoRefresh.togglePause()">
+              <span v-if="autoRefresh.isPaused.value">⏸️</span>
+              <span v-else>🔄</span>
+            </span>
+            <span class="refresh-timer desktop-only" v-if="!autoRefresh.isPaused.value">
+              {{ autoRefresh.formattedTimeRemaining() }}
+            </span>
+          </div>
+          
           <div v-if="portfolioStore.loading" class="status-indicator loading" title="更新中...">
             <span class="dot"></span> <span class="desktop-only">更新中...</span>
           </div>
@@ -162,6 +176,7 @@ import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
 import { usePWA } from './composables/usePWA';
+import { useAutoRefresh } from './composables/useAutoRefresh';
 import { CONFIG } from './config';
 
 import LoginOverlay from './components/LoginOverlay.vue';
@@ -203,9 +218,18 @@ const pendingDividendsCount = computed(() => portfolioStore.pending_dividends ? 
 
 const userInitial = computed(() => authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'U');
 
+// ✨ 自動刷新功能
+const autoRefresh = useAutoRefresh(async () => {
+  if (!portfolioStore.loading && !portfolioStore.isPolling) {
+    console.log('🔄 自動刷新: 開始更新數據...');
+    await portfolioStore.fetchAll();
+    addToast('✅ 數據已自動更新', 'success');
+  }
+}, 5); // 5分鐘
+
 // 方法
 const scrollToDividends = () => {
-  showMobileTrade.value = false; // 關閉側邊欄以防遮擋
+  showMobileTrade.value = false;
   nextTick(() => {
     const dividendSection = document.querySelector('.section-dividends');
     if (dividendSection) {
@@ -216,7 +240,6 @@ const scrollToDividends = () => {
 
 const openMobileTrade = () => {
     showMobileTrade.value = true;
-    // 重置表單為新增模式
     if (tradeFormRef.value && tradeFormRef.value.resetForm) {
         tradeFormRef.value.resetForm();
     }
@@ -281,14 +304,11 @@ const handleEditRecord = (record) => {
     showMobileTrade.value = true;
   }
   
-  // 等待 DOM/Modal 渲染完成後再填充數據
   nextTick(() => {
     if (tradeFormRef.value) {
       tradeFormRef.value.setupForm(record);
       
       if (!isMobileView.value) {
-        // 桌面版不需要滾動，因為側邊欄已固定
-        // 但可以滾動到表單頂部確保可見
         const tradeFormEl = document.querySelector('.fixed-panel');
         if (tradeFormEl) {
           tradeFormEl.scrollTop = 0;
@@ -382,6 +402,46 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .select-wrapper select { background: transparent; border: none; font-size: 0.9rem; color: var(--text-main); font-weight: 600; outline: none; max-width: 120px; }
 
 .nav-status { display: flex; align-items: center; gap: 12px; }
+
+/* ✨ 自動刷新指示器 */
+.auto-refresh-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+  transition: all 0.2s;
+}
+
+.auto-refresh-indicator.paused {
+  color: var(--text-sub);
+  opacity: 0.7;
+}
+
+.refresh-icon {
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: transform 0.2s;
+}
+
+.refresh-icon:hover {
+  transform: scale(1.1);
+}
+
+.refresh-timer {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  min-width: 40px;
+  text-align: right;
+}
+
 .status-indicator { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 500; }
 .status-indicator.ready { color: var(--success); }
 .status-indicator.loading { color: var(--primary); }
@@ -411,11 +471,11 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); }
 .chart-wrapper.chart-full { height: 450px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 
-/* 🔒 固定面板 - 使用 position: fixed */
+/* 🔒 固定面板 */
 .fixed-panel {
   position: fixed;
   top: calc(var(--header-height) + 24px);
-  right: max(24px, calc((100vw - 1600px) / 2 + 24px)); /* 響應式右側對齊 */
+  right: max(24px, calc((100vw - 1600px) / 2 + 24px));
   width: 360px;
   max-height: calc(100vh - var(--header-height) - 48px);
   overflow-y: auto;
@@ -423,28 +483,14 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   flex-direction: column;
   gap: 20px;
   z-index: 10;
-  
-  /* 捲軸樣式優化 */
   scrollbar-width: thin;
   scrollbar-color: var(--border-color) transparent;
 }
 
-.fixed-panel::-webkit-scrollbar {
-  width: 6px;
-}
-
-.fixed-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.fixed-panel::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-}
-
-.fixed-panel::-webkit-scrollbar-thumb:hover {
-  background: var(--text-sub);
-}
+.fixed-panel::-webkit-scrollbar { width: 6px; }
+.fixed-panel::-webkit-scrollbar-track { background: transparent; }
+.fixed-panel::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+.fixed-panel::-webkit-scrollbar-thumb:hover { background: var(--text-sub); }
 
 /* FAB Button */
 .fab-btn {
@@ -485,14 +531,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .mobile-sheet-header h3 { margin: 0; font-size: 1.1rem; }
 .btn-close-sheet { background: none; border: none; font-size: 1.5rem; color: var(--text-sub); cursor: pointer; padding: 4px; }
 
-/* Mobile Sheet Content Adjustments */
-.mobile-sheet .fixed-panel { 
-  position: static; 
-  padding: 20px;
-  max-height: none;
-  width: 100%;
-  right: auto;
-}
+.mobile-sheet .fixed-panel { position: static; padding: 20px; max-height: none; width: 100%; right: auto; }
 
 /* Utilities */
 .desktop-only { display: inline-block; }
@@ -532,9 +571,12 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   .mobile-only { display: inline-block; }
   
   .top-nav { padding: 0 16px; height: 56px; }
-  .nav-status { gap: 12px; }
+  .nav-status { gap: 8px; }
   .group-selector { max-width: 140px; }
   .select-wrapper select { max-width: 100%; }
+  
+  .auto-refresh-indicator { padding: 6px 8px; }
+  .refresh-timer { display: none; }
   
   .action-trigger-btn { padding: 8px; border-radius: 50%; justify-content: center; width: 36px; height: 36px; }
   .action-trigger-btn span:first-child { margin: 0; font-size: 1.1rem; }
@@ -545,6 +587,6 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 @media (max-width: 480px) {
   .nav-brand h1 { font-size: 1.1rem; }
-  .group-selector { display: none; } /* 極小螢幕隱藏群組選擇，節省空間 */
+  .group-selector { display: none; }
 }
 </style>
