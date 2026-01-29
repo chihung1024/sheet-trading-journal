@@ -27,12 +27,12 @@
         <table>
           <thead>
             <tr>
-              <th width="110">除息日</th>
+              <th width="120">除息日</th>
               <th width="100">代碼</th>
               <th class="text-right" width="180">實發總額</th>
               <th class="text-right" width="160">稅金</th>
               <th class="text-right" width="140">淨額</th>
-              <th width="150">操作</th>
+              <th width="100">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -91,17 +91,10 @@
                     class="btn-action btn-confirm" 
                     @click="confirmDividend(div)"
                     :disabled="processingId === div.id"
+                    title="確認入帳"
                   >
                     <span v-if="processingId === div.id" class="spinner"></span>
                     <span v-else>✓</span>
-                  </button>
-                  <button 
-                    class="btn-action btn-delete" 
-                    @click="deleteDividend(div.id)"
-                    :disabled="processingId === div.id"
-                    title="忽略"
-                  >
-                    ✕
                   </button>
                 </div>
               </td>
@@ -182,13 +175,6 @@
           
           <!-- Card Footer -->
           <div class="card-footer">
-            <button 
-              class="btn-card btn-ignore" 
-              @click="deleteDividend(div.id)"
-              :disabled="processingId === div.id"
-            >
-              忽略
-            </button>
             <button 
               class="btn-card btn-submit" 
               @click="confirmDividend(div)"
@@ -272,13 +258,14 @@ const fetchDividends = async () => {
   }
 };
 
+// 修正：日期格式改為 YYYY-MM-DD
 const formatFullDate = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('zh-TW', { 
-    month: '2-digit', 
-    day: '2-digit' 
-  });
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const formatNumber = (val, d = 2) => {
@@ -298,12 +285,16 @@ const confirmDividend = async (div) => {
   
   processingId.value = div.id;
   try {
+    // 修正：計算正確的股數和單價
+    const shares = Number(div.shares) || 0;
+    const divPerShare = shares > 0 ? finalAmount / shares : 0;
+    
     const record = {
       txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
-      qty: 0,
-      price: 0,
+      qty: shares,                    // 使用 shares 欄位
+      price: divPerShare,             // 計算每股配息
       fee: 0,
       tax: finalTax,
       total_amount: finalAmount,
@@ -326,32 +317,6 @@ const confirmDividend = async (div) => {
   } catch (e) {
     console.error(e);
     addToast('入帳失敗', 'error');
-  } finally {
-    processingId.value = null;
-  }
-};
-
-const deleteDividend = async (id) => {
-  if (!confirm('確定要忽略這筆配息嗎？')) return;
-  processingId.value = id;
-  try {
-    const res = await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${id}`, {
-      method: 'DELETE',
-      headers: { 
-        'Authorization': `Bearer ${store.token || localStorage.getItem('token')}` 
-      }
-    });
-    if (res.ok) {
-      addToast('已移除', 'info');
-      localDividends.value = localDividends.value.filter(d => d.id !== id);
-      if (store.rawData && store.rawData.pending_dividends) {
-        store.rawData.pending_dividends = store.rawData.pending_dividends.filter(d => d.id !== id);
-      }
-    } else {
-      throw new Error('API delete failed');
-    }
-  } catch (e) {
-    addToast('移除失敗', 'error');
   } finally {
     processingId.value = null;
   }
@@ -625,18 +590,6 @@ td {
   transform: scale(1.05);
 }
 
-.btn-delete {
-  background: var(--bg-secondary);
-  color: var(--text-sub);
-  border: 1px solid var(--border-color);
-}
-
-.btn-delete:hover:not(:disabled) {
-  background: #fee2e2;
-  color: #dc2626;
-  border-color: #fca5a5;
-}
-
 .btn-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -833,20 +786,7 @@ td {
   border: none;
 }
 
-.btn-ignore {
-  background: var(--bg-secondary);
-  color: var(--text-sub);
-  border: 1px solid var(--border-color);
-}
-
-.btn-ignore:hover:not(:disabled) {
-  background: #fee2e2;
-  color: #dc2626;
-  border-color: #fca5a5;
-}
-
 .btn-submit {
-  flex: 2;
   background: var(--success);
   color: white;
 }
