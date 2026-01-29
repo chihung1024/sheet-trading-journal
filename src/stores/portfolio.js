@@ -71,6 +71,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         try {
             await fetchRecords();
             
+            // [v2.54] 從 API 獲取用戶的 benchmark 設定
+            try {
+                const settingsJson = await fetchWithAuth('/api/user-settings');
+                if (settingsJson && settingsJson.success && settingsJson.benchmark) {
+                    selectedBenchmark.value = settingsJson.benchmark;
+                    localStorage.setItem('user_benchmark', settingsJson.benchmark);
+                }
+            } catch (e) {
+                console.warn('無法載入 benchmark 設定，使用預設值', e);
+            }
+            
             if (records.value && records.value.length > 0) {
                 await fetchSnapshot();
             } else {
@@ -284,15 +295,39 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    // [v2.54] 修改 triggerUpdate 函數，先保存 benchmark 到資料庫
     const triggerUpdate = async (benchmark = null) => {
         const token = getToken();
         if (!token) throw new Error("請先登入"); 
         
-        const targetBenchmark = benchmark || selectedBenchmark.value;
-        if (benchmark) {
-            selectedBenchmark.value = benchmark;
-            localStorage.setItem('user_benchmark', benchmark);
+        // 如果提供了新的 benchmark，先保存到資料庫
+        if (benchmark && benchmark !== selectedBenchmark.value) {
+            try {
+                const saveResponse = await fetch(`${CONFIG.API_BASE_URL}/api/user-settings`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ benchmark: benchmark.toUpperCase().trim() })
+                });
+                
+                if (!saveResponse.ok) {
+                    throw new Error('無法保存 benchmark 設定');
+                }
+                
+                const saveJson = await saveResponse.json();
+                if (saveJson.success) {
+                    selectedBenchmark.value = saveJson.benchmark;
+                    localStorage.setItem('user_benchmark', saveJson.benchmark);
+                }
+            } catch (e) {
+                console.error('保存 benchmark 失敗:', e);
+                throw new Error('無法保存 benchmark 設定: ' + e.message);
+            }
         }
+        
+        const targetBenchmark = benchmark || selectedBenchmark.value;
         
         try {
             const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
