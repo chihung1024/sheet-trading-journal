@@ -310,13 +310,19 @@ watch(() => store.pending_dividends, (newVal) => {
       };
     });
     
-    // 清理已從後端消失的確認記錄
-    const currentKeys = new Set(newVal.map(d => getDivKey(d)));
+    // 🔥 關鍵修復：從 localStorage 中移除所有在 pending_dividends 中的配息 Key
+    // 這樣可以確保當用戶刪除交易記錄後，配息重新顯示為可編輯狀態
+    const pendingKeys = new Set(newVal.map(d => getDivKey(d)));
     const originalSize = confirmedKeys.value.size;
-    confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => currentKeys.has(key)));
+    
+    // 保留那些不在 pending_dividends 中的 Key（雖然這些 Key 對應的配息已經不在列表中了）
+    confirmedKeys.value = new Set(
+      [...confirmedKeys.value].filter(key => !pendingKeys.has(key))
+    );
     
     if (confirmedKeys.value.size !== originalSize) {
       saveConfirmedKeys();
+      console.log(`✨ 狀態同步：已從 localStorage 移除 ${originalSize - confirmedKeys.value.size} 個重新變成 pending 的配息`);
     }
   } else {
     localDividends.value = [];
