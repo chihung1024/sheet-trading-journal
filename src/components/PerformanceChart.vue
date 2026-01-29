@@ -186,13 +186,22 @@ const filterData = () => {
     const startDateOnly = new Date(start); startDateOnly.setHours(0,0,0,0);
     const endDateOnly = new Date(end); endDateOnly.setHours(23,59,59,999);
 
-    // ✅ 簡化基準線搜尋
-    let baseline = fullHistory.find((d, i) => {
-      if (i === fullHistory.length - 1) return true;
-      const itemDate = parseDate(d.date);
-      const nextDate = parseDate(fullHistory[i + 1].date);
-      return itemDate < startDateOnly && nextDate >= startDateOnly;
-    }) || fullHistory[0];
+    // ✅ 修復 baseline 選擇邏輯
+    let baseline = null;
+    
+    // 尋找區間開始前最近的數據點
+    for (let i = fullHistory.length - 1; i >= 0; i--) {
+        const itemDate = parseDate(fullHistory[i].date);
+        if (itemDate < startDateOnly) {
+            baseline = fullHistory[i];
+            break;
+        }
+    }
+    
+    // ✅ 如果找不到（例如 ALL 模式），使用第一個數據點
+    if (!baseline) {
+        baseline = fullHistory[0];
+    }
     
     baselineData.value = baseline;
 
