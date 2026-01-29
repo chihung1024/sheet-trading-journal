@@ -1,5 +1,6 @@
 <template>
   <div class="stats-grid">
+    <!-- 1️⃣ 總資產淨值 (最重要) -->
     <div class="stat-block primary-block">
       <div class="stat-top">
         <span class="stat-label">總資產淨值</span>
@@ -17,6 +18,26 @@
       </div>
     </div>
     
+    <!-- 2️⃣ 當日損益 (第二重要) -->
+    <div class="stat-block daily-pnl-block" :class="getPnlBgClass(dailyPnL)" :title="pnlTooltip">
+      <div class="stat-top">
+        <span class="stat-label">{{ pnlLabel }}</span>
+        <span class="icon-box" :class="{ 'pulse-icon': isUSMarketOpen }">⚡</span>
+      </div>
+      <div class="stat-main column-layout">
+        <div class="stat-value big" :class="getPnlTextClass(dailyPnL)">
+          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
+        </div>
+        <div class="stat-sub-value" :class="getPnlTextClass(dailyPnL)">
+          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
+        </div>
+      </div>
+      <div class="stat-footer">
+        <span class="text-sub text-xs footer-desc">{{ pnlDescription }}</span>
+      </div>
+    </div>
+    
+    <!-- 3️⃣ 未實現損益 -->
     <div class="stat-block" :class="getPnlBgClass(unrealizedPnL)">
       <div class="stat-top">
         <span class="stat-label">未實現損益</span>
@@ -34,6 +55,7 @@
       </div>
     </div>
     
+    <!-- 4️⃣ 已實現損益 -->
     <div class="stat-block" :class="getPnlBgClass(realizedPnL)">
       <div class="stat-top">
         <span class="stat-label">已實現損益</span>
@@ -49,24 +71,7 @@
       </div>
     </div>
     
-    <div class="stat-block" :class="getPnlBgClass(dailyPnL)" :title="pnlTooltip">
-      <div class="stat-top">
-        <span class="stat-label">{{ pnlLabel }}</span>
-        <span class="icon-box" :class="{ 'pulse-icon': isUSMarketOpen }">⚡</span>
-      </div>
-      <div class="stat-main column-layout">
-        <div class="stat-value" :class="getPnlTextClass(dailyPnL)">
-          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
-        </div>
-        <div class="stat-sub-value" :class="getPnlTextClass(dailyPnL)">
-          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs footer-desc">{{ pnlDescription }}</span>
-      </div>
-    </div>
-    
+    <!-- 5️⃣ 時間加權報酬率 -->
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">時間加權報酬</span>
@@ -80,6 +85,7 @@
       </div>
     </div>
     
+    <!-- 6️⃣ 個人年化報酬率 -->
     <div class="stat-block" :class="getPnlBgClass(stats.xirr)">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
@@ -329,6 +335,10 @@ const getPnlBgClass = (val) => {
 
 .stat-value.big {
     font-size: 2.2rem;
+}
+
+/* 總資產的特殊漸層效果 */
+.primary-block .stat-value.big {
     background: linear-gradient(90deg, var(--text-main), var(--text-sub));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -357,7 +367,7 @@ const getPnlBgClass = (val) => {
     display: flex; 
     align-items: center; 
     justify-content: space-between;
-    min-height: 32px; /* 確保高度一致 */
+    min-height: 32px;
 }
 
 .footer-item { 
@@ -403,16 +413,16 @@ const getPnlBgClass = (val) => {
 /* RWD: 中尺寸螢幕 (Tablets) */
 @media (max-width: 1024px) { 
     .stats-grid { 
-        grid-template-columns: repeat(2, 1fr); /* 改為 2 欄 */
+        grid-template-columns: repeat(2, 1fr);
         gap: 16px;
     } 
     .stat-value.big { font-size: 2rem; }
 }
 
-/* RWD: 手機版優化 (Mobile) */
+/* RWD: 手機版優化 (Mobile) - 重新設計佈局 */
 @media (max-width: 768px) { 
     .stats-grid { 
-        grid-template-columns: repeat(2, 1fr); /* 強制維持 2 欄，增加資訊密度 */
+        grid-template-columns: repeat(2, 1fr); /* 基礎 2 欄佈局 */
         gap: 12px;
     }
     
@@ -421,10 +431,20 @@ const getPnlBgClass = (val) => {
         min-height: 100px;
     }
     
-    /* 總資產在手機上獨佔一行，突顯重要性 */
-    .stat-block:first-child {
-        grid-column: span 2; 
+    /* 1️⃣ 總資產淨值 - 獨佔第一行 */
+    .stat-block:nth-child(1) {
+        grid-column: span 2;
     }
+    
+    /* 2️⃣ 當日損益 - 獨佔第二行（與資產淨值同等重要）*/
+    .stat-block.daily-pnl-block {
+        grid-column: span 2;
+        border-left: 4px solid var(--warning); /* 使用警示色突顯重要性 */
+    }
+    
+    /* 3️⃣ 4️⃣ 未實現、已實現 - 並排第三行 */
+    /* 5️⃣ 6️⃣ TWR、XIRR - 並排第四行 */
+    /* 這些保持默認的 2 欄佈局即可 */
 
     .stat-top { margin-bottom: 8px; }
     .stat-label { font-size: 0.75rem; }
@@ -445,7 +465,7 @@ const getPnlBgClass = (val) => {
         min-height: auto;
     }
     
-    /* 手機上隱藏過長說明，保持簡潔 */
+    /* 手機上隱藏過長說明 */
     .footer-desc {
         white-space: nowrap;
         overflow: hidden;
