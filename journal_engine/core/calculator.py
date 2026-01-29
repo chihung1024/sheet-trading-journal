@@ -22,7 +22,7 @@ class PortfolioCalculator:
         :param transactions_df: 交易紀錄 DataFrame
         :param market_client: 市場數據客戶端
         :param benchmark_ticker: 基準標的代碼 (例如 'SPY', 'QQQ', '0050.TW')
-        :param api_client: [v2.53] API 客戶端，用於刪除衝突記錄
+        :param api_client: [v2.53] API 客戶端，用於刪除重複/衝突記錄
         """
         self.df = transactions_df
         self.market = market_client
@@ -33,8 +33,8 @@ class PortfolioCalculator:
         self.validator = PortfolioValidator()  # [v2.48] 新增
         
         # [v2.53] 重複配息檢測結果
-        self.duplicate_div_ids = set()  # 需要忽略的重複記錄ID
-        self.conflict_div_info = {}  # 衝突配息詳情: {div_key: [record_ids]}
+        self.duplicate_div_info = {}  # [v2.53 升級] 重複記錄詳情: {div_key: [record_ids]} (保留第一筆，刪除其他)
+        self.conflict_div_info = {}  # 衝突配息詳情: {div_key: [record_ids]} (全部刪除)
 
     def _is_taiwan_stock(self, symbol):
         """[v2.48] 判断是否為台股(不需匯率轉換)"""
@@ -129,28 +129,28 @@ class PortfolioCalculator:
 
     def _detect_duplicate_dividends(self, df):
         """
-        [v2.53] 檢測重複的配息記錄並智能處理
+        [v2.53 升級] 檢測重複的配息記錄並智能處理
         
         規則：
         1. 同一股票同一天有多筆 DIV 記錄
-        2. 如果數據完全相同（金額、數量一致）→ 保留最早一筆，標記其他為重複
+        2. 如果數據完全相同（金額、數量一致）→ 標記為重複，保留第一筆，刪除其他
         3. 如果數據不同 → 標記為衝突，刪除所有記錄後退回待確認
         
-        返回：(duplicate_ids, conflict_info)
-        - duplicate_ids: 需要忽略的重複記錄ID集合
-        - conflict_info: 衝突配息詳情 {div_key: [record_ids]}
+        返回：(duplicate_info, conflict_info)
+        - duplicate_info: 重複記錄詳情 {div_key: [ids_to_delete]} (保留第一筆)
+        - conflict_info: 衝突配息詳情 {div_key: [all_record_ids]} (全部刪除)
         """
         logger.info("[v2.53] 開始檢測重複配息記錄...")
         
         div_txs = df[df['Type'] == 'DIV'].copy()
         if div_txs.empty:
             logger.info("[v2.53] 無配息記錄，跳過檢測")
-            return set(), {}
+            return {}, {}
         
         # 確保有 id 欄位
         if 'id' not in div_txs.columns:
             logger.warning("[v2.53] 配息記錄缺少 'id' 欄位，無法進行重複檢測")
-            return set(), {}
+            return {}, {}
         
         # 按 symbol + date 分組
         div_txs['date_str'] = div_txs['Date'].dt.strftime('%Y-%m-%d')
@@ -158,7 +158,7 @@ class PortfolioCalculator:
         
         grouped = div_txs.groupby('div_key')
         
-        duplicate_ids = set()
+        duplicate_info = {}
         conflict_info = {}
         
         for div_key, group in grouped:
@@ -184,11 +184,15 @@ class PortfolioCalculator:
                     logger.info(f"  記錄 {row['id']}: Qty={row['Qty']}, Price={row['Price']} (與第一筆相同)")
             
             if all_same:
-                # 數據相同：保留第一筆（通常是最早的），標記其他為重複
+                # [v2.53 升級] 數據相同：保留第一筆，刪除其他重複記錄
                 keep_id = group.iloc[0]['id']
+                ids_to_delete = []
+                
                 for idx, row in group.iloc[1:].iterrows():
-                    duplicate_ids.add(row['id'])
-                    logger.info(f"  ✓ 標記記錄 {row['id']} 為重複（保留 {keep_id}）")
+                    ids_to_delete.append(row['id'])
+                    logger.info(f"  ⚠️ 標記記錄 {row['id']} 為重複（保留 {keep_id}，將刪除此記錄）")
+                
+                duplicate_info[div_key] = ids_to_delete
             else:
                 # 數據不同：標記為衝突，記錄所有 ID 以便刪除
                 conflict_ids = group['id'].tolist()
@@ -196,15 +200,44 @@ class PortfolioCalculator:
                 logger.error(f"  ✗ {div_key} 的多筆記錄數據不一致，標記為衝突！")
                 logger.error(f"    將刪除這些記錄: {conflict_ids}")
         
-        if duplicate_ids:
-            logger.info(f"[v2.53] 檢測完成：發現 {len(duplicate_ids)} 筆重複記錄將被忽略")
+        if duplicate_info:
+            total_duplicates = sum(len(ids) for ids in duplicate_info.values())
+            logger.info(f"[v2.53] 檢測完成：發現 {total_duplicates} 筆重複記錄將被刪除")
         if conflict_info:
             logger.error(f"[v2.53] 警告：發現 {len(conflict_info)} 個配息衝突需要處理")
         
-        if not duplicate_ids and not conflict_info:
+        if not duplicate_info and not conflict_info:
             logger.info("[v2.53] 檢測完成：未發現重複或衝突")
         
-        return duplicate_ids, conflict_info
+        return duplicate_info, conflict_info
+
+    def _handle_duplicate_dividends(self):
+        """
+        [v2.53 新增] 處理重複的配息記錄：刪除重複記錄（保留第一筆）
+        """
+        if not self.duplicate_div_info:
+            return
+        
+        if not self.api_client:
+            logger.error("[v2.53] 無法刪除重複記錄：api_client 未提供")
+            return
+        
+        logger.info(f"[v2.53] 開始處理 {len(self.duplicate_div_info)} 個重複配息...")
+        
+        all_duplicate_ids = []
+        for div_key, record_ids in self.duplicate_div_info.items():
+            logger.info(f"[v2.53] 處理重複: {div_key} (保留1筆，刪除 {len(record_ids)} 筆重複)")
+            all_duplicate_ids.extend(record_ids)
+        
+        # 批量刪除
+        result = self.api_client.delete_records(all_duplicate_ids)
+        
+        if result['success'] > 0:
+            logger.info(f"[v2.53] ✓ 成功刪除 {result['success']} 筆重複記錄")
+            logger.info(f"[v2.53] ✓ 交易列表現在只顯示保留的記錄")
+        
+        if result['failed'] > 0:
+            logger.error(f"[v2.53] ✗ 刪除失敗 {result['failed']} 筆: {result['failed_ids']}")
 
     def _handle_conflict_dividends(self):
         """
@@ -236,11 +269,14 @@ class PortfolioCalculator:
             logger.error(f"[v2.53] ✗ 刪除失敗 {result['failed']} 筆: {result['failed_ids']}")
 
     def run(self):
-        """執行多群組投資組合計算主流程 (v2.48 Automated + v2.52 FX Fix + v2.53 Conflict Auto-Delete)"""
+        """執行多群組投資組合計算主流程 (v2.48 Automated + v2.52 FX Fix + v2.53 Auto-Delete Duplicates)"""
         logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
         
         # [v2.53] 在計算開始前檢測重複配息
-        self.duplicate_div_ids, self.conflict_div_info = self._detect_duplicate_dividends(self.df)
+        self.duplicate_div_info, self.conflict_div_info = self._detect_duplicate_dividends(self.df)
+        
+        # [v2.53 升級] 處理重複：刪除重複記錄（保留第一筆）
+        self._handle_duplicate_dividends()
         
         # [v2.53] 處理衝突：刪除所有衝突記錄
         self._handle_conflict_dividends()
@@ -364,7 +400,7 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.48 Automated + v2.53 Conflict Skip)"""
+        """單一群組的核心計算邏輯 (v2.48 Automated + v2.53 Clean List)"""
         
         txn_analyzer = TransactionAnalyzer(df)
         
@@ -381,15 +417,10 @@ class PortfolioCalculator:
         last_market_value_twd = 0.0
         first_benchmark_val_twd = None
 
-        # [v2.53] 過濾重複的 DIV 記錄（衝突的已刪除，不需處理）
+        # [v2.53 簡化] 建立 confirmed_dividends（重複記錄已刪除，不需特殊處理）
         div_txs = df[df['Type'] == 'DIV'].copy()
         
         for _, row in div_txs.iterrows():
-            # 跳過重複記錄
-            if 'id' in row and row['id'] in self.duplicate_div_ids:
-                logger.info(f"[v2.53] 跳過重複配息記錄: {row['Symbol']} {row['Date'].strftime('%Y-%m-%d')} (ID: {row['id']})")
-                continue
-            
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             confirmed_dividends.add(key)
 
@@ -430,7 +461,6 @@ class PortfolioCalculator:
         for d in date_range:
             current_date = d.date()
             
-            # [v2.52 Fix] 在迴圈中，獲取當日對應的匯率 (供下單計算用)
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
@@ -502,10 +532,7 @@ class PortfolioCalculator:
                     daily_net_cashflow_twd -= proceeds_twd
 
                 elif row['Type'] == 'DIV':
-                    # [v2.53] 跳過重複的 DIV 記錄
-                    if 'id' in row and row['id'] in self.duplicate_div_ids:
-                        continue
-                    
+                    # [v2.53 簡化] 重複記錄已刪除，直接處理
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_twd = row['Price'] * effective_fx
                     total_realized_pnl_twd += div_twd
@@ -520,10 +547,9 @@ class PortfolioCalculator:
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_key = f"{sym}_{date_str}"
                     
-                    # [v2.53] 跳過衝突記錄（已刪除，會重新出現在 pending）
+                    # [v2.53] 檢查是否為衝突（已刪除的配息）
                     if div_key in [k for k in self.conflict_div_info.keys()]:
                         logger.info(f"[v2.53] 跳過衝突配息: {div_key} (已刪除，將重新顯示在待確認區)")
-                        # 不加入 confirmed_dividends，讓它顯示為 pending
                         is_confirmed = False
                     else:
                         is_confirmed = div_key in confirmed_dividends
