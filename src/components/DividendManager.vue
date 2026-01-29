@@ -258,7 +258,6 @@ const fetchDividends = async () => {
   }
 };
 
-// 修正：日期格式改為 YYYY-MM-DD
 const formatFullDate = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -281,42 +280,86 @@ const confirmDividend = async (div) => {
   const netAmount = finalAmount - finalTax;
   const currency = getCurrency(div.symbol);
   
+  if (finalAmount === 0) {
+    addToast('請輸入實發總額', 'error');
+    return;
+  }
+  
   if (!confirm(`確認將 ${div.symbol} 的配息 ${currency} ${formatNumber(netAmount)} 入帳嗎？`)) return;
   
   processingId.value = div.id;
+  
   try {
-    // 修正：計算正確的股數和單價
-    const shares = Number(div.shares) || 0;
-    const divPerShare = shares > 0 ? finalAmount / shares : 0;
+    // 嘗試從多個可能的欄位獲取持股數量
+    let shares = 0;
+    
+    // 優先順序：shares > qty > quantity > holding_qty
+    if (div.shares !== undefined && div.shares !== null) {
+      shares = Number(div.shares);
+    } else if (div.qty !== undefined && div.qty !== null) {
+      shares = Number(div.qty);
+    } else if (div.quantity !== undefined && div.quantity !== null) {
+      shares = Number(div.quantity);
+    } else if (div.holding_qty !== undefined && div.holding_qty !== null) {
+      shares = Number(div.holding_qty);
+    }
+    
+    console.log('配息數據:', {
+      symbol: div.symbol,
+      shares: shares,
+      amount: finalAmount,
+      tax: finalTax,
+      raw_div: div
+    });
+    
+    // 如果沒有持股數據，使用總額作為記錄
+    const divPerShare = shares > 0 ? finalAmount / shares : finalAmount;
+    const recordQty = shares > 0 ? shares : 1; // 如果沒有股數，記為1股
     
     const record = {
       txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
-      qty: shares,                    // 使用 shares 欄位
-      price: divPerShare,             // 計算每股配息
+      qty: recordQty,
+      price: divPerShare,
       fee: 0,
       tax: finalTax,
       total_amount: finalAmount,
       tag: 'Auto-Dividend'
     };
+    
+    console.log('準備新增記錄:', record);
 
     const success = await store.addRecord(record);
+    
     if (success) {
-      await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
-        method: 'DELETE',
-        headers: { 
-          'Authorization': `Bearer ${store.token || localStorage.getItem('token')}` 
-        }
-      }).catch(err => console.warn('刪除 pending 失敗', err));
+      // 先從本地列表移除
+      localDividends.value = localDividends.value.filter(d => d.id !== div.id);
+      
+      // 刪除 pending_dividends
+      try {
+        await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
+          method: 'DELETE',
+          headers: { 
+            'Authorization': `Bearer ${store.token || localStorage.getItem('token')}` 
+          }
+        });
+      } catch (err) {
+        console.warn('刪除 pending 失敗', err);
+      }
 
       addToast(`${div.symbol} 配息已入帳`, 'success');
-      localDividends.value = localDividends.value.filter(d => d.id !== div.id);
-      setTimeout(async () => { await store.fetchAll(); }, 500);
+      
+      // 立即刷新所有數據
+      setTimeout(async () => {
+        await store.fetchAll();
+      }, 300);
+    } else {
+      addToast('入帳失敗：無法新增記錄', 'error');
     }
   } catch (e) {
-    console.error(e);
-    addToast('入帳失敗', 'error');
+    console.error('確認配息錯誤:', e);
+    addToast(`入帳失敗: ${e.message || '未知錯誤'}`, 'error');
   } finally {
     processingId.value = null;
   }
