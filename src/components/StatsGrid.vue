@@ -1,6 +1,6 @@
 <template>
   <div class="stats-grid">
-    <!-- 1️⃣ 總資產淨值 (最重要) -->
+    <!-- 1️⃣ 總資產淨值 -->
     <div class="stat-block primary-block">
       <div class="stat-top">
         <span class="stat-label">總資產淨值</span>
@@ -18,26 +18,7 @@
       </div>
     </div>
     
-    <!-- 2️⃣ 當日損益 (第二重要) -->
-    <div class="stat-block daily-pnl-block" :class="getPnlBgClass(dailyPnL)" :title="pnlTooltip">
-      <div class="stat-top">
-        <span class="stat-label">{{ pnlLabel }}</span>
-        <span class="icon-box" :class="{ 'pulse-icon': isUSMarketOpen }">⚡</span>
-      </div>
-      <div class="stat-main column-layout">
-        <div class="stat-value big" :class="getPnlTextClass(dailyPnL)">
-          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
-        </div>
-        <div class="stat-sub-value" :class="getPnlTextClass(dailyPnL)">
-          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
-        </div>
-      </div>
-      <div class="stat-footer">
-        <span class="text-sub text-xs footer-desc">{{ pnlDescription }}</span>
-      </div>
-    </div>
-    
-    <!-- 3️⃣ 未實現損益 -->
+    <!-- 2️⃣ 未實現損益 -->
     <div class="stat-block" :class="getPnlBgClass(unrealizedPnL)">
       <div class="stat-top">
         <span class="stat-label">未實現損益</span>
@@ -55,7 +36,7 @@
       </div>
     </div>
     
-    <!-- 4️⃣ 已實現損益 -->
+    <!-- 3️⃣ 已實現損益 -->
     <div class="stat-block" :class="getPnlBgClass(realizedPnL)">
       <div class="stat-top">
         <span class="stat-label">已實現損益</span>
@@ -68,6 +49,25 @@
       </div>
       <div class="stat-footer">
         <span class="text-sub text-xs footer-desc">賣出收益 + 配息</span>
+      </div>
+    </div>
+    
+    <!-- 4️⃣ 當日損益 -->
+    <div class="stat-block daily-pnl-block" :class="getPnlBgClass(dailyPnL)" :title="pnlTooltip">
+      <div class="stat-top">
+        <span class="stat-label">{{ pnlLabel }}</span>
+        <span class="icon-box" :class="{ 'pulse-icon': isUSMarketOpen }">⚡</span>
+      </div>
+      <div class="stat-main column-layout">
+        <div class="stat-value" :class="getPnlTextClass(dailyPnL)">
+          {{ dailyPnL >= 0 ? '+' : '' }}{{ displayDaily }}
+        </div>
+        <div class="stat-sub-value" :class="getPnlTextClass(dailyPnL)">
+          ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
+        </div>
+      </div>
+      <div class="stat-footer">
+        <span class="text-sub text-xs footer-desc">{{ pnlDescription }}</span>
       </div>
     </div>
     
@@ -225,7 +225,7 @@ const getPnlBgClass = (val) => {
 /* 核心 Grid 佈局 */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr); /* 桌面版維持 3 欄 */
+    grid-template-columns: repeat(3, 1fr); /* 桌面版 3 欄 */
     gap: 20px;
 }
 
@@ -419,10 +419,10 @@ const getPnlBgClass = (val) => {
     .stat-value.big { font-size: 2rem; }
 }
 
-/* RWD: 手機版優化 (Mobile) - 重新設計佈局 */
+/* RWD: 手機版優化 (Mobile) - 使用 order 重新排序 */
 @media (max-width: 768px) { 
     .stats-grid { 
-        grid-template-columns: repeat(2, 1fr); /* 基礎 2 欄佈局 */
+        grid-template-columns: repeat(2, 1fr);
         gap: 12px;
     }
     
@@ -431,20 +431,44 @@ const getPnlBgClass = (val) => {
         min-height: 100px;
     }
     
-    /* 1️⃣ 總資產淨值 - 獨佔第一行 */
+    /* ✅ 使用 CSS Grid order 重新排序，保持 DOM 結構不變 */
+    /* 1️⃣ 總資產淨值 - 第一行獨佔 */
     .stat-block:nth-child(1) {
+        order: 1;
         grid-column: span 2;
     }
     
-    /* 2️⃣ 當日損益 - 獨佔第二行（與資產淨值同等重要）*/
+    /* 2️⃣ 當日損益 - 第二行獨佔（提升為第二重要） */
     .stat-block.daily-pnl-block {
+        order: 2;
         grid-column: span 2;
-        border-left: 4px solid var(--warning); /* 使用警示色突顯重要性 */
+        border-left: 4px solid var(--warning);
     }
     
-    /* 3️⃣ 4️⃣ 未實現、已實現 - 並排第三行 */
-    /* 5️⃣ 6️⃣ TWR、XIRR - 並排第四行 */
-    /* 這些保持默認的 2 欄佈局即可 */
+    /* 3️⃣ 未實現損益 - 第三行左側 */
+    .stat-block:nth-child(2) {
+        order: 3;
+    }
+    
+    /* 4️⃣ 已實現損益 - 第三行右側 */
+    .stat-block:nth-child(3) {
+        order: 4;
+    }
+    
+    /* 5️⃣ TWR - 第四行左側 */
+    .stat-block:nth-child(5) {
+        order: 5;
+    }
+    
+    /* 6️⃣ XIRR - 第四行右側 */
+    .stat-block:nth-child(6) {
+        order: 6;
+    }
+    
+    /* 當日損益在手機版放大字體 */
+    .daily-pnl-block .stat-value {
+        font-size: 1.8rem;
+    }
 
     .stat-top { margin-bottom: 8px; }
     .stat-label { font-size: 0.75rem; }
