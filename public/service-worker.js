@@ -1,21 +1,17 @@
 /**
- * Service Worker: Trading Journal PRO (v20260127)
- * 優化重點：SPA 離線路由支援、Google Fonts 快取策略、激進的版本清理
+ * Service Worker: Trading Journal PRO (v20260130)
+ * 修復：過濾 chrome-extension:// 協議避免緩存錯誤
  */
 
-const CACHE_NAME = 'journal-pro-v20260127'; // ✅ 更新版本號以強制刷新 UI
-const RUNTIME_CACHE = 'runtime-v20260127';
+const CACHE_NAME = 'journal-pro-v20260130';
+const RUNTIME_CACHE = 'runtime-v20260130';
 const FONT_CACHE = 'fonts-v1';
 
 // 核心靜態資源 (App Shell)
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-  // 注意：main.js 與 style.css 由 Vite 打包後檔名會帶 hash，
-  // 這裡不寫死，改由下方的 Runtime Caching 動態捕捉
+  '/manifest.json'
 ];
 
 // 1. 安裝階段：預先快取核心檔案
@@ -23,10 +19,12 @@ self.addEventListener('install', (event) => {
   console.log('[SW] Installing new version...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(STATIC_ASSETS).catch((err) => {
+        console.warn('[SW] Failed to cache some assets:', err);
+      });
     })
   );
-  self.skipWaiting(); // 強制跳過等待，立即接管
+  self.skipWaiting();
 });
 
 // 2. 激活階段：清理舊快取
@@ -54,12 +52,15 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // ✅ [修復] 過濾掉不支援的協議 (chrome-extension, chrome, about 等)
+  if (!request.url.startsWith('http://') && !request.url.startsWith('https://')) {
+    return; // 不處理，讓瀏覽器默認處理
+  }
+
   // 3-1. API 請求：絕對網路優先 (Network Only)
-  // 確保財務數據永遠即時，絕不讀取快取
   if (url.pathname.includes('/api/')) {
     event.respondWith(
       fetch(request).catch(() => {
-        // 離線時回傳標準錯誤 JSON
         return new Response(
           JSON.stringify({ success: false, message: 'Offline Mode: 無法連接伺服器' }),
           { 
@@ -73,7 +74,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 3-2. Google Fonts 字體檔 (woff2)：快取優先 (Cache First)
-  // 字體檔案不常變動且體積大，適合長期快取
   if (url.hostname === 'fonts.gstatic.com') {
     event.respondWith(
       caches.match(request).then((response) => {
@@ -104,7 +104,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3-4. SPA 頁面導航 (HTML)：網路優先，失敗則回退到 index.html
+  // 3-4. SPA 頁面導航 (HTML)：網路優先
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -116,7 +116,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 3-5. 靜態資源 (JS, CSS, Images)：網路優先 (Network First)
-  // 確保使用者總是用到最新發布的程式碼
   if (
     request.destination === 'script' ||
     request.destination === 'style' ||
@@ -125,7 +124,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // 只快取成功的請求
+          // 只快取成功的 HTTP(S) 請求
           if (response && response.status === 200 && response.type === 'basic') {
             const responseToCache = response.clone();
             caches.open(RUNTIME_CACHE).then((cache) => {
