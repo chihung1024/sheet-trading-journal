@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import logging
 import pytz
-from collections import deque
+from collections import deque, defaultdict
 from datetime import datetime, timedelta
 from pyxirr import xirr
 from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, DividendRecord, PortfolioGroupData
@@ -29,6 +29,10 @@ class PortfolioCalculator:
         self.pnl_helper = DailyPnLHelper()
         self.currency_detector = CurrencyDetector()  # [v2.48] 新增
         self.validator = PortfolioValidator()  # [v2.48] 新增
+        
+        # [v2.53] 重複配息檢測結果
+        self.duplicate_div_ids = set()  # 需要忽略的重複記錄ID
+        self.conflict_div_keys = set()  # 數據衝突的配息key
 
     def _is_taiwan_stock(self, symbol):
         """[v2.48] 判斷是否為台股(不需匯率轉換)"""
@@ -121,9 +125,90 @@ class PortfolioCalculator:
             logger.debug(f"[v2.52] {symbol} 美股盤中: 使用今日即時價格 ({price}) x 今日即時匯率 ({fx_to_use:.4f})")
             return price, self._get_effective_fx_rate(symbol, fx_to_use)
 
+    def _detect_duplicate_dividends(self, df):
+        """
+        [v2.53] 檢測重複的配息記錄並智能處理
+        
+        規則：
+        1. 同一股票同一天有多筆 DIV 記錄
+        2. 如果數據完全相同（金額、數量一致）→ 保留最早一筆，標記其他為重複
+        3. 如果數據不同 → 標記為衝突，需要手動檢查
+        
+        返回：(duplicate_ids, conflict_keys)
+        - duplicate_ids: 需要忽略的重複記錄ID集合
+        - conflict_keys: 數據衝突的配息key集合（symbol_date格式）
+        """
+        logger.info("[v2.53] 開始檢測重複配息記錄...")
+        
+        div_txs = df[df['Type'] == 'DIV'].copy()
+        if div_txs.empty:
+            logger.info("[v2.53] 無配息記錄，跳過檢測")
+            return set(), set()
+        
+        # 確保有 id 欄位
+        if 'id' not in div_txs.columns:
+            logger.warning("[v2.53] 配息記錄缺少 'id' 欄位，無法進行重複檢測")
+            return set(), set()
+        
+        # 按 symbol + date 分組
+        div_txs['date_str'] = div_txs['Date'].dt.strftime('%Y-%m-%d')
+        div_txs['div_key'] = div_txs['Symbol'] + '_' + div_txs['date_str']
+        
+        grouped = div_txs.groupby('div_key')
+        
+        duplicate_ids = set()
+        conflict_keys = set()
+        
+        for div_key, group in grouped:
+            if len(group) <= 1:
+                continue  # 只有一筆，正常
+            
+            logger.warning(f"[v2.53] 檢測到 {div_key} 有 {len(group)} 筆配息記錄")
+            
+            # 檢查數據是否相同
+            # 比較: Qty (股數) 和 Price (每股配息淨額)
+            first_row = group.iloc[0]
+            all_same = True
+            
+            for idx, row in group.iterrows():
+                # 使用容差比較浮點數
+                qty_diff = abs(row['Qty'] - first_row['Qty'])
+                price_diff = abs(row['Price'] - first_row['Price'])
+                
+                if qty_diff > 1e-4 or price_diff > 1e-4:
+                    all_same = False
+                    logger.warning(f"  記錄 {row['id']}: Qty={row['Qty']}, Price={row['Price']} (與第一筆不同)")
+                else:
+                    logger.info(f"  記錄 {row['id']}: Qty={row['Qty']}, Price={row['Price']} (與第一筆相同)")
+            
+            if all_same:
+                # 數據相同：保留第一筆（通常是最早的），標記其他為重複
+                keep_id = group.iloc[0]['id']
+                for idx, row in group.iloc[1:].iterrows():
+                    duplicate_ids.add(row['id'])
+                    logger.info(f"  ✓ 標記記錄 {row['id']} 為重複（保留 {keep_id}）")
+            else:
+                # 數據不同：標記為衝突
+                conflict_keys.add(div_key)
+                logger.error(f"  ✗ {div_key} 的多筆記錄數據不一致，標記為衝突！")
+                logger.error(f"    建議：手動檢查這些記錄並刪除不正確的")
+        
+        if duplicate_ids:
+            logger.info(f"[v2.53] 檢測完成：發現 {len(duplicate_ids)} 筆重複記錄將被忽略")
+        if conflict_keys:
+            logger.error(f"[v2.53] 警告：發現 {len(conflict_keys)} 個配息衝突需要處理：{conflict_keys}")
+        
+        if not duplicate_ids and not conflict_keys:
+            logger.info("[v2.53] 檢測完成：未發現重複或衝突")
+        
+        return duplicate_ids, conflict_keys
+
     def run(self):
-        """執行多群組投資組合計算主流程 (v2.48 Automated + v2.52 FX Fix)"""
+        """執行多群組投資組合計算主流程 (v2.48 Automated + v2.52 FX Fix + v2.53 Duplicate Detection)"""
         logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
+        
+        # [v2.53] 在計算開始前檢測重複配息
+        self.duplicate_div_ids, self.conflict_div_keys = self._detect_duplicate_dividends(self.df)
         
         # [v2.52] 優先使用 market_data 中的即時匯率
         # 這確保了 current_fx 變數持有的是最新的台幣匯率
@@ -245,7 +330,7 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.48 Automated)"""
+        """單一群組的核心計算邏輯 (v2.48 Automated + v2.53 Duplicate Handling)"""
         
         txn_analyzer = TransactionAnalyzer(df)
         
@@ -262,8 +347,15 @@ class PortfolioCalculator:
         last_market_value_twd = 0.0
         first_benchmark_val_twd = None
 
-        div_txs = df[df['Type'] == 'DIV']
+        # [v2.53] 過濾重複的 DIV 記錄
+        div_txs = df[df['Type'] == 'DIV'].copy()
+        
         for _, row in div_txs.iterrows():
+            # 跳過重複記錄
+            if 'id' in row and row['id'] in self.duplicate_div_ids:
+                logger.info(f"[v2.53] 跳過重複配息記錄: {row['Symbol']} {row['Date'].strftime('%Y-%m-%d')} (ID: {row['id']})")
+                continue
+            
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
             confirmed_dividends.add(key)
 
@@ -376,6 +468,10 @@ class PortfolioCalculator:
                     daily_net_cashflow_twd -= proceeds_twd
 
                 elif row['Type'] == 'DIV':
+                    # [v2.53] 跳過重複的 DIV 記錄
+                    if 'id' in row and row['id'] in self.duplicate_div_ids:
+                        continue
+                    
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_twd = row['Price'] * effective_fx
                     total_realized_pnl_twd += div_twd
@@ -389,6 +485,12 @@ class PortfolioCalculator:
                 if div_per_share > 0 and h_data['qty'] > 1e-6:
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_key = f"{sym}_{date_str}"
+                    
+                    # [v2.53] 檢查是否為衝突記錄
+                    if div_key in self.conflict_div_keys:
+                        logger.warning(f"[v2.53] 跳過衝突配息: {div_key} (需要手動處理)")
+                        continue
+                    
                     is_confirmed = div_key in confirmed_dividends
                     
                     split_factor = self.market.get_transaction_multiplier(sym, d)
