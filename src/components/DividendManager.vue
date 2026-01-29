@@ -223,25 +223,23 @@ const store = usePortfolioStore();
 const { addToast } = useToast();
 
 const loading = ref(false);
-const processingKey = ref(null);  // 改用 key 而不是 id
+const processingKey = ref(null);
 const localDividends = ref([]);
-const confirmedKeys = ref(new Set()); // 追蹤已確認的配息 Key (symbol_date)
+const confirmedKeys = ref(new Set());
 
 const STORAGE_KEY = 'confirmed_dividend_keys';
 
-// 🔑 生成配息的唯一 Key
+// 生成配息的唯一 Key (symbol_date)
 const getDivKey = (div) => {
   return `${div.symbol}_${div.ex_date}`;
 };
 
-// 從 localStorage 載入已確認的 Key
+// 從 localStorage 載入已確認的配息
 const loadConfirmedKeys = () => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored);
-      confirmedKeys.value = new Set(parsed);
-      console.log('📦 已載入持久化的已確認配息:', parsed);
+      confirmedKeys.value = new Set(JSON.parse(stored));
     }
   } catch (e) {
     console.error('載入已確認配息失敗:', e);
@@ -249,18 +247,15 @@ const loadConfirmedKeys = () => {
   }
 };
 
-// 保存已確認的 Key 到 localStorage
+// 保存已確認的配息到 localStorage
 const saveConfirmedKeys = () => {
   try {
-    const array = Array.from(confirmedKeys.value);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(array));
-    console.log('💾 已保存已確認配息:', array);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(confirmedKeys.value)));
   } catch (e) {
     console.error('保存已確認配息失敗:', e);
   }
 };
 
-// 組件掛載時載入持久化狀態
 onMounted(() => {
   loadConfirmedKeys();
 });
@@ -273,7 +268,6 @@ const getCurrency = (symbol) => {
   return isTWStock(symbol) ? 'TWD' : 'USD';
 };
 
-// 計算稅率百分比
 const getTaxRate = (div) => {
   const amount = Number(div.amount) || 0;
   const tax = Number(div.tax) || 0;
@@ -284,13 +278,10 @@ const getTaxRate = (div) => {
   return Math.round(rate);
 };
 
-// 檢查是否已確認
 const isConfirmed = (div) => {
-  const key = getDivKey(div);
-  return confirmedKeys.value.has(key);
+  return confirmedKeys.value.has(getDivKey(div));
 };
 
-// 計算待處理和已確認數量
 const pendingCount = computed(() => {
   return localDividends.value.filter(d => !isConfirmed(d)).length;
 });
@@ -324,18 +315,14 @@ watch(() => store.pending_dividends, (newVal) => {
     const originalSize = confirmedKeys.value.size;
     confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => currentKeys.has(key)));
     
-    // 如果有清理，更新 localStorage
     if (confirmedKeys.value.size !== originalSize) {
       saveConfirmedKeys();
-      console.log('🧹 已清理不存在的確認記錄');
     }
   } else {
     localDividends.value = [];
-    // 列表為空時清空所有確認狀態
     if (confirmedKeys.value.size > 0) {
       confirmedKeys.value.clear();
       saveConfirmedKeys();
-      console.log('🧹 配息列表為空，已清空所有確認狀態');
     }
   }
 }, { immediate: true, deep: true });
@@ -371,15 +358,13 @@ const formatNumber = (val, d = 2) => {
 const confirmDividend = async (div) => {
   const divKey = getDivKey(div);
   
-  // 🔥 增強防重複檢查：同時檢查已確認狀態和正在處理中
+  // 防重複檢查
   if (confirmedKeys.value.has(divKey)) {
-    console.warn(`⚠️ 配息 ${div.symbol} (${divKey}) 已確認，阻止重複操作`);
     addToast('此配息已確認入帳', 'info');
     return;
   }
   
   if (processingKey.value === divKey) {
-    console.warn(`⚠️ 配息 ${div.symbol} (${divKey}) 正在處理中，阻止重複操作`);
     return;
   }
   
@@ -395,8 +380,7 @@ const confirmDividend = async (div) => {
   
   if (!confirm(`確認將 ${div.symbol} 的配息 ${currency} ${formatNumber(netAmount)} 入帳嗎？`)) return;
   
-  // 🔥 樂觀更新：在 API 調用前立即標記為已確認
-  console.log(`🔒 [防重複] 立即鎖定配息: ${div.symbol} (Key: ${divKey})`);
+  // 樂觀鎖定：立即標記為已確認
   confirmedKeys.value.add(divKey);
   saveConfirmedKeys();
   processingKey.value = divKey;
@@ -417,16 +401,6 @@ const confirmDividend = async (div) => {
       shares = Number(div.shares_held);
     }
     
-    console.log('配息數據:', {
-      symbol: div.symbol,
-      ex_date: div.ex_date,
-      shares: shares,
-      grossAmount: finalAmount,
-      tax: finalTax,
-      netAmount: netAmount,
-      raw_div: div
-    });
-    
     const divPerShare = shares > 0 ? netAmount / shares : netAmount;
     const recordQty = shares > 0 ? shares : 1;
     
@@ -441,30 +415,21 @@ const confirmDividend = async (div) => {
       total_amount: netAmount,
       tag: 'Auto-Dividend'
     };
-    
-    console.log('準備新增記錄:', record);
 
-    // ① 先新增交易記錄
     const success = await store.addRecord(record);
     
     if (success) {
-      console.log(`✅ [成功] 配息 ${div.symbol} (Key: ${divKey}) 已成功入帳`);
       addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
-      
-      // ② 刷新所有數據（後端快照會在背景更新後自動更新）
       await store.fetchAll();
-      
     } else {
-      // 🔥 失敗時回滾已確認狀態
-      console.error(`❌ [失敗] 配息 ${div.symbol} (Key: ${divKey}) 入帳失敗，回滾狀態`);
+      // 失敗時回滾
       confirmedKeys.value.delete(divKey);
       saveConfirmedKeys();
       addToast('入帳失敗：無法新增記錄', 'error');
     }
   } catch (e) {
-    // 🔥 異常時回滾已確認狀態
+    // 異常時回滾
     console.error('確認配息錯誤:', e);
-    console.error(`❌ [異常] 配息 ${div.symbol} (Key: ${divKey}) 發生異常，回滾狀態`);
     confirmedKeys.value.delete(divKey);
     saveConfirmedKeys();
     addToast(`入帳失敗: ${e.message || '未知錯誤'}`, 'error');
