@@ -41,9 +41,9 @@
           <tbody>
             <tr 
               v-for="div in localDividends" 
-              :key="div.id" 
+              :key="getDivKey(div)" 
               class="table-row"
-              :class="{ 'row-confirmed': isConfirmed(div.id) }"
+              :class="{ 'row-confirmed': isConfirmed(div) }"
             >
               <!-- 日期 -->
               <td class="text-center">
@@ -56,7 +56,7 @@
               <td class="text-center">
                 <div class="symbol-wrapper">
                   <span class="symbol-tag">{{ div.symbol }}</span>
-                  <span v-if="isConfirmed(div.id)" class="confirmed-label">✓ 已入帳</span>
+                  <span v-if="isConfirmed(div)" class="confirmed-label">✓ 已入帳</span>
                 </div>
               </td>
               
@@ -70,7 +70,7 @@
                     class="input-field"
                     step="0.01"
                     placeholder="0.00"
-                    :disabled="isConfirmed(div.id)"
+                    :disabled="isConfirmed(div)"
                   >
                 </div>
               </td>
@@ -84,7 +84,7 @@
                     class="input-field input-tax"
                     step="0.01"
                     placeholder="0.00"
-                    :disabled="isConfirmed(div.id)"
+                    :disabled="isConfirmed(div)"
                   >
                   <span class="tax-rate">{{ getTaxRate(div) }}%</span>
                 </div>
@@ -102,13 +102,13 @@
                 <div class="action-buttons">
                   <button 
                     class="btn-action btn-confirm" 
-                    :class="{ 'btn-confirmed': isConfirmed(div.id) }"
+                    :class="{ 'btn-confirmed': isConfirmed(div) }"
                     @click="confirmDividend(div)"
-                    :disabled="processingId === div.id || isConfirmed(div.id)"
-                    :title="isConfirmed(div.id) ? '已確認入帳' : '確認入帳'"
+                    :disabled="processingKey === getDivKey(div) || isConfirmed(div)"
+                    :title="isConfirmed(div) ? '已確認入帳' : '確認入帳'"
                   >
-                    <span v-if="processingId === div.id" class="spinner"></span>
-                    <span v-else-if="isConfirmed(div.id)">✓</span>
+                    <span v-if="processingKey === getDivKey(div)" class="spinner"></span>
+                    <span v-else-if="isConfirmed(div)">✓</span>
                     <span v-else>✓</span>
                   </button>
                 </div>
@@ -137,9 +137,9 @@
       <div v-else class="cards-container">
         <div 
           v-for="div in localDividends" 
-          :key="'m_' + div.id" 
+          :key="'m_' + getDivKey(div)" 
           class="dividend-card"
-          :class="{ 'card-confirmed': isConfirmed(div.id) }"
+          :class="{ 'card-confirmed': isConfirmed(div) }"
         >
           <!-- Card Header -->
           <div class="card-header">
@@ -147,7 +147,7 @@
               <span class="symbol-tag">{{ div.symbol }}</span>
               <span class="date-text">{{ formatFullDate(div.ex_date) }}</span>
             </div>
-            <span v-if="isConfirmed(div.id)" class="confirmed-badge-mobile">
+            <span v-if="isConfirmed(div)" class="confirmed-badge-mobile">
               ✓ 已入帳
             </span>
           </div>
@@ -165,7 +165,7 @@
                 class="form-input"
                 step="0.01"
                 placeholder="輸入總額"
-                :disabled="isConfirmed(div.id)"
+                :disabled="isConfirmed(div)"
               >
             </div>
             
@@ -181,7 +181,7 @@
                 class="form-input"
                 step="0.01"
                 placeholder="輸入稅金"
-                :disabled="isConfirmed(div.id)"
+                :disabled="isConfirmed(div)"
               >
             </div>
             
@@ -198,12 +198,12 @@
           <div class="card-footer">
             <button 
               class="btn-card btn-submit" 
-              :class="{ 'btn-submitted': isConfirmed(div.id) }"
+              :class="{ 'btn-submitted': isConfirmed(div) }"
               @click="confirmDividend(div)"
-              :disabled="processingId === div.id || isConfirmed(div.id)"
+              :disabled="processingKey === getDivKey(div) || isConfirmed(div)"
             >
-              <span v-if="processingId === div.id" class="spinner"></span>
-              <span v-else-if="isConfirmed(div.id)">✓ 已入帳</span>
+              <span v-if="processingKey === getDivKey(div)" class="spinner"></span>
+              <span v-else-if="isConfirmed(div)">✓ 已入帳</span>
               <span v-else>✓ 確認入帳</span>
             </button>
           </div>
@@ -223,31 +223,36 @@ const store = usePortfolioStore();
 const { addToast } = useToast();
 
 const loading = ref(false);
-const processingId = ref(null);
+const processingKey = ref(null);  // 改用 key 而不是 id
 const localDividends = ref([]);
-const confirmedIds = ref(new Set()); // 追蹤已確認的配息 ID
+const confirmedKeys = ref(new Set()); // 追蹤已確認的配息 Key (symbol_date)
 
-const STORAGE_KEY = 'confirmed_dividend_ids';
+const STORAGE_KEY = 'confirmed_dividend_keys';
 
-// 從 localStorage 載入已確認的 ID
-const loadConfirmedIds = () => {
+// 🔑 生成配息的唯一 Key
+const getDivKey = (div) => {
+  return `${div.symbol}_${div.ex_date}`;
+};
+
+// 從 localStorage 載入已確認的 Key
+const loadConfirmedKeys = () => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      confirmedIds.value = new Set(parsed);
+      confirmedKeys.value = new Set(parsed);
       console.log('📦 已載入持久化的已確認配息:', parsed);
     }
   } catch (e) {
     console.error('載入已確認配息失敗:', e);
-    confirmedIds.value = new Set();
+    confirmedKeys.value = new Set();
   }
 };
 
-// 保存已確認的 ID 到 localStorage
-const saveConfirmedIds = () => {
+// 保存已確認的 Key 到 localStorage
+const saveConfirmedKeys = () => {
   try {
-    const array = Array.from(confirmedIds.value);
+    const array = Array.from(confirmedKeys.value);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(array));
     console.log('💾 已保存已確認配息:', array);
   } catch (e) {
@@ -257,7 +262,7 @@ const saveConfirmedIds = () => {
 
 // 組件掛載時載入持久化狀態
 onMounted(() => {
-  loadConfirmedIds();
+  loadConfirmedKeys();
 });
 
 const isTWStock = (symbol) => {
@@ -280,17 +285,18 @@ const getTaxRate = (div) => {
 };
 
 // 檢查是否已確認
-const isConfirmed = (id) => {
-  return confirmedIds.value.has(id);
+const isConfirmed = (div) => {
+  const key = getDivKey(div);
+  return confirmedKeys.value.has(key);
 };
 
 // 計算待處理和已確認數量
 const pendingCount = computed(() => {
-  return localDividends.value.filter(d => !isConfirmed(d.id)).length;
+  return localDividends.value.filter(d => !isConfirmed(d)).length;
 });
 
 const confirmedCount = computed(() => {
-  return confirmedIds.value.size;
+  return confirmedKeys.value.size;
 });
 
 watch(() => store.pending_dividends, (newVal) => {
@@ -314,21 +320,21 @@ watch(() => store.pending_dividends, (newVal) => {
     });
     
     // 清理已從後端消失的確認記錄
-    const currentIds = new Set(newVal.map(d => d.id));
-    const originalSize = confirmedIds.value.size;
-    confirmedIds.value = new Set([...confirmedIds.value].filter(id => currentIds.has(id)));
+    const currentKeys = new Set(newVal.map(d => getDivKey(d)));
+    const originalSize = confirmedKeys.value.size;
+    confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => currentKeys.has(key)));
     
     // 如果有清理，更新 localStorage
-    if (confirmedIds.value.size !== originalSize) {
-      saveConfirmedIds();
+    if (confirmedKeys.value.size !== originalSize) {
+      saveConfirmedKeys();
       console.log('🧹 已清理不存在的確認記錄');
     }
   } else {
     localDividends.value = [];
     // 列表為空時清空所有確認狀態
-    if (confirmedIds.value.size > 0) {
-      confirmedIds.value.clear();
-      saveConfirmedIds();
+    if (confirmedKeys.value.size > 0) {
+      confirmedKeys.value.clear();
+      saveConfirmedKeys();
       console.log('🧹 配息列表為空，已清空所有確認狀態');
     }
   }
@@ -363,15 +369,17 @@ const formatNumber = (val, d = 2) => {
 };
 
 const confirmDividend = async (div) => {
+  const divKey = getDivKey(div);
+  
   // 🔥 增強防重複檢查：同時檢查已確認狀態和正在處理中
-  if (isConfirmed(div.id)) {
-    console.warn(`⚠️ 配息 ${div.symbol} (ID: ${div.id}) 已確認，阻止重複操作`);
+  if (confirmedKeys.value.has(divKey)) {
+    console.warn(`⚠️ 配息 ${div.symbol} (${divKey}) 已確認，阻止重複操作`);
     addToast('此配息已確認入帳', 'info');
     return;
   }
   
-  if (processingId.value === div.id) {
-    console.warn(`⚠️ 配息 ${div.symbol} (ID: ${div.id}) 正在處理中，阻止重複操作`);
+  if (processingKey.value === divKey) {
+    console.warn(`⚠️ 配息 ${div.symbol} (${divKey}) 正在處理中，阻止重複操作`);
     return;
   }
   
@@ -388,10 +396,10 @@ const confirmDividend = async (div) => {
   if (!confirm(`確認將 ${div.symbol} 的配息 ${currency} ${formatNumber(netAmount)} 入帳嗎？`)) return;
   
   // 🔥 樂觀更新：在 API 調用前立即標記為已確認
-  console.log(`🔒 [防重複] 立即鎖定配息: ${div.symbol} (ID: ${div.id})`);
-  confirmedIds.value.add(div.id);
-  saveConfirmedIds();
-  processingId.value = div.id;
+  console.log(`🔒 [防重複] 立即鎖定配息: ${div.symbol} (Key: ${divKey})`);
+  confirmedKeys.value.add(divKey);
+  saveConfirmedKeys();
+  processingKey.value = divKey;
   
   try {
     // 嘗試從多個可能的欄位獲取持股數量
@@ -405,10 +413,13 @@ const confirmDividend = async (div) => {
       shares = Number(div.quantity);
     } else if (div.holding_qty !== undefined && div.holding_qty !== null) {
       shares = Number(div.holding_qty);
+    } else if (div.shares_held !== undefined && div.shares_held !== null) {
+      shares = Number(div.shares_held);
     }
     
     console.log('配息數據:', {
       symbol: div.symbol,
+      ex_date: div.ex_date,
       shares: shares,
       grossAmount: finalAmount,
       tax: finalTax,
@@ -437,7 +448,7 @@ const confirmDividend = async (div) => {
     const success = await store.addRecord(record);
     
     if (success) {
-      console.log(`✅ [成功] 配息 ${div.symbol} (ID: ${div.id}) 已成功入帳`);
+      console.log(`✅ [成功] 配息 ${div.symbol} (Key: ${divKey}) 已成功入帳`);
       addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
       
       // ② 刷新所有數據（後端快照會在背景更新後自動更新）
@@ -445,20 +456,20 @@ const confirmDividend = async (div) => {
       
     } else {
       // 🔥 失敗時回滾已確認狀態
-      console.error(`❌ [失敗] 配息 ${div.symbol} (ID: ${div.id}) 入帳失敗，回滾狀態`);
-      confirmedIds.value.delete(div.id);
-      saveConfirmedIds();
+      console.error(`❌ [失敗] 配息 ${div.symbol} (Key: ${divKey}) 入帳失敗，回滾狀態`);
+      confirmedKeys.value.delete(divKey);
+      saveConfirmedKeys();
       addToast('入帳失敗：無法新增記錄', 'error');
     }
   } catch (e) {
     // 🔥 異常時回滾已確認狀態
     console.error('確認配息錯誤:', e);
-    console.error(`❌ [異常] 配息 ${div.symbol} (ID: ${div.id}) 發生異常，回滾狀態`);
-    confirmedIds.value.delete(div.id);
-    saveConfirmedIds();
+    console.error(`❌ [異常] 配息 ${div.symbol} (Key: ${divKey}) 發生異常，回滾狀態`);
+    confirmedKeys.value.delete(divKey);
+    saveConfirmedKeys();
     addToast(`入帳失敗: ${e.message || '未知錯誤'}`, 'error');
   } finally {
-    processingId.value = null;
+    processingKey.value = null;
   }
 };
 </script>
