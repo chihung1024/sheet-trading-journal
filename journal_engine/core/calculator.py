@@ -237,11 +237,13 @@ class PortfolioCalculator:
         last_market_value_twd = 0.0
         first_benchmark_val_twd = None
 
+        # 🔧 修復：收集所有 DIV 記錄並標記為已確認
         div_txs = df[df['Type'] == 'DIV'].copy()
         for _, row in div_txs.iterrows():
             if 'id' in row and row['id'] not in self.duplicate_div_ids:
                 key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
                 confirmed_dividends.add(key)
+                logger.info(f"✅ 配息已確認: {key} (金額: {row['Qty'] * row['Price']:.2f})")
 
         if not df.empty:
             first_tx_date = df['Date'].min()
@@ -342,16 +344,20 @@ class PortfolioCalculator:
                     daily_net_cashflow_twd -= proceeds_twd
 
                 elif row['Type'] == 'DIV':
+                    # 🔧 修復：跳過重複配息
                     if 'id' in row and row['id'] in self.duplicate_div_ids:
+                        logger.warning(f"⚠️ 跳過重複配息: {sym}_{current_date}")
                         continue
                     
                     effective_fx = self._get_effective_fx_rate(sym, fx)
-                    # 修復：正確計算配息總額 = 數量 * 單價
+                    # ✅ 正確計算：數量 × 單價
                     div_twd = (row['Qty'] * row['Price']) * effective_fx
                     total_realized_pnl_twd += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
+                    logger.info(f"✅ 處理用戶配息: {sym}_{current_date}, 金額: TWD {div_twd:.0f}")
 
+            # 🔧 修復：市場配息檢測 - 只處理「未在 records 中確認」的配息
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
@@ -359,7 +365,8 @@ class PortfolioCalculator:
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_key = f"{sym}_{date_str}"
                     
-                    is_confirmed = div_key not in self.conflict_div_info and div_key in confirmed_dividends
+                    # 🔧 關鍵修復：如果配息已在 records 中確認，不要再計算市場數據
+                    is_confirmed = div_key in confirmed_dividends
                     
                     split_factor = self.market.get_transaction_multiplier(sym, d)
                     shares_at_ex = h_data['qty'] / split_factor
@@ -377,11 +384,16 @@ class PortfolioCalculator:
                         'fx_rate': fx, 'status': 'confirmed' if is_confirmed else 'pending'
                     })
                     
+                    # 🔧 關鍵修復：只有「未確認」的配息才計入損益和現金流
                     if not is_confirmed:
                         total_realized_pnl_twd += total_net_twd
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
+                        logger.info(f"📊 處理市場配息（未確認）: {div_key}, 金額: TWD {total_net_twd:.0f}")
+                    else:
+                        logger.info(f"⏭️ 跳過市場配息（已在 records 中）: {div_key}")
 
+            # 計算當日市值和 TWR
             current_market_value_twd = 0.0
             logging_fx = fx
             
@@ -507,6 +519,8 @@ class PortfolioCalculator:
         )
         
         self.validator.validate_twr_calculation(history_data)
+        
+        logger.info(f"✅ 計算完成 - TWR: {summary.twr:.2f}%, 已實現損益: TWD {summary.realized_pnl:,.0f}")
         
         return PortfolioGroupData(
             summary=summary, holdings=final_holdings, history=history_data,
