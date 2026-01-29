@@ -37,7 +37,7 @@ def main():
     setup_logging()
     logger = logging.getLogger("main")
     
-    logger.info("=== 啟動交易日誌更新程序 (多人隔離 & 自訂基準版 & 衝突自動刪除) ===")
+    logger.info("=== 啟動交易日誌更新程序 (v2.53 重複配息修復版) ===")
 
     # 2. 安全性檢查
     if not API_KEY:
@@ -65,12 +65,37 @@ def main():
         if 'user_id' not in df.columns:
             logger.error("交易紀錄中缺少 user_id 欄位，請檢查 API 回傳內容。")
             return
+        
+        # [v2.53 修復] ✅ 關鍵：確保 'id' 欄位被保留
+        logger.info(f"[v2.53] API 回傳欄位: {list(df.columns)}")
+        
+        if 'id' not in df.columns:
+            logger.warning("[v2.53] 警告：API 回傳的資料中缺少 'id' 欄位，重複檢測功能將無法使用！")
+        else:
+            logger.info(f"[v2.53] ✓ 確認 'id' 欄位存在，共 {len(df)} 筆記錄")
 
+        # 重命名欄位（保留 id, user_id 等其他欄位）
         df.rename(columns={
-            'txn_date': 'Date', 'symbol': 'Symbol', 'txn_type': 'Type', 
-            'qty': 'Qty', 'price': 'Price', 'fee': 'Commission', 
-            'tax': 'Tax', 'tag': 'Tag'
+            'txn_date': 'Date', 
+            'symbol': 'Symbol', 
+            'txn_type': 'Type', 
+            'qty': 'Qty', 
+            'price': 'Price', 
+            'fee': 'Commission', 
+            'tax': 'Tax', 
+            'tag': 'Tag'
+            # ✅ 'id' 和 'user_id' 不在這裡，所以會被保留
         }, inplace=True)
+        
+        # [v2.53] 確認 rename 後 'id' 仍然存在
+        if 'id' in df.columns:
+            logger.info(f"[v2.53] ✓ rename 後 'id' 欄位保留成功")
+            # 記錄 DIV 記錄的 id 範圍
+            div_records = df[df['Type'] == 'DIV']
+            if not div_records.empty:
+                logger.info(f"[v2.53] DIV 記錄數量: {len(div_records)}, ID 範圍: {div_records['id'].min()} - {div_records['id'].max()}")
+        else:
+            logger.error("[v2.53] ✗ rename 後 'id' 欄位消失！重複檢測將失敗！")
         
         df['Date'] = pd.to_datetime(df['Date'])
         df['Qty'] = pd.to_numeric(df['Qty'])
@@ -115,6 +140,10 @@ def main():
             
             user_df = df[df['user_id'] == user_email].copy() if not df.empty else pd.DataFrame()
             
+            # [v2.53] 確認用戶資料中的 id 欄位
+            if not user_df.empty and 'id' in user_df.columns:
+                logger.info(f"[v2.53] 用戶 {user_email} 的資料包含 'id' 欄位，共 {len(user_df)} 筆記錄")
+            
             # [v2.53] ✅ 關鍵修改：將 api_client 傳遞給 calculator
             calculator = PortfolioCalculator(
                 user_df, 
@@ -133,6 +162,7 @@ def main():
                 
         except Exception as u_err:
             logger.error(f"處理使用者 {user_email} 時發生未預期錯誤: {u_err}")
+            logger.exception(u_err)  # [v2.53] 輸出完整堆疊跟蹤
 
     logger.info("=== 所有使用者處理程序執行完畢 ===")
 
