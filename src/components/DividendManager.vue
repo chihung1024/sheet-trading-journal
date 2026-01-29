@@ -1,6 +1,5 @@
 <template>
   <div class="dividend-manager">
-    <!-- Header -->
     <div class="dm-header">
       <div class="dm-title">
         <div class="title-icon">💰</div>
@@ -24,7 +23,6 @@
       </button>
     </div>
 
-    <!-- Desktop Table -->
     <div class="desktop-table">
       <div v-if="localDividends.length > 0" class="table-wrapper">
         <table>
@@ -116,7 +114,6 @@
       </div>
     </div>
 
-    <!-- Mobile Cards -->
     <div class="mobile-cards">
       <div v-if="localDividends.length === 0" class="empty-state">
         <div class="empty-icon">🎉</div>
@@ -250,6 +247,7 @@ const isConfirmed = (div) => confirmedKeys.value.has(getDivKey(div));
 const pendingCount = computed(() => localDividends.value.filter(d => !isConfirmed(d)).length);
 const confirmedCount = computed(() => confirmedKeys.value.size);
 
+// 監聽 pending_dividends 變化
 watch(() => store.pending_dividends, (newVal) => {
   if (newVal && newVal.length > 0) {
     localDividends.value = newVal.map(d => {
@@ -273,7 +271,7 @@ watch(() => store.pending_dividends, (newVal) => {
     // 同步狀態：移除已不在待確認列表中的配息
     const pendingKeys = new Set(newVal.map(d => getDivKey(d)));
     const originalSize = confirmedKeys.value.size;
-    confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => !pendingKeys.has(key)));
+    confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => pendingKeys.has(key)));
     
     if (confirmedKeys.value.size !== originalSize) saveConfirmedKeys();
   } else {
@@ -284,6 +282,35 @@ watch(() => store.pending_dividends, (newVal) => {
     }
   }
 }, { immediate: true, deep: true });
+
+// 監聽交易記錄變化，主動清理已刪除配息的確認狀態
+watch(() => store.records, (newRecords) => {
+  if (!newRecords || newRecords.length === 0) return;
+  
+  // 獲取所有 DIV 類型的交易記錄 key
+  const divRecordKeys = new Set(
+    newRecords
+      .filter(r => r.txn_type === 'DIV')
+      .map(r => `${r.symbol}_${r.txn_date}`)
+  );
+  
+  // 清理已不存在於交易記錄中的確認狀態
+  const originalSize = confirmedKeys.value.size;
+  confirmedKeys.value = new Set(
+    [...confirmedKeys.value].filter(key => {
+      // 如果這個 key 在 pending_dividends 中，保留（未確認）
+      const isPending = localDividends.value.some(d => getDivKey(d) === key);
+      if (isPending) return true;
+      
+      // 如果這個 key 還在交易記錄中，保留（已確認且未刪除）
+      return divRecordKeys.has(key);
+    })
+  );
+  
+  if (confirmedKeys.value.size !== originalSize) {
+    saveConfirmedKeys();
+  }
+}, { deep: true });
 
 const fetchDividends = async () => {
   loading.value = true;
@@ -350,16 +377,18 @@ const confirmDividend = async (div) => {
     const divPerShare = shares > 0 ? netAmount / shares : netAmount;
     const recordQty = shares > 0 ? shares : 1;
     
+    // 修復：統一為「淨額模式」，避免重複扣稅
+    const taxInfo = finalTax > 0 ? `稅金:${currency} ${formatNumber(finalTax, 2)}` : '';
     const record = {
       txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
       qty: recordQty,
-      price: divPerShare,
+      price: divPerShare,  // 這是扣稅後的淨額單價
       fee: 0,
-      tax: finalTax,
-      total_amount: netAmount,
-      tag: 'Auto-Dividend'
+      tax: 0,  // 設為 0，避免重複扣稅
+      tag: 'Auto-Dividend',
+      note: taxInfo  // 稅金信息記錄在備註中
     };
 
     const success = await store.addRecord(record);
