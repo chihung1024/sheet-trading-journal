@@ -377,59 +377,82 @@ const confirmDividend = async (div) => {
   processingKey.value = divKey;
   
   try {
-    // 修復：先檢查是否已有配息記錄
+    console.log('🚀 [DividendManager] 開始配息確認流程...');
+    
+    // 步驟 1：先檢查是否已有配息記錄
     const existingRecord = findExistingDividendRecord(div.symbol, div.ex_date);
     
     if (existingRecord) {
-      console.log(`🗑️ 發現舊配息記錄 (ID: ${existingRecord.id})，先刪除...`);
+      console.log(`🗑️ [Step 1] 發現舊配息記錄 (ID: ${existingRecord.id})，先刪除...`);
       await store.deleteRecord(existingRecord.id);
       addToast('已清除舊配息記錄', 'info');
+      
+      // 等待 500ms 確保後端完成刪除
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
     
+    // 步驟 2：添加新配息記錄
+    console.log(`📝 [Step 2] 添加新配息記錄: ${div.symbol}_${div.ex_date}`);
     const shares = getHoldingShares(div);
     const divPerShare = shares > 0 ? netAmount / shares : netAmount;
     const recordQty = shares > 0 ? shares : 1;
     
-    // 統一為「淨額模式」，避免重複扣稅
     const taxInfo = finalTax > 0 ? `稅金:${currency} ${formatNumber(finalTax, 2)}` : '';
     const record = {
       txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
       qty: recordQty,
-      price: divPerShare,  // 這是扣稅後的淨額單價
+      price: divPerShare,
       fee: 0,
-      tax: 0,  // 設為 0，避免重複扣稅
+      tax: 0,
       tag: 'Auto-Dividend',
-      note: taxInfo  // 稅金信息記錄在備註中
+      note: taxInfo
     };
 
     const success = await store.addRecord(record);
     
-    if (success) {
-      addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
-      
-      // 核心修復：主動觸發後端計算任務
-      console.log('🚀 觸發後端計算任務...');
-      try {
-        // 調用 API 觸發 GitHub Actions
-        await store.triggerUpdate();
-        console.log('✅ 已成功觸發 GitHub Actions，正在輪詢更新...');
-      } catch (triggerError) {
-        console.error('⚠️ 觸發計算失敗:', triggerError);
-        addToast('⚠️ 配息已入帳，但自動更新失敗，請手動點擊「更新數據」', 'warning');
-      }
-    } else {
-      confirmedKeys.value.delete(divKey);
-      saveConfirmedKeys();
-      addToast('入帳失敗：無法新增記錄', 'error');
+    if (!success) {
+      throw new Error('無法新增記錄');
     }
+    
+    addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
+    
+    // 步驟 3：等待前端 records 更新
+    console.log('⏳ [Step 3] 等待前端 records 更新...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // 步驟 4：🔧 關鍵修復 - 強制清空 history 快取並觸發完整刷新
+    console.log('🔥 [Step 4] 清空本地快取，準備觸發後端計算...');
+    
+    // 清空 rawData，強制前端重新抓取
+    store.rawData = null;
+    
+    // 清空 localStorage 中的快取
+    localStorage.removeItem('cached_portfolio_snapshot');
+    
+    // 步驟 5：觸發後端 GitHub Actions 計算
+    console.log('🚀 [Step 5] 觸發後端計算任務...');
+    try {
+      await store.triggerUpdate();
+      console.log('✅ [Step 5] GitHub Actions 已觸發，SmartPolling 已啟動');
+      
+      // 步驟 6：顯示等待提示
+      addToast('⏳ 正在重新計算曲線圖數據，請稍候 20-30 秒...', 'info');
+      
+    } catch (triggerError) {
+      console.error('⚠️ [Step 5] 觸發計算失敗:', triggerError);
+      addToast('⚠️ 配息已入帳，但自動更新失敗，請手動點擊「更新數據」', 'warning');
+    }
+    
   } catch (e) {
+    console.error('❌ [DividendManager] 配息確認失敗:', e);
     confirmedKeys.value.delete(divKey);
     saveConfirmedKeys();
     addToast(`入帳失敗: ${e.message || '未知錯誤'}`, 'error');
   } finally {
     processingKey.value = null;
+    console.log('✅ [DividendManager] 配息確認流程結束');
   }
 };
 </script>
