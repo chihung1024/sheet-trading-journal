@@ -24,7 +24,7 @@
               <button v-for="range in timeRanges" 
                       :key="range.value" 
                       :class="{active: timeRange===range.value}" 
-                      @click="switchTimeRange(range.value)">
+                      @click="timeRange=range.value">
                 {{ range.label }}
               </button>
               <button :class="{active: timeRange==='CUSTOM'}" @click="timeRange='CUSTOM'">自訂</button>
@@ -54,9 +54,9 @@
           </div>
           
           <div class="date-range-selector" v-show="timeRange === 'CUSTOM'">
-            <input type="date" v-model="customStartDate" @change="onDateChange" :max="customEndDate || todayStr" class="date-input" />
+            <input type="date" v-model="customStartDate" @change="applyCustomRange" :max="customEndDate || todayStr" class="date-input" />
             <span class="date-sep">to</span>
-            <input type="date" v-model="customEndDate" @change="onDateChange" :min="customStartDate" :max="todayStr" class="date-input" />
+            <input type="date" v-model="customEndDate" @change="applyCustomRange" :min="customStartDate" :max="todayStr" class="date-input" />
           </div>
         </div>
       </div>
@@ -100,10 +100,7 @@ const customEndDate = ref('');
 const benchmarkInput = ref(portfolioStore.selectedBenchmark);
 const isChangingBenchmark = ref(false);
 
-const todayStr = computed(() => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-});
+const todayStr = computed(() => new Date().toISOString().split('T')[0]);
 
 const timeRanges = [
   { value: '1M', label: '1M' },
@@ -114,13 +111,41 @@ const timeRanges = [
   { value: 'ALL', label: 'ALL' }
 ];
 
+// ✅ 合併日期處理邏輯
+const parseDate = (dateStr) => {
+  const d = new Date(dateStr.replace(/-/g, '/'));
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const getDateRange = (rangeType) => {
+  const now = new Date();
+  let start = new Date(now);
+  
+  switch(rangeType) {
+    case '1M': start.setMonth(now.getMonth() - 1); break;
+    case '3M': start.setMonth(now.getMonth() - 3); break;
+    case '6M': start.setMonth(now.getMonth() - 6); break;
+    case 'YTD': start = new Date(now.getFullYear(), 0, 1); break;
+    case '1Y': start.setFullYear(now.getFullYear() - 1); break;
+    case 'ALL': start = new Date('2000-01-01'); break;
+    case 'CUSTOM': 
+      if (customStartDate.value && customEndDate.value) {
+        return { start: parseDate(customStartDate.value), end: parseDate(customEndDate.value) };
+      }
+      start.setFullYear(now.getFullYear() - 1);
+      break;
+  }
+  
+  return { start, end: now };
+};
+
 const handleBenchmarkChange = async () => {
   const newBenchmark = benchmarkInput.value.trim().toUpperCase();
-  if (!newBenchmark) {
-    addToast('請輸入基準標的代碼', 'error');
+  if (!newBenchmark || newBenchmark === portfolioStore.selectedBenchmark) {
+    benchmarkInput.value = portfolioStore.selectedBenchmark;
     return;
   }
-  if (newBenchmark === portfolioStore.selectedBenchmark) return;
   
   if (!confirm(`確定要將基準標的改為 ${newBenchmark} 嗎？需重新計算所有資料。`)) {
     benchmarkInput.value = portfolioStore.selectedBenchmark;
@@ -140,52 +165,15 @@ const handleBenchmarkChange = async () => {
   }
 };
 
-watch(() => portfolioStore.selectedBenchmark, (newVal) => {
-  benchmarkInput.value = newVal;
-});
-
-const switchTimeRange = (range) => {
-    timeRange.value = range;
-    const now = new Date();
-    let start = new Date(now);
-    
-    if (range === 'CUSTOM') {
-      if (!customStartDate.value || !customEndDate.value) {
-        const oneYearAgo = new Date(now);
-        oneYearAgo.setFullYear(now.getFullYear() - 1);
-        customStartDate.value = oneYearAgo.toISOString().split('T')[0];
-        customEndDate.value = now.toISOString().split('T')[0];
-      }
-      return;
-    }
-    
-    switch(range) {
-        case '1M': start.setMonth(now.getMonth() - 1); break;
-        case '3M': start.setMonth(now.getMonth() - 3); break;
-        case '6M': start.setMonth(now.getMonth() - 6); break;
-        case 'YTD': start = new Date(now.getFullYear(), 0, 1); break;
-        case '1Y': start.setFullYear(now.getFullYear() - 1); break;
-        case 'ALL': start = new Date('2000-01-01'); break;
-    }
-    
-    customStartDate.value = start.toISOString().split('T')[0];
-    customEndDate.value = now.toISOString().split('T')[0];
-    filterData(start, now);
-};
-
-const onDateChange = () => {
+const applyCustomRange = () => {
   if (!customStartDate.value || !customEndDate.value) return;
-  const start = new Date(customStartDate.value.replace(/-/g, '/'));
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(customEndDate.value.replace(/-/g, '/'));
-  end.setHours(23, 59, 59, 999);
+  const start = parseDate(customStartDate.value);
+  const end = parseDate(customEndDate.value);
   if (end < start) return;
-  
   timeRange.value = 'CUSTOM';
-  filterData(start, end);
 };
 
-const filterData = (startDate, endDate = new Date()) => {
+const filterData = () => {
     const fullHistory = portfolioStore.history || [];
     if (fullHistory.length === 0) {
         displayedData.value = [];
@@ -194,39 +182,35 @@ const filterData = (startDate, endDate = new Date()) => {
         return;
     }
 
-    const startDateOnly = new Date(startDate); startDateOnly.setHours(0,0,0,0);
-    const endDateOnly = new Date(endDate); endDateOnly.setHours(23,59,59,999);
+    const { start, end } = getDateRange(timeRange.value);
+    const startDateOnly = new Date(start); startDateOnly.setHours(0,0,0,0);
+    const endDateOnly = new Date(end); endDateOnly.setHours(23,59,59,999);
 
-    let baseline = null;
-    for (let i = fullHistory.length - 1; i >= 0; i--) {
-        const itemDate = new Date(fullHistory[i].date.replace(/-/g, '/'));
-        itemDate.setHours(0, 0, 0, 0);
-        if (itemDate < startDateOnly) {
-            baseline = fullHistory[i];
-            break;
-        }
-    }
-    if (!baseline && fullHistory.length > 0) baseline = fullHistory[0];
+    // ✅ 簡化基準線搜尋
+    let baseline = fullHistory.find((d, i) => {
+      if (i === fullHistory.length - 1) return true;
+      const itemDate = parseDate(d.date);
+      const nextDate = parseDate(fullHistory[i + 1].date);
+      return itemDate < startDateOnly && nextDate >= startDateOnly;
+    }) || fullHistory[0];
     
     baselineData.value = baseline;
 
-    const filteredData = fullHistory.filter(d => {
-        const itemDate = new Date(d.date.replace(/-/g, '/'));
-        itemDate.setHours(0, 0, 0, 0);
+    // ✅ 簡化築選邏輯
+    displayedData.value = fullHistory.filter(d => {
+        const itemDate = parseDate(d.date);
         const dayOfWeek = itemDate.getDay();
         return itemDate >= startDateOnly && itemDate <= endDateOnly && dayOfWeek !== 0 && dayOfWeek !== 6;
     });
     
-    displayedData.value = filteredData;
     drawChart();
 };
 
 const drawChart = () => {
-    if (!canvas.value) return;
+    if (!canvas.value || displayedData.value.length === 0 || !baselineData.value) return;
+    
     const ctx = canvas.value.getContext('2d');
     if (myChart) myChart.destroy();
-
-    if (displayedData.value.length === 0 || !baselineData.value) return;
 
     const isMobile = window.innerWidth < 768;
     const fontSize = isMobile ? 10 : 12;
@@ -242,36 +226,24 @@ const drawChart = () => {
         pointBorderWidth: 2
     };
 
-    let chartData = [];
-    let labels = [];
+    // ✅ 簡化數據合併邏輯
+    const dataWithBaseline = displayedData.value[0]?.date === baselineData.value.date 
+      ? displayedData.value 
+      : [baselineData.value, ...displayedData.value];
     
-    let dataWithBaseline = [];
-    const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
-    if (baselineInDisplayed) {
-        dataWithBaseline = displayedData.value;
-    } else {
-        dataWithBaseline = [baselineData.value, ...displayedData.value];
-    }
-    
-    labels = dataWithBaseline.map(d => {
+    const labels = (chartType.value === 'asset' ? displayedData.value : dataWithBaseline).map(d => {
         const date = new Date(d.date);
         return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
     });
 
     if (chartType.value === 'asset') {
-        chartData = displayedData.value.map(d => d.total_value);
-        labels = displayedData.value.map(d => {
-            const date = new Date(d.date);
-            return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
-        });
-
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
         
         datasets = [{
             label: '總資產',
-            data: chartData,
+            data: displayedData.value.map(d => d.total_value),
             borderColor: '#3b82f6',
             backgroundColor: gradient,
             fill: true,
@@ -279,18 +251,14 @@ const drawChart = () => {
         }];
     } else if (chartType.value === 'pnl') {
         const hasBreakdown = dataWithBaseline.every(d => d.realized_pnl !== undefined);
+        const basePnl = baselineData.value.net_profit;
+        const baseRealized = baselineData.value.realized_pnl || 0;
         
         if (hasBreakdown) {
-             const baseRealized = baselineData.value.realized_pnl || 0;
-             const baseUnrealized = baselineData.value.unrealized_pnl || 0;
-             
-             const realizedData = dataWithBaseline.map(d => (d.realized_pnl || 0) - baseRealized);
-             const totalData = dataWithBaseline.map(d => (d.net_profit || 0) - baselineData.value.net_profit);
-             
              datasets = [
                 {
                     label: '已實現損益',
-                    data: realizedData,
+                    data: dataWithBaseline.map(d => (d.realized_pnl || 0) - baseRealized),
                     borderColor: 'rgba(34, 197, 94, 0.5)',
                     backgroundColor: 'rgba(34, 197, 94, 0.2)',
                     fill: 'origin',
@@ -300,7 +268,7 @@ const drawChart = () => {
                 },
                 {
                     label: '總淨損益',
-                    data: totalData,
+                    data: dataWithBaseline.map(d => d.net_profit - basePnl),
                     borderColor: '#10b981',
                     backgroundColor: 'transparent',
                     fill: false,
@@ -309,16 +277,13 @@ const drawChart = () => {
                 }
              ];
         } else {
-            const baselinePnl = baselineData.value.net_profit;
-            chartData = dataWithBaseline.map(d => d.net_profit - baselinePnl);
-            
             const gradient = ctx.createLinearGradient(0, 0, 0, 400);
             gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
             gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
             
             datasets = [{
                 label: '淨損益',
-                data: chartData,
+                data: dataWithBaseline.map(d => d.net_profit - basePnl),
                 borderColor: '#10b981',
                 backgroundColor: gradient,
                 fill: true,
@@ -375,9 +340,8 @@ const drawChart = () => {
                     bodyFont: { size: 13 },
                     padding: 10,
                     callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) label += ': ';
+                        label: (context) => {
+                            let label = context.dataset.label ? context.dataset.label + ': ' : '';
                             if (context.parsed.y !== null) {
                                 if (chartType.value === 'twr') {
                                     label += (context.parsed.y > 0 ? '+' : '') + context.parsed.y.toFixed(2) + '%';
@@ -387,16 +351,12 @@ const drawChart = () => {
                             }
                             return label;
                         },
-                        afterBody: function(tooltipItems) {
+                        afterBody: (tooltipItems) => {
                              if (chartType.value === 'pnl' && tooltipItems.length > 1) {
-                                 const realizedItem = tooltipItems.find(i => i.dataset.label === '已實現損益');
-                                 const totalItem = tooltipItems.find(i => i.dataset.label === '總淨損益');
-                                 
-                                 if (realizedItem && totalItem) {
-                                     const realized = realizedItem.parsed.y;
-                                     const total = totalItem.parsed.y;
-                                     const unrealized = total - realized;
-                                     return `----------------\n未實現: ${Math.round(unrealized).toLocaleString()}`;
+                                 const realized = tooltipItems.find(i => i.dataset.label === '已實現損益')?.parsed.y;
+                                 const total = tooltipItems.find(i => i.dataset.label === '總淨損益')?.parsed.y;
+                                 if (realized !== undefined && total !== undefined) {
+                                     return `----------------\n未實現: ${Math.round(total - realized).toLocaleString()}`;
                                  }
                              }
                              return '';
@@ -432,13 +392,9 @@ const drawChart = () => {
                             displayValue = (value > 0 ? '+' : '') + value.toFixed(2) + '%';
                         } else {
                             const absVal = Math.abs(value);
-                            if (absVal >= 1000000) {
-                                displayValue = (value > 0 ? '+' : '') + (value/1000000).toFixed(2) + 'M';
-                            } else if (absVal >= 1000) {
-                                displayValue = (value > 0 ? '+' : '') + (value/1000).toFixed(1) + 'k';
-                            } else {
-                                displayValue = Math.round(value).toLocaleString();
-                            }
+                            displayValue = absVal >= 1000000 ? (value > 0 ? '+' : '') + (value/1000000).toFixed(2) + 'M'
+                                         : absVal >= 1000 ? (value > 0 ? '+' : '') + (value/1000).toFixed(1) + 'k'
+                                         : Math.round(value).toLocaleString();
                         }
                         
                         ctx.save();
@@ -455,22 +411,32 @@ const drawChart = () => {
     });
 };
 
-watch(chartType, () => drawChart());
+// ✅ 合併為單一 watch
+watch([chartType, timeRange], () => {
+  if (timeRange.value === 'CUSTOM') {
+    const { start, end } = getDateRange('CUSTOM');
+    customStartDate.value = start.toISOString().split('T')[0];
+    customEndDate.value = end.toISOString().split('T')[0];
+  }
+  filterData();
+});
 
 watch(() => portfolioStore.history, async () => {
     await nextTick();
-    switchTimeRange(timeRange.value);
+    filterData();
 }, { deep: true });
+
+watch(() => portfolioStore.selectedBenchmark, (newVal) => {
+  benchmarkInput.value = newVal;
+});
 
 onMounted(async () => {
     await nextTick();
-    switchTimeRange('1Y');
+    filterData();
     
-    // 🐛 修復：添加防禦性檢查，避免 canvas 為 null 時出錯
     if (canvas.value && window.ResizeObserver) {
         resizeObserver = new ResizeObserver(() => {
-            // ✅ 確保 canvas 和 myChart 都存在且有效
-            if (canvas.value && myChart && !myChart.ctx?.canvas?.isConnected === false) {
+            if (canvas.value && myChart && myChart.ctx?.canvas) {
                 try {
                     myChart.resize();
                 } catch (e) {
@@ -495,37 +461,24 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.inner-chart-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 20px;
-    box-sizing: border-box;
-    position: relative;
-}
-
+.inner-chart-layout { display: flex; flex-direction: column; height: 100%; padding: 20px; box-sizing: border-box; position: relative; }
 .chart-header { margin-bottom: 12px; display: flex; flex-direction: column; gap: 12px; }
 .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 .title-group { display: flex; align-items: center; gap: 12px; }
 .chart-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main); padding-left: 12px; border-left: 4px solid var(--primary); }
 .loading-badge { font-size: 0.8rem; color: var(--primary); display: flex; align-items: center; gap: 6px; }
 .spinner-sm { width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
-
 .toggle-pills-scroll, .time-pills-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; max-width: 100%; }
 .toggle-pills-scroll::-webkit-scrollbar, .time-pills-scroll::-webkit-scrollbar { display: none; }
-
 .toggle-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
 .toggle-pills button { border: none; background: transparent; padding: 6px 14px; font-size: 0.9rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; font-weight: 500; }
 .toggle-pills button.active { background: var(--bg-card); color: var(--primary); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-
 .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .time-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
 .time-pills button { border: none; background: transparent; padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; }
 .time-pills button:hover { color: var(--text-main); }
 .time-pills button.active { background: var(--bg-card); color: var(--text-main); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-
 .right-controls { display: flex; gap: 10px; align-items: center; }
-
 .benchmark-selector { display: flex; align-items: center; gap: 6px; }
 .control-label { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); }
 .input-group-merged { display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; background: var(--bg-card); }
@@ -533,41 +486,26 @@ onUnmounted(() => {
 .benchmark-input:focus { outline: none; background: var(--bg-secondary); }
 .btn-icon-apply { border: none; background: var(--bg-secondary); color: var(--success); cursor: pointer; padding: 0 8px; font-weight: bold; border-left: 1px solid var(--border-color); }
 .btn-icon-apply:disabled { color: var(--text-sub); cursor: not-allowed; }
-
 .date-range-selector { display: flex; align-items: center; gap: 6px; background: var(--bg-secondary); padding: 4px 8px; border-radius: 6px; }
 .date-input { border: none; background: transparent; font-size: 0.85rem; width: 110px; color: var(--text-main); font-family: 'JetBrains Mono', monospace; }
 .date-sep { font-size: 0.8rem; color: var(--text-sub); }
-
-.canvas-box { 
-    flex-grow: 1; 
-    position: relative; 
-    width: 100%; 
-    height: 450px;
-    overflow: hidden; 
-} 
-
+.canvas-box { flex-grow: 1; position: relative; width: 100%; height: 450px; overflow: hidden; } 
 .no-data-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); color: var(--text-sub); font-size: 1rem; }
-
 .chart-footer { margin-top: 8px; text-align: right; border-top: 1px solid var(--border-color); padding-top: 8px; }
 .info-text { font-size: 0.75rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
-
 @media (max-width: 768px) {
     .inner-chart-layout { padding: 16px; }
     .header-top { flex-direction: column; align-items: flex-start; gap: 12px; }
     .toggle-pills-scroll { width: 100%; } 
     .toggle-pills { width: max-content; } 
-    
     .controls-row { flex-direction: column; align-items: flex-start; gap: 12px; }
     .time-pills-scroll { width: 100%; }
     .time-pills { width: max-content; }
-    
     .right-controls { width: 100%; justify-content: space-between; }
     .benchmark-selector { flex: 1; }
     .benchmark-input { width: 100%; min-width: 0; }
-    
     .date-range-selector { width: 100%; justify-content: space-between; }
     .date-input { width: auto; flex: 1; }
-    
     .canvas-box { height: 380px; }
 }
 </style>
