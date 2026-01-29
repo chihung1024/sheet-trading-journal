@@ -118,9 +118,28 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     return;
                 }
 
+                // 🔍 診斷：追蹤 history 數據變化
+                const oldHistoryLength = rawData.value?.history?.length || 0;
+                const newHistoryLength = json.data.history?.length || 0;
+                
                 rawData.value = json.data; 
                 lastUpdate.value = json.data.updated_at;
+                
                 console.log('✅ [fetchSnapshot] 數據已更新時間:', lastUpdate.value);
+                console.log(`📊 [fetchSnapshot] History 長度: ${oldHistoryLength} → ${newHistoryLength}`);
+                
+                if (json.data.history && json.data.history.length > 0) {
+                    const lastHistoryItem = json.data.history[json.data.history.length - 1];
+                    console.log('📊 [fetchSnapshot] 最新 history 記錄:', {
+                        date: lastHistoryItem.date,
+                        total_value: lastHistoryItem.total_value,
+                        net_profit: lastHistoryItem.net_profit,
+                        realized_pnl: lastHistoryItem.realized_pnl,
+                        unrealized_pnl: lastHistoryItem.unrealized_pnl
+                    });
+                } else {
+                    console.warn('⚠️ [fetchSnapshot] History 數據為空！');
+                }
             } else {
                 if (records.value.length === 0) resetData();
             }
@@ -255,7 +274,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     const stats = computed(() => currentGroupData.value.summary || {});
     const holdings = computed(() => currentGroupData.value.holdings || []);
-    const history = computed(() => currentGroupData.value.history || []);
+    const history = computed(() => {
+        const historyData = currentGroupData.value.history || [];
+        // 🔍 診斷：追蹤 history computed 的變化
+        console.log(`📊 [history computed] 返回 ${historyData.length} 筆數據`);
+        if (historyData.length > 0) {
+            console.log('📊 [history computed] 最新記錄:', historyData[historyData.length - 1]);
+        }
+        return historyData;
+    });
     const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
 
