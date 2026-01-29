@@ -247,10 +247,11 @@ const isConfirmed = (div) => confirmedKeys.value.has(getDivKey(div));
 const pendingCount = computed(() => localDividends.value.filter(d => !isConfirmed(d)).length);
 const confirmedCount = computed(() => confirmedKeys.value.size);
 
-// 監聽 pending_dividends 變化
-watch(() => store.pending_dividends, (newVal) => {
-  if (newVal && newVal.length > 0) {
-    localDividends.value = newVal.map(d => {
+// ✅ 合併為單一 watch，統一處理 pending_dividends 和 records 更新
+watch(() => [store.pending_dividends, store.records], ([newPending, newRecords]) => {
+  // 更新本地配息列表
+  if (newPending && newPending.length > 0) {
+    localDividends.value = newPending.map(d => {
       const gross = Number(d.total_gross) || 0;
       const net = Number(d.total_net_usd) || 0;
       const currency = getCurrency(d.symbol);
@@ -267,45 +268,34 @@ watch(() => store.pending_dividends, (newVal) => {
         tax: d.tax !== undefined ? d.tax : defaultTax
       };
     });
+  } else {
+    localDividends.value = [];
+  }
+  
+  // 清理已刪除配息的確認狀態
+  if (newRecords && newRecords.length > 0) {
+    const divRecordKeys = new Set(
+      newRecords.filter(r => r.txn_type === 'DIV').map(r => `${r.symbol}_${r.txn_date}`)
+    );
+    const originalSize = confirmedKeys.value.size;
+    confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => divRecordKeys.has(key)));
     
-    // 同步狀態：移除已不在待確認列表中的配息
-    const pendingKeys = new Set(newVal.map(d => getDivKey(d)));
+    if (confirmedKeys.value.size !== originalSize) {
+      saveConfirmedKeys();
+    }
+  }
+  
+  // 清空已確認但不在待處理列表中的 keys
+  if (newPending) {
+    const pendingKeys = new Set(newPending.map(d => getDivKey(d)));
     const originalSize = confirmedKeys.value.size;
     confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => pendingKeys.has(key)));
     
-    if (confirmedKeys.value.size !== originalSize) saveConfirmedKeys();
-  } else {
-    localDividends.value = [];
-    if (confirmedKeys.value.size > 0) {
-      confirmedKeys.value.clear();
+    if (confirmedKeys.value.size !== originalSize) {
       saveConfirmedKeys();
     }
   }
 }, { immediate: true, deep: true });
-
-// 監聽交易記錄變化，主動清理已刪除配息的確認狀態
-watch(() => store.records, (newRecords) => {
-  if (!newRecords || newRecords.length === 0) return;
-  
-  // 獲取所有 DIV 類型的交易記錄 key
-  const divRecordKeys = new Set(
-    newRecords
-      .filter(r => r.txn_type === 'DIV')
-      .map(r => `${r.symbol}_${r.txn_date}`)
-  );
-  
-  // 修復：直接清理不在 records 中的已確認配息
-  // 不再依賴可能過時的 pending_dividends 數據
-  const originalSize = confirmedKeys.value.size;
-  confirmedKeys.value = new Set(
-    [...confirmedKeys.value].filter(key => divRecordKeys.has(key))
-  );
-  
-  if (confirmedKeys.value.size !== originalSize) {
-    console.log(`🧹 清理了 ${originalSize - confirmedKeys.value.size} 個已刪除配息的確認狀態`);
-    saveConfirmedKeys();
-  }
-}, { deep: true });
 
 const fetchDividends = async () => {
   loading.value = true;
@@ -332,24 +322,7 @@ const formatNumber = (val, d = 2) => {
   });
 };
 
-const getHoldingShares = (div) => {
-  const fields = ['shares', 'qty', 'quantity', 'holding_qty', 'shares_held'];
-  for (const field of fields) {
-    const val = div[field];
-    if (val !== undefined && val !== null && val > 0) return Number(val);
-  }
-  return 0;
-};
-
-// 修復：尋找已存在的配息記錄
-const findExistingDividendRecord = (symbol, exDate) => {
-  return store.records.find(r => 
-    r.txn_type === 'DIV' && 
-    r.symbol === symbol && 
-    r.txn_date === exDate
-  );
-};
-
+// ✅ 大幅簡化配息確認流程：2 步驟完成
 const confirmDividend = async (div) => {
   const divKey = getDivKey(div);
   
@@ -377,33 +350,14 @@ const confirmDividend = async (div) => {
   processingKey.value = divKey;
   
   try {
-    console.log('🚀 [DividendManager] 開始配息確認流程...');
-    
-    // 步驟 1：先檢查是否已有配息記錄
-    const existingRecord = findExistingDividendRecord(div.symbol, div.ex_date);
-    
-    if (existingRecord) {
-      console.log(`🗑️ [Step 1] 發現舊配息記錄 (ID: ${existingRecord.id})，先刪除...`);
-      await store.deleteRecord(existingRecord.id);
-      addToast('已清除舊配息記錄', 'info');
-      
-      // 等待 500ms 確保後端完成刪除
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    // 步驟 2：添加新配息記錄
-    console.log(`📝 [Step 2] 添加新配息記錄: ${div.symbol}_${div.ex_date}`);
-    const shares = getHoldingShares(div);
-    const divPerShare = shares > 0 ? netAmount / shares : netAmount;
-    const recordQty = shares > 0 ? shares : 1;
-    
+    // 🎯 Step 1: 直接添加配息記錄（資料庫會自動處理重複）
     const taxInfo = finalTax > 0 ? `稅金:${currency} ${formatNumber(finalTax, 2)}` : '';
     const record = {
       txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
-      qty: recordQty,
-      price: divPerShare,
+      qty: 1,  // 簡化：統一使用 1
+      price: netAmount,  // 淨額直接作為價格
       fee: 0,
       tax: 0,
       tag: 'Auto-Dividend',
@@ -418,41 +372,22 @@ const confirmDividend = async (div) => {
     
     addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
     
-    // 步驟 3：等待前端 records 更新
-    console.log('⏳ [Step 3] 等待前端 records 更新...');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // 步驟 4：🔧 關鍵修復 - 強制清空 history 快取並觸發完整刷新
-    console.log('🔥 [Step 4] 清空本地快取，準備觸發後端計算...');
-    
-    // 清空 rawData，強制前端重新抓取
-    store.rawData = null;
-    
-    // 清空 localStorage 中的快取
-    localStorage.removeItem('cached_portfolio_snapshot');
-    
-    // 步驟 5：觸發後端 GitHub Actions 計算
-    console.log('🚀 [Step 5] 觸發後端計算任務...');
+    // 🎯 Step 2: 觸發後端計算
     try {
       await store.triggerUpdate();
-      console.log('✅ [Step 5] GitHub Actions 已觸發，SmartPolling 已啟動');
-      
-      // 步驟 6：顯示等待提示
-      addToast('⏳ 正在重新計算曲線圖數據，請稍候 20-30 秒...', 'info');
-      
+      addToast('⏳ 正在重新計算數據，請稍候...', 'info');
     } catch (triggerError) {
-      console.error('⚠️ [Step 5] 觸發計算失敗:', triggerError);
+      console.error('⚠️ 觸發計算失敗:', triggerError);
       addToast('⚠️ 配息已入帳，但自動更新失敗，請手動點擊「更新數據」', 'warning');
     }
     
   } catch (e) {
-    console.error('❌ [DividendManager] 配息確認失敗:', e);
+    console.error('❌ 配息確認失敗:', e);
     confirmedKeys.value.delete(divKey);
     saveConfirmedKeys();
     addToast(`入帳失敗: ${e.message || '未知錯誤'}`, 'error');
   } finally {
     processingKey.value = null;
-    console.log('✅ [DividendManager] 配息確認流程結束');
   }
 };
 </script>
