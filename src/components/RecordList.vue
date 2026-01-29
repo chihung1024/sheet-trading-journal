@@ -44,7 +44,7 @@
              
              <button class="btn-refresh" @click="refreshData" :disabled="isRefreshing">
                 <span class="refresh-icon" :class="{ spinning: isRefreshing }">↺</span>
-                <span class="desktop-only">刷新</span>
+                <span class="btn-text">刷新</span>
              </button>
         </div>
     </div>
@@ -243,9 +243,14 @@ const formatNumber = (num, d=2) => {
     return Number(num).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 };
 
+// 修正：日期格式改為 YYYY-MM-DD
 const formatDate = (dateStr) => {
+    if (!dateStr) return '';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 };
 
 const getTypeLabel = (type) => {
@@ -444,10 +449,53 @@ watch(() => store.currentGroup, () => { currentPage.value = 1; });
 .filters { display: flex; gap: 12px; flex-wrap: wrap; }
 .filter-select { padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); font-size: 0.95rem; color: var(--text-main); cursor: pointer; }
 
-.btn-refresh { margin-left: auto; background: var(--bg-card); border: 1px solid var(--border-color); padding: 10px; width: 42px; height: 42px; border-radius: 8px; cursor: pointer; color: var(--text-sub); font-size: 1.2rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-.btn-refresh:hover:not(:disabled) { color: var(--primary); border-color: var(--primary); }
-.refresh-icon.spinning { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* 修正：統一刷新按鈕樣式 */
+.btn-refresh {
+  margin-left: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-sub);
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--bg-secondary);
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  font-size: 1.1rem;
+  display: inline-block;
+}
+
+.refresh-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+.btn-text {
+  font-family: inherit;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
 /* Stats Summary */
 .stats-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-sm); }
@@ -528,6 +576,10 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
     .filters-wrapper { width: 100%; flex-direction: column; }
     .filters { flex-direction: column; width: 100%; }
     .filter-select { width: 100%; }
+    
+    .btn-refresh { padding: 10px; min-width: 42px; }
+    .btn-text { display: none; } /* 手機版隱藏文字 */
+    .refresh-icon { font-size: 1.2rem; }
     
     .stats-summary { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .stat-value { font-size: 1.2rem; }
