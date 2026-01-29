@@ -409,14 +409,11 @@ const confirmDividend = async (div) => {
     if (success) {
       addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
       
-      // 修復：觸發後端重新計算歷史數據，確保曲線圖更新
-      try {
-        await store.triggerUpdate();
-        console.log('✅ 已觸發數據重新計算，歷史曲線將更新');
-      } catch (updateError) {
-        console.error('⚠️ 觸發更新失敗:', updateError);
-        // 即使觸發失敗，也繼續執行後續操作
-      }
+      // 修復：直接啟動輪詢，不使用 triggerUpdate
+      // 這樣可以避免任何可能的 API 錯誤影響流程
+      console.log('🔄 啟動數據更新輪詢...');
+      addToast('🔄 正在更新歷史曲線，請稍候...', 'info');
+      store.startPolling();
     } else {
       confirmedKeys.value.delete(divKey);
       saveConfirmedKeys();
