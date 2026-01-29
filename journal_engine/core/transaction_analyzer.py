@@ -15,7 +15,8 @@ class PositionSnapshot:
     is_new_today: bool
     today_buy_qty: float
     today_sell_qty: float
-    realized_pnl: float
+    realized_pnl: float  # 相對於成本的已實現損益
+    realized_pnl_vs_prev_close: float  # ✅ 新增：相對於前日收盤的已實現損益
     
     # 新增：持倉分解
     old_qty_remaining: float = 0.0
@@ -39,7 +40,8 @@ class TransactionAnalyzer:
         self, 
         symbol: str, 
         target_date: date, 
-        fx: float = 1.0
+        fx: float = 1.0,
+        prev_close_price: float = 0.0  # ✅ 新增：前日收盤價
     ) -> PositionSnapshot:
         """分析某標的在目標日期的完整持倉狀態"""
         try:
@@ -70,7 +72,8 @@ class TransactionAnalyzer:
             today_buy_pool_cost = 0.0
             today_buy_total = 0.0
             today_sell_total = 0.0
-            realized_pnl = 0.0
+            realized_pnl = 0.0  # 相對於成本
+            realized_pnl_vs_prev = 0.0  # ✅ 相對於前日收盤
             
             for _, t in today_txns.iterrows():
                 if t['Type'] == 'BUY':
@@ -82,25 +85,40 @@ class TransactionAnalyzer:
                     
                 elif t['Type'] == 'SELL':
                     sell_qty = t['Qty']
+                    sell_price = t['Price']
+                    sell_fee_tax = t['Fee'] + t['Tax']
                     today_sell_total += sell_qty
                     remaining_sell = sell_qty
                     
                     # FIFO: 優先賣出舊倉
                     if p_qty > 1e-9 and remaining_sell > 0:
                         take = min(remaining_sell, p_qty)
-                        pnl = (t['Price'] - p_avg) * take - (t['Fee'] + t['Tax']) * (take / sell_qty)
-                        realized_pnl += pnl
+                        
+                        # ✅ 相對於成本的已實現損益
+                        pnl_vs_cost = (sell_price - p_avg) * take - sell_fee_tax * (take / sell_qty)
+                        realized_pnl += pnl_vs_cost
+                        
+                        # ✅ 相對於前日收盤的已實現損益
+                        if prev_close_price > 0:
+                            pnl_vs_prev_close = (sell_price - prev_close_price) * take - sell_fee_tax * (take / sell_qty)
+                            realized_pnl_vs_prev += pnl_vs_prev_close
                         
                         p_qty -= take
                         p_cost -= p_avg * take
                         remaining_sell -= take
                     
-                    # FIFO: 再賣出新倉（當沖）
+                    # FIFO: 再賣出新倉（當抖）
                     if today_buy_pool_qty > 1e-9 and remaining_sell > 0:
                         t_avg = today_buy_pool_cost / today_buy_pool_qty
                         take = min(remaining_sell, today_buy_pool_qty)
-                        pnl = (t['Price'] - t_avg) * take - (t['Fee'] + t['Tax']) * (take / sell_qty)
-                        realized_pnl += pnl
+                        
+                        # 相對於成本
+                        pnl_vs_cost = (sell_price - t_avg) * take - sell_fee_tax * (take / sell_qty)
+                        realized_pnl += pnl_vs_cost
+                        
+                        # ✅ 當抖：使用買入價作為基準（不是前日收盤）
+                        pnl_vs_prev_close = (sell_price - t_avg) * take - sell_fee_tax * (take / sell_qty)
+                        realized_pnl_vs_prev += pnl_vs_prev_close
                         
                         today_buy_pool_qty -= take
                         today_buy_pool_cost -= t_avg * take
@@ -130,6 +148,7 @@ class TransactionAnalyzer:
                 today_buy_qty=today_buy_total,
                 today_sell_qty=today_sell_total,
                 realized_pnl=realized_pnl * fx,
+                realized_pnl_vs_prev_close=realized_pnl_vs_prev * fx,  # ✅ 新增
                 old_qty_remaining=old_remaining,
                 new_qty_remaining=new_remaining,
                 old_avg_cost=old_avg,
@@ -141,7 +160,7 @@ class TransactionAnalyzer:
             return PositionSnapshot(
                 symbol=symbol, qty=0, avg_cost=0, total_cost=0,
                 is_new_today=False, today_buy_qty=0, today_sell_qty=0,
-                realized_pnl=0
+                realized_pnl=0, realized_pnl_vs_prev_close=0
             )
     
     def get_base_price_for_pnl(
