@@ -187,6 +187,8 @@ const onDateChange = () => {
 
 const filterData = (startDate, endDate = new Date()) => {
     const fullHistory = portfolioStore.history || [];
+    console.log(`📈 [filterData] 收到 ${fullHistory.length} 筆 history 數據`);
+    
     if (fullHistory.length === 0) {
         displayedData.value = [];
         baselineData.value = null;
@@ -218,10 +220,12 @@ const filterData = (startDate, endDate = new Date()) => {
     });
     
     displayedData.value = filteredData;
+    console.log(`📈 [filterData] 過濾後 ${filteredData.length} 筆數據，準備繪圖`);
     drawChart();
 };
 
 const drawChart = () => {
+    console.log('🎨 [drawChart] 開始繪製圖表...');
     if (!canvas.value) return;
     const ctx = canvas.value.getContext('2d');
     if (myChart) myChart.destroy();
@@ -463,15 +467,28 @@ const drawChart = () => {
             }
         }]
     });
+    console.log('✅ [drawChart] 圖表繪製完成');
 };
 
-watch(chartType, () => drawChart());
-watch(() => portfolioStore.history, async () => {
-    await nextTick();
-    switchTimeRange(timeRange.value);
+watch(chartType, () => {
+    console.log('🎨 [chartType changed] 重新繪製圖表');
+    drawChart();
 });
 
+// 🔧 修復：使用 deep watch 確保檢測到 array 內容變化
+watch(() => portfolioStore.history, async (newHistory, oldHistory) => {
+    const newLength = newHistory?.length || 0;
+    const oldLength = oldHistory?.length || 0;
+    const latestRealized = newHistory?.[newHistory.length - 1]?.realized_pnl || 0;
+    
+    console.log(`📊 [history watch 觸發] 長度: ${oldLength} → ${newLength}, 最新 realized_pnl: ${latestRealized}`);
+    
+    await nextTick();
+    switchTimeRange(timeRange.value);
+}, { deep: true }); // ✅ 添加 deep: true
+
 onMounted(async () => {
+    console.log('🎬 [PerformanceChart] 組件已掛載');
     await nextTick();
     switchTimeRange('1Y');
     if (canvas.value && window.ResizeObserver) {
