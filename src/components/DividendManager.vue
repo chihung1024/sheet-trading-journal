@@ -214,7 +214,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onMounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
@@ -226,6 +226,39 @@ const loading = ref(false);
 const processingId = ref(null);
 const localDividends = ref([]);
 const confirmedIds = ref(new Set()); // 追蹤已確認的配息 ID
+
+const STORAGE_KEY = 'confirmed_dividend_ids';
+
+// 從 localStorage 載入已確認的 ID
+const loadConfirmedIds = () => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      confirmedIds.value = new Set(parsed);
+      console.log('📦 已載入持久化的已確認配息:', parsed);
+    }
+  } catch (e) {
+    console.error('載入已確認配息失敗:', e);
+    confirmedIds.value = new Set();
+  }
+};
+
+// 保存已確認的 ID 到 localStorage
+const saveConfirmedIds = () => {
+  try {
+    const array = Array.from(confirmedIds.value);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(array));
+    console.log('💾 已保存已確認配息:', array);
+  } catch (e) {
+    console.error('保存已確認配息失敗:', e);
+  }
+};
+
+// 組件掛載時載入持久化狀態
+onMounted(() => {
+  loadConfirmedIds();
+});
 
 const isTWStock = (symbol) => {
   return /^\d{4}/.test(symbol) || /\.TW(O)?$/i.test(symbol);
@@ -280,12 +313,24 @@ watch(() => store.pending_dividends, (newVal) => {
       };
     });
     
-    // 清理不存在的已確認 ID
+    // 清理已從後端消失的確認記錄
     const currentIds = new Set(newVal.map(d => d.id));
+    const originalSize = confirmedIds.value.size;
     confirmedIds.value = new Set([...confirmedIds.value].filter(id => currentIds.has(id)));
+    
+    // 如果有清理，更新 localStorage
+    if (confirmedIds.value.size !== originalSize) {
+      saveConfirmedIds();
+      console.log('🧹 已清理不存在的確認記錄');
+    }
   } else {
     localDividends.value = [];
-    confirmedIds.value.clear();
+    // 列表為空時清空所有確認狀態
+    if (confirmedIds.value.size > 0) {
+      confirmedIds.value.clear();
+      saveConfirmedIds();
+      console.log('🧹 配息列表為空，已清空所有確認狀態');
+    }
   }
 }, { immediate: true, deep: true });
 
@@ -384,27 +429,9 @@ const confirmDividend = async (div) => {
     if (success) {
       // ② 標記為已確認（立即生效）
       confirmedIds.value.add(div.id);
+      // ③ 持久化到 localStorage
+      saveConfirmedIds();
       
-      // ③ 刪除後端 pending_dividends 記錄
-      try {
-        const token = store.token || localStorage.getItem('token');
-        const response = await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
-          method: 'DELETE',
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (!response.ok) {
-          console.warn('刪除 pending_dividends API 回應異常:', response.status);
-        } else {
-          console.log('✅ pending_dividends 已刪除:', div.id);
-        }
-      } catch (err) {
-        console.error('❌ 刪除 pending_dividends 失敗:', err);
-      }
-
       addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
       
       // ④ 刷新所有數據（後端快照會在背景更新後自動更新）
