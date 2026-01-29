@@ -23,8 +23,6 @@ class PortfolioCalculator:
         self.pnl_helper = DailyPnLHelper()
         self.currency_detector = CurrencyDetector()
         self.validator = PortfolioValidator()
-        self.duplicate_div_ids = set()
-        self.conflict_div_info = {}
 
     def _is_taiwan_stock(self, symbol):
         return self.currency_detector.is_base_currency(symbol)
@@ -71,73 +69,8 @@ class PortfolioCalculator:
             fx_to_use = current_fx
             return price, self._get_effective_fx_rate(symbol, fx_to_use)
 
-    def _detect_and_remove_duplicate_dividends(self):
-        logger.info("檢測重複配息...")
-        
-        if self.df.empty or 'id' not in self.df.columns:
-            return set(), {}
-        
-        div_txs = self.df[self.df['Type'] == 'DIV'].copy()
-        if div_txs.empty: return set(), {}
-        
-        div_txs['div_key'] = div_txs['Symbol'] + '_' + div_txs['Date'].dt.strftime('%Y-%m-%d')
-        grouped = div_txs.groupby('div_key')
-        
-        ids_to_remove_from_memory = []
-        ids_to_delete_from_db = set()
-        conflict_info = {}
-        
-        for div_key, group in grouped:
-            if len(group) <= 1: continue
-            
-            logger.warning(f"{div_key} 有 {len(group)} 筆配息")
-            
-            first_row = group.iloc[0]
-            all_same = all(
-                abs(row['Qty'] - first_row['Qty']) < 1e-4 and 
-                abs(row['Price'] - first_row['Price']) < 1e-4
-                for _, row in group.iterrows()
-            )
-            
-            if all_same:
-                for idx, row in group.iloc[1:].iterrows():
-                    ids_to_remove_from_memory.append(idx)
-                    ids_to_delete_from_db.add(row['id'])
-                logger.info(f"  保留 {group.iloc[0]['id']}, 移除 {len(group)-1} 筆重複")
-            else:
-                conflict_ids = group['id'].tolist()
-                conflict_info[div_key] = conflict_ids
-                logger.error(f"  {div_key} 數據不一致，標記為衝突")
-                for idx, _ in group.iterrows():
-                    ids_to_remove_from_memory.append(idx)
-        
-        if ids_to_remove_from_memory:
-            self.df = self.df.drop(ids_to_remove_from_memory)
-            logger.info(f"已從記憶體移除 {len(ids_to_remove_from_memory)} 筆")
-        
-        self.duplicate_div_ids = ids_to_delete_from_db.copy()
-        return ids_to_delete_from_db, conflict_info
-
-    def _delete_records_from_database(self, ids_to_delete, record_type="重複"):
-        if not ids_to_delete or not self.api_client: return
-        
-        logger.info(f"從資料庫刪除 {len(ids_to_delete)} 筆{record_type}記錄...")
-        result = self.api_client.delete_records(list(ids_to_delete))
-        
-        if result['success'] > 0:
-            logger.info(f"成功刪除 {result['success']} 筆")
-        if result['failed'] > 0:
-            logger.error(f"刪除失敗 {result['failed']} 筆")
-
     def run(self):
         logger.info(f"=== 開始多群組計算 (baseline: {self.benchmark_ticker}) ===")
-        
-        ids_to_delete, self.conflict_div_info = self._detect_and_remove_duplicate_dividends()
-        self._delete_records_from_database(ids_to_delete, "重複")
-        
-        if self.conflict_div_info:
-            all_conflict_ids = [id for ids in self.conflict_div_info.values() for id in ids]
-            self._delete_records_from_database(all_conflict_ids, "衝突")
         
         current_fx = DEFAULT_FX_RATE
         if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
@@ -161,7 +94,6 @@ class PortfolioCalculator:
         self._back_adjust_transactions_global()
         
         current_stage, stage_desc = self.pnl_helper.get_market_stage()
-        logger.info(f"市場狀態: {current_stage}")
 
         all_tags = set()
         for tags_str in self.df['Tag'].dropna().unique():
@@ -237,13 +169,11 @@ class PortfolioCalculator:
         last_market_value_twd = 0.0
         first_benchmark_val_twd = None
 
-        # 🔧 修復：收集所有 DIV 記錄並標記為已確認
+        # ✅ 收集所有 DIV 記錄的 key（標記為已確認）
         div_txs = df[df['Type'] == 'DIV'].copy()
         for _, row in div_txs.iterrows():
-            if 'id' in row and row['id'] not in self.duplicate_div_ids:
-                key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
-                confirmed_dividends.add(key)
-                logger.info(f"✅ 配息已確認: {key} (金額: {row['Qty'] * row['Price']:.2f})")
+            key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
+            confirmed_dividends.add(key)
 
         if not df.empty:
             first_tx_date = df['Date'].min()
@@ -344,54 +274,54 @@ class PortfolioCalculator:
                     daily_net_cashflow_twd -= proceeds_twd
 
                 elif row['Type'] == 'DIV':
-                    # 🔧 修復：跳過重複配息
-                    if 'id' in row and row['id'] in self.duplicate_div_ids:
-                        logger.warning(f"⚠️ 跳過重複配息: {sym}_{current_date}")
-                        continue
-                    
                     effective_fx = self._get_effective_fx_rate(sym, fx)
-                    # ✅ 正確計算：數量 × 單價
+                    # ✅ 簡化計算：Qty × Price（前端已處理淨額）
                     div_twd = (row['Qty'] * row['Price']) * effective_fx
                     total_realized_pnl_twd += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
-                    logger.info(f"✅ 處理用戶配息: {sym}_{current_date}, 金額: TWD {div_twd:.0f}")
 
-            # 🔧 修復：市場配息檢測 - 只處理「未在 records 中確認」的配息
+            # ✅ 市場配息檢測 - 僅處理「未在 records 中確認」的配息
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
+                if h_data['qty'] < 1e-6:
+                    continue
+                    
                 div_per_share = self.market.get_dividend(sym, d)
-                if div_per_share > 0 and h_data['qty'] > 1e-6:
-                    effective_fx = self._get_effective_fx_rate(sym, fx)
-                    div_key = f"{sym}_{date_str}"
-                    
-                    # 🔧 關鍵修復：如果配息已在 records 中確認，不要再計算市場數據
-                    is_confirmed = div_key in confirmed_dividends
-                    
-                    split_factor = self.market.get_transaction_multiplier(sym, d)
-                    shares_at_ex = h_data['qty'] / split_factor
-                    
-                    total_gross = shares_at_ex * div_per_share
-                    total_net_usd = total_gross * 0.7 
-                    total_net_twd = total_net_usd * effective_fx
+                if div_per_share <= 0:
+                    continue
+                
+                effective_fx = self._get_effective_fx_rate(sym, fx)
+                div_key = f"{sym}_{date_str}"
+                
+                # 🎯 關鍵邏輯：已確認的配息跳過市場計算
+                is_confirmed = div_key in confirmed_dividends
+                
+                split_factor = self.market.get_transaction_multiplier(sym, d)
+                shares_at_ex = h_data['qty'] / split_factor
+                
+                total_gross = shares_at_ex * div_per_share
+                total_net_usd = total_gross * 0.7
+                total_net_twd = total_net_usd * effective_fx
 
-                    dividend_history.append({
-                        'symbol': sym, 'ex_date': date_str, 'shares_held': h_data['qty'],
-                        'dividend_per_share_gross': div_per_share, 
-                        'total_gross': round(total_gross, 2),
-                        'total_net_usd': round(total_net_usd, 2),
-                        'total_net_twd': round(total_net_twd, 0),
-                        'fx_rate': fx, 'status': 'confirmed' if is_confirmed else 'pending'
-                    })
-                    
-                    # 🔧 關鍵修復：只有「未確認」的配息才計入損益和現金流
-                    if not is_confirmed:
-                        total_realized_pnl_twd += total_net_twd
-                        xirr_cashflows.append({'date': d, 'amount': total_net_twd})
-                        daily_net_cashflow_twd -= total_net_twd
-                        logger.info(f"📊 處理市場配息（未確認）: {div_key}, 金額: TWD {total_net_twd:.0f}")
-                    else:
-                        logger.info(f"⏭️ 跳過市場配息（已在 records 中）: {div_key}")
+                # 添加到配息歷史記錄
+                dividend_history.append({
+                    'symbol': sym,
+                    'ex_date': date_str,
+                    'shares_held': h_data['qty'],
+                    'dividend_per_share_gross': div_per_share,
+                    'total_gross': round(total_gross, 2),
+                    'total_net_usd': round(total_net_usd, 2),
+                    'total_net_twd': round(total_net_twd, 0),
+                    'fx_rate': fx,
+                    'status': 'confirmed' if is_confirmed else 'pending'
+                })
+                
+                # 🎯 僅「未確認」配息計入損益
+                if not is_confirmed:
+                    total_realized_pnl_twd += total_net_twd
+                    xirr_cashflows.append({'date': d, 'amount': total_net_twd})
+                    daily_net_cashflow_twd -= total_net_twd
 
             # 計算當日市值和 TWR
             current_market_value_twd = 0.0
@@ -519,8 +449,6 @@ class PortfolioCalculator:
         )
         
         self.validator.validate_twr_calculation(history_data)
-        
-        logger.info(f"✅ 計算完成 - TWR: {summary.twr:.2f}%, 已實現損益: TWD {summary.realized_pnl:,.0f}")
         
         return PortfolioGroupData(
             summary=summary, holdings=final_holdings, history=history_data,
