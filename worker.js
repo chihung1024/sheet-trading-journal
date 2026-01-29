@@ -4,6 +4,7 @@
  * v2.38: 生產版本 - 使用 workflow_dispatch + inputs 傳遞自訂 benchmark
  * v2.53: 修復 admin 無法刪除用戶記錄的權限問題
  * v2.54: 新增用戶專屬 benchmark 設定 API
+ * v2.55: 修復 GET user-settings 超時問題 - 添加詳細日誌
  */
 
 
@@ -79,20 +80,29 @@ export default {
 
         // [v2.54] [GET/POST] 用戶 benchmark 設定
         if (url.pathname === "/api/user-settings") {
+            console.log('[v2.55 DEBUG] Received user-settings request:', request.method);
+            const startTime = Date.now();
+            
             const user = await authenticate(request, env);
+            console.log('[v2.55 DEBUG] Authentication result:', user ? `user=${user.email}, role=${user.role}` : 'null');
+            
             if (!user) return addCors(jsonResponse({ error: "Unauthorized" }, 401));
 
-            if (request.method === "GET") return addCors(await handleGetUserSettings(request, env, user));
-            else if (request.method === "POST") return addCors(await handleUpdateUserSettings(request, env, user));
+            const result = request.method === "GET" 
+              ? await handleGetUserSettings(request, env, user)
+              : request.method === "POST"
+              ? await handleUpdateUserSettings(request, env, user)
+              : new Response("Method Not Allowed", { status: 405 });
             
-            return addCors(new Response("Method Not Allowed", { status: 405 }));
+            console.log('[v2.55 DEBUG] Request completed in', Date.now() - startTime, 'ms');
+            return addCors(result);
         }
 
 
         return addCors(jsonResponse({ error: "Route Not Found" }, 404));
     } catch (err) {
-        console.error("[Worker Error]", err.message);
-        return addCors(jsonResponse({ error: "Server Error" }, 500));
+        console.error("[Worker Error]", err.message, err.stack);
+        return addCors(jsonResponse({ error: "Server Error: " + err.message }, 500));
     }
   }
 };
@@ -121,19 +131,27 @@ async function handleAuth(request) {
 
 async function authenticate(request, env) {
   const apiKey = request.headers.get("X-API-KEY");
+  console.log('[v2.55 AUTH] X-API-KEY present:', !!apiKey);
+  console.log('[v2.55 AUTH] API_SECRET configured:', !!env.API_SECRET);
+  
   if (apiKey && env.API_SECRET && apiKey === env.API_SECRET) {
+    console.log('[v2.55 AUTH] ✓ API Key authentication successful');
     return { email: 'system', role: 'admin' };
   }
   
   const authHeader = request.headers.get("Authorization");
-  if (!authHeader) return null;
-
+  if (!authHeader) {
+    console.log('[v2.55 AUTH] ✗ No Authorization header');
+    return null;
+  }
 
   try {
     const token = authHeader.split(" ")[1];
     const payload = await verifyGoogleToken(token, GOOGLE_CLIENT_ID);
+    console.log('[v2.55 AUTH] ✓ Google token authentication successful:', payload.email);
     return { email: payload.email, name: payload.name, role: 'user' };
   } catch (e) {
+    console.log('[v2.55 AUTH] ✗ Token verification failed:', e.message);
     return null; 
   }
 }
@@ -255,7 +273,7 @@ async function handleUpdateRecord(req, env, user) {
 async function handleDeleteRecord(req, env, user) {
   const { id } = await req.json();
   
-  // [v2.53 修復] Admin 可以跨用戶刪除，普通用戶只能刪除自己的記錄
+  // [v2.53 修復] Admin 可以跨用戶刪除,普通用戶只能刪除自己的記錄
   let deleteStmt;
   if (user.role === 'admin') {
     // Admin: 不檢查 user_id，可以刪除任何記錄
@@ -296,21 +314,25 @@ async function handleDeleteRecord(req, env, user) {
 
 /**
  * [v2.54] 獲取用戶 benchmark 設定
+ * [v2.55] 添加詳細日誌和錯誤處理
  */
 async function handleGetUserSettings(request, env, user) {
   try {
     // 支援 Admin/System 查詢其他用戶的設定（透過 X-Target-User header）
     const targetUser = request.headers.get("X-Target-User") || user.email;
+    console.log(`[v2.55 GetUserSettings] Query for user: ${targetUser}`);
     
+    const dbStartTime = Date.now();
     const result = await env.DB.prepare(
       "SELECT benchmark FROM user_settings WHERE user_id = ?"
     ).bind(targetUser).first();
+    console.log(`[v2.55 GetUserSettings] DB query completed in ${Date.now() - dbStartTime}ms`);
     
     const benchmark = result?.benchmark || 'SPY';
-    console.log(`[v2.54] Get benchmark for ${targetUser}: ${benchmark}`);
+    console.log(`[v2.55 GetUserSettings] Result: ${benchmark} (from ${result ? 'DB' : 'default'})`);
     return jsonResponse({ success: true, benchmark });
   } catch (e) {
-    console.error('[v2.54 GetUserSettings Error]', e);
+    console.error('[v2.55 GetUserSettings Error]', e.message, e.stack);
     return jsonResponse({ success: true, benchmark: 'SPY' }); // 容錯回退
   }
 }
