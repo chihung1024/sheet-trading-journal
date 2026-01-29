@@ -294,20 +294,15 @@ watch(() => store.records, (newRecords) => {
       .map(r => `${r.symbol}_${r.txn_date}`)
   );
   
-  // 清理已不存在於交易記錄中的確認狀態
+  // 修復：直接清理不在 records 中的已確認配息
+  // 不再依賴可能過時的 pending_dividends 數據
   const originalSize = confirmedKeys.value.size;
   confirmedKeys.value = new Set(
-    [...confirmedKeys.value].filter(key => {
-      // 如果這個 key 在 pending_dividends 中，保留（未確認）
-      const isPending = localDividends.value.some(d => getDivKey(d) === key);
-      if (isPending) return true;
-      
-      // 如果這個 key 還在交易記錄中，保留（已確認且未刪除）
-      return divRecordKeys.has(key);
-    })
+    [...confirmedKeys.value].filter(key => divRecordKeys.has(key))
   );
   
   if (confirmedKeys.value.size !== originalSize) {
+    console.log(`🧹 清理了 ${originalSize - confirmedKeys.value.size} 個已刪除配息的確認狀態`);
     saveConfirmedKeys();
   }
 }, { deep: true });
