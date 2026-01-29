@@ -62,35 +62,22 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         records.value = [];
         lastUpdate.value = '';
         localStorage.removeItem('cached_records');
-        console.log('🧹 [resetData] 本地投資組合數據已清空');
     };
 
     const fetchAll = async () => {
-        if (loading.value) {
-            console.warn('⚠️ [fetchAll] 請求已在進行中，忽略此次調用');
-            return;
-        }
-
-        console.log('📡 [fetchAll] 開始載入數據...');
+        if (loading.value) return;
         loading.value = true;
         
         try {
-            await fetchRecords().catch(err => {
-                console.error('❌ [fetchRecords] 錯誤:', err);
-                throw err;
-            });
+            await fetchRecords();
             
             if (records.value && records.value.length > 0) {
-                await fetchSnapshot().catch(err => {
-                    console.error('❌ [fetchSnapshot] 錯誤:', err);
-                });
-                console.log('✅ [fetchAll] 數據載入完成');
+                await fetchSnapshot();
             } else {
-                resetData(); 
-                console.log('ℹ️ [fetchAll] 無交易紀錄，已強制重置本地數據');
+                resetData();
             }
         } catch (error) {
-            console.error('❌ [fetchAll] 發生嚴重錯誤:', error);
+            console.error('fetchAll error:', error);
             connectionStatus.value = 'error';
         } finally {
             loading.value = false;
@@ -98,82 +85,42 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const fetchSnapshot = async () => {
-        console.log('📊 [fetchSnapshot] 開始請求...');
         try {
             const json = await fetchWithAuth('/api/portfolio');
             
             if (json && json.success && json.data) {
                 if (!json.data.updated_at) {
-                    if (records.value.length === 0) {
-                        resetData();
-                        console.log('✅ [fetchSnapshot] 後端已同步重置為空數據');
-                    } else {
-                        console.log('⏳ [fetchSnapshot] 快照計算中，暫不更新介面');
-                    }
+                    if (records.value.length === 0) resetData();
                     return;
                 }
 
                 if (records.value.length === 0 && json.data.holdings && json.data.holdings.length > 0) {
-                    console.warn('⏳ [fetchSnapshot] 偵測到殘留的舊快照資料，略過更新');
                     return;
                 }
 
-                // 🔍 診斷：追蹤 history 數據變化
-                const oldHistoryLength = rawData.value?.history?.length || 0;
-                const newHistoryLength = json.data.history?.length || 0;
-                
                 rawData.value = json.data; 
                 lastUpdate.value = json.data.updated_at;
-                
-                console.log('✅ [fetchSnapshot] 數據已更新時間:', lastUpdate.value);
-                console.log(`📊 [fetchSnapshot] History 長度: ${oldHistoryLength} → ${newHistoryLength}`);
-                
-                if (json.data.history && json.data.history.length > 0) {
-                    const lastHistoryItem = json.data.history[json.data.history.length - 1];
-                    console.log('📊 [fetchSnapshot] 最新 history 記錄:', {
-                        date: lastHistoryItem.date,
-                        total_value: lastHistoryItem.total_value,
-                        net_profit: lastHistoryItem.net_profit,
-                        realized_pnl: lastHistoryItem.realized_pnl,
-                        unrealized_pnl: lastHistoryItem.unrealized_pnl
-                    });
-                } else {
-                    console.warn('⚠️ [fetchSnapshot] History 數據為空！');
-                }
             } else {
                 if (records.value.length === 0) resetData();
             }
         } catch (error) {
-            console.error('❌ [fetchSnapshot] 請求失敗:', error);
+            console.error('fetchSnapshot error:', error);
             throw error;
         }
     };
 
     const fetchRecords = async () => {
-        console.log('📝 [fetchRecords] 開始請求...');
         try {
             const json = await fetchWithAuth('/api/records');
-            
-            console.log('📝 [fetchRecords] API 回應:', json);
             
             if (json && json.success) {
                 records.value = json.data || [];
                 localStorage.setItem('cached_records', JSON.stringify(records.value));
-                console.log(`✅ [fetchRecords] 成功載入 ${records.value.length} 筆記錄`);
                 
-                if (records.value.length > 0) {
-                    console.log('📝 [fetchRecords] 第一筆記錄:', records.value[0]);
-                    console.log('📝 [fetchRecords] 最近5筆日期:', records.value.slice(-5).map(r => r.date));
-                }
-                
-                if (records.value.length === 0) {
-                    resetData();
-                }
-            } else {
-                console.warn('⚠️ [fetchRecords] API 返回格式異常:', json);
+                if (records.value.length === 0) resetData();
             }
         } catch (error) {
-            console.error('❌ [fetchRecords] 請求失敗:', error);
+            console.error('fetchRecords error:', error);
             throw error;
         }
     };
@@ -238,12 +185,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (json && json.success) {
                 addToast("刪除成功", "success");
                 
-                // 只在清空最後一筆記錄時才觸發自動更新
                 if (json.message === "RELOAD_UI") {
                     records.value = [];
                     handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據...");
                 } else {
-                    // 一般記錄刪除：只更新記錄列表，不觸發輪詢
                     await fetchRecords();
                 }
                 return true;
@@ -274,22 +219,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     const stats = computed(() => currentGroupData.value.summary || {});
     const holdings = computed(() => currentGroupData.value.holdings || []);
-    const history = computed(() => {
-        const historyData = currentGroupData.value.history || [];
-        // 🔍 診斷：追蹤 history computed 的變化
-        console.log(`📊 [history computed] 返回 ${historyData.length} 筆數據`);
-        if (historyData.length > 0) {
-            console.log('📊 [history computed] 最新記錄:', historyData[historyData.length - 1]);
-        }
-        return historyData;
-    });
+    const history = computed(() => currentGroupData.value.history || []);
     const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
-
-    // ✨ 當日損益：直接使用後端算好的 daily_pnl_twd（統一口徑）
-    const dailyPnL = computed(() => {
-        return stats.value.daily_pnl_twd || 0;
-    });
+    const dailyPnL = computed(() => stats.value.daily_pnl_twd || 0);
 
     const setGroup = (group) => {
         if (availableGroups.value.includes(group)) {
@@ -311,15 +244,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const startPolling = () => {
         if (isPolling.value) return;
         
-        console.log('⏰ [SmartPolling] 開始監控數據更新...');
         isPolling.value = true;
         const startTime = Date.now();
         const initialTime = lastUpdate.value; 
         const { addToast } = useToast(); 
 
         pollTimer = setInterval(async () => {
-            if (Date.now() - startTime > 180000) { 
-                console.warn('⚠️ [SmartPolling] 更新超時，停止輪詢');
+            if (Date.now() - startTime > 180000) {
                 stopPolling();
                 return;
             }
@@ -329,22 +260,18 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
-                    
                     const isNewData = newTime && (newTime !== initialTime) && (json.data.holdings?.length > 0 || records.value.length === 0);
                     const isResetConfirmed = (records.value.length === 0) && !newTime;
 
                     if (isNewData || isResetConfirmed) {
-                        console.log('✨ [SmartPolling] 狀態已同步！更新/重置成功');
                         stopPolling();
                         await fetchAll();
                         if (isResetConfirmed) addToast("✅ 所有資產數據已歸零", "success");
                         else addToast("✅ 數據已更新完畢！", "success");
-                    } else {
-                        console.log('💤 [SmartPolling] 正在等待後端計算/重置任務完成...'); 
                     }
                 }
             } catch (e) {
-                console.warn('⚠️ [SmartPolling] 檢查中:', e);
+                console.warn('SmartPolling check error:', e);
             }
         }, 5000); 
     };
