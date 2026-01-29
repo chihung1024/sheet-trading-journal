@@ -109,7 +109,7 @@
             <button class="btn-close-sheet" @click="showMobileTrade = false">✕</button>
           </div>
 
-          <div class="sticky-panel">
+          <div class="fixed-panel">
             <TradeForm ref="tradeFormRef" @submitted="onTradeSubmitted" />
             
             <div v-if="hasPendingDividends" class="dividend-alert card">
@@ -287,8 +287,12 @@ const handleEditRecord = (record) => {
       tradeFormRef.value.setupForm(record);
       
       if (!isMobileView.value) {
-        // 桌面版滾動到側邊欄
-        document.querySelector('.side-column')?.scrollIntoView({ behavior: 'smooth' });
+        // 桌面版不需要滾動，因為側邊欄已固定
+        // 但可以滾動到表單頂部確保可見
+        const tradeFormEl = document.querySelector('.fixed-panel');
+        if (tradeFormEl) {
+          tradeFormEl.scrollTop = 0;
+        }
       }
     }
   });
@@ -407,7 +411,40 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); }
 .chart-wrapper.chart-full { height: 450px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 
-.sticky-panel { position: sticky; top: calc(var(--header-height) + 24px); display: flex; flex-direction: column; gap: 20px; }
+/* 🔒 固定面板 - 使用 position: fixed */
+.fixed-panel {
+  position: fixed;
+  top: calc(var(--header-height) + 24px);
+  right: max(24px, calc((100vw - 1600px) / 2 + 24px)); /* 響應式右側對齊 */
+  width: 360px;
+  max-height: calc(100vh - var(--header-height) - 48px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  z-index: 10;
+  
+  /* 捲軸樣式優化 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.fixed-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.fixed-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fixed-panel::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.fixed-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--text-sub);
+}
 
 /* FAB Button */
 .fab-btn {
@@ -449,7 +486,13 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .btn-close-sheet { background: none; border: none; font-size: 1.5rem; color: var(--text-sub); cursor: pointer; padding: 4px; }
 
 /* Mobile Sheet Content Adjustments */
-.mobile-sheet .sticky-panel { position: static; padding: 20px; }
+.mobile-sheet .fixed-panel { 
+  position: static; 
+  padding: 20px;
+  max-height: none;
+  width: 100%;
+  right: auto;
+}
 
 /* Utilities */
 .desktop-only { display: inline-block; }
