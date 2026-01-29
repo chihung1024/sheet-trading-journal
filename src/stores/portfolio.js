@@ -219,12 +219,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (json && json.success) {
                 addToast("刪除成功", "success");
                 
+                // 只在清空最後一筆記錄時才觸發自動更新
                 if (json.message === "RELOAD_UI") {
                     records.value = [];
                     handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據...");
                 } else {
+                    // 一般記錄刪除：只更新記錄列表，不觸發輪詢
                     await fetchRecords();
-                    startPolling();
                 }
                 return true;
             }
