@@ -165,12 +165,23 @@ const handleBenchmarkChange = async () => {
   }
 };
 
+// ✅ [修復] 自訂日期變更時直接觸發篩選
 const applyCustomRange = () => {
   if (!customStartDate.value || !customEndDate.value) return;
   const start = parseDate(customStartDate.value);
   const end = parseDate(customEndDate.value);
-  if (end < start) return;
-  timeRange.value = 'CUSTOM';
+  if (end < start) {
+    addToast('結束日期不能早於開始日期', 'error');
+    return;
+  }
+  
+  // 確保 timeRange 設為 CUSTOM
+  if (timeRange.value !== 'CUSTOM') {
+    timeRange.value = 'CUSTOM';
+  } else {
+    // 如果已經是 CUSTOM，直接觸發篩選（因為 watch 不會觸發）
+    filterData();
+  }
 };
 
 const filterData = () => {
