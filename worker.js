@@ -3,6 +3,7 @@
  * 修復：解決交易紀錄刪除後數據殘留的問題
  * v2.38: 生產版本 - 使用 workflow_dispatch + inputs 傳遞自訂 benchmark
  * v2.53: 修復 admin 無法刪除用戶記錄的權限問題
+ * v2.54: 新增用戶專屬 benchmark 設定 API
  */
 
 
@@ -12,7 +13,7 @@ const GOOGLE_CLIENT_ID = "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.goo
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-KEY",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-KEY, X-Target-User",
 };
 
 
@@ -72,6 +73,17 @@ export default {
             else if (request.method === "POST") return addCors(await handleAddRecord(request, env, user));
             else if (request.method === "PUT") return addCors(await handleUpdateRecord(request, env, user));
             else if (request.method === "DELETE") return addCors(await handleDeleteRecord(request, env, user));
+            
+            return addCors(new Response("Method Not Allowed", { status: 405 }));
+        }
+
+        // [v2.54] [GET/POST] 用戶 benchmark 設定
+        if (url.pathname === "/api/user-settings") {
+            const user = await authenticate(request, env);
+            if (!user) return addCors(jsonResponse({ error: "Unauthorized" }, 401));
+
+            if (request.method === "GET") return addCors(await handleGetUserSettings(request, env, user));
+            else if (request.method === "POST") return addCors(await handleUpdateUserSettings(request, env, user));
             
             return addCors(new Response("Method Not Allowed", { status: 405 }));
         }
@@ -279,6 +291,58 @@ async function handleDeleteRecord(req, env, user) {
   }
 
   return jsonResponse({ success: true, deleted: result.meta?.changes || 0 });
+}
+
+
+/**
+ * [v2.54] 獲取用戶 benchmark 設定
+ */
+async function handleGetUserSettings(request, env, user) {
+  try {
+    // 支援 Admin/System 查詢其他用戶的設定（透過 X-Target-User header）
+    const targetUser = request.headers.get("X-Target-User") || user.email;
+    
+    const result = await env.DB.prepare(
+      "SELECT benchmark FROM user_settings WHERE user_id = ?"
+    ).bind(targetUser).first();
+    
+    const benchmark = result?.benchmark || 'SPY';
+    console.log(`[v2.54] Get benchmark for ${targetUser}: ${benchmark}`);
+    return jsonResponse({ success: true, benchmark });
+  } catch (e) {
+    console.error('[v2.54 GetUserSettings Error]', e);
+    return jsonResponse({ success: true, benchmark: 'SPY' }); // 容錯回退
+  }
+}
+
+
+/**
+ * [v2.54] 更新用戶 benchmark 設定
+ */
+async function handleUpdateUserSettings(request, env, user) {
+  try {
+    const { benchmark } = await request.json();
+    if (!benchmark || typeof benchmark !== 'string') {
+      return jsonResponse({ error: 'Invalid benchmark' }, 400);
+    }
+    
+    const normalizedBenchmark = benchmark.trim().toUpperCase();
+    
+    // SQLite 的 UPSERT 語法
+    await env.DB.prepare(`
+      INSERT INTO user_settings (user_id, benchmark, updated_at) 
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET 
+        benchmark = excluded.benchmark,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(user.email, normalizedBenchmark).run();
+    
+    console.log(`[v2.54] Updated benchmark for ${user.email}: ${normalizedBenchmark}`);
+    return jsonResponse({ success: true, benchmark: normalizedBenchmark });
+  } catch (e) {
+    console.error('[v2.54 UpdateUserSettings Error]', e);
+    return jsonResponse({ success: false, error: e.message }, 500);
+  }
 }
 
 
