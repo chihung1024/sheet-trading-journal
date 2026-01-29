@@ -1,30 +1,35 @@
 import requests
 import json
-from ..config import WORKER_API_URL_RECORDS, WORKER_API_URL_PORTFOLIO, API_HEADERS
+import logging
+from ..config import WORKER_API_URL_RECORDS, WORKER_API_URL_PORTFOLIO, API_HEADERS, API_KEY
 from ..models import PortfolioSnapshot
 
 class CloudflareClient:
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.api_base_url = WORKER_API_URL_RECORDS.rsplit('/api/', 1)[0]  # 獲取 base URL
+    
     def fetch_records(self) -> list:
         """從 Worker API 獲取交易紀錄"""
-        print(f"正在連線至 API: {WORKER_API_URL_RECORDS}")
+        self.logger.info(f"正在連線至 API: {WORKER_API_URL_RECORDS}")
         try:
             resp = requests.get(WORKER_API_URL_RECORDS, headers=API_HEADERS)
             
             if resp.status_code != 200:
-                print(f"API 連線失敗 [Status: {resp.status_code}]: {resp.text}")
+                self.logger.error(f"API 連線失敗 [Status: {resp.status_code}]: {resp.text}")
                 return []
 
             api_json = resp.json()
             if not api_json.get('success'):
-                print(f"API 回傳錯誤: {api_json.get('error')}")
+                self.logger.error(f"API 回傳錯誤: {api_json.get('error')}")
                 return []
                 
             records = api_json.get('data', [])
-            print(f"成功取得 {len(records)} 筆交易紀錄")
+            self.logger.info(f"成功取得 {len(records)} 筆交易紀錄")
             return records
             
         except Exception as e:
-            print(f"API 連線發生例外狀況: {e}")
+            self.logger.error(f"API 連線發生例外狀況: {e}")
             return []
 
     def delete_record(self, record_id: int) -> bool:
@@ -33,7 +38,7 @@ class CloudflareClient:
         :param record_id: 記錄 ID
         :return: 是否刪除成功
         """
-        print(f"正在刪除記錄 ID: {record_id}")
+        self.logger.info(f"正在刪除記錄 ID: {record_id}")
         try:
             resp = requests.delete(
                 WORKER_API_URL_RECORDS,
@@ -44,17 +49,17 @@ class CloudflareClient:
             if resp.status_code == 200:
                 api_json = resp.json()
                 if api_json.get('success'):
-                    print(f"✓ 記錄 {record_id} 刪除成功")
+                    self.logger.info(f"✓ 記錄 {record_id} 刪除成功")
                     return True
                 else:
-                    print(f"✗ 刪除記錄 {record_id} 失敗: {api_json.get('error')}")
+                    self.logger.warning(f"✗ 刪除記錄 {record_id} 失敗: {api_json.get('error')}")
                     return False
             else:
-                print(f"✗ 刪除記錄 {record_id} 失敗 [Status: {resp.status_code}]: {resp.text}")
+                self.logger.warning(f"✗ 刪除記錄 {record_id} 失敗 [Status: {resp.status_code}]: {resp.text}")
                 return False
                 
         except Exception as e:
-            print(f"✗ 刪除記錄 {record_id} 發生異常: {e}")
+            self.logger.error(f"✗ 刪除記錄 {record_id} 發生異常: {e}")
             return False
     
     def delete_records(self, record_ids: list) -> dict:
@@ -66,7 +71,7 @@ class CloudflareClient:
         if not record_ids:
             return {'success': 0, 'failed': 0, 'failed_ids': []}
         
-        print(f"正在批量刪除 {len(record_ids)} 筆記錄...")
+        self.logger.info(f"正在批量刪除 {len(record_ids)} 筆記錄...")
         
         success_count = 0
         failed_count = 0
@@ -85,8 +90,40 @@ class CloudflareClient:
             'failed_ids': failed_ids
         }
         
-        print(f"批量刪除完成: 成功 {success_count} 筆, 失敗 {failed_count} 筆")
+        self.logger.info(f"批量刪除完成: 成功 {success_count} 筆, 失敗 {failed_count} 筆")
         return result
+
+    def get_user_benchmark(self, user_email: str) -> str:
+        """
+        [v2.54] 從資料庫獲取用戶的 benchmark 設定
+        :param user_email: 用戶 email
+        :return: benchmark 代碼 (預設為 'SPY')
+        """
+        try:
+            response = requests.get(
+                f"{self.api_base_url}/api/user-settings",
+                headers={
+                    "X-API-KEY": API_KEY,
+                    "X-Target-User": user_email
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success') and data.get('benchmark'):
+                    benchmark = data['benchmark']
+                    self.logger.info(f"用戶 {user_email} 的 benchmark: {benchmark}")
+                    return benchmark
+                else:
+                    self.logger.warning(f"無法獲取用戶 {user_email} 的 benchmark，使用預設值 SPY")
+                    return 'SPY'
+            else:
+                self.logger.warning(f"無法獲取用戶 {user_email} 的 benchmark [Status: {response.status_code}]，使用預設值 SPY")
+                return 'SPY'
+        except Exception as e:
+            self.logger.error(f"獲取 benchmark 設定時發生錯誤: {e}，使用預設值 SPY")
+            return 'SPY'
 
     def upload_portfolio(self, snapshot: PortfolioSnapshot, target_user_id: str = None):
         """
@@ -94,7 +131,7 @@ class CloudflareClient:
         :param snapshot: 計算好的快照物件 (Pydantic Model)
         :param target_user_id: (選填) 指定這份資料屬於哪個使用者 Email，供管理員代理上傳使用
         """
-        print(f"計算完成，正在上傳 {target_user_id if target_user_id else 'System'} 的投資組合至 Cloudflare D1...")
+        self.logger.info(f"計算完成，正在上傳 {target_user_id if target_user_id else 'System'} 的投資組合至 Cloudflare D1...")
         
         # [關鍵修改]：包裝 payload，加入 target_user_id 以支援多使用者資料隔離
         # 如果有 target_user_id，則採用代理上傳格式；否則維持原樣
@@ -111,9 +148,9 @@ class CloudflareClient:
             )
             
             if response.status_code == 200:
-                print(f"上傳成功! Worker 回應: {response.text}")
+                self.logger.info(f"上傳成功! Worker 回應: {response.text}")
             else:
-                print(f"上傳失敗 [{response.status_code}]: {response.text}")
+                self.logger.error(f"上傳失敗 [{response.status_code}]: {response.text}")
                 
         except Exception as e:
-            print(f"上傳過程發生錯誤: {e}")
+            self.logger.error(f"上傳過程發生錯誤: {e}")
