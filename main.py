@@ -37,7 +37,7 @@ def main():
     setup_logging()
     logger = logging.getLogger("main")
     
-    logger.info("=== 啟動交易日誌更新程序 (多人隔離 & 自訂基準版) ===")
+    logger.info("=== 啟動交易日誌更新程序 (多人隔離 & 自訂基準版 & 衝突自動刪除) ===")
 
     # 2. 安全性檢查
     if not API_KEY:
@@ -115,7 +115,13 @@ def main():
             
             user_df = df[df['user_id'] == user_email].copy() if not df.empty else pd.DataFrame()
             
-            calculator = PortfolioCalculator(user_df, market_client, benchmark_ticker=custom_benchmark)
+            # [v2.53] ✅ 關鍵修改：將 api_client 傳遞給 calculator
+            calculator = PortfolioCalculator(
+                user_df, 
+                market_client, 
+                benchmark_ticker=custom_benchmark,
+                api_client=api_client  # ← 新增參數
+            )
             user_snapshot = calculator.run()
             
             if user_snapshot:
