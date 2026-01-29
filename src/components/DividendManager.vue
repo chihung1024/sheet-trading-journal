@@ -30,7 +30,7 @@
               <th width="110">除息日</th>
               <th width="100">代碼</th>
               <th class="text-right" width="180">實發總額</th>
-              <th class="text-right" width="140">稅金</th>
+              <th class="text-right" width="160">稅金</th>
               <th class="text-right" width="140">淨額</th>
               <th width="150">操作</th>
             </tr>
@@ -38,14 +38,14 @@
           <tbody>
             <tr v-for="div in localDividends" :key="div.id" class="table-row">
               <!-- 日期 -->
-              <td>
+              <td class="text-center">
                 <div class="date-display">
-                  {{ formatFullDate(div.date) }}
+                  {{ formatFullDate(div.ex_date) }}
                 </div>
               </td>
               
               <!-- 股票代碼 -->
-              <td>
+              <td class="text-center">
                 <span class="symbol-tag">{{ div.symbol }}</span>
               </td>
               
@@ -73,6 +73,7 @@
                     step="0.01"
                     placeholder="0.00"
                   >
+                  <span class="tax-rate">{{ getTaxRate(div) }}%</span>
                 </div>
               </td>
               
@@ -84,7 +85,7 @@
               </td>
               
               <!-- 操作按鈕 -->
-              <td>
+              <td class="text-center">
                 <div class="action-buttons">
                   <button 
                     class="btn-action btn-confirm" 
@@ -135,7 +136,7 @@
           <div class="card-header">
             <div class="card-info">
               <span class="symbol-tag">{{ div.symbol }}</span>
-              <span class="date-text">{{ formatFullDate(div.date) }}</span>
+              <span class="date-text">{{ formatFullDate(div.ex_date) }}</span>
             </div>
           </div>
           
@@ -159,6 +160,7 @@
               <label class="form-label">
                 <span class="label-icon">📝</span>
                 預扣稅金 ({{ getCurrency(div.symbol) }})
+                <span class="tax-badge">{{ getTaxRate(div) }}%</span>
               </label>
               <input 
                 type="number" 
@@ -221,6 +223,17 @@ const isTWStock = (symbol) => {
 
 const getCurrency = (symbol) => {
   return isTWStock(symbol) ? 'TWD' : 'USD';
+};
+
+// 計算稅率百分比
+const getTaxRate = (div) => {
+  const amount = Number(div.amount) || 0;
+  const tax = Number(div.tax) || 0;
+  
+  if (amount === 0) return 0;
+  
+  const rate = (tax / amount) * 100;
+  return Math.round(rate);
 };
 
 watch(() => store.pending_dividends, (newVal) => {
@@ -286,7 +299,7 @@ const confirmDividend = async (div) => {
   processingId.value = div.id;
   try {
     const record = {
-      txn_date: div.date,
+      txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
       qty: 0,
@@ -449,7 +462,7 @@ table {
 }
 
 thead th {
-  text-align: left;
+  text-align: center;
   padding: 14px 20px;
   font-size: 0.75rem;
   font-weight: 700;
@@ -461,7 +474,7 @@ thead th {
 }
 
 thead th.text-right {
-  text-align: right;
+  text-align: center;
 }
 
 tbody .table-row {
@@ -480,6 +493,15 @@ tbody .table-row:last-child {
 td {
   padding: 16px 20px;
   vertical-align: middle;
+}
+
+/* 文字對齊 */
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
 }
 
 /* 日期顯示 */
@@ -508,7 +530,7 @@ td {
   display: flex;
   align-items: center;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .input-currency {
@@ -548,6 +570,17 @@ td {
   width: 100px;
 }
 
+/* 稅率顯示 */
+.tax-rate {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
 /* 淨額顯示 */
 .net-display {
   display: inline-flex;
@@ -565,6 +598,7 @@ td {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: center;
 }
 
 .btn-action {
@@ -714,6 +748,16 @@ td {
   font-size: 1rem;
 }
 
+.tax-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
 .form-input {
   width: 100%;
   padding: 12px 16px;
@@ -816,11 +860,6 @@ td {
 .btn-card:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* ==================== 工具類 ==================== */
-.text-right {
-  text-align: right;
 }
 
 /* ==================== 響應式設計 ==================== */
