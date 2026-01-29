@@ -218,14 +218,14 @@ const pendingDividendsCount = computed(() => portfolioStore.pending_dividends ? 
 
 const userInitial = computed(() => authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'U');
 
-// ✨ 自動刷新功能
+// ✨ 自動刷新功能 - 每1分鐘更新一次
 const autoRefresh = useAutoRefresh(async () => {
   if (!portfolioStore.loading && !portfolioStore.isPolling) {
     console.log('🔄 自動刷新: 開始更新數據...');
     await portfolioStore.fetchAll();
     addToast('✅ 數據已自動更新', 'success');
   }
-}, 5); // 5分鐘
+}, 1); // ⚡ 改為1分鐘
 
 // 方法
 const scrollToDividends = () => {
