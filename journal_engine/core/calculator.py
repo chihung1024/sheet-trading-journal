@@ -9,10 +9,9 @@ from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, Divid
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 from .transaction_analyzer import TransactionAnalyzer, PositionSnapshot
 from .daily_pnl_helper import DailyPnLHelper
-from .currency_detector import CurrencyDetector  # [v2.48] 自动货币识别
-from .validator import PortfolioValidator  # [v2.48] 自动验证
+from .currency_detector import CurrencyDetector
+from .validator import PortfolioValidator
 
-# 取得 logger 實例
 logger = logging.getLogger(__name__)
 
 class PortfolioCalculator:
@@ -21,45 +20,38 @@ class PortfolioCalculator:
         初始化計算器
         :param transactions_df: 交易紀錄 DataFrame
         :param market_client: 市場數據客戶端
-        :param benchmark_ticker: 基準標的代碼 (例如 'SPY', 'QQQ', '0050.TW')
-        :param api_client: [v2.53] API 客戶端，用於刪除重複/衝突記錄
+        :param benchmark_ticker: 基準標的代碼
+        :param api_client: API 客戶端，用於刪除重複/衝突記錄
         """
         self.df = transactions_df
         self.market = market_client
         self.benchmark_ticker = benchmark_ticker
-        self.api_client = api_client  # [v2.53] 新增
+        self.api_client = api_client
         self.pnl_helper = DailyPnLHelper()
-        self.currency_detector = CurrencyDetector()  # [v2.48] 新增
-        self.validator = PortfolioValidator()  # [v2.48] 新增
+        self.currency_detector = CurrencyDetector()
+        self.validator = PortfolioValidator()
         
-        # [v2.53] 重複配息檢測結果
-        self.duplicate_div_ids = set()  # [v2.53 Fix] 需要在記憶體中忽略的重複記錄ID
-        self.conflict_div_info = {}  # 衝突配息詳情: {div_key: [record_ids]} (全部刪除)
+        self.duplicate_div_ids = set()
+        self.conflict_div_info = {}
 
     def _is_taiwan_stock(self, symbol):
-        """[v2.48] 判断是否為台股(不需匯率轉換)"""
+        """判断是否為台股(不需匯率轉換)"""
         return self.currency_detector.is_base_currency(symbol)
 
     def _get_effective_fx_rate(self, symbol, fx_rate):
-        """[v2.48] 根據標的取得有效匯率"""
+        """根據標的取得有效匯率"""
         return self.currency_detector.get_fx_multiplier(symbol, fx_rate)
     
     def _is_us_market_open(self, tw_datetime):
         """
-        [v2.52] 判断美股是否開盤 (台灣時間)
-        簡化邏輯：
-        - 週末：不開盤
-        - 交易時間：約 21:30/22:30 至 隔日 04:00/05:00
-        - 這裡使用 22:00 - 05:00 作為通用判斷區間
+        判断美股是否開盤 (台灣時間)
         """
         tw_hour = tw_datetime.hour
         tw_weekday = tw_datetime.weekday()
         
-        # 週末不開盤
         if tw_weekday >= 5:
             return False
         
-        # 簡化判斷：22:00 之後到隔天 05:00 視為盤中
         if tw_hour >= 22 or tw_hour < 5:
             return True
         
@@ -67,30 +59,25 @@ class PortfolioCalculator:
 
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
         """
-        [v2.52 徹底修復] 確保價格與匯率時點嚴格一致
+        確保價格與匯率時點嚴格一致
         
         修復邏輯：
         1. 歷史日期：價格和匯率都使用該日期的收盤數據
         2. 今天 (美股未開)：價格用昨天收盤，但匯率使用【今日即時】(current_fx)
-           - 修正重點：確保資產價值反映今日台幣波動，即便美股尚未開盤
         3. 今天 (美股盤中/收盤)：價格和匯率都用今天即時數據
         """
         is_tw = self._is_taiwan_stock(symbol)
         
         if is_tw:
-            # 台股簡單：不需要匯率，直接使用目標日期
             price = self.market.get_price(symbol, pd.Timestamp(target_date))
             return price, 1.0
         
-        # === 美股邏輯 ===
         tw_now = datetime.now(self.pnl_helper.tz_tw)
         today = tw_now.date()
         
-        # 情況 A: 歷史日期 (比今天早)
         if target_date < today:
             price = self.market.get_price(symbol, pd.Timestamp(target_date))
             try:
-                # ✅ 關鍵：歷史日期必須從歷史序列取值，嚴格對齊當日歷史匯率
                 fx_to_use = self.market.fx_rates.asof(pd.Timestamp(target_date))
                 if pd.isna(fx_to_use):
                     fx_to_use = DEFAULT_FX_RATE
@@ -99,85 +86,63 @@ class PortfolioCalculator:
             
             return price, self._get_effective_fx_rate(symbol, fx_to_use)
         
-        # 情況 B: 今天的數據 (target_date == today)
         us_open = self._is_us_market_open(tw_now)
         
         if not us_open:
-            # ✅ 美股未開盤：
-            # 價格：回退到「前一交易日」的收盤價
-            # 匯率：使用【今日即時匯率 (current_fx)】
-            # 結果：資產價值會隨今日台幣匯率波動，符合「美股尚未開盤，但資產受匯率影響」的邏輯
             prev_date = today - timedelta(days=1)
             while prev_date.weekday() >= 5:
                 prev_date -= timedelta(days=1)
             
             price = self.market.get_price(symbol, pd.Timestamp(prev_date))
-            
-            # 這裡使用 current_fx (即時匯率)，而不是歷史匯率
             fx_to_use = current_fx
             
-            logger.debug(f"[v2.52] {symbol} 美股未開: 使用昨日({prev_date})價格 ({price}) x 今日即時匯率 ({fx_to_use:.4f})")
             return price, self._get_effective_fx_rate(symbol, fx_to_use)
         
         else:
-            # ✅ 美股盤中/已開盤：價格和匯率都用今天即時
             price = self.market.get_price(symbol, pd.Timestamp(today))
-            fx_to_use = current_fx  # 使用傳入的即時匯率
+            fx_to_use = current_fx
             
-            logger.debug(f"[v2.52] {symbol} 美股盤中: 使用今日即時價格 ({price}) x 今日即時匯率 ({fx_to_use:.4f})")
             return price, self._get_effective_fx_rate(symbol, fx_to_use)
 
     def _detect_and_remove_duplicate_dividends(self):
         """
-        [v2.53 Fix] 檢測重複的配息記錄並從 DataFrame 中移除
-        
-        關鍵修復：
-        1. 檢測到重複後，立即從 self.df 中移除重複記錄
-        2. 同時返回需要從資料庫刪除的 ID
-        
-        這樣確保：
-        - 計算時使用的 DataFrame 已經不包含重複記錄
-        - 資料庫也會被同步清理
+        檢測並移除重複的配息記錄
         
         規則：
         1. 同一股票同一天有多筆 DIV 記錄
-        2. 如果數據完全相同（金額、數量一致）→ 保留第一筆，移除其他
-        3. 如果數據不同 → 標記為衝突，移除所有記錄後退回待確認
+        2. 數據完全相同：保留第一筆，移除其他
+        3. 數據不同：標記為衝突，移除所有記錄
         
         返回：(ids_to_delete_from_db, conflict_info)
         """
-        logger.info("[v2.53] 開始檢測並移除重複配息記錄...")
+        logger.info("開始檢測重複配息記錄...")
         
         if self.df.empty:
             return set(), {}
         
         div_txs = self.df[self.df['Type'] == 'DIV'].copy()
         if div_txs.empty:
-            logger.info("[v2.53] 無配息記錄，跳過檢測")
             return set(), {}
         
-        # 確保有 id 欄位
         if 'id' not in div_txs.columns:
-            logger.warning("[v2.53] 配息記錄缺少 'id' 欄位，無法進行重複檢測")
+            logger.warning("配息記錄缺少 'id' 欄位，無法進行重複檢測")
             return set(), {}
         
-        # 按 symbol + date 分組
         div_txs['date_str'] = div_txs['Date'].dt.strftime('%Y-%m-%d')
         div_txs['div_key'] = div_txs['Symbol'] + '_' + div_txs['date_str']
         
         grouped = div_txs.groupby('div_key')
         
-        ids_to_remove_from_memory = []  # 從 DataFrame 移除
-        ids_to_delete_from_db = set()    # 從資料庫刪除
+        ids_to_remove_from_memory = []
+        ids_to_delete_from_db = set()
         conflict_info = {}
         
         for div_key, group in grouped:
             if len(group) <= 1:
-                continue  # 只有一筆，正常
+                continue
             
-            logger.warning(f"[v2.53] 檢測到 {div_key} 有 {len(group)} 筆配息記錄")
+            logger.warning(f"檢測到 {div_key} 有 {len(group)} 筆配息記錄")
             
-            # 檢查數據是否相同
             first_row = group.iloc[0]
             all_same = True
             
@@ -187,98 +152,84 @@ class PortfolioCalculator:
                 
                 if qty_diff > 1e-4 or price_diff > 1e-4:
                     all_same = False
-                    logger.warning(f"  記錄 {row['id']}: Qty={row['Qty']}, Price={row['Price']} (與第一筆不同)")
-                else:
-                    logger.info(f"  記錄 {row['id']}: Qty={row['Qty']}, Price={row['Price']} (與第一筆相同)")
             
             if all_same:
-                # 數據相同：保留第一筆，移除其他
                 keep_id = group.iloc[0]['id']
-                logger.info(f"  ✓ 保留記錄 {keep_id}")
+                logger.info(f"  保留記錄 {keep_id}")
                 
                 for idx, row in group.iloc[1:].iterrows():
-                    ids_to_remove_from_memory.append(idx)  # DataFrame index
-                    ids_to_delete_from_db.add(row['id'])   # 資料庫 ID
-                    logger.info(f"  🗑️ 移除重複記錄 {row['id']}")
+                    ids_to_remove_from_memory.append(idx)
+                    ids_to_delete_from_db.add(row['id'])
+                    logger.info(f"  移除重複記錄 {row['id']}")
             else:
-                # 數據不同：標記為衝突，移除所有記錄
                 conflict_ids = group['id'].tolist()
                 conflict_info[div_key] = conflict_ids
-                logger.error(f"  ✗ {div_key} 的多筆記錄數據不一致，標記為衝突！")
-                logger.error(f"    將移除所有記錄: {conflict_ids}")
+                logger.error(f"  {div_key} 的多筆記錄數據不一致，標記為衝突")
                 
-                # 從 DataFrame 移除所有衝突記錄
                 for idx, row in group.iterrows():
                     ids_to_remove_from_memory.append(idx)
         
-        # 🔥 關鍵：從 self.df 中移除重複和衝突記錄
         if ids_to_remove_from_memory:
             before_count = len(self.df)
             self.df = self.df.drop(ids_to_remove_from_memory)
             after_count = len(self.df)
-            logger.info(f"[v2.53] ✓ 已從記憶體中移除 {before_count - after_count} 筆記錄")
-            logger.info(f"[v2.53] ✓ 計算將使用乾淨的數據 (共 {after_count} 筆)")
+            logger.info(f"已從記憶體中移除 {before_count - after_count} 筆記錄")
         
-        # 同時記錄需要在計算時忽略的 ID（雙保險）
         self.duplicate_div_ids = ids_to_delete_from_db.copy()
         
         if ids_to_delete_from_db:
-            logger.info(f"[v2.53] 檢測完成：將從資料庫刪除 {len(ids_to_delete_from_db)} 筆重複記錄")
+            logger.info(f"將從資料庫刪除 {len(ids_to_delete_from_db)} 筆重複記錄")
         if conflict_info:
-            logger.error(f"[v2.53] 警告：發現 {len(conflict_info)} 個配息衝突需要處理")
-        
-        if not ids_to_delete_from_db and not conflict_info:
-            logger.info("[v2.53] 檢測完成：未發現重複或衝突")
+            logger.error(f"發現 {len(conflict_info)} 個配息衝突需要處理")
         
         return ids_to_delete_from_db, conflict_info
 
     def _delete_records_from_database(self, ids_to_delete, record_type="重複"):
         """
-        [v2.53] 從資料庫刪除記錄
+        從資料庫刪除記錄
         """
         if not ids_to_delete:
             return
         
         if not self.api_client:
-            logger.error(f"[v2.53] 無法刪除{record_type}記錄：api_client 未提供")
+            logger.error(f"無法刪除{record_type}記錄：api_client 未提供")
             return
         
-        logger.info(f"[v2.53] 開始從資料庫刪除 {len(ids_to_delete)} 筆{record_type}記錄...")
+        logger.info(f"開始從資料庫刪除 {len(ids_to_delete)} 筆{record_type}記錄...")
         
-        # 批量刪除
         result = self.api_client.delete_records(list(ids_to_delete))
         
         if result['success'] > 0:
-            logger.info(f"[v2.53] ✓ 成功從資料庫刪除 {result['success']} 筆{record_type}記錄")
+            logger.info(f"成功從資料庫刪除 {result['success']} 筆{record_type}記錄")
         
         if result['failed'] > 0:
-            logger.error(f"[v2.53] ✗ 刪除失敗 {result['failed']} 筆: {result['failed_ids']}")
+            logger.error(f"刪除失敗 {result['failed']} 筆: {result['failed_ids']}")
 
     def run(self):
-        """執行多群組投資組合計算主流程 (v2.53 Fix: 記憶體清理)"""
+        """執行多群組投資組合計算主流程"""
         logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
         
-        # [v2.53 Fix] 檢測並立即從 DataFrame 中移除重複記錄
+        # 檢測並立即從 DataFrame 中移除重複記錄
         ids_to_delete, self.conflict_div_info = self._detect_and_remove_duplicate_dividends()
         
-        # [v2.53] 從資料庫刪除重複記錄
+        # 從資料庫刪除重複記錄
         self._delete_records_from_database(ids_to_delete, "重複")
         
-        # [v2.53] 從資料庫刪除衝突記錄
+        # 從資料庫刪除衝突記錄
         if self.conflict_div_info:
             all_conflict_ids = []
             for div_key, record_ids in self.conflict_div_info.items():
                 all_conflict_ids.extend(record_ids)
             self._delete_records_from_database(all_conflict_ids, "衝突")
         
-        # [v2.52] 優先使用 market_data 中的即時匯率
+        # 優先使用 market_data 中的即時匯率
         current_fx = DEFAULT_FX_RATE
         if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
             current_fx = self.market.realtime_fx_rate
             logger.info(f"使用即時匯率進行計算: {current_fx:.4f}")
         elif not self.market.fx_rates.empty:
             current_fx = float(self.market.fx_rates.iloc[-1])
-            logger.info(f"使用歷史收盤匯率進行計算 (無即時數據): {current_fx:.4f}")
+            logger.info(f"使用歷史收盤匯率進行計算: {current_fx:.4f}")
 
         if self.df.empty:
             logger.warning("無交易紀錄,產生空快照以重置數據。")
@@ -297,10 +248,10 @@ class PortfolioCalculator:
                 groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
             )
             
-        # [v2.46] 全域復權預處理
+        # 全域復權預處理
         self._back_adjust_transactions_global()
         
-        # [v2.40] 獲取市場狀態
+        # 獲取市場狀態
         current_stage, stage_desc = self.pnl_helper.get_market_stage()
         logger.info(f"當前市場狀態: {current_stage} ({stage_desc})")
 
@@ -357,7 +308,7 @@ class PortfolioCalculator:
         )
 
     def _back_adjust_transactions_global(self):
-        """[v2.48] 全域復權處理"""
+        """全域復權處理"""
         logger.info("正在進行全域交易數據復權處理...")
         for index, row in self.df.iterrows():
             sym = row['Symbol']
@@ -390,7 +341,7 @@ class PortfolioCalculator:
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯 (v2.53 Fix: 使用乾淨的 DataFrame)"""
+        """單一群組的核心計算邏輯"""
         
         txn_analyzer = TransactionAnalyzer(df)
         
@@ -407,13 +358,12 @@ class PortfolioCalculator:
         last_market_value_twd = 0.0
         first_benchmark_val_twd = None
 
-        # [v2.53] 建立confirmed_dividends（DataFrame已經乾淨，但保留過濾邏輯作為雙保險）
+        # 建立 confirmed_dividends
         div_txs = df[df['Type'] == 'DIV'].copy()
         
         for _, row in div_txs.iterrows():
-            # [v2.53 Fix] 雙保險：即使記憶體已清理，仍檢查是否在忽略列表中
+            # 雙保險：檢查是否在忽略列表中
             if 'id' in row and row['id'] in self.duplicate_div_ids:
-                logger.debug(f"[v2.53] 雙保險：跳過已標記的重複記錄 {row['id']}")
                 continue
             
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
@@ -448,8 +398,6 @@ class PortfolioCalculator:
                 "benchmark_twr": 0.0,
                 "fx_rate": round(prev_fx, 4)
             })
-            
-            logger.info(f"[群組:{group_name}] 已在 {prev_date_str} 補上虛擬 0 資產記錄(第一筆交易: {first_tx_date.strftime('%Y-%m-%d')})。")
 
         last_fx = current_fx
         
@@ -527,9 +475,8 @@ class PortfolioCalculator:
                     daily_net_cashflow_twd -= proceeds_twd
 
                 elif row['Type'] == 'DIV':
-                    # [v2.53 Fix] 雙保險：檢查是否為應忽略的記錄
+                    # 雙保險：檢查是否為應忽略的記錄
                     if 'id' in row and row['id'] in self.duplicate_div_ids:
-                        logger.debug(f"[v2.53] 計算時跳過重複配息記錄: {row['Symbol']} {row['Date'].strftime('%Y-%m-%d')} (ID: {row['id']})")
                         continue
                     
                     effective_fx = self._get_effective_fx_rate(sym, fx)
@@ -538,7 +485,7 @@ class PortfolioCalculator:
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
-            # [v2.44 復權修正] 配息計算
+            # 配息計算
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
@@ -546,9 +493,8 @@ class PortfolioCalculator:
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_key = f"{sym}_{date_str}"
                     
-                    # [v2.53] 檢查是否為衝突（已刪除的配息）
+                    # 檢查是否為衝突（已刪除的配息）
                     if div_key in [k for k in self.conflict_div_info.keys()]:
-                        logger.info(f"[v2.53] 跳過衝突配息: {div_key} (已刪除，將重新顯示在待確認區)")
                         is_confirmed = False
                     else:
                         is_confirmed = div_key in confirmed_dividends
@@ -574,7 +520,7 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # [v2.52 FIX] 計算市值時使用修復後的價格與匯率選擇邏輯
+            # 計算市值
             current_market_value_twd = 0.0
             logging_fx = fx
             
@@ -617,7 +563,7 @@ class PortfolioCalculator:
             
             last_fx = fx
 
-        # --- [v2.48] 最終報表產生 & 驗證 ---
+        # 最終報表產生
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
@@ -687,8 +633,6 @@ class PortfolioCalculator:
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         
         display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
-        
-        logger.info(f"[群組:{group_name}] 當日損益(持股加總 v2.48): {display_daily_pnl}")
         
         self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
         
