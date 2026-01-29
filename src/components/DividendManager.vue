@@ -293,7 +293,6 @@ const confirmDividend = async (div) => {
     // 嘗試從多個可能的欄位獲取持股數量
     let shares = 0;
     
-    // 優先順序：shares > qty > quantity > holding_qty
     if (div.shares !== undefined && div.shares !== null) {
       shares = Number(div.shares);
     } else if (div.qty !== undefined && div.qty !== null) {
@@ -313,7 +312,7 @@ const confirmDividend = async (div) => {
       raw_div: div
     });
     
-    // 關鍵修正：使用淨額計算每股配息
+    // 使用淨額計算每股配息
     const divPerShare = shares > 0 ? netAmount / shares : netAmount;
     const recordQty = shares > 0 ? shares : 1;
     
@@ -322,22 +321,20 @@ const confirmDividend = async (div) => {
       symbol: div.symbol,
       txn_type: 'DIV',
       qty: recordQty,
-      price: divPerShare,        // ✅ 使用淨額計算
+      price: divPerShare,
       fee: 0,
       tax: finalTax,
-      total_amount: netAmount,   // ✅ 總額使用淨額
+      total_amount: netAmount,
       tag: 'Auto-Dividend'
     };
     
     console.log('準備新增記錄:', record);
 
+    // ① 先新增交易記錄
     const success = await store.addRecord(record);
     
     if (success) {
-      // ① 立即從本地列表移除
-      localDividends.value = localDividends.value.filter(d => d.id !== div.id);
-      
-      // ② 刪除後端 pending_dividends 記錄
+      // ② 刪除後端 pending_dividends 記錄（關鍵：使用 await！）
       try {
         const token = store.token || localStorage.getItem('token');
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
@@ -350,14 +347,19 @@ const confirmDividend = async (div) => {
         
         if (!response.ok) {
           console.warn('刪除 pending_dividends API 回應異常:', response.status);
+          throw new Error(`刪除失敗: HTTP ${response.status}`);
         }
+        
+        console.log('✅ pending_dividends 已刪除:', div.id);
       } catch (err) {
-        console.error('刪除 pending_dividends 失敗:', err);
+        console.error('❌ 刪除 pending_dividends 失敗:', err);
+        addToast('警告：入帳成功但清除待確認列表失敗', 'warning');
+        // 即使刪除失敗，仍繼續刷新數據
       }
 
       addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
       
-      // ③ 立即刷新所有數據（確保同步）
+      // ③ 刷新所有數據（此時刪除已完成，watch 會正確更新 localDividends）
       await store.fetchAll();
       
     } else {
@@ -599,7 +601,7 @@ td {
   white-space: nowrap;
 }
 
-/* 淨額顯示 - 修正：置中對齊 */
+/* 淨額顯示 - 置中對齊 */
 .net-display {
   display: inline-flex;
   padding: 8px 16px;
