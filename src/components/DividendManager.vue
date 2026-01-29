@@ -31,7 +31,7 @@
               <th width="100">代碼</th>
               <th class="text-right" width="180">實發總額</th>
               <th class="text-right" width="160">稅金</th>
-              <th class="text-right" width="140">淨額</th>
+              <th class="text-center" width="140">淨額</th>
               <th width="100">操作</th>
             </tr>
           </thead>
@@ -78,7 +78,7 @@
               </td>
               
               <!-- 淨額 -->
-              <td class="text-right">
+              <td class="text-center">
                 <div class="net-display">
                   {{ formatNumber((div.amount || 0) - (div.tax || 0), 2) }}
                 </div>
@@ -277,7 +277,7 @@ const formatNumber = (val, d = 2) => {
 const confirmDividend = async (div) => {
   const finalAmount = Number(div.amount) || 0;
   const finalTax = Number(div.tax) || 0;
-  const netAmount = finalAmount - finalTax;
+  const netAmount = finalAmount - finalTax;  // 淨額（扣稅後）
   const currency = getCurrency(div.symbol);
   
   if (finalAmount === 0) {
@@ -307,24 +307,25 @@ const confirmDividend = async (div) => {
     console.log('配息數據:', {
       symbol: div.symbol,
       shares: shares,
-      amount: finalAmount,
+      grossAmount: finalAmount,
       tax: finalTax,
+      netAmount: netAmount,
       raw_div: div
     });
     
-    // 如果沒有持股數據，使用總額作為記錄
-    const divPerShare = shares > 0 ? finalAmount / shares : finalAmount;
-    const recordQty = shares > 0 ? shares : 1; // 如果沒有股數，記為1股
+    // 關鍵修正：使用淨額計算每股配息
+    const divPerShare = shares > 0 ? netAmount / shares : netAmount;
+    const recordQty = shares > 0 ? shares : 1;
     
     const record = {
       txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
       qty: recordQty,
-      price: divPerShare,
+      price: divPerShare,        // ✅ 使用淨額計算
       fee: 0,
       tax: finalTax,
-      total_amount: finalAmount,
+      total_amount: netAmount,   // ✅ 總額使用淨額
       tag: 'Auto-Dividend'
     };
     
@@ -333,27 +334,32 @@ const confirmDividend = async (div) => {
     const success = await store.addRecord(record);
     
     if (success) {
-      // 先從本地列表移除
+      // ① 立即從本地列表移除
       localDividends.value = localDividends.value.filter(d => d.id !== div.id);
       
-      // 刪除 pending_dividends
+      // ② 刪除後端 pending_dividends 記錄
       try {
-        await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
+        const token = store.token || localStorage.getItem('token');
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
           method: 'DELETE',
           headers: { 
-            'Authorization': `Bearer ${store.token || localStorage.getItem('token')}` 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
         });
+        
+        if (!response.ok) {
+          console.warn('刪除 pending_dividends API 回應異常:', response.status);
+        }
       } catch (err) {
-        console.warn('刪除 pending 失敗', err);
+        console.error('刪除 pending_dividends 失敗:', err);
       }
 
-      addToast(`${div.symbol} 配息已入帳`, 'success');
+      addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
       
-      // 立即刷新所有數據
-      setTimeout(async () => {
-        await store.fetchAll();
-      }, 300);
+      // ③ 立即刷新所有數據（確保同步）
+      await store.fetchAll();
+      
     } else {
       addToast('入帳失敗：無法新增記錄', 'error');
     }
@@ -485,6 +491,10 @@ thead th.text-right {
   text-align: center;
 }
 
+thead th.text-center {
+  text-align: center;
+}
+
 tbody .table-row {
   border-bottom: 1px solid var(--border-color);
   transition: background 0.15s;
@@ -589,7 +599,7 @@ td {
   white-space: nowrap;
 }
 
-/* 淨額顯示 */
+/* 淨額顯示 - 修正：置中對齊 */
 .net-display {
   display: inline-flex;
   padding: 8px 16px;
@@ -599,6 +609,8 @@ td {
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: var(--success);
+  justify-content: center;
+  align-items: center;
 }
 
 /* 操作按鈕 */
