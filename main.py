@@ -37,7 +37,7 @@ def main():
     setup_logging()
     logger = logging.getLogger("main")
     
-    logger.info("=== 啟動交易日誌更新程序 (v2.53 重複配息修復版) ===")
+    logger.info("=== 啟動交易日誌更新程序 (v2.54 用戶專屬 benchmark 版) ===")
 
     # 2. 安全性檢查
     if not API_KEY:
@@ -48,10 +48,10 @@ def main():
     api_client = CloudflareClient()
     market_client = MarketDataClient()
     
-    # 4. ✅ 從環境變數讀取 benchmark 與目標使用者
-    custom_benchmark, target_user_id = get_benchmark_from_env()
+    # 4. 從環境變數讀取 benchmark 與目標使用者
+    fallback_benchmark, target_user_id = get_benchmark_from_env()
     
-    logger.info(f"觸發參數: Benchmark={custom_benchmark}, TargetUser={target_user_id if target_user_id else 'ALL'}")
+    logger.info(f"觸發參數: Fallback Benchmark={fallback_benchmark}, TargetUser={target_user_id if target_user_id else 'ALL'}")
 
     # 5. 獲取交易紀錄
     logger.info("正在從 Cloudflare 獲取原始交易紀錄...")
@@ -66,7 +66,7 @@ def main():
             logger.error("交易紀錄中缺少 user_id 欄位，請檢查 API 回傳內容。")
             return
         
-        # [v2.53 修復] ✅ 關鍵：確保 'id' 欄位被保留
+        # [v2.53 修復] 確保 'id' 欄位被保留
         logger.info(f"[v2.53] API 回傳欄位: {list(df.columns)}")
         
         if 'id' not in df.columns:
@@ -84,13 +84,11 @@ def main():
             'fee': 'Commission', 
             'tax': 'Tax', 
             'tag': 'Tag'
-            # ✅ 'id' 和 'user_id' 不在這裡，所以會被保留
         }, inplace=True)
         
         # [v2.53] 確認 rename 後 'id' 仍然存在
         if 'id' in df.columns:
             logger.info(f"[v2.53] ✓ rename 後 'id' 欄位保留成功")
-            # 記錄 DIV 記錄的 id 範圍
             div_records = df[df['Type'] == 'DIV']
             if not div_records.empty:
                 logger.info(f"[v2.53] DIV 記錄數量: {len(div_records)}, ID 範圍: {div_records['id'].min()} - {div_records['id'].max()}")
@@ -112,7 +110,20 @@ def main():
         logger.warning("目前無任何待處理的使用者紀錄，程序結束。")
         return
 
-    # 7. 動態計算數據抓取起始日期
+    # 7. [v2.54] 收集所有用戶的 benchmark 與股票代碼
+    logger.info(f"正在收集 {len(user_list)} 位用戶的 benchmark 設定...")
+    user_benchmarks = {}
+    all_tickers = set(df['Symbol'].unique().tolist() if not df.empty else [])
+    
+    for user_email in user_list:
+        user_benchmark = api_client.get_user_benchmark(user_email)
+        if not user_benchmark or user_benchmark == 'SPY':
+            user_benchmark = fallback_benchmark
+        user_benchmarks[user_email] = user_benchmark
+        all_tickers.add(user_benchmark)
+        logger.info(f"用戶 {user_email} 使用 benchmark: {user_benchmark}")
+    
+    # 8. 動態計算數據抓取起始日期
     if not df.empty:
         earliest_transaction_date = df['Date'].min()
         fetch_start_date = earliest_transaction_date - timedelta(days=90)
@@ -122,21 +133,18 @@ def main():
         fetch_start_date = datetime.now() - timedelta(days=90)
         logger.info(f"無交易紀錄，預設抓取起始日期: {fetch_start_date.strftime('%Y-%m-%d')}")
     
-    unique_tickers = df['Symbol'].unique().tolist() if not df.empty else []
+    logger.info(f"開始下載全域市場數據。標的數: {len(all_tickers)}")
+    market_client.download_data(list(all_tickers), fetch_start_date)
     
-    # ✅ 確保 Benchmark 也被下載
-    if custom_benchmark not in unique_tickers:
-        unique_tickers.append(custom_benchmark)
-    
-    logger.info(f"開始下載全域市場數據。標的數: {len(unique_tickers)}, 基準: {custom_benchmark}")
-    market_client.download_data(unique_tickers, fetch_start_date)
-    
-    # 8. 批次處理每位使用者
+    # 9. [v2.54] 批次處理每位使用者，使用各自的 benchmark
     logger.info(f"準備處理 {len(user_list)} 位使用者...")
 
     for user_email in user_list:
         try:
-            logger.info(f"--- 正在處理使用者: {user_email} ---")
+            # [v2.54] 獲取該用戶的專屬 benchmark
+            user_benchmark = user_benchmarks.get(user_email, fallback_benchmark)
+            
+            logger.info(f"--- 正在處理使用者: {user_email} (Benchmark: {user_benchmark}) ---")
             
             user_df = df[df['user_id'] == user_email].copy() if not df.empty else pd.DataFrame()
             
@@ -144,17 +152,17 @@ def main():
             if not user_df.empty and 'id' in user_df.columns:
                 logger.info(f"[v2.53] 用戶 {user_email} 的資料包含 'id' 欄位，共 {len(user_df)} 筆記錄")
             
-            # [v2.53] ✅ 關鍵修改：將 api_client 傳遞給 calculator
+            # [v2.54] 使用用戶專屬的 benchmark
             calculator = PortfolioCalculator(
                 user_df, 
                 market_client, 
-                benchmark_ticker=custom_benchmark,
-                api_client=api_client  # ← 新增參數
+                benchmark_ticker=user_benchmark,  # ← 使用用戶專屬 benchmark
+                api_client=api_client
             )
             user_snapshot = calculator.run()
             
             if user_snapshot:
-                logger.info(f"計算完成，正在上傳 {user_email} 的快照數據 (Benchmark: {custom_benchmark})...")
+                logger.info(f"計算完成，正在上傳 {user_email} 的快照數據 (Benchmark: {user_benchmark})...")
                 api_client.upload_portfolio(user_snapshot, target_user_id=user_email)
                 logger.info(f"使用者 {user_email} 處理成功。")
             else:
@@ -162,7 +170,7 @@ def main():
                 
         except Exception as u_err:
             logger.error(f"處理使用者 {user_email} 時發生未預期錯誤: {u_err}")
-            logger.exception(u_err)  # [v2.53] 輸出完整堆疊跟蹤
+            logger.exception(u_err)
 
     logger.info("=== 所有使用者處理程序執行完畢 ===")
 
