@@ -392,8 +392,11 @@ class PortfolioCalculator:
                 prev_date -= timedelta(days=1)
             prev_p = self.market.get_price(sym, pd.Timestamp(prev_date))
             
-            position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx)
-            realized_pnl_today = position_snap.realized_pnl
+            # ✅ 传入前日收盘价
+            position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx, prev_p)
+            
+            # ✅ 使用相对于前日收盘的已实现损益
+            realized_pnl_today = position_snap.realized_pnl_vs_prev_close
             
             base_prev_close = prev_p 
             unrealized_pnl_today = 0.0
