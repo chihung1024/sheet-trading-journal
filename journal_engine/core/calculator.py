@@ -16,13 +16,6 @@ logger = logging.getLogger(__name__)
 
 class PortfolioCalculator:
     def __init__(self, transactions_df, market_client, benchmark_ticker="SPY", api_client=None):
-        """
-        初始化計算器
-        :param transactions_df: 交易紀錄 DataFrame
-        :param market_client: 市場數據客戶端
-        :param benchmark_ticker: 基準標的代碼
-        :param api_client: API 客戶端，用於刪除重複/衝突記錄
-        """
         self.df = transactions_df
         self.market = market_client
         self.benchmark_ticker = benchmark_ticker
@@ -30,42 +23,22 @@ class PortfolioCalculator:
         self.pnl_helper = DailyPnLHelper()
         self.currency_detector = CurrencyDetector()
         self.validator = PortfolioValidator()
-        
         self.duplicate_div_ids = set()
         self.conflict_div_info = {}
 
     def _is_taiwan_stock(self, symbol):
-        """判断是否為台股(不需匯率轉換)"""
         return self.currency_detector.is_base_currency(symbol)
 
     def _get_effective_fx_rate(self, symbol, fx_rate):
-        """根據標的取得有效匯率"""
         return self.currency_detector.get_fx_multiplier(symbol, fx_rate)
     
     def _is_us_market_open(self, tw_datetime):
-        """
-        判断美股是否開盤 (台灣時間)
-        """
         tw_hour = tw_datetime.hour
         tw_weekday = tw_datetime.weekday()
-        
-        if tw_weekday >= 5:
-            return False
-        
-        if tw_hour >= 22 or tw_hour < 5:
-            return True
-        
-        return False
+        if tw_weekday >= 5: return False
+        return tw_hour >= 22 or tw_hour < 5
 
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
-        """
-        確保價格與匯率時點嚴格一致
-        
-        修復邏輯：
-        1. 歷史日期：價格和匯率都使用該日期的收盤數據
-        2. 今天 (美股未開)：價格用昨天收盤，但匯率使用【今日即時】(current_fx)
-        3. 今天 (美股盤中/收盤)：價格和匯率都用今天即時數據
-        """
         is_tw = self._is_taiwan_stock(symbol)
         
         if is_tw:
@@ -79,11 +52,9 @@ class PortfolioCalculator:
             price = self.market.get_price(symbol, pd.Timestamp(target_date))
             try:
                 fx_to_use = self.market.fx_rates.asof(pd.Timestamp(target_date))
-                if pd.isna(fx_to_use):
-                    fx_to_use = DEFAULT_FX_RATE
+                if pd.isna(fx_to_use): fx_to_use = DEFAULT_FX_RATE
             except:
                 fx_to_use = DEFAULT_FX_RATE
-            
             return price, self._get_effective_fx_rate(symbol, fx_to_use)
         
         us_open = self._is_us_market_open(tw_now)
@@ -92,45 +63,24 @@ class PortfolioCalculator:
             prev_date = today - timedelta(days=1)
             while prev_date.weekday() >= 5:
                 prev_date -= timedelta(days=1)
-            
             price = self.market.get_price(symbol, pd.Timestamp(prev_date))
             fx_to_use = current_fx
-            
             return price, self._get_effective_fx_rate(symbol, fx_to_use)
-        
         else:
             price = self.market.get_price(symbol, pd.Timestamp(today))
             fx_to_use = current_fx
-            
             return price, self._get_effective_fx_rate(symbol, fx_to_use)
 
     def _detect_and_remove_duplicate_dividends(self):
-        """
-        檢測並移除重複的配息記錄
+        logger.info("檢測重複配息...")
         
-        規則：
-        1. 同一股票同一天有多筆 DIV 記錄
-        2. 數據完全相同：保留第一筆，移除其他
-        3. 數據不同：標記為衝突，移除所有記錄
-        
-        返回：(ids_to_delete_from_db, conflict_info)
-        """
-        logger.info("開始檢測重複配息記錄...")
-        
-        if self.df.empty:
+        if self.df.empty or 'id' not in self.df.columns:
             return set(), {}
         
         div_txs = self.df[self.df['Type'] == 'DIV'].copy()
-        if div_txs.empty:
-            return set(), {}
+        if div_txs.empty: return set(), {}
         
-        if 'id' not in div_txs.columns:
-            logger.warning("配息記錄缺少 'id' 欄位，無法進行重複檢測")
-            return set(), {}
-        
-        div_txs['date_str'] = div_txs['Date'].dt.strftime('%Y-%m-%d')
-        div_txs['div_key'] = div_txs['Symbol'] + '_' + div_txs['date_str']
-        
+        div_txs['div_key'] = div_txs['Symbol'] + '_' + div_txs['Date'].dt.strftime('%Y-%m-%d')
         grouped = div_txs.groupby('div_key')
         
         ids_to_remove_from_memory = []
@@ -138,138 +88,90 @@ class PortfolioCalculator:
         conflict_info = {}
         
         for div_key, group in grouped:
-            if len(group) <= 1:
-                continue
+            if len(group) <= 1: continue
             
-            logger.warning(f"檢測到 {div_key} 有 {len(group)} 筆配息記錄")
+            logger.warning(f"{div_key} 有 {len(group)} 筆配息")
             
             first_row = group.iloc[0]
-            all_same = True
-            
-            for idx, row in group.iterrows():
-                qty_diff = abs(row['Qty'] - first_row['Qty'])
-                price_diff = abs(row['Price'] - first_row['Price'])
-                
-                if qty_diff > 1e-4 or price_diff > 1e-4:
-                    all_same = False
+            all_same = all(
+                abs(row['Qty'] - first_row['Qty']) < 1e-4 and 
+                abs(row['Price'] - first_row['Price']) < 1e-4
+                for _, row in group.iterrows()
+            )
             
             if all_same:
-                keep_id = group.iloc[0]['id']
-                logger.info(f"  保留記錄 {keep_id}")
-                
                 for idx, row in group.iloc[1:].iterrows():
                     ids_to_remove_from_memory.append(idx)
                     ids_to_delete_from_db.add(row['id'])
-                    logger.info(f"  移除重複記錄 {row['id']}")
+                logger.info(f"  保留 {group.iloc[0]['id']}, 移除 {len(group)-1} 筆重複")
             else:
                 conflict_ids = group['id'].tolist()
                 conflict_info[div_key] = conflict_ids
-                logger.error(f"  {div_key} 的多筆記錄數據不一致，標記為衝突")
-                
-                for idx, row in group.iterrows():
+                logger.error(f"  {div_key} 數據不一致，標記為衝突")
+                for idx, _ in group.iterrows():
                     ids_to_remove_from_memory.append(idx)
         
         if ids_to_remove_from_memory:
-            before_count = len(self.df)
             self.df = self.df.drop(ids_to_remove_from_memory)
-            after_count = len(self.df)
-            logger.info(f"已從記憶體中移除 {before_count - after_count} 筆記錄")
+            logger.info(f"已從記憶體移除 {len(ids_to_remove_from_memory)} 筆")
         
         self.duplicate_div_ids = ids_to_delete_from_db.copy()
-        
-        if ids_to_delete_from_db:
-            logger.info(f"將從資料庫刪除 {len(ids_to_delete_from_db)} 筆重複記錄")
-        if conflict_info:
-            logger.error(f"發現 {len(conflict_info)} 個配息衝突需要處理")
-        
         return ids_to_delete_from_db, conflict_info
 
     def _delete_records_from_database(self, ids_to_delete, record_type="重複"):
-        """
-        從資料庫刪除記錄
-        """
-        if not ids_to_delete:
-            return
+        if not ids_to_delete or not self.api_client: return
         
-        if not self.api_client:
-            logger.error(f"無法刪除{record_type}記錄：api_client 未提供")
-            return
-        
-        logger.info(f"開始從資料庫刪除 {len(ids_to_delete)} 筆{record_type}記錄...")
-        
+        logger.info(f"從資料庫刪除 {len(ids_to_delete)} 筆{record_type}記錄...")
         result = self.api_client.delete_records(list(ids_to_delete))
         
         if result['success'] > 0:
-            logger.info(f"成功從資料庫刪除 {result['success']} 筆{record_type}記錄")
-        
+            logger.info(f"成功刪除 {result['success']} 筆")
         if result['failed'] > 0:
-            logger.error(f"刪除失敗 {result['failed']} 筆: {result['failed_ids']}")
+            logger.error(f"刪除失敗 {result['failed']} 筆")
 
     def run(self):
-        """執行多群組投資組合計算主流程"""
-        logger.info(f"=== 開始執行多群組投資組合計算 (基準: {self.benchmark_ticker}) ===")
+        logger.info(f"=== 開始多群組計算 (baseline: {self.benchmark_ticker}) ===")
         
-        # 檢測並立即從 DataFrame 中移除重複記錄
         ids_to_delete, self.conflict_div_info = self._detect_and_remove_duplicate_dividends()
-        
-        # 從資料庫刪除重複記錄
         self._delete_records_from_database(ids_to_delete, "重複")
         
-        # 從資料庫刪除衝突記錄
         if self.conflict_div_info:
-            all_conflict_ids = []
-            for div_key, record_ids in self.conflict_div_info.items():
-                all_conflict_ids.extend(record_ids)
+            all_conflict_ids = [id for ids in self.conflict_div_info.values() for id in ids]
             self._delete_records_from_database(all_conflict_ids, "衝突")
         
-        # 優先使用 market_data 中的即時匯率
         current_fx = DEFAULT_FX_RATE
         if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
             current_fx = self.market.realtime_fx_rate
-            logger.info(f"使用即時匯率進行計算: {current_fx:.4f}")
         elif not self.market.fx_rates.empty:
             current_fx = float(self.market.fx_rates.iloc[-1])
-            logger.info(f"使用歷史收盤匯率進行計算: {current_fx:.4f}")
 
         if self.df.empty:
-            logger.warning("無交易紀錄,產生空快照以重置數據。")
+            logger.warning("無交易記錄")
             empty_summary = PortfolioSummary(
                 total_value=0, invested_capital=0, total_pnl=0, 
                 twr=0, xirr=0, realized_pnl=0, benchmark_twr=0, daily_pnl_twd=0
             )
             return PortfolioSnapshot(
                 updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                base_currency=BASE_CURRENCY,
-                exchange_rate=round(current_fx, 2),
-                summary=empty_summary,
-                holdings=[],
-                history=[],
-                pending_dividends=[],
+                base_currency=BASE_CURRENCY, exchange_rate=round(current_fx, 2),
+                summary=empty_summary, holdings=[], history=[], pending_dividends=[],
                 groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
             )
             
-        # 全域復權預處理
         self._back_adjust_transactions_global()
         
-        # 獲取市場狀態
         current_stage, stage_desc = self.pnl_helper.get_market_stage()
-        logger.info(f"當前市場狀態: {current_stage} ({stage_desc})")
+        logger.info(f"市場狀態: {current_stage}")
 
         all_tags = set()
         for tags_str in self.df['Tag'].dropna().unique():
-            if not tags_str: 
-                continue
-            split_tags = [t.strip() for t in tags_str.replace(';', ',').split(',') if t.strip()]
-            all_tags.update(split_tags)
+            if tags_str:
+                all_tags.update([t.strip() for t in tags_str.replace(';', ',').split(',') if t.strip()])
         
         groups_to_calc = ['all'] + sorted(list(all_tags))
-        logger.info(f"識別到的群組: {groups_to_calc}")
 
         final_groups_data = {}
-        
         for group_name in groups_to_calc:
-            logger.info(f"正在計算群組: {group_name}")
-            
             if group_name == 'all':
                 group_df = self.df.copy()
             else:
@@ -278,71 +180,48 @@ class PortfolioCalculator:
                 )
                 group_df = self.df[mask].copy()
             
-            if group_df.empty:
-                logger.warning(f"群組 {group_name} 無交易紀錄,跳過")
-                continue
+            if group_df.empty: continue
 
             group_start_date = group_df['Date'].min()
             group_end_date = datetime.now()
             group_date_range = pd.date_range(start=group_start_date, end=group_end_date, freq='D').normalize()
-            
-            logger.info(f"[群組:{group_name}] 日期範圍: {group_start_date.strftime('%Y-%m-%d')} ~ {group_end_date.strftime('%Y-%m-%d')}")
 
             group_result = self._calculate_single_portfolio(group_df, group_date_range, current_fx, group_name, current_stage)
             final_groups_data[group_name] = group_result
 
         all_data = final_groups_data.get('all')
         if not all_data:
-            logger.error("無法產出 'all' 群組的總體數據")
+            logger.error("無法產出 'all' 群組數據")
             return None
         
         return PortfolioSnapshot(
             updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-            base_currency=BASE_CURRENCY,
-            exchange_rate=round(current_fx, 2),
-            summary=all_data.summary,
-            holdings=all_data.holdings,
-            history=all_data.history,
-            pending_dividends=all_data.pending_dividends,
+            base_currency=BASE_CURRENCY, exchange_rate=round(current_fx, 2),
+            summary=all_data.summary, holdings=all_data.holdings,
+            history=all_data.history, pending_dividends=all_data.pending_dividends,
             groups=final_groups_data
         )
 
     def _back_adjust_transactions_global(self):
-        """全域復權處理"""
-        logger.info("正在進行全域交易數據復權處理...")
         for index, row in self.df.iterrows():
-            sym = row['Symbol']
-            date = row['Date']
-            if row['Type'] not in ['BUY', 'SELL']: 
-                continue
+            if row['Type'] not in ['BUY', 'SELL']: continue
             
+            sym, date = row['Symbol'], row['Date']
             is_tw = self._is_taiwan_stock(sym)
             split_factor = self.market.get_transaction_multiplier(sym, date)
-            
-            if is_tw:
-                div_adj_factor = 1.0
-            else:
-                div_adj_factor = self.market.get_dividend_adjustment_factor(sym, date)
+            div_adj_factor = 1.0 if is_tw else self.market.get_dividend_adjustment_factor(sym, date)
             
             if split_factor != 1.0 or div_adj_factor != 1.0:
-                old_qty = row['Qty']
-                old_price = row['Price']
-                new_qty = old_qty * split_factor
-                new_price = (old_price / split_factor) * div_adj_factor
-                
-                self.df.at[index, 'Qty'] = new_qty
-                self.df.at[index, 'Price'] = new_price
+                self.df.at[index, 'Qty'] = row['Qty'] * split_factor
+                self.df.at[index, 'Price'] = (row['Price'] / split_factor) * div_adj_factor
 
     def _get_previous_trading_day(self, date):
-        """獲取前一個交易日(排除周末)"""
         prev_date = date - timedelta(days=1)
         while prev_date.weekday() >= 5:
             prev_date -= timedelta(days=1)
         return prev_date
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED"):
-        """單一群組的核心計算邏輯"""
-        
         txn_analyzer = TransactionAnalyzer(df)
         
         holdings = {}
@@ -358,21 +237,15 @@ class PortfolioCalculator:
         last_market_value_twd = 0.0
         first_benchmark_val_twd = None
 
-        # 建立 confirmed_dividends
         div_txs = df[df['Type'] == 'DIV'].copy()
-        
         for _, row in div_txs.iterrows():
-            # 雙保險：檢查是否在忽略列表中
-            if 'id' in row and row['id'] in self.duplicate_div_ids:
-                continue
-            
-            key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
-            confirmed_dividends.add(key)
+            if 'id' in row and row['id'] not in self.duplicate_div_ids:
+                key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
+                confirmed_dividends.add(key)
 
         if not df.empty:
             first_tx_date = df['Date'].min()
             prev_trading_day = self._get_previous_trading_day(first_tx_date)
-            prev_date_str = prev_trading_day.strftime('%Y-%m-%d')
             
             try:
                 prev_fx = self.market.fx_rates.asof(prev_trading_day)
@@ -388,15 +261,9 @@ class PortfolioCalculator:
                 first_benchmark_val_twd = prev_benchmark_val_twd
             
             history_data.append({
-                "date": prev_date_str, 
-                "total_value": 0,
-                "invested": 0, 
-                "net_profit": 0,
-                "realized_pnl": 0,
-                "unrealized_pnl": 0,
-                "twr": 0.0, 
-                "benchmark_twr": 0.0,
-                "fx_rate": round(prev_fx, 4)
+                "date": prev_trading_day.strftime('%Y-%m-%d'), "total_value": 0,
+                "invested": 0, "net_profit": 0, "realized_pnl": 0, "unrealized_pnl": 0,
+                "twr": 0.0, "benchmark_twr": 0.0, "fx_rate": round(prev_fx, 4)
             })
 
         last_fx = current_fx
@@ -475,7 +342,6 @@ class PortfolioCalculator:
                     daily_net_cashflow_twd -= proceeds_twd
 
                 elif row['Type'] == 'DIV':
-                    # 雙保險：檢查是否為應忽略的記錄
                     if 'id' in row and row['id'] in self.duplicate_div_ids:
                         continue
                     
@@ -485,7 +351,6 @@ class PortfolioCalculator:
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
-            # 配息計算
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 div_per_share = self.market.get_dividend(sym, d)
@@ -493,11 +358,7 @@ class PortfolioCalculator:
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_key = f"{sym}_{date_str}"
                     
-                    # 檢查是否為衝突（已刪除的配息）
-                    if div_key in [k for k in self.conflict_div_info.keys()]:
-                        is_confirmed = False
-                    else:
-                        is_confirmed = div_key in confirmed_dividends
+                    is_confirmed = div_key not in self.conflict_div_info and div_key in confirmed_dividends
                     
                     split_factor = self.market.get_transaction_multiplier(sym, d)
                     shares_at_ex = h_data['qty'] / split_factor
@@ -520,7 +381,6 @@ class PortfolioCalculator:
                         xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                         daily_net_cashflow_twd -= total_net_twd
 
-            # 計算市值
             current_market_value_twd = 0.0
             logging_fx = fx
             
@@ -531,13 +391,10 @@ class PortfolioCalculator:
                     logging_fx = effective_fx if not self._is_taiwan_stock(sym) else logging_fx
             
             period_hpr_factor = 1.0
-            
             if last_market_value_twd > 1e-9:
                 period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
             elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
                 period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
-            elif current_market_value_twd < 1e-9 and last_market_value_twd < 1e-9:
-                period_hpr_factor = 1.0
             
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
@@ -547,23 +404,19 @@ class PortfolioCalculator:
             
             unrealized_pnl = current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)
             total_pnl = unrealized_pnl + total_realized_pnl_twd
-            
             benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
-                "invested": round(invested_capital, 0), 
-                "net_profit": round(total_pnl, 0),
+                "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "realized_pnl": round(total_realized_pnl_twd, 0),
                 "unrealized_pnl": round(unrealized_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(logging_fx, 4)
             })
-            
             last_fx = fx
 
-        # 最終報表產生
         final_holdings = []
         current_holdings_cost_sum = 0.0
         
@@ -584,39 +437,32 @@ class PortfolioCalculator:
             effective_display_date = self.pnl_helper.get_effective_display_date(is_tw)
             
             sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == effective_display_date)]
-            
             if not h['tag'] and not sym_txs.empty:
                 tags = sym_txs['Tag'].dropna()
-                if not tags.empty:
-                    h['tag'] = tags.iloc[0]
+                if not tags.empty: h['tag'] = tags.iloc[0]
 
             effective_fx = self._get_effective_fx_rate(sym, current_fx)
-            
             curr_p = self.market.get_price(sym, pd.Timestamp(effective_display_date))
+            
             prev_date = effective_display_date - timedelta(days=1)
             while prev_date.weekday() >= 5:
                 prev_date -= timedelta(days=1)
             prev_p = self.market.get_price(sym, pd.Timestamp(prev_date))
             
             position_snap = txn_analyzer.analyze_today_position(sym, effective_display_date, effective_fx)
-            
             realized_pnl_today = position_snap.realized_pnl
             
             base_prev_close = prev_p 
             unrealized_pnl_today = 0.0
-            
             if position_snap.qty > 0:
                 weighted_base = txn_analyzer.get_base_price_for_pnl(position_snap, base_prev_close)
                 unrealized_pnl_today = (curr_p - weighted_base) * position_snap.qty * effective_fx
             
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
-            
             cost = h['cost_basis_twd']
             current_holdings_cost_sum += cost
             mkt_val = h['qty'] * curr_p * effective_fx
-            
             daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
-            
             currency = self.currency_detector.detect(sym)
             
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
@@ -624,16 +470,14 @@ class PortfolioCalculator:
                     symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
                     market_value_twd=round(mkt_val, 0), pnl_twd=round(mkt_val - cost, 0),
                     pnl_percent=round((mkt_val - cost) / cost * 100, 2) if cost > 0 else 0,
-                    current_price_origin=round(curr_p, 2), avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
+                    current_price_origin=round(curr_p, 2), 
+                    avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
-                    daily_change_percent=daily_change_pct,
-                    daily_pl_twd=round(total_daily_pnl, 0)
+                    daily_change_percent=daily_change_pct, daily_pl_twd=round(total_daily_pnl, 0)
                 ))
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
-        
         display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
-        
         self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
         
         xirr_val = 0.0
