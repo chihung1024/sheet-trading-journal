@@ -346,7 +346,8 @@ class PortfolioCalculator:
                         continue
                     
                     effective_fx = self._get_effective_fx_rate(sym, fx)
-                    div_twd = row['Price'] * effective_fx
+                    # 修復：正確計算配息總額 = 數量 * 單價
+                    div_twd = (row['Qty'] * row['Price']) * effective_fx
                     total_realized_pnl_twd += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
