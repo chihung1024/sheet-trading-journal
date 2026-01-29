@@ -27,6 +27,67 @@ class CloudflareClient:
             print(f"API 連線發生例外狀況: {e}")
             return []
 
+    def delete_record(self, record_id: int) -> bool:
+        """
+        [v2.53] 刪除單筆交易記錄
+        :param record_id: 記錄 ID
+        :return: 是否刪除成功
+        """
+        print(f"正在刪除記錄 ID: {record_id}")
+        try:
+            resp = requests.delete(
+                WORKER_API_URL_RECORDS,
+                json={"id": record_id},
+                headers=API_HEADERS
+            )
+            
+            if resp.status_code == 200:
+                api_json = resp.json()
+                if api_json.get('success'):
+                    print(f"✓ 記錄 {record_id} 刪除成功")
+                    return True
+                else:
+                    print(f"✗ 刪除記錄 {record_id} 失敗: {api_json.get('error')}")
+                    return False
+            else:
+                print(f"✗ 刪除記錄 {record_id} 失敗 [Status: {resp.status_code}]: {resp.text}")
+                return False
+                
+        except Exception as e:
+            print(f"✗ 刪除記錄 {record_id} 發生異常: {e}")
+            return False
+    
+    def delete_records(self, record_ids: list) -> dict:
+        """
+        [v2.53] 批量刪除交易記錄
+        :param record_ids: 記錄 ID 列表
+        :return: {'success': int, 'failed': int, 'failed_ids': list}
+        """
+        if not record_ids:
+            return {'success': 0, 'failed': 0, 'failed_ids': []}
+        
+        print(f"正在批量刪除 {len(record_ids)} 筆記錄...")
+        
+        success_count = 0
+        failed_count = 0
+        failed_ids = []
+        
+        for record_id in record_ids:
+            if self.delete_record(record_id):
+                success_count += 1
+            else:
+                failed_count += 1
+                failed_ids.append(record_id)
+        
+        result = {
+            'success': success_count,
+            'failed': failed_count,
+            'failed_ids': failed_ids
+        }
+        
+        print(f"批量刪除完成: 成功 {success_count} 筆, 失敗 {failed_count} 筆")
+        return result
+
     def upload_portfolio(self, snapshot: PortfolioSnapshot, target_user_id: str = None):
         """
         上傳計算結果至 Cloudflare D1
