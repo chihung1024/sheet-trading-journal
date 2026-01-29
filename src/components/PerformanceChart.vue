@@ -187,12 +187,10 @@ const onDateChange = () => {
 
 const filterData = (startDate, endDate = new Date()) => {
     const fullHistory = portfolioStore.history || [];
-    console.log(`📈 [filterData] 收到 ${fullHistory.length} 筆 history 數據`);
-    
     if (fullHistory.length === 0) {
         displayedData.value = [];
         baselineData.value = null;
-        drawChart(); // Clear chart
+        drawChart();
         return;
     }
 
@@ -220,29 +218,26 @@ const filterData = (startDate, endDate = new Date()) => {
     });
     
     displayedData.value = filteredData;
-    console.log(`📈 [filterData] 過濾後 ${filteredData.length} 筆數據，準備繪圖`);
     drawChart();
 };
 
 const drawChart = () => {
-    console.log('🎨 [drawChart] 開始繪製圖表...');
     if (!canvas.value) return;
     const ctx = canvas.value.getContext('2d');
     if (myChart) myChart.destroy();
 
     if (displayedData.value.length === 0 || !baselineData.value) return;
 
-    // RWD 設定：檢查視窗寬度，動態調整字體
     const isMobile = window.innerWidth < 768;
     const fontSize = isMobile ? 10 : 12;
-    const labelFontSize = isMobile ? 11 : 14; /* ✅ 最終數值標籤字體加大 */
+    const labelFontSize = isMobile ? 11 : 14;
 
     let datasets = [];
     const common = { 
         pointRadius: 0, 
         pointHoverRadius: 5, 
         borderWidth: 2, 
-        tension: 0, /* ✅ IB 風格：直線圖，無平滑 */
+        tension: 0,
         pointBackgroundColor: 'white',
         pointBorderWidth: 2
     };
@@ -250,7 +245,6 @@ const drawChart = () => {
     let chartData = [];
     let labels = [];
     
-    // 準備數據 (確保包含 baseline 以正確計算起始點 0%)
     let dataWithBaseline = [];
     const baselineInDisplayed = displayedData.value.some(d => d.date === baselineData.value.date);
     if (baselineInDisplayed) {
@@ -265,9 +259,7 @@ const drawChart = () => {
     });
 
     if (chartType.value === 'asset') {
-        // 資產模式 (絕對值)
         chartData = displayedData.value.map(d => d.total_value);
-        // 重設 labels 對應 displayedData
         labels = displayedData.value.map(d => {
             const date = new Date(d.date);
             return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
@@ -286,17 +278,13 @@ const drawChart = () => {
             ...common
         }];
     } else if (chartType.value === 'pnl') {
-        // [v2.40] 支援已實現/未實現分離顯示
         const hasBreakdown = dataWithBaseline.every(d => d.realized_pnl !== undefined);
         
         if (hasBreakdown) {
              const baseRealized = baselineData.value.realized_pnl || 0;
              const baseUnrealized = baselineData.value.unrealized_pnl || 0;
              
-             // Dataset 1: 已實現損益 (Area)
              const realizedData = dataWithBaseline.map(d => (d.realized_pnl || 0) - baseRealized);
-             
-             // Dataset 2: 總損益 (Line)
              const totalData = dataWithBaseline.map(d => (d.net_profit || 0) - baselineData.value.net_profit);
              
              datasets = [
@@ -321,7 +309,6 @@ const drawChart = () => {
                 }
              ];
         } else {
-            // [v2.39] 舊版相容邏輯
             const baselinePnl = baselineData.value.net_profit;
             chartData = dataWithBaseline.map(d => d.net_profit - baselinePnl);
             
@@ -339,7 +326,6 @@ const drawChart = () => {
             }];
         }
     } else {
-        // TWR 模式 (百分比)
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         
@@ -372,7 +358,7 @@ const drawChart = () => {
             responsive: true,
             maintainAspectRatio: false,
             layout: {
-                padding: { left: 5, right: 80, top: 20, bottom: 0 } /* ✅ 右側 padding 增加至 80px */
+                padding: { left: 5, right: 80, top: 20, bottom: 0 }
             },
             plugins: {
                 legend: {
@@ -424,7 +410,7 @@ const drawChart = () => {
                     ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: isMobile ? 5 : 10, font: { size: fontSize } }
                 },
                 y: {
-                    display: false, /* ✅ 隱藏 Y 軸刻度，避免與標籤重疊 */
+                    display: false,
                     grid: { color: 'rgba(200, 200, 200, 0.1)' },
                     grace: '5%'
                 }
@@ -456,39 +442,28 @@ const drawChart = () => {
                         }
                         
                         ctx.save();
-                        ctx.font = `bold ${labelFontSize}px JetBrains Mono`; /* ✅ 使用動態字體大小 */
+                        ctx.font = `bold ${labelFontSize}px JetBrains Mono`;
                         ctx.fillStyle = dataset.borderColor;
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'middle';
-                        ctx.fillText(displayValue, lastPoint.x + 10, lastPoint.y); /* ✅ 標籤左移 10px */
+                        ctx.fillText(displayValue, lastPoint.x + 10, lastPoint.y);
                         ctx.restore();
                     }
                 });
             }
         }]
     });
-    console.log('✅ [drawChart] 圖表繪製完成');
 };
 
-watch(chartType, () => {
-    console.log('🎨 [chartType changed] 重新繪製圖表');
-    drawChart();
-});
+watch(chartType, () => drawChart());
 
-// 🔧 修復：使用 deep watch 確保檢測到 array 內容變化
-watch(() => portfolioStore.history, async (newHistory, oldHistory) => {
-    const newLength = newHistory?.length || 0;
-    const oldLength = oldHistory?.length || 0;
-    const latestRealized = newHistory?.[newHistory.length - 1]?.realized_pnl || 0;
-    
-    console.log(`📊 [history watch 觸發] 長度: ${oldLength} → ${newLength}, 最新 realized_pnl: ${latestRealized}`);
-    
+// ✅ 核心修復：使用 deep watch 確保檢測 history 數據變化
+watch(() => portfolioStore.history, async () => {
     await nextTick();
     switchTimeRange(timeRange.value);
-}, { deep: true }); // ✅ 添加 deep: true
+}, { deep: true });
 
 onMounted(async () => {
-    console.log('🎬 [PerformanceChart] 組件已掛載');
     await nextTick();
     switchTimeRange('1Y');
     if (canvas.value && window.ResizeObserver) {
@@ -516,16 +491,12 @@ onUnmounted(() => {
 }
 
 .chart-header { margin-bottom: 12px; display: flex; flex-direction: column; gap: 12px; }
-
-/* 頂部區域：標題 + 圖表類型 */
 .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-
 .title-group { display: flex; align-items: center; gap: 12px; }
 .chart-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main); padding-left: 12px; border-left: 4px solid var(--primary); }
 .loading-badge { font-size: 0.8rem; color: var(--primary); display: flex; align-items: center; gap: 6px; }
 .spinner-sm { width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
 
-/* 捲動容器：Pills (手機優化) */
 .toggle-pills-scroll, .time-pills-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; max-width: 100%; }
 .toggle-pills-scroll::-webkit-scrollbar, .time-pills-scroll::-webkit-scrollbar { display: none; }
 
@@ -533,7 +504,6 @@ onUnmounted(() => {
 .toggle-pills button { border: none; background: transparent; padding: 6px 14px; font-size: 0.9rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; font-weight: 500; }
 .toggle-pills button.active { background: var(--bg-card); color: var(--primary); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 
-/* 控制列：時間 + 右側工具 */
 .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .time-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
 .time-pills button { border: none; background: transparent; padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; }
@@ -542,7 +512,6 @@ onUnmounted(() => {
 
 .right-controls { display: flex; gap: 10px; align-items: center; }
 
-/* 基準輸入框 (Compact) */
 .benchmark-selector { display: flex; align-items: center; gap: 6px; }
 .control-label { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); }
 .input-group-merged { display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; background: var(--bg-card); }
@@ -551,17 +520,15 @@ onUnmounted(() => {
 .btn-icon-apply { border: none; background: var(--bg-secondary); color: var(--success); cursor: pointer; padding: 0 8px; font-weight: bold; border-left: 1px solid var(--border-color); }
 .btn-icon-apply:disabled { color: var(--text-sub); cursor: not-allowed; }
 
-/* 日期選擇器 */
 .date-range-selector { display: flex; align-items: center; gap: 6px; background: var(--bg-secondary); padding: 4px 8px; border-radius: 6px; }
 .date-input { border: none; background: transparent; font-size: 0.85rem; width: 110px; color: var(--text-main); font-family: 'JetBrains Mono', monospace; }
 .date-sep { font-size: 0.8rem; color: var(--text-sub); }
 
-/* 圖表畫布 */
 .canvas-box { 
     flex-grow: 1; 
     position: relative; 
     width: 100%; 
-    height: 450px; /* ✅ 桓面版高度從 350px 增加至 450px */
+    height: 450px;
     overflow: hidden; 
 } 
 
@@ -570,7 +537,6 @@ onUnmounted(() => {
 .chart-footer { margin-top: 8px; text-align: right; border-top: 1px solid var(--border-color); padding-top: 8px; }
 .info-text { font-size: 0.75rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 
-/* RWD Mobile */
 @media (max-width: 768px) {
     .inner-chart-layout { padding: 16px; }
     .header-top { flex-direction: column; align-items: flex-start; gap: 12px; }
@@ -588,6 +554,6 @@ onUnmounted(() => {
     .date-range-selector { width: 100%; justify-content: space-between; }
     .date-input { width: auto; flex: 1; }
     
-    .canvas-box { height: 380px; } /* ✅ 手機版高度從 300px 增加至 380px */
+    .canvas-box { height: 380px; }
 }
 </style>
