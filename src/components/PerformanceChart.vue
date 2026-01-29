@@ -457,7 +457,6 @@ const drawChart = () => {
 
 watch(chartType, () => drawChart());
 
-// ✅ 核心修復：使用 deep watch 確保檢測 history 數據變化
 watch(() => portfolioStore.history, async () => {
     await nextTick();
     switchTimeRange(timeRange.value);
@@ -466,17 +465,32 @@ watch(() => portfolioStore.history, async () => {
 onMounted(async () => {
     await nextTick();
     switchTimeRange('1Y');
+    
+    // 🐛 修復：添加防禦性檢查，避免 canvas 為 null 時出錯
     if (canvas.value && window.ResizeObserver) {
         resizeObserver = new ResizeObserver(() => {
-            if (myChart) myChart.resize();
+            // ✅ 確保 canvas 和 myChart 都存在且有效
+            if (canvas.value && myChart && !myChart.ctx?.canvas?.isConnected === false) {
+                try {
+                    myChart.resize();
+                } catch (e) {
+                    console.warn('Chart resize failed:', e);
+                }
+            }
         });
         resizeObserver.observe(canvas.value.parentElement);
     }
 });
 
 onUnmounted(() => {
-    if (resizeObserver) resizeObserver.disconnect();
-    if (myChart) myChart.destroy();
+    if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+    }
+    if (myChart) {
+        myChart.destroy();
+        myChart = null;
+    }
 });
 </script>
 
