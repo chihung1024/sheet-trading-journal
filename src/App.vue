@@ -30,7 +30,7 @@
           <div v-if="autoRefresh && !portfolioStore.loading && !portfolioStore.isPolling" 
                class="auto-refresh-indicator" 
                :class="{ paused: autoRefresh.isPaused.value }"
-               :title="autoRefresh.isPaused.value ? '已暫停自動刷新' : `下次更新: ${autoRefresh.formattedTimeRemaining()}`">
+               :title="autoRefresh.isPaused.value ? '已暫停自動刷新' : `下次觸發計算: ${autoRefresh.formattedTimeRemaining()}`">
             <span class="refresh-icon" @click="autoRefresh.togglePause()">
               <span v-if="autoRefresh.isPaused.value">⏸️</span>
               <span v-else>🔄</span>
@@ -54,10 +54,10 @@
             class="action-trigger-btn" 
             @click="handleTriggerUpdate"
             :disabled="portfolioStore.isPolling"
-            :title="portfolioStore.isPolling ? '計算中...' : '更新數據'"
+            :title="portfolioStore.isPolling ? '計算中...' : '手動觸發計算'"
           >
             <span>⚙️</span>
-            <span class="desktop-only">更新</span>
+            <span class="desktop-only">觸發</span>
           </button>
           
           <button class="theme-toggle" @click="toggleTheme">
@@ -205,7 +205,7 @@ const showMobileTrade = ref(false);
 const updateMedia = () => {
   isMobileView.value = window.innerWidth < 1024;
   if (!isMobileView.value) {
-    showMobileTrade.value = false; // 桌面版重置狀態
+    showMobileTrade.value = false;
   }
 };
 
@@ -218,14 +218,25 @@ const pendingDividendsCount = computed(() => portfolioStore.pending_dividends ? 
 
 const userInitial = computed(() => authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'U');
 
-// ✨ 自動刷新功能 - 每1分鐘更新一次
+// ✨ 自動刷新功能 - 觸發 GitHub Actions 計算 + 輪詢狀態
 const autoRefresh = useAutoRefresh(async () => {
+  // 只有當前沒有在載入且沒有在輪詢時才觸發
   if (!portfolioStore.loading && !portfolioStore.isPolling) {
-    console.log('🔄 自動刷新: 開始更新數據...');
-    await portfolioStore.fetchAll();
-    addToast('✅ 數據已自動更新', 'success');
+    try {
+      console.log('🔄 [自動刷新] 觸發 GitHub Actions 計算...');
+      await portfolioStore.triggerUpdate();
+      // triggerUpdate 內部會自動呼叫 startPolling()
+      // startPolling() 內部會每 5 秒檢查一次狀態
+      // 當 updated_at 改變時會自動 fetchAll() 並顯示 Toast
+      console.log('✅ [自動刷新] 已觸發，系統正在輪詢狀態...');
+    } catch (error) {
+      console.error('❌ [自動刷新] 觸發失敗:', error);
+      addToast(`自動觸發失敗: ${error.message}`, 'error');
+    }
+  } else {
+    console.log('⏸️ [自動刷新] 系統忙線中，跳過此次刷新');
   }
-}, 1); // ⚡ 改為1分鐘
+}, 1); // 1分鐘觸發一次
 
 // 方法
 const scrollToDividends = () => {
@@ -286,14 +297,14 @@ const renameGroup = async (oldName) => {
 
 const handleTriggerUpdate = async () => {
   if (portfolioStore.isPolling) {
-    addToast("⌛ 背景監控更新中...", "info");
+    addToast("⌛ 背景計算中，請稍候...", "info");
     return;
   }
   if (!confirm("確定要觸發後端計算嗎？")) return;
   try {
-    addToast("🚀 正在請求 GitHub Actions...", "info");
+    addToast("🚀 正在觸發 GitHub Actions...", "info");
     await portfolioStore.triggerUpdate();
-    addToast("✅ 已觸發！系統將自動刷新。", "success");
+    addToast("✅ 已觸發！系統將自動輪詢狀態。", "success");
   } catch (error) {
     addToast(`❌ 觸發失敗: ${error.message}`, "error");
   }
