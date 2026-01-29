@@ -341,6 +341,15 @@ const getHoldingShares = (div) => {
   return 0;
 };
 
+// 修復：尋找已存在的配息記錄
+const findExistingDividendRecord = (symbol, exDate) => {
+  return store.records.find(r => 
+    r.txn_type === 'DIV' && 
+    r.symbol === symbol && 
+    r.txn_date === exDate
+  );
+};
+
 const confirmDividend = async (div) => {
   const divKey = getDivKey(div);
   
@@ -368,11 +377,20 @@ const confirmDividend = async (div) => {
   processingKey.value = divKey;
   
   try {
+    // 修復：先檢查是否已有配息記錄
+    const existingRecord = findExistingDividendRecord(div.symbol, div.ex_date);
+    
+    if (existingRecord) {
+      console.log(`🗑️ 發現舊配息記錄 (ID: ${existingRecord.id})，先刪除...`);
+      await store.deleteRecord(existingRecord.id);
+      addToast('已清除舊配息記錄', 'info');
+    }
+    
     const shares = getHoldingShares(div);
     const divPerShare = shares > 0 ? netAmount / shares : netAmount;
     const recordQty = shares > 0 ? shares : 1;
     
-    // 修復：統一為「淨額模式」，避免重複扣稅
+    // 統一為「淨額模式」，避免重複扣稅
     const taxInfo = finalTax > 0 ? `稅金:${currency} ${formatNumber(finalTax, 2)}` : '';
     const record = {
       txn_date: div.ex_date,
