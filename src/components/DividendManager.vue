@@ -408,7 +408,15 @@ const confirmDividend = async (div) => {
     
     if (success) {
       addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
-      await store.fetchAll();
+      
+      // 修復：觸發後端重新計算歷史數據，確保曲線圖更新
+      try {
+        await store.triggerUpdate();
+        console.log('✅ 已觸發數據重新計算，歷史曲線將更新');
+      } catch (updateError) {
+        console.error('⚠️ 觸發更新失敗:', updateError);
+        // 即使觸發失敗，也繼續執行後續操作
+      }
     } else {
       confirmedKeys.value.delete(divKey);
       saveConfirmedKeys();
