@@ -7,7 +7,10 @@
         <div>
           <h3>待確認配息</h3>
           <span class="subtitle" v-if="localDividends.length > 0">
-            {{ localDividends.length }} 筆待處理
+            {{ pendingCount }} 筆待處理
+            <span v-if="confirmedCount > 0" class="confirmed-badge">
+              / {{ confirmedCount }} 筆已確認
+            </span>
           </span>
         </div>
       </div>
@@ -36,7 +39,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="div in localDividends" :key="div.id" class="table-row">
+            <tr 
+              v-for="div in localDividends" 
+              :key="div.id" 
+              class="table-row"
+              :class="{ 'row-confirmed': isConfirmed(div.id) }"
+            >
               <!-- 日期 -->
               <td class="text-center">
                 <div class="date-display">
@@ -46,7 +54,10 @@
               
               <!-- 股票代碼 -->
               <td class="text-center">
-                <span class="symbol-tag">{{ div.symbol }}</span>
+                <div class="symbol-wrapper">
+                  <span class="symbol-tag">{{ div.symbol }}</span>
+                  <span v-if="isConfirmed(div.id)" class="confirmed-label">✓ 已入帳</span>
+                </div>
               </td>
               
               <!-- 實發總額 -->
@@ -59,6 +70,7 @@
                     class="input-field"
                     step="0.01"
                     placeholder="0.00"
+                    :disabled="isConfirmed(div.id)"
                   >
                 </div>
               </td>
@@ -72,6 +84,7 @@
                     class="input-field input-tax"
                     step="0.01"
                     placeholder="0.00"
+                    :disabled="isConfirmed(div.id)"
                   >
                   <span class="tax-rate">{{ getTaxRate(div) }}%</span>
                 </div>
@@ -89,11 +102,13 @@
                 <div class="action-buttons">
                   <button 
                     class="btn-action btn-confirm" 
+                    :class="{ 'btn-confirmed': isConfirmed(div.id) }"
                     @click="confirmDividend(div)"
-                    :disabled="processingId === div.id"
-                    title="確認入帳"
+                    :disabled="processingId === div.id || isConfirmed(div.id)"
+                    :title="isConfirmed(div.id) ? '已確認入帳' : '確認入帳'"
                   >
                     <span v-if="processingId === div.id" class="spinner"></span>
+                    <span v-else-if="isConfirmed(div.id)">✓</span>
                     <span v-else>✓</span>
                   </button>
                 </div>
@@ -124,6 +139,7 @@
           v-for="div in localDividends" 
           :key="'m_' + div.id" 
           class="dividend-card"
+          :class="{ 'card-confirmed': isConfirmed(div.id) }"
         >
           <!-- Card Header -->
           <div class="card-header">
@@ -131,6 +147,9 @@
               <span class="symbol-tag">{{ div.symbol }}</span>
               <span class="date-text">{{ formatFullDate(div.ex_date) }}</span>
             </div>
+            <span v-if="isConfirmed(div.id)" class="confirmed-badge-mobile">
+              ✓ 已入帳
+            </span>
           </div>
           
           <!-- Card Body -->
@@ -146,6 +165,7 @@
                 class="form-input"
                 step="0.01"
                 placeholder="輸入總額"
+                :disabled="isConfirmed(div.id)"
               >
             </div>
             
@@ -161,6 +181,7 @@
                 class="form-input"
                 step="0.01"
                 placeholder="輸入稅金"
+                :disabled="isConfirmed(div.id)"
               >
             </div>
             
@@ -177,10 +198,12 @@
           <div class="card-footer">
             <button 
               class="btn-card btn-submit" 
+              :class="{ 'btn-submitted': isConfirmed(div.id) }"
               @click="confirmDividend(div)"
-              :disabled="processingId === div.id"
+              :disabled="processingId === div.id || isConfirmed(div.id)"
             >
               <span v-if="processingId === div.id" class="spinner"></span>
+              <span v-else-if="isConfirmed(div.id)">✓ 已入帳</span>
               <span v-else>✓ 確認入帳</span>
             </button>
           </div>
@@ -191,7 +214,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
@@ -202,6 +225,7 @@ const { addToast } = useToast();
 const loading = ref(false);
 const processingId = ref(null);
 const localDividends = ref([]);
+const confirmedIds = ref(new Set()); // 追蹤已確認的配息 ID
 
 const isTWStock = (symbol) => {
   return /^\d{4}/.test(symbol) || /\.TW(O)?$/i.test(symbol);
@@ -222,6 +246,20 @@ const getTaxRate = (div) => {
   return Math.round(rate);
 };
 
+// 檢查是否已確認
+const isConfirmed = (id) => {
+  return confirmedIds.value.has(id);
+};
+
+// 計算待處理和已確認數量
+const pendingCount = computed(() => {
+  return localDividends.value.filter(d => !isConfirmed(d.id)).length;
+});
+
+const confirmedCount = computed(() => {
+  return confirmedIds.value.size;
+});
+
 watch(() => store.pending_dividends, (newVal) => {
   if (newVal && newVal.length > 0) {
     localDividends.value = newVal.map(d => {
@@ -241,8 +279,13 @@ watch(() => store.pending_dividends, (newVal) => {
         tax: d.tax !== undefined ? d.tax : defaultTax
       };
     });
+    
+    // 清理不存在的已確認 ID
+    const currentIds = new Set(newVal.map(d => d.id));
+    confirmedIds.value = new Set([...confirmedIds.value].filter(id => currentIds.has(id)));
   } else {
     localDividends.value = [];
+    confirmedIds.value.clear();
   }
 }, { immediate: true, deep: true });
 
@@ -275,9 +318,15 @@ const formatNumber = (val, d = 2) => {
 };
 
 const confirmDividend = async (div) => {
+  // 防止重複點擊
+  if (isConfirmed(div.id)) {
+    addToast('此配息已確認入帳', 'info');
+    return;
+  }
+  
   const finalAmount = Number(div.amount) || 0;
   const finalTax = Number(div.tax) || 0;
-  const netAmount = finalAmount - finalTax;  // 淨額（扣稅後）
+  const netAmount = finalAmount - finalTax;
   const currency = getCurrency(div.symbol);
   
   if (finalAmount === 0) {
@@ -312,7 +361,6 @@ const confirmDividend = async (div) => {
       raw_div: div
     });
     
-    // 使用淨額計算每股配息
     const divPerShare = shares > 0 ? netAmount / shares : netAmount;
     const recordQty = shares > 0 ? shares : 1;
     
@@ -334,7 +382,10 @@ const confirmDividend = async (div) => {
     const success = await store.addRecord(record);
     
     if (success) {
-      // ② 刪除後端 pending_dividends 記錄（關鍵：使用 await！）
+      // ② 標記為已確認（立即生效）
+      confirmedIds.value.add(div.id);
+      
+      // ③ 刪除後端 pending_dividends 記錄
       try {
         const token = store.token || localStorage.getItem('token');
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/pending_dividends?id=${div.id}`, {
@@ -347,19 +398,16 @@ const confirmDividend = async (div) => {
         
         if (!response.ok) {
           console.warn('刪除 pending_dividends API 回應異常:', response.status);
-          throw new Error(`刪除失敗: HTTP ${response.status}`);
+        } else {
+          console.log('✅ pending_dividends 已刪除:', div.id);
         }
-        
-        console.log('✅ pending_dividends 已刪除:', div.id);
       } catch (err) {
         console.error('❌ 刪除 pending_dividends 失敗:', err);
-        addToast('警告：入帳成功但清除待確認列表失敗', 'warning');
-        // 即使刪除失敗，仍繼續刷新數據
       }
 
       addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
       
-      // ③ 刷新所有數據（此時刪除已完成，watch 會正確更新 localDividends）
+      // ④ 刷新所有數據（後端快照會在背景更新後自動更新）
       await store.fetchAll();
       
     } else {
@@ -426,6 +474,11 @@ const confirmDividend = async (div) => {
   font-weight: 500;
 }
 
+.confirmed-badge {
+  color: var(--success);
+  font-weight: 600;
+}
+
 .btn-refresh {
   width: 36px;
   height: 36px;
@@ -461,6 +514,65 @@ const confirmDividend = async (div) => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* ==================== 已確認狀態樣式 ==================== */
+.row-confirmed {
+  opacity: 0.6;
+  background: rgba(16, 185, 129, 0.05) !important;
+}
+
+.row-confirmed .date-display,
+.row-confirmed .symbol-tag,
+.row-confirmed .input-field,
+.row-confirmed .net-display {
+  text-decoration: line-through;
+  color: var(--text-sub) !important;
+}
+
+.symbol-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.confirmed-label {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.btn-confirmed {
+  background: var(--success) !important;
+  opacity: 0.6;
+  cursor: not-allowed !important;
+}
+
+.card-confirmed {
+  opacity: 0.7;
+  background: rgba(16, 185, 129, 0.05) !important;
+}
+
+.confirmed-badge-mobile {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.15);
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.btn-submitted {
+  background: var(--success) !important;
+  opacity: 0.7;
+  cursor: not-allowed !important;
 }
 
 /* ==================== Desktop Table ==================== */
@@ -579,6 +691,12 @@ td {
   border-color: var(--primary);
   background: var(--bg-card);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.input-field:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--bg-secondary);
 }
 
 .input-field::placeholder {
@@ -708,18 +826,21 @@ td {
   border: 1px solid var(--border-color);
   border-radius: 12px;
   overflow: hidden;
+  transition: all 0.2s;
 }
 
 .card-header {
   padding: 16px;
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-card);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .card-info {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
 
@@ -786,6 +907,12 @@ td {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--bg-secondary);
 }
 
 .net-summary {
