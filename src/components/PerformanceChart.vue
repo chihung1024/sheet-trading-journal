@@ -18,7 +18,8 @@
         </div>
       </div>
       
-      <div class="controls-row">
+      <!-- ✨ 時間範圍控制行 -->
+      <div class="controls-row time-controls">
         <div class="time-pills-scroll">
             <div class="time-pills">
               <button v-for="range in timeRanges" 
@@ -31,33 +32,40 @@
             </div>
         </div>
         
-        <div class="right-controls">
-          <div class="benchmark-selector" v-if="chartType === 'twr'">
-            <label class="control-label">基準</label> 
-            <div class="input-group-merged">
-              <input 
-                type="text" 
-                v-model="benchmarkInput" 
-                placeholder="SPY"
-                @keyup.enter="handleBenchmarkChange"
-                :disabled="isChangingBenchmark"
-                class="benchmark-input"
-              /> 
-              <button 
-                @click="handleBenchmarkChange"
-                :disabled="isChangingBenchmark || !benchmarkInput || benchmarkInput === portfolioStore.selectedBenchmark"
-                class="btn-icon-apply"
-              >
-                ✓
-              </button>
-            </div>
+        <div class="date-range-selector" v-show="timeRange === 'CUSTOM'">
+          <input type="date" v-model="customStartDate" @change="applyCustomRange" :max="customEndDate || todayStr" class="date-input" />
+          <span class="date-sep">to</span>
+          <input type="date" v-model="customEndDate" @change="applyCustomRange" :min="customStartDate" :max="todayStr" class="date-input" />
+        </div>
+      </div>
+      
+      <!-- ✨ Benchmark 控制行 (只在 TWR 模式顯示) -->
+      <div class="controls-row benchmark-controls" v-if="chartType === 'twr'">
+        <div class="benchmark-label-group">
+          <span class="control-icon">🎯</span>
+          <span class="control-label">基準標的</span>
+        </div>
+        
+        <div class="benchmark-input-group">
+          <div class="input-wrapper">
+            <input 
+              type="text" 
+              v-model="benchmarkInput" 
+              placeholder="SPY"
+              @keyup.enter="handleBenchmarkChange"
+              :disabled="isChangingBenchmark"
+              class="benchmark-input"
+            /> 
+            <button 
+              @click="handleBenchmarkChange"
+              :disabled="isChangingBenchmark || !benchmarkInput || benchmarkInput === portfolioStore.selectedBenchmark"
+              class="btn-apply"
+            >
+              <span v-if="isChangingBenchmark" class="spinner-xs"></span>
+              <span v-else>✓</span>
+            </button>
           </div>
-          
-          <div class="date-range-selector" v-show="timeRange === 'CUSTOM'">
-            <input type="date" v-model="customStartDate" @change="applyCustomRange" :max="customEndDate || todayStr" class="date-input" />
-            <span class="date-sep">to</span>
-            <input type="date" v-model="customEndDate" @change="applyCustomRange" :min="customStartDate" :max="todayStr" class="date-input" />
-          </div>
+          <span class="helper-text">輸入美股代號後按 Enter 或點擊✓</span>
         </div>
       </div>
     </div>
@@ -111,7 +119,6 @@ const timeRanges = [
   { value: 'ALL', label: 'ALL' }
 ];
 
-// ✅ 合併日期處理邏輯
 const parseDate = (dateStr) => {
   const d = new Date(dateStr.replace(/-/g, '/'));
   d.setHours(0, 0, 0, 0);
@@ -165,7 +172,6 @@ const handleBenchmarkChange = async () => {
   }
 };
 
-// ✅ [修復] 自訂日期變更時直接觸發篩選
 const applyCustomRange = () => {
   if (!customStartDate.value || !customEndDate.value) return;
   const start = parseDate(customStartDate.value);
@@ -175,11 +181,9 @@ const applyCustomRange = () => {
     return;
   }
   
-  // 確保 timeRange 設為 CUSTOM
   if (timeRange.value !== 'CUSTOM') {
     timeRange.value = 'CUSTOM';
   } else {
-    // 如果已經是 CUSTOM，直接觸發篩選（因為 watch 不會觸發）
     filterData();
   }
 };
@@ -197,10 +201,8 @@ const filterData = () => {
     const startDateOnly = new Date(start); startDateOnly.setHours(0,0,0,0);
     const endDateOnly = new Date(end); endDateOnly.setHours(23,59,59,999);
 
-    // ✅ 修復 baseline 選擇邏輯
     let baseline = null;
     
-    // 尋找區間開始前最近的數據點
     for (let i = fullHistory.length - 1; i >= 0; i--) {
         const itemDate = parseDate(fullHistory[i].date);
         if (itemDate < startDateOnly) {
@@ -209,14 +211,12 @@ const filterData = () => {
         }
     }
     
-    // ✅ 如果找不到（例如 ALL 模式），使用第一個數據點
     if (!baseline) {
         baseline = fullHistory[0];
     }
     
     baselineData.value = baseline;
 
-    // ✅ 簡化築選邏輯
     displayedData.value = fullHistory.filter(d => {
         const itemDate = parseDate(d.date);
         const dayOfWeek = itemDate.getDay();
@@ -246,7 +246,6 @@ const drawChart = () => {
         pointBorderWidth: 2
     };
 
-    // ✅ 簡化數據合併邏輯
     const dataWithBaseline = displayedData.value[0]?.date === baselineData.value.date 
       ? displayedData.value 
       : [baselineData.value, ...displayedData.value];
@@ -431,7 +430,6 @@ const drawChart = () => {
     });
 };
 
-// ✅ 合併為單一 watch
 watch([chartType, timeRange], () => {
   if (timeRange.value === 'CUSTOM') {
     const { start, end } = getDateRange('CUSTOM');
@@ -488,44 +486,198 @@ onUnmounted(() => {
 .chart-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main); padding-left: 12px; border-left: 4px solid var(--primary); }
 .loading-badge { font-size: 0.8rem; color: var(--primary); display: flex; align-items: center; gap: 6px; }
 .spinner-sm { width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+.spinner-xs { width: 10px; height: 10px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
 .toggle-pills-scroll, .time-pills-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; max-width: 100%; }
 .toggle-pills-scroll::-webkit-scrollbar, .time-pills-scroll::-webkit-scrollbar { display: none; }
 .toggle-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
 .toggle-pills button { border: none; background: transparent; padding: 6px 14px; font-size: 0.9rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; font-weight: 500; }
 .toggle-pills button.active { background: var(--bg-card); color: var(--primary); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+
+/* 控制行通用樣式 */
 .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+/* 時間控制 */
 .time-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
 .time-pills button { border: none; background: transparent; padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; }
 .time-pills button:hover { color: var(--text-main); }
 .time-pills button.active { background: var(--bg-card); color: var(--text-main); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-.right-controls { display: flex; gap: 10px; align-items: center; }
-.benchmark-selector { display: flex; align-items: center; gap: 6px; }
-.control-label { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); }
-.input-group-merged { display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; background: var(--bg-card); }
-.benchmark-input { border: none; padding: 4px 8px; width: 60px; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; text-transform: uppercase; background: transparent; color: var(--text-main); text-align: center; }
-.benchmark-input:focus { outline: none; background: var(--bg-secondary); }
-.btn-icon-apply { border: none; background: var(--bg-secondary); color: var(--success); cursor: pointer; padding: 0 8px; font-weight: bold; border-left: 1px solid var(--border-color); }
-.btn-icon-apply:disabled { color: var(--text-sub); cursor: not-allowed; }
+
 .date-range-selector { display: flex; align-items: center; gap: 6px; background: var(--bg-secondary); padding: 4px 8px; border-radius: 6px; }
 .date-input { border: none; background: transparent; font-size: 0.85rem; width: 110px; color: var(--text-main); font-family: 'JetBrains Mono', monospace; }
 .date-sep { font-size: 0.8rem; color: var(--text-sub); }
+
+/* ✨ Benchmark 控制行樣式 */
+.benchmark-controls {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(139, 92, 246, 0.05));
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  justify-content: flex-start;
+  gap: 20px;
+}
+
+.benchmark-label-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: fit-content;
+}
+
+.control-icon {
+  font-size: 1.2rem;
+}
+
+.control-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.benchmark-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.input-wrapper {
+  display: flex;
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-card);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: border-color 0.2s;
+}
+
+.input-wrapper:focus-within {
+  border-color: var(--primary);
+}
+
+.benchmark-input {
+  border: none;
+  padding: 10px 14px;
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--text-main);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.benchmark-input:focus {
+  outline: none;
+}
+
+.benchmark-input::placeholder {
+  color: var(--text-sub);
+  opacity: 0.5;
+}
+
+.btn-apply {
+  border: none;
+  background: var(--success);
+  color: white;
+  cursor: pointer;
+  padding: 0 16px;
+  font-weight: bold;
+  font-size: 1.1rem;
+  transition: all 0.2s;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-apply:hover:not(:disabled) {
+  background: #0ea570;
+}
+
+.btn-apply:disabled {
+  background: var(--bg-secondary);
+  color: var(--text-sub);
+  cursor: not-allowed;
+}
+
+.helper-text {
+  font-size: 0.75rem;
+  color: var(--text-sub);
+  font-style: italic;
+}
+
 .canvas-box { flex-grow: 1; position: relative; width: 100%; height: 450px; overflow: hidden; } 
 .no-data-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); color: var(--text-sub); font-size: 1rem; }
 .chart-footer { margin-top: 8px; text-align: right; border-top: 1px solid var(--border-color); padding-top: 8px; }
 .info-text { font-size: 0.75rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+
+/* ✨ 手機版優化 */
 @media (max-width: 768px) {
     .inner-chart-layout { padding: 16px; }
     .header-top { flex-direction: column; align-items: flex-start; gap: 12px; }
     .toggle-pills-scroll { width: 100%; } 
     .toggle-pills { width: max-content; } 
-    .controls-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+    
+    /* 時間控制行 */
+    .time-controls { 
+      flex-direction: column; 
+      align-items: stretch;
+      gap: 10px;
+    }
     .time-pills-scroll { width: 100%; }
     .time-pills { width: max-content; }
-    .right-controls { width: 100%; justify-content: space-between; }
-    .benchmark-selector { flex: 1; }
-    .benchmark-input { width: 100%; min-width: 0; }
     .date-range-selector { width: 100%; justify-content: space-between; }
     .date-input { width: auto; flex: 1; }
-    .canvas-box { height: 380px; }
+    
+    /* ✨ Benchmark 控制行 - 手機版專用佈局 */
+    .benchmark-controls {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      padding: 14px;
+    }
+    
+    .benchmark-label-group {
+      justify-content: center;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .control-icon { font-size: 1.4rem; }
+    .control-label { font-size: 1rem; }
+    
+    .benchmark-input-group {
+      gap: 8px;
+    }
+    
+    .input-wrapper {
+      width: 100%;
+    }
+    
+    .benchmark-input {
+      font-size: 1.1rem;
+      padding: 12px;
+      text-align: center;
+    }
+    
+    .btn-apply {
+      min-width: 60px;
+      padding: 0 20px;
+    }
+    
+    .helper-text {
+      text-align: center;
+      font-size: 0.8rem;
+    }
+    
+    .canvas-box { height: 320px; }
+}
+
+@media (max-width: 480px) {
+    .canvas-box { height: 280px; }
 }
 </style>
