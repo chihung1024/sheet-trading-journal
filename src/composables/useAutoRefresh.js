@@ -100,7 +100,7 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
   };
 
   onMounted(() => {
-    console.log('✨ [自動刷新] 系統已啟動，每 ${intervalMinutes} 分鐘更新一次');
+    console.log(`✨ [自動刷新] 系統已啟動，每 ${intervalMinutes} 分鐘更新一次`);
     
     // 監聽頁面可見性
     document.addEventListener('visibilitychange', handleVisibilityChange);
