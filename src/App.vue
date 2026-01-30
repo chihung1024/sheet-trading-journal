@@ -236,7 +236,7 @@ const autoRefresh = useAutoRefresh(async () => {
   } else {
     console.log('⏸️ [自動刷新] 系統忙線中，跳過此次刷新');
   }
-}, 1); // 1分鐘觸發一次
+}, 3); // ✨ 3分鐘觸發一次
 
 // 方法
 const scrollToDividends = () => {
