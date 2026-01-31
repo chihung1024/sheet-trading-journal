@@ -1,7 +1,7 @@
 <template>
   <div class="app-layout" :class="{ 'dark-mode': isDark }">
     <LoginOverlay v-if="!authStore.token" />
-    
+
     <div v-else class="main-wrapper">
       <header class="top-nav">
         <div class="nav-left">
@@ -20,15 +20,15 @@
                   {{ g }}
                 </option>
               </select>
-              <button class="btn-edit-group" @click="showGroupModal=true" title="管理群組">✎</button>
+              <button class="btn-edit-group" @click="activeView = 'groups'" title="管理群組">✎</button>
             </div>
           </div>
         </div>
 
         <div class="nav-status">
           <!-- ✨ 自動刷新指示器 -->
-          <div v-if="autoRefresh && !portfolioStore.loading && !portfolioStore.isPolling" 
-               class="auto-refresh-indicator" 
+          <div v-if="autoRefresh && !portfolioStore.loading && !portfolioStore.isPolling"
+               class="auto-refresh-indicator"
                :class="{ paused: autoRefresh.isPaused.value }"
                :title="autoRefresh.isPaused.value ? '已暫停自動刷新' : `下次觸發計算: ${autoRefresh.formattedTimeRemaining()}`">
             <span class="refresh-icon" @click="autoRefresh.togglePause()">
@@ -39,7 +39,7 @@
               {{ autoRefresh.formattedTimeRemaining() }}
             </span>
           </div>
-          
+
           <div v-if="portfolioStore.loading" class="status-indicator loading" title="更新中...">
             <span class="dot"></span> <span class="desktop-only">更新中...</span>
           </div>
@@ -49,9 +49,9 @@
           <div v-else class="status-indicator ready" title="連線正常">
             <span class="dot"></span> <span class="desktop-only">連線正常</span>
           </div>
-          
-          <button 
-            class="action-trigger-btn" 
+
+          <button
+            class="action-trigger-btn"
             @click="handleTriggerUpdate"
             :disabled="portfolioStore.isPolling"
             :title="portfolioStore.isPolling ? '計算中...' : '手動觸發計算'"
@@ -59,64 +59,115 @@
             <span>⚙️</span>
             <span class="desktop-only">觸發</span>
           </button>
-          
+
           <button class="theme-toggle" @click="toggleTheme">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
           </button>
-          
+
           <div class="user-profile" @click="handleLogout" title="登出">
             <img v-if="authStore.user?.picture" :src="authStore.user.picture" class="avatar-img" alt="User">
             <div v-else class="avatar">{{ userInitial }}</div>
           </div>
         </div>
       </header>
-      
-      <div v-if="showGroupModal" class="modal-overlay" @click.self="showGroupModal=false">
-        <div class="modal-card">
-          <h3>管理策略群組</h3>
-          <p class="modal-desc">修改群組名稱將會批次更新所有相關的交易紀錄。</p>
-          <div class="group-list">
-            <div v-for="g in portfolioStore.availableGroups.filter(x=>x!=='all')" :key="g" class="group-item">
-              <input type="text" v-model="groupRenameMap[g]" :placeholder="g">
-              <button @click="renameGroup(g)" class="btn-sm" :disabled="!groupRenameMap[g] || groupRenameMap[g]===g">更名</button>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button @click="showGroupModal=false">關閉</button>
-          </div>
-        </div>
-      </div>
 
       <div class="content-container">
+        <!-- Left: 功能導覽（Desktop/Tablet） -->
+        <nav class="left-column" aria-label="功能導覽">
+          <div class="nav-card">
+            <button
+              v-for="v in views"
+              :key="v.key"
+              class="nav-item"
+              :class="{ active: activeView === v.key }"
+              @click="activeView = v.key"
+              type="button"
+            >
+              <span class="nav-icon">{{ v.icon }}</span>
+              <span class="nav-label">{{ v.label }}</span>
+            </button>
+          </div>
+        </nav>
+
+        <!-- Middle: 主內容（依選單切換） -->
         <main class="main-column">
-          <section class="section-stats">
-            <StatsGrid v-if="!portfolioStore.loading" />
-            <StatsGridSkeleton v-else />
+          <!-- Mobile: 功能切換（避免左欄隱藏後無法切換） -->
+          <div v-if="isMobileView" class="mobile-tabs" aria-label="功能切換">
+            <button
+              v-for="v in views"
+              :key="v.key"
+              class="tab-item"
+              :class="{ active: activeView === v.key }"
+              @click="activeView = v.key"
+              type="button"
+            >
+              {{ v.label }}
+            </button>
+          </div>
+
+          <!-- 總覽：Stats + 圖表 -->
+          <section v-if="activeView === 'overview'" class="section-overview">
+            <div class="section-stats">
+              <StatsGrid v-if="!portfolioStore.loading" />
+              <StatsGridSkeleton v-else />
+            </div>
+
+            <div class="section-charts">
+              <div class="chart-wrapper chart-full">
+                <PerformanceChart v-if="!portfolioStore.loading" />
+                <ChartSkeleton v-else />
+              </div>
+            </div>
           </section>
-          
-          <section class="section-charts">
+
+          <!-- 圖表 -->
+          <section v-else-if="activeView === 'charts'" class="section-charts">
             <div class="chart-wrapper chart-full">
               <PerformanceChart v-if="!portfolioStore.loading" />
               <ChartSkeleton v-else />
             </div>
           </section>
-          
-          <section class="section-holdings">
+
+          <!-- 持倉明細 -->
+          <section v-else-if="activeView === 'holdings'" class="section-holdings">
             <HoldingsTable v-if="!portfolioStore.loading" />
             <TableSkeleton v-else />
           </section>
-          
-          <section class="section-records">
+
+          <!-- 交易紀錄 -->
+          <section v-else-if="activeView === 'records'" class="section-records">
             <RecordList v-if="!portfolioStore.loading" @edit="handleEditRecord" />
             <TableSkeleton v-else />
           </section>
-          
-          <section class="section-dividends" v-if="!portfolioStore.loading && hasPendingDividends">
-            <DividendManager />
+
+          <!-- 配息紀錄：永遠可看 -->
+          <section v-else-if="activeView === 'dividends'" class="section-dividends">
+            <DividendManager v-if="!portfolioStore.loading" />
+            <TableSkeleton v-else />
+          </section>
+
+          <!-- 群組管理：改為中欄呈現（不再用 Modal） -->
+          <section v-else-if="activeView === 'groups'" class="section-groups">
+            <div class="card">
+              <h3 style="margin: 0 0 8px 0;">管理策略群組</h3>
+              <p class="modal-desc" style="margin-top: 0;">修改群組名稱將會批次更新所有相關的交易紀錄。</p>
+
+              <div class="group-list">
+                <div v-for="g in portfolioStore.availableGroups.filter(x=>x!=='all')" :key="g" class="group-item">
+                  <input type="text" v-model="groupRenameMap[g]" :placeholder="g">
+                  <button @click="renameGroup(g)" class="btn-sm" :disabled="!groupRenameMap[g] || groupRenameMap[g]===g">更名</button>
+                </div>
+              </div>
+
+              <div class="modal-footer">
+                <button class="action-trigger-btn" type="button" @click="activeView = 'overview'">返回總覽</button>
+              </div>
+            </div>
           </section>
         </main>
-        
+
+        <!-- Right: 固定交易面板（維持原本配置） -->
         <aside class="side-column" :class="{ 'mobile-sheet': isMobileView, 'sheet-open': showMobileTrade }">
           <div class="mobile-sheet-header" v-if="isMobileView">
             <h3>交易管理</h3>
@@ -125,7 +176,7 @@
 
           <div class="fixed-panel">
             <TradeForm ref="tradeFormRef" @submitted="onTradeSubmitted" />
-            
+
             <div v-if="hasPendingDividends" class="dividend-alert card">
               <div class="alert-header">
                 <span class="alert-icon">🔔</span>
@@ -141,23 +192,23 @@
           </div>
         </aside>
 
-        <div 
-            v-if="isMobileView && showMobileTrade" 
-            class="sheet-backdrop" 
-            @click="showMobileTrade = false"
+        <div
+          v-if="isMobileView && showMobileTrade"
+          class="sheet-backdrop"
+          @click="showMobileTrade = false"
         ></div>
       </div>
 
-      <button 
-        v-if="isMobileView" 
-        class="fab-btn" 
+      <button
+        v-if="isMobileView"
+        class="fab-btn"
         @click="openMobileTrade"
         title="新增交易"
       >
         <span>+</span>
       </button>
     </div>
-    
+
     <div class="toast-container">
       <TransitionGroup name="toast-slide">
         <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" @click="removeToast(t.id)">
@@ -198,6 +249,17 @@ const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 const { needRefresh, updateServiceWorker } = usePWA();
 
+// 左側功能導覽
+const activeView = ref('overview');
+const views = [
+  { key: 'overview', label: '總覽', icon: '🏠' },
+  { key: 'charts', label: '圖表', icon: '📈' },
+  { key: 'holdings', label: '持倉明細', icon: '💼' },
+  { key: 'records', label: '交易紀錄', icon: '🧾' },
+  { key: 'dividends', label: '配息紀錄', icon: '💰' },
+  { key: 'groups', label: '群組管理', icon: '🏷️' },
+];
+
 // 手機版相關狀態
 const isMobileView = ref(false);
 const showMobileTrade = ref(false);
@@ -210,7 +272,6 @@ const updateMedia = () => {
 };
 
 // 群組管理
-const showGroupModal = ref(false);
 const groupRenameMap = reactive({});
 
 const hasPendingDividends = computed(() => portfolioStore.pending_dividends?.length > 0);
@@ -225,9 +286,6 @@ const autoRefresh = useAutoRefresh(async () => {
     try {
       console.log('🔄 [自動刷新] 觸發 GitHub Actions 計算...');
       await portfolioStore.triggerUpdate();
-      // triggerUpdate 內部會自動呼叫 startPolling()
-      // startPolling() 內部會每 5 秒檢查一次狀態
-      // 當 updated_at 改變時會自動 fetchAll() 並顯示 Toast
       console.log('✅ [自動刷新] 已觸發，系統正在輪詢狀態...');
     } catch (error) {
       console.error('❌ [自動刷新] 觸發失敗:', error);
@@ -240,6 +298,8 @@ const autoRefresh = useAutoRefresh(async () => {
 
 // 方法
 const scrollToDividends = () => {
+  // 切換到「配息紀錄」頁（中欄永遠可看），再捲動到區塊
+  activeView.value = 'dividends';
   showMobileTrade.value = false;
   nextTick(() => {
     const dividendSection = document.querySelector('.section-dividends');
@@ -250,35 +310,35 @@ const scrollToDividends = () => {
 };
 
 const openMobileTrade = () => {
-    showMobileTrade.value = true;
-    if (tradeFormRef.value && tradeFormRef.value.resetForm) {
-        tradeFormRef.value.resetForm();
-    }
+  showMobileTrade.value = true;
+  if (tradeFormRef.value && tradeFormRef.value.resetForm) {
+    tradeFormRef.value.resetForm();
+  }
 };
 
 const onTradeSubmitted = () => {
-    if (isMobileView.value) {
-        showMobileTrade.value = false;
-    }
+  if (isMobileView.value) {
+    showMobileTrade.value = false;
+  }
 };
 
 const renameGroup = async (oldName) => {
   const newName = groupRenameMap[oldName];
   if(!newName || !confirm(`確定將 "${oldName}" 更名為 "${newName}" 嗎？`)) return;
-  
+
   addToast('正在批次更新紀錄...', 'info');
   try {
     const targetRecords = portfolioStore.records.filter(r => {
       const tags = (r.tag || '').split(/[,;]/).map(t=>t.trim());
       return tags.includes(oldName);
     });
-    
+
     let count = 0;
     for(const r of targetRecords) {
       let tags = (r.tag || '').split(/[,;]/).map(t=>t.trim());
       tags = tags.map(t => t === oldName ? newName : t);
       const newTagStr = tags.join(', ');
-      
+
       await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${authStore.token}`, 'Content-Type': 'application/json' },
@@ -289,7 +349,6 @@ const renameGroup = async (oldName) => {
     addToast(`成功更新 ${count} 筆紀錄`, 'success');
     await portfolioStore.fetchRecords();
     await portfolioStore.triggerUpdate();
-    showGroupModal.value = false;
   } catch(e) {
     addToast('更新失敗', 'error');
   }
@@ -314,11 +373,11 @@ const handleEditRecord = (record) => {
   if (isMobileView.value) {
     showMobileTrade.value = true;
   }
-  
+
   nextTick(() => {
     if (tradeFormRef.value) {
       tradeFormRef.value.setupForm(record);
-      
+
       if (!isMobileView.value) {
         const tradeFormEl = document.querySelector('.fixed-panel');
         if (tradeFormEl) {
@@ -336,12 +395,12 @@ const handleLogout = () => {
 onMounted(async () => {
   updateMedia();
   window.addEventListener('resize', updateMedia);
-  
+
   const isLoggedIn = authStore.initAuth();
   if (isLoggedIn) {
     await portfolioStore.fetchAll();
   }
-  
+
   await nextTick();
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
@@ -474,9 +533,83 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 /* Layout Grid */
 .main-wrapper { min-height: 100vh; display: flex; flex-direction: column; }
-.content-container { max-width: 1600px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; }
+.content-container { max-width: 1600px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; }
 .main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 .side-column { min-width: 0; }
+
+/* Left nav */
+.left-column {
+  position: sticky;
+  top: calc(var(--header-height) + 24px);
+  align-self: start;
+  min-width: 0;
+}
+
+.nav-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 12px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.nav-item:hover {
+  background: var(--bg-secondary);
+}
+
+.nav-item.active {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--primary);
+}
+
+.nav-icon { width: 22px; text-align: center; }
+
+/* Mobile tabs */
+.mobile-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+
+.tab-item {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-main);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tab-item.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
 
 /* Cards & Charts */
 .card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); }
@@ -548,8 +681,6 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .desktop-only { display: inline-block; }
 .mobile-only { display: none; }
 .btn-edit-group { background: transparent; border: none; color: var(--text-sub); cursor: pointer; font-size: 1rem; padding: 0 4px; }
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; display: flex; align-items: center; justify-content: center; }
-.modal-card { background: var(--bg-card); padding: 24px; border-radius: 16px; width: 90%; max-width: 400px; }
 .modal-desc { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 16px; }
 .group-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
 .group-item { display: flex; gap: 8px; }
@@ -577,21 +708,22 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 /* RWD Queries */
 @media (max-width: 1024px) {
-  .content-container { grid-template-columns: 1fr; padding: 16px; gap: 24px; }
+  .content-container { grid-template-columns: 1fr; padding: 16px; gap: 16px; }
+  .left-column { display: none; }
   .desktop-only { display: none; }
   .mobile-only { display: inline-block; }
-  
+
   .top-nav { padding: 0 16px; height: 56px; }
   .nav-status { gap: 8px; }
   .group-selector { max-width: 140px; }
   .select-wrapper select { max-width: 100%; }
-  
+
   .auto-refresh-indicator { padding: 6px 8px; }
   .refresh-timer { display: none; }
-  
+
   .action-trigger-btn { padding: 8px; border-radius: 50%; justify-content: center; width: 36px; height: 36px; }
   .action-trigger-btn span:first-child { margin: 0; font-size: 1.1rem; }
-  
+
   .toast-container { bottom: 90px; right: 16px; left: 16px; }
   .toast { width: 100%; min-width: auto; }
 }
