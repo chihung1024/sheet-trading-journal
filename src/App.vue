@@ -559,7 +559,8 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 /* Left nav */
 .left-column {
   position: sticky;
-  top: calc(var(--header-height) + 24px);
+  top: var(--header-height);
+  margin-top: -24px;
   align-self: start;
   min-width: 0;
 }
