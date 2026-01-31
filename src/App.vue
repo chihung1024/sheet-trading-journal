@@ -427,6 +427,7 @@ onUnmounted(() => {
   --radius: 16px;
   --radius-sm: 8px;
   --header-height: 64px;
+  --space-desktop: 20px;
 }
 
 html.dark {
@@ -524,9 +525,9 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 /* Layout Grid */
 .main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
-.content-container { max-width: var(--layout-max); margin: 0 auto; padding: 12px 24px 24px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
-.main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; overflow-x: hidden; }
-.section-overview { display: flex; flex-direction: column; gap: 24px; }
+.content-container { max-width: var(--layout-max); margin: 0 auto; padding: var(--space-desktop) 24px 24px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
+.main-column { display: flex; flex-direction: column; gap: var(--space-desktop); min-width: 0; overflow-x: hidden; }
+.section-overview { display: flex; flex-direction: column; gap: var(--space-desktop); }
 .side-column { min-width: 0; }
 
 /* Tabs (Desktop + Mobile) */
@@ -598,7 +599,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 /* 🔒 固定面板 */
 .fixed-panel {
   position: fixed;
-  top: calc(var(--header-height) + 12px);
+  top: calc(var(--header-height) + var(--space-desktop));
   right: max(24px, calc((100vw - var(--layout-max)) / 2 + 24px));
   width: 360px;
   max-height: calc(100vh - var(--header-height) - 48px);
