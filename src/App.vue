@@ -84,8 +84,18 @@
               @click="activeView = v.key"
               type="button"
             >
-              <span class="nav-icon">{{ v.icon }}</span>
-              <span class="nav-label">{{ v.label }}</span>
+              <span class="nav-leftpart">
+                <span class="nav-icon">{{ v.icon }}</span>
+                <span class="nav-label">{{ v.label }}</span>
+              </span>
+
+              <span
+                v-if="v.key === 'dividends' && hasPendingDividends"
+                class="nav-badge"
+                :title="`待確認配息 ${pendingDividendsCount} 筆`"
+              >
+                {{ pendingDividendsCount }}
+              </span>
             </button>
           </div>
         </nav>
@@ -102,7 +112,13 @@
               @click="activeView = v.key"
               type="button"
             >
-              {{ v.label }}
+              <span class="tab-label">{{ v.label }}</span>
+              <span
+                v-if="v.key === 'dividends' && hasPendingDividends"
+                class="tab-badge"
+              >
+                {{ pendingDividendsCount }}
+              </span>
             </button>
           </div>
 
@@ -583,7 +599,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
   width: 100%;
   text-align: left;
   padding: 10px 12px;
@@ -593,6 +609,14 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   color: var(--text-main);
   cursor: pointer;
   font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.nav-leftpart {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .nav-item:hover {
@@ -605,7 +629,23 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   color: var(--primary);
 }
 
-.nav-icon { width: 22px; text-align: center; }
+.nav-icon { width: 22px; text-align: center; flex-shrink: 0; }
+.nav-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--warning);
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  line-height: 1;
+}
 
 /* Mobile tabs */
 .mobile-tabs {
@@ -627,12 +667,31 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   color: var(--text-main);
   font-weight: 700;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
 }
 
 .tab-item.active {
   background: var(--primary);
   border-color: var(--primary);
   color: white;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--warning);
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  line-height: 1;
 }
 
 /* Cards & Charts */
