@@ -178,19 +178,6 @@
 
           <div class="fixed-panel">
             <TradeForm ref="tradeFormRef" @submitted="onTradeSubmitted" />
-
-            <div v-if="hasPendingDividends" class="dividend-alert card">
-              <div class="alert-header">
-                <span class="alert-icon">🔔</span>
-                <h4>待確認配息</h4>
-              </div>
-              <p class="alert-text">
-                您有 <strong>{{ pendingDividendsCount }}</strong> 筆配息待確認
-              </p>
-              <button class="btn-alert" @click="scrollToDividends">
-                前往確認
-              </button>
-            </div>
           </div>
         </aside>
 
@@ -363,17 +350,6 @@ const autoRefresh = useAutoRefresh(async () => {
   }
 }, 3);
 
-const scrollToDividends = () => {
-  activeView.value = 'dividends';
-  showMobileTrade.value = false;
-  nextTick(() => {
-    const dividendSection = document.querySelector('.section-dividends');
-    if (dividendSection) {
-      dividendSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  });
-};
-
 const openMobileTrade = () => {
   showMobileTrade.value = true;
   if (tradeFormRef.value && tradeFormRef.value.resetForm) {
@@ -496,6 +472,7 @@ html.dark {
 }
 
 * { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
 body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Inter', sans-serif; margin: 0; font-size: 16px; line-height: 1.5; -webkit-tap-highlight-color: transparent; }
 
 /* Header Optimization */
@@ -572,9 +549,9 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .avatar, .avatar-img { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--primary); color: white; font-weight: 700; object-fit: cover; }
 
 /* Layout Grid */
-.main-wrapper { min-height: 100vh; display: flex; flex-direction: column; }
-.content-container { max-width: 1600px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; }
-.main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
+.content-container { max-width: 1600px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
+.main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; overflow-x: hidden; }
 .side-column { min-width: 0; }
 
 /* Left nav */
@@ -645,6 +622,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 /* Mobile tabs */
@@ -656,7 +634,9 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   border: 1px solid var(--border-color);
   border-radius: 12px;
   background: var(--bg-card);
+  scrollbar-width: none;
 }
+.mobile-tabs::-webkit-scrollbar { display: none; }
 
 .tab-item {
   flex: 0 0 auto;
@@ -694,8 +674,21 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   line-height: 1;
 }
 
+/* Main sections: allow horizontal content without showing bars */
+.section-holdings,
+.section-records,
+.section-dividends {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.section-holdings::-webkit-scrollbar,
+.section-records::-webkit-scrollbar,
+.section-dividends::-webkit-scrollbar {
+  display: none;
+}
+
 /* Cards & Charts */
-.card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); }
+.card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); overflow-x: hidden; }
 .chart-wrapper.chart-full { height: 450px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 
 /* 🔒 固定面板 */
@@ -706,6 +699,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   width: 360px;
   max-height: calc(100vh - var(--header-height) - 48px);
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -771,13 +765,6 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .btn-sm { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .btn-sm:disabled { opacity: 0.5; }
 .modal-footer { display: flex; justify-content: flex-end; }
-
-/* Dividend Alert */
-.dividend-alert { border-left: 4px solid var(--warning); background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05)); }
-.alert-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.alert-header h4 { margin: 0; font-size: 1rem; color: var(--text-main); }
-.alert-text { margin: 0 0 12px 0; font-size: 0.9rem; color: var(--text-sub); }
-.btn-alert { width: 100%; padding: 8px; background: var(--warning); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
 
 /* Toast */
 .toast-container { position: fixed; bottom: 32px; right: 32px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
