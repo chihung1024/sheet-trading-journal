@@ -147,23 +147,9 @@
             <TableSkeleton v-else />
           </section>
 
-          <!-- 群組管理：改為中欄呈現（不再用 Modal） -->
+          <!-- 群組管理：抽成元件 -->
           <section v-else-if="activeView === 'groups'" class="section-groups">
-            <div class="card">
-              <h3 style="margin: 0 0 8px 0;">管理策略群組</h3>
-              <p class="modal-desc" style="margin-top: 0;">修改群組名稱將會批次更新所有相關的交易紀錄。</p>
-
-              <div class="group-list">
-                <div v-for="g in portfolioStore.availableGroups.filter(x=>x!=='all')" :key="g" class="group-item">
-                  <input type="text" v-model="groupRenameMap[g]" :placeholder="g">
-                  <button @click="renameGroup(g)" class="btn-sm" :disabled="!groupRenameMap[g] || groupRenameMap[g]===g">更名</button>
-                </div>
-              </div>
-
-              <div class="modal-footer">
-                <button class="action-trigger-btn" type="button" @click="activeView = 'overview'">返回總覽</button>
-              </div>
-            </div>
+            <GroupManager @back="activeView = 'overview'" />
           </section>
         </main>
 
@@ -221,14 +207,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick, reactive } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
 import { usePWA } from './composables/usePWA';
 import { useAutoRefresh } from './composables/useAutoRefresh';
-import { CONFIG } from './config';
 
 import LoginOverlay from './components/LoginOverlay.vue';
 import StatsGrid from './components/StatsGrid.vue';
@@ -237,6 +222,7 @@ import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
 import DividendManager from './components/DividendManager.vue';
+import GroupManager from './components/GroupManager.vue';
 
 import StatsGridSkeleton from './components/skeletons/StatsGridSkeleton.vue';
 import ChartSkeleton from './components/skeletons/ChartSkeleton.vue';
@@ -250,7 +236,6 @@ const { isDark, toggleTheme } = useDarkMode();
 const { needRefresh, updateServiceWorker } = usePWA();
 
 // 左側功能導覽
-const activeView = ref('overview');
 const views = [
   { key: 'overview', label: '總覽', icon: '🏠' },
   { key: 'charts', label: '圖表', icon: '📈' },
@@ -259,6 +244,76 @@ const views = [
   { key: 'dividends', label: '配息紀錄', icon: '💰' },
   { key: 'groups', label: '群組管理', icon: '🏷️' },
 ];
+
+const isValidView = (v) => !!views.find(x => x.key === v);
+
+// URL 同步 + localStorage 記憶
+const ACTIVE_VIEW_STORAGE_KEY = 'sheet_trading_journal.activeView';
+const activeView = ref('overview');
+let didInitView = false;
+
+const getViewFromUrl = () => {
+  try {
+    return new URLSearchParams(window.location.search).get('view');
+  } catch {
+    return null;
+  }
+};
+
+const setUrlView = (v, { replace = false } = {}) => {
+  try {
+    const url = new URL(window.location.href);
+    if (!v || v === 'overview') {
+      url.searchParams.delete('view');
+    } else {
+      url.searchParams.set('view', v);
+    }
+
+    const next = url.pathname + url.search + url.hash;
+    if (replace) {
+      window.history.replaceState(null, '', next);
+    } else {
+      window.history.pushState(null, '', next);
+    }
+  } catch {
+    // ignore
+  }
+};
+
+const persistView = (v) => {
+  try {
+    window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, v);
+  } catch {
+    // ignore
+  }
+};
+
+const resolveInitialView = () => {
+  const v = getViewFromUrl();
+  if (isValidView(v)) return v;
+
+  try {
+    const stored = window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
+    if (isValidView(stored)) return stored;
+  } catch {
+    // ignore
+  }
+
+  return 'overview';
+};
+
+const syncFromUrl = () => {
+  const v = getViewFromUrl();
+  if (isValidView(v) && v !== activeView.value) {
+    activeView.value = v;
+  }
+};
+
+watch(activeView, (v) => {
+  if (!isValidView(v)) return;
+  persistView(v);
+  if (didInitView) setUrlView(v);
+});
 
 // 手機版相關狀態
 const isMobileView = ref(false);
@@ -271,9 +326,6 @@ const updateMedia = () => {
   }
 };
 
-// 群組管理
-const groupRenameMap = reactive({});
-
 const hasPendingDividends = computed(() => portfolioStore.pending_dividends?.length > 0);
 const pendingDividendsCount = computed(() => portfolioStore.pending_dividends ? portfolioStore.pending_dividends.length : 0);
 
@@ -281,7 +333,6 @@ const userInitial = computed(() => authStore.user?.name ? authStore.user.name.ch
 
 // ✨ 自動刷新功能 - 觸發 GitHub Actions 計算 + 輪詢狀態
 const autoRefresh = useAutoRefresh(async () => {
-  // 只有當前沒有在載入且沒有在輪詢時才觸發
   if (!portfolioStore.loading && !portfolioStore.isPolling) {
     try {
       console.log('🔄 [自動刷新] 觸發 GitHub Actions 計算...');
@@ -294,11 +345,9 @@ const autoRefresh = useAutoRefresh(async () => {
   } else {
     console.log('⏸️ [自動刷新] 系統忙線中，跳過此次刷新');
   }
-}, 3); // ✨ 3分鐘觸發一次
+}, 3);
 
-// 方法
 const scrollToDividends = () => {
-  // 切換到「配息紀錄」頁（中欄永遠可看），再捲動到區塊
   activeView.value = 'dividends';
   showMobileTrade.value = false;
   nextTick(() => {
@@ -319,38 +368,6 @@ const openMobileTrade = () => {
 const onTradeSubmitted = () => {
   if (isMobileView.value) {
     showMobileTrade.value = false;
-  }
-};
-
-const renameGroup = async (oldName) => {
-  const newName = groupRenameMap[oldName];
-  if(!newName || !confirm(`確定將 "${oldName}" 更名為 "${newName}" 嗎？`)) return;
-
-  addToast('正在批次更新紀錄...', 'info');
-  try {
-    const targetRecords = portfolioStore.records.filter(r => {
-      const tags = (r.tag || '').split(/[,;]/).map(t=>t.trim());
-      return tags.includes(oldName);
-    });
-
-    let count = 0;
-    for(const r of targetRecords) {
-      let tags = (r.tag || '').split(/[,;]/).map(t=>t.trim());
-      tags = tags.map(t => t === oldName ? newName : t);
-      const newTagStr = tags.join(', ');
-
-      await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${authStore.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...r, tag: newTagStr })
-      });
-      count++;
-    }
-    addToast(`成功更新 ${count} 筆紀錄`, 'success');
-    await portfolioStore.fetchRecords();
-    await portfolioStore.triggerUpdate();
-  } catch(e) {
-    addToast('更新失敗', 'error');
   }
 };
 
@@ -393,8 +410,14 @@ const handleLogout = () => {
 };
 
 onMounted(async () => {
+  // 初始化 view（URL 優先，其次 localStorage）
+  activeView.value = resolveInitialView();
+  setUrlView(activeView.value, { replace: true });
+  didInitView = true;
+
   updateMedia();
   window.addEventListener('resize', updateMedia);
+  window.addEventListener('popstate', syncFromUrl);
 
   const isLoggedIn = authStore.initAuth();
   if (isLoggedIn) {
@@ -413,6 +436,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateMedia);
+  window.removeEventListener('popstate', syncFromUrl);
 });
 </script>
 
