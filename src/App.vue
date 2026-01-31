@@ -73,37 +73,10 @@
       </header>
 
       <div class="content-container">
-        <!-- Left: 功能導覽（Desktop/Tablet） -->
-        <nav class="left-column" aria-label="功能導覽">
-          <div class="nav-card">
-            <button
-              v-for="v in views"
-              :key="v.key"
-              class="nav-item"
-              :class="{ active: activeView === v.key }"
-              @click="activeView = v.key"
-              type="button"
-            >
-              <span class="nav-leftpart">
-                <span class="nav-icon">{{ v.icon }}</span>
-                <span class="nav-label">{{ v.label }}</span>
-              </span>
-
-              <span
-                v-if="v.key === 'dividends' && hasPendingDividends"
-                class="nav-badge"
-                :title="`待確認配息 ${pendingDividendsCount} 筆`"
-              >
-                {{ pendingDividendsCount }}
-              </span>
-            </button>
-          </div>
-        </nav>
-
         <!-- Middle: 主內容（依選單切換） -->
         <main class="main-column">
-          <!-- Mobile: 功能切換（避免左欄隱藏後無法切換） -->
-          <div v-if="isMobileView" class="mobile-tabs" aria-label="功能切換">
+          <!-- Desktop + Mobile: 功能切換（頂端 tabs） -->
+          <div class="mobile-tabs" aria-label="功能切換">
             <button
               v-for="v in views"
               :key="v.key"
@@ -238,7 +211,7 @@ const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 const { needRefresh, updateServiceWorker } = usePWA();
 
-// 左側功能導覽
+// 導覽 tabs
 const views = [
   { key: 'overview', label: '總覽', icon: '🏠' },
   { key: 'charts', label: '圖表', icon: '📈' },
@@ -551,84 +524,12 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 /* Layout Grid */
 .main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
-.content-container { max-width: var(--layout-max); margin: 0 auto; padding: 0 24px 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
+.content-container { max-width: var(--layout-max); margin: 0 auto; padding: 12px 24px 24px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
 .main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; overflow-x: hidden; }
 .section-overview { display: flex; flex-direction: column; gap: 24px; }
 .side-column { min-width: 0; }
 
-/* Left nav */
-.left-column {
-  position: sticky;
-  top: var(--header-height);
-  margin-top: 0;
-  align-self: start;
-  min-width: 0;
-}
-
-.nav-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: 0 12px 12px;
-  box-shadow: var(--shadow-card);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  text-align: left;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-main);
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.nav-leftpart {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.nav-item:hover {
-  background: var(--bg-secondary);
-}
-
-.nav-item.active {
-  background: var(--bg-secondary);
-  border-color: var(--border-color);
-  color: var(--primary);
-}
-
-.nav-icon { width: 22px; text-align: center; flex-shrink: 0; }
-.nav-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.nav-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 20px;
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--warning);
-  color: #fff;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-/* Mobile tabs */
+/* Tabs (Desktop + Mobile) */
 .mobile-tabs {
   display: flex;
   gap: 8px;
@@ -697,7 +598,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 /* 🔒 固定面板 */
 .fixed-panel {
   position: fixed;
-  top: calc(var(--header-height) + 24px);
+  top: calc(var(--header-height) + 12px);
   right: max(24px, calc((100vw - var(--layout-max)) / 2 + 24px));
   width: 360px;
   max-height: calc(100vh - var(--header-height) - 48px);
@@ -782,7 +683,6 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 /* RWD Queries */
 @media (max-width: 1024px) {
   .content-container { grid-template-columns: 1fr; padding: 16px; gap: 16px; }
-  .left-column { display: none; }
   .desktop-only { display: none; }
   .mobile-only { display: inline-block; }
 
