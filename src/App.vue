@@ -550,8 +550,9 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 /* Layout Grid */
 .main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
-.content-container { max-width: 1600px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
+.content-container { max-width: none; margin: 0; padding: 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
 .main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; overflow-x: hidden; }
+.section-overview { display: flex; flex-direction: column; gap: 24px; }
 .side-column { min-width: 0; }
 
 /* Left nav */
@@ -695,7 +696,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .fixed-panel {
   position: fixed;
   top: calc(var(--header-height) + 24px);
-  right: max(24px, calc((100vw - 1600px) / 2 + 24px));
+  right: 24px;
   width: 360px;
   max-height: calc(100vh - var(--header-height) - 48px);
   overflow-y: auto;
