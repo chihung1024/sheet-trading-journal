@@ -436,6 +436,7 @@ onUnmounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
+  --layout-max: 1920px;
   --bg-app: #f8fafc;
   --bg-card: #ffffff;
   --bg-secondary: #f1f5f9;
@@ -550,7 +551,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 /* Layout Grid */
 .main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
-.content-container { max-width: none; margin: 0; padding: 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
+.content-container { max-width: var(--layout-max); margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
 .main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; overflow-x: hidden; }
 .section-overview { display: flex; flex-direction: column; gap: 24px; }
 .side-column { min-width: 0; }
@@ -696,7 +697,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .fixed-panel {
   position: fixed;
   top: calc(var(--header-height) + 24px);
-  right: 24px;
+  right: max(24px, calc((100vw - var(--layout-max)) / 2 + 24px));
   width: 360px;
   max-height: calc(100vh - var(--header-height) - 48px);
   overflow-y: auto;
