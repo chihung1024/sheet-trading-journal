@@ -551,7 +551,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 /* Layout Grid */
 .main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
-.content-container { max-width: var(--layout-max); margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
+.content-container { max-width: var(--layout-max); margin: 0 auto; padding: 0 24px 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
 .main-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; overflow-x: hidden; }
 .section-overview { display: flex; flex-direction: column; gap: 24px; }
 .side-column { min-width: 0; }
@@ -560,7 +560,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .left-column {
   position: sticky;
   top: var(--header-height);
-  margin-top: -24px;
+  margin-top: 0;
   align-self: start;
   min-width: 0;
 }
