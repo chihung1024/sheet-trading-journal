@@ -569,7 +569,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 0 12px 12px;
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
