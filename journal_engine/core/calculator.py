@@ -37,7 +37,7 @@ class PortfolioCalculator:
         return tw_hour >= 22 or tw_hour < 5
 
     def _get_benchmark_tax_rate(self):
-        """Total-return benchmark 稅率：美股 30%，台股 0%。"""
+        """Benchmark 配息預扣稅率：美股 30%，台股 0%。"""
         if self._is_taiwan_stock(self.benchmark_ticker):
             return BENCHMARK_TAX_RATE_TW
         return BENCHMARK_TAX_RATE_US
@@ -188,10 +188,10 @@ class PortfolioCalculator:
         cumulative_twr_factor = 1.0
         last_market_value_twd = 0.0
 
-        # Total-return benchmark 狀態
-        benchmark_tr_start_val_twd = None
-        benchmark_div_cash_twd = 0.0
-        first_benchmark_px_twd = None
+        # Benchmark: total-return (linked / TWR-style)
+        benchmark_cum_factor = 1.0
+        benchmark_last_val_twd = None
+        benchmark_started = False
 
         div_txs = df[df['Type'] == 'DIV'].copy()
         for _, row in div_txs.iterrows():
@@ -201,24 +201,18 @@ class PortfolioCalculator:
         if not df.empty:
             first_tx_date = df['Date'].min()
             prev_trading_day = self._get_previous_trading_day(self.benchmark_ticker, first_tx_date)
-            
-            try:
-                prev_fx = self.market.fx_rates.asof(prev_trading_day)
-                if pd.isna(prev_fx): prev_fx = DEFAULT_FX_RATE
-            except:
-                prev_fx = DEFAULT_FX_RATE
-            
-            prev_benchmark_p = self.market.get_price(self.benchmark_ticker, prev_trading_day)
-            effective_prev_fx = self._get_effective_fx_rate(self.benchmark_ticker, prev_fx)
-            prev_benchmark_val_twd = prev_benchmark_p * effective_prev_fx
 
-            first_benchmark_px_twd = prev_benchmark_val_twd
-            benchmark_tr_start_val_twd = prev_benchmark_val_twd
+            prev_benchmark_p, prev_benchmark_fx = self._get_asset_effective_price_and_fx(self.benchmark_ticker, prev_trading_day, current_fx)
+            prev_benchmark_val_twd = prev_benchmark_p * prev_benchmark_fx
+
+            if prev_benchmark_val_twd > 0:
+                benchmark_last_val_twd = prev_benchmark_val_twd
+                benchmark_started = True
 
             history_data.append({
                 "date": prev_trading_day.strftime('%Y-%m-%d'), "total_value": 0,
                 "invested": 0, "net_profit": 0, "realized_pnl": 0, "unrealized_pnl": 0,
-                "twr": 0.0, "benchmark_twr": 0.0, "fx_rate": round(prev_fx, 4)
+                "twr": 0.0, "benchmark_twr": 0.0, "fx_rate": round(prev_benchmark_fx if prev_benchmark_fx else DEFAULT_FX_RATE, 4)
             })
 
         last_fx = current_fx
@@ -232,26 +226,29 @@ class PortfolioCalculator:
             except:
                 fx = DEFAULT_FX_RATE
 
-            # 價格 + 匯率
-            benchmark_p = self.market.get_price(self.benchmark_ticker, d)
-            effective_benchmark_fx = self._get_effective_fx_rate(self.benchmark_ticker, fx)
-            px_twd = benchmark_p * effective_benchmark_fx
+            # Benchmark valuation: use same as-of/pad + intraday FX logic
+            benchmark_p, benchmark_fx = self._get_asset_effective_price_and_fx(self.benchmark_ticker, current_date, current_fx)
+            px_twd = benchmark_p * benchmark_fx
 
-            if first_benchmark_px_twd is None and px_twd > 0:
-                first_benchmark_px_twd = px_twd
-                if benchmark_tr_start_val_twd is None:
-                    benchmark_tr_start_val_twd = px_twd
+            if not benchmark_started and px_twd > 0:
+                benchmark_last_val_twd = px_twd
+                benchmark_started = True
 
-            # benchmark 股息：total-return (price+cash) 指標
+            # Benchmark dividend net (per share)
+            net_div_twd = 0.0
             bm_div_per_share = self.market.get_dividend(self.benchmark_ticker, d)
             if bm_div_per_share > 0 and px_twd > 0:
-                net_div_twd = bm_div_per_share * (1 - benchmark_tax_rate) * effective_benchmark_fx
-                benchmark_div_cash_twd += net_div_twd
+                net_div_twd = bm_div_per_share * (1 - benchmark_tax_rate) * benchmark_fx
 
-            benchmark_tr_val_twd = px_twd + benchmark_div_cash_twd if benchmark_tr_start_val_twd else 0.0
+            # Linked total return (matches portfolio TWR compounding behavior)
             benchmark_twr = 0.0
-            if benchmark_tr_start_val_twd and benchmark_tr_start_val_twd > 0:
-                benchmark_twr = (benchmark_tr_val_twd / benchmark_tr_start_val_twd - 1) * 100
+            if benchmark_started and benchmark_last_val_twd and benchmark_last_val_twd > 1e-9:
+                bm_hpr = (px_twd + net_div_twd) / benchmark_last_val_twd
+                if not np.isfinite(bm_hpr):
+                    bm_hpr = 1.0
+                benchmark_cum_factor *= bm_hpr
+                benchmark_twr = (benchmark_cum_factor - 1) * 100
+                benchmark_last_val_twd = px_twd
 
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             
