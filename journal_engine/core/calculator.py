@@ -226,7 +226,6 @@ class PortfolioCalculator:
             except:
                 fx = DEFAULT_FX_RATE
 
-            # Benchmark valuation: use same as-of/pad + intraday FX logic
             benchmark_p, benchmark_fx = self._get_asset_effective_price_and_fx(self.benchmark_ticker, current_date, current_fx)
             px_twd = benchmark_p * benchmark_fx
 
@@ -234,13 +233,11 @@ class PortfolioCalculator:
                 benchmark_last_val_twd = px_twd
                 benchmark_started = True
 
-            # Benchmark dividend net (per share)
             net_div_twd = 0.0
             bm_div_per_share = self.market.get_dividend(self.benchmark_ticker, d)
             if bm_div_per_share > 0 and px_twd > 0:
                 net_div_twd = bm_div_per_share * (1 - benchmark_tax_rate) * benchmark_fx
 
-            # Linked total return (matches portfolio TWR compounding behavior)
             benchmark_twr = 0.0
             if benchmark_started and benchmark_last_val_twd and benchmark_last_val_twd > 1e-9:
                 bm_hpr = (px_twd + net_div_twd) / benchmark_last_val_twd
@@ -281,7 +278,8 @@ class PortfolioCalculator:
                     daily_net_cashflow_twd += cost_twd
 
                 elif row['Type'] == 'SELL':
-                    if not fifo_queues.get(sym) or not fifo_queues[sym]: continue
+                    if not fifo_queues.get(sym) or not fifo_queues[sym]:
+                        continue
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
                     remaining = row['Qty']
@@ -297,7 +295,8 @@ class PortfolioCalculator:
                         batch['cost_total_usd'] -= batch['cost_total_usd'] * frac
                         batch['cost_total_twd'] -= batch['cost_total_twd'] * frac
                         remaining -= take
-                        if batch['qty'] < 1e-6: fifo_queues[sym].popleft()
+                        if batch['qty'] < 1e-6:
+                            fifo_queues[sym].popleft()
                     
                     holdings[sym]['qty'] -= (row['Qty'] - remaining)
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
@@ -411,6 +410,9 @@ class PortfolioCalculator:
         active_symbols.update(txns_tw_day['Symbol'].unique())
         active_symbols.update(txns_us_day['Symbol'].unique())
 
+        # ✅ 核心修正：每日損益加總不再依賴 final_holdings（避免清倉/減碼被漏算）
+        daily_pnl_total_raw = 0.0
+
         for sym in active_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
             
@@ -474,6 +476,7 @@ class PortfolioCalculator:
                 unrealized_pnl_today = curr_mv_twd - prev_mv_twd
 
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
+            daily_pnl_total_raw += total_daily_pnl
 
             cost = h['cost_basis_twd']
             current_holdings_cost_sum += cost
@@ -481,6 +484,7 @@ class PortfolioCalculator:
             daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
             currency = self.currency_detector.detect(sym)
 
+            # UI holdings list：仍只顯示「持倉」或「有顯著當日損益」的標的
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
                  final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
@@ -493,7 +497,7 @@ class PortfolioCalculator:
                 ))
         
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
-        display_daily_pnl = sum(h.daily_pl_twd for h in final_holdings)
+        display_daily_pnl = daily_pnl_total_raw
         self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
         
         xirr_val = 0.0
