@@ -31,7 +31,7 @@
               <th width="120">除息日</th>
               <th width="100">代碼</th>
               <th class="text-center" width="180">實發總額</th>
-              <th class="text-right" width="160">稅金</th>
+              <th class="text-center" width="160">稅金</th>
               <th class="text-center" width="140">淨額</th>
               <th width="100">操作</th>
             </tr>
