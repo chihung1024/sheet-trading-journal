@@ -5,7 +5,6 @@ import os
 # ==========================================
 
 # Worker API URL
-# [修正]: 改為從環境變數讀取 WORKER_URL，這樣 GitHub Actions 才能注入您的網址
 WORKER_BASE_URL = os.environ.get('WORKER_URL', 'https://journal-backend.chired.workers.dev')
 
 WORKER_API_URL_RECORDS = f'{WORKER_BASE_URL}/api/records'
@@ -22,5 +21,9 @@ API_HEADERS = {
 
 # 基礎設定
 BASE_CURRENCY = 'TWD'
-EXCHANGE_SYMBOL = 'TWD=X'  # 正確：直接返回 TWD per 1 USD
+EXCHANGE_SYMBOL = 'TWD=X'  # Yahoo: TWD per 1 USD
 DEFAULT_FX_RATE = 32.0
+
+# Benchmark dividend withholding tax rates (Scheme A / total-return benchmark)
+BENCHMARK_TAX_RATE_US = 0.30  # 30% withholding for US ETFs/stocks
+BENCHMARK_TAX_RATE_TW = 0.0   # 0% withholding for Taiwan stocks/ETFs

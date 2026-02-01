@@ -6,7 +6,7 @@ from collections import deque, defaultdict
 from datetime import datetime, timedelta
 from pyxirr import xirr
 from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, DividendRecord, PortfolioGroupData
-from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
+from ..config import BASE_CURRENCY, DEFAULT_FX_RATE, BENCHMARK_TAX_RATE_US, BENCHMARK_TAX_RATE_TW
 from .transaction_analyzer import TransactionAnalyzer, PositionSnapshot
 from .daily_pnl_helper import DailyPnLHelper
 from .currency_detector import CurrencyDetector
@@ -36,16 +36,14 @@ class PortfolioCalculator:
         if tw_weekday >= 5: return False
         return tw_hour >= 22 or tw_hour < 5
 
+    def _get_benchmark_tax_rate(self):
+        """Total-return benchmark 稅率：美股 30%，台股 0%。"""
+        if self._is_taiwan_stock(self.benchmark_ticker):
+            return BENCHMARK_TAX_RATE_TW
+        return BENCHMARK_TAX_RATE_US
+
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
-        """取得估值價格與匯率。
-
-        重要修正：
-        - 價格：一律以 MarketDataClient 的 as-of/pad 結果為準（非交易日就取最近交易日）。
-        - 匯率：只有在「實際用到的交易日 == 今天」且美股盤中時才用 current_fx；
-               其他情況（含週末/假日 pad 到前一交易日）一律用 fx_rates.asof(used_date)。
-
-        這可以徹底避免：週末/假日 curr/prev 都 pad 到同一天，導致 daily pnl 變 0。
-        """
+        """取得估值價格與匯率（與先前版本相同）。"""
         is_tw = self._is_taiwan_stock(symbol)
         
         if is_tw:
@@ -55,7 +53,6 @@ class PortfolioCalculator:
         tw_now = datetime.now(self.pnl_helper.tz_tw)
         today = tw_now.date()
 
-        # 價格 (as-of/pad)
         used_ts = pd.Timestamp(target_date)
         if hasattr(self.market, 'get_price_asof'):
             price, used_ts = self.market.get_price_asof(symbol, pd.Timestamp(target_date))
@@ -63,7 +60,6 @@ class PortfolioCalculator:
             price = self.market.get_price(symbol, pd.Timestamp(target_date))
             used_ts = pd.Timestamp(target_date)
 
-        # 匯率：只有「實際 used_date 就是今天」且盤中，才用即時匯率
         fx_to_use = DEFAULT_FX_RATE
         try:
             if used_ts.date() == today and self._is_us_market_open(tw_now):
@@ -87,6 +83,7 @@ class PortfolioCalculator:
             current_fx = float(self.market.fx_rates.iloc[-1])
 
         current_stage, stage_desc = self.pnl_helper.get_market_stage()
+        benchmark_tax_rate = self._get_benchmark_tax_rate()
 
         if self.df.empty:
             logger.warning("無交易記錄")
@@ -128,7 +125,10 @@ class PortfolioCalculator:
             group_end_date = datetime.now()
             group_date_range = pd.date_range(start=group_start_date, end=group_end_date, freq='D').normalize()
 
-            group_result = self._calculate_single_portfolio(group_df, group_date_range, current_fx, group_name, current_stage, stage_desc)
+            group_result = self._calculate_single_portfolio(
+                group_df, group_date_range, current_fx, group_name,
+                current_stage, stage_desc, benchmark_tax_rate
+            )
             final_groups_data[group_name] = group_result
 
         all_data = final_groups_data.get('all')
@@ -145,12 +145,7 @@ class PortfolioCalculator:
         )
 
     def _back_adjust_transactions_global(self):
-        """Scheme A: only adjust for splits (to align transactions with split-adjusted Close).
-
-        - Qty *= split_factor
-        - Price /= split_factor
-        - Do NOT apply dividend adjustment to transaction price (avoid dividend double-counting).
-        """
+        """Scheme A: only adjust for splits (to align transactions with split-adjusted Close)."""
         for index, row in self.df.iterrows():
             if row['Type'] not in ['BUY', 'SELL']:
                 continue
@@ -163,10 +158,7 @@ class PortfolioCalculator:
                 self.df.at[index, 'Price'] = (row['Price'] / split_factor)
 
     def _get_previous_trading_day(self, symbol, date):
-        """取得上一個有效交易日。
-
-        優先使用 MarketDataClient 的 index（可涵蓋美股/台股假日），避免僅跳過週末造成 pad 對齊錯誤。
-        """
+        """取得上一個有效交易日。"""
         try:
             if hasattr(self.market, 'get_price_asof') and hasattr(self.market, 'get_prev_trading_date'):
                 _p, used = self.market.get_price_asof(symbol, pd.Timestamp(date))
@@ -181,7 +173,7 @@ class PortfolioCalculator:
             prev_date -= timedelta(days=1)
         return pd.Timestamp(prev_date).normalize()
 
-    def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED", stage_desc="Markets Closed"):
+    def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED", stage_desc="Markets Closed", benchmark_tax_rate=0.0):
         txn_analyzer = TransactionAnalyzer(df)
         
         holdings = {}
@@ -195,9 +187,12 @@ class PortfolioCalculator:
         
         cumulative_twr_factor = 1.0
         last_market_value_twd = 0.0
-        first_benchmark_val_twd = None
 
-        # ✅ 收集所有 DIV 記錄的 key（標記為已確認）
+        # Total-return benchmark 狀態
+        benchmark_tr_start_val_twd = None
+        benchmark_div_cash_twd = 0.0
+        first_benchmark_px_twd = None
+
         div_txs = df[df['Type'] == 'DIV'].copy()
         for _, row in div_txs.iterrows():
             key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
@@ -210,16 +205,16 @@ class PortfolioCalculator:
             try:
                 prev_fx = self.market.fx_rates.asof(prev_trading_day)
                 if pd.isna(prev_fx): prev_fx = DEFAULT_FX_RATE
-            except: 
+            except:
                 prev_fx = DEFAULT_FX_RATE
             
             prev_benchmark_p = self.market.get_price(self.benchmark_ticker, prev_trading_day)
             effective_prev_fx = self._get_effective_fx_rate(self.benchmark_ticker, prev_fx)
             prev_benchmark_val_twd = prev_benchmark_p * effective_prev_fx
-            
-            if first_benchmark_val_twd is None and prev_benchmark_val_twd > 0:
-                first_benchmark_val_twd = prev_benchmark_val_twd
-            
+
+            first_benchmark_px_twd = prev_benchmark_val_twd
+            benchmark_tr_start_val_twd = prev_benchmark_val_twd
+
             history_data.append({
                 "date": prev_trading_day.strftime('%Y-%m-%d'), "total_value": 0,
                 "invested": 0, "net_profit": 0, "realized_pnl": 0, "unrealized_pnl": 0,
@@ -234,15 +229,29 @@ class PortfolioCalculator:
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
-            except: 
+            except:
                 fx = DEFAULT_FX_RATE
-            
+
+            # 價格 + 匯率
             benchmark_p = self.market.get_price(self.benchmark_ticker, d)
             effective_benchmark_fx = self._get_effective_fx_rate(self.benchmark_ticker, fx)
-            curr_benchmark_val_twd = benchmark_p * effective_benchmark_fx
+            px_twd = benchmark_p * effective_benchmark_fx
 
-            if first_benchmark_val_twd is None and curr_benchmark_val_twd > 0:
-                first_benchmark_val_twd = curr_benchmark_val_twd
+            if first_benchmark_px_twd is None and px_twd > 0:
+                first_benchmark_px_twd = px_twd
+                if benchmark_tr_start_val_twd is None:
+                    benchmark_tr_start_val_twd = px_twd
+
+            # benchmark 股息：total-return (price+cash) 指標
+            bm_div_per_share = self.market.get_dividend(self.benchmark_ticker, d)
+            if bm_div_per_share > 0 and px_twd > 0:
+                net_div_twd = bm_div_per_share * (1 - benchmark_tax_rate) * effective_benchmark_fx
+                benchmark_div_cash_twd += net_div_twd
+
+            benchmark_tr_val_twd = px_twd + benchmark_div_cash_twd if benchmark_tr_start_val_twd else 0.0
+            benchmark_twr = 0.0
+            if benchmark_tr_start_val_twd and benchmark_tr_start_val_twd > 0:
+                benchmark_twr = (benchmark_tr_val_twd / benchmark_tr_start_val_twd - 1) * 100
 
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             
@@ -303,13 +312,11 @@ class PortfolioCalculator:
 
                 elif row['Type'] == 'DIV':
                     effective_fx = self._get_effective_fx_rate(sym, fx)
-                    # ✅ 簡化計算：Qty × Price（前端已處理淨額）
                     div_twd = (row['Qty'] * row['Price']) * effective_fx
                     total_realized_pnl_twd += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
-            # ✅ 市場配息檢測 - 僅處理「未在 records 中確認」的配息
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 if h_data['qty'] < 1e-6:
@@ -321,8 +328,6 @@ class PortfolioCalculator:
                 
                 effective_fx = self._get_effective_fx_rate(sym, fx)
                 div_key = f"{sym}_{date_str}"
-                
-                # 🎯 關鍵邏輯：已確認的配息跳過市場計算
                 is_confirmed = div_key in confirmed_dividends
                 
                 split_factor = self.market.get_transaction_multiplier(sym, d)
@@ -332,7 +337,6 @@ class PortfolioCalculator:
                 total_net_usd = total_gross * 0.7
                 total_net_twd = total_net_usd * effective_fx
 
-                # 添加到配息歷史記錄
                 dividend_history.append({
                     'symbol': sym,
                     'ex_date': date_str,
@@ -345,13 +349,11 @@ class PortfolioCalculator:
                     'status': 'confirmed' if is_confirmed else 'pending'
                 })
                 
-                # 🎯 僅「未確認」配息計入損益
                 if not is_confirmed:
                     total_realized_pnl_twd += total_net_twd
                     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                     daily_net_cashflow_twd -= total_net_twd
 
-            # 計算當日市值和 TWR
             current_market_value_twd = 0.0
             logging_fx = fx
             
@@ -375,7 +377,6 @@ class PortfolioCalculator:
             
             unrealized_pnl = current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)
             total_pnl = unrealized_pnl + total_realized_pnl_twd
-            benchmark_twr = (curr_benchmark_val_twd / first_benchmark_val_twd - 1) * 100 if first_benchmark_val_twd else 0.0
 
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
@@ -386,12 +387,10 @@ class PortfolioCalculator:
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(logging_fx, 4)
             })
-            last_fx = fx
 
         final_holdings = []
         current_holdings_cost_sum = 0.0
 
-        # 用 benchmark 決定「今日日損益」的 as-of 與 prev 交易日（避免週末/假日對齊錯誤）
         daily_pnl_asof_date = None
         daily_pnl_prev_date = None
         try:
@@ -426,7 +425,6 @@ class PortfolioCalculator:
                 tags = sym_txs['Tag'].dropna()
                 if not tags.empty: h['tag'] = tags.iloc[0]
 
-            # 取得「實際 used_date」與「上一交易日」
             curr_p = self.market.get_price(sym, pd.Timestamp(display_date))
             used_ts = pd.Timestamp(display_date)
             prev_ts = pd.Timestamp(display_date) - pd.Timedelta(days=1)
@@ -443,7 +441,6 @@ class PortfolioCalculator:
 
             prev_p = self.market.get_price(sym, pd.Timestamp(prev_ts))
 
-            # 匯率：用 used_ts/prev_ts 各自的歷史匯率（盤中才用 current_fx）
             if is_tw:
                 effective_fx = 1.0
                 prev_effective_fx = 1.0
@@ -469,12 +466,10 @@ class PortfolioCalculator:
                 effective_fx = self._get_effective_fx_rate(sym, fx_used)
                 prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev)
 
-            # ✅ 用 used_ts.date() 做為今日（避免 display_date 是假日但價格 pad 到前一日）
             pnl_date = used_ts.date()
             position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
             realized_pnl_today = position_snap.realized_pnl_vs_prev_close
 
-            # ✅ unrealized 以「前一交易日收盤估值」與「當日 as-of 估值」做差（含 FX）
             unrealized_pnl_today = 0.0
             if position_snap.qty > 0:
                 curr_mv_twd = position_snap.qty * curr_p * effective_fx
