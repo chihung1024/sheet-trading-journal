@@ -37,8 +37,12 @@ class TransactionAnalyzer:
             else:
                 self.df['Fee'] = 0.0
 
+        self.df['Fee'] = pd.to_numeric(self.df['Fee'], errors='coerce').fillna(0.0).abs()
+
         if 'Tax' not in self.df.columns:
             self.df['Tax'] = 0.0
+
+        self.df['Tax'] = pd.to_numeric(self.df['Tax'], errors='coerce').fillna(0.0).abs()
 
     def analyze_today_position(
         self,
@@ -82,7 +86,7 @@ class TransactionAnalyzer:
             for _, t in today_txns.iterrows():
                 if t['Type'] == 'BUY':
                     qty = t['Qty']
-                    cost = qty * t['Price'] + t['Fee']
+                    cost = qty * t['Price'] + t['Fee'] + t['Tax']
                     today_buy_pool_qty += qty
                     today_buy_pool_cost += cost
                     today_buy_total += qty
