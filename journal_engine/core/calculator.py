@@ -175,6 +175,17 @@ class PortfolioCalculator:
         return pd.Timestamp(prev_date).normalize()
 
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED", stage_desc="Markets Closed", benchmark_tax_rate=0.0):
+        # (1) Normalize Commission/Tax sign BEFORE any calculation
+        df = df.copy()
+        for col in ['Commission', 'Tax']:
+            if col not in df.columns:
+                df[col] = 0.0
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            neg_cnt = int((df[col] < 0).sum())
+            if neg_cnt > 0:
+                logger.warning(f"[{group_name}] {col} has {neg_cnt} negative rows; normalized with abs().")
+            df[col] = df[col].abs()
+
         txn_analyzer = TransactionAnalyzer(df)
         
         holdings = {}
