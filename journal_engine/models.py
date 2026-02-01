@@ -31,8 +31,16 @@ class PortfolioSummary(BaseModel):
     xirr: float = 0.0
     realized_pnl: float
     benchmark_twr: float
-    # ✅ 新增：當日損益（TWD），口徑：Δ市值 - 當日淨現金流
+    # ✅ 新增：當日損益（TWD），口徑：由 holding.daily_pl_twd 加總
     daily_pnl_twd: float = 0.0
+
+    # ✅ 新增：市場狀態（由後端判定，避免前端自行推論）
+    market_stage: Optional[str] = None
+    market_stage_desc: Optional[str] = None
+
+    # ✅ 新增：當日損益的估值基準日（用 benchmark as-of / prev trading day）
+    daily_pnl_asof_date: Optional[str] = None
+    daily_pnl_prev_date: Optional[str] = None
 
 class HoldingPosition(BaseModel):
     symbol: str

@@ -219,6 +219,63 @@ class MarketDataClient:
         except:
             return 0.0
 
+    def get_price_asof(self, symbol, date):
+        """取得指定日期的股票價格，並回傳實際使用的交易日 (as-of/pad)。
+
+        Returns:
+            (price: float, used_date: pd.Timestamp)
+
+        Notes:
+            - 若 date 非交易日，會向前找最近交易日。
+            - used_date 可用於確定「日損益」的基準日，避免週末/假日 pad 到同一天導致 0。
+        """
+        if symbol not in self.market_data:
+            dt = pd.to_datetime(date).tz_localize(None).normalize()
+            return 0.0, dt
+
+        try:
+            df = self.market_data[symbol]
+            dt = pd.to_datetime(date).tz_localize(None).normalize()
+
+            if dt in df.index:
+                return float(df.loc[dt, 'Close_Adjusted']), dt
+
+            idx = df.index.get_indexer([dt], method='pad')[0]
+            if idx != -1:
+                used = df.index[idx]
+                return float(df.iloc[idx]['Close_Adjusted']), used
+
+            return 0.0, dt
+        except:
+            dt = pd.to_datetime(date).tz_localize(None).normalize()
+            return 0.0, dt
+
+    def get_prev_trading_date(self, symbol, used_date):
+        """回傳 used_date 的上一個可用交易日 (依該標的資料 index)。
+
+        - 用於處理美股/台股假日與週末，避免手寫 weekday 跳轉產生錯誤。
+        """
+        try:
+            if symbol not in self.market_data:
+                return pd.to_datetime(used_date).tz_localize(None).normalize()
+
+            df = self.market_data[symbol]
+            dt = pd.to_datetime(used_date).tz_localize(None).normalize()
+
+            # 確保 dt 是 index 上的點，若不是就先 pad 一次
+            if dt not in df.index:
+                idx = df.index.get_indexer([dt], method='pad')[0]
+                if idx == -1:
+                    return dt
+                dt = df.index[idx]
+
+            idx = df.index.get_indexer([dt])[0]
+            if idx <= 0:
+                return dt
+            return df.index[idx - 1]
+        except:
+            return pd.to_datetime(used_date).tz_localize(None).normalize()
+
     def get_transaction_multiplier(self, symbol, date):
         """取得交易日的拆股復權因子"""
         if symbol not in self.market_data:
