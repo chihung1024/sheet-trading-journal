@@ -31,8 +31,13 @@ class PortfolioSummary(BaseModel):
     xirr: float = 0.0
     realized_pnl: float
     benchmark_twr: float
-    # ✅ 新增：當日損益（TWD），口徑：由 holding.daily_pl_twd 加總
+
+    # ✅ 當日損益（TWD）：總和（台股分量 + 美股分量）
     daily_pnl_twd: float = 0.0
+
+    # ✅ Tooltip/明細用：台/美分量
+    # { "tw_pnl_twd": <float>, "us_pnl_twd": <float> }
+    daily_pnl_breakdown: Optional[Dict[str, float]] = None
 
     # ✅ 新增：市場狀態（由後端判定，避免前端自行推論）
     market_stage: Optional[str] = None

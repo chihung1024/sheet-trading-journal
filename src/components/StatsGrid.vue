@@ -131,6 +131,14 @@ const roi = computed(() => {
 // ✅ 當日損益：統一使用 store.dailyPnL
 const dailyPnL = computed(() => store.dailyPnL || 0);
 
+const dailyPnlBreakdown = computed(() => stats.value.daily_pnl_breakdown || null);
+
+const formatSigned = (val) => {
+  const n = Number(val) || 0;
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${Math.round(n).toLocaleString('zh-TW')}`;
+};
+
 // ✅ 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
 const isUSMarketOpen = computed(() => {
   const now = new Date();
@@ -158,13 +166,12 @@ const pnlDescription = computed(() => {
   }
 });
 
-// Tooltip 完整說明
+// Tooltip：只顯示台/美分量（卡片仍只顯示總和）
 const pnlTooltip = computed(() => {
-  if (isUSMarketOpen.value) {
-    return '美股盤中:今日市值 - 昨日市值 - 今日現金流';
-  } else {
-    return '美股收盤:今日市值 - 前日市值 - 昨晚現金流';
-  }
+  if (!dailyPnlBreakdown.value) return '';
+  const tw = dailyPnlBreakdown.value.tw_pnl_twd ?? 0;
+  const us = dailyPnlBreakdown.value.us_pnl_twd ?? 0;
+  return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)}`;
 });
 
 // ✅ 計算今日損益百分比
