@@ -162,7 +162,7 @@ const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
     return '盤中損益(含交易+即時價格)';
   } else {
-    return '昨晚美股交易損益+今日匯率';
+    return '台股損益+美股損益+匯率因素';
   }
 });
 
