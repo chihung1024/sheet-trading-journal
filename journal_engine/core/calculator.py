@@ -400,41 +400,67 @@ class PortfolioCalculator:
         except:
             pass
 
-        effective_date_tw = self.pnl_helper.get_effective_display_date(True)
-        effective_date_us = self.pnl_helper.get_effective_display_date(False)
-        
-        txns_tw_day = df[df['Date'].dt.date == effective_date_tw]
-        txns_us_day = df[df['Date'].dt.date == effective_date_us]
-        
-        active_symbols = set([k for k, v in holdings.items() if v['qty'] > 1e-4])
-        active_symbols.update(txns_tw_day['Symbol'].unique())
-        active_symbols.update(txns_us_day['Symbol'].unique())
+        # ✅ 根因修正（週末/休市也能抓到最後一個交易日的清倉損益）：
+        # - 不使用 get_effective_display_date 去決定「要抓哪一天交易」
+        # - 改用 market.get_price_asof() 的 used_ts 作為實際交易日 (pnl_date)
+        # - active_symbols 以「持倉」或「as-of 交易日有交易」為準
+        tw_now = datetime.now(self.pnl_helper.tz_tw)
+        today = tw_now.date()
 
-        # ✅ 核心修正：每日損益加總不再依賴 final_holdings（避免清倉/減碼被漏算）
+        # 估算各市場的 as-of 交易日，用來挑出「當日」有交易的 symbol（避免週末落在非交易日）
+        us_asof_date = None
+        tw_asof_date = None
+        try:
+            if hasattr(self.market, 'get_price_asof'):
+                unique_symbols = [s for s in df['Symbol'].dropna().unique()]
+                us_ref = next((s for s in unique_symbols if not self._is_taiwan_stock(s)), None)
+                tw_ref = next((s for s in unique_symbols if self._is_taiwan_stock(s)), None)
+
+                if us_ref:
+                    _p, used_ts = self.market.get_price_asof(us_ref, pd.Timestamp(today))
+                    us_asof_date = pd.to_datetime(used_ts).date()
+                if tw_ref:
+                    _p, used_ts = self.market.get_price_asof(tw_ref, pd.Timestamp(today))
+                    tw_asof_date = pd.to_datetime(used_ts).date()
+        except:
+            us_asof_date = None
+            tw_asof_date = None
+
+        candidate_symbols = set([k for k, v in holdings.items() if v['qty'] > 1e-4])
+
+        # 加入「as-of 交易日」有交易的 symbol（含清倉）
+        try:
+            if us_asof_date:
+                us_tx = df[df['Date'].dt.date == us_asof_date]
+                for s in us_tx['Symbol'].unique():
+                    if not self._is_taiwan_stock(s):
+                        candidate_symbols.add(s)
+            if tw_asof_date:
+                tw_tx = df[df['Date'].dt.date == tw_asof_date]
+                for s in tw_tx['Symbol'].unique():
+                    if self._is_taiwan_stock(s):
+                        candidate_symbols.add(s)
+        except:
+            pass
+
         daily_pnl_total_raw = 0.0
 
-        for sym in active_symbols:
+        for sym in candidate_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
             
             is_tw = self._is_taiwan_stock(sym)
-            display_date = self.pnl_helper.get_effective_display_date(is_tw)
-            
-            sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == display_date)]
-            if not h['tag'] and not sym_txs.empty:
-                tags = sym_txs['Tag'].dropna()
-                if not tags.empty: h['tag'] = tags.iloc[0]
 
-            curr_p = self.market.get_price(sym, pd.Timestamp(display_date))
-            used_ts = pd.Timestamp(display_date)
-            prev_ts = pd.Timestamp(display_date) - pd.Timedelta(days=1)
-
+            # 使用 today 作為查價請求日，讓 get_price_asof 自動 pad 到最後交易日
+            curr_p = self.market.get_price(sym, pd.Timestamp(today))
+            used_ts = pd.Timestamp(today)
             if hasattr(self.market, 'get_price_asof'):
-                curr_p, used_ts = self.market.get_price_asof(sym, pd.Timestamp(display_date))
+                curr_p, used_ts = self.market.get_price_asof(sym, pd.Timestamp(today))
 
+            # 用 used_ts 決定 prev trading day
+            prev_ts = used_ts - pd.Timedelta(days=1)
             if hasattr(self.market, 'get_prev_trading_date'):
                 prev_ts = self.market.get_prev_trading_date(sym, used_ts)
             else:
-                prev_ts = used_ts - pd.Timedelta(days=1)
                 while prev_ts.weekday() >= 5:
                     prev_ts -= pd.Timedelta(days=1)
 
@@ -444,9 +470,6 @@ class PortfolioCalculator:
                 effective_fx = 1.0
                 prev_effective_fx = 1.0
             else:
-                tw_now = datetime.now(self.pnl_helper.tz_tw)
-                today = tw_now.date()
-
                 fx_used = DEFAULT_FX_RATE
                 fx_prev = DEFAULT_FX_RATE
                 try:
@@ -465,7 +488,8 @@ class PortfolioCalculator:
                 effective_fx = self._get_effective_fx_rate(sym, fx_used)
                 prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev)
 
-            pnl_date = used_ts.date()
+            # ✅ pnl_date 用 as-of 的 used_ts（交易日）
+            pnl_date = pd.to_datetime(used_ts).date()
             position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
             realized_pnl_today = position_snap.realized_pnl_vs_prev_close
 
@@ -478,6 +502,16 @@ class PortfolioCalculator:
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl
 
+            # tag 補齊：用 pnl_date 當天的交易（而不是 today / 非交易日）
+            try:
+                sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date)]
+                if (not h.get('tag')) and (not sym_txs.empty):
+                    tags = sym_txs['Tag'].dropna()
+                    if not tags.empty:
+                        h['tag'] = tags.iloc[0]
+            except:
+                pass
+
             cost = h['cost_basis_twd']
             current_holdings_cost_sum += cost
             mkt_val = h['qty'] * curr_p * effective_fx
@@ -487,7 +521,7 @@ class PortfolioCalculator:
             # UI holdings list：仍只顯示「持倉」或「有顯著當日損益」的標的
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
                  final_holdings.append(HoldingPosition(
-                    symbol=sym, tag=h['tag'], currency=currency, qty=round(h['qty'], 2),
+                    symbol=sym, tag=h.get('tag'), currency=currency, qty=round(h['qty'], 2),
                     market_value_twd=round(mkt_val, 0), pnl_twd=round(mkt_val - cost, 0),
                     pnl_percent=round((mkt_val - cost) / cost * 100, 2) if cost > 0 else 0,
                     current_price_origin=round(curr_p, 2), 
@@ -495,7 +529,7 @@ class PortfolioCalculator:
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
                     daily_change_percent=daily_change_pct, daily_pl_twd=round(total_daily_pnl, 0)
                 ))
-        
+
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         display_daily_pnl = daily_pnl_total_raw
         self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
