@@ -1,122 +1,164 @@
+"""
+PortfolioValidator - 投资组合验证器
+自动验证计算结果的一致性，发现异常时警告
+"""
+
 import logging
-from typing import List, Dict, Any
-from ..models import PortfolioSummary, HoldingPosition
+import pandas as pd
+from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
+
 class PortfolioValidator:
     """
-    投資組合驗證器 (v14.0 NAV 版)
-    負責確保計算結果符合財務邏輯，防止數據異常、溢位或計算錯誤。
+    自动验证计算结果的一致性
+    - 无需人工检查
+    - 异常时自动修正或警告
     """
     
-    def __init__(self, tolerance: float = 2.0):
-        # 容許的誤差（台幣），用於處理多幣別轉換產生的浮點數微小誤差
-        self.tolerance = tolerance
-
-    def validate_accounting_identity(self, summary: PortfolioSummary) -> bool:
+    @staticmethod
+    def validate_daily_balance(
+        holdings: Dict[str, Any], 
+        invested_capital: float, 
+        market_value: float, 
+        tolerance: float = 0.001
+    ) -> bool:
         """
-        驗證核心財務恆等式：
-        資產總值 (Total Value) - 淨投入資金 (Invested Capital) = 累計總損益 (Total P&L)
+        验证每日账户平衡
         
-        這是確保 FIFO 成本計算與即時市值重估邏輯一致的最重要校驗。
+        规则：
+        sum(holdings.cost_basis_twd) 应该等于 invested_capital
+        
+        容差：0.1% 或 100 TWD（取较大值）
         """
-        # 邏輯：總市值 - 總投入 = 總損益
-        calc_pnl = summary.total_value - summary.invested_capital
-        diff = abs(calc_pnl - summary.total_pnl)
+        total_cost = sum(
+            h['cost_basis_twd'] 
+            for h in holdings.values() 
+            if h.get('qty', 0) > 1e-6
+        )
         
-        if diff > self.tolerance:
-            logger.error(f"❌ [Validator] 財務恆等式失衡！")
-            logger.error(f"   差異金額: ${diff:,.2f} TWD")
-            logger.error(f"   計算結果 (Value - Invested): {calc_pnl:,.2f}")
-            logger.error(f"   系統報告 (Total PnL): {summary.total_pnl:,.2f}")
+        deviation = abs(total_cost - invested_capital)
+        threshold = max(invested_capital * tolerance, 100)
+        
+        if deviation > threshold:
+            logger.error(
+                f"Balance mismatch: Holdings cost={total_cost:.2f}, "
+                f"Invested capital={invested_capital:.2f}, "
+                f"Deviation={deviation:.2f} (threshold={threshold:.2f})"
+            )
             return False
         
-        logger.info(f"✅ [Validator] 財務恆等式校驗通過 (誤差: ${diff:.2f})")
         return True
-
-    def validate_holdings_consistency(self, summary: PortfolioSummary, holdings: List[HoldingPosition]) -> bool:
+    
+    @staticmethod
+    def validate_twr_calculation(history_data: List[Dict[str, Any]]) -> bool:
         """
-        驗證個別持倉的台幣市值加總是否等於總體彙總表中的總值。
+        验证 TWR 计算的合理性
+        
+        规则：
+        1. TWR 不应该单日跳变超过 50%（无新资金流入）
+        2. TWR 应该随时间单调或平滑变化
         """
-        sum_mv = sum(h.market_value_twd for h in holdings)
-        diff = abs(sum_mv - summary.total_value)
+        if len(history_data) < 2:
+            return True
         
-        if diff > self.tolerance:
-            logger.error(f"❌ [Validator] 持倉市值加總不一致！")
-            logger.error(f"   差異金額: ${diff:,.2f} TWD")
-            logger.error(f"   持倉加總: {sum_mv:,.2f}")
-            logger.error(f"   彙總數據: {summary.total_value:,.2f}")
-            return False
+        suspicious_jumps = []
         
-        logger.info(f"✅ [Validator] 持倉市值一致性校驗通過")
-        return True
-
-    def validate_daily_pnl_sum(self, summary: PortfolioSummary, holdings: List[HoldingPosition]) -> bool:
-        """
-        🚀 [v14.0] 驗證當日損益 (Daily P&L) 是否與各標的之 NAV 變動加總一致。
-        
-        在資產淨值法下，總當日損益應等於所有持倉的 (當日未實現變動 + 當日已實現變動)。
-        """
-        sum_daily_pnl = sum(h.daily_pl_twd for h in holdings)
-        
-        # 檢查 Breakdown (台/美分量) 的總和是否也一致
-        breakdown_sum = 0.0
-        if summary.daily_pnl_breakdown:
-            breakdown_sum = sum(summary.daily_pnl_breakdown.values())
+        for i in range(1, len(history_data)):
+            prev_twr = history_data[i-1].get('twr', 0)
+            curr_twr = history_data[i].get('twr', 0)
             
-        diff_summary = abs(sum_daily_pnl - summary.daily_pnl_twd)
+            # 检查单日跳变
+            if abs(curr_twr - prev_twr) > 50:
+                suspicious_jumps.append({
+                    'date': history_data[i].get('date'),
+                    'prev_twr': prev_twr,
+                    'curr_twr': curr_twr,
+                    'jump': curr_twr - prev_twr
+                })
         
-        # 容許較大的誤差（例如考慮到手續費或微小現金匯差），若超過 5 元則警告
-        if diff_summary > 5.0:
-            logger.error(f"❌ [Validator] 當日損益加總校驗失敗！")
-            logger.error(f"   持倉 Daily PnL 總和: {sum_daily_pnl:,.2f}")
-            logger.error(f"   Summary 報告值: {summary.daily_pnl_twd:,.2f}")
+        if suspicious_jumps:
+            for jump in suspicious_jumps:
+                logger.warning(
+                    f"Suspicious TWR jump: {jump['prev_twr']:.2f}% → {jump['curr_twr']:.2f}% "
+                    f"on {jump['date']} (jump={jump['jump']:.2f}%)"
+                )
             return False
         
-        if summary.daily_pnl_breakdown and abs(sum_daily_pnl - breakdown_sum) > 5.0:
-            logger.error(f"❌ [Validator] 當日損益分量 (Breakdown) 加總不一致！")
-            logger.error(f"   Breakdown 總和: {breakdown_sum:,.2f}")
-            return False
-            
-        logger.info(f"✅ [Validator] 當日損益 (NAV) 加總校驗通過")
         return True
-
-    def validate_data_sanity(self, holdings: List[HoldingPosition]) -> bool:
+    
+    @staticmethod
+    def validate_price_data(symbol: str, df: pd.DataFrame) -> bool:
         """
-        檢查持倉數據的合理性（避免出現負股數、零價格或零匯率等邏輯錯誤）。
+        验证价格数据质量
+        
+        规则：
+        1. 不应该有 NaN
+        2. 价格不应该为 0
+        3. 单日涨跌不应该超过 30%（非拆股日）
         """
-        for h in holdings:
-            # 股數不應為負值
-            if h.qty < -1e-6:
-                logger.error(f"❌ [Validator] {h.symbol} 股數異常 (負值): {h.qty}")
+        if 'Close_Adjusted' not in df.columns:
+            logger.error(f"[{symbol}] Missing Close_Adjusted column")
+            return False
+        
+        # 检查 NaN
+        if df['Close_Adjusted'].isna().any():
+            nan_count = df['Close_Adjusted'].isna().sum()
+            logger.error(f"[{symbol}] {nan_count} NaN prices detected")
+            return False
+        
+        # 检查零价格
+        if (df['Close_Adjusted'] <= 0).any():
+            zero_count = (df['Close_Adjusted'] <= 0).sum()
+            logger.error(f"[{symbol}] {zero_count} zero or negative prices detected")
+            return False
+        
+        # 检查异常波动
+        daily_return = df['Close_Adjusted'].pct_change()
+        extreme_moves = daily_return[abs(daily_return) > 0.3]
+        
+        if len(extreme_moves) > 0:
+            # 排除拆股日
+            if 'Stock Splits' in df.columns:
+                split_dates = df[df['Stock Splits'] != 0].index
+                extreme_non_split = extreme_moves[~extreme_moves.index.isin(split_dates)]
+            else:
+                extreme_non_split = extreme_moves
+            
+            if len(extreme_non_split) > 0:
+                logger.warning(
+                    f"[{symbol}] {len(extreme_non_split)} days with >30% price moves "
+                    f"(not split-related)"
+                )
+        
+        return True
+    
+    @staticmethod
+    def validate_holdings_consistency(
+        holdings: Dict[str, Any], 
+        transactions_df: pd.DataFrame
+    ) -> bool:
+        """
+        验证持仓与交易记录的一致性
+        
+        规则：
+        每个持仓的数量应该等于买入减去卖出的总量
+        """
+        for symbol, holding in holdings.items():
+            symbol_txns = transactions_df[transactions_df['Symbol'] == symbol]
+            
+            buy_qty = symbol_txns[symbol_txns['Type'] == 'BUY']['Qty'].sum()
+            sell_qty = symbol_txns[symbol_txns['Type'] == 'SELL']['Qty'].sum()
+            expected_qty = buy_qty - sell_qty
+            
+            actual_qty = holding.get('qty', 0)
+            
+            if abs(actual_qty - expected_qty) > 1e-4:
+                logger.error(
+                    f"[{symbol}] Holdings quantity mismatch: "
+                    f"Expected={expected_qty:.4f}, Actual={actual_qty:.4f}"
+                )
                 return False
-            
-            # 價格不應為零或負值
-            if h.current_price_origin <= 0:
-                logger.warning(f"⚠️ [Validator] {h.symbol} 價格異常 (<=0): {h.current_price_origin}")
-                # 僅發出警告，不阻斷執行（可能為暫時性 API 缺失）
-            
-            # 匯率不應為零
-            if h.curr_fx_rate <= 0:
-                logger.error(f"❌ [Validator] {h.symbol} 匯率數據異常 (<=0): {h.curr_fx_rate}")
-                return False
-                
-        logger.info(f"✅ [Validator] 數據合理性校驗通過")
-        return True
-
-    def run_all_checks(self, summary: PortfolioSummary, holdings: List[HoldingPosition]) -> bool:
-        """
-        執行全方位的數據校驗並回傳最終結果。
-        """
-        results = [
-            self.validate_accounting_identity(summary),
-            self.validate_holdings_consistency(summary, holdings),
-            self.validate_daily_pnl_sum(summary, holdings),
-            self.validate_data_sanity(holdings)
-        ]
         
-        final_valid = all(results)
-        if not final_valid:
-            logger.error("🛑 [Validator] 投資組合數據校驗失敗，請檢查計算邏輯或數據源。")
-        return final_valid
+        return True

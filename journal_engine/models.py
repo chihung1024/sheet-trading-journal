@@ -47,10 +47,6 @@ class PortfolioSummary(BaseModel):
     daily_pnl_asof_date: Optional[str] = None
     daily_pnl_prev_date: Optional[str] = None
 
-    # ✅ 新增：資產淨值法 (NAV) 所需匯率追蹤
-    daily_pnl_prev_fx: float = 1.0  # 基準日匯率 (T0)
-    daily_pnl_curr_fx: float = 1.0  # 當前即時匯率 (T1)
-
 class HoldingPosition(BaseModel):
     symbol: str
     tag: str
@@ -65,10 +61,6 @@ class HoldingPosition(BaseModel):
     daily_change_usd: float = 0.0
     daily_change_percent: float = 0.0
     daily_pl_twd: float = 0.0
-    
-    # ✅ 新增：單一標的之 NAV 匯率參數
-    prev_fx_rate: float = 1.0  # 基準日匯率
-    curr_fx_rate: float = 1.0  # 即時匯率
 
 class DividendRecord(BaseModel):
     symbol: str

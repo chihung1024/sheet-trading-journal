@@ -140,45 +140,5 @@ class TestPnLLogic(unittest.TestCase):
         self.assertAlmostEqual(base_price, 100) 
         print(f"PASS: Re-entry uses Cost ({base_price}) not Prev Close ($95)")
 
-    def test_fx_only_pnl_change(self):
-        """測試情境 6: 價格不變，僅匯率變動 (FX Only P&L Change)"""
-        print("\n=== Test 6: FX Only P&L Change ===")
-        # 假設持倉 100 股，價格固定 $100
-        # 基準點 (T0): Price=100, FX=32.0
-        # 現時點 (T1): Price=100, FX=32.5
-        qty = 100
-        p0, p1 = 100.0, 100.0
-        fx0, fx1 = 32.0, 32.5
-        
-        # 正確公式 (NAV 變動法): Q * (P1*FX1 - P0*FX0)
-        # = 100 * (100 * 32.5 - 100 * 32.0) = 100 * (3250 - 3200) = 5000 (TWD)
-        expected_pnl_twd = qty * (p1 * fx1 - p0 * fx0)
-        
-        # 驗證期望值是否為 5000
-        self.assertAlmostEqual(expected_pnl_twd, 5000.0)
-        
-        # 驗證舊公式 (ΔP * FX) 的錯誤性：在價格不變時會回傳 0
-        wrong_pnl_old = qty * (p1 - p0) * fx1
-        self.assertEqual(wrong_pnl_old, 0)
-        
-        print(f"PASS: Expected NAV P&L ({expected_pnl_twd}) is non-zero despite constant price.")
-
-    def test_realized_pnl_with_fx(self):
-        """測試情境 7: 已實現損益包含匯率變動 (Realized P&L with FX)"""
-        print("\n=== Test 7: Realized P&L with FX ===")
-        # 假設之前買入成本 $100 (FX=31.0)
-        # 今日以 $110 賣出 (FX=32.0)
-        qty = 10
-        buy_p, buy_fx = 100.0, 31.0
-        sell_p, sell_fx = 110.0, 32.0
-        
-        # 總實現損益 (本幣計價): (賣出價*賣出匯率 - 買入價*買入匯率) * 股數 
-        # = (110 * 32.0 - 100 * 31.0) * 10 
-        # = (3520 - 3100) * 10 = 420 * 10 = 4200 TWD
-        expected_realized_twd = qty * (sell_p * sell_fx - buy_p * buy_fx)
-        
-        self.assertAlmostEqual(expected_realized_twd, 4200.0)
-        print(f"PASS: Realized P&L correctly accounts for FX gains: {expected_realized_twd}")
-
 if __name__ == '__main__':
     unittest.main()

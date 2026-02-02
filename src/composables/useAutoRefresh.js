@@ -1,53 +1,48 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 
 /**
- * useAutoRefresh - 自動刷新 Composable (v14.0)
+ * 自動刷新 Composable
  * 功能：
- * 1. 定時觸發數據更新回調 (預設每 5 分鐘)。
- * 2. 智慧監測：僅在頁面可見時執行，節省系統資源。
- * 3. 狀態追蹤：提供倒數計時與下次更新時間，增加 UI 透明度。
- * 4. 提供手動刷新接口，並自動重置定時器。
+ * 1. 每5分鐘自動刷新數據
+ * 2. 只在頁面可見時更新（節省資源）
+ * 3. 提供倒數計時與手動控制
  */
 export function useAutoRefresh(callback, intervalMinutes = 5) {
   const isEnabled = ref(true);
   const isPaused = ref(false);
-  const timeRemaining = ref(intervalMinutes * 60); // 剩餘秒數
+  const timeRemaining = ref(intervalMinutes * 60); // 秒
   const nextUpdateTime = ref(null);
   
   let refreshTimer = null;
   let countdownTimer = null;
   let isPageVisible = true;
 
-  /**
-   * 計算並設定下一次預計更新的時間點
-   */
+  // 計算下次更新時間
   const calculateNextUpdateTime = () => {
     const now = new Date();
     now.setMinutes(now.getMinutes() + intervalMinutes);
     nextUpdateTime.value = now;
   };
 
-  /**
-   * 啟動自動刷新計時器
-   */
+  // 啟動刷新
   const startRefresh = () => {
     if (!isEnabled.value || isPaused.value) return;
     
-    stopRefresh(); // 啟動前先清除舊有計時器，避免堆疊
+    stopRefresh(); // 清除舊的計時器
     calculateNextUpdateTime();
     timeRemaining.value = intervalMinutes * 60;
     
-    // 主刷新計時器：執行實際的數據抓取
+    // 主要刷新計時器
     refreshTimer = setInterval(() => {
       if (isPageVisible && !isPaused.value) {
-        console.log('🔄 [AutoRefresh] 觸發定時數據同步 (v14.0 NAV)...');
+        console.log('🔄 [自動刷新] 觸發定時更新...');
         callback();
         calculateNextUpdateTime();
         timeRemaining.value = intervalMinutes * 60;
       }
     }, intervalMinutes * 60 * 1000);
     
-    // 倒數計時器：更新 UI 上的秒數顯示
+    // 倒數計時器 (每秒更新)
     countdownTimer = setInterval(() => {
       if (isPageVisible && !isPaused.value && timeRemaining.value > 0) {
         timeRemaining.value--;
@@ -55,59 +50,49 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
     }, 1000);
   };
 
-  /**
-   * 停止所有計時器
-   */
+  // 停止刷新
   const stopRefresh = () => {
-    if (refreshTimer) clearInterval(refreshTimer);
-    if (countdownTimer) clearInterval(countdownTimer);
-    refreshTimer = null;
-    countdownTimer = null;
-  };
-
-  /**
-   * 切換暫停/恢復狀態
-   */
-  const togglePause = () => {
-    isPaused.value = !isPaused.value;
-    if (!isPaused.value) {
-      console.log('▶️ [AutoRefresh] 恢復自動監控');
-      startRefresh();
-    } else {
-      console.log('⏸️ [AutoRefresh] 暫停自動監控');
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+    if (countdownTimer) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
     }
   };
 
-  /**
-   * 🚀 手動立即刷新
-   * 執行傳入的 callback 並重時計時器，確保數據新鮮度
-   */
-  const manualRefresh = async () => {
-    console.log('⚡ [AutoRefresh] 執行手動即時刷新...');
-    await callback();
-    startRefresh(); // 重新計算下次更新時間
+  // 暫停/恢復
+  const togglePause = () => {
+    isPaused.value = !isPaused.value;
+    if (!isPaused.value) {
+      startRefresh();
+    }
   };
 
-  /**
-   * 處理頁面可見性變動 (Visibility API)
-   */
+  // 手動觸發刷新（並重置計時器）
+  const manualRefresh = async () => {
+    console.log('🔄 [手動刷新] 立即更新數據...');
+    await callback();
+    startRefresh(); // 重置計時器
+  };
+
+  // 頁面可見性監聽
   const handleVisibilityChange = () => {
     isPageVisible = !document.hidden;
     
     if (isPageVisible && isEnabled.value && !isPaused.value) {
-      console.log('👁️ [AutoRefresh] 視窗恢復可見');
-      // 若在背景期間已超時，恢復後立即刷新
+      console.log('👁️ 頁面恢復可見，恢復刷新計時');
+      // 頁面恢復可見時，如果距離上次更新已超過5分鐘，立即刷新
       if (timeRemaining.value <= 0) {
         manualRefresh();
       }
     } else if (!isPageVisible) {
-      console.log('😴 [AutoRefresh] 視窗進入背景，掛起計時');
+      console.log('😴 頁面隱藏，暫停刷新計時');
     }
   };
 
-  /**
-   * 格式化剩餘時間 (MM:SS) 供 UI 組件直接調用
-   */
+  // 格式化倒數時間
   const formattedTimeRemaining = () => {
     const minutes = Math.floor(timeRemaining.value / 60);
     const seconds = timeRemaining.value % 60;
@@ -115,15 +100,21 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
   };
 
   onMounted(() => {
-    console.log(`✨ [AutoRefresh] 初始化完成，監控頻率: ${intervalMinutes} min`);
+    console.log(`✨ [自動刷新] 系統已啟動，每 ${intervalMinutes} 分鐘更新一次`);
+    
+    // 監聽頁面可見性
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    startRefresh();
+    
+    // 啟動刷新
+    if (isEnabled.value) {
+      startRefresh();
+    }
   });
 
   onUnmounted(() => {
-    console.log('🛑 [AutoRefresh] 組件卸載，清除計時器');
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    console.log('🚦 [自動刷新] 系統已關閉');
     stopRefresh();
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
   });
 
   return {
@@ -131,8 +122,10 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
     isPaused,
     timeRemaining,
     nextUpdateTime,
+    formattedTimeRemaining,
     togglePause,
     manualRefresh,
-    formattedTimeRemaining
+    startRefresh,
+    stopRefresh
   };
 }

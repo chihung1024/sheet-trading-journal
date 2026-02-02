@@ -5,29 +5,22 @@ import { useAuthStore } from './auth';
 import { useToast } from '../composables/useToast';
 
 export const usePortfolioStore = defineStore('portfolio', () => {
-    // --- 狀態定義 ---
     const loading = ref(false);
-    const rawData = ref(null);      // 儲存從 API 獲取的完整快照 (PortfolioSnapshot)
-    const records = ref([]);        // 儲存交易紀錄列表
-    const lastUpdate = ref('');     // 最後更新時間字串
+    const rawData = ref(null);
+    const records = ref([]);
+    const lastUpdate = ref('');
     const connectionStatus = ref('connected'); 
     const isPolling = ref(false);
     let pollTimer = null;
 
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
-    const currentGroup = ref('all'); // 目前選擇的顯示群組 (標籤)
+    const currentGroup = ref('all');
 
-    // --- 工具函式 ---
     const getToken = () => {
         const auth = useAuthStore();
         return auth.token;
     };
 
-    const { addToast } = useToast();
-
-    /**
-     * 封裝帶有認證標頭的 Fetch 請求
-     */
     const fetchWithAuth = async (endpoint, options = {}) => {
         const auth = useAuthStore();
         if (!auth.token) return null;
@@ -50,176 +43,289 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
 
             if (!res.ok) {
-                const errorData = await res.json().catch(() => ({}));
-                throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+                connectionStatus.value = 'error';
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `API Error: ${res.status}`);
             }
 
+            connectionStatus.value = 'connected';
             return await res.json();
         } catch (e) {
-            console.error(`API Error [${endpoint}]:`, e);
+            console.error(`Fetch error [${endpoint}]:`, e);
+            connectionStatus.value = 'error';
             throw e;
         }
     };
 
-    // --- 計算屬性 (Getters) ---
-
-    /**
-     * 🚀 [v14.0] 根據 currentGroup 動態回傳摘要數據
-     */
-    const stats = computed(() => {
-        if (!rawData.value) return null;
-        // 如果選擇特定群組，從 groups 字典中提取
-        if (currentGroup.value !== 'all' && rawData.value.groups?.[currentGroup.value]) {
-            return rawData.value.groups[currentGroup.value].summary;
-        }
-        // 否則回傳全體摘要
-        return rawData.value.summary;
-    });
-
-    /**
-     * 🚀 [v14.0] 根據 currentGroup 動態回傳持倉清單
-     */
-    const holdings = computed(() => {
-        if (!rawData.value) return [];
-        if (currentGroup.value !== 'all' && rawData.value.groups?.[currentGroup.value]) {
-            return rawData.value.groups[currentGroup.value].holdings || [];
-        }
-        return rawData.value.holdings || [];
-    });
-
-    /**
-     * 🚀 [v14.0] 根據 currentGroup 動態回傳歷史淨值數據 (用於圖表)
-     */
-    const history = computed(() => {
-        if (!rawData.value) return [];
-        if (currentGroup.value !== 'all' && rawData.value.groups?.[currentGroup.value]) {
-            return rawData.value.groups[currentGroup.value].history || [];
-        }
-        return rawData.value.history || [];
-    });
-
-    /**
-     * 🚀 [v14.0] 根據 currentGroup 動態回傳待入帳配息
-     */
-    const pending_dividends = computed(() => {
-        if (!rawData.value) return [];
-        if (currentGroup.value !== 'all' && rawData.value.groups?.[currentGroup.value]) {
-            return rawData.value.groups[currentGroup.value].pending_dividends || [];
-        }
-        return rawData.value.pending_dividends || [];
-    });
-
-    /** 累計未實現損益 */
-    const unrealizedPnL = computed(() => stats.value?.total_pnl || 0);
-    
-    /** 🚀 [v14.0] 當日損益 (對齊後端 NAV 欄位) */
-    const dailyPnL = computed(() => stats.value?.daily_pnl_twd || 0);
-
-    /** 獲取所有可用的群組標籤清單 */
-    const availableGroups = computed(() => {
-        if (!rawData.value || !rawData.value.groups) return ['all'];
-        return Object.keys(rawData.value.groups).sort();
-    });
-
-    // --- 行動 (Actions) ---
-
-    const setGroup = (groupName) => {
-        currentGroup.value = groupName;
+    const resetData = () => {
+        rawData.value = null;
+        records.value = [];
+        lastUpdate.value = '';
+        localStorage.removeItem('cached_records');
     };
 
-    /** 查詢包含特定股票的標籤群組 */
-    const getGroupsWithHolding = (symbol) => {
-        if (!rawData.value || !rawData.value.groups) return [];
-        return Object.entries(rawData.value.groups)
-            .filter(([name, data]) => name !== 'all' && data.holdings.some(h => h.symbol === symbol))
-            .map(([name]) => name);
-    };
-
-    /** 獲取最新投資組合快照 */
     const fetchAll = async () => {
+        if (loading.value) return;
         loading.value = true;
+        
         try {
-            const res = await fetchWithAuth('/api/portfolio');
-            if (res && res.success) {
-                rawData.value = res.data;
-                lastUpdate.value = res.data.updated_at || '';
-                connectionStatus.value = 'connected';
+            await fetchRecords();
+            
+            // [v2.54] 從 API 獲取用戶的 benchmark 設定
+            try {
+                const settingsJson = await fetchWithAuth('/api/user-settings');
+                if (settingsJson && settingsJson.success && settingsJson.benchmark) {
+                    selectedBenchmark.value = settingsJson.benchmark;
+                    localStorage.setItem('user_benchmark', settingsJson.benchmark);
+                }
+            } catch (e) {
+                console.warn('無法載入 benchmark 設定，使用預設值', e);
             }
-        } catch (e) {
+            
+            if (records.value && records.value.length > 0) {
+                await fetchSnapshot();
+            } else {
+                resetData();
+            }
+        } catch (error) {
+            console.error('fetchAll error:', error);
             connectionStatus.value = 'error';
         } finally {
             loading.value = false;
         }
     };
 
-    /** 獲取原始交易紀錄 */
+    const fetchSnapshot = async () => {
+        try {
+            const json = await fetchWithAuth('/api/portfolio');
+            
+            if (json && json.success && json.data) {
+                if (!json.data.updated_at) {
+                    if (records.value.length === 0) resetData();
+                    return;
+                }
+
+                if (records.value.length === 0 && json.data.holdings && json.data.holdings.length > 0) {
+                    return;
+                }
+
+                rawData.value = json.data; 
+                lastUpdate.value = json.data.updated_at;
+            } else {
+                if (records.value.length === 0) resetData();
+            }
+        } catch (error) {
+            console.error('fetchSnapshot error:', error);
+            throw error;
+        }
+    };
+
     const fetchRecords = async () => {
         try {
-            const res = await fetchWithAuth('/api/records');
-            if (res && res.success) {
-                records.value = res.data;
+            const json = await fetchWithAuth('/api/records');
+            
+            if (json && json.success) {
+                records.value = json.data || [];
+                localStorage.setItem('cached_records', JSON.stringify(records.value));
+                
+                if (records.value.length === 0) resetData();
             }
-        } catch (e) {
-            console.error('Fetch records failed');
+        } catch (error) {
+            console.error('fetchRecords error:', error);
+            throw error;
         }
     };
 
-    /** 新增交易紀錄 */
-    const addRecord = async (record) => {
-        const res = await fetchWithAuth('/api/records', {
-            method: 'POST',
-            body: JSON.stringify(record)
-        });
-        if (res?.success) {
-            await fetchRecords();
-            return true;
-        }
-        return false;
+    const handleAutoUpdateSignal = (message = "✨ 系統正自動同步股價與數據，請稍候...") => {
+        const { addToast } = useToast();
+        addToast(message, "info");
+        startPolling(); 
     };
 
-    /** 更新交易紀錄 */
-    const updateRecord = async (record) => {
-        const res = await fetchWithAuth('/api/records', {
-            method: 'PUT',
-            body: JSON.stringify(record)
-        });
-        if (res?.success) {
-            await fetchRecords();
-            return true;
-        }
-        return false;
-    };
-
-    /** 刪除交易紀錄 */
-    const deleteRecord = async (id) => {
-        const res = await fetchWithAuth('/api/records', {
-            method: 'DELETE',
-            body: JSON.stringify({ id })
-        });
-        if (res?.success) {
-            if (res.message === "RELOAD_UI") {
-                resetData();
-            } else {
+    const addRecord = async (formData) => {
+        const { addToast } = useToast();
+        try {
+            const json = await fetchWithAuth('/api/records', {
+                method: 'POST',
+                body: JSON.stringify(formData)
+            });
+            
+            if (json && json.success) {
+                addToast("新增成功", "success");
                 await fetchRecords();
+                
+                if (json.auto_update) {
+                    handleAutoUpdateSignal("🚀 這是您的第一筆交易，系統正自動啟動背景計算...");
+                }
+                return true;
             }
-            return true;
+            return false;
+        } catch (e) {
+            addToast(e.message || "新增失敗", "error");
+            return false;
         }
-        return false;
     };
 
-    /** * 觸發 GitHub Action 進行背景數據重算 
-     * @param {string} benchmark 指定使用的基準指數
-     */
-    const triggerUpdate = async (benchmark = null) => {
-        const auth = useAuthStore();
-        const token = auth.token;
-        if (!token) return;
-
-        const handleAutoUpdateSignal = (msg) => {
-            if (addToast) {
-                addToast(msg, 'info');
+    const updateRecord = async (formData) => {
+        const { addToast } = useToast();
+        try {
+            const json = await fetchWithAuth('/api/records', {
+                method: 'PUT',
+                body: JSON.stringify(formData)
+            });
+            if (json && json.success) {
+                addToast("更新成功", "success");
+                await fetchRecords();
+                return true;
             }
-        };
+            return false;
+        } catch (e) {
+            addToast(e.message || "更新失敗", "error");
+            return false;
+        }
+    };
+
+    const deleteRecord = async (id) => {
+        const { addToast } = useToast();
+        try {
+            const json = await fetchWithAuth('/api/records', {
+                method: 'DELETE',
+                body: JSON.stringify({ id })
+            });
+            
+            if (json && json.success) {
+                addToast("刪除成功", "success");
+                
+                if (json.message === "RELOAD_UI") {
+                    records.value = [];
+                    handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據...");
+                } else {
+                    await fetchRecords();
+                }
+                return true;
+            }
+            return false;
+        } catch (e) {
+            addToast("刪除失敗", "error");
+            return false;
+        }
+    };
+
+    const availableGroups = computed(() => {
+        if (!rawData.value || !rawData.value.groups) return ['all'];
+        return Object.keys(rawData.value.groups).sort((a, b) => {
+            if (a === 'all') return -1;
+            if (b === 'all') return 1;
+            return a.localeCompare(b);
+        });
+    });
+
+    const currentGroupData = computed(() => {
+        if (!rawData.value) return {};
+        if (rawData.value.groups && rawData.value.groups[currentGroup.value]) {
+            return rawData.value.groups[currentGroup.value];
+        }
+        return rawData.value;
+    });
+
+    const stats = computed(() => currentGroupData.value.summary || {});
+    const holdings = computed(() => currentGroupData.value.holdings || []);
+    const history = computed(() => currentGroupData.value.history || []);
+    const pending_dividends = computed(() => currentGroupData.value.pending_dividends || []);
+    const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
+    const dailyPnL = computed(() => stats.value.daily_pnl_twd || 0);
+
+    const setGroup = (group) => {
+        if (availableGroups.value.includes(group)) {
+            currentGroup.value = group;
+        }
+    };
+
+    const getGroupsWithHolding = (symbol) => {
+        if (!rawData.value || !rawData.value.groups) return [];
+        const groups = [];
+        for (const [groupName, data] of Object.entries(rawData.value.groups)) {
+            if (groupName === 'all') continue;
+            const hasStock = data.holdings.some(h => h.symbol === symbol && h.qty > 0);
+            if (hasStock) groups.push(groupName);
+        }
+        return groups;
+    };
+
+    const startPolling = () => {
+        if (isPolling.value) return;
+        
+        isPolling.value = true;
+        const startTime = Date.now();
+        const initialTime = lastUpdate.value; 
+        const { addToast } = useToast(); 
+
+        pollTimer = setInterval(async () => {
+            if (Date.now() - startTime > 180000) {
+                stopPolling();
+                return;
+            }
+
+            try {
+                const json = await fetchWithAuth('/api/portfolio');
+                
+                if (json && json.success && json.data) {
+                    const newTime = json.data.updated_at;
+                    const isNewData = newTime && (newTime !== initialTime) && (json.data.holdings?.length > 0 || records.value.length === 0);
+                    const isResetConfirmed = (records.value.length === 0) && !newTime;
+
+                    if (isNewData || isResetConfirmed) {
+                        stopPolling();
+                        await fetchAll();
+                        if (isResetConfirmed) addToast("✅ 所有資產數據已歸零", "success");
+                        else addToast("✅ 數據已更新完畢！", "success");
+                    }
+                }
+            } catch (e) {
+                console.warn('SmartPolling check error:', e);
+            }
+        }, 5000); 
+    };
+
+    const stopPolling = () => {
+        isPolling.value = false;
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    };
+
+    // [v2.54] 修改 triggerUpdate 函數，先保存 benchmark 到資料庫
+    const triggerUpdate = async (benchmark = null) => {
+        const token = getToken();
+        if (!token) throw new Error("請先登入"); 
+        
+        // 如果提供了新的 benchmark，先保存到資料庫
+        if (benchmark && benchmark !== selectedBenchmark.value) {
+            try {
+                const saveResponse = await fetch(`${CONFIG.API_BASE_URL}/api/user-settings`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ benchmark: benchmark.toUpperCase().trim() })
+                });
+                
+                if (!saveResponse.ok) {
+                    throw new Error('無法保存 benchmark 設定');
+                }
+                
+                const saveJson = await saveResponse.json();
+                if (saveJson.success) {
+                    selectedBenchmark.value = saveJson.benchmark;
+                    localStorage.setItem('user_benchmark', saveJson.benchmark);
+                }
+            } catch (e) {
+                console.error('保存 benchmark 失敗:', e);
+                throw new Error('無法保存 benchmark 設定: ' + e.message);
+            }
+        }
         
         const targetBenchmark = benchmark || selectedBenchmark.value;
         
@@ -244,32 +350,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             console.error('Trigger failed:', e);
             throw e; 
         }
-    };
-
-    /** 清空所有數據狀態 (登出用) */
-    const resetData = () => {
-        rawData.value = null;
-        records.value = [];
-        lastUpdate.value = '';
-        currentGroup.value = 'all';
-    };
-
-    /** 啟動定時輪詢，自動更新數據 */
-    const startPolling = (interval = 300000) => { // 預設 5 分鐘
-        if (isPolling.value) return;
-        isPolling.value = true;
-        
-        const poll = async () => {
-            if (!isPolling.value) return;
-            try {
-                await fetchAll();
-            } catch (e) {
-                console.warn('Polling fetch failed');
-            }
-            pollTimer = setTimeout(poll, interval);
-        };
-        
-        poll();
     };
 
     return { 
