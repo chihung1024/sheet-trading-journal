@@ -23,6 +23,7 @@ class PortfolioCalculator:
         self.pnl_helper = DailyPnLHelper()
         self.currency_detector = CurrencyDetector()
         self.validator = PortfolioValidator()
+        self.snapshot_date = datetime.now().date()  # Record snapshot reference date
 
     def _is_taiwan_stock(self, symbol):
         return self.currency_detector.is_base_currency(symbol)
@@ -540,6 +541,44 @@ class PortfolioCalculator:
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
         display_daily_pnl = daily_pnl_total_raw
         self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
+
+        # ===== [v3.18] Calculate live_mtm_delta =====
+        live_mtm_delta_twd = 0.0
+        live_mtm_delta_breakdown = {"tw": 0.0, "us": 0.0}
+        live_mtm_ref_timestamp = self.snapshot_date.strftime('%Y-%m-%d')
+
+        # Get realtime FX rate
+        realtime_fx = current_fx
+        if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
+            realtime_fx = self.market.realtime_fx_rate
+
+        for holding in final_holdings:
+            if holding.qty < 1e-6:
+                continue
+
+            # Snapshot market value (already calculated with snapshot FX)
+            snapshot_mv_twd = holding.market_value_twd
+
+            # Live market value (using realtime FX)
+            if holding.currency == 'TWD':
+                live_fx = 1.0
+                live_mv_twd = holding.current_price_origin * holding.qty * live_fx
+            else:
+                live_fx = self._get_effective_fx_rate(holding.symbol, realtime_fx)
+                live_mv_twd = holding.current_price_origin * holding.qty * live_fx
+
+            # Calculate delta
+            delta = live_mv_twd - snapshot_mv_twd
+            live_mtm_delta_twd += delta
+
+            # Breakdown by currency
+            if holding.currency == 'TWD':
+                live_mtm_delta_breakdown["tw"] += delta
+            else:
+                live_mtm_delta_breakdown["us"] += delta
+
+        logger.info(f"[{group_name}] live_mtm_delta_twd: {round(live_mtm_delta_twd, 2)} (tw: {round(live_mtm_delta_breakdown['tw'], 2)}, us: {round(live_mtm_delta_breakdown['us'], 2)})")
+        # ===== End of live_mtm_delta calculation =====
         
         xirr_val = 0.0
         if xirr_cashflows:
@@ -568,7 +607,10 @@ class PortfolioCalculator:
             market_stage=current_stage,
             market_stage_desc=stage_desc,
             daily_pnl_asof_date=daily_pnl_asof_date,
-            daily_pnl_prev_date=daily_pnl_prev_date
+            daily_pnl_prev_date=daily_pnl_prev_date,
+            live_mtm_delta_twd=round(live_mtm_delta_twd, 0),
+            live_mtm_delta_breakdown=live_mtm_delta_breakdown,
+            live_mtm_ref_timestamp=live_mtm_ref_timestamp
         )
         
         self.validator.validate_twr_calculation(history_data)
