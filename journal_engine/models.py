@@ -47,11 +47,6 @@ class PortfolioSummary(BaseModel):
     daily_pnl_asof_date: Optional[str] = None
     daily_pnl_prev_date: Optional[str] = None
 
-    # ✅ [v3.18] 新增：即時市值變動追蹤（匯率變動造成的未實現損益）
-    live_mtm_delta_twd: float = 0.0  # 即時市值變動（TWD）
-    live_mtm_delta_breakdown: Optional[Dict[str, float]] = None  # 分幣別明細 {"tw": 0.0, "us": 123.45}
-    live_mtm_ref_timestamp: Optional[str] = None  # 快照基準日期（YYYY-MM-DD）
-
 class HoldingPosition(BaseModel):
     symbol: str
     tag: str

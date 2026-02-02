@@ -235,11 +235,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const unrealizedPnL = computed(() => (stats.value.total_value || 0) - (stats.value.invested_capital || 0));
     const dailyPnL = computed(() => stats.value.daily_pnl_twd || 0);
 
-    // [v3.18] 新增：即時市值變動追蹤
-    const liveMtmDelta = computed(() => stats.value.live_mtm_delta_twd || 0);
-    const liveMtmDeltaBreakdown = computed(() => stats.value.live_mtm_delta_breakdown || null);
-    const liveMtmRefTimestamp = computed(() => stats.value.live_mtm_ref_timestamp || '');
-
     const setGroup = (group) => {
         if (availableGroups.value.includes(group)) {
             currentGroup.value = group;
@@ -368,9 +363,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         lastUpdate, 
         unrealizedPnL,
         dailyPnL,
-        liveMtmDelta,           // [v3.18] 新增
-        liveMtmDeltaBreakdown,  // [v3.18] 新增
-        liveMtmRefTimestamp,    // [v3.18] 新增
         connectionStatus,
         isPolling,
         currentGroup,
