@@ -43,13 +43,7 @@ class PortfolioCalculator:
         return BENCHMARK_TAX_RATE_US
 
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
-        """取得估值價格與匯率。
-
-        v2.57+: FX 與價格的 as-of 日期解耦。
-        - 價格仍依 market.get_price_asof() 回傳的 used_ts（避免不存在的日線）。
-        - 但若 target_date 為「今天（TW）」，則優先使用 current_fx（即時匯率）換算 TWD，
-          即使美股價格仍沿用上一個收盤日，也要反映今日匯率變動。
-        """
+        """取得估值價格與匯率（與先前版本相同）。"""
         is_tw = self._is_taiwan_stock(symbol)
         
         if is_tw:
@@ -59,23 +53,16 @@ class PortfolioCalculator:
         tw_now = datetime.now(self.pnl_helper.tz_tw)
         today = tw_now.date()
 
-        target_ts = pd.Timestamp(target_date)
-        target_d = target_ts.date()
-
-        used_ts = target_ts
+        used_ts = pd.Timestamp(target_date)
         if hasattr(self.market, 'get_price_asof'):
-            price, used_ts = self.market.get_price_asof(symbol, target_ts)
+            price, used_ts = self.market.get_price_asof(symbol, pd.Timestamp(target_date))
         else:
-            price = self.market.get_price(symbol, target_ts)
-            used_ts = target_ts
+            price = self.market.get_price(symbol, pd.Timestamp(target_date))
+            used_ts = pd.Timestamp(target_date)
 
         fx_to_use = DEFAULT_FX_RATE
         try:
-            # If valuation date is today (TW), always reflect current FX (even if price is padded to last close).
-            if target_d == today:
-                fx_to_use = current_fx
-            # Legacy behavior: intraday (US open) uses current FX
-            elif used_ts.date() == today and self._is_us_market_open(tw_now):
+            if used_ts.date() == today and self._is_us_market_open(tw_now):
                 fx_to_use = current_fx
             else:
                 fx_to_use = self.market.fx_rates.asof(used_ts)
@@ -420,18 +407,8 @@ class PortfolioCalculator:
             if hasattr(self.market, 'get_price_asof') and hasattr(self.market, 'get_prev_trading_date'):
                 _bp, used_bm = self.market.get_price_asof(self.benchmark_ticker, pd.Timestamp(today))
                 prev_bm = self.market.get_prev_trading_date(self.benchmark_ticker, used_bm)
-
-                # New semantics:
-                # - daily_pnl_asof_date: today (TW)
-                # - daily_pnl_prev_date:
-                #   - if benchmark has a "today" price (US open / TW open), use prev trading day
-                #   - else (price padded), use the last available close date (used_bm)
-                daily_pnl_asof_date = pd.to_datetime(today).strftime('%Y-%m-%d')
-                used_bm_date = pd.to_datetime(used_bm).date()
-                if used_bm_date == today:
-                    daily_pnl_prev_date = pd.to_datetime(prev_bm).strftime('%Y-%m-%d')
-                else:
-                    daily_pnl_prev_date = pd.to_datetime(used_bm).strftime('%Y-%m-%d')
+                daily_pnl_asof_date = pd.to_datetime(used_bm).strftime('%Y-%m-%d')
+                daily_pnl_prev_date = pd.to_datetime(prev_bm).strftime('%Y-%m-%d')
         except:
             pass
 
@@ -495,74 +472,37 @@ class PortfolioCalculator:
 
             prev_p = self.market.get_price(sym, pd.Timestamp(prev_ts))
 
-            realized_pnl_today = 0.0
-            unrealized_pnl_today = 0.0
-
             if is_tw:
                 effective_fx = 1.0
                 prev_effective_fx = 1.0
-
-                pnl_date = pd.to_datetime(used_ts).date()
-                position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
-                realized_pnl_today = position_snap.realized_pnl_vs_prev_close
-
-                if position_snap.qty > 0:
-                    curr_mv_twd = position_snap.qty * curr_p * effective_fx
-                    prev_mv_twd = position_snap.qty * prev_p * prev_effective_fx
-                    unrealized_pnl_today = curr_mv_twd - prev_mv_twd
-
             else:
-                # US assets: include FX-only PnL even when price is padded (used_ts != today).
-                fx_today = DEFAULT_FX_RATE
-                fx_asof = DEFAULT_FX_RATE
+                fx_used = DEFAULT_FX_RATE
                 fx_prev = DEFAULT_FX_RATE
-
                 try:
-                    fx_today = current_fx
-                    fx_asof = self.market.fx_rates.asof(pd.Timestamp(used_ts))
-                    if pd.isna(fx_asof): fx_asof = DEFAULT_FX_RATE
+                    if used_ts.date() == today and self._is_us_market_open(tw_now):
+                        fx_used = current_fx
+                    else:
+                        fx_used = self.market.fx_rates.asof(used_ts)
+                        if pd.isna(fx_used): fx_used = DEFAULT_FX_RATE
 
                     fx_prev = self.market.fx_rates.asof(pd.Timestamp(prev_ts))
                     if pd.isna(fx_prev): fx_prev = DEFAULT_FX_RATE
                 except:
-                    fx_today = current_fx if current_fx else DEFAULT_FX_RATE
-                    fx_asof = DEFAULT_FX_RATE
+                    fx_used = DEFAULT_FX_RATE
                     fx_prev = DEFAULT_FX_RATE
 
-                # If we actually have "today" price (intraday), behave like classic daily PnL.
-                if pd.to_datetime(used_ts).date() == today and self._is_us_market_open(tw_now):
-                    effective_fx = self._get_effective_fx_rate(sym, fx_today)
-                    prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev)
+                effective_fx = self._get_effective_fx_rate(sym, fx_used)
+                prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev)
 
-                    pnl_date = pd.to_datetime(used_ts).date()
-                    position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
-                    realized_pnl_today = position_snap.realized_pnl_vs_prev_close
+            pnl_date = pd.to_datetime(used_ts).date()
+            position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
+            realized_pnl_today = position_snap.realized_pnl_vs_prev_close
 
-                    if position_snap.qty > 0:
-                        curr_mv_twd = position_snap.qty * curr_p * effective_fx
-                        prev_mv_twd = position_snap.qty * prev_p * prev_effective_fx
-                        unrealized_pnl_today = curr_mv_twd - prev_mv_twd
-
-                else:
-                    # US market closed / price padded to last close (used_ts).
-                    # Daily PnL = price close-to-close (D0 - D1) converted by today's FX
-                    #           + FX mark-to-market since last close D0: P(D0) * (FX_today - FX_D0)
-                    effective_fx_today = self._get_effective_fx_rate(sym, fx_today)   # FX(today)
-                    effective_fx_d0 = self._get_effective_fx_rate(sym, fx_asof)       # FX(D0 = used_ts)
-                    effective_fx = effective_fx_today
-
-                    realized_pnl_today = 0.0
-                    qty = h.get('qty', 0.0)
-
-                    if qty and qty > 1e-9 and curr_p and curr_p > 0:
-                        price_pnl_twd = 0.0
-                        if prev_p and prev_p > 0:
-                            price_pnl_twd = qty * (curr_p - prev_p) * effective_fx_today
-
-                        fx_pnl_twd = qty * curr_p * (effective_fx_today - effective_fx_d0)
-                        unrealized_pnl_today = price_pnl_twd + fx_pnl_twd
-                    else:
-                        unrealized_pnl_today = 0.0
+            unrealized_pnl_today = 0.0
+            if position_snap.qty > 0:
+                curr_mv_twd = position_snap.qty * curr_p * effective_fx
+                prev_mv_twd = position_snap.qty * prev_p * prev_effective_fx
+                unrealized_pnl_today = curr_mv_twd - prev_mv_twd
 
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl
@@ -572,9 +512,7 @@ class PortfolioCalculator:
                 daily_pnl_us_raw += total_daily_pnl
 
             try:
-                # Tag fallback from transactions on pnl_date (best-effort)
-                pnl_date_for_tag = pd.to_datetime(today).date()
-                sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date_for_tag)]
+                sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date)]
                 if (not h.get('tag')) and (not sym_txs.empty):
                     tags = sym_txs['Tag'].dropna()
                     if not tags.empty:
