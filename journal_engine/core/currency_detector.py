@@ -1,84 +1,60 @@
-"""
-CurrencyDetector - 货币自动识别器
-基于 Symbol 后缀自动检测交易标的的计价货币
-"""
-
-import logging
-
-logger = logging.getLogger(__name__)
-
+from ..config import Config
 
 class CurrencyDetector:
     """
-    基于 Symbol 的货币自动识别
-    - 无需数据库字段
-    - 无需手动配置
-    - 支持扩展
+    幣別識別器 (v14.0)
+    負責判定標的代碼所屬的幣別，並提供對應的匯率轉換係數。
     """
-    
-    # 货币规则映射（可扩展）
-    CURRENCY_RULES = {
-        'TWD': ['.TW', '.TWO'],  # 台湾证券交易所
-        'HKD': ['.HK', '.HKG'],  # 香港交易所
-        'CNY': ['.SS', '.SZ'],   # 上海/深圳交易所
-        'JPY': ['.T'],           # 东京证券交易所
-        'GBP': ['.L'],           # 伦敦证券交易所
-        'EUR': ['.PA', '.DE'],   # 巴黎/法兰克福交易所
-        'USD': []                # 默认（无后缀或其他）
-    }
-    
-    @classmethod
-    def detect(cls, symbol: str) -> str:
+
+    def __init__(self, base_currency: str = "TWD"):
         """
-        自动检测交易标的的货币
-        
-        示例：
-        - 'NVDA' → 'USD'
-        - '2330.TW' → 'TWD'
-        - '0700.HK' → 'HKD'
+        初始化識別器
+        Args:
+            base_currency: 系統基準幣別，預設為台幣 (TWD)
         """
-        symbol_upper = symbol.upper()
-        
-        for currency, suffixes in cls.CURRENCY_RULES.items():
-            if any(symbol_upper.endswith(suffix) for suffix in suffixes):
-                return currency
-        
-        # 默认 USD
-        return 'USD'
-    
-    @classmethod
-    def get_fx_multiplier(cls, symbol: str, fx_rate: float) -> float:
+        self.base_currency = base_currency
+
+    def is_base_currency(self, symbol: str) -> bool:
         """
-        获取汇率乘数
-        - 基准货币（TWD）→ 1.0
-        - 外币 → fx_rate
-        """
-        currency = cls.detect(symbol)
+        判斷標的是否為本幣資產 (台股)。
         
-        if currency == 'TWD':
+        判斷標準：
+        - Yahoo Finance 代碼後綴為 .TW (上市) 或 .TWO (上櫃)
+        """
+        if not symbol or not isinstance(symbol, str):
+            return False
+            
+        upper_sym = symbol.upper()
+        return upper_sym.endswith(".TW") or upper_sym.endswith(".TWO")
+
+    def detect(self, symbol: str) -> str:
+        """
+        識別並回傳標的的原始結算幣別。
+        
+        Returns:
+            "TWD" (台幣) 或 "USD" (美金)。目前預設非台股標的皆視為美金資產。
+        """
+        if self.is_base_currency(symbol):
+            return self.base_currency
+        return "USD"
+
+    def get_fx_multiplier(self, symbol: str, current_fx_rate: float) -> float:
+        """
+        獲取該標的計算市值與損益時所需的匯率乘數。
+        
+        邏輯：
+        - 若為台股：回傳 1.0 (台幣資產不需再乘匯率)
+        - 若為美股：回傳傳入的 USD/TWD 即時匯率
+        
+        Args:
+            symbol: 標的代碼
+            current_fx_rate: 當前系統抓取到的美金兌台幣匯率
+        """
+        if self.is_base_currency(symbol):
             return 1.0
-        elif currency == 'USD':
-            return fx_rate
-        else:
-            # 其他货币暂不支持，返回 1.0 并警告
-            logger.warning(f"Unsupported currency {currency} for {symbol}, using 1.0")
-            return 1.0
-    
-    @classmethod
-    def format_amount(cls, symbol: str, amount: float) -> str:
-        """格式化金额显示"""
-        currency = cls.detect(symbol)
         
-        if currency == 'TWD':
-            return f"NT${amount:,.0f}"
-        elif currency == 'USD':
-            return f"${amount:,.2f}"
-        elif currency == 'HKD':
-            return f"HK${amount:,.2f}"
-        else:
-            return f"{amount:,.2f} {currency}"
-    
-    @classmethod
-    def is_base_currency(cls, symbol: str) -> bool:
-        """检查是否为基准货币 (TWD)"""
-        return cls.detect(symbol) == 'TWD'
+        # 確保匯率為有效數值
+        if current_fx_rate is None or current_fx_rate <= 0:
+            return 1.0
+            
+        return current_fx_rate
