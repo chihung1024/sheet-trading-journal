@@ -2,6 +2,7 @@ import pandas as pd
 import yfinance as yf
 import concurrent.futures
 import pytz
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time
 from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
@@ -38,8 +39,13 @@ class MarketDataClient:
         初始化市場數據客戶端
         - market_data: 存儲所有股票的歷史價格數據 (EOD / daily bars)
         - fx_rates: 存儲匯率歷史數據（USD/TWD, daily series)
-        - realtime_quotes: 盤中/即時報價（不覆蓋日線收盤）
-        - realtime_fx_rate: [兼容舊版] 即時匯率（由 realtime_quotes[EXCHANGE_SYMBOL] 同步）
+        - realtime_quotes: 即時/延遲報價（不覆蓋日線收盤）
+        - realtime_fx_rate: [兼容 calculator] 即時匯率（由 realtime_quotes[EXCHANGE_SYMBOL] 同步）
+
+        NOTE:
+        - v2.58+: 支援 per-user atomic realtime quote（持倉 + benchmark + FX）
+          只要這組 required symbols 完整拿到「市場當日」的 P0，就使用該組 RT。
+          否則整位 user 回退使用 EOD，避免快照內部資料不一致。
         """
         self.market_data = {}
         self.fx_rates = pd.Series(dtype=float)
@@ -89,13 +95,27 @@ class MarketDataClient:
             return False
 
     def _should_use_realtime(self, symbol: str) -> bool:
-        """是否應使用即時報價（僅在該市場盤中）。"""
+        """是否應使用即時/延遲報價。
+
+        舊行為：嚴格僅在盤中。
+        新行為（配合 per-user atomic）：
+        - 只要 realtime_quotes 裡已經有該 symbol 的 quote，就允許 get_price/get_price_asof 嘗試使用。
+          具體是否採用仍由 q.market_date == target_date 決定。
+        - 若沒有 quote，則維持舊版「盤中」判斷。
+        """
         symbol = (symbol or '').upper()
+
+        # If already have a quote, allow using it even if not strictly "market hours".
+        if symbol in self.realtime_quotes:
+            return True
+
         if symbol == (EXCHANGE_SYMBOL or '').upper() or '=' in symbol:
-            # FX 視為跟著程式跑盤中刷新即可（不強制 24/5 判斷）
+            # FX: only try during TW or US market hours (background refresh)
             return self._is_taiwan_market_hours() or self._is_us_market_hours()
+
         if self._is_taiwan_stock(symbol):
             return self._is_taiwan_market_hours()
+
         return self._is_us_market_hours()
 
     def _market_tz_for_symbol(self, symbol: str):
@@ -107,16 +127,15 @@ class MarketDataClient:
         return pytz.timezone('America/New_York')
 
     def _fetch_single_realtime(self, symbol: str, market_tz) -> RealtimeQuote | None:
-        """逐檔查詢即時報價（用於 batch 失敗後的補救）。
+        """逐檔查詢即時/延遲報價（用於小量補救）。
 
-        多重降級策略：
-        1. fast_info (最快)
-        2. history(period='1d', interval='1m')
-        3. history(period='1d', interval='5m')
-        4. history(period='5d', interval='15m')
+        成功率/請求量優先：
+        1) fast_info
+        2) history(period='5d', interval='5m')
+        3) history(period='10d', interval='15m')
 
-        Note:
-        - 允許「稍微延遲」的盤中價（例如 15m），只要屬於市場當日即可。
+        NOTE:
+        - 刻意不使用 1m，降低 GitHub Actions 在 Yahoo/yfinance 上被限流的風險。
         """
         if not symbol:
             return None
@@ -127,7 +146,7 @@ class MarketDataClient:
         try:
             ticker = yf.Ticker(sym)
 
-            # 方法 1: fast_info
+            # 1) fast_info
             try:
                 info = ticker.fast_info
                 price = info.get('last_price') or info.get('regularMarketPrice') or info.get('regular_market_price')
@@ -142,35 +161,9 @@ class MarketDataClient:
             except Exception:
                 pass
 
-            # 方法 2: 1m history
+            # 2) 5m history
             try:
-                hist = ticker.history(period="1d", interval="1m", timeout=8)
-                if hist is not None and not hist.empty and 'Close' in hist.columns:
-                    closes = hist['Close'].dropna()
-                    if not closes.empty:
-                        last_price = float(closes.iloc[-1])
-                        last_ts = closes.index[-1]
-
-                        if getattr(last_ts, 'tzinfo', None) is None:
-                            last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
-                        else:
-                            last_ts = pd.Timestamp(last_ts)
-
-                        market_date = last_ts.tz_convert(market_tz).date()
-                        if market_date == today_market:
-                            return RealtimeQuote(
-                                symbol=sym,
-                                price=last_price,
-                                timestamp=last_ts,
-                                market_date=pd.Timestamp(today_market),
-                                source='single.history_1m'
-                            )
-            except Exception:
-                pass
-
-            # 方法 3: 5m history
-            try:
-                hist_5m = ticker.history(period="1d", interval="5m", timeout=8)
+                hist_5m = ticker.history(period="5d", interval="5m", timeout=10)
                 if hist_5m is not None and not hist_5m.empty and 'Close' in hist_5m.columns:
                     closes = hist_5m['Close'].dropna()
                     if not closes.empty:
@@ -194,9 +187,9 @@ class MarketDataClient:
             except Exception:
                 pass
 
-            # 方法 4: 15m history (更穩定/延遲可接受)
+            # 3) 15m history
             try:
-                hist_15m = ticker.history(period="5d", interval="15m", timeout=8)
+                hist_15m = ticker.history(period="10d", interval="15m", timeout=10)
                 if hist_15m is not None and not hist_15m.empty and 'Close' in hist_15m.columns:
                     closes = hist_15m['Close'].dropna()
                     if not closes.empty:
@@ -231,10 +224,10 @@ class MarketDataClient:
         symbols: list[str],
         market_tz,
         name: str = "Intraday Batch",
-        interval: str = "5m",
+        interval: str = "15m",
         period: str | None = None,
     ) -> dict[str, RealtimeQuote]:
-        """批量抓取盤中最後價，並只保留『市場當日』的最新價。
+        """批量抓取盤中/延遲最後價，並只保留『市場當日』的最新價。
 
         Note: 不覆蓋日線 EOD，只寫入 realtime_quotes。
         """
@@ -242,18 +235,16 @@ class MarketDataClient:
         if not symbols:
             return {}
 
-        interval = (interval or '5m').lower()
+        interval = (interval or '15m').lower()
 
         # Default periods tuned for stability (允許延遲)
         if period is None:
-            if interval == '1m':
-                period = '2d'
-            elif interval == '5m':
+            if interval == '5m':
                 period = '5d'
             elif interval == '15m':
                 period = '10d'
             else:
-                period = '5d'
+                period = '10d'
 
         def yf_intraday_func():
             return yf.download(
@@ -328,7 +319,7 @@ class MarketDataClient:
         return out
 
     def _fetch_intraday_prices_batch_multi(self, symbols: list[str], market_tz, name: str) -> dict[str, RealtimeQuote]:
-        """更穩健的 batch RT：先用較穩定的 5m/15m，必要時再嘗試 1m。
+        """穩健的 batch RT：先 15m 再 5m（避免 1m）。
 
         目標：降低失敗率與請求成本，允許延遲但要是「市場當日」的價格。
         """
@@ -337,9 +328,8 @@ class MarketDataClient:
             return {}
 
         plan = [
-            ('5m', '5d'),
             ('15m', '10d'),
-            ('1m', '2d'),
+            ('5m', '5d'),
         ]
 
         out: dict[str, RealtimeQuote] = {}
@@ -367,7 +357,7 @@ class MarketDataClient:
 
             # early stop when already good enough
             rate = len(out) / len(symbols) if symbols else 0
-            if rate >= 0.8:
+            if rate >= 0.85:
                 break
 
         return out
@@ -377,13 +367,12 @@ class MarketDataClient:
 
         Order:
         1) fast_info
-        2) history 1m (1d)
-        3) history 5m (5d)
-        4) history 15m (10d)
+        2) history 5m (5d)
+        3) history 15m (10d)
 
         Note:
         - 允許延遲（5m/15m），只要是台北當日即可。
-        - 僅用於 FX，避免對所有股票退回逐檔查詢。
+        - 刻意不使用 1m，降低被限流風險。
         """
         sym = (EXCHANGE_SYMBOL or '').upper()
         if not sym:
@@ -415,16 +404,15 @@ class MarketDataClient:
         except Exception:
             pass
 
-        # 2-4) intraday history with interval fallback
+        # 2-3) intraday history with interval fallback
         candidates = [
-            ("1d", "1m", "fx.history-1m"),
             ("5d", "5m", "fx.history-5m"),
             ("10d", "15m", "fx.history-15m"),
         ]
 
         for period, interval, src in candidates:
             try:
-                intraday = fx.history(period=period, interval=interval, timeout=10)
+                intraday = fx.history(period=period, interval=interval, timeout=12)
                 if intraday is not None and (not intraday.empty) and 'Close' in intraday.columns:
                     closes = intraday['Close'].dropna()
                     if closes.empty:
@@ -457,20 +445,12 @@ class MarketDataClient:
         return None
 
     def _fetch_taiwan_realtime_price(self, ticker_obj, symbol: str) -> float:
-        """[Deprecated] 專用於台股的即時報價獲取。
-
-        v2.56+ 已改用 _fetch_single_realtime() 統一處理。
-        保留此函式避免舊版本呼叫崩潰。
-        """
+        """[Deprecated]"""
         print(f"[{symbol}] 警告: _fetch_taiwan_realtime_price 已棄用，請使用 _fetch_single_realtime")
         return None
 
     def _upsert_daily_row_with_price(self, hist: pd.DataFrame, target_date: pd.Timestamp, latest_price: float, symbol: str) -> pd.DataFrame:
-        """[Deprecated] 舊版：將盤中價寫入日線 row。
-
-        v2.55 起改為「即時報價與日線收盤分離」：盤中價存入 realtime_quotes，不覆蓋 EOD。
-        保留此函式避免舊版本呼叫崩潰。
-        """
+        """[Deprecated]"""
         try:
             if hist is None or hist.empty:
                 return hist
@@ -498,19 +478,149 @@ class MarketDataClient:
             print(f"[{symbol}] ⚠️ upsert 日線資料失敗: {e}")
             return hist
 
-    def download_data(self, tickers: list, start_date):
-        """下載市場數據（股票價格 + 匯率）。"""
+    def fetch_realtime_quotes_atomic(self, required_symbols: list[str], label: str = "atomic", max_single_rescue: int = 6) -> tuple[bool, dict[str, RealtimeQuote], list[str]]:
+        """Per-user atomic realtime quote fetch.
+
+        Contract:
+        - If success: return (True, quotes, []) where quotes contains EVERY required symbol.
+        - If fail: return (False, partial_quotes, missing_symbols)
+
+        Notes:
+        - required_symbols should be small: holdings + benchmark + FX.
+        - This function validates quote belongs to market "today" (market tz).
+        - It uses low-request batch (15m -> 5m) and then limited single rescue.
+        """
+        required = [s.upper() for s in (required_symbols or []) if s]
+        required = sorted(list(dict.fromkeys(required)))
+        if not required:
+            return True, {}, []
+
+        tw_tz = pytz.timezone('Asia/Taipei')
+        us_tz = pytz.timezone('America/New_York')
+
+        tw_syms: list[str] = []
+        us_syms: list[str] = []
+
+        for s in required:
+            if s == (EXCHANGE_SYMBOL or '').upper() or '=' in s or self._is_taiwan_stock(s):
+                tw_syms.append(s)
+            else:
+                us_syms.append(s)
+
+        quotes: dict[str, RealtimeQuote] = {}
+
+        # Batch fetch
+        if tw_syms:
+            q = self._fetch_intraday_prices_batch_multi(tw_syms, tw_tz, name=f"{label} TW")
+            quotes.update(q)
+
+        if us_syms:
+            q = self._fetch_intraday_prices_batch_multi(us_syms, us_tz, name=f"{label} US")
+            for k, v in q.items():
+                old = quotes.get(k)
+                if (old is None) or (v.timestamp > old.timestamp):
+                    quotes[k] = v
+
+        missing = [s for s in required if s not in quotes]
+
+        # Limited single rescue (only for missing)
+        if missing and max_single_rescue > 0:
+            rescue_list = missing[:max_single_rescue]
+            for sym in rescue_list:
+                tz = tw_tz if (sym == (EXCHANGE_SYMBOL or '').upper() or '=' in sym or self._is_taiwan_stock(sym)) else us_tz
+                rt = self._fetch_single_realtime(sym, tz)
+                if rt:
+                    quotes[sym] = rt
+
+            missing = [s for s in required if s not in quotes]
+
+        # FX special fallback if still missing
+        fx_sym = (EXCHANGE_SYMBOL or '').upper()
+        if fx_sym and (fx_sym in required) and (fx_sym not in quotes):
+            fx_fb = self._fetch_fx_realtime_fallback()
+            if fx_fb and fx_fb.price and fx_fb.price > 0:
+                quotes[fx_sym] = fx_fb
+
+        missing = [s for s in required if s not in quotes]
+        ok = len(missing) == 0
+        return ok, quotes, missing
+
+    @contextmanager
+    def atomic_realtime_context(self, required_symbols: list[str], logger=None, label: str = "atomic"):
+        """Context manager to temporarily apply atomic realtime quotes.
+
+        Usage:
+            with market.atomic_realtime_context(required, logger=logger, label='user:xxx') as ok:
+                snapshot = calculator.run()
+
+        - If ok=False: no realtime quotes/fx are applied (pure EOD).
+        - If ok=True: self.realtime_quotes and self.realtime_fx_rate are temporarily overridden.
+        """
+        prev_quotes = dict(self.realtime_quotes)
+        prev_fx = self.realtime_fx_rate
+
+        def _log_info(msg):
+            if logger:
+                try:
+                    logger.info(msg)
+                    return
+                except Exception:
+                    pass
+            print(msg)
+
+        def _log_warn(msg):
+            if logger:
+                try:
+                    logger.warning(msg)
+                    return
+                except Exception:
+                    pass
+            print(msg)
+
+        ok, quotes, missing = self.fetch_realtime_quotes_atomic(required_symbols, label=label)
+
+        if ok:
+            self.realtime_quotes = dict(prev_quotes)
+            self.realtime_quotes.update(quotes)
+
+            fx_sym = (EXCHANGE_SYMBOL or '').upper()
+            fx_q = self.realtime_quotes.get(fx_sym) if fx_sym else None
+            if fx_q and fx_q.price and fx_q.price > 0:
+                self.realtime_fx_rate = self._normalize_twd_per_usd(fx_q.price)
+                _log_info(f"[{label}] ✅ atomic realtime ready: quotes={len(quotes)} fx={self.realtime_fx_rate:.4f} ({fx_q.source})")
+            else:
+                self.realtime_fx_rate = prev_fx
+                _log_info(f"[{label}] ✅ atomic realtime ready: quotes={len(quotes)} (no fx override)")
+        else:
+            self.realtime_fx_rate = prev_fx
+            _log_warn(f"[{label}] ⚠️ atomic realtime incomplete: missing={missing} => fallback to EOD")
+
+        try:
+            yield ok
+        finally:
+            self.realtime_quotes = prev_quotes
+            self.realtime_fx_rate = prev_fx
+
+    def download_data(self, tickers: list, start_date, enable_realtime: bool = True):
+        """下載市場數據（股票價格 + 匯率）。
+
+        - Always downloads EOD for all tickers.
+        - When enable_realtime=False: skip global realtime stage (use per-user atomic instead).
+        """
         print(f"正在下載市場數據，起始日期: {start_date}...")
 
         is_tw_trading = self._is_taiwan_market_hours()
         is_us_trading = self._is_us_market_hours()
 
-        if is_tw_trading:
-            print("✅ 目前為台股交易時間，將更新台股即時報價")
-        if is_us_trading:
-            print("✅ 目前為美股交易時間，將更新美股即時報價")
-        if (not is_tw_trading) and (not is_us_trading):
-            print("⚠️ 非台股/美股交易時間，將僅使用日線收盤資料")
+        if enable_realtime:
+            if is_tw_trading:
+                print("✅ 目前為台股交易時間，將更新台股即時報價")
+            if is_us_trading:
+                print("✅ 目前為美股交易時間，將更新美股即時報價")
+            if (not is_tw_trading) and (not is_us_trading):
+                print("⚠️ 非台股/美股交易時間，將僅使用日線收盤資料")
+        else:
+            print("⏭️ 已停用全域即時報價：將改由 per-user atomic realtime 取得（持倉 + benchmark + FX）。")
 
         # ==================== 1. 下載匯率日線（EOD） ====================
         try:
@@ -526,101 +636,101 @@ class MarketDataClient:
             print(f"[FX] 匯率下載嚴重錯誤: {e}")
             self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
 
-        # ==================== 2. 盤中即時報價（RT，不覆蓋日線） ====================
-        try:
-            all_tickers = list(set([t for t in (tickers or []) if t] + ['SPY']))
-            tw_symbols = [t for t in all_tickers if self._is_taiwan_stock((t or '').upper())]
-            us_symbols = [t for t in all_tickers if (t and not self._is_taiwan_stock((t or '').upper()))]
+        # ==================== 2. 全域即時報價（RT，不覆蓋日線） ====================
+        if enable_realtime:
+            try:
+                all_tickers = list(set([t for t in (tickers or []) if t] + ['SPY']))
+                tw_symbols = [t for t in all_tickers if self._is_taiwan_stock((t or '').upper())]
+                us_symbols = [t for t in all_tickers if (t and not self._is_taiwan_stock((t or '').upper()))]
 
-            # TW batch + multi-interval fallback
-            if is_tw_trading and tw_symbols:
-                tw_tz = pytz.timezone('Asia/Taipei')
-                target_symbols = list(set(tw_symbols))
-                print(f"[TW RT] 嘗試批量查詢 {len(target_symbols)} 檔標的...")
+                # TW batch + multi-interval fallback
+                if is_tw_trading and tw_symbols:
+                    tw_tz = pytz.timezone('Asia/Taipei')
+                    target_symbols = list(set(tw_symbols))
+                    print(f"[TW RT] 嘗試批量查詢 {len(target_symbols)} 檔標的...")
 
-                q_tw = self._fetch_intraday_prices_batch_multi(target_symbols, tw_tz, name='TW Batch')
-                success_rate = len(q_tw) / len(target_symbols) if target_symbols else 0
-                print(f"[TW RT] 批量查詢成功率: {success_rate:.1%} ({len(q_tw)}/{len(target_symbols)})")
+                    q_tw = self._fetch_intraday_prices_batch_multi(target_symbols, tw_tz, name='TW Batch')
+                    success_rate = len(q_tw) / len(target_symbols) if target_symbols else 0
+                    print(f"[TW RT] 批量查詢成功率: {success_rate:.1%} ({len(q_tw)}/{len(target_symbols)})")
 
-                for k, v in q_tw.items():
-                    self.realtime_quotes[k] = v
-
-                # 如果成功率仍偏低，才做少量逐檔補救（降低請求量）
-                if success_rate < 0.5:
-                    failed_symbols = set(s.upper() for s in target_symbols) - set(q_tw.keys())
-                    if failed_symbols:
-                        retry_symbols = list(failed_symbols)[:10]  # 限制補救數量
-                        print(f"[TW RT] 對 {len(retry_symbols)} 檔失敗標的進行逐檔補救...")
-                        retry_count = 0
-                        for sym in retry_symbols:
-                            rt = self._fetch_single_realtime(sym, tw_tz)
-                            if rt:
-                                self.realtime_quotes[sym] = rt
-                                retry_count += 1
-                        print(f"[TW RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
-
-            # US batch + multi-interval fallback
-            if is_us_trading and us_symbols:
-                us_tz = pytz.timezone('America/New_York')
-                target_symbols = list(set(us_symbols))
-                print(f"[US RT] 嘗試批量查詢 {len(target_symbols)} 檔標的...")
-
-                q_us = self._fetch_intraday_prices_batch_multi(target_symbols, us_tz, name='US Batch')
-                success_rate = len(q_us) / len(target_symbols) if target_symbols else 0
-                print(f"[US RT] 批量查詢成功率: {success_rate:.1%} ({len(q_us)}/{len(target_symbols)})")
-
-                for k, v in q_us.items():
-                    old = self.realtime_quotes.get(k)
-                    if (old is None) or (v.timestamp > old.timestamp):
+                    for k, v in q_tw.items():
                         self.realtime_quotes[k] = v
 
-                if success_rate < 0.5:
-                    failed_symbols = set(s.upper() for s in target_symbols) - set(q_us.keys())
-                    failed_symbols = failed_symbols - set(self.realtime_quotes.keys())
+                    # 如果成功率仍偏低，才做少量逐檔補救（降低請求量）
+                    if success_rate < 0.5:
+                        failed_symbols = set(s.upper() for s in target_symbols) - set(q_tw.keys())
+                        if failed_symbols:
+                            retry_symbols = list(failed_symbols)[:8]  # 限制補救數量
+                            print(f"[TW RT] 對 {len(retry_symbols)} 檔失敗標的進行逐檔補救...")
+                            retry_count = 0
+                            for sym in retry_symbols:
+                                rt = self._fetch_single_realtime(sym, tw_tz)
+                                if rt:
+                                    self.realtime_quotes[sym] = rt
+                                    retry_count += 1
+                            print(f"[TW RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
 
-                    if failed_symbols:
-                        retry_symbols = list(failed_symbols)[:10]
-                        print(f"[US RT] 對 {len(retry_symbols)} 檔失敗標的進行逐檔補救...")
-                        retry_count = 0
-                        for sym in retry_symbols:
-                            rt = self._fetch_single_realtime(sym, us_tz)
-                            if rt:
-                                self.realtime_quotes[sym] = rt
-                                retry_count += 1
-                        print(f"[US RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
+                # US batch + multi-interval fallback
+                if is_us_trading and us_symbols:
+                    us_tz = pytz.timezone('America/New_York')
+                    target_symbols = list(set(us_symbols))
+                    print(f"[US RT] 嘗試批量查詢 {len(target_symbols)} 檔標的...")
 
-            # RT summary log
-            try:
-                keys = sorted(list(self.realtime_quotes.keys()))
-                preview = ', '.join(keys[:10])
-                more = f" (+{len(keys) - 10} more)" if len(keys) > 10 else ""
-                print(f"[RT] ✅ realtime_quotes={len(keys)} symbols: {preview}{more}")
-            except Exception:
-                print(f"[RT] ✅ realtime_quotes={len(self.realtime_quotes)}")
+                    q_us = self._fetch_intraday_prices_batch_multi(target_symbols, us_tz, name='US Batch')
+                    success_rate = len(q_us) / len(target_symbols) if target_symbols else 0
+                    print(f"[US RT] 批量查詢成功率: {success_rate:.1%} ({len(q_us)}/{len(target_symbols)})")
 
-            # FX fallback + 同步 realtime_fx_rate（兼容 calculator 舊用法）
-            fx_sym = (EXCHANGE_SYMBOL or '').upper()
-            fx_q = self.realtime_quotes.get(fx_sym)
+                    for k, v in q_us.items():
+                        old = self.realtime_quotes.get(k)
+                        if (old is None) or (v.timestamp > old.timestamp):
+                            self.realtime_quotes[k] = v
 
-            # 只要程式在盤中跑（TW 或 US），就盡力抓到「當天」匯率（允許延遲）
-            if (fx_q is None) and (is_tw_trading or is_us_trading):
-                fx_fb = self._fetch_fx_realtime_fallback()
-                if fx_fb and fx_fb.price and fx_fb.price > 0:
-                    self.realtime_quotes[fx_sym] = fx_fb
-                    fx_q = fx_fb
-                    print(f"[FX] ✅ 即時匯率 fallback 成功: source={fx_fb.source}")
+                    if success_rate < 0.5:
+                        failed_symbols = set(s.upper() for s in target_symbols) - set(q_us.keys())
+                        failed_symbols = failed_symbols - set(self.realtime_quotes.keys())
 
-            if fx_q and fx_q.price and fx_q.price > 0:
-                self.realtime_fx_rate = self._normalize_twd_per_usd(fx_q.price)
-                ts = fx_q.timestamp
-                ts_str = str(ts) if ts is not None else "unknown"
-                print(f"[FX] ✅ 已獲取即時匯率: {self.realtime_fx_rate:.4f} (source={fx_q.source}, ts={ts_str})")
-            else:
-                self.realtime_fx_rate = None
-                print("[FX] ⚠️ 無法獲取即時匯率，後續計算將依賴歷史收盤")
+                        if failed_symbols:
+                            retry_symbols = list(failed_symbols)[:8]
+                            print(f"[US RT] 對 {len(retry_symbols)} 檔失敗標的進行逐檔補救...")
+                            retry_count = 0
+                            for sym in retry_symbols:
+                                rt = self._fetch_single_realtime(sym, us_tz)
+                                if rt:
+                                    self.realtime_quotes[sym] = rt
+                                    retry_count += 1
+                            print(f"[US RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
 
-        except Exception as e:
-            print(f"[RT] ⚠️ 即時報價批量抓取失敗: {e}")
+                # RT summary log
+                try:
+                    keys = sorted(list(self.realtime_quotes.keys()))
+                    preview = ', '.join(keys[:10])
+                    more = f" (+{len(keys) - 10} more)" if len(keys) > 10 else ""
+                    print(f"[RT] ✅ realtime_quotes={len(keys)} symbols: {preview}{more}")
+                except Exception:
+                    print(f"[RT] ✅ realtime_quotes={len(self.realtime_quotes)}")
+
+                # FX fallback + 同步 realtime_fx_rate
+                fx_sym = (EXCHANGE_SYMBOL or '').upper()
+                fx_q = self.realtime_quotes.get(fx_sym)
+
+                if (fx_q is None) and (is_tw_trading or is_us_trading):
+                    fx_fb = self._fetch_fx_realtime_fallback()
+                    if fx_fb and fx_fb.price and fx_fb.price > 0:
+                        self.realtime_quotes[fx_sym] = fx_fb
+                        fx_q = fx_fb
+                        print(f"[FX] ✅ 即時匯率 fallback 成功: source={fx_fb.source}")
+
+                if fx_q and fx_q.price and fx_q.price > 0:
+                    self.realtime_fx_rate = self._normalize_twd_per_usd(fx_q.price)
+                    ts = fx_q.timestamp
+                    ts_str = str(ts) if ts is not None else "unknown"
+                    print(f"[FX] ✅ 已獲取即時匯率: {self.realtime_fx_rate:.4f} (source={fx_q.source}, ts={ts_str})")
+                else:
+                    self.realtime_fx_rate = None
+                    print("[FX] ⚠️ 無法獲取即時匯率，後續計算將依賴歷史收盤")
+
+            except Exception as e:
+                print(f"[RT] ⚠️ 即時報價批量抓取失敗: {e}")
 
         # ==================== 3. 下載個股日線（EOD / daily bars） ====================
         all_tickers = list(set([t for t in (tickers or []) if t] + ['SPY']))
@@ -689,7 +799,7 @@ class MarketDataClient:
     def get_price(self, symbol, date):
         """取得指定日期的估值價格。
 
-        - 盤中（該市場開盤且 date 為市場當日）：優先回傳 realtime_quotes
+        - 若該 date == quote.market_date，且 realtime_quotes 有該 symbol：優先回傳 quote.price
         - 其他情境：回傳日線收盤（Close_Adjusted）並 pad
         """
         if not symbol:
@@ -729,7 +839,7 @@ class MarketDataClient:
     def get_price_asof(self, symbol, date):
         """取得指定日期的價格，並回傳實際使用的交易日 (as-of/pad)。
 
-        - 若該市場盤中且有 realtime quote（且 quote date == date）：回 (RT price, date)
+        - 若有 realtime quote（且 quote date == date）：回 (RT price, date)
         - 否則回 (EOD close, used_trading_date)
         """
         dt = pd.to_datetime(date).tz_localize(None).normalize()
@@ -772,7 +882,7 @@ class MarketDataClient:
         """回傳 used_date 的上一個可用交易日 (依該標的資料 index)。
 
         Important:
-        - 若 used_date 不在 index（常見：盤中使用 today + realtime quote），上一交易日應為 pad 後的那一天（昨日收盤）。
+        - 若 used_date 不在 index（常見：atomic realtime 用 today），上一交易日應為 pad 後的那一天（昨日收盤）。
         - 若 used_date 在 index，才回傳 index 的前一格。
         """
         try:
