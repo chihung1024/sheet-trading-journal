@@ -107,22 +107,26 @@ class MarketDataClient:
         return pytz.timezone('America/New_York')
 
     def _fetch_single_realtime(self, symbol: str, market_tz) -> RealtimeQuote | None:
-        """逐檔查詢即時報價（用於批量失敗後的補救）。
-        
+        """逐檔查詢即時報價（用於 batch 失敗後的補救）。
+
         多重降級策略：
         1. fast_info (最快)
         2. history(period='1d', interval='1m')
         3. history(period='1d', interval='5m')
+        4. history(period='5d', interval='15m')
+
+        Note:
+        - 允許「稍微延遲」的盤中價（例如 15m），只要屬於市場當日即可。
         """
         if not symbol:
             return None
-            
+
         sym = symbol.upper()
         today_market = datetime.now(market_tz).date()
-        
+
         try:
             ticker = yf.Ticker(sym)
-            
+
             # 方法 1: fast_info
             try:
                 info = ticker.fast_info
@@ -137,23 +141,21 @@ class MarketDataClient:
                     )
             except Exception:
                 pass
-            
+
             # 方法 2: 1m history
             try:
-                hist = ticker.history(period="1d", interval="1m", timeout=5)
+                hist = ticker.history(period="1d", interval="1m", timeout=8)
                 if hist is not None and not hist.empty and 'Close' in hist.columns:
                     closes = hist['Close'].dropna()
                     if not closes.empty:
                         last_price = float(closes.iloc[-1])
                         last_ts = closes.index[-1]
-                        
-                        # 確保時區
+
                         if getattr(last_ts, 'tzinfo', None) is None:
                             last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
                         else:
                             last_ts = pd.Timestamp(last_ts)
-                        
-                        # 驗證是今天的數據
+
                         market_date = last_ts.tz_convert(market_tz).date()
                         if market_date == today_market:
                             return RealtimeQuote(
@@ -165,21 +167,21 @@ class MarketDataClient:
                             )
             except Exception:
                 pass
-            
-            # 方法 3: 5m history (最後的嘗試)
+
+            # 方法 3: 5m history
             try:
-                hist_5m = ticker.history(period="1d", interval="5m", timeout=5)
+                hist_5m = ticker.history(period="1d", interval="5m", timeout=8)
                 if hist_5m is not None and not hist_5m.empty and 'Close' in hist_5m.columns:
                     closes = hist_5m['Close'].dropna()
                     if not closes.empty:
                         last_price = float(closes.iloc[-1])
                         last_ts = closes.index[-1]
-                        
+
                         if getattr(last_ts, 'tzinfo', None) is None:
                             last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
                         else:
                             last_ts = pd.Timestamp(last_ts)
-                        
+
                         market_date = last_ts.tz_convert(market_tz).date()
                         if market_date == today_market:
                             return RealtimeQuote(
@@ -191,15 +193,48 @@ class MarketDataClient:
                             )
             except Exception:
                 pass
-            
+
+            # 方法 4: 15m history (更穩定/延遲可接受)
+            try:
+                hist_15m = ticker.history(period="5d", interval="15m", timeout=8)
+                if hist_15m is not None and not hist_15m.empty and 'Close' in hist_15m.columns:
+                    closes = hist_15m['Close'].dropna()
+                    if not closes.empty:
+                        last_price = float(closes.iloc[-1])
+                        last_ts = closes.index[-1]
+
+                        if getattr(last_ts, 'tzinfo', None) is None:
+                            last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
+                        else:
+                            last_ts = pd.Timestamp(last_ts)
+
+                        market_date = last_ts.tz_convert(market_tz).date()
+                        if market_date == today_market:
+                            return RealtimeQuote(
+                                symbol=sym,
+                                price=last_price,
+                                timestamp=last_ts,
+                                market_date=pd.Timestamp(today_market),
+                                source='single.history_15m'
+                            )
+            except Exception:
+                pass
+
             return None
-            
+
         except Exception as e:
             print(f"[{sym}] 逐檔查詢失敗: {e}")
             return None
 
-    def _fetch_intraday_prices_batch(self, symbols: list[str], market_tz, name: str = "Intraday Batch") -> dict[str, RealtimeQuote]:
-        """批量抓取盤中最後價（1m），並只保留『市場當日』的最新價。
+    def _fetch_intraday_prices_batch(
+        self,
+        symbols: list[str],
+        market_tz,
+        name: str = "Intraday Batch",
+        interval: str = "5m",
+        period: str | None = None,
+    ) -> dict[str, RealtimeQuote]:
+        """批量抓取盤中最後價，並只保留『市場當日』的最新價。
 
         Note: 不覆蓋日線 EOD，只寫入 realtime_quotes。
         """
@@ -207,11 +242,24 @@ class MarketDataClient:
         if not symbols:
             return {}
 
+        interval = (interval or '5m').lower()
+
+        # Default periods tuned for stability (允許延遲)
+        if period is None:
+            if interval == '1m':
+                period = '2d'
+            elif interval == '5m':
+                period = '5d'
+            elif interval == '15m':
+                period = '10d'
+            else:
+                period = '5d'
+
         def yf_intraday_func():
             return yf.download(
                 tickers=symbols,
-                period="2d",
-                interval="1m",
+                period=period,
+                interval=interval,
                 progress=False,
                 auto_adjust=False,
                 back_adjust=False,
@@ -225,7 +273,7 @@ class MarketDataClient:
             return {}
 
         if data is None or data.empty:
-            print(f"[{name}] ⚠️ yfinance 沒有回傳任何盤中數據")
+            print(f"[{name}] ⚠️ yfinance 沒有回傳任何盤中數據 (interval={interval}, period={period})")
             return {}
 
         # yfinance commonly returns MultiIndex columns: (Field, Ticker)
@@ -259,7 +307,6 @@ class MarketDataClient:
 
                 # Ensure tz-aware timestamp
                 if getattr(last_ts, 'tzinfo', None) is None:
-                    # yfinance sometimes returns naive; assume UTC as safest
                     last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
                 else:
                     last_ts = pd.Timestamp(last_ts)
@@ -273,22 +320,70 @@ class MarketDataClient:
                     price=last_price,
                     timestamp=last_ts,
                     market_date=pd.Timestamp(market_date),
-                    source='yf.download-1m',
+                    source=f'yf.download-{interval}',
                 )
             except Exception:
                 continue
 
         return out
 
+    def _fetch_intraday_prices_batch_multi(self, symbols: list[str], market_tz, name: str) -> dict[str, RealtimeQuote]:
+        """更穩健的 batch RT：先用較穩定的 5m/15m，必要時再嘗試 1m。
+
+        目標：降低失敗率與請求成本，允許延遲但要是「市場當日」的價格。
+        """
+        symbols = [s for s in (symbols or []) if s]
+        if not symbols:
+            return {}
+
+        plan = [
+            ('5m', '5d'),
+            ('15m', '10d'),
+            ('1m', '2d'),
+        ]
+
+        out: dict[str, RealtimeQuote] = {}
+        remaining = [s.upper() for s in symbols]
+
+        for interval, period in plan:
+            if not remaining:
+                break
+
+            q = self._fetch_intraday_prices_batch(
+                remaining,
+                market_tz,
+                name=f"{name} ({interval})",
+                interval=interval,
+                period=period,
+            )
+
+            # merge
+            for k, v in q.items():
+                old = out.get(k)
+                if (old is None) or (v.timestamp > old.timestamp):
+                    out[k] = v
+
+            remaining = [s for s in remaining if s not in out]
+
+            # early stop when already good enough
+            rate = len(out) / len(symbols) if symbols else 0
+            if rate >= 0.8:
+                break
+
+        return out
+
     def _fetch_fx_realtime_fallback(self) -> RealtimeQuote | None:
-        """FX 專用 fallback：當 batch 取不到 EXCHANGE_SYMBOL 時，單獨以更高成功率方式嘗試。
+        """FX 專用 fallback：以較高成功率方式嘗試取得「當天」匯率。
 
         Order:
         1) fast_info
-        2) history(period=1d, interval=1m)
+        2) history 1m (1d)
+        3) history 5m (5d)
+        4) history 15m (10d)
 
         Note:
-        - 僅用於 FX；避免對所有股票退回逐檔查詢。
+        - 允許延遲（5m/15m），只要是台北當日即可。
+        - 僅用於 FX，避免對所有股票退回逐檔查詢。
         """
         sym = (EXCHANGE_SYMBOL or '').upper()
         if not sym:
@@ -296,7 +391,7 @@ class MarketDataClient:
 
         taipei_tz = pytz.timezone('Asia/Taipei')
         now_utc = pd.Timestamp.now(tz='UTC')
-        today_tw = pd.Timestamp(datetime.now(taipei_tz).date())
+        today_tw_date = datetime.now(taipei_tz).date()
 
         try:
             fx = yf.Ticker(sym)
@@ -314,34 +409,50 @@ class MarketDataClient:
                         symbol=sym,
                         price=float(p),
                         timestamp=now_utc,
-                        market_date=today_tw,
+                        market_date=pd.Timestamp(today_tw_date),
                         source='fx.fast_info',
                     )
         except Exception:
             pass
 
-        # 2) 1m history
-        try:
-            intraday = fx.history(period="1d", interval="1m")
-            if intraday is not None and (not intraday.empty) and 'Close' in intraday.columns:
-                closes = intraday['Close'].dropna()
-                if not closes.empty:
+        # 2-4) intraday history with interval fallback
+        candidates = [
+            ("1d", "1m", "fx.history-1m"),
+            ("5d", "5m", "fx.history-5m"),
+            ("10d", "15m", "fx.history-15m"),
+        ]
+
+        for period, interval, src in candidates:
+            try:
+                intraday = fx.history(period=period, interval=interval, timeout=10)
+                if intraday is not None and (not intraday.empty) and 'Close' in intraday.columns:
+                    closes = intraday['Close'].dropna()
+                    if closes.empty:
+                        continue
+
                     last_price = self._normalize_twd_per_usd(float(closes.iloc[-1]))
                     last_ts = closes.index[-1]
+
                     if getattr(last_ts, 'tzinfo', None) is None:
                         last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
                     else:
                         last_ts = pd.Timestamp(last_ts)
+
+                    # Use Taipei date to decide "today"
                     market_date = last_ts.tz_convert(taipei_tz).date()
-                    return RealtimeQuote(
-                        symbol=sym,
-                        price=float(last_price),
-                        timestamp=last_ts,
-                        market_date=pd.Timestamp(market_date),
-                        source='fx.history-1m',
-                    )
-        except Exception:
-            pass
+                    if market_date != today_tw_date:
+                        continue
+
+                    if last_price and last_price > 0:
+                        return RealtimeQuote(
+                            symbol=sym,
+                            price=float(last_price),
+                            timestamp=last_ts,
+                            market_date=pd.Timestamp(market_date),
+                            source=src,
+                        )
+            except Exception:
+                continue
 
         return None
 
@@ -421,80 +532,61 @@ class MarketDataClient:
             tw_symbols = [t for t in all_tickers if self._is_taiwan_stock((t or '').upper())]
             us_symbols = [t for t in all_tickers if (t and not self._is_taiwan_stock((t or '').upper()))]
 
-            # FX quote：只要程式在盤中跑（TW 或 US），就一起抓一份 RT
-            fx_symbols = [EXCHANGE_SYMBOL] if (is_tw_trading or is_us_trading) else []
-
-            # TW batch + fallback
-            if is_tw_trading and (tw_symbols or fx_symbols):
+            # TW batch + multi-interval fallback
+            if is_tw_trading and tw_symbols:
                 tw_tz = pytz.timezone('Asia/Taipei')
-                target_symbols = list(set(tw_symbols + fx_symbols))
+                target_symbols = list(set(tw_symbols))
                 print(f"[TW RT] 嘗試批量查詢 {len(target_symbols)} 檔標的...")
-                
-                q_tw = self._fetch_intraday_prices_batch(target_symbols, tw_tz, name='TW Batch')
-                
-                # 計算成功率
+
+                q_tw = self._fetch_intraday_prices_batch_multi(target_symbols, tw_tz, name='TW Batch')
                 success_rate = len(q_tw) / len(target_symbols) if target_symbols else 0
                 print(f"[TW RT] 批量查詢成功率: {success_rate:.1%} ({len(q_tw)}/{len(target_symbols)})")
-                
-                # 更新已成功的
+
                 for k, v in q_tw.items():
                     self.realtime_quotes[k] = v
-                
-                # 如果成功率 < 50%，對失敗的標的進行逐檔補救
+
+                # 如果成功率仍偏低，才做少量逐檔補救（降低請求量）
                 if success_rate < 0.5:
                     failed_symbols = set(s.upper() for s in target_symbols) - set(q_tw.keys())
                     if failed_symbols:
-                        print(f"[TW RT] 批量成功率過低，對 {len(failed_symbols)} 檔失敗標的進行逐檔補救...")
-                        
-                        # 限制最多補救 15 檔，避免超時
-                        retry_symbols = list(failed_symbols)[:15]
+                        retry_symbols = list(failed_symbols)[:10]  # 限制補救數量
+                        print(f"[TW RT] 對 {len(retry_symbols)} 檔失敗標的進行逐檔補救...")
                         retry_count = 0
-                        
                         for sym in retry_symbols:
                             rt = self._fetch_single_realtime(sym, tw_tz)
                             if rt:
                                 self.realtime_quotes[sym] = rt
                                 retry_count += 1
-                        
                         print(f"[TW RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
 
-            # US batch + fallback
-            if is_us_trading and (us_symbols or fx_symbols):
+            # US batch + multi-interval fallback
+            if is_us_trading and us_symbols:
                 us_tz = pytz.timezone('America/New_York')
-                target_symbols = list(set(us_symbols + fx_symbols))
+                target_symbols = list(set(us_symbols))
                 print(f"[US RT] 嘗試批量查詢 {len(target_symbols)} 檔標的...")
-                
-                q_us = self._fetch_intraday_prices_batch(target_symbols, us_tz, name='US Batch')
-                
-                # 計算成功率
+
+                q_us = self._fetch_intraday_prices_batch_multi(target_symbols, us_tz, name='US Batch')
                 success_rate = len(q_us) / len(target_symbols) if target_symbols else 0
                 print(f"[US RT] 批量查詢成功率: {success_rate:.1%} ({len(q_us)}/{len(target_symbols)})")
-                
-                # FX 可能在兩邊都抓到，取 timestamp 較新的
+
                 for k, v in q_us.items():
                     old = self.realtime_quotes.get(k)
                     if (old is None) or (v.timestamp > old.timestamp):
                         self.realtime_quotes[k] = v
-                
-                # 如果成功率 < 50%，對失敗的標的進行逐檔補救
+
                 if success_rate < 0.5:
                     failed_symbols = set(s.upper() for s in target_symbols) - set(q_us.keys())
-                    # 排除已經在 TW 補救過的
                     failed_symbols = failed_symbols - set(self.realtime_quotes.keys())
-                    
+
                     if failed_symbols:
-                        print(f"[US RT] 批量成功率過低，對 {len(failed_symbols)} 檔失敗標的進行逐檔補救...")
-                        
-                        # 限制最多補救 15 檔
-                        retry_symbols = list(failed_symbols)[:15]
+                        retry_symbols = list(failed_symbols)[:10]
+                        print(f"[US RT] 對 {len(retry_symbols)} 檔失敗標的進行逐檔補救...")
                         retry_count = 0
-                        
                         for sym in retry_symbols:
                             rt = self._fetch_single_realtime(sym, us_tz)
                             if rt:
                                 self.realtime_quotes[sym] = rt
                                 retry_count += 1
-                        
                         print(f"[US RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
 
             # RT summary log
@@ -509,6 +601,8 @@ class MarketDataClient:
             # FX fallback + 同步 realtime_fx_rate（兼容 calculator 舊用法）
             fx_sym = (EXCHANGE_SYMBOL or '').upper()
             fx_q = self.realtime_quotes.get(fx_sym)
+
+            # 只要程式在盤中跑（TW 或 US），就盡力抓到「當天」匯率（允許延遲）
             if (fx_q is None) and (is_tw_trading or is_us_trading):
                 fx_fb = self._fetch_fx_realtime_fallback()
                 if fx_fb and fx_fb.price and fx_fb.price > 0:
@@ -548,7 +642,8 @@ class MarketDataClient:
                 print(f"[{t}] 下載錯誤: {e}")
                 return t, None
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        # 降低平行度以減少對資料源的壓力，提高成功率
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             future_to_ticker = {executor.submit(fetch_single_ticker, t): t for t in all_tickers}
             for future in concurrent.futures.as_completed(future_to_ticker):
                 result = future.result()
