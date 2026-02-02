@@ -295,7 +295,7 @@ class MarketDataClient:
             return None
 
         taipei_tz = pytz.timezone('Asia/Taipei')
-        now_utc = pd.Timestamp.utcnow().tz_localize('UTC')
+        now_utc = pd.Timestamp.now(tz='UTC')
         today_tw = pd.Timestamp(datetime.now(taipei_tz).date())
 
         try:
@@ -497,33 +497,40 @@ class MarketDataClient:
                         
                         print(f"[US RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
 
-            # RT summary log
+            # FX fallback + 同步 realtime_fx_rate（兼容 calculator 舊用法）
+            try:
+                fx_sym = (EXCHANGE_SYMBOL or '').upper()
+                fx_q = self.realtime_quotes.get(fx_sym)
+                if (fx_q is None) and (is_tw_trading or is_us_trading):
+                    fx_fb = self._fetch_fx_realtime_fallback()
+                    if fx_fb and fx_fb.price and fx_fb.price > 0:
+                        self.realtime_quotes[fx_sym] = fx_fb
+                        fx_q = fx_fb
+                        print(f"[FX] ✅ 即時匯率 fallback 成功: source={fx_fb.source}")
+
+                if fx_q and fx_q.price and fx_q.price > 0:
+                    self.realtime_fx_rate = self._normalize_twd_per_usd(fx_q.price)
+                    ts = fx_q.timestamp
+                    ts_str = str(ts) if ts is not None else "unknown"
+                    print(f"[FX] ✅ 已獲取即時匯率: {self.realtime_fx_rate:.4f} (source={fx_q.source}, ts={ts_str})")
+                else:
+                    self.realtime_fx_rate = None
+                    print("[FX] ⚠️ 無法獲取即時匯率，後續計算將依賴歷史收盤")
+            except Exception as e:
+                self.realtime_fx_rate = None
+                print(f"[FX] ⚠️ FX realtime fallback error: {e}")
+
+            # RT summary log (Moved to end for clarity)
             try:
                 keys = sorted(list(self.realtime_quotes.keys()))
-                preview = ', '.join(keys[:10])
-                more = f" (+{len(keys) - 10} more)" if len(keys) > 10 else ""
-                print(f"[RT] ✅ realtime_quotes={len(keys)} symbols: {preview}{more}")
+                if keys:
+                    preview = ', '.join(keys[:10])
+                    more = f" (+{len(keys) - 10} more)" if len(keys) > 10 else ""
+                    print(f"[RT] ✅ realtime_quotes={len(keys)} symbols: {preview}{more}")
+                else:
+                    print("[RT] ✅ realtime_quotes=0 symbols")
             except Exception:
                 print(f"[RT] ✅ realtime_quotes={len(self.realtime_quotes)}")
-
-            # FX fallback + 同步 realtime_fx_rate（兼容 calculator 舊用法）
-            fx_sym = (EXCHANGE_SYMBOL or '').upper()
-            fx_q = self.realtime_quotes.get(fx_sym)
-            if (fx_q is None) and (is_tw_trading or is_us_trading):
-                fx_fb = self._fetch_fx_realtime_fallback()
-                if fx_fb and fx_fb.price and fx_fb.price > 0:
-                    self.realtime_quotes[fx_sym] = fx_fb
-                    fx_q = fx_fb
-                    print(f"[FX] ✅ 即時匯率 fallback 成功: source={fx_fb.source}")
-
-            if fx_q and fx_q.price and fx_q.price > 0:
-                self.realtime_fx_rate = self._normalize_twd_per_usd(fx_q.price)
-                ts = fx_q.timestamp
-                ts_str = str(ts) if ts is not None else "unknown"
-                print(f"[FX] ✅ 已獲取即時匯率: {self.realtime_fx_rate:.4f} (source={fx_q.source}, ts={ts_str})")
-            else:
-                self.realtime_fx_rate = None
-                print("[FX] ⚠️ 無法獲取即時匯率，後續計算將依賴歷史收盤")
 
         except Exception as e:
             print(f"[RT] ⚠️ 即時報價批量抓取失敗: {e}")
@@ -545,194 +552,4 @@ class MarketDataClient:
                 return t, None
 
             except Exception as e:
-                print(f"[{t}] 下載錯誤: {e}")
-                return t, None
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_ticker = {executor.submit(fetch_single_ticker, t): t for t in all_tickers}
-            for future in concurrent.futures.as_completed(future_to_ticker):
-                result = future.result()
-                if result:
-                    ticker, data = result
-                    if data is not None:
-                        self.market_data[ticker] = data
-                        print(f"[{ticker}] 下載成功")
-
-        return self.market_data, self.fx_rates
-
-    def _prepare_data(self, symbol, df):
-        """準備股票數據（方案 A）：
-
-        - 估值價格一律使用 Close（split-adjusted price return）。
-        - 配息不做價格復權，配息效果由 DIV 記錄或市場配息偵測入帳。
-        """
-        df = df.copy()
-
-        selector = AutoPriceSelector(symbol, df)
-        df['Close_Adjusted'] = selector.get_adjusted_price_series()
-
-        metadata = selector.get_metadata()
-        print(f"[{symbol}] 價格來源: {metadata['price_source']} - {metadata['selection_reason']}")
-
-        df['Close_Raw'] = df['Close'] if 'Close' in df.columns else df.get('Close_Adjusted')
-
-        # ==================== 計算累積拆股因子 ====================
-        if 'Stock Splits' not in df.columns:
-            df['Stock Splits'] = 0.0
-
-        splits = df['Stock Splits'].replace(0, 1.0)
-        splits_reversed = splits.iloc[::-1]
-        cum_splits_reversed = splits_reversed.cumprod()
-        cum_splits = cum_splits_reversed.iloc[::-1]
-        df['Split_Factor'] = cum_splits.shift(-1).fillna(1.0)
-
-        # ==================== 方案 A：不做配息價格復權 ====================
-        df['Dividend_Adj_Factor'] = 1.0
-
-        return df
-
-    def get_price(self, symbol, date):
-        """取得指定日期的估值價格。
-
-        - 盤中（該市場開盤且 date 為市場當日）：優先回傳 realtime_quotes
-        - 其他情境：回傳日線收盤（Close_Adjusted）並 pad
-        """
-        if not symbol:
-            return 0.0
-
-        sym = symbol.upper()
-        dt = pd.to_datetime(date).tz_localize(None).normalize()
-
-        # Realtime path
-        try:
-            if self._should_use_realtime(sym):
-                q = self.realtime_quotes.get(sym)
-                if q and q.market_date is not None:
-                    qd = pd.to_datetime(q.market_date).tz_localize(None).normalize()
-                    if q.price and q.price > 0 and qd == dt:
-                        return float(q.price)
-        except Exception:
-            pass
-
-        # EOD path
-        if sym not in self.market_data:
-            return 0.0
-
-        try:
-            df = self.market_data[sym]
-            if dt in df.index:
-                return float(df.loc[dt, 'Close_Adjusted'])
-
-            idx = df.index.get_indexer([dt], method='pad')[0]
-            if idx != -1:
-                return float(df.iloc[idx]['Close_Adjusted'])
-
-            return 0.0
-        except Exception:
-            return 0.0
-
-    def get_price_asof(self, symbol, date):
-        """取得指定日期的價格，並回傳實際使用的交易日 (as-of/pad)。
-
-        - 若該市場盤中且有 realtime quote（且 quote date == date）：回 (RT price, date)
-        - 否則回 (EOD close, used_trading_date)
-        """
-        dt = pd.to_datetime(date).tz_localize(None).normalize()
-        if not symbol:
-            return 0.0, dt
-
-        sym = symbol.upper()
-
-        # Realtime path
-        try:
-            if self._should_use_realtime(sym):
-                q = self.realtime_quotes.get(sym)
-                if q and q.market_date is not None:
-                    qd = pd.to_datetime(q.market_date).tz_localize(None).normalize()
-                    if q.price and q.price > 0 and qd == dt:
-                        return float(q.price), dt
-        except Exception:
-            pass
-
-        # EOD path
-        if sym not in self.market_data:
-            return 0.0, dt
-
-        try:
-            df = self.market_data[sym]
-
-            if dt in df.index:
-                return float(df.loc[dt, 'Close_Adjusted']), dt
-
-            idx = df.index.get_indexer([dt], method='pad')[0]
-            if idx != -1:
-                used = df.index[idx]
-                return float(df.iloc[idx]['Close_Adjusted']), used
-
-            return 0.0, dt
-        except Exception:
-            return 0.0, dt
-
-    def get_prev_trading_date(self, symbol, used_date):
-        """回傳 used_date 的上一個可用交易日 (依該標的資料 index)。
-
-        Important:
-        - 若 used_date 不在 index（常見：盤中使用 today + realtime quote），上一交易日應為 pad 後的那一天（昨日收盤）。
-        - 若 used_date 在 index，才回傳 index 的前一格。
-        """
-        try:
-            sym = (symbol or '').upper()
-            df = self.market_data.get(sym)
-            dt = pd.to_datetime(used_date).tz_localize(None).normalize()
-
-            if df is None or df.empty:
-                return dt
-
-            if dt not in df.index:
-                idx = df.index.get_indexer([dt], method='pad')[0]
-                if idx == -1:
-                    return dt
-                # dt is "today" (realtime), prev trading date should be the padded date itself
-                return df.index[idx]
-
-            idx = df.index.get_indexer([dt])[0]
-            if idx <= 0:
-                return dt
-            return df.index[idx - 1]
-        except Exception:
-            return pd.to_datetime(used_date).tz_localize(None).normalize()
-
-    def get_transaction_multiplier(self, symbol, date):
-        """取得交易日的拆股復權因子。"""
-        if symbol not in self.market_data:
-            return 1.0
-
-        try:
-            df = self.market_data[symbol]
-            if date in df.index:
-                return float(df.loc[date, 'Split_Factor'])
-
-            if date < df.index.min():
-                return float(df.iloc[0]['Split_Factor'])
-
-            return float(df.iloc[-1]['Split_Factor'])
-        except Exception:
-            return 1.0
-
-    def get_dividend_adjustment_factor(self, symbol, date):
-        """取得配息調整因子（方案 A：永遠為 1）。"""
-        return 1.0
-
-    def get_dividend(self, symbol, date):
-        """取得指定日期的配息金額（每股）。"""
-        if symbol not in self.market_data:
-            return 0.0
-
-        try:
-            df = self.market_data[symbol]
-            if date in df.index and 'Dividends' in df.columns:
-                return float(df.loc[date, 'Dividends'])
-        except Exception:
-            pass
-
-        return 0.0
+                print(f"[{t}] 下載錯誤: {e}\")\n                return t, None\n\n        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:\n            future_to_ticker = {executor.submit(fetch_single_ticker, t): t for t in all_tickers}\n            for future in concurrent.futures.as_completed(future_to_ticker):\n                result = future.result()\n                if result:\n                    ticker, data = result\n                    if data is not None:\n                        self.market_data[ticker] = data\n                        print(f\"[{ticker}] 下載成功\")\n\n        return self.market_data, self.fx_rates
