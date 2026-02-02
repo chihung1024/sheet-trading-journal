@@ -71,7 +71,23 @@
       </div>
     </div>
     
-    <!-- 5️⃣ 時間加權報酬率 -->
+    <!-- 5️⃣ [v3.18] 即時匯率變動 -->
+    <div class="stat-block live-mtm-block" :class="getPnlBgClass(liveMtmDelta)" :title="mtmTooltip">
+      <div class="stat-top">
+        <span class="stat-label">即時匯率變動</span>
+        <span class="icon-box">💱</span>
+      </div>
+      <div class="stat-main">
+        <div class="stat-value" :class="getPnlTextClass(liveMtmDelta)">
+          {{ liveMtmDelta >= 0 ? '+' : '' }}{{ displayLiveMtm }}
+        </div>
+      </div>
+      <div class="stat-footer">
+        <span class="text-sub text-xs footer-desc">vs {{ liveMtmRefDate || '快照日期' }}</span>
+      </div>
+    </div>
+    
+    <!-- 6️⃣ 時間加權報酬率 -->
     <div class="stat-block">
       <div class="stat-top">
         <span class="stat-label">時間加權報酬</span>
@@ -85,7 +101,7 @@
       </div>
     </div>
     
-    <!-- 6️⃣ 個人年化報酬率 -->
+    <!-- 7️⃣ 個人年化報酬率 -->
     <div class="stat-block" :class="getPnlBgClass(stats.xirr)">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
@@ -133,6 +149,11 @@ const dailyPnL = computed(() => store.dailyPnL || 0);
 
 const dailyPnlBreakdown = computed(() => stats.value.daily_pnl_breakdown || null);
 
+// ✅ [v3.18] 即時市值變動追蹤
+const liveMtmDelta = computed(() => store.liveMtmDelta || 0);
+const liveMtmBreakdown = computed(() => store.liveMtmDeltaBreakdown || null);
+const liveMtmRefDate = computed(() => store.liveMtmRefTimestamp || '');
+
 const formatSigned = (val) => {
   const n = Number(val) || 0;
   const sign = n >= 0 ? '+' : '';
@@ -174,6 +195,14 @@ const pnlTooltip = computed(() => {
   return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)}`;
 });
 
+// [v3.18] 即時匯率變動 Tooltip
+const mtmTooltip = computed(() => {
+  if (!liveMtmBreakdown.value) return '';
+  const tw = liveMtmBreakdown.value.tw ?? 0;
+  const us = liveMtmBreakdown.value.us ?? 0;
+  return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)}`;
+});
+
 // ✅ 計算今日損益百分比
 const dailyRoi = computed(() => {
   let baseValue = 0;
@@ -212,6 +241,7 @@ const displayTotalValue = useAnimatedNumber(computed(() => stats.value.total_val
 const displayUnrealized = useAnimatedNumber(unrealizedPnL);
 const displayRealized = useAnimatedNumber(realizedPnL);
 const displayDaily = useAnimatedNumber(dailyPnL);
+const displayLiveMtm = useAnimatedNumber(liveMtmDelta);
 
 const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 
@@ -462,14 +492,20 @@ const getPnlBgClass = (val) => {
         order: 4;
     }
     
-    /* 5️⃣ TWR - 第四行左側 */
-    .stat-block:nth-child(5) {
+    /* 5️⃣ [v3.18] 即時匯率變動 - 第四行獨佔 */
+    .stat-block.live-mtm-block {
         order: 5;
+        grid-column: span 2;
     }
     
-    /* 6️⃣ XIRR - 第四行右側 */
+    /* 6️⃣ TWR - 第五行左側 */
     .stat-block:nth-child(6) {
         order: 6;
+    }
+    
+    /* 7️⃣ XIRR - 第五行右側 */
+    .stat-block:nth-child(7) {
+        order: 7;
     }
     
     /* 當日損益在手機版放大字體 */
