@@ -1,18 +1,34 @@
-import pandas as pd
-import yfinance as yf
-import concurrent.futures
-import pytz
+import logging
 from datetime import datetime, timedelta
-from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
+from typing import Dict, List, Optional, Tuple
+
+import pandas as pd
+import pytz
+import yfinance as yf
+
+from ..config import DEFAULT_FX_RATE, EXCHANGE_SYMBOL
 from .auto_price_selector import AutoPriceSelector
 
+
 class MarketDataClient:
+    """
+    Market data loader with:
+      - Batch daily download via yf.download (lower request count, faster, less flaky)
+      - Conditional intraday overlay (1m) only when market is open
+      - FX realtime: fast_info if possible; otherwise fallback to daily close (no 1m fallback)
+      - yfinance log noise reduction
+    """
+
+    # -----------------------
+    # Utilities
+    # -----------------------
     @staticmethod
     def _normalize_twd_per_usd(rate: float) -> float:
-        """Normalize FX to 'TWD per 1 USD'.
+        """
+        Normalize FX to 'TWD per 1 USD'.
 
-        Defensive guard: some data sources (or transforms) may return the inverse
-        (USD per 1 TWD), which is typically < 1.0.
+        Defensive guard: some data sources may return inverse (USD per 1 TWD),
+        which is typically < 1.0.
         """
         try:
             r = float(rate)
@@ -22,184 +38,411 @@ class MarketDataClient:
         except Exception:
             return DEFAULT_FX_RATE
 
-    def __init__(self):
-        """
-        初始化市場數據客戶端
-        - market_data: 存儲所有股票的歷史價格數據
-        - fx_rates: 存儲匯率數據（USD/TWD）
-        - realtime_fx_rate: [v2.52] 存儲即時匯率，與歷史數據分離
-        """
-        self.market_data = {}
-        self.fx_rates = pd.Series(dtype=float)
-        self.realtime_fx_rate = None  # [v2.52] 新增獨立的即時匯率存儲
+    @staticmethod
+    def _to_normalized_date_index(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return df
+        df = df.copy()
+        df.index = pd.to_datetime(df.index)
+        if getattr(df.index, "tz", None) is not None:
+            df.index = df.index.tz_localize(None)
+        df.index = df.index.normalize()
+        return df
 
-    def download_data(self, tickers: list, start_date):
-        """下載市場數據（股票價格 + 匯率）。"""
+    @staticmethod
+    def _chunk_list(items: List[str], chunk_size: int) -> List[List[str]]:
+        if chunk_size <= 0:
+            return [items]
+        return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
+
+    @staticmethod
+    def _is_us_ticker(symbol: str) -> bool:
+        # crude: no suffix => treat as US
+        return "." not in symbol
+
+    @staticmethod
+    def _is_tw_ticker(symbol: str) -> bool:
+        s = symbol.upper()
+        return s.endswith(".TW") or s.endswith(".TWO")
+
+    @staticmethod
+    def _now_in_tz(tzname: str) -> datetime:
+        tz = pytz.timezone(tzname)
+        return datetime.now(tz)
+
+    @classmethod
+    def _is_market_open_for_symbol(cls, symbol: str) -> bool:
+        """
+        Minimal session check:
+          - TW: 09:00-13:30 Asia/Taipei, Mon-Fri
+          - US: 09:30-16:00 US/Eastern, Mon-Fri
+        This is intentionally simple but avoids "fake realtime" on weekends/holidays.
+        """
+        if cls._is_tw_ticker(symbol):
+            now = cls._now_in_tz("Asia/Taipei")
+            if now.weekday() >= 5:
+                return False
+            t = now.time()
+            return (t >= datetime.strptime("09:00", "%H:%M").time()) and (
+                t <= datetime.strptime("13:30", "%H:%M").time()
+            )
+
+        # default US
+        now = cls._now_in_tz("US/Eastern")
+        if now.weekday() >= 5:
+            return False
+        t = now.time()
+        return (t >= datetime.strptime("09:30", "%H:%M").time()) and (
+            t <= datetime.strptime("16:00", "%H:%M").time()
+        )
+
+    # -----------------------
+    # Core
+    # -----------------------
+    def __init__(self):
+        self.market_data: Dict[str, pd.DataFrame] = {}
+        self.fx_rates: pd.Series = pd.Series(dtype=float)  # daily USD/TWD (TWD per USD)
+        self.realtime_fx_rate: Optional[float] = None
+
+        # Reduce yfinance logger noise ("possibly delisted" etc.)
+        logging.getLogger("yfinance").setLevel(logging.ERROR)
+
+    def download_data(
+        self,
+        tickers: List[str],
+        start_date,
+        *,
+        enable_intraday: bool = True,
+        intraday_only_tickers: Optional[List[str]] = None,
+        batch_size: int = 80,
+    ) -> Tuple[Dict[str, pd.DataFrame], pd.Series]:
+        """
+        Download market data (daily) + optional intraday overlay for last close.
+
+        - Daily data is fetched in batches via yf.download to reduce total requests.
+        - Intraday overlay is fetched only when market is open and only for selected tickers.
+
+        Args:
+            tickers: list of symbols needed.
+            start_date: datetime or date (inclusive).
+            enable_intraday: whether to try 1m overlay during market open.
+            intraday_only_tickers: if provided, only these tickers will attempt intraday overlay.
+            batch_size: tickers per yf.download batch.
+        """
         print(f"正在下載市場數據，起始日期: {start_date}...")
 
-        # ==================== 1. 下載匯率數據 ====================
-        try:
-            fx = yf.Ticker(EXCHANGE_SYMBOL)
-            fx_hist = fx.history(start=start_date - timedelta(days=5))
+        # ---------------
+        # 1) FX download
+        # ---------------
+        self._download_fx(start_date)
 
-            if not fx_hist.empty:
-                fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None).normalize()
-                self.fx_rates = fx_hist['Close'].resample('D').ffill().apply(self._normalize_twd_per_usd)
+        # ---------------
+        # 2) Daily download (batch)
+        # ---------------
+        all_tickers = sorted(set([t for t in tickers if t]))
+        if "SPY" not in all_tickers:
+            all_tickers.append("SPY")  # keep original behavior (baseline safety)
 
-                # 即時匯率（獨立存放）
-                try:
-                    print("[FX] 正在獲取即時匯率...")
-                    latest_rate = None
+        daily_data = self._download_daily_batch(all_tickers, start_date, batch_size=batch_size)
 
-                    try:
-                        raw_price = fx.fast_info.get('last_price') or fx.fast_info.get('regular_market_price')
-                        if raw_price:
-                            latest_rate = self._normalize_twd_per_usd(float(raw_price))
-                            print(f"[FX] 使用 fast_info 獲取: {latest_rate:.4f}")
-                    except Exception:
-                        pass
+        # prepare per-symbol dfs
+        for sym, df in daily_data.items():
+            if df is None or df.empty:
+                print(f"[{sym}] 警告: 無歷史數據")
+                continue
+            prepared = self._prepare_data(sym, df)
+            self.market_data[sym] = prepared
+            print(f"[{sym}] 下載成功")
 
-                    if latest_rate is None:
-                        realtime_data = fx.history(period="1d", interval="1m")
-                        if not realtime_data.empty:
-                            latest_rate = self._normalize_twd_per_usd(float(realtime_data['Close'].iloc[-1]))
-                            print(f"[FX] 使用 1m K線 獲取: {latest_rate:.4f}")
-
-                    if latest_rate is not None:
-                        self.realtime_fx_rate = latest_rate
-                        print(f"[FX] ✅ 已獲取即時匯率: {latest_rate:.4f} (存儲於 realtime_fx_rate)")
-                    else:
-                        print("[FX] ⚠️ 無法獲取即時數據，後續計算將依賴歷史收盤")
-
-                except Exception as e:
-                    print(f"[FX] ⚠️ 即時匯率抓取失敗: {e}")
-
-            else:
-                self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
-        except Exception as e:
-            print(f"[FX] 匯率下載嚴重錯誤: {e}")
-            self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
-
-        # ==================== 2. 下載個股數據 (平行化) ====================
-        all_tickers = list(set([t for t in tickers if t] + ['SPY']))
-
-        def fetch_single_ticker(t):
-            try:
-                ticker_obj = yf.Ticker(t)
-                hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
-
-                if not hist.empty:
-                    hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
-
-                    # 盤中即時價覆蓋最後一筆日線
-                    try:
-                        intraday = ticker_obj.history(period="1d", interval="1m")
-                        if not intraday.empty:
-                            latest_price = float(intraday['Close'].iloc[-1])
-                            last_date = hist.index[-1]
-                            hist.at[last_date, 'Close'] = latest_price
-                            if 'Adj Close' in hist.columns:
-                                hist.at[last_date, 'Adj Close'] = latest_price
-                            print(f"[{t}] ✅ 即時報價覆蓋: {latest_price:.2f}")
-                    except Exception:
-                        pass
-
-                    hist_adj = self._prepare_data(t, hist)
-                    return t, hist_adj
-
-                print(f"[{t}] 警告: 無歷史數據")
-                return t, None
-
-            except Exception as e:
-                print(f"[{t}] 下載錯誤: {e}")
-                return t, None
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_ticker = {executor.submit(fetch_single_ticker, t): t for t in all_tickers}
-            for future in concurrent.futures.as_completed(future_to_ticker):
-                result = future.result()
-                if result:
-                    ticker, data = result
-                    if data is not None:
-                        self.market_data[ticker] = data
-                        print(f"[{ticker}] 下載成功")
+        # ---------------
+        # 3) Optional intraday overlay
+        # ---------------
+        if enable_intraday:
+            self._apply_intraday_overlay(
+                all_tickers=all_tickers,
+                intraday_only_tickers=intraday_only_tickers,
+                batch_size=batch_size,
+            )
 
         return self.market_data, self.fx_rates
 
-    def _prepare_data(self, symbol, df):
-        """準備股票數據（方案 A）：
+    def _download_fx(self, start_date) -> None:
+        """
+        FX strategy:
+          - Download daily history.
+          - realtime_fx_rate:
+              * try fast_info last_price
+              * else fallback to last daily close (NO 1m fallback)
+        """
+        try:
+            fx = yf.Ticker(EXCHANGE_SYMBOL)
 
-        - 估值價格一律使用 Close（split-adjusted price return）。
-        - 配息不做價格復權，配息效果由 DIV 記錄或市場配息偵測入帳。
+            fx_hist = fx.history(start=start_date - timedelta(days=5), auto_adjust=False)
+            fx_hist = self._to_normalized_date_index(fx_hist)
+
+            if fx_hist is not None and not fx_hist.empty and "Close" in fx_hist.columns:
+                self.fx_rates = (
+                    fx_hist["Close"]
+                    .resample("D")
+                    .ffill()
+                    .apply(self._normalize_twd_per_usd)
+                )
+            else:
+                self.fx_rates = pd.Series(
+                    [DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()]
+                )
+
+            print("[FX] 正在獲取即時匯率...")
+            latest_rate = None
+
+            # fast_info preferred (fewer calls)
+            try:
+                raw_price = fx.fast_info.get("last_price") or fx.fast_info.get("regular_market_price")
+                if raw_price:
+                    latest_rate = self._normalize_twd_per_usd(float(raw_price))
+                    print(f"[FX] 使用 fast_info 獲取: {latest_rate:.4f}")
+            except Exception:
+                latest_rate = None
+
+            # fallback: last daily close from fx_rates (stable)
+            if latest_rate is None:
+                try:
+                    if self.fx_rates is not None and len(self.fx_rates) > 0:
+                        latest_rate = float(self.fx_rates.iloc[-1])
+                        print(f"[FX] 使用歷史收盤 fallback: {latest_rate:.4f}")
+                except Exception:
+                    latest_rate = None
+
+            if latest_rate is not None:
+                self.realtime_fx_rate = latest_rate
+                print(f"[FX] ✅ 即時匯率就緒: {latest_rate:.4f} (realtime_fx_rate)")
+            else:
+                self.realtime_fx_rate = None
+                print("[FX] ⚠️ 無法獲取即時匯率，後續計算將依賴歷史收盤")
+
+        except Exception as e:
+            print(f"[FX] 匯率下載嚴重錯誤: {e}")
+            self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
+            self.realtime_fx_rate = None
+
+    def _download_daily_batch(
+        self,
+        tickers: List[str],
+        start_date,
+        *,
+        batch_size: int,
+    ) -> Dict[str, Optional[pd.DataFrame]]:
+        """
+        Batch download daily OHLCV + actions for multiple tickers.
+        """
+        result: Dict[str, Optional[pd.DataFrame]] = {t: None for t in tickers}
+
+        chunks = self._chunk_list(tickers, batch_size)
+        for chunk in chunks:
+            try:
+                # yfinance download: group_by='ticker' yields multi-index columns when multiple tickers
+                df = yf.download(
+                    tickers=" ".join(chunk),
+                    start=start_date,
+                    group_by="ticker",
+                    auto_adjust=False,
+                    actions=True,
+                    threads=True,
+                    progress=False,
+                )
+
+                if df is None or df.empty:
+                    for t in chunk:
+                        result[t] = None
+                    continue
+
+                # If only one ticker, columns are not MultiIndex
+                if not isinstance(df.columns, pd.MultiIndex):
+                    one = chunk[0]
+                    one_df = df.copy()
+                    one_df = self._to_normalized_date_index(one_df)
+                    result[one] = one_df
+                    continue
+
+                # MultiIndex: (Ticker, Field)
+                for t in chunk:
+                    try:
+                        if t not in df.columns.get_level_values(0):
+                            result[t] = None
+                            continue
+                        tdf = df[t].copy()
+                        tdf = self._to_normalized_date_index(tdf)
+                        result[t] = tdf
+                    except Exception:
+                        result[t] = None
+
+            except Exception as e:
+                print(f"[BATCH] 下載錯誤: {e}")
+                for t in chunk:
+                    result[t] = None
+
+        return result
+
+    def _apply_intraday_overlay(
+        self,
+        *,
+        all_tickers: List[str],
+        intraday_only_tickers: Optional[List[str]],
+        batch_size: int,
+    ) -> None:
+        """
+        Intraday overlay rules:
+          - Only when market seems open for the symbol (simple session check)
+          - Only for selected tickers:
+              * intraday_only_tickers if provided
+              * otherwise all tickers (but still gated by market open)
+          - Batch download 1m to reduce requests
+        """
+        target = set(all_tickers)
+        if intraday_only_tickers is not None:
+            target = set([t for t in intraday_only_tickers if t in target])
+
+        # Gate by market open, otherwise skip (prevents weekend/holiday fake realtime)
+        gated = [t for t in sorted(target) if self._is_market_open_for_symbol(t)]
+        if not gated:
+            return
+
+        # Download in batches
+        for chunk in self._chunk_list(gated, batch_size):
+            try:
+                intraday = yf.download(
+                    tickers=" ".join(chunk),
+                    period="1d",
+                    interval="1m",
+                    group_by="ticker",
+                    auto_adjust=False,
+                    threads=True,
+                    progress=False,
+                )
+                if intraday is None or intraday.empty:
+                    continue
+
+                # If only one ticker, columns are normal
+                if not isinstance(intraday.columns, pd.MultiIndex):
+                    sym = chunk[0]
+                    self._overlay_one_intraday(sym, intraday)
+                    continue
+
+                for sym in chunk:
+                    try:
+                        if sym not in intraday.columns.get_level_values(0):
+                            continue
+                        sym_df = intraday[sym].dropna(how="all")
+                        self._overlay_one_intraday(sym, sym_df)
+                    except Exception:
+                        continue
+            except Exception:
+                # Do not spam logs; intraday is optional.
+                continue
+
+    def _overlay_one_intraday(self, symbol: str, intraday_df: pd.DataFrame) -> None:
+        """
+        Override last daily close with last intraday close.
+        """
+        if symbol not in self.market_data:
+            return
+        if intraday_df is None or intraday_df.empty:
+            return
+        if "Close" not in intraday_df.columns:
+            return
+
+        try:
+            latest_price = float(intraday_df["Close"].iloc[-1])
+            daily = self.market_data[symbol]
+            if daily is None or daily.empty:
+                return
+
+            last_date = daily.index[-1]
+            daily.at[last_date, "Close"] = latest_price
+            if "Adj Close" in daily.columns:
+                daily.at[last_date, "Adj Close"] = latest_price
+
+            # refresh Close_Adjusted (scheme A uses selector; here we set raw close only,
+            # but Close_Adjusted is derived from selector's chosen series, so we update it too)
+            if "Close_Adjusted" in daily.columns:
+                daily.at[last_date, "Close_Adjusted"] = latest_price
+
+            print(f"[{symbol}] ✅ 盤中即時覆蓋: {latest_price:.2f}")
+        except Exception:
+            return
+
+    def _prepare_data(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Prepare data (Scheme A):
+          - Valuation uses Close (split-adjusted price return) via AutoPriceSelector.
+          - Dividends are NOT price-adjusted; dividends are tracked separately.
         """
         df = df.copy()
-
         selector = AutoPriceSelector(symbol, df)
-        df['Close_Adjusted'] = selector.get_adjusted_price_series()
-
+        df["Close_Adjusted"] = selector.get_adjusted_price_series()
         metadata = selector.get_metadata()
         print(f"[{symbol}] 價格來源: {metadata['price_source']} - {metadata['selection_reason']}")
 
-        df['Close_Raw'] = df['Close'] if 'Close' in df.columns else df.get('Close_Adjusted')
+        df["Close_Raw"] = df["Close"] if "Close" in df.columns else df.get("Close_Adjusted")
 
-        # ==================== 計算累積拆股因子 ====================
-        if 'Stock Splits' not in df.columns:
-            df['Stock Splits'] = 0.0
-
-        splits = df['Stock Splits'].replace(0, 1.0)
+        # Stock split factor
+        if "Stock Splits" not in df.columns:
+            df["Stock Splits"] = 0.0
+        splits = df["Stock Splits"].replace(0, 1.0)
         splits_reversed = splits.iloc[::-1]
         cum_splits_reversed = splits_reversed.cumprod()
         cum_splits = cum_splits_reversed.iloc[::-1]
-        df['Split_Factor'] = cum_splits.shift(-1).fillna(1.0)
+        df["Split_Factor"] = cum_splits.shift(-1).fillna(1.0)
 
-        # ==================== 方案 A：不做配息價格復權 ====================
-        df['Dividend_Adj_Factor'] = 1.0
-
+        # Scheme A: no dividend price adjustment
+        df["Dividend_Adj_Factor"] = 1.0
         return df
 
+    # -----------------------
+    # Accessors
+    # -----------------------
     def get_price(self, symbol, date):
-        """取得指定日期的股票價格（方案 A：Close_Adjusted=Close）。"""
+        """Get price on date with pad-asof (Scheme A uses Close_Adjusted)."""
         if symbol not in self.market_data:
             return 0.0
-
-        try:
-            df = self.market_data[symbol]
-            if date in df.index:
-                return float(df.loc[date, 'Close_Adjusted'])
-
-            idx = df.index.get_indexer([date], method='pad')[0]
-            if idx != -1:
-                return float(df.iloc[idx]['Close_Adjusted'])
-
-            return 0.0
-        except:
-            return 0.0
-
-    def get_price_asof(self, symbol, date):
-        """取得指定日期的股票價格，並回傳實際使用的交易日 (as-of/pad)。"""
-        if symbol not in self.market_data:
-            dt = pd.to_datetime(date).tz_localize(None).normalize()
-            return 0.0, dt
-
         try:
             df = self.market_data[symbol]
             dt = pd.to_datetime(date).tz_localize(None).normalize()
 
             if dt in df.index:
-                return float(df.loc[dt, 'Close_Adjusted']), dt
+                return float(df.loc[dt, "Close_Adjusted"])
 
-            idx = df.index.get_indexer([dt], method='pad')[0]
+            idx = df.index.get_indexer([dt], method="pad")[0]
+            if idx != -1:
+                return float(df.iloc[idx]["Close_Adjusted"])
+            return 0.0
+        except Exception:
+            return 0.0
+
+    def get_price_asof(self, symbol, date):
+        """Get price and the actual used trading date (as-of/pad)."""
+        if symbol not in self.market_data:
+            dt = pd.to_datetime(date).tz_localize(None).normalize()
+            return 0.0, dt
+        try:
+            df = self.market_data[symbol]
+            dt = pd.to_datetime(date).tz_localize(None).normalize()
+
+            if dt in df.index:
+                return float(df.loc[dt, "Close_Adjusted"]), dt
+
+            idx = df.index.get_indexer([dt], method="pad")[0]
             if idx != -1:
                 used = df.index[idx]
-                return float(df.iloc[idx]['Close_Adjusted']), used
+                return float(df.iloc[idx]["Close_Adjusted"]), used
 
             return 0.0, dt
-        except:
+        except Exception:
             dt = pd.to_datetime(date).tz_localize(None).normalize()
             return 0.0, dt
 
     def get_prev_trading_date(self, symbol, used_date):
-        """回傳 used_date 的上一個可用交易日 (依該標的資料 index)。"""
+        """Return previous available trading date based on symbol's data index."""
         try:
             if symbol not in self.market_data:
                 return pd.to_datetime(used_date).tz_localize(None).normalize()
@@ -208,49 +451,47 @@ class MarketDataClient:
             dt = pd.to_datetime(used_date).tz_localize(None).normalize()
 
             if dt not in df.index:
-                idx = df.index.get_indexer([dt], method='pad')[0]
+                idx = df.index.get_indexer([dt], method="pad")[0]
                 if idx == -1:
                     return dt
                 dt = df.index[idx]
 
-            idx = df.index.get_indexer([dt])[0]
-            if idx <= 0:
+            idx2 = df.index.get_indexer([dt])[0]
+            if idx2 <= 0:
                 return dt
-            return df.index[idx - 1]
-        except:
+            return df.index[idx2 - 1]
+        except Exception:
             return pd.to_datetime(used_date).tz_localize(None).normalize()
 
     def get_transaction_multiplier(self, symbol, date):
-        """取得交易日的拆股復權因子。"""
+        """Split factor on date."""
         if symbol not in self.market_data:
             return 1.0
-
         try:
             df = self.market_data[symbol]
-            if date in df.index:
-                return float(df.loc[date, 'Split_Factor'])
+            dt = pd.to_datetime(date).tz_localize(None).normalize()
 
-            if date < df.index.min():
-                return float(df.iloc[0]['Split_Factor'])
-
-            return float(df.iloc[-1]['Split_Factor'])
-        except:
+            if dt in df.index:
+                return float(df.loc[dt, "Split_Factor"])
+            if dt < df.index.min():
+                return float(df.iloc[0]["Split_Factor"])
+            return float(df.iloc[-1]["Split_Factor"])
+        except Exception:
             return 1.0
 
     def get_dividend_adjustment_factor(self, symbol, date):
-        """取得配息調整因子（方案 A：永遠為 1）。"""
+        """Scheme A: always 1."""
         return 1.0
 
     def get_dividend(self, symbol, date):
-        """取得指定日期的配息金額（每股）。"""
+        """Dividend per share on date, if present."""
         if symbol not in self.market_data:
             return 0.0
-
         try:
             df = self.market_data[symbol]
-            if date in df.index and 'Dividends' in df.columns:
-                return float(df.loc[date, 'Dividends'])
-        except:
+            dt = pd.to_datetime(date).tz_localize(None).normalize()
+            if dt in df.index and "Dividends" in df.columns:
+                return float(df.loc[dt, "Dividends"])
+        except Exception:
             pass
-
         return 0.0
