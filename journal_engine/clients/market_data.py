@@ -188,6 +188,71 @@ class MarketDataClient:
 
         return out
 
+    def _fetch_fx_realtime_fallback(self) -> RealtimeQuote | None:
+        """FX 專用 fallback：當 batch 取不到 EXCHANGE_SYMBOL 時，單獨以更高成功率方式嘗試。
+
+        Order:
+        1) fast_info
+        2) history(period=1d, interval=1m)
+
+        Note:
+        - 僅用於 FX；避免對所有股票退回逐檔查詢。
+        """
+        sym = (EXCHANGE_SYMBOL or '').upper()
+        if not sym:
+            return None
+
+        taipei_tz = pytz.timezone('Asia/Taipei')
+        now_utc = pd.Timestamp.utcnow().tz_localize('UTC')
+        today_tw = pd.Timestamp(datetime.now(taipei_tz).date())
+
+        try:
+            fx = yf.Ticker(sym)
+        except Exception:
+            return None
+
+        # 1) fast_info
+        try:
+            info = fx.fast_info
+            raw = info.get('last_price') or info.get('regular_market_price') or info.get('regularMarketPrice')
+            if raw:
+                p = self._normalize_twd_per_usd(float(raw))
+                if p and p > 0:
+                    return RealtimeQuote(
+                        symbol=sym,
+                        price=float(p),
+                        timestamp=now_utc,
+                        market_date=today_tw,
+                        source='fx.fast_info',
+                    )
+        except Exception:
+            pass
+
+        # 2) 1m history
+        try:
+            intraday = fx.history(period="1d", interval="1m")
+            if intraday is not None and (not intraday.empty) and 'Close' in intraday.columns:
+                closes = intraday['Close'].dropna()
+                if not closes.empty:
+                    last_price = self._normalize_twd_per_usd(float(closes.iloc[-1]))
+                    last_ts = closes.index[-1]
+                    if getattr(last_ts, 'tzinfo', None) is None:
+                        last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
+                    else:
+                        last_ts = pd.Timestamp(last_ts)
+                    market_date = last_ts.tz_convert(taipei_tz).date()
+                    return RealtimeQuote(
+                        symbol=sym,
+                        price=float(last_price),
+                        timestamp=last_ts,
+                        market_date=pd.Timestamp(market_date),
+                        source='fx.history-1m',
+                    )
+        except Exception:
+            pass
+
+        return None
+
     def _fetch_taiwan_realtime_price(self, ticker_obj, symbol: str) -> float:
         """專用於台股的即時報價獲取，多種方法嘗試。
 
@@ -317,11 +382,30 @@ class MarketDataClient:
                     if (old is None) or (v.timestamp > old.timestamp):
                         self.realtime_quotes[k] = v
 
-            # 同步 realtime_fx_rate（兼容 calculator 舊用法）
-            fx_q = self.realtime_quotes.get((EXCHANGE_SYMBOL or '').upper())
+            # RT summary log
+            try:
+                keys = sorted(list(self.realtime_quotes.keys()))
+                preview = ', '.join(keys[:10])
+                more = f" (+{len(keys) - 10} more)" if len(keys) > 10 else ""
+                print(f"[RT] ✅ realtime_quotes={len(keys)} symbols: {preview}{more}")
+            except Exception:
+                print(f"[RT] ✅ realtime_quotes={len(self.realtime_quotes)}")
+
+            # FX fallback + 同步 realtime_fx_rate（兼容 calculator 舊用法）
+            fx_sym = (EXCHANGE_SYMBOL or '').upper()
+            fx_q = self.realtime_quotes.get(fx_sym)
+            if (fx_q is None) and (is_tw_trading or is_us_trading):
+                fx_fb = self._fetch_fx_realtime_fallback()
+                if fx_fb and fx_fb.price and fx_fb.price > 0:
+                    self.realtime_quotes[fx_sym] = fx_fb
+                    fx_q = fx_fb
+                    print(f"[FX] ✅ 即時匯率 fallback 成功: source={fx_fb.source}")
+
             if fx_q and fx_q.price and fx_q.price > 0:
                 self.realtime_fx_rate = self._normalize_twd_per_usd(fx_q.price)
-                print(f"[FX] ✅ 已獲取即時匯率: {self.realtime_fx_rate:.4f} (realtime_quotes + realtime_fx_rate)")
+                ts = fx_q.timestamp
+                ts_str = str(ts) if ts is not None else "unknown"
+                print(f"[FX] ✅ 已獲取即時匯率: {self.realtime_fx_rate:.4f} (source={fx_q.source}, ts={ts_str})")
             else:
                 self.realtime_fx_rate = None
                 print("[FX] ⚠️ 無法獲取即時匯率，後續計算將依賴歷史收盤")
