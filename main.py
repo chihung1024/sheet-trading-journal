@@ -162,6 +162,10 @@ def main():
     # 9. per-user: atomic realtime (holdings + benchmark + FX)
     logger.info(f"準備處理 {len(user_list)} 位使用者...")
 
+    def _is_tw_symbol(s: str) -> bool:
+        s = (s or '').upper()
+        return s.endswith('.TW') or s.endswith('.TWO')
+
     for user_email in user_list:
         try:
             user_benchmark = user_benchmarks.get(user_email, fallback_benchmark)
@@ -173,12 +177,16 @@ def main():
             if not user_df.empty and 'id' in user_df.columns:
                 logger.info(f"[v2.53] 用戶 {user_email} 的資料包含 'id' 欄位，共 {len(user_df)} 筆記錄")
 
-            # Build required symbols (holdings + benchmark + FX)
+            # Build required symbols (holdings + benchmark + FX [only if needed])
             holding_symbols = _get_user_holding_symbols(user_df)
             required_symbols = set(holding_symbols)
             if user_benchmark:
                 required_symbols.add(str(user_benchmark).upper())
-            if EXCHANGE_SYMBOL:
+
+            # Only require FX atomic when user has any non-TW asset/benchmark.
+            has_non_tw = any((s and (not _is_tw_symbol(s)) and ('=' not in s)) for s in required_symbols)
+            has_non_tw = has_non_tw or (user_benchmark and (not _is_tw_symbol(str(user_benchmark).upper())))
+            if has_non_tw and EXCHANGE_SYMBOL:
                 required_symbols.add(str(EXCHANGE_SYMBOL).upper())
 
             calculator = PortfolioCalculator(
