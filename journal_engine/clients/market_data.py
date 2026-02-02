@@ -2,9 +2,20 @@ import pandas as pd
 import yfinance as yf
 import concurrent.futures
 import pytz
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta, time
 from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
 from .auto_price_selector import AutoPriceSelector
+
+
+@dataclass
+class RealtimeQuote:
+    symbol: str
+    price: float
+    timestamp: pd.Timestamp
+    market_date: pd.Timestamp  # normalized date in market tz
+    source: str
+
 
 class MarketDataClient:
     @staticmethod
@@ -25,13 +36,15 @@ class MarketDataClient:
     def __init__(self):
         """
         初始化市場數據客戶端
-        - market_data: 存儲所有股票的歷史價格數據
-        - fx_rates: 存儲匯率數據（USD/TWD）
-        - realtime_fx_rate: [v2.52] 存儲即時匯率，與歷史數據分離
+        - market_data: 存儲所有股票的歷史價格數據 (EOD / daily bars)
+        - fx_rates: 存儲匯率歷史數據（USD/TWD, daily series)
+        - realtime_quotes: 盤中/即時報價（不覆蓋日線收盤）
+        - realtime_fx_rate: [兼容舊版] 即時匯率（由 realtime_quotes[EXCHANGE_SYMBOL] 同步）
         """
         self.market_data = {}
         self.fx_rates = pd.Series(dtype=float)
-        self.realtime_fx_rate = None  # [v2.52] 新增獨立的即時匯率存儲
+        self.realtime_quotes: dict[str, RealtimeQuote] = {}
+        self.realtime_fx_rate = None
 
     def _is_taiwan_stock(self, symbol: str) -> bool:
         """判斷是否為台股標的。"""
@@ -62,6 +75,118 @@ class MarketDataClient:
         except Exception as e:
             print(f"[台股時間判斷] 錯誤: {e}")
             return False
+
+    def _is_us_market_hours(self) -> bool:
+        """判斷目前是否為美股交易時間（美東 09:30-16:00）。"""
+        try:
+            us_tz = pytz.timezone('US/Eastern')
+            now_us = datetime.now(us_tz)
+            if now_us.weekday() >= 5:
+                return False
+            return time(9, 30) <= now_us.time() <= time(16, 0)
+        except Exception as e:
+            print(f"[美股時間判斷] 錯誤: {e}")
+            return False
+
+    def _should_use_realtime(self, symbol: str) -> bool:
+        """是否應使用即時報價（僅在該市場盤中）。"""
+        symbol = (symbol or '').upper()
+        if symbol == (EXCHANGE_SYMBOL or '').upper() or '=' in symbol:
+            # FX 視為跟著程式跑盤中刷新即可（不強制 24/5 判斷）
+            return self._is_taiwan_market_hours() or self._is_us_market_hours()
+        if self._is_taiwan_stock(symbol):
+            return self._is_taiwan_market_hours()
+        return self._is_us_market_hours()
+
+    def _market_tz_for_symbol(self, symbol: str):
+        symbol = (symbol or '').upper()
+        if symbol == (EXCHANGE_SYMBOL or '').upper() or '=' in symbol:
+            return pytz.timezone('Asia/Taipei')
+        if self._is_taiwan_stock(symbol):
+            return pytz.timezone('Asia/Taipei')
+        return pytz.timezone('America/New_York')
+
+    def _fetch_intraday_prices_batch(self, symbols: list[str], market_tz, name: str = "Intraday Batch") -> dict[str, RealtimeQuote]:
+        """批量抓取盤中最後價（1m），並只保留『市場當日』的最新價。
+
+        Note: 不覆蓋日線 EOD，只寫入 realtime_quotes。
+        """
+        symbols = [s for s in (symbols or []) if s]
+        if not symbols:
+            return {}
+
+        def yf_intraday_func():
+            return yf.download(
+                tickers=symbols,
+                period="2d",
+                interval="1m",
+                progress=False,
+                auto_adjust=False,
+                back_adjust=False,
+                threads=False,
+            )
+
+        try:
+            data = yf_intraday_func()
+        except Exception as e:
+            print(f"[{name}] ⚠️ yfinance intraday download failed: {e}")
+            return {}
+
+        if data is None or data.empty:
+            print(f"[{name}] ⚠️ yfinance 沒有回傳任何盤中數據")
+            return {}
+
+        # yfinance commonly returns MultiIndex columns: (Field, Ticker)
+        if isinstance(data.columns, pd.MultiIndex):
+            try:
+                data.columns = data.columns.set_levels([lvl.upper() for lvl in data.columns.levels[1]], level=1)
+                data.columns = data.columns.swaplevel(0, 1)  # => (Ticker, Field)
+            except Exception:
+                pass
+
+        out: dict[str, RealtimeQuote] = {}
+        today_market = datetime.now(market_tz).date()
+
+        for sym_orig in symbols:
+            sym = sym_orig.upper()
+            try:
+                sym_df = data[sym] if isinstance(data.columns, pd.MultiIndex) else data
+                if not isinstance(sym_df, pd.DataFrame) or sym_df.empty:
+                    continue
+
+                closes = sym_df.get('Close')
+                if closes is None:
+                    continue
+
+                closes = closes.dropna()
+                if closes.empty:
+                    continue
+
+                last_price = float(closes.iloc[-1])
+                last_ts = closes.index[-1]
+
+                # Ensure tz-aware timestamp
+                if getattr(last_ts, 'tzinfo', None) is None:
+                    # yfinance sometimes returns naive; assume UTC as safest
+                    last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
+                else:
+                    last_ts = pd.Timestamp(last_ts)
+
+                market_date = last_ts.tz_convert(market_tz).date()
+                if market_date != today_market:
+                    continue
+
+                out[sym] = RealtimeQuote(
+                    symbol=sym,
+                    price=last_price,
+                    timestamp=last_ts,
+                    market_date=pd.Timestamp(market_date),
+                    source='yf.download-1m',
+                )
+            except Exception:
+                continue
+
+        return out
 
     def _fetch_taiwan_realtime_price(self, ticker_obj, symbol: str) -> float:
         """專用於台股的即時報價獲取，多種方法嘗試。
@@ -106,7 +231,11 @@ class MarketDataClient:
         return None
 
     def _upsert_daily_row_with_price(self, hist: pd.DataFrame, target_date: pd.Timestamp, latest_price: float, symbol: str) -> pd.DataFrame:
-        """將盤中價寫入到指定日期的日線 row（若不存在則新增），避免覆蓋到上一交易日。"""
+        """[Deprecated] 舊版：將盤中價寫入日線 row。
+
+        v2.55 起改為「即時報價與日線收盤分離」：盤中價存入 realtime_quotes，不覆蓋 EOD。
+        保留此函式避免舊版本呼叫崩潰。
+        """
         try:
             if hist is None or hist.empty:
                 return hist
@@ -114,11 +243,8 @@ class MarketDataClient:
             d = pd.to_datetime(target_date).tz_localize(None).normalize()
 
             if d not in hist.index:
-                # 用最後一筆當模板，避免欄位缺失
                 template = hist.iloc[-1].copy()
                 template.name = d
-
-                # 避免把上一交易日的配息/拆股誤帶到今天
                 if 'Dividends' in template.index:
                     template['Dividends'] = 0.0
                 if 'Stock Splits' in template.index:
@@ -127,20 +253,11 @@ class MarketDataClient:
                 hist = pd.concat([hist, template.to_frame().T], axis=0)
                 hist = hist[~hist.index.duplicated(keep='last')].sort_index()
 
-            # 寫入價格（可選：同步 Open/High/Low）
             hist.at[d, 'Close'] = latest_price
             if 'Adj Close' in hist.columns:
                 hist.at[d, 'Adj Close'] = latest_price
-            if 'Open' in hist.columns:
-                hist.at[d, 'Open'] = latest_price
-            if 'High' in hist.columns:
-                hist.at[d, 'High'] = max(float(hist.at[d, 'High']) if pd.notna(hist.at[d, 'High']) else latest_price, latest_price)
-            if 'Low' in hist.columns:
-                hist.at[d, 'Low'] = min(float(hist.at[d, 'Low']) if pd.notna(hist.at[d, 'Low']) else latest_price, latest_price)
-            if 'Volume' in hist.columns and pd.isna(hist.at[d, 'Volume']):
-                hist.at[d, 'Volume'] = 0
 
-            print(f"[{symbol}] ✅ 寫入盤中價到日線: date={d.date()} price={latest_price:.2f}")
+            print(f"[{symbol}] ✅ (Deprecated) 寫入盤中價到日線: date={d.date()} price={latest_price:.2f}")
             return hist
         except Exception as e:
             print(f"[{symbol}] ⚠️ upsert 日線資料失敗: {e}")
@@ -150,17 +267,17 @@ class MarketDataClient:
         """下載市場數據（股票價格 + 匯率）。"""
         print(f"正在下載市場數據，起始日期: {start_date}...")
 
-        # 判斷是否為台股交易時間
         is_tw_trading = self._is_taiwan_market_hours()
+        is_us_trading = self._is_us_market_hours()
+
         if is_tw_trading:
-            print("✅ 目前為台股交易時間，將加強台股即時報價獲取")
-        else:
-            print("⚠️ 非台股交易時間，台股將使用昨日收盤價")
+            print("✅ 目前為台股交易時間，將更新台股即時報價")
+        if is_us_trading:
+            print("✅ 目前為美股交易時間，將更新美股即時報價")
+        if (not is_tw_trading) and (not is_us_trading):
+            print("⚠️ 非台股/美股交易時間，將僅使用日線收盤資料")
 
-        taiwan_tz = pytz.timezone('Asia/Taipei')
-        today_tw = pd.Timestamp(datetime.now(taiwan_tz).date()).tz_localize(None).normalize()
-
-        # ==================== 1. 下載匯率數據 ====================
+        # ==================== 1. 下載匯率日線（EOD） ====================
         try:
             fx = yf.Ticker(EXCHANGE_SYMBOL)
             fx_hist = fx.history(start=start_date - timedelta(days=5))
@@ -168,43 +285,52 @@ class MarketDataClient:
             if not fx_hist.empty:
                 fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None).normalize()
                 self.fx_rates = fx_hist['Close'].resample('D').ffill().apply(self._normalize_twd_per_usd)
-
-                # 即時匯率（獨立存放）
-                try:
-                    print("[FX] 正在獲取即時匯率...")
-                    latest_rate = None
-
-                    try:
-                        raw_price = fx.fast_info.get('last_price') or fx.fast_info.get('regular_market_price')
-                        if raw_price:
-                            latest_rate = self._normalize_twd_per_usd(float(raw_price))
-                            print(f"[FX] 使用 fast_info 獲取: {latest_rate:.4f}")
-                    except Exception:
-                        pass
-
-                    if latest_rate is None:
-                        realtime_data = fx.history(period="1d", interval="1m")
-                        if not realtime_data.empty:
-                            latest_rate = self._normalize_twd_per_usd(float(realtime_data['Close'].iloc[-1]))
-                            print(f"[FX] 使用 1m K線 獲取: {latest_rate:.4f}")
-
-                    if latest_rate is not None:
-                        self.realtime_fx_rate = latest_rate
-                        print(f"[FX] ✅ 已獲取即時匯率: {latest_rate:.4f} (存儲於 realtime_fx_rate)")
-                    else:
-                        print("[FX] ⚠️ 無法獲取即時數據，後續計算將依賴歷史收盤")
-
-                except Exception as e:
-                    print(f"[FX] ⚠️ 即時匯率抓取失敗: {e}")
-
             else:
                 self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
         except Exception as e:
             print(f"[FX] 匯率下載嚴重錯誤: {e}")
             self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
 
-        # ==================== 2. 下載個股數據 (平行化) ====================
-        all_tickers = list(set([t for t in tickers if t] + ['SPY']))
+        # ==================== 2. 盤中即時報價（RT，不覆蓋日線） ====================
+        try:
+            all_tickers = list(set([t for t in (tickers or []) if t] + ['SPY']))
+            tw_symbols = [t for t in all_tickers if self._is_taiwan_stock((t or '').upper())]
+            us_symbols = [t for t in all_tickers if (t and not self._is_taiwan_stock((t or '').upper()))]
+
+            # FX quote：只要程式在盤中跑（TW 或 US），就一起抓一份 RT
+            fx_symbols = [EXCHANGE_SYMBOL] if (is_tw_trading or is_us_trading) else []
+
+            # TW batch
+            if is_tw_trading and (tw_symbols or fx_symbols):
+                tw_tz = pytz.timezone('Asia/Taipei')
+                q_tw = self._fetch_intraday_prices_batch(list(set(tw_symbols + fx_symbols)), tw_tz, name='TW Intraday')
+                for k, v in q_tw.items():
+                    self.realtime_quotes[k] = v
+
+            # US batch
+            if is_us_trading and (us_symbols or fx_symbols):
+                us_tz = pytz.timezone('America/New_York')
+                q_us = self._fetch_intraday_prices_batch(list(set(us_symbols + fx_symbols)), us_tz, name='US Intraday')
+                # FX 可能在兩邊都抓到，取 timestamp 較新的
+                for k, v in q_us.items():
+                    old = self.realtime_quotes.get(k)
+                    if (old is None) or (v.timestamp > old.timestamp):
+                        self.realtime_quotes[k] = v
+
+            # 同步 realtime_fx_rate（兼容 calculator 舊用法）
+            fx_q = self.realtime_quotes.get((EXCHANGE_SYMBOL or '').upper())
+            if fx_q and fx_q.price and fx_q.price > 0:
+                self.realtime_fx_rate = self._normalize_twd_per_usd(fx_q.price)
+                print(f"[FX] ✅ 已獲取即時匯率: {self.realtime_fx_rate:.4f} (realtime_quotes + realtime_fx_rate)")
+            else:
+                self.realtime_fx_rate = None
+                print("[FX] ⚠️ 無法獲取即時匯率，後續計算將依賴歷史收盤")
+
+        except Exception as e:
+            print(f"[RT] ⚠️ 即時報價批量抓取失敗: {e}")
+
+        # ==================== 3. 下載個股日線（EOD / daily bars） ====================
+        all_tickers = list(set([t for t in (tickers or []) if t] + ['SPY']))
 
         def fetch_single_ticker(t):
             try:
@@ -213,35 +339,6 @@ class MarketDataClient:
 
                 if not hist.empty:
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
-
-                    is_taiwan = self._is_taiwan_stock(t)
-
-                    if is_taiwan:
-                        # 台股：只在交易時間才嘗試獲取即時價，且寫入到「台北今天」避免覆蓋到上一交易日
-                        if is_tw_trading:
-                            latest_price = self._fetch_taiwan_realtime_price(ticker_obj, t)
-                            if latest_price:
-                                hist_last = hist.index[-1]
-                                print(f"[{t}] 台股日線 last_date={hist_last.date()}，將寫入 today={today_tw.date()}")
-                                hist = self._upsert_daily_row_with_price(hist, today_tw, latest_price, t)
-                            else:
-                                print(f"[{t}] ⚠️ 台股盤中抓不到即時價，將維持日線資料 (asof 可能回退到昨收)")
-                        else:
-                            print(f"[{t}] ⚠️ 非交易時間，使用昨日收盤價")
-                    else:
-                        # 美股或其他市場：照舊邏輯嘗試 1m K線（覆蓋最後一筆）
-                        try:
-                            intraday = ticker_obj.history(period="1d", interval="1m")
-                            if not intraday.empty:
-                                latest_price = float(intraday['Close'].iloc[-1])
-                                last_date = hist.index[-1]
-                                hist.at[last_date, 'Close'] = latest_price
-                                if 'Adj Close' in hist.columns:
-                                    hist.at[last_date, 'Adj Close'] = latest_price
-                                print(f"[{t}] ✅ 即時報價覆蓋: {latest_price:.2f}")
-                        except Exception as e:
-                            print(f"[{t}] 即時價獲取失敗: {e}")
-
                     hist_adj = self._prepare_data(t, hist)
                     return t, hist_adj
 
@@ -296,32 +393,74 @@ class MarketDataClient:
         return df
 
     def get_price(self, symbol, date):
-        """取得指定日期的股票價格（方案 A：Close_Adjusted=Close）。"""
-        if symbol not in self.market_data:
+        """取得指定日期的估值價格。
+
+        - 盤中（該市場開盤且 date 為市場當日）：優先回傳 realtime_quotes
+        - 其他情境：回傳日線收盤（Close_Adjusted）並 pad
+        """
+        if not symbol:
+            return 0.0
+
+        sym = symbol.upper()
+        dt = pd.to_datetime(date).tz_localize(None).normalize()
+
+        # Realtime path
+        try:
+            if self._should_use_realtime(sym):
+                q = self.realtime_quotes.get(sym)
+                if q and q.market_date is not None:
+                    qd = pd.to_datetime(q.market_date).tz_localize(None).normalize()
+                    if q.price and q.price > 0 and qd == dt:
+                        return float(q.price)
+        except Exception:
+            pass
+
+        # EOD path
+        if sym not in self.market_data:
             return 0.0
 
         try:
-            df = self.market_data[symbol]
-            if date in df.index:
-                return float(df.loc[date, 'Close_Adjusted'])
+            df = self.market_data[sym]
+            if dt in df.index:
+                return float(df.loc[dt, 'Close_Adjusted'])
 
-            idx = df.index.get_indexer([date], method='pad')[0]
+            idx = df.index.get_indexer([dt], method='pad')[0]
             if idx != -1:
                 return float(df.iloc[idx]['Close_Adjusted'])
 
             return 0.0
-        except:
+        except Exception:
             return 0.0
 
     def get_price_asof(self, symbol, date):
-        """取得指定日期的股票價格，並回傳實際使用的交易日 (as-of/pad)。"""
-        if symbol not in self.market_data:
-            dt = pd.to_datetime(date).tz_localize(None).normalize()
+        """取得指定日期的價格，並回傳實際使用的交易日 (as-of/pad)。
+
+        - 若該市場盤中且有 realtime quote（且 quote date == date）：回 (RT price, date)
+        - 否則回 (EOD close, used_trading_date)
+        """
+        dt = pd.to_datetime(date).tz_localize(None).normalize()
+        if not symbol:
+            return 0.0, dt
+
+        sym = symbol.upper()
+
+        # Realtime path
+        try:
+            if self._should_use_realtime(sym):
+                q = self.realtime_quotes.get(sym)
+                if q and q.market_date is not None:
+                    qd = pd.to_datetime(q.market_date).tz_localize(None).normalize()
+                    if q.price and q.price > 0 and qd == dt:
+                        return float(q.price), dt
+        except Exception:
+            pass
+
+        # EOD path
+        if sym not in self.market_data:
             return 0.0, dt
 
         try:
-            df = self.market_data[symbol]
-            dt = pd.to_datetime(date).tz_localize(None).normalize()
+            df = self.market_data[sym]
 
             if dt in df.index:
                 return float(df.loc[dt, 'Close_Adjusted']), dt
@@ -332,30 +471,36 @@ class MarketDataClient:
                 return float(df.iloc[idx]['Close_Adjusted']), used
 
             return 0.0, dt
-        except:
-            dt = pd.to_datetime(date).tz_localize(None).normalize()
+        except Exception:
             return 0.0, dt
 
     def get_prev_trading_date(self, symbol, used_date):
-        """回傳 used_date 的上一個可用交易日 (依該標的資料 index)。"""
-        try:
-            if symbol not in self.market_data:
-                return pd.to_datetime(used_date).tz_localize(None).normalize()
+        """回傳 used_date 的上一個可用交易日 (依該標的資料 index)。
 
-            df = self.market_data[symbol]
+        Important:
+        - 若 used_date 不在 index（常見：盤中使用 today + realtime quote），上一交易日應為 pad 後的那一天（昨日收盤）。
+        - 若 used_date 在 index，才回傳 index 的前一格。
+        """
+        try:
+            sym = (symbol or '').upper()
+            df = self.market_data.get(sym)
             dt = pd.to_datetime(used_date).tz_localize(None).normalize()
+
+            if df is None or df.empty:
+                return dt
 
             if dt not in df.index:
                 idx = df.index.get_indexer([dt], method='pad')[0]
                 if idx == -1:
                     return dt
-                dt = df.index[idx]
+                # dt is "today" (realtime), prev trading date should be the padded date itself
+                return df.index[idx]
 
             idx = df.index.get_indexer([dt])[0]
             if idx <= 0:
                 return dt
             return df.index[idx - 1]
-        except:
+        except Exception:
             return pd.to_datetime(used_date).tz_localize(None).normalize()
 
     def get_transaction_multiplier(self, symbol, date):
@@ -372,7 +517,7 @@ class MarketDataClient:
                 return float(df.iloc[0]['Split_Factor'])
 
             return float(df.iloc[-1]['Split_Factor'])
-        except:
+        except Exception:
             return 1.0
 
     def get_dividend_adjustment_factor(self, symbol, date):
@@ -388,7 +533,7 @@ class MarketDataClient:
             df = self.market_data[symbol]
             if date in df.index and 'Dividends' in df.columns:
                 return float(df.loc[date, 'Dividends'])
-        except:
+        except Exception:
             pass
 
         return 0.0
