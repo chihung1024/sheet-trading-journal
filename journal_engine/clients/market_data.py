@@ -33,9 +33,88 @@ class MarketDataClient:
         self.fx_rates = pd.Series(dtype=float)
         self.realtime_fx_rate = None  # [v2.52] 新增獨立的即時匯率存儲
 
+    def _is_taiwan_stock(self, symbol: str) -> bool:
+        """判斷是否為台股標的。"""
+        return symbol.endswith('.TW') or symbol.endswith('.TWO')
+
+    def _is_taiwan_market_hours(self) -> bool:
+        """判斷目前是否為台股交易時間（台北時間 09:00-13:30）。"""
+        try:
+            taiwan_tz = pytz.timezone('Asia/Taipei')
+            now = datetime.now(taiwan_tz)
+            
+            # 週末不交易
+            if now.weekday() >= 5:  # Saturday=5, Sunday=6
+                return False
+            
+            hour = now.hour
+            minute = now.minute
+            
+            # 交易時間: 09:00-13:30
+            if hour == 9 and minute >= 0:
+                return True
+            elif 10 <= hour <= 12:
+                return True
+            elif hour == 13 and minute <= 30:
+                return True
+            
+            return False
+        except Exception as e:
+            print(f"[台股時間判斷] 錯誤: {e}")
+            return False
+
+    def _fetch_taiwan_realtime_price(self, ticker_obj, symbol: str) -> float:
+        """專用於台股的即時報價獲取，多種方法嘗試。
+        
+        Returns:
+            float: 即時價格，失敗則返回 None
+        """
+        latest_price = None
+        
+        # 方法1: 嘗試 fast_info
+        try:
+            info = ticker_obj.fast_info
+            current_price = info.get('last_price') or info.get('regularMarketPrice') or info.get('regular_market_price')
+            if current_price and current_price > 0:
+                latest_price = float(current_price)
+                print(f"[{symbol}] ✅ fast_info 獲取即時價: {latest_price:.2f}")
+                return latest_price
+        except Exception as e:
+            print(f"[{symbol}] fast_info 失敗: {e}")
+        
+        # 方法2: 嘗試 1分鐘K線（最近 1天）
+        try:
+            intraday = ticker_obj.history(period="1d", interval="1m")
+            if not intraday.empty:
+                latest_price = float(intraday['Close'].iloc[-1])
+                print(f"[{symbol}] ✅ 1m K線獲取即時價: {latest_price:.2f}")
+                return latest_price
+        except Exception as e:
+            print(f"[{symbol}] 1m K線失敗: {e}")
+        
+        # 方法3: 嘗試 5分鐘K線
+        try:
+            intraday_5m = ticker_obj.history(period="1d", interval="5m")
+            if not intraday_5m.empty:
+                latest_price = float(intraday_5m['Close'].iloc[-1])
+                print(f"[{symbol}] ✅ 5m K線獲取即時價: {latest_price:.2f}")
+                return latest_price
+        except Exception as e:
+            print(f"[{symbol}] 5m K線失敗: {e}")
+        
+        print(f"[{symbol}] ⚠️ 無法獲取即時報價")
+        return None
+
     def download_data(self, tickers: list, start_date):
         """下載市場數據（股票價格 + 匯率）。"""
         print(f"正在下載市場數據，起始日期: {start_date}...")
+        
+        # 判斷是否為台股交易時間
+        is_tw_trading = self._is_taiwan_market_hours()
+        if is_tw_trading:
+            print("✅ 目前為台股交易時間，將加強台股即時報價獲取")
+        else:
+            print("⚠️ 非台股交易時間，台股將使用昨日收盤價")
 
         # ==================== 1. 下載匯率數據 ====================
         try:
@@ -92,17 +171,32 @@ class MarketDataClient:
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
 
                     # 盤中即時價覆蓋最後一筆日線
-                    try:
-                        intraday = ticker_obj.history(period="1d", interval="1m")
-                        if not intraday.empty:
-                            latest_price = float(intraday['Close'].iloc[-1])
-                            last_date = hist.index[-1]
-                            hist.at[last_date, 'Close'] = latest_price
-                            if 'Adj Close' in hist.columns:
-                                hist.at[last_date, 'Adj Close'] = latest_price
-                            print(f"[{t}] ✅ 即時報價覆蓋: {latest_price:.2f}")
-                    except Exception:
-                        pass
+                    last_date = hist.index[-1]
+                    is_taiwan = self._is_taiwan_stock(t)
+                    
+                    if is_taiwan:
+                        # 台股：只在交易時間才嘗試獲取即時價
+                        if is_tw_trading:
+                            latest_price = self._fetch_taiwan_realtime_price(ticker_obj, t)
+                            if latest_price:
+                                hist.at[last_date, 'Close'] = latest_price
+                                if 'Adj Close' in hist.columns:
+                                    hist.at[last_date, 'Adj Close'] = latest_price
+                                print(f"[{t}] ✅ 台股盤中價覆蓋: {latest_price:.2f}")
+                        else:
+                            print(f"[{t}] ⚠️ 非交易時間，使用昨日收盤價")
+                    else:
+                        # 美股或其他市場：照舊邏輯嘗試 1m K線
+                        try:
+                            intraday = ticker_obj.history(period="1d", interval="1m")
+                            if not intraday.empty:
+                                latest_price = float(intraday['Close'].iloc[-1])
+                                hist.at[last_date, 'Close'] = latest_price
+                                if 'Adj Close' in hist.columns:
+                                    hist.at[last_date, 'Adj Close'] = latest_price
+                                print(f"[{t}] ✅ 即時報價覆蓋: {latest_price:.2f}")
+                        except Exception as e:
+                            print(f"[{t}] 即時價獲取失敗: {e}")
 
                     hist_adj = self._prepare_data(t, hist)
                     return t, hist_adj
