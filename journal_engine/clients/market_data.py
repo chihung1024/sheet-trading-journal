@@ -106,6 +106,98 @@ class MarketDataClient:
             return pytz.timezone('Asia/Taipei')
         return pytz.timezone('America/New_York')
 
+    def _fetch_single_realtime(self, symbol: str, market_tz) -> RealtimeQuote | None:
+        """逐檔查詢即時報價（用於批量失敗後的補救）。
+        
+        多重降級策略：
+        1. fast_info (最快)
+        2. history(period='1d', interval='1m')
+        3. history(period='1d', interval='5m')
+        """
+        if not symbol:
+            return None
+            
+        sym = symbol.upper()
+        today_market = datetime.now(market_tz).date()
+        
+        try:
+            ticker = yf.Ticker(sym)
+            
+            # 方法 1: fast_info
+            try:
+                info = ticker.fast_info
+                price = info.get('last_price') or info.get('regularMarketPrice') or info.get('regular_market_price')
+                if price and price > 0:
+                    return RealtimeQuote(
+                        symbol=sym,
+                        price=float(price),
+                        timestamp=pd.Timestamp.utcnow(),
+                        market_date=pd.Timestamp(today_market),
+                        source='single.fast_info'
+                    )
+            except Exception:
+                pass
+            
+            # 方法 2: 1m history
+            try:
+                hist = ticker.history(period="1d", interval="1m", timeout=5)
+                if hist is not None and not hist.empty and 'Close' in hist.columns:
+                    closes = hist['Close'].dropna()
+                    if not closes.empty:
+                        last_price = float(closes.iloc[-1])
+                        last_ts = closes.index[-1]
+                        
+                        # 確保時區
+                        if getattr(last_ts, 'tzinfo', None) is None:
+                            last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
+                        else:
+                            last_ts = pd.Timestamp(last_ts)
+                        
+                        # 驗證是今天的數據
+                        market_date = last_ts.tz_convert(market_tz).date()
+                        if market_date == today_market:
+                            return RealtimeQuote(
+                                symbol=sym,
+                                price=last_price,
+                                timestamp=last_ts,
+                                market_date=pd.Timestamp(today_market),
+                                source='single.history_1m'
+                            )
+            except Exception:
+                pass
+            
+            # 方法 3: 5m history (最後的嘗試)
+            try:
+                hist_5m = ticker.history(period="1d", interval="5m", timeout=5)
+                if hist_5m is not None and not hist_5m.empty and 'Close' in hist_5m.columns:
+                    closes = hist_5m['Close'].dropna()
+                    if not closes.empty:
+                        last_price = float(closes.iloc[-1])
+                        last_ts = closes.index[-1]
+                        
+                        if getattr(last_ts, 'tzinfo', None) is None:
+                            last_ts = pd.Timestamp(last_ts).tz_localize('UTC')
+                        else:
+                            last_ts = pd.Timestamp(last_ts)
+                        
+                        market_date = last_ts.tz_convert(market_tz).date()
+                        if market_date == today_market:
+                            return RealtimeQuote(
+                                symbol=sym,
+                                price=last_price,
+                                timestamp=last_ts,
+                                market_date=pd.Timestamp(today_market),
+                                source='single.history_5m'
+                            )
+            except Exception:
+                pass
+            
+            return None
+            
+        except Exception as e:
+            print(f"[{sym}] 逐檔查詢失敗: {e}")
+            return None
+
     def _fetch_intraday_prices_batch(self, symbols: list[str], market_tz, name: str = "Intraday Batch") -> dict[str, RealtimeQuote]:
         """批量抓取盤中最後價（1m），並只保留『市場當日』的最新價。
 
@@ -254,45 +346,12 @@ class MarketDataClient:
         return None
 
     def _fetch_taiwan_realtime_price(self, ticker_obj, symbol: str) -> float:
-        """專用於台股的即時報價獲取，多種方法嘗試。
+        """[Deprecated] 專用於台股的即時報價獲取。
 
-        Returns:
-            float: 即時價格，失敗則返回 None
+        v2.56+ 已改用 _fetch_single_realtime() 統一處理。
+        保留此函式避免舊版本呼叫崩潰。
         """
-        latest_price = None
-
-        # 方法1: 嘗試 fast_info
-        try:
-            info = ticker_obj.fast_info
-            current_price = info.get('last_price') or info.get('regularMarketPrice') or info.get('regular_market_price')
-            if current_price and current_price > 0:
-                latest_price = float(current_price)
-                print(f"[{symbol}] ✅ fast_info 獲取即時價: {latest_price:.2f}")
-                return latest_price
-        except Exception as e:
-            print(f"[{symbol}] fast_info 失敗: {e}")
-
-        # 方法2: 嘗試 1分鐘K線（最近 1天）
-        try:
-            intraday = ticker_obj.history(period="1d", interval="1m")
-            if not intraday.empty:
-                latest_price = float(intraday['Close'].iloc[-1])
-                print(f"[{symbol}] ✅ 1m K線獲取即時價: {latest_price:.2f}")
-                return latest_price
-        except Exception as e:
-            print(f"[{symbol}] 1m K線失敗: {e}")
-
-        # 方法3: 嘗試 5分鐘K線
-        try:
-            intraday_5m = ticker_obj.history(period="1d", interval="5m")
-            if not intraday_5m.empty:
-                latest_price = float(intraday_5m['Close'].iloc[-1])
-                print(f"[{symbol}] ✅ 5m K線獲取即時價: {latest_price:.2f}")
-                return latest_price
-        except Exception as e:
-            print(f"[{symbol}] 5m K線失敗: {e}")
-
-        print(f"[{symbol}] ⚠️ 無法獲取即時報價")
+        print(f"[{symbol}] 警告: _fetch_taiwan_realtime_price 已棄用，請使用 _fetch_single_realtime")
         return None
 
     def _upsert_daily_row_with_price(self, hist: pd.DataFrame, target_date: pd.Timestamp, latest_price: float, symbol: str) -> pd.DataFrame:
@@ -365,22 +424,78 @@ class MarketDataClient:
             # FX quote：只要程式在盤中跑（TW 或 US），就一起抓一份 RT
             fx_symbols = [EXCHANGE_SYMBOL] if (is_tw_trading or is_us_trading) else []
 
-            # TW batch
+            # TW batch + fallback
             if is_tw_trading and (tw_symbols or fx_symbols):
                 tw_tz = pytz.timezone('Asia/Taipei')
-                q_tw = self._fetch_intraday_prices_batch(list(set(tw_symbols + fx_symbols)), tw_tz, name='TW Intraday')
+                target_symbols = list(set(tw_symbols + fx_symbols))
+                print(f"[TW RT] 嘗試批量查詢 {len(target_symbols)} 檔標的...")
+                
+                q_tw = self._fetch_intraday_prices_batch(target_symbols, tw_tz, name='TW Batch')
+                
+                # 計算成功率
+                success_rate = len(q_tw) / len(target_symbols) if target_symbols else 0
+                print(f"[TW RT] 批量查詢成功率: {success_rate:.1%} ({len(q_tw)}/{len(target_symbols)})")
+                
+                # 更新已成功的
                 for k, v in q_tw.items():
                     self.realtime_quotes[k] = v
+                
+                # 如果成功率 < 50%，對失敗的標的進行逐檔補救
+                if success_rate < 0.5:
+                    failed_symbols = set(s.upper() for s in target_symbols) - set(q_tw.keys())
+                    if failed_symbols:
+                        print(f"[TW RT] 批量成功率過低，對 {len(failed_symbols)} 檔失敗標的進行逐檔補救...")
+                        
+                        # 限制最多補救 15 檔，避免超時
+                        retry_symbols = list(failed_symbols)[:15]
+                        retry_count = 0
+                        
+                        for sym in retry_symbols:
+                            rt = self._fetch_single_realtime(sym, tw_tz)
+                            if rt:
+                                self.realtime_quotes[sym] = rt
+                                retry_count += 1
+                        
+                        print(f"[TW RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
 
-            # US batch
+            # US batch + fallback
             if is_us_trading and (us_symbols or fx_symbols):
                 us_tz = pytz.timezone('America/New_York')
-                q_us = self._fetch_intraday_prices_batch(list(set(us_symbols + fx_symbols)), us_tz, name='US Intraday')
+                target_symbols = list(set(us_symbols + fx_symbols))
+                print(f"[US RT] 嘗試批量查詢 {len(target_symbols)} 檔標的...")
+                
+                q_us = self._fetch_intraday_prices_batch(target_symbols, us_tz, name='US Batch')
+                
+                # 計算成功率
+                success_rate = len(q_us) / len(target_symbols) if target_symbols else 0
+                print(f"[US RT] 批量查詢成功率: {success_rate:.1%} ({len(q_us)}/{len(target_symbols)})")
+                
                 # FX 可能在兩邊都抓到，取 timestamp 較新的
                 for k, v in q_us.items():
                     old = self.realtime_quotes.get(k)
                     if (old is None) or (v.timestamp > old.timestamp):
                         self.realtime_quotes[k] = v
+                
+                # 如果成功率 < 50%，對失敗的標的進行逐檔補救
+                if success_rate < 0.5:
+                    failed_symbols = set(s.upper() for s in target_symbols) - set(q_us.keys())
+                    # 排除已經在 TW 補救過的
+                    failed_symbols = failed_symbols - set(self.realtime_quotes.keys())
+                    
+                    if failed_symbols:
+                        print(f"[US RT] 批量成功率過低，對 {len(failed_symbols)} 檔失敗標的進行逐檔補救...")
+                        
+                        # 限制最多補救 15 檔
+                        retry_symbols = list(failed_symbols)[:15]
+                        retry_count = 0
+                        
+                        for sym in retry_symbols:
+                            rt = self._fetch_single_realtime(sym, us_tz)
+                            if rt:
+                                self.realtime_quotes[sym] = rt
+                                retry_count += 1
+                        
+                        print(f"[US RT] 逐檔補救完成: {retry_count}/{len(retry_symbols)} 成功")
 
             # RT summary log
             try:
