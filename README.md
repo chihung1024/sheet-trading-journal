@@ -34,31 +34,136 @@
 
 ## ✨ 功能總覽
 
-### 🎯 核心功能
+### 🏠 總覽頁面
 
-- **投資組合總覽**
+投資組合儀表板，一目瞭然掌握全局：
+
+- **績效卡片（Stats Grid）**
   - 總資產（Market Value / NAV-like）
   - 已實現損益（Realized P&L）
   - 未實現損益（Unrealized P&L）
-  - ROI（以成本/市值推導）
+  - 總損益（Total P&L）
+  - ROI（投資報酬率）
   - TWR（時間加權報酬率；日切分 linked returns）
   - XIRR（個人年化報酬率 / IRR）
+  - 勝率 / 持倉數 / 交易筆數
 
-- **交易日記（CRUD）**
-  - 支援交易類型：`BUY` / `SELL` / `DIV`
-  - 手續費 / 稅費欄位（會正規化為正值並納入計算）
-  - 策略標籤 `Tag`（支援 `,` 或 `;` 分隔）
+- **績效曲線圖（Performance Chart）**
+  - 投資組合 vs. Benchmark 歷史表現
+  - 自訂 Benchmark ticker（SPY / QQQ / 0050.TW / 005930.KS 等）
+  - 支援多時間軸切換（全部 / 1年 / 6月 / 3月 / 1月）
+  - Total-return 模式（價格 + 配息，含預扣稅率）
 
-- **策略群組**
-  - `all` 群組 + 每個 Tag 群組
-  - 各群組獨立績效與歷史曲線（從該群組第一筆交易起算）
+### 📈 圖表頁面
 
-- **Benchmark（可自訂）**
-  - 支援自訂 Benchmark ticker（例如：SPY / QQQ / 0050.TW / 005930.KS）
-  - Benchmark 曲線以 total-return（價格 + 配息，含預扣稅率設定）方式計算
+專注於績效曲線的完整檢視：
+- 放大版績效圖表
+- 支援多群組切換
+- 圖表互動（縮放、Tooltip、數據點標註）
 
-- **PWA + 深色模式 + 響應式 UI**
-  - Vue 3 + Vite 前端，支援桌機/手機使用
+### 💼 持倉明細頁面
+
+當前持倉的詳細資訊表格：
+- 標的代碼（Symbol）
+- 持倉數量（Qty）
+- 平均成本（Avg Cost）
+- 當前市價（Current Price）
+- 市值（Market Value）
+- 未實現損益（Unrealized P&L）
+- 未實現報酬率（Unrealized %）
+- 標的權重（Weight %）
+- 支援依各欄位排序
+- 即時市價更新（含盤中 / 收盤價標示）
+
+### 🧾 交易紀錄頁面
+
+完整的交易歷史管理：
+- **交易列表**
+  - 日期、標的、類型（BUY / SELL / DIV）
+  - 數量、價格、手續費、稅費
+  - 策略標籤（Tag）
+  - 快速編輯 / 刪除功能
+
+- **篩選與搜尋**
+  - 依標的搜尋
+  - 依交易類型篩選
+  - 依群組標籤篩選
+  - 日期區間篩選
+
+### 💰 配息紀錄頁面
+
+股息配發與現金流追蹤：
+- **配息歷史表**
+  - 自動偵測應計股息（Pending）
+  - 已確認配息（Confirmed）
+  - 除息日（Ex-Date）、發放日（Pay Date）
+  - 每股配息、持有數量、配息總額
+  - 預扣稅率與淨收入
+
+- **快速操作**
+  - 一鍵新增 DIV 交易確認配息
+  - Pending 股息提醒徽章
+  - 配息金額自動換算為台幣
+
+### 🏷️ 群組管理頁面
+
+策略群組設定與績效隔離：
+- **群組列表**
+  - 檢視所有策略群組（Tag）
+  - 各群組獨立績效指標
+  - 群組成立日期與累計表現
+
+- **群組操作**
+  - 新增 / 重命名 / 刪除群組
+  - 交易紀錄自動歸屬群組
+  - `all` 群組自動包含所有交易
+
+### 📝 交易表單（Side Panel）
+
+固定式右側面板，隨時新增/編輯交易：
+- **交易類型**
+  - BUY（買入）
+  - SELL（賣出）
+  - DIV（配息）
+
+- **欄位設計**
+  - 標的代碼（自動補全建議）
+  - 交易日期（日曆選擇器）
+  - 數量 / 價格
+  - 手續費 / 稅費（自動正規化為正值）
+  - 策略標籤（支援 `,` 或 `;` 分隔多標籤）
+
+- **智能功能**
+  - 編輯模式自動填充現有資料
+  - 表單驗證與錯誤提示
+  - 送出後自動觸發後端計算
+
+### 🔄 自動刷新機制
+
+背景自動觸發投資組合計算：
+- 預設每 3 分鐘自動觸發 GitHub Actions
+- 倒數計時器顯示下次更新時間
+- 一鍵暫停/恢復自動刷新
+- 手動觸發按鈕（適合即時更新需求）
+- 狀態輪詢：自動追蹤後端計算進度
+
+### 🌓 深色模式 & PWA
+
+- **主題切換**
+  - 深色 / 淺色模式
+  - 一鍵切換，記憶偏好設定
+
+- **PWA 功能**
+  - 可安裝至桌面/主畫面
+  - 離線快取
+  - Service Worker 自動更新提示
+
+### 🔐 使用者認證
+
+- Google OAuth 2.0 登入
+- JWT Token 驗證
+- 多使用者資料隔離
+- 安全登出機制
 
 ---
 
@@ -91,9 +196,23 @@
 （以 repo root 為準）
 
 - `src/`：Vue 前端
+  - `components/`：所有 Vue 元件
+    - `StatsGrid.vue`：績效卡片
+    - `PerformanceChart.vue`：績效曲線圖
+    - `HoldingsTable.vue`：持倉明細表
+    - `RecordList.vue`：交易紀錄列表
+    - `DividendManager.vue`：配息管理介面
+    - `GroupManager.vue`：群組管理介面
+    - `TradeForm.vue`：交易表單
+    - `PieChart.vue`：圓餅圖（資產配置）
+    - `LoginOverlay.vue`：登入畫面
+    - `skeletons/`：載入骨架屏
+  - `stores/`：Pinia 狀態管理
+  - `composables/`：可重用邏輯（useAutoRefresh / useDarkMode / usePWA）
+  - `App.vue`：主應用程式
 - `public/`：PWA / CSP headers 等靜態資源
-- `worker.js`：Cloudflare Worker 主版本（實際部署到哪個 Worker 以你的 Cloudflare 設定為準）
-- `cloudflare worker/`：歷史/特定版本 Worker（例如文件提到的 v2.38）
+- `worker.js`：Cloudflare Worker 主版本
+- `cloudflare worker/`：歷史/特定版本 Worker
 - `main.py`：GitHub Actions 批次計算入口
 - `journal_engine/`：投資組合計算引擎（Python）
 - `tests/`：測試
