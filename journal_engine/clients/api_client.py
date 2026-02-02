@@ -1,69 +1,8 @@
 import requests
 import json
 import logging
-import math
-from datetime import date, datetime
-from typing import Any
-
 from ..config import WORKER_API_URL_RECORDS, WORKER_API_URL_PORTFOLIO, API_HEADERS, API_KEY
 from ..models import PortfolioSnapshot
-
-
-def _json_sanitize(obj: Any) -> Any:
-    """
-    Make obj JSON-compliant for requests.post(json=...),
-    which uses json.dumps(..., allow_nan=False).
-
-    Rules:
-      - float NaN/Inf/-Inf -> None
-      - numpy scalar -> Python scalar (via .item())
-      - pandas Timestamp/DatetimeIndex/date/datetime -> ISO string
-      - dict/list/tuple -> recursive
-      - other -> unchanged
-    """
-    # Fast path for None / bool / int / str
-    if obj is None or isinstance(obj, (bool, int, str)):
-        return obj
-
-    # datetime/date -> isoformat
-    if isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-
-    # floats: ban NaN/Inf
-    if isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None
-        return obj
-
-    # numpy scalar: has .item()
-    if hasattr(obj, "item") and callable(getattr(obj, "item")):
-        try:
-            return _json_sanitize(obj.item())
-        except Exception:
-            pass
-
-    # pandas Timestamp: has .to_pydatetime or isoformat
-    if hasattr(obj, "to_pydatetime") and callable(getattr(obj, "to_pydatetime")):
-        try:
-            return obj.to_pydatetime().isoformat()
-        except Exception:
-            pass
-
-    # dict
-    if isinstance(obj, dict):
-        return {str(k): _json_sanitize(v) for k, v in obj.items()}
-
-    # list/tuple
-    if isinstance(obj, (list, tuple)):
-        return [_json_sanitize(v) for v in obj]
-
-    # fallback: try to stringify if it's not JSON serializable
-    try:
-        json.dumps(obj)
-        return obj
-    except Exception:
-        return str(obj)
-
 
 class CloudflareClient:
     def __init__(self):
@@ -194,19 +133,17 @@ class CloudflareClient:
         """
         self.logger.info(f"計算完成，正在上傳 {target_user_id if target_user_id else 'System'} 的投資組合至 Cloudflare D1...")
         
-        # 將 Pydantic model dump 出來後做 JSON-safe sanitize（避免 NaN/Inf）
-        raw_data = snapshot.model_dump()
-        safe_data = _json_sanitize(raw_data)
-
+        # [關鍵修改]：包裝 payload，加入 target_user_id 以支援多使用者資料隔離
+        # 如果有 target_user_id，則採用代理上傳格式；否則維持原樣
         payload = {
             "target_user_id": target_user_id,
-            "data": safe_data
+            "data": snapshot.model_dump()
         }
         
         try:
             response = requests.post(
-                WORKER_API_URL_PORTFOLIO,
-                json=payload,
+                WORKER_API_URL_PORTFOLIO, 
+                json=payload, 
                 headers=API_HEADERS
             )
             
