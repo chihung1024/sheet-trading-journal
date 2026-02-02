@@ -544,20 +544,25 @@ class PortfolioCalculator:
                         unrealized_pnl_today = curr_mv_twd - prev_mv_twd
 
                 else:
-                    # Price is padded to last close (used_ts). Today's PnL should reflect FX mark-to-market.
-                    # Reference value: last close valuation (same price, fx_asof).
-                    effective_fx = self._get_effective_fx_rate(sym, fx_today)
-                    prev_effective_fx = self._get_effective_fx_rate(sym, fx_asof)
+                    # US market closed / price padded to last close (used_ts).
+                    # Daily PnL = price close-to-close (D0 - D1) converted by today's FX
+                    #           + FX mark-to-market since last close D0: P(D0) * (FX_today - FX_D0)
+                    effective_fx_today = self._get_effective_fx_rate(sym, fx_today)   # FX(today)
+                    effective_fx_d0 = self._get_effective_fx_rate(sym, fx_asof)       # FX(D0 = used_ts)
+                    effective_fx = effective_fx_today
 
-                    # Keep price-change fields neutral (price unchanged), but allow FX PnL.
-                    prev_p = curr_p
                     realized_pnl_today = 0.0
-
                     qty = h.get('qty', 0.0)
-                    if qty and qty > 1e-9:
-                        curr_mv_twd = qty * curr_p * effective_fx
-                        prev_mv_twd = qty * curr_p * prev_effective_fx
-                        unrealized_pnl_today = curr_mv_twd - prev_mv_twd
+
+                    if qty and qty > 1e-9 and curr_p and curr_p > 0:
+                        price_pnl_twd = 0.0
+                        if prev_p and prev_p > 0:
+                            price_pnl_twd = qty * (curr_p - prev_p) * effective_fx_today
+
+                        fx_pnl_twd = qty * curr_p * (effective_fx_today - effective_fx_d0)
+                        unrealized_pnl_today = price_pnl_twd + fx_pnl_twd
+                    else:
+                        unrealized_pnl_today = 0.0
 
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl

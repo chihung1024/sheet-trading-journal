@@ -577,7 +577,24 @@ class MarketDataClient:
                     pass
             print(msg)
 
-        ok, quotes, missing = self.fetch_realtime_quotes_atomic(required_symbols, label=label)
+        # Only require US intraday quotes when US market is open; keep TW/FX realtime always.
+        required = [s.upper() for s in (required_symbols or []) if s]
+        required = sorted(list(dict.fromkeys(required)))
+
+        fx_sym = (EXCHANGE_SYMBOL or '').upper()
+        need_us_rt = self._is_us_market_hours()
+
+        fetch_set: list[str] = []
+        for s in required:
+            is_tw_or_fx = (s == fx_sym) or ('=' in s) or self._is_taiwan_stock(s)
+            if is_tw_or_fx:
+                fetch_set.append(s)
+            else:
+                if need_us_rt:
+                    fetch_set.append(s)
+
+        fetch_set = sorted(list(dict.fromkeys(fetch_set)))
+        ok, quotes, missing = self.fetch_realtime_quotes_atomic(fetch_set, label=label)
 
         if ok:
             self.realtime_quotes = dict(prev_quotes)
