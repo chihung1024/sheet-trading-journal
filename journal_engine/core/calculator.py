@@ -454,6 +454,7 @@ class PortfolioCalculator:
         daily_pnl_total_raw = 0.0
         daily_pnl_tw_raw = 0.0
         daily_pnl_us_raw = 0.0
+        daily_pnl_fx_raw = 0.0  # ✅ [v3.19] 匯率損益分量
 
         for sym in candidate_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
@@ -481,7 +482,11 @@ class PortfolioCalculator:
                 fx_used = DEFAULT_FX_RATE
                 fx_prev = DEFAULT_FX_RATE
                 try:
-                    if used_ts.date() == today and self._is_us_market_open(tw_now):
+                    # ✅ [v3.19] 盤前也使用即時匯率計算市值
+                    # 只要有 realtime_fx_rate，就使用它（無論盤中或盤前）
+                    if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
+                        fx_used = self.market.realtime_fx_rate
+                    elif used_ts.date() == today:
                         fx_used = current_fx
                     else:
                         fx_used = self.market.fx_rates.asof(used_ts)
@@ -512,10 +517,21 @@ class PortfolioCalculator:
 
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl
+            
+            # ✅ [v3.19] 計算匯率損益分量（僅美股）
+            # 匯率損益 = 持倉市值 × (當前匯率 - 前日匯率) / 當前匯率
+            fx_pnl_contribution = 0.0
+            if not is_tw and position_snap.qty > 0 and effective_fx != prev_effective_fx:
+                # 純匯率變動帶來的損益（假設股價不變）
+                base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
+                fx_pnl_contribution = position_snap.qty * base_price * (effective_fx - prev_effective_fx)
+                daily_pnl_fx_raw += fx_pnl_contribution
+            
             if is_tw:
                 daily_pnl_tw_raw += total_daily_pnl
             else:
-                daily_pnl_us_raw += total_daily_pnl
+                # 美股損益扣除匯率部分，避免重複計算
+                daily_pnl_us_raw += (total_daily_pnl - fx_pnl_contribution)
 
             try:
                 sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date)]
@@ -580,7 +596,11 @@ class PortfolioCalculator:
             realized_pnl=round(total_realized_pnl_twd, 0),
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
             daily_pnl_twd=round(display_daily_pnl, 0),
-            daily_pnl_breakdown={"tw_pnl_twd": round(daily_pnl_tw_raw, 0), "us_pnl_twd": round(daily_pnl_us_raw, 0)},
+            daily_pnl_breakdown={
+                "tw_pnl_twd": round(daily_pnl_tw_raw, 0), 
+                "us_pnl_twd": round(daily_pnl_us_raw, 0),
+                "fx_pnl_twd": round(daily_pnl_fx_raw, 0)  # ✅ [v3.19] 新增匯率損益
+            },
             market_stage=current_stage,
             market_stage_desc=stage_desc,
             daily_pnl_asof_date=daily_pnl_asof_date,
@@ -590,9 +610,9 @@ class PortfolioCalculator:
         )
         
         self.validator.validate_twr_calculation(history_data)
-        # ✅ [v3.18] 驗證台/美損益分量加總
+        # ✅ [v3.19] 驗證台/美/匯率損益分量加總
         self.validator.validate_daily_pnl_breakdown(
-            display_daily_pnl, daily_pnl_tw_raw, daily_pnl_us_raw
+            display_daily_pnl, daily_pnl_tw_raw, daily_pnl_us_raw, daily_pnl_fx_raw
         )
         
         return PortfolioGroupData(

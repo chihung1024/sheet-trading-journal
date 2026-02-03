@@ -139,17 +139,13 @@ const formatSigned = (val) => {
   return `${sign}${Math.round(n).toLocaleString('zh-TW')}`;
 };
 
-// ✅ 判斷目前是否為美股盤中時間 (台灣時間 21:30 - 05:00)
+// ✅ [v3.18] 改用後端判斷的市場狀態，避免前後端不一致
+// 後端考慮時區、冬夏令時、週末等因素
 const isUSMarketOpen = computed(() => {
-  const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  
-  if (hour >= 21 || hour < 5) {
-    if (hour === 21 && minute < 30) return false;
-    return true;
-  }
-  return false;
+  const stage = stats.value.market_stage;
+  const desc = stats.value.market_stage_desc || '';
+  // MARKET_OPEN 且描述包含 US 表示美股盤中
+  return stage === 'MARKET_OPEN' && desc.includes('US');
 });
 
 // 動態標題
@@ -166,36 +162,33 @@ const pnlDescription = computed(() => {
   }
 });
 
-// Tooltip：只顯示台/美分量（卡片仍只顯示總和）
+// ✅ [v3.19] Tooltip：顯示台/美/匯率分量
 const pnlTooltip = computed(() => {
   if (!dailyPnlBreakdown.value) return '';
   const tw = dailyPnlBreakdown.value.tw_pnl_twd ?? 0;
   const us = dailyPnlBreakdown.value.us_pnl_twd ?? 0;
+  const fx = dailyPnlBreakdown.value.fx_pnl_twd ?? 0;
+  
+  // 只有匯率損益非零時才顯示
+  if (Math.abs(fx) > 0.5) {
+    return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)} | 匯率: ${formatSigned(fx)}`;
+  }
   return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)}`;
 });
 
-// ✅ 計算今日損益百分比
+// ✅ [v3.18] 當日損益百分比：優先使用後端計算結果，避免前端索引問題
 const dailyRoi = computed(() => {
-  let baseValue = 0;
-  
-  if (!history.value || history.value.length < 2) {
-    return '0.00';
+  // 優先使用後端計算的精確值
+  if (stats.value.daily_pnl_roi_percent != null) {
+    return stats.value.daily_pnl_roi_percent.toFixed(2);
   }
   
-  if (isUSMarketOpen.value) {
-    // 使用昨日收盤
-    baseValue = history.value[history.value.length - 2].total_value || 0;
-  } else {
-    // 使用前日收盤
-    if (history.value.length >= 3) {
-      baseValue = history.value[history.value.length - 3].total_value || 0;
-    } else {
-      baseValue = history.value[history.value.length - 2].total_value || 0;
-    }
+  // 後備方案：使用後端提供的基準值
+  if (stats.value.daily_pnl_base_value && stats.value.daily_pnl_base_value > 0) {
+    return ((dailyPnL.value / stats.value.daily_pnl_base_value) * 100).toFixed(2);
   }
   
-  if (!baseValue || baseValue === 0) return '0.00';
-  return ((dailyPnL.value / baseValue) * 100).toFixed(2);
+  return '0.00';
 });
 
 // 數字動畫

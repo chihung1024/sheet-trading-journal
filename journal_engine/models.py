@@ -35,8 +35,8 @@ class PortfolioSummary(BaseModel):
     # ✅ 當日損益（TWD）：總和（台股分量 + 美股分量）
     daily_pnl_twd: float = 0.0
 
-    # ✅ Tooltip/明細用：台/美分量
-    # { "tw_pnl_twd": <float>, "us_pnl_twd": <float> }
+    # ✅ Tooltip/明細用：台/美/匯率分量
+    # { "tw_pnl_twd": <float>, "us_pnl_twd": <float>, "fx_pnl_twd": <float> }
     daily_pnl_breakdown: Optional[Dict[str, float]] = None
 
     # ✅ 新增：市場狀態（由後端判定，避免前端自行推論）

@@ -93,20 +93,21 @@ class PortfolioValidator:
         daily_pnl_total: float,
         tw_pnl: float,
         us_pnl: float,
+        fx_pnl: float = 0.0,  # ✅ [v3.19] 新增匯率損益參數
         tolerance: float = 1.0
     ) -> bool:
         """
-        [v3.18] 驗證台/美分量加總等於總當日損益
+        [v3.19] 驗證台/美/匯率分量加總等於總當日損益
         
         規則：
-        TW損益 + US損益 應該等於 當日總損益（允許 1 TWD 誤差）
+        TW損益 + US損益 + 匯率損益 應該等於 當日總損益（允許 1 TWD 誤差）
         """
-        expected = tw_pnl + us_pnl
+        expected = tw_pnl + us_pnl + fx_pnl
         deviation = abs(daily_pnl_total - expected)
         if deviation > tolerance:
             logger.error(
                 f"Daily PnL breakdown mismatch: Total={daily_pnl_total:.2f}, "
-                f"TW={tw_pnl:.2f} + US={us_pnl:.2f} = {expected:.2f}, "
+                f"TW={tw_pnl:.2f} + US={us_pnl:.2f} + FX={fx_pnl:.2f} = {expected:.2f}, "
                 f"Deviation={deviation:.2f}"
             )
             return False
