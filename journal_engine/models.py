@@ -47,6 +47,10 @@ class PortfolioSummary(BaseModel):
     daily_pnl_asof_date: Optional[str] = None
     daily_pnl_prev_date: Optional[str] = None
 
+    # ✅ [v3.18] 新增：後端計算的當日報酬率，避免前端依賴 history 索引
+    daily_pnl_roi_percent: Optional[float] = None  # 精確計算的當日報酬率百分比
+    daily_pnl_base_value: Optional[float] = None   # 計算基準值（前日總資產淨值）
+
 class HoldingPosition(BaseModel):
     symbol: str
     tag: str

@@ -140,5 +140,86 @@ class TestPnLLogic(unittest.TestCase):
         self.assertAlmostEqual(base_price, 100) 
         print(f"PASS: Re-entry uses Cost ({base_price}) not Prev Close ($95)")
 
+    def test_mixed_tw_us_positions(self):
+        """測試情境 6: 台/美混合持倉的當日損益計算"""
+        print("\n=== Test 6: Mixed TW/US Positions ===")
+        data = [
+            # Taiwan Stock (suffix .TW)
+            {'Date': '2026-01-25', 'Symbol': '2330.TW', 'Type': 'BUY', 'Qty': 100, 'Price': 500, 'Fee': 0, 'Tax': 0},
+            # US Stock
+            {'Date': '2026-01-25', 'Symbol': 'NVDA', 'Type': 'BUY', 'Qty': 10, 'Price': 100, 'Fee': 0, 'Tax': 0},
+        ]
+        analyzer = self.create_analyzer(data)
+        
+        # Test Taiwan stock position
+        tw_snap = analyzer.analyze_today_position('2330.TW', date(2026, 1, 27), fx=1.0, prev_close_price=490)
+        self.assertAlmostEqual(tw_snap.qty, 100)
+        self.assertAlmostEqual(tw_snap.old_qty_remaining, 100)
+        
+        # Taiwan stock base price should use prev close
+        tw_base = analyzer.get_base_price_for_pnl(tw_snap, 490)
+        self.assertAlmostEqual(tw_base, 490)
+        
+        # Test US stock position
+        us_snap = analyzer.analyze_today_position('NVDA', date(2026, 1, 27), fx=32.0, prev_close_price=95)
+        self.assertAlmostEqual(us_snap.qty, 10)
+        self.assertAlmostEqual(us_snap.old_qty_remaining, 10)
+        
+        # US stock base price should use prev close
+        us_base = analyzer.get_base_price_for_pnl(us_snap, 95)
+        self.assertAlmostEqual(us_base, 95)
+        
+        print("PASS: TW and US positions correctly calculate base price from prev close")
+
+    def test_sell_with_fees_and_tax(self):
+        """測試情境 7: 賣出含手續費/稅的損益計算"""
+        print("\n=== Test 7: Sell with Fees and Tax ===")
+        data = [
+            # Yesterday: Buy 100 @ $100
+            {'Date': '2026-01-26', 'Symbol': 'TEST', 'Type': 'BUY', 'Qty': 100, 'Price': 100, 'Fee': 10, 'Tax': 5},
+            # Today: Sell 50 @ $120 with fees
+            {'Date': '2026-01-27', 'Symbol': 'TEST', 'Type': 'SELL', 'Qty': 50, 'Price': 120, 'Fee': 8, 'Tax': 3}
+        ]
+        analyzer = self.create_analyzer(data)
+        snapshot = analyzer.analyze_today_position('TEST', date(2026, 1, 27), fx=1.0, prev_close_price=105)
+        
+        # Remaining qty
+        self.assertAlmostEqual(snapshot.qty, 50)
+        
+        # Realized PnL vs prev close: (120 - 105) * 50 - 11 (fees+tax) = 750 - 11 = 739
+        expected_realized_vs_prev = (120 - 105) * 50 - 11
+        self.assertAlmostEqual(snapshot.realized_pnl_vs_prev_close, expected_realized_vs_prev, places=0)
+        
+        print(f"PASS: Realized PnL correctly includes fees/tax: {snapshot.realized_pnl_vs_prev_close}")
+
+    def test_intraday_buy_and_add(self):
+        """測試情境 8: 當日買入後又加碼"""
+        print("\n=== Test 8: Intraday Buy and Add ===")
+        data = [
+            # Today: First buy 100 @ $100
+            {'Date': '2026-01-27', 'Symbol': 'TEST', 'Type': 'BUY', 'Qty': 100, 'Price': 100, 'Fee': 0, 'Tax': 0},
+            # Today: Second buy 50 @ $110
+            {'Date': '2026-01-27', 'Symbol': 'TEST', 'Type': 'BUY', 'Qty': 50, 'Price': 110, 'Fee': 0, 'Tax': 0}
+        ]
+        analyzer = self.create_analyzer(data)
+        snapshot = analyzer.analyze_today_position('TEST', date(2026, 1, 27))
+        
+        # Total qty
+        self.assertAlmostEqual(snapshot.qty, 150)
+        self.assertTrue(snapshot.is_new_today)
+        self.assertAlmostEqual(snapshot.old_qty_remaining, 0)
+        self.assertAlmostEqual(snapshot.new_qty_remaining, 150)
+        
+        # Average cost: (100*100 + 50*110) / 150 = 15500 / 150 = 103.33
+        expected_avg = (100*100 + 50*110) / 150
+        self.assertAlmostEqual(snapshot.avg_cost, expected_avg, places=2)
+        
+        # Base price should be avg cost (all new positions)
+        base_price = analyzer.get_base_price_for_pnl(snapshot, 95)
+        self.assertAlmostEqual(base_price, expected_avg, places=2)
+        
+        print(f"PASS: Intraday multiple buys avg cost: {snapshot.avg_cost:.2f}")
+
 if __name__ == '__main__':
     unittest.main()
+

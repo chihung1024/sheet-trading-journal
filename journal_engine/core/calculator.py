@@ -68,7 +68,8 @@ class PortfolioCalculator:
                 fx_to_use = self.market.fx_rates.asof(used_ts)
                 if pd.isna(fx_to_use):
                     fx_to_use = DEFAULT_FX_RATE
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to get FX rate for {symbol} at {used_ts}: {e}")
             fx_to_use = DEFAULT_FX_RATE
 
         return price, self._get_effective_fx_rate(symbol, fx_to_use)
@@ -165,8 +166,8 @@ class PortfolioCalculator:
                 _p, used = self.market.get_price_asof(symbol, pd.Timestamp(date))
                 prev = self.market.get_prev_trading_date(symbol, used)
                 return pd.to_datetime(prev).tz_localize(None).normalize()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Fallback to simple prev day for {symbol}: {e}")
 
         d = pd.Timestamp(date).date()
         prev_date = d - timedelta(days=1)
@@ -409,8 +410,8 @@ class PortfolioCalculator:
                 prev_bm = self.market.get_prev_trading_date(self.benchmark_ticker, used_bm)
                 daily_pnl_asof_date = pd.to_datetime(used_bm).strftime('%Y-%m-%d')
                 daily_pnl_prev_date = pd.to_datetime(prev_bm).strftime('%Y-%m-%d')
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to get pnl date info for benchmark: {e}")
 
         tw_now = datetime.now(self.pnl_helper.tz_tw)
         today = tw_now.date()
@@ -429,7 +430,8 @@ class PortfolioCalculator:
                 if tw_ref:
                     _p, used_ts = self.market.get_price_asof(tw_ref, pd.Timestamp(today))
                     tw_asof_date = pd.to_datetime(used_ts).date()
-        except:
+        except Exception as e:
+            logger.debug(f"Failed to get asof dates: {e}")
             us_asof_date = None
             tw_asof_date = None
 
@@ -446,8 +448,8 @@ class PortfolioCalculator:
                 for s in tw_tx['Symbol'].unique():
                     if self._is_taiwan_stock(s):
                         candidate_symbols.add(s)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to add transaction symbols to candidates: {e}")
 
         daily_pnl_total_raw = 0.0
         daily_pnl_tw_raw = 0.0
@@ -487,7 +489,8 @@ class PortfolioCalculator:
 
                     fx_prev = self.market.fx_rates.asof(pd.Timestamp(prev_ts))
                     if pd.isna(fx_prev): fx_prev = DEFAULT_FX_RATE
-                except:
+                except Exception as e:
+                    logger.warning(f"Failed to get FX rates for {sym}: {e}")
                     fx_used = DEFAULT_FX_RATE
                     fx_prev = DEFAULT_FX_RATE
 
@@ -500,9 +503,12 @@ class PortfolioCalculator:
 
             unrealized_pnl_today = 0.0
             if position_snap.qty > 0:
+                # ✅ [v3.18] 使用加權基準價計算未實現損益
+                # 舊倉用前日收盤價，新倉用成本價，確保新買入當日不會虛增損益
+                base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
                 curr_mv_twd = position_snap.qty * curr_p * effective_fx
-                prev_mv_twd = position_snap.qty * prev_p * prev_effective_fx
-                unrealized_pnl_today = curr_mv_twd - prev_mv_twd
+                base_mv_twd = position_snap.qty * base_price * prev_effective_fx
+                unrealized_pnl_today = curr_mv_twd - base_mv_twd
 
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl
@@ -517,8 +523,8 @@ class PortfolioCalculator:
                     tags = sym_txs['Tag'].dropna()
                     if not tags.empty:
                         h['tag'] = tags.iloc[0]
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to get tag for {sym}: {e}")
 
             cost = h['cost_basis_twd']
             current_holdings_cost_sum += cost
@@ -555,6 +561,16 @@ class PortfolioCalculator:
         current_invested = current_holdings_cost_sum
         current_total_pnl = current_total_value - current_invested + total_realized_pnl_twd
         
+        # ✅ [v3.18] 後端計算當日報酬率，避免前端依賴 history 索引
+        daily_pnl_base_value = None
+        daily_pnl_roi_percent = None
+        if len(history_data) >= 2:
+            # 找到前一個交易日的總資產淨值作為基準
+            prev_day_data = history_data[-2]  # 倒數第二筆是前一日
+            daily_pnl_base_value = prev_day_data.get('total_value', 0)
+            if daily_pnl_base_value and daily_pnl_base_value > 0:
+                daily_pnl_roi_percent = round((display_daily_pnl / daily_pnl_base_value) * 100, 2)
+        
         summary = PortfolioSummary(
             total_value=round(current_total_value, 0),
             invested_capital=round(current_invested, 0),
@@ -568,10 +584,16 @@ class PortfolioCalculator:
             market_stage=current_stage,
             market_stage_desc=stage_desc,
             daily_pnl_asof_date=daily_pnl_asof_date,
-            daily_pnl_prev_date=daily_pnl_prev_date
+            daily_pnl_prev_date=daily_pnl_prev_date,
+            daily_pnl_roi_percent=daily_pnl_roi_percent,
+            daily_pnl_base_value=round(daily_pnl_base_value, 0) if daily_pnl_base_value else None
         )
         
         self.validator.validate_twr_calculation(history_data)
+        # ✅ [v3.18] 驗證台/美損益分量加總
+        self.validator.validate_daily_pnl_breakdown(
+            display_daily_pnl, daily_pnl_tw_raw, daily_pnl_us_raw
+        )
         
         return PortfolioGroupData(
             summary=summary, holdings=final_holdings, history=history_data,

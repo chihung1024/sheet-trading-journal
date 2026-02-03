@@ -21,7 +21,7 @@ class PortfolioValidator:
     def validate_daily_balance(
         holdings: Dict[str, Any], 
         invested_capital: float, 
-        market_value: float, 
+        current_holdings_cost_sum: float, 
         tolerance: float = 0.001
     ) -> bool:
         """
@@ -86,6 +86,30 @@ class PortfolioValidator:
                 )
             return False
         
+        return True
+    
+    @staticmethod
+    def validate_daily_pnl_breakdown(
+        daily_pnl_total: float,
+        tw_pnl: float,
+        us_pnl: float,
+        tolerance: float = 1.0
+    ) -> bool:
+        """
+        [v3.18] 驗證台/美分量加總等於總當日損益
+        
+        規則：
+        TW損益 + US損益 應該等於 當日總損益（允許 1 TWD 誤差）
+        """
+        expected = tw_pnl + us_pnl
+        deviation = abs(daily_pnl_total - expected)
+        if deviation > tolerance:
+            logger.error(
+                f"Daily PnL breakdown mismatch: Total={daily_pnl_total:.2f}, "
+                f"TW={tw_pnl:.2f} + US={us_pnl:.2f} = {expected:.2f}, "
+                f"Deviation={deviation:.2f}"
+            )
+            return False
         return True
     
     @staticmethod
