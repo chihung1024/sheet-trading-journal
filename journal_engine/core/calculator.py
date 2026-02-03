@@ -452,6 +452,19 @@ class PortfolioCalculator:
         daily_pnl_total_raw = 0.0
         daily_pnl_tw_raw = 0.0
         daily_pnl_us_raw = 0.0
+        daily_pnl_price_total = 0.0
+        daily_pnl_fx_total = 0.0
+        daily_pnl_cashflow_total = 0.0
+        daily_pnl_price_tw = 0.0
+        daily_pnl_fx_tw = 0.0
+        daily_pnl_cashflow_tw = 0.0
+        daily_pnl_price_us = 0.0
+        daily_pnl_fx_us = 0.0
+        daily_pnl_cashflow_us = 0.0
+        daily_pnl_base_value_twd = 0.0
+
+        daily_pnl_asof_dates = {}
+        daily_pnl_prev_dates = {}
 
         for sym in candidate_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
@@ -496,20 +509,56 @@ class PortfolioCalculator:
 
             pnl_date = pd.to_datetime(used_ts).date()
             position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
-            realized_pnl_today = position_snap.realized_pnl_vs_prev_close
 
-            unrealized_pnl_today = 0.0
-            if position_snap.qty > 0:
-                curr_mv_twd = position_snap.qty * curr_p * effective_fx
-                prev_mv_twd = position_snap.qty * prev_p * prev_effective_fx
-                unrealized_pnl_today = curr_mv_twd - prev_mv_twd
+            begin_qty = position_snap.old_qty_remaining
+            end_qty = position_snap.qty
 
-            total_daily_pnl = realized_pnl_today + unrealized_pnl_today
+            begin_value = begin_qty * prev_p * prev_effective_fx
+            end_value = end_qty * curr_p * effective_fx
+            daily_pnl_base_value_twd += begin_value
+
+            price_pnl = begin_qty * (curr_p - prev_p) * prev_effective_fx
+            fx_pnl = begin_qty * prev_p * (effective_fx - prev_effective_fx)
+
+            cash_in = 0.0
+            cash_out = 0.0
+            try:
+                todays_tx = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date)]
+                for _, row in todays_tx.iterrows():
+                    trade_fx = effective_fx if not self._is_taiwan_stock(sym) else 1.0
+                    if row['Type'] == 'BUY':
+                        cash_out += ((row['Qty'] * row['Price']) + row['Commission'] + row['Tax']) * trade_fx
+                    elif row['Type'] == 'SELL':
+                        cash_in += ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * trade_fx
+                    elif row['Type'] == 'DIV':
+                        cash_in += (row['Qty'] * row['Price']) * trade_fx
+            except:
+                pass
+
+            net_cashflow = cash_in - cash_out
+            total_daily_pnl = end_value - begin_value - net_cashflow
+            cashflow_pnl = total_daily_pnl - price_pnl - fx_pnl
+
             daily_pnl_total_raw += total_daily_pnl
             if is_tw:
                 daily_pnl_tw_raw += total_daily_pnl
+                daily_pnl_price_tw += price_pnl
+                daily_pnl_fx_tw += fx_pnl
+                daily_pnl_cashflow_tw += cashflow_pnl
             else:
                 daily_pnl_us_raw += total_daily_pnl
+                daily_pnl_price_us += price_pnl
+                daily_pnl_fx_us += fx_pnl
+                daily_pnl_cashflow_us += cashflow_pnl
+
+            daily_pnl_price_total += price_pnl
+            daily_pnl_fx_total += fx_pnl
+            daily_pnl_cashflow_total += cashflow_pnl
+
+            market_key = 'tw' if is_tw else 'us'
+            if market_key not in daily_pnl_asof_dates:
+                daily_pnl_asof_dates[market_key] = pd.to_datetime(used_ts).strftime('%Y-%m-%d')
+                daily_pnl_prev_dates[market_key] = pd.to_datetime(prev_ts).strftime('%Y-%m-%d')
 
             try:
                 sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date)]
@@ -565,10 +614,33 @@ class PortfolioCalculator:
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
             daily_pnl_twd=round(display_daily_pnl, 0),
             daily_pnl_breakdown={"tw_pnl_twd": round(daily_pnl_tw_raw, 0), "us_pnl_twd": round(daily_pnl_us_raw, 0)},
+            daily_pnl_components={
+                "total": round(display_daily_pnl, 0),
+                "price": round(daily_pnl_price_total, 0),
+                "fx": round(daily_pnl_fx_total, 0),
+                "cashflow": round(daily_pnl_cashflow_total, 0)
+            },
+            daily_pnl_market_components={
+                "tw": {
+                    "total": round(daily_pnl_tw_raw, 0),
+                    "price": round(daily_pnl_price_tw, 0),
+                    "fx": round(daily_pnl_fx_tw, 0),
+                    "cashflow": round(daily_pnl_cashflow_tw, 0)
+                },
+                "us": {
+                    "total": round(daily_pnl_us_raw, 0),
+                    "price": round(daily_pnl_price_us, 0),
+                    "fx": round(daily_pnl_fx_us, 0),
+                    "cashflow": round(daily_pnl_cashflow_us, 0)
+                }
+            },
+            daily_pnl_base_value_twd=round(daily_pnl_base_value_twd, 0),
             market_stage=current_stage,
             market_stage_desc=stage_desc,
             daily_pnl_asof_date=daily_pnl_asof_date,
-            daily_pnl_prev_date=daily_pnl_prev_date
+            daily_pnl_prev_date=daily_pnl_prev_date,
+            daily_pnl_asof_dates=daily_pnl_asof_dates,
+            daily_pnl_prev_dates=daily_pnl_prev_dates
         )
         
         self.validator.validate_twr_calculation(history_data)
