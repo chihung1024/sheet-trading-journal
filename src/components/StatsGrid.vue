@@ -132,11 +132,6 @@ const roi = computed(() => {
 const dailyPnL = computed(() => store.dailyPnL || 0);
 
 const dailyPnlBreakdown = computed(() => stats.value.daily_pnl_breakdown || null);
-const dailyPnlComponents = computed(() => stats.value.daily_pnl_components || null);
-const dailyPnlMarketComponents = computed(() => stats.value.daily_pnl_market_components || null);
-const dailyPnlBaseValue = computed(() => stats.value.daily_pnl_base_value_twd || 0);
-const dailyPnlAsofDates = computed(() => stats.value.daily_pnl_asof_dates || null);
-const dailyPnlPrevDates = computed(() => stats.value.daily_pnl_prev_dates || null);
 
 const formatSigned = (val) => {
   const n = Number(val) || 0;
@@ -173,66 +168,32 @@ const pnlDescription = computed(() => {
 
 // Tooltip：只顯示台/美分量（卡片仍只顯示總和）
 const pnlTooltip = computed(() => {
-  const parts = [];
-  if (dailyPnlMarketComponents.value) {
-    const tw = dailyPnlMarketComponents.value.tw || {};
-    const us = dailyPnlMarketComponents.value.us || {};
-    const twDate = dailyPnlAsofDates.value?.tw ? `(${dailyPnlAsofDates.value.tw})` : '';
-    const usDate = dailyPnlAsofDates.value?.us ? `(${dailyPnlAsofDates.value.us})` : '';
-    parts.push(`台股${twDate}: ${formatSigned(tw.total ?? 0)}`);
-    parts.push(`美股${usDate}: ${formatSigned(us.total ?? 0)}`);
-    if (tw.price != null || us.price != null) {
-      parts.push(`價格: ${formatSigned((tw.price ?? 0) + (us.price ?? 0))}`);
-      parts.push(`匯率: ${formatSigned((tw.fx ?? 0) + (us.fx ?? 0))}`);
-      parts.push(`現金流: ${formatSigned((tw.cashflow ?? 0) + (us.cashflow ?? 0))}`);
-    }
-  } else if (dailyPnlBreakdown.value) {
-    const tw = dailyPnlBreakdown.value.tw_pnl_twd ?? 0;
-    const us = dailyPnlBreakdown.value.us_pnl_twd ?? 0;
-    parts.push(`台股: ${formatSigned(tw)}`);
-    parts.push(`美股: ${formatSigned(us)}`);
-  }
-
-  if (dailyPnlComponents.value && parts.length === 0) {
-    parts.push(`價格: ${formatSigned(dailyPnlComponents.value.price ?? 0)}`);
-    parts.push(`匯率: ${formatSigned(dailyPnlComponents.value.fx ?? 0)}`);
-    parts.push(`現金流: ${formatSigned(dailyPnlComponents.value.cashflow ?? 0)}`);
-  }
-
-  return parts.join(' | ');
+  if (!dailyPnlBreakdown.value) return '';
+  const tw = dailyPnlBreakdown.value.tw_pnl_twd ?? 0;
+  const us = dailyPnlBreakdown.value.us_pnl_twd ?? 0;
+  return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)}`;
 });
 
 // ✅ 計算今日損益百分比
 const dailyRoi = computed(() => {
-  const backendBaseValue = dailyPnlBaseValue.value;
-  if (backendBaseValue) {
-    return ((dailyPnL.value / backendBaseValue) * 100).toFixed(2);
-  }
-
   let baseValue = 0;
-
-  if (dailyPnlPrevDates.value) {
-    const targetDate = dailyPnlPrevDates.value.tw || dailyPnlPrevDates.value.us;
-    if (targetDate) {
-      const match = history.value.find((item) => item.date === targetDate);
-      if (match) {
-        baseValue = match.total_value || 0;
-      }
-    }
+  
+  if (!history.value || history.value.length < 2) {
+    return '0.00';
   }
-
-  if (!baseValue && history.value && history.value.length >= 2) {
-    if (isUSMarketOpen.value) {
-      baseValue = history.value[history.value.length - 2].total_value || 0;
+  
+  if (isUSMarketOpen.value) {
+    // 使用昨日收盤
+    baseValue = history.value[history.value.length - 2].total_value || 0;
+  } else {
+    // 使用前日收盤
+    if (history.value.length >= 3) {
+      baseValue = history.value[history.value.length - 3].total_value || 0;
     } else {
-      if (history.value.length >= 3) {
-        baseValue = history.value[history.value.length - 3].total_value || 0;
-      } else {
-        baseValue = history.value[history.value.length - 2].total_value || 0;
-      }
+      baseValue = history.value[history.value.length - 2].total_value || 0;
     }
   }
-
+  
   if (!baseValue || baseValue === 0) return '0.00';
   return ((dailyPnL.value / baseValue) * 100).toFixed(2);
 });
