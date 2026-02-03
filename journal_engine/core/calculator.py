@@ -454,13 +454,13 @@ class PortfolioCalculator:
         daily_pnl_us_raw = 0.0
         daily_pnl_price_total = 0.0
         daily_pnl_fx_total = 0.0
-        daily_pnl_cashflow_total = 0.0
+        daily_pnl_trade_total = 0.0
         daily_pnl_price_tw = 0.0
         daily_pnl_fx_tw = 0.0
-        daily_pnl_cashflow_tw = 0.0
+        daily_pnl_trade_tw = 0.0
         daily_pnl_price_us = 0.0
         daily_pnl_fx_us = 0.0
-        daily_pnl_cashflow_us = 0.0
+        daily_pnl_trade_us = 0.0
         daily_pnl_base_value_twd = 0.0
 
         daily_pnl_asof_dates = {}
@@ -518,7 +518,7 @@ class PortfolioCalculator:
             daily_pnl_base_value_twd += begin_value
 
             price_pnl = begin_qty * (curr_p - prev_p) * prev_effective_fx
-            fx_pnl = begin_qty * prev_p * (effective_fx - prev_effective_fx)
+            fx_pnl = begin_qty * curr_p * (effective_fx - prev_effective_fx)
 
             cash_in = 0.0
             cash_out = 0.0
@@ -537,23 +537,23 @@ class PortfolioCalculator:
 
             net_cashflow = cash_in - cash_out
             total_daily_pnl = end_value - begin_value - net_cashflow
-            cashflow_pnl = total_daily_pnl - price_pnl - fx_pnl
+            trade_pnl = total_daily_pnl - price_pnl - fx_pnl
 
             daily_pnl_total_raw += total_daily_pnl
             if is_tw:
                 daily_pnl_tw_raw += total_daily_pnl
                 daily_pnl_price_tw += price_pnl
                 daily_pnl_fx_tw += fx_pnl
-                daily_pnl_cashflow_tw += cashflow_pnl
+                daily_pnl_trade_tw += trade_pnl
             else:
                 daily_pnl_us_raw += total_daily_pnl
                 daily_pnl_price_us += price_pnl
                 daily_pnl_fx_us += fx_pnl
-                daily_pnl_cashflow_us += cashflow_pnl
+                daily_pnl_trade_us += trade_pnl
 
             daily_pnl_price_total += price_pnl
             daily_pnl_fx_total += fx_pnl
-            daily_pnl_cashflow_total += cashflow_pnl
+            daily_pnl_trade_total += trade_pnl
 
             market_key = 'tw' if is_tw else 'us'
             if market_key not in daily_pnl_asof_dates:
@@ -613,25 +613,32 @@ class PortfolioCalculator:
             realized_pnl=round(total_realized_pnl_twd, 0),
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
             daily_pnl_twd=round(display_daily_pnl, 0),
-            daily_pnl_breakdown={"tw_pnl_twd": round(daily_pnl_tw_raw, 0), "us_pnl_twd": round(daily_pnl_us_raw, 0)},
+            daily_pnl_breakdown={
+                "total": round(display_daily_pnl, 0),
+                "price": round(daily_pnl_price_total, 0),
+                "fx": round(daily_pnl_fx_total, 0),
+                "trade": round(daily_pnl_trade_total, 0),
+                "tw_total": round(daily_pnl_tw_raw, 0),
+                "us_total": round(daily_pnl_us_raw, 0)
+            },
             daily_pnl_components={
                 "total": round(display_daily_pnl, 0),
                 "price": round(daily_pnl_price_total, 0),
                 "fx": round(daily_pnl_fx_total, 0),
-                "cashflow": round(daily_pnl_cashflow_total, 0)
+                "trade": round(daily_pnl_trade_total, 0)
             },
             daily_pnl_market_components={
                 "tw": {
                     "total": round(daily_pnl_tw_raw, 0),
                     "price": round(daily_pnl_price_tw, 0),
                     "fx": round(daily_pnl_fx_tw, 0),
-                    "cashflow": round(daily_pnl_cashflow_tw, 0)
+                    "trade": round(daily_pnl_trade_tw, 0)
                 },
                 "us": {
                     "total": round(daily_pnl_us_raw, 0),
                     "price": round(daily_pnl_price_us, 0),
                     "fx": round(daily_pnl_fx_us, 0),
-                    "cashflow": round(daily_pnl_cashflow_us, 0)
+                    "trade": round(daily_pnl_trade_us, 0)
                 }
             },
             daily_pnl_base_value_twd=round(daily_pnl_base_value_twd, 0),
