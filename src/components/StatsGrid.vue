@@ -169,18 +169,9 @@ const pnlDescription = computed(() => {
 // Tooltip：只顯示台/美分量（卡片仍只顯示總和）
 const pnlTooltip = computed(() => {
   if (!dailyPnlBreakdown.value) return '';
-  const total = dailyPnlBreakdown.value.total ?? dailyPnL.value ?? 0;
-  const price = dailyPnlBreakdown.value.price ?? 0;
-  const fx = dailyPnlBreakdown.value.fx ?? 0;
-  const trade = dailyPnlBreakdown.value.trade ?? 0;
-  const tw = dailyPnlBreakdown.value.tw_total ?? 0;
-  const us = dailyPnlBreakdown.value.us_total ?? 0;
-
-  return [
-    `總計: ${formatSigned(total)}`,
-    `價格: ${formatSigned(price)} | 匯率: ${formatSigned(fx)} | 交易: ${formatSigned(trade)}`,
-    `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)}`
-  ].join('\n');
+  const tw = dailyPnlBreakdown.value.tw_pnl_twd ?? 0;
+  const us = dailyPnlBreakdown.value.us_pnl_twd ?? 0;
+  return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)}`;
 });
 
 // ✅ 計算今日損益百分比
