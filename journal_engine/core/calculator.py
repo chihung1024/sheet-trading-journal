@@ -518,7 +518,7 @@ class PortfolioCalculator:
             daily_pnl_base_value_twd += begin_value
 
             price_pnl = begin_qty * (curr_p - prev_p) * prev_effective_fx
-            fx_pnl = begin_qty * curr_p * (effective_fx - prev_effective_fx)
+            fx_pnl = begin_qty * prev_p * (effective_fx - prev_effective_fx)
 
             cash_in = 0.0
             cash_out = 0.0
