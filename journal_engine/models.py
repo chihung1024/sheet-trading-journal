@@ -35,9 +35,23 @@ class PortfolioSummary(BaseModel):
     # ✅ 當日損益（TWD）：總和（台股分量 + 美股分量）
     daily_pnl_twd: float = 0.0
 
-    # ✅ Tooltip/明細用：台/美分量
+    # ✅ Tooltip/明細用：台/美分量 (legacy)
     # { "tw_pnl_twd": <float>, "us_pnl_twd": <float> }
     daily_pnl_breakdown: Optional[Dict[str, float]] = None
+
+    # ✅ 新版：當日損益拆解（總覽）
+    # { "total": <float>, "price": <float>, "fx": <float>, "cashflow": <float> }
+    daily_pnl_components: Optional[Dict[str, float]] = None
+
+    # ✅ 新版：當日損益拆解（台/美分量）
+    # {
+    #   "tw": { "total": <float>, "price": <float>, "fx": <float>, "cashflow": <float> },
+    #   "us": { "total": <float>, "price": <float>, "fx": <float>, "cashflow": <float> }
+    # }
+    daily_pnl_market_components: Optional[Dict[str, Dict[str, float]]] = None
+
+    # ✅ 新版：當日損益的基準資產價值 (TWD)
+    daily_pnl_base_value_twd: Optional[float] = None
 
     # ✅ 新增：市場狀態（由後端判定，避免前端自行推論）
     market_stage: Optional[str] = None
@@ -46,6 +60,11 @@ class PortfolioSummary(BaseModel):
     # ✅ 新增：當日損益的估值基準日（用 benchmark as-of / prev trading day）
     daily_pnl_asof_date: Optional[str] = None
     daily_pnl_prev_date: Optional[str] = None
+
+    # ✅ 新版：台股/美股 as-of 與 prev trading day
+    # { "tw": "YYYY-MM-DD", "us": "YYYY-MM-DD" }
+    daily_pnl_asof_dates: Optional[Dict[str, str]] = None
+    daily_pnl_prev_dates: Optional[Dict[str, str]] = None
 
 class HoldingPosition(BaseModel):
     symbol: str
