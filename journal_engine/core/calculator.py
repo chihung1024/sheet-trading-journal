@@ -62,8 +62,14 @@ class PortfolioCalculator:
 
         fx_to_use = DEFAULT_FX_RATE
         try:
-            if used_ts.date() == today and self._is_us_market_open(tw_now):
-                fx_to_use = current_fx
+            # ✅ [v3.19] 今日資料優先使用即時匯率（含盤中與盤前）
+            # 確保曲線圖與當日損益卡片使用相同匯率
+            if used_ts.date() == today:
+                # 優先使用即時匯率
+                if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
+                    fx_to_use = self.market.realtime_fx_rate
+                else:
+                    fx_to_use = current_fx
             else:
                 fx_to_use = self.market.fx_rates.asof(used_ts)
                 if pd.isna(fx_to_use):
@@ -402,6 +408,7 @@ class PortfolioCalculator:
 
         daily_pnl_asof_date = None
         daily_pnl_prev_date = None
+        unified_fx_prev_ts = None  # ✅ [v3.20] 統一匯率前日基準
         try:
             tw_now = datetime.now(self.pnl_helper.tz_tw)
             today = tw_now.date()
@@ -410,6 +417,9 @@ class PortfolioCalculator:
                 prev_bm = self.market.get_prev_trading_date(self.benchmark_ticker, used_bm)
                 daily_pnl_asof_date = pd.to_datetime(used_bm).strftime('%Y-%m-%d')
                 daily_pnl_prev_date = pd.to_datetime(prev_bm).strftime('%Y-%m-%d')
+                # ✅ [v3.20] 統一使用 benchmark 的前日交易日作為匯率參考日
+                # 解決不同標的因數據可用性造成 fx_prev 日期不一致的問題
+                unified_fx_prev_ts = prev_bm
         except Exception as e:
             logger.debug(f"Failed to get pnl date info for benchmark: {e}")
 
@@ -492,7 +502,9 @@ class PortfolioCalculator:
                         fx_used = self.market.fx_rates.asof(used_ts)
                         if pd.isna(fx_used): fx_used = DEFAULT_FX_RATE
 
-                    fx_prev = self.market.fx_rates.asof(pd.Timestamp(prev_ts))
+                    # ✅ [v3.20] 使用統一的 benchmark 前日匯率，確保所有美股一致
+                    fx_prev_lookup_ts = unified_fx_prev_ts if unified_fx_prev_ts else prev_ts
+                    fx_prev = self.market.fx_rates.asof(pd.Timestamp(fx_prev_lookup_ts))
                     if pd.isna(fx_prev): fx_prev = DEFAULT_FX_RATE
                 except Exception as e:
                     logger.warning(f"Failed to get FX rates for {sym}: {e}")
