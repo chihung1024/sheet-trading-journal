@@ -70,12 +70,12 @@
             </div>
         </div>
         
-        <div class="form-group">
+        <div class="form-group compact">
             <label>日期 Date</label>
             <input type="date" v-model="form.txn_date" class="input-md">
         </div>
         
-        <div class="form-group">
+        <div class="form-group compact">
             <label>成交單價 (USD)</label>
             <div class="input-with-prefix">
                 <span class="prefix">$</span>
@@ -88,10 +88,10 @@
                     inputmode="decimal"
                 >
             </div>
-            <p class="field-hint">可輸入成交單價或留白，擇一與總額搭配即可。</p>
+            <p class="field-hint compact-hint">可輸入成交單價或留白，擇一與總額搭配即可。</p>
         </div>
 
-        <div class="form-group">
+        <div class="form-group compact">
             <label>股數 Shares</label>
             <input 
                 type="number" 
@@ -103,7 +103,7 @@
             >
         </div>
 
-        <div class="form-group">
+        <div class="form-group compact fee-group">
             <label>費用 (Fee + Tax)</label>
             <div class="dual-input wide-inputs">
                 <div class="input-with-label">
@@ -115,7 +115,7 @@
                     <span class="sub-label">稅金</span>
                 </div>
             </div>
-            <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
+            <p class="field-hint compact-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
         </div>
     </div>
 
@@ -135,7 +135,7 @@
                 inputmode="decimal"
             >
         </div>
-        <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
+        <p class="field-hint compact-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
     </div>
     
     <div class="action-buttons">
@@ -323,7 +323,7 @@ defineExpose({ setupForm, resetForm });
 .trade-panel { 
     background: var(--bg-card); 
     border: 1px solid var(--border-color); 
-    padding: 24px; 
+    padding: 20px; 
     border-radius: var(--radius);
     transition: border-color 0.3s ease;
 }
@@ -337,7 +337,7 @@ defineExpose({ setupForm, resetForm });
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
@@ -347,22 +347,22 @@ defineExpose({ setupForm, resetForm });
 .trade-type-switch { 
     display: flex; 
     background: var(--bg-secondary); 
-    padding: 4px; 
+    padding: 3px; 
     border-radius: 12px; 
-    margin-bottom: 24px; 
+    margin-bottom: 16px; 
 }
 
 .switch-btn { 
     flex: 1; 
     border: none; 
     background: transparent; 
-    padding: 10px; 
+    padding: 8px; 
     font-weight: 600; 
     color: var(--text-sub); 
     cursor: pointer; 
     border-radius: 8px; 
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
-    font-size: 0.95rem; 
+    font-size: 0.9rem; 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -384,19 +384,21 @@ defineExpose({ setupForm, resetForm });
 .form-grid { 
     display: grid; 
     grid-template-columns: 1fr 1fr; 
-    gap: 20px; 
-    margin-bottom: 24px; 
+    gap: 16px; 
+    margin-bottom: 16px; 
 }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-group.full { grid-column: span 2; }
+.form-group.compact { gap: 6px; }
 
 label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; }
 .field-hint {
     margin: 2px 0 0;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     color: var(--text-sub);
     opacity: 0.8;
+    line-height: 1.4;
 }
 
 .wide-inputs .input-with-label input {
@@ -405,17 +407,17 @@ label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-lef
 
 /* 輸入框通用樣式 */
 input { 
-    padding: 12px 14px; 
+    padding: 10px 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
-    font-size: 1rem; 
+    font-size: 0.96rem; 
     width: 100%; 
     box-sizing: border-box; 
     font-family: 'Inter', sans-serif;
     transition: all 0.2s; 
     color: var(--text-main); 
     background: var(--bg-card); 
-    height: 46px; /* 增加觸控高度 */
+    height: 42px;
 }
 
 input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
@@ -444,7 +446,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     display: flex; 
     flex-wrap: wrap; 
     gap: 6px; 
-    min-height: 48px; 
+    min-height: 44px; 
 }
 .tag-input-container.disabled { opacity: 0.6; pointer-events: none; background: var(--bg-secondary); }
 
@@ -465,7 +467,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .remove-tag:hover { color: var(--danger); }
 .tag-input-field { border: none; outline: none; background: transparent; flex: 1; min-width: 80px; padding: 4px; height: auto; }
 
-.quick-tags { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-tags { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-tag { 
     font-size: 0.8rem; 
     color: var(--text-sub); 
@@ -490,9 +492,9 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 /* 總金額摘要 (Calculator Style) */
 .summary-box { 
     background: var(--bg-secondary); 
-    padding: 20px; 
+    padding: 16px; 
     border-radius: 12px; 
-    margin-bottom: 24px; 
+    margin-bottom: 16px; 
     border: 1px solid var(--border-color); 
     display: flex;
     flex-direction: column;
@@ -506,7 +508,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     background: transparent; 
     border: none; 
     text-align: right; 
-    font-size: 2.2rem; 
+    font-size: 1.9rem; 
     font-weight: 700; 
     color: var(--text-main); 
     padding: 0; 
@@ -562,19 +564,24 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     .panel-header { display: none; } /* 手機版通常有 Sheet Header，隱藏內部標題 */
     
     .form-grid { 
-        grid-template-columns: 1fr; /* 強制單欄 */
-        gap: 16px; 
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px; 
     }
     
-    .form-group.full { grid-column: span 1; }
+    .form-group.full { grid-column: span 2; }
+    .form-group.compact { grid-column: span 1; }
+    .fee-group { grid-column: span 2; }
     
     /* 輸入框更加寬大舒適 */
-    input { font-size: 1.1rem; padding: 14px; }
+    input { font-size: 1rem; padding: 10px 12px; height: 40px; }
     
-    .dual-input { gap: 16px; }
+    .dual-input { gap: 12px; }
     
-    .summary-value { font-size: 2rem; }
+    .summary-value { font-size: 1.6rem; }
+    .currency-symbol { font-size: 1.2rem; }
     
-    .switch-btn { padding: 12px; }
+    .switch-btn { padding: 8px; }
+
+    .field-hint.compact-hint { display: none; }
 }
 </style>
