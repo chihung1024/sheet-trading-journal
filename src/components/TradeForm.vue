@@ -15,7 +15,7 @@
     </div>
 
     <div class="form-grid">
-        <div class="form-group full">
+        <div class="form-group span-3">
             <label>交易標的 Symbol</label>
             <div class="input-wrapper">
                 <input 
@@ -29,7 +29,7 @@
             </div>
         </div>
         
-        <div class="form-group full">
+        <div class="form-group span-3">
             <label>策略群組 (Tags)</label>
             
             <div v-if="form.txn_type === 'SELL' && holdingGroups.length > 0" class="smart-sell-options">
@@ -103,7 +103,7 @@
             >
         </div>
 
-        <div class="form-group">
+        <div class="form-group span-2">
             <label>費用 (Fee + Tax)</label>
             <div class="dual-input wide-inputs">
                 <div class="input-with-label">
@@ -391,7 +391,8 @@ defineExpose({ setupForm, resetForm });
 }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
-.form-group.full { grid-column: span 2; }
+.form-group.span-2 { grid-column: span 2; }
+.form-group.span-3 { grid-column: span 3; }
 
 label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; }
 .field-hint {
@@ -497,12 +498,13 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     border: 1px solid var(--border-color); 
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
-.summary-header { display: flex; justify-content: space-between; align-items: center; color: var(--text-sub); }
-.summary-label { font-size: 0.9rem; font-weight: 600; }
-.summary-input-wrapper { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; }
-.currency-symbol { font-size: 1.5rem; color: var(--text-main); font-weight: 500; }
+.summary-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.summary-labels { display: flex; align-items: center; gap: 8px; color: var(--text-sub); }
+.summary-label { font-size: 0.9rem; font-weight: 600; white-space: nowrap; }
+.summary-input-wrapper { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; flex: 1; }
+.currency-symbol { font-size: 1.3rem; color: var(--text-main); font-weight: 500; }
 .summary-value { 
     background: transparent; 
     border: none; 
@@ -574,13 +576,16 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
         gap: 16px; 
     }
     
-    .form-group.full { grid-column: span 1; }
+    .form-group.span-2,
+    .form-group.span-3 { grid-column: span 1; }
     
     /* 輸入框更加寬大舒適 */
     input { font-size: 1.05rem; padding: 12px; }
     
     .dual-input { gap: 16px; }
     
+    .summary-row { flex-direction: column; align-items: flex-start; }
+    .summary-input-wrapper { width: 100%; }
     .summary-value { font-size: 2rem; }
     
     .switch-btn { padding: 12px; }
