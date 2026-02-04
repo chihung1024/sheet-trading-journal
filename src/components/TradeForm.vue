@@ -15,7 +15,7 @@
     </div>
 
     <div class="form-grid">
-        <div class="form-group span-3">
+        <div class="form-group span-2">
             <label>交易標的 Symbol</label>
             <div class="input-wrapper">
                 <input 
@@ -27,6 +27,11 @@
                     class="input-lg uppercase bold-text"
                 >
             </div>
+        </div>
+
+        <div class="form-group">
+            <label>日期 Date</label>
+            <input type="date" v-model="form.txn_date" class="input-md">
         </div>
         
         <div class="form-group span-3">
@@ -71,11 +76,6 @@
         </div>
         
         <div class="form-group">
-            <label>日期 Date</label>
-            <input type="date" v-model="form.txn_date" class="input-md">
-        </div>
-        
-        <div class="form-group">
             <label>成交單價 (USD)</label>
             <div class="input-with-prefix">
                 <span class="prefix">$</span>
@@ -117,20 +117,15 @@
             </div>
             <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
         </div>
-    </div>
 
-    <div class="form-footer">
-        <div class="summary-box">
-            <div class="summary-header">
-                <span class="summary-label">交易總金額 (USD)</span>
-                <span class="calc-icon">🧮</span>
-            </div>
-            <div class="summary-input-wrapper">
-                <span class="currency-symbol">$</span>
+        <div class="form-group">
+            <label>交易總金額 (USD)</label>
+            <div class="input-with-prefix">
+                <span class="prefix">$</span>
                 <input 
                     type="number" 
                     v-model="form.total_amount" 
-                    class="summary-value" 
+                    class="input-md font-num"
                     step="0.01" 
                     placeholder="0.00"
                     inputmode="decimal"
@@ -138,7 +133,9 @@
             </div>
             <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
         </div>
-        
+    </div>
+
+    <div class="form-footer">
         <div class="action-buttons">
             <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
             <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
@@ -325,7 +322,7 @@ defineExpose({ setupForm, resetForm });
 .trade-panel { 
     background: var(--bg-card); 
     border: 1px solid var(--border-color); 
-    padding: 20px; 
+    padding: 16px; 
     border-radius: var(--radius);
     transition: border-color 0.3s ease;
 }
@@ -339,7 +336,7 @@ defineExpose({ setupForm, resetForm });
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 .panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
@@ -351,7 +348,7 @@ defineExpose({ setupForm, resetForm });
     background: var(--bg-secondary); 
     padding: 4px; 
     border-radius: 12px; 
-    margin-bottom: 16px; 
+    margin-bottom: 12px; 
 }
 
 .switch-btn { 
@@ -385,9 +382,9 @@ defineExpose({ setupForm, resetForm });
 /* 表單佈局 */
 .form-grid { 
     display: grid; 
-    grid-template-columns: 1.2fr 1fr; 
-    gap: 16px; 
-    margin-bottom: 16px; 
+    grid-template-columns: repeat(3, minmax(0, 1fr)); 
+    gap: 12px; 
+    margin-bottom: 12px; 
 }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
@@ -402,13 +399,11 @@ label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-lef
     opacity: 0.75;
 }
 
-.wide-inputs .input-with-label input {
-    min-width: 120px;
-}
+.wide-inputs .input-with-label input { min-width: 110px; }
 
 /* 輸入框通用樣式 */
 input { 
-    padding: 10px 12px; 
+    padding: 9px 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
     font-size: 1rem; 
@@ -418,7 +413,7 @@ input {
     transition: all 0.2s; 
     color: var(--text-main); 
     background: var(--bg-card); 
-    height: 42px;
+    height: 40px;
 }
 
 input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
@@ -442,7 +437,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .tag-input-container { 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
-    padding: 8px; 
+    padding: 6px; 
     background: var(--bg-card); 
     display: flex; 
     flex-wrap: wrap; 
@@ -468,12 +463,12 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .remove-tag:hover { color: var(--danger); }
 .tag-input-field { border: none; outline: none; background: transparent; flex: 1; min-width: 80px; padding: 4px; height: auto; }
 
-.quick-tags { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-tags { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
 .quick-tag { 
     font-size: 0.8rem; 
     color: var(--text-sub); 
     border: 1px solid var(--border-color); 
-    padding: 4px 10px; 
+    padding: 3px 10px; 
     border-radius: 12px; 
     cursor: pointer; 
     transition: all 0.2s; 
@@ -491,44 +486,14 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .tag-name { font-size: 0.95rem; font-weight: 500; }
 
 /* 總金額摘要 (Calculator Style) */
-.summary-box { 
-    background: var(--bg-secondary); 
-    padding: 16px; 
-    border-radius: 12px; 
-    border: 1px solid var(--border-color); 
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.summary-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.summary-labels { display: flex; align-items: center; gap: 8px; color: var(--text-sub); }
-.summary-label { font-size: 0.9rem; font-weight: 600; white-space: nowrap; }
-.summary-input-wrapper { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; flex: 1; }
-.currency-symbol { font-size: 1.3rem; color: var(--text-main); font-weight: 500; }
-.summary-value { 
-    background: transparent; 
-    border: none; 
-    text-align: right; 
-    font-size: 1.8rem; 
-    font-weight: 700; 
-    color: var(--text-main); 
-    padding: 0; 
-    width: 100%; 
-    box-shadow: none; 
-    height: auto;
-    font-family: 'JetBrains Mono', monospace;
-}
-.summary-value:focus { box-shadow: none; }
-
 /* 按鈕區 */
 .form-footer {
-    display: grid;
-    grid-template-columns: 1.1fr 0.9fr;
-    gap: 16px;
-    align-items: stretch;
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 4px;
 }
 
-.action-buttons { display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+.action-buttons { display: flex; gap: 12px; justify-content: flex-end; width: 100%; }
 .btn { 
     flex: 1; 
     padding: 12px; 
@@ -573,7 +538,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     
     .form-grid { 
         grid-template-columns: 1fr; /* 強制單欄 */
-        gap: 16px; 
+        gap: 12px; 
     }
     
     .form-group.span-2,
@@ -584,14 +549,10 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     
     .dual-input { gap: 16px; }
     
-    .summary-row { flex-direction: column; align-items: flex-start; }
-    .summary-input-wrapper { width: 100%; }
-    .summary-value { font-size: 2rem; }
-    
     .switch-btn { padding: 12px; }
 
     .form-footer {
-        grid-template-columns: 1fr;
+        justify-content: center;
     }
 
     .action-buttons { flex-direction: row; }
