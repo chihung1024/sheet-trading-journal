@@ -131,7 +131,7 @@ class PortfolioCalculator:
 
             group_start_date = group_df['Date'].min()
             group_end_date = datetime.now()
-            group_date_range = pd.date_range(start=group_start_date, end=group_end_date, freq='D').normalize()
+            group_date_range = self._get_trading_date_range(group_df, group_start_date, group_end_date)
 
             group_result = self._calculate_single_portfolio(
                 group_df, group_date_range, current_fx, group_name,
@@ -151,6 +151,30 @@ class PortfolioCalculator:
             history=all_data.history, pending_dividends=all_data.pending_dividends,
             groups=final_groups_data
         )
+
+    def _get_trading_date_range(self, group_df, start_date, end_date):
+        """使用持倉資產的實際交易日聯集，避免假日造成曲線平坦。"""
+        symbols = [s for s in group_df['Symbol'].dropna().unique()]
+        trading_dates = set()
+        start_ts = pd.Timestamp(start_date).normalize()
+        end_ts = pd.Timestamp(end_date).normalize()
+
+        for sym in symbols:
+            try:
+                if sym not in self.market.market_data:
+                    continue
+                idx = self.market.market_data[sym].index
+                if idx.tz is not None:
+                    idx = idx.tz_localize(None)
+                mask = (idx >= start_ts) & (idx <= end_ts)
+                trading_dates.update(idx[mask])
+            except Exception as e:
+                logger.debug(f"Failed to build trading dates for {sym}: {e}")
+
+        if not trading_dates:
+            return pd.date_range(start=start_ts, end=end_ts, freq='D').normalize()
+
+        return pd.DatetimeIndex(sorted(trading_dates)).normalize()
 
     def _back_adjust_transactions_global(self):
         """Scheme A: only adjust for splits (to align transactions with split-adjusted Close)."""
