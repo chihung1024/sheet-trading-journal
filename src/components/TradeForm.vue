@@ -1,22 +1,8 @@
 <template>
-  <div class="card trade-panel" :class="[form.txn_type.toLowerCase() + '-mode', { collapsed: !isExpanded }]" id="trade-form-anchor">
-    <!-- 收縮狀態的標頭 (桌機版) -->
-    <div class="collapsed-header" @click="expandForm" v-show="!isExpanded">
-        <div class="collapsed-title">
-            <span class="add-icon">➕</span>
-            <span>新增交易紀錄</span>
-        </div>
-        <span class="expand-hint">點擊展開</span>
-    </div>
-    
-    <!-- 展開狀態的內容 -->
-    <div class="expanded-content" v-show="isExpanded">
+  <div class="card trade-panel" :class="form.txn_type.toLowerCase() + '-mode'" id="trade-form-anchor">
     <div class="panel-header">
         <h3 class="panel-title">{{ isEditing ? '編輯交易' : '新增交易' }}</h3>
-        <div class="header-actions">
-            <span class="mode-badge" v-if="isEditing">EDITING</span>
-            <button class="collapse-btn" @click="collapseForm" v-if="!isEditing" title="收起面板">▲</button>
-        </div>
+        <span class="mode-badge" v-if="isEditing">EDITING</span>
     </div>
     
     <div class="trade-type-switch">
@@ -154,7 +140,6 @@
             {{ loading ? '處理中...' : (isEditing ? '更新交易' : submitButtonText) }}
         </button>
     </div>
-    </div><!-- end expanded-content -->
   </div>
 </template>
 
@@ -170,7 +155,6 @@ const { addToast } = useToast();
 const loading = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
-const isExpanded = ref(false); // 桌機版預設收縮
 
 const tagInput = ref('');
 const selectedSellGroups = ref([]);
@@ -306,7 +290,6 @@ const submit = async () => {
 const resetForm = () => {
     isEditing.value = false; 
     editingId.value = null;
-    isExpanded.value = false; // 重置時收縮面板
     form.symbol = ''; 
     form.qty = ''; 
     form.price = ''; 
@@ -323,14 +306,9 @@ const resetForm = () => {
 const setupForm = (r) => {
     isEditing.value = true; 
     editingId.value = r.id;
-    isExpanded.value = true; // 編輯時自動展開
     Object.keys(form).forEach(k => form[k] = r[k]);
     checkHoldings();
 };
-
-// 展開/收縮控制 (桌機版)
-const expandForm = () => { isExpanded.value = true; };
-const collapseForm = () => { if (!isEditing.value) isExpanded.value = false; };
 
 defineExpose({ setupForm, resetForm });
 </script>
@@ -355,76 +333,6 @@ defineExpose({ setupForm, resetForm });
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
-}
-
-.header-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-/* 收縮/展開功能 (桌機版) */
-.collapsed-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 0;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.collapsed-header:hover {
-    opacity: 0.8;
-}
-
-.collapsed-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-main);
-}
-
-.add-icon {
-    font-size: 1rem;
-}
-
-.expand-hint {
-    font-size: 0.85rem;
-    color: var(--text-sub);
-    opacity: 0.7;
-}
-
-.collapse-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 4px 10px;
-    cursor: pointer;
-    font-size: 0.8rem;
-    color: var(--text-sub);
-    transition: all 0.2s;
-}
-
-.collapse-btn:hover {
-    background: var(--border-color);
-    color: var(--text-main);
-}
-
-/* 收縮狀態樣式 */
-.trade-panel.collapsed {
-    padding: 12px 24px;
-}
-
-/* 展開內容動畫 */
-.expanded-content {
-    animation: fadeIn 0.2s ease-out;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
 }
 
 .panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
@@ -514,8 +422,9 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 
 /* 三欄均分輸入 (股數、手續費、稅金) - 桌機版 */
 .triple-input { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.triple-input .input-with-label label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; margin-bottom: 8px; }
-.invisible-label { visibility: hidden; }
+.triple-input .input-with-label { align-items: center; }
+.triple-input .input-with-label label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-bottom: 8px; text-align: center; }
+.triple-input .input-with-label input { text-align: center; }
 
 /* 標籤輸入區 */
 .tag-input-container { 
@@ -634,19 +543,12 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 
 /* RWD Media Queries */
 @media (max-width: 768px) {
-    /* 手機版：隱藏收縮功能，始終顯示完整表單 */
-    .collapsed-header { display: none !important; }
-    .expanded-content { display: block !important; }
-    .collapse-btn { display: none !important; }
-    
     .trade-panel { 
         border: none; 
         box-shadow: none; 
         padding: 0; 
         background: transparent;
     }
-    
-    .trade-panel.collapsed { padding: 0; } /* 覆蓋收縮 padding */
     
     .panel-header { display: none; } /* 手機版通常有 Sheet Header，隱藏內部標題 */
     
@@ -662,9 +564,11 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     
     .dual-input { gap: 16px; }
     
-    /* 手機版：三欄改為單欄，顯示隱藏的標籤 */
+    /* 手機版：三欄改為單欄，標籤靠左 */
     .triple-input { grid-template-columns: 1fr; gap: 16px; }
-    .invisible-label { visibility: visible; }
+    .triple-input .input-with-label { align-items: flex-start; }
+    .triple-input .input-with-label label { text-align: left; }
+    .triple-input .input-with-label input { text-align: left; }
     
     .summary-value { font-size: 2rem; }
     
