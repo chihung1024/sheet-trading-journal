@@ -42,36 +42,60 @@
                     <span class="hint-icon">⚠️</span>
                     <span class="hint-text">此標的屬於以下群組，請勾選要賣出的部位：</span>
                 </div>
-                <div class="checkbox-group">
-                    <label v-for="g in holdingGroups" :key="g" class="tag-checkbox">
-                        <input type="checkbox" :value="g" v-model="selectedSellGroups" @change="updateTagsFromCheckboxes">
-                        <span class="checkbox-custom"></span>
-                        <span class="tag-name">{{ g }}</span>
-                    </label>
+
+                <div class="form-group">
+                    <label>日期 Date</label>
+                    <input type="date" v-model="form.txn_date" class="input-md">
                 </div>
             </div>
-            
-            <div class="tag-input-container" :class="{ disabled: form.txn_type === 'SELL' && holdingGroups.length > 0 }">
-                <div class="tags-list">
-                    <span v-for="(tag, idx) in tagsArray" :key="idx" class="tag-chip">
-                        {{ tag }}
-                        <button class="remove-tag" @click="removeTag(idx)">×</button>
-                    </span>
-                    <input 
-                        type="text" 
-                        v-model="tagInput" 
-                        @keydown.enter.prevent="addTag"
-                        @keydown.tab.prevent="addTag"
-                        @blur="addTag"
-                        placeholder="輸入標籤..."
-                        class="tag-input-field"
-                        :disabled="form.txn_type === 'SELL' && holdingGroups.length > 0"
-                    >
-                </div>
+        </section>
+
+        <section class="form-section">
+            <div class="section-head">
+                <span class="section-title">策略群組</span>
+                <span class="section-note">選填</span>
             </div>
-            
-            <div class="quick-tags" v-if="form.txn_type !== 'SELL' || holdingGroups.length === 0">
-                <span v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">+ {{ t }}</span>
+            <div class="section-grid">
+                <div class="form-group span-3">
+                    <label class="section-label">策略群組 (Tags)</label>
+                    
+                    <div v-if="form.txn_type === 'SELL' && holdingGroups.length > 0" class="smart-sell-options">
+                        <div class="hint-header">
+                            <span class="hint-icon">⚠️</span>
+                            <span class="hint-text">此標的屬於以下群組，請勾選要賣出的部位：</span>
+                        </div>
+                        <div class="checkbox-group">
+                            <label v-for="g in holdingGroups" :key="g" class="tag-checkbox">
+                                <input type="checkbox" :value="g" v-model="selectedSellGroups" @change="updateTagsFromCheckboxes">
+                                <span class="checkbox-custom"></span>
+                                <span class="tag-name">{{ g }}</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="tag-input-container" :class="{ disabled: form.txn_type === 'SELL' && holdingGroups.length > 0 }">
+                        <div class="tags-list">
+                            <span v-for="(tag, idx) in tagsArray" :key="idx" class="tag-chip">
+                                {{ tag }}
+                                <button class="remove-tag" @click="removeTag(idx)">×</button>
+                            </span>
+                            <input 
+                                type="text" 
+                                v-model="tagInput" 
+                                @keydown.enter.prevent="addTag"
+                                @keydown.tab.prevent="addTag"
+                                @blur="addTag"
+                                placeholder="輸入標籤..."
+                                class="tag-input-field"
+                                :disabled="form.txn_type === 'SELL' && holdingGroups.length > 0"
+                            >
+                        </div>
+                    </div>
+                    
+                    <div class="quick-tags" v-if="form.txn_type !== 'SELL' || holdingGroups.length === 0">
+                        <span v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">+ {{ t }}</span>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -88,31 +112,64 @@
                     inputmode="decimal"
                 >
             </div>
-            <p class="field-hint">可輸入成交單價或留白，擇一與總額搭配即可。</p>
-        </div>
-
-        <div class="form-group">
-            <label>股數 Shares</label>
-            <input 
-                type="number" 
-                v-model="form.qty" 
-                placeholder="0" 
-                class="input-md font-num" 
-                step="0.0001"
-                inputmode="decimal"
-            >
-        </div>
-
-        <div class="form-group span-2">
-            <label>費用 (Fee + Tax)</label>
-            <div class="dual-input wide-inputs">
-                <div class="input-with-label">
-                    <input type="number" v-model="form.fee" placeholder="0" step="0.01" inputmode="decimal">
-                    <span class="sub-label">手續費</span>
+            <div class="section-grid">
+                <div class="form-group">
+                    <label>成交單價 (USD)</label>
+                    <div class="input-with-prefix">
+                        <span class="prefix">$</span>
+                        <input 
+                            type="number" 
+                            v-model="form.price" 
+                            placeholder="0.00" 
+                            class="input-md font-num" 
+                            step="0.0001"
+                            inputmode="decimal"
+                        >
+                    </div>
+                    <p class="field-hint">可輸入成交單價或留白，擇一與總額搭配即可。</p>
                 </div>
-                <div class="input-with-label">
-                    <input type="number" v-model="form.tax" placeholder="0" step="0.01" inputmode="decimal">
-                    <span class="sub-label">稅金</span>
+
+                <div class="form-group">
+                    <label>股數 Shares</label>
+                    <input 
+                        type="number" 
+                        v-model="form.qty" 
+                        placeholder="0" 
+                        class="input-md font-num" 
+                        step="0.0001"
+                        inputmode="decimal"
+                    >
+                </div>
+
+                <div class="form-group span-2">
+                    <label>費用 (Fee + Tax)</label>
+                    <div class="dual-input wide-inputs">
+                        <div class="input-with-label">
+                            <input type="number" v-model="form.fee" placeholder="0" step="0.01" inputmode="decimal">
+                            <span class="sub-label">手續費</span>
+                        </div>
+                        <div class="input-with-label">
+                            <input type="number" v-model="form.tax" placeholder="0" step="0.01" inputmode="decimal">
+                            <span class="sub-label">稅金</span>
+                        </div>
+                    </div>
+                    <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
+                </div>
+
+                <div class="form-group summary-field">
+                    <label>交易總金額 (USD)</label>
+                    <div class="input-with-prefix">
+                        <span class="prefix">$</span>
+                        <input 
+                            type="number" 
+                            v-model="form.total_amount" 
+                            class="input-md font-num summary-input"
+                            step="0.01" 
+                            placeholder="0.00"
+                            inputmode="decimal"
+                        >
+                    </div>
+                    <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
                 </div>
             </div>
             <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
@@ -380,7 +437,51 @@ defineExpose({ setupForm, resetForm });
 .switch-btn.div.active { color: var(--warning); }
 
 /* 表單佈局 */
-.form-grid { 
+.form-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.form-section {
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.02), transparent 85%);
+    padding: 12px;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.section-title {
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-sub);
+    font-weight: 700;
+}
+
+.section-chip {
+    font-size: 0.7rem;
+    color: var(--primary);
+    background: rgba(59, 130, 246, 0.12);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+.section-note {
+    font-size: 0.72rem;
+    color: var(--text-sub);
+    opacity: 0.7;
+}
+
+.section-grid { 
     display: grid; 
     grid-template-columns: repeat(3, minmax(0, 1fr)); 
     gap: 12px; 
@@ -536,7 +637,15 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     
     .panel-header { display: none; } /* 手機版通常有 Sheet Header，隱藏內部標題 */
     
-    .form-grid { 
+    .form-sections {
+        gap: 10px;
+    }
+
+    .form-section {
+        padding: 12px 10px;
+    }
+
+    .section-grid { 
         grid-template-columns: 1fr; /* 強制單欄 */
         gap: 12px; 
     }
