@@ -118,14 +118,14 @@
             <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
         </div>
 
-        <div class="form-group summary-field">
+        <div class="form-group">
             <label>交易總金額 (USD)</label>
             <div class="input-with-prefix">
                 <span class="prefix">$</span>
                 <input 
                     type="number" 
                     v-model="form.total_amount" 
-                    class="input-md font-num summary-input"
+                    class="input-md font-num"
                     step="0.01" 
                     placeholder="0.00"
                     inputmode="decimal"
@@ -383,7 +383,7 @@ defineExpose({ setupForm, resetForm });
 .form-grid { 
     display: grid; 
     grid-template-columns: repeat(3, minmax(0, 1fr)); 
-    gap: 10px; 
+    gap: 12px; 
     margin-bottom: 12px; 
 }
 
@@ -403,7 +403,7 @@ label { font-size: 0.82rem; color: var(--text-sub); font-weight: 600; margin-lef
 
 /* 輸入框通用樣式 */
 input { 
-    padding: 8px 12px; 
+    padding: 9px 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
     font-size: 1rem; 
@@ -413,7 +413,7 @@ input {
     transition: all 0.2s; 
     color: var(--text-main); 
     background: var(--bg-card); 
-    height: 38px;
+    height: 40px;
 }
 
 input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
@@ -437,8 +437,8 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .tag-input-container { 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
-    padding: 6px 8px; 
-    background: linear-gradient(180deg, rgba(59, 130, 246, 0.04), transparent 80%); 
+    padding: 6px; 
+    background: var(--bg-card); 
     display: flex; 
     flex-wrap: wrap; 
     gap: 6px; 
@@ -468,7 +468,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     font-size: 0.8rem; 
     color: var(--text-sub); 
     border: 1px solid var(--border-color); 
-    padding: 2px 10px; 
+    padding: 3px 10px; 
     border-radius: 12px; 
     cursor: pointer; 
     transition: all 0.2s; 
@@ -485,28 +485,12 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .tag-checkbox input { width: 18px; height: 18px; margin: 0; }
 .tag-name { font-size: 0.95rem; font-weight: 500; }
 
-/* 總金額區塊 */
-.summary-field {
-    background: var(--bg-secondary);
-    border-radius: 10px;
-    padding: 10px;
-    border: 1px solid var(--border-color);
-}
-
-.summary-field label {
-    margin-left: 0;
-}
-
-.summary-input {
-    font-size: 1.05rem;
-    font-weight: 700;
-}
-
+/* 總金額摘要 (Calculator Style) */
 /* 按鈕區 */
 .form-footer {
     display: flex;
     justify-content: flex-end;
-    padding-top: 6px;
+    padding-top: 4px;
 }
 
 .action-buttons { display: flex; gap: 12px; justify-content: flex-end; width: 100%; }
