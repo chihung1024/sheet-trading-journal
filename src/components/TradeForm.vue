@@ -391,10 +391,10 @@ defineExpose({ setupForm, resetForm });
 .form-group.span-2 { grid-column: span 2; }
 .form-group.span-3 { grid-column: span 3; }
 
-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; }
+label { font-size: 0.82rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; letter-spacing: 0.2px; }
 .field-hint {
     margin: 2px 0 0;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     color: var(--text-sub);
     opacity: 0.75;
 }
@@ -425,7 +425,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 
 /* 帶前綴的輸入框 */
 .input-with-prefix { position: relative; }
-.prefix { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+.prefix { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 .input-with-prefix input { padding-left: 30px; }
 
 /* 雙欄輸入 (費用) */
