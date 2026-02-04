@@ -107,7 +107,7 @@
         <div class="form-group full shares-fee-row">
             <div class="triple-input">
                 <div class="input-with-label">
-                    <label>股數</label>
+                    <label>股數 Shares</label>
                     <input 
                         type="number" 
                         v-model="form.qty" 
@@ -116,17 +116,14 @@
                         step="0.0001"
                         inputmode="decimal"
                     >
-                    <span class="sub-label">Shares</span>
                 </div>
                 <div class="input-with-label">
-                    <label>手續費</label>
-                    <input type="number" v-model="form.fee" placeholder="0" step="0.01" inputmode="decimal">
-                    <span class="sub-label">Fee</span>
+                    <label>手續費 Fee</label>
+                    <input type="number" v-model="form.fee" placeholder="0" class="font-num" step="0.01" inputmode="decimal">
                 </div>
                 <div class="input-with-label">
-                    <label>稅金</label>
-                    <input type="number" v-model="form.tax" placeholder="0" step="0.01" inputmode="decimal">
-                    <span class="sub-label">Tax</span>
+                    <label>稅金 Tax</label>
+                    <input type="number" v-model="form.tax" placeholder="0" class="font-num" step="0.01" inputmode="decimal">
                 </div>
             </div>
         </div>
@@ -185,8 +182,8 @@ const form = reactive({
     txn_type: 'BUY', 
     qty: '', 
     price: '', 
-    fee: 0, 
-    tax: 0, 
+    fee: '', 
+    tax: '', 
     total_amount: '',
     tag: '' 
 });
@@ -313,8 +310,8 @@ const resetForm = () => {
     form.symbol = ''; 
     form.qty = ''; 
     form.price = ''; 
-    form.fee = 0; 
-    form.tax = 0; 
+    form.fee = ''; 
+    form.tax = ''; 
     form.total_amount = '';
     form.tag = ''; 
     form.txn_type = 'BUY';
