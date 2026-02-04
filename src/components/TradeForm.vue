@@ -119,9 +119,9 @@
         </div>
     </div>
 
-    <div class="summary-box">
-        <div class="summary-row">
-            <div class="summary-labels">
+    <div class="form-footer">
+        <div class="summary-box">
+            <div class="summary-header">
                 <span class="summary-label">交易總金額 (USD)</span>
                 <span class="calc-icon">🧮</span>
             </div>
@@ -136,16 +136,16 @@
                     inputmode="decimal"
                 >
             </div>
+            <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
         </div>
-        <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
-    </div>
-    
-    <div class="action-buttons">
-        <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
-        <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
-            <span v-if="loading" class="spinner"></span>
-            {{ loading ? '處理中...' : (isEditing ? '更新交易' : submitButtonText) }}
-        </button>
+        
+        <div class="action-buttons">
+            <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
+            <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
+                <span v-if="loading" class="spinner"></span>
+                {{ loading ? '處理中...' : (isEditing ? '更新交易' : submitButtonText) }}
+            </button>
+        </div>
     </div>
   </div>
 </template>
@@ -325,7 +325,7 @@ defineExpose({ setupForm, resetForm });
 .trade-panel { 
     background: var(--bg-card); 
     border: 1px solid var(--border-color); 
-    padding: 24px; 
+    padding: 20px; 
     border-radius: var(--radius);
     transition: border-color 0.3s ease;
 }
@@ -339,7 +339,7 @@ defineExpose({ setupForm, resetForm });
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
@@ -351,20 +351,20 @@ defineExpose({ setupForm, resetForm });
     background: var(--bg-secondary); 
     padding: 4px; 
     border-radius: 12px; 
-    margin-bottom: 24px; 
+    margin-bottom: 16px; 
 }
 
 .switch-btn { 
     flex: 1; 
     border: none; 
     background: transparent; 
-    padding: 10px; 
+    padding: 8px; 
     font-weight: 600; 
     color: var(--text-sub); 
     cursor: pointer; 
     border-radius: 8px; 
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
-    font-size: 0.95rem; 
+    font-size: 0.9rem; 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -385,9 +385,9 @@ defineExpose({ setupForm, resetForm });
 /* 表單佈局 */
 .form-grid { 
     display: grid; 
-    grid-template-columns: repeat(3, minmax(0, 1fr)); 
-    gap: 16px 20px; 
-    margin-bottom: 20px; 
+    grid-template-columns: 1.2fr 1fr; 
+    gap: 16px; 
+    margin-bottom: 16px; 
 }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
@@ -397,9 +397,9 @@ defineExpose({ setupForm, resetForm });
 label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; }
 .field-hint {
     margin: 2px 0 0;
-    font-size: 0.76rem;
+    font-size: 0.75rem;
     color: var(--text-sub);
-    opacity: 0.8;
+    opacity: 0.75;
 }
 
 .wide-inputs .input-with-label input {
@@ -408,7 +408,7 @@ label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-lef
 
 /* 輸入框通用樣式 */
 input { 
-    padding: 12px 14px; 
+    padding: 10px 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
     font-size: 1rem; 
@@ -418,7 +418,7 @@ input {
     transition: all 0.2s; 
     color: var(--text-main); 
     background: var(--bg-card); 
-    height: 46px; /* 增加觸控高度 */
+    height: 42px;
 }
 
 input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
@@ -447,7 +447,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     display: flex; 
     flex-wrap: wrap; 
     gap: 6px; 
-    min-height: 48px; 
+    min-height: 44px; 
 }
 .tag-input-container.disabled { opacity: 0.6; pointer-events: none; background: var(--bg-secondary); }
 
@@ -468,7 +468,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .remove-tag:hover { color: var(--danger); }
 .tag-input-field { border: none; outline: none; background: transparent; flex: 1; min-width: 80px; padding: 4px; height: auto; }
 
-.quick-tags { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-tags { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-tag { 
     font-size: 0.8rem; 
     color: var(--text-sub); 
@@ -495,7 +495,6 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     background: var(--bg-secondary); 
     padding: 16px; 
     border-radius: 12px; 
-    margin-bottom: 20px; 
     border: 1px solid var(--border-color); 
     display: flex;
     flex-direction: column;
@@ -522,16 +521,23 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .summary-value:focus { box-shadow: none; }
 
 /* 按鈕區 */
-.action-buttons { display: flex; gap: 16px; margin-top: auto; }
+.form-footer {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 16px;
+    align-items: stretch;
+}
+
+.action-buttons { display: flex; flex-direction: column; gap: 12px; justify-content: center; }
 .btn { 
     flex: 1; 
-    padding: 14px; 
+    padding: 12px; 
     border: none; 
     border-radius: 12px; 
     font-weight: 600; 
     cursor: pointer; 
     transition: all 0.2s; 
-    font-size: 1.05rem; 
+    font-size: 1rem; 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -574,7 +580,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     .form-group.span-3 { grid-column: span 1; }
     
     /* 輸入框更加寬大舒適 */
-    input { font-size: 1.1rem; padding: 14px; }
+    input { font-size: 1.05rem; padding: 12px; }
     
     .dual-input { gap: 16px; }
     
@@ -583,5 +589,11 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     .summary-value { font-size: 2rem; }
     
     .switch-btn { padding: 12px; }
+
+    .form-footer {
+        grid-template-columns: 1fr;
+    }
+
+    .action-buttons { flex-direction: row; }
 }
 </style>
