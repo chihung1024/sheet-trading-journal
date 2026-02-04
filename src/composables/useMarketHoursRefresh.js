@@ -14,14 +14,18 @@ import { useToast } from './useToast';
 export function useMarketHoursRefresh() {
     const isEnabled = ref(true);
     const isRunning = ref(false);
+    const isPaused = ref(false);
     const lastTriggerTime = ref(null);
     const nextTriggerTime = ref(null);
     const currentMarket = ref(null); // 'TW', 'US', or null
+    const timeRemaining = ref(0); // 倒數秒數
 
     let refreshTimer = null;
     let checkTimer = null;
+    let countdownTimer = null; // UI 倒數計時器
 
     const INTERVAL_MS = 3 * 60 * 1000; // 3 分鐘
+    const INTERVAL_SECONDS = 3 * 60; // 180 秒
     const TIMEOUT_MS = 60 * 1000; // 60 秒逾時
 
     /**
@@ -182,6 +186,7 @@ export function useMarketHoursRefresh() {
                 // 立即觸發一次
                 triggerRefresh();
                 updateNextTriggerTime();
+                startCountdown(); // 啟動 UI 倒數
 
                 // 設定 3 分鐘定時器
                 refreshTimer = setInterval(() => {
@@ -190,6 +195,7 @@ export function useMarketHoursRefresh() {
                         updateNextTriggerTime();
                     } else {
                         stopRefreshTimer();
+                        stopCountdown();
                     }
                 }, INTERVAL_MS);
 
@@ -204,6 +210,7 @@ export function useMarketHoursRefresh() {
         if (isMarketHours()) {
             triggerRefresh();
             updateNextTriggerTime();
+            startCountdown(); // 啟動 UI 倒數
 
             refreshTimer = setInterval(() => {
                 if (isMarketHours() && isEnabled.value) {
@@ -211,6 +218,7 @@ export function useMarketHoursRefresh() {
                     updateNextTriggerTime();
                 } else {
                     stopRefreshTimer();
+                    stopCountdown();
                 }
             }, INTERVAL_MS);
         }
@@ -218,6 +226,40 @@ export function useMarketHoursRefresh() {
 
     const updateNextTriggerTime = () => {
         nextTriggerTime.value = new Date(Date.now() + INTERVAL_MS);
+        timeRemaining.value = INTERVAL_SECONDS;
+    };
+
+    // 啓動 UI 倒數計時器
+    const startCountdown = () => {
+        if (countdownTimer) return;
+        countdownTimer = setInterval(() => {
+            if (!isPaused.value && timeRemaining.value > 0) {
+                timeRemaining.value--;
+            }
+        }, 1000);
+    };
+
+    const stopCountdown = () => {
+        if (countdownTimer) {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+        }
+    };
+
+    // 格式化倒數時間
+    const formattedTimeRemaining = () => {
+        const minutes = Math.floor(timeRemaining.value / 60);
+        const seconds = timeRemaining.value % 60;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    // 暫停/恢復
+    const togglePause = () => {
+        isPaused.value = !isPaused.value;
+        if (!isPaused.value && isMarketHours()) {
+            // 恢復時如果在盤中，確保刷新器運行中
+            startMarketRefresh();
+        }
     };
 
     const stopRefreshTimer = () => {
@@ -230,6 +272,7 @@ export function useMarketHoursRefresh() {
 
     const stopMarketRefresh = () => {
         stopRefreshTimer();
+        stopCountdown(); // 停止 UI 倒數
         if (checkTimer) {
             clearInterval(checkTimer);
             checkTimer = null;
@@ -268,13 +311,17 @@ export function useMarketHoursRefresh() {
     return {
         isEnabled,
         isRunning,
+        isPaused,
         lastTriggerTime,
         nextTriggerTime,
         currentMarket,
+        timeRemaining,
         isMarketHours,
         isTWMarketOpen,
         isUSMarketOpen,
         isDaylightSavingTime,
+        formattedTimeRemaining,
+        togglePause,
         startMarketRefresh,
         stopMarketRefresh,
         manualTrigger

@@ -3,11 +3,11 @@ import { ref, onMounted, onUnmounted } from 'vue';
 /**
  * 自動刷新 Composable
  * 功能：
- * 1. 每5分鐘自動刷新數據
- * 2. 只在頁面可見時更新（節省資源）
+ * 1. 按指定間隔自動刷新數據（預設 3 分鐘）
+ * 2. 無視頁面可見性，背景也會持續運作
  * 3. 提供倒數計時與手動控制
  */
-export function useAutoRefresh(callback, intervalMinutes = 5) {
+export function useAutoRefresh(callback, intervalMinutes = 3) {
   const isEnabled = ref(true);
   const isPaused = ref(false);
   const timeRemaining = ref(intervalMinutes * 60); // 秒
@@ -15,7 +15,6 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
 
   let refreshTimer = null;
   let countdownTimer = null;
-  let isPageVisible = true;
 
   // 計算下次更新時間
   const calculateNextUpdateTime = () => {
@@ -77,18 +76,16 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
     startRefresh(); // 重置計時器
   };
 
-  // 頁面可見性監聽
+  // 頁面可見性監聽（保留用於頁面恢復時檢查是否需要立即刷新）
   const handleVisibilityChange = () => {
-    isPageVisible = !document.hidden;
+    const isPageVisible = !document.hidden;
 
     if (isPageVisible && isEnabled.value && !isPaused.value) {
-      console.log('👁️ 頁面恢復可見，恢復刷新計時');
-      // 頁面恢復可見時，如果距離上次更新已超過5分鐘，立即刷新
+      console.log('👁️ 頁面恢復可見');
+      // 頁面恢復可見時，如果倒數已結束，立即刷新
       if (timeRemaining.value <= 0) {
         manualRefresh();
       }
-    } else if (!isPageVisible) {
-      console.log('😴 頁面隱藏，暫停刷新計時');
     }
   };
 

@@ -26,17 +26,18 @@
         </div>
 
         <div class="nav-status">
-          <!-- ✨ 自動刷新指示器 -->
-          <div v-if="autoRefresh && !portfolioStore.loading && !portfolioStore.isPolling"
+          <!-- ✨ 盤中自動刷新指示器 -->
+          <div v-if="marketRefresh.isMarketHours() && !portfolioStore.loading && !portfolioStore.isPolling"
                class="auto-refresh-indicator"
-               :class="{ paused: autoRefresh.isPaused.value }"
-               :title="autoRefresh.isPaused.value ? '已暫停自動刷新' : `下次觸發計算: ${autoRefresh.formattedTimeRemaining()}`">
-            <span class="refresh-icon" @click="autoRefresh.togglePause()">
-              <span v-if="autoRefresh.isPaused.value">⏸️</span>
+               :class="{ paused: marketRefresh.isPaused.value }"
+               :title="marketRefresh.isPaused.value ? '已暫停自動刷新' : `下次觸發: ${marketRefresh.formattedTimeRemaining()}`">
+            <span class="market-badge">{{ marketRefresh.currentMarket.value === 'TW' ? '🇹🇼' : '🇺🇸' }}</span>
+            <span class="refresh-icon" @click="marketRefresh.togglePause()">
+              <span v-if="marketRefresh.isPaused.value">⏸️</span>
               <span v-else>🔄</span>
             </span>
-            <span class="refresh-timer desktop-only" v-if="!autoRefresh.isPaused.value">
-              {{ autoRefresh.formattedTimeRemaining() }}
+            <span class="refresh-timer desktop-only" v-if="!marketRefresh.isPaused.value">
+              {{ marketRefresh.formattedTimeRemaining() }}
             </span>
           </div>
 
@@ -189,7 +190,6 @@ import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
 import { usePWA } from './composables/usePWA';
-import { useAutoRefresh } from './composables/useAutoRefresh';
 import { useMarketHoursRefresh } from './composables/useMarketHoursRefresh';
 import { useTokenRefresh } from './composables/useTokenRefresh';
 
@@ -308,21 +308,6 @@ const hasPendingDividends = computed(() => portfolioStore.pending_dividends?.len
 const pendingDividendsCount = computed(() => portfolioStore.pending_dividends ? portfolioStore.pending_dividends.length : 0);
 
 const userInitial = computed(() => authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'U');
-
-// ✨ 自動刷新功能 - 觸發 GitHub Actions 計算 + 輪詢狀態
-const autoRefresh = useAutoRefresh(async () => {
-  if (!portfolioStore.loading && !portfolioStore.isPolling) {
-    try {
-      console.log('🔄 [自動刷新] 觸發數據更新...');
-      await portfolioStore.fetchSnapshot();
-      console.log('✅ [自動刷新] 數據已更新');
-    } catch (error) {
-      console.error('❌ [自動刷新] 更新失敗:', error);
-    }
-  } else {
-    console.log('⏸️ [自動刷新] 系統忙線中，跳過此次刷新');
-  }
-}, 5); // 非盤中時每 5 分鐘刷新 snapshot
 
 // 📈 盤中自動刷新 - 台股/美股盤中每 3 分鐘觸發 triggerUpdate
 const marketRefresh = useMarketHoursRefresh();
