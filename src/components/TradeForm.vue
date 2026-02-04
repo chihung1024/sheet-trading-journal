@@ -14,25 +14,33 @@
         </button>
     </div>
 
-    <div class="form-sections">
-        <section class="form-section">
-            <div class="section-head">
-                <span class="section-title">基本資料</span>
-                <span class="section-chip">必填</span>
+    <div class="form-grid">
+        <div class="form-group span-2">
+            <label>交易標的 Symbol</label>
+            <div class="input-wrapper">
+                <input 
+                    type="text" 
+                    v-model="form.symbol" 
+                    @change="checkHoldings" 
+                    placeholder="如: NVDA, TSLA" 
+                    :disabled="isEditing" 
+                    class="input-lg uppercase bold-text"
+                >
             </div>
-            <div class="section-grid">
-                <div class="form-group span-2">
-                    <label>交易標的 Symbol</label>
-                    <div class="input-wrapper">
-                        <input 
-                            type="text" 
-                            v-model="form.symbol" 
-                            @change="checkHoldings" 
-                            placeholder="如: NVDA, TSLA" 
-                            :disabled="isEditing" 
-                            class="input-lg uppercase bold-text"
-                        >
-                    </div>
+        </div>
+
+        <div class="form-group">
+            <label>日期 Date</label>
+            <input type="date" v-model="form.txn_date" class="input-md">
+        </div>
+        
+        <div class="form-group span-3">
+            <label>策略群組 (Tags)</label>
+            
+            <div v-if="form.txn_type === 'SELL' && holdingGroups.length > 0" class="smart-sell-options">
+                <div class="hint-header">
+                    <span class="hint-icon">⚠️</span>
+                    <span class="hint-text">此標的屬於以下群組，請勾選要賣出的部位：</span>
                 </div>
 
                 <div class="form-group">
@@ -89,12 +97,20 @@
                     </div>
                 </div>
             </div>
-        </section>
-
-        <section class="form-section">
-            <div class="section-head">
-                <span class="section-title">價格與費用</span>
-                <span class="section-note">擇一填寫即可</span>
+        </div>
+        
+        <div class="form-group">
+            <label>成交單價 (USD)</label>
+            <div class="input-with-prefix">
+                <span class="prefix">$</span>
+                <input 
+                    type="number" 
+                    v-model="form.price" 
+                    placeholder="0.00" 
+                    class="input-md font-num" 
+                    step="0.0001"
+                    inputmode="decimal"
+                >
             </div>
             <div class="section-grid">
                 <div class="form-group">
@@ -156,7 +172,24 @@
                     <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
                 </div>
             </div>
-        </section>
+            <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
+        </div>
+
+        <div class="form-group">
+            <label>交易總金額 (USD)</label>
+            <div class="input-with-prefix">
+                <span class="prefix">$</span>
+                <input 
+                    type="number" 
+                    v-model="form.total_amount" 
+                    class="input-md font-num"
+                    step="0.01" 
+                    placeholder="0.00"
+                    inputmode="decimal"
+                >
+            </div>
+            <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
+        </div>
     </div>
 
     <div class="form-footer">
@@ -451,7 +484,8 @@ defineExpose({ setupForm, resetForm });
 .section-grid { 
     display: grid; 
     grid-template-columns: repeat(3, minmax(0, 1fr)); 
-    gap: 10px; 
+    gap: 12px; 
+    margin-bottom: 12px; 
 }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
@@ -459,7 +493,6 @@ defineExpose({ setupForm, resetForm });
 .form-group.span-3 { grid-column: span 3; }
 
 label { font-size: 0.82rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; letter-spacing: 0.2px; }
-.section-label { margin-left: 0; }
 .field-hint {
     margin: 2px 0 0;
     font-size: 0.72rem;
@@ -471,7 +504,7 @@ label { font-size: 0.82rem; color: var(--text-sub); font-weight: 600; margin-lef
 
 /* 輸入框通用樣式 */
 input { 
-    padding: 8px 12px; 
+    padding: 9px 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
     font-size: 1rem; 
@@ -481,7 +514,7 @@ input {
     transition: all 0.2s; 
     color: var(--text-main); 
     background: var(--bg-card); 
-    height: 38px;
+    height: 40px;
 }
 
 input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
@@ -505,8 +538,8 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .tag-input-container { 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
-    padding: 6px 8px; 
-    background: var(--bg-card);
+    padding: 6px; 
+    background: var(--bg-card); 
     display: flex; 
     flex-wrap: wrap; 
     gap: 6px; 
@@ -553,28 +586,12 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .tag-checkbox input { width: 18px; height: 18px; margin: 0; }
 .tag-name { font-size: 0.95rem; font-weight: 500; }
 
-/* 總金額區塊 */
-.summary-field {
-    background: rgba(59, 130, 246, 0.08);
-    border-radius: 12px;
-    padding: 12px;
-    border: 1px solid rgba(59, 130, 246, 0.2);
-}
-
-.summary-field label {
-    margin-left: 0;
-}
-
-.summary-input {
-    font-size: 1.05rem;
-    font-weight: 700;
-}
-
+/* 總金額摘要 (Calculator Style) */
 /* 按鈕區 */
 .form-footer {
     display: flex;
     justify-content: flex-end;
-    padding-top: 6px;
+    padding-top: 4px;
 }
 
 .action-buttons { display: flex; gap: 12px; justify-content: flex-end; width: 100%; }
