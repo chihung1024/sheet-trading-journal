@@ -564,3 +564,4 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     
     .switch-btn { padding: 12px; }
 }
+</style>
