@@ -190,6 +190,8 @@ import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
 import { usePWA } from './composables/usePWA';
 import { useAutoRefresh } from './composables/useAutoRefresh';
+import { useMarketHoursRefresh } from './composables/useMarketHoursRefresh';
+import { useTokenRefresh } from './composables/useTokenRefresh';
 
 import LoginOverlay from './components/LoginOverlay.vue';
 import StatsGrid from './components/StatsGrid.vue';
@@ -311,17 +313,22 @@ const userInitial = computed(() => authStore.user?.name ? authStore.user.name.ch
 const autoRefresh = useAutoRefresh(async () => {
   if (!portfolioStore.loading && !portfolioStore.isPolling) {
     try {
-      console.log('🔄 [自動刷新] 觸發 GitHub Actions 計算...');
-      await portfolioStore.triggerUpdate();
-      console.log('✅ [自動刷新] 已觸發，系統正在輪詢狀態...');
+      console.log('🔄 [自動刷新] 觸發數據更新...');
+      await portfolioStore.fetchSnapshot();
+      console.log('✅ [自動刷新] 數據已更新');
     } catch (error) {
-      console.error('❌ [自動刷新] 觸發失敗:', error);
-      addToast(`自動觸發失敗: ${error.message}`, 'error');
+      console.error('❌ [自動刷新] 更新失敗:', error);
     }
   } else {
     console.log('⏸️ [自動刷新] 系統忙線中，跳過此次刷新');
   }
-}, 3);
+}, 5); // 非盤中時每 5 分鐘刷新 snapshot
+
+// 📈 盤中自動刷新 - 台股/美股盤中每 3 分鐘觸發 triggerUpdate
+const marketRefresh = useMarketHoursRefresh();
+
+// 🔐 Token 自動刷新
+useTokenRefresh();
 
 const openMobileTrade = () => {
   showMobileTrade.value = true;

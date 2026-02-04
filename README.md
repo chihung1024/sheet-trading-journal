@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.55.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.52.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10+-green.svg)
 ![Vue](https://img.shields.io/badge/vue-3.4+-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
@@ -11,7 +11,7 @@
 **現代化的投資組合追蹤與交易日誌系統**
 
 專為美股 / 台股 / 韓股投資者設計，採用全 Serverless 架構  
-高效能 | 低成本 | 即時數據 | PWA 支援 | 策略群組 | 多使用者隔離（Multi-user）
+高效能 | 低成本 | 即時數據 | PWA 支援 | 策略群組 | 多人隔離（Multi-user）
 
 [🌐 Live Demo](https://sheet-trading-journal.pages.dev/) | [📖 部署文件](https://github.com/chihung1024/sheet-trading-journal/blob/main/DEPLOYMENT_FINAL.md) | [🐛 Issues](https://github.com/chihung1024/sheet-trading-journal/issues)
 
@@ -21,200 +21,291 @@
 
 ## 📑 目錄
 
-- [專案簡介](#-專案簡介)
-- [核心功能](#-核心功能)
+- [功能總覽](#-功能總覽)
 - [系統架構](#-系統架構)
-- [資料模型（D1 Schema）](#-資料模型d1-schema)
-- [API 速查表（Worker.js）](#-api-速查表workerjs)
-- [績效計算重點](#-績效計算重點)
 - [Repo 結構](#-repo-結構)
+- [資料與交易模型](#-資料與交易模型)
+- [績效計算說明（以程式碼為準）](#-績效計算說明以程式碼為準)
 - [部署與開發](#-部署與開發)
-- [安全性與權限](#-安全性與權限)
+- [安全性](#-安全性)
 - [限制與假設](#-限制與假設)
 
 ---
 
-## 🧭 專案簡介
+## ✨ 功能總覽
 
-SaaS Trading Journal PRO 是一套以 **Cloudflare Pages + Cloudflare Workers + D1 + GitHub Actions** 為核心的投資組合管理平台，提供交易紀錄、績效追蹤、配息管理與多策略群組管理。
+### 🏠 總覽頁面
 
-核心特點：
-- **多使用者隔離**：每位使用者資料獨立存放。
-- **Serverless 架構**：低成本、高可用、易擴充。
-- **日切分 TWR / XIRR**：偏向專業級的績效衡量。
-- **自訂 Benchmark**：支援用戶自訂基準指數。
+投資組合儀表板，一目瞭然掌握全局：
 
----
+- **績效卡片（Stats Grid）**
+  - 總資產（Market Value / NAV-like）
+  - 已實現損益（Realized P&L）
+  - 未實現損益（Unrealized P&L）
+  - 總損益（Total P&L）
+  - ROI（投資報酬率）
+  - TWR（時間加權報酬率；日切分 linked returns）
+  - XIRR（個人年化報酬率 / IRR）
+  - 勝率 / 持倉數 / 交易筆數
 
-## ✨ 核心功能
+- **績效曲線圖（Performance Chart）**
+  - 投資組合 vs. Benchmark 歷史表現
+  - 自訂 Benchmark ticker（SPY / QQQ / 0050.TW / 005930.KS 等）
+  - 支援多時間軸切換（全部 / 1年 / 6月 / 3月 / 1月）
+  - Total-return 模式（價格 + 配息，含預扣稅率）
 
-### 🏠 總覽儀表板
-- 總資產、已實現/未實現損益、ROI、TWR、XIRR、勝率。
-- 績效曲線圖：Portfolio vs Benchmark，支援多時間軸。
+### 📈 圖表頁面
 
-### 📈 圖表頁
+專注於績效曲線的完整檢視：
 - 放大版績效圖表
-- 多群組切換
-- Tooltip、縮放、標註
+- 支援多群組切換
+- 圖表互動（縮放、Tooltip、數據點標註）
 
-### 💼 持倉明細
-- 持倉數量、平均成本、市值、未實現損益、權重
-- 即時市價更新（盤中/收盤價）
+### 💼 持倉明細頁面
 
-### 🧾 交易紀錄
-- CRUD 管理交易
-- 日期、標的、BUY/SELL/DIV、費用/稅費、策略標籤
-- 搜尋與篩選
+當前持倉的詳細資訊表格：
+- 標的代碼（Symbol）
+- 持倉數量（Qty）
+- 平均成本（Avg Cost）
+- 當前市價（Current Price）
+- 市值（Market Value）
+- 未實現損益（Unrealized P&L）
+- 未實現報酬率（Unrealized %）
+- 標的權重（Weight %）
+- 支援依各欄位排序
+- 即時市價更新（含盤中 / 收盤價標示）
 
-### 💰 配息管理
-- Pending / Confirmed 股息
-- 一鍵新增 DIV 交易確認
-- 預扣稅率與配息總額
+### 🧾 交易紀錄頁面
 
-### 🏷️ 群組管理
-- 群組績效隔離
-- 群組成立日與累積表現
+完整的交易歷史管理：
+- **交易列表**
+  - 日期、標的、類型（BUY / SELL / DIV）
+  - 數量、價格、手續費、稅費
+  - 策略標籤（Tag）
+  - 快速編輯 / 刪除功能
+
+- **篩選與搜尋**
+  - 依標的搜尋
+  - 依交易類型篩選
+  - 依群組標籤篩選
+  - 日期區間篩選
+
+### 💰 配息紀錄頁面
+
+股息配發與現金流追蹤：
+- **配息歷史表**
+  - 自動偵測應計股息（Pending）
+  - 已確認配息（Confirmed）
+  - 除息日（Ex-Date）、發放日（Pay Date）
+  - 每股配息、持有數量、配息總額
+  - 預扣稅率與淨收入
+
+- **快速操作**
+  - 一鍵新增 DIV 交易確認配息
+  - Pending 股息提醒徽章
+  - 配息金額自動換算為台幣
+
+### 🏷️ 群組管理頁面
+
+策略群組設定與績效隔離：
+- **群組列表**
+  - 檢視所有策略群組（Tag）
+  - 各群組獨立績效指標
+  - 群組成立日期與累計表現
+
+- **群組操作**
+  - 新增 / 重命名 / 刪除群組
+  - 交易紀錄自動歸屬群組
+  - `all` 群組自動包含所有交易
+
+### 📝 交易表單（Side Panel）
+
+固定式右側面板，隨時新增/編輯交易：
+- **交易類型**
+  - BUY（買入）
+  - SELL（賣出）
+  - DIV（配息）
+
+- **欄位設計**
+  - 標的代碼（自動補全建議）
+  - 交易日期（日曆選擇器）
+  - 數量 / 價格
+  - 手續費 / 稅費（自動正規化為正值）
+  - 策略標籤（支援 `,` 或 `;` 分隔多標籤）
+
+- **智能功能**
+  - 編輯模式自動填充現有資料
+  - 表單驗證與錯誤提示
+  - 送出後自動觸發後端計算
+
+### 🔄 自動刷新機制
+
+背景自動觸發投資組合計算：
+- 預設每 3 分鐘自動觸發 GitHub Actions
+- 倒數計時器顯示下次更新時間
+- 一鍵暫停/恢復自動刷新
+- 手動觸發按鈕（適合即時更新需求）
+- 狀態輪詢：自動追蹤後端計算進度
 
 ### 🌓 深色模式 & PWA
-- 深/淺色模式切換
-- 支援離線快取與安裝
+
+- **主題切換**
+  - 深色 / 淺色模式
+  - 一鍵切換，記憶偏好設定
+
+- **PWA 功能**
+  - 可安裝至桌面/主畫面
+  - 離線快取
+  - Service Worker 自動更新提示
+
+### 🔐 使用者認證
+
+- Google OAuth 2.0 登入
+- JWT Token 驗證
+- 多使用者資料隔離
+- 安全登出機制
 
 ---
 
 ## 🏭 系統架構
 
+### 高層架構
+
 - **前端（SPA）**
-  - Vue 3 + Vite
+  - Vue 3 / Vite
   - Cloudflare Pages 部署
 
 - **後端（API / Trigger）**
-  - Cloudflare Worker（`worker.js`）
-  - 負責：登入驗證、交易 CRUD、快照管理、觸發 GitHub Actions
+  - Cloudflare Worker（JS）
+  - 主要負責：API 轉發/驗證、觸發 GitHub Actions、讀寫快照（依你的部署方式）
 
 - **批次運算（Portfolio Engine）**
-  - GitHub Actions 定期執行
-  - 入口：`main.py`
-  - 計算引擎：`journal_engine/`
+  - GitHub Actions 定期或被觸發執行
+  - `main.py` 為入口，呼叫 `journal_engine/` 計算投資組合快照
+  - 市價/匯率主要來源：Yahoo Finance（或你封裝的 market client）
 
-- **資料儲存（D1 / SQLite）**
-  - 交易、快照、使用者設定
+- **資料儲存**
+  - Cloudflare D1（SQLite）存放各使用者快照、交易資料（依 worker/api 實作）
 
----
-
-## 🗂️ 資料模型（D1 Schema）
-
-> 以下為目前 D1 資料表結構（以 Cloudflare D1 Studio 為準）。
-
-### `records`
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | INTEGER | 主鍵 |
-| user_id | TEXT | 使用者 Email |
-| txn_date | TEXT | 交易日期（YYYY-MM-DD） |
-| symbol | TEXT | 股票代碼 |
-| txn_type | TEXT | BUY / SELL / DIV |
-| qty | REAL | 數量 |
-| price | REAL | 成交價 |
-| fee | REAL | 手續費 |
-| tax | REAL | 稅費 |
-| tag | TEXT | 策略標籤 |
-| note | TEXT | 備註 |
-| created_at | TEXT | 建立時間 |
-
-### `portfolio_snapshots`
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | INTEGER | 主鍵 |
-| user_id | TEXT | 使用者 Email |
-| json_data | TEXT | Portfolio Snapshot（JSON） |
-| updated_at | TEXT | 更新時間 |
-
-### `user_settings`
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| user_id | TEXT | 使用者 Email |
-| benchmark | TEXT | 自訂 Benchmark（預設 SPY） |
-| created_at | TEXT | 建立時間 |
-| updated_at | TEXT | 更新時間 |
-
-### `sqlite_sequence`
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| name | TEXT | 表名 |
-| seq | INTEGER | 自增序號 |
-
----
-
-## 🔌 API 速查表（Worker.js）
-
-### Auth
-- `POST /auth/google`  
-  Google OAuth Token 驗證
-
-### Portfolio
-- `GET /api/portfolio`  
-  取得最新 Portfolio Snapshot（需登入）
-- `POST /api/portfolio`  
-  上傳 Snapshot（僅 admin / system）
-
-### Records（交易紀錄）
-- `GET /api/records`  
-  取得使用者交易列表（admin 可讀全部）
-- `POST /api/records`  
-  新增交易
-- `PUT /api/records`  
-  更新交易
-- `DELETE /api/records`  
-  刪除交易
-
-### User Settings
-- `GET /api/user-settings`  
-  取得用戶 Benchmark（支援 `X-Target-User` 查詢）
-- `POST /api/user-settings`  
-  更新用戶 Benchmark
-
-### Trigger Update
-- `POST /api/trigger-update`  
-  觸發 GitHub Actions 重新計算（支援傳入 Benchmark）
-
----
-
-## 📊 績效計算重點
-
-- **FIFO 成本計算**：BUY/SELL 以 FIFO lot 方式計算已實現損益。
-- **TWR（時間加權）**：日切分 linked returns。
-- **XIRR**：現金流序列 + 期末市值。
-- **股息處理**：DIV 為 confirmed、market data 推導 pending。
-- **匯率處理**：台股 FX=1、其他使用即時/歷史 FX。
+> 部署細節與「正確 Worker 位置」請以文件為準：DEPLOYMENT_FINAL.md
 
 ---
 
 ## 📁 Repo 結構
 
+（以 repo root 為準）
+
 - `src/`：Vue 前端
-  - `components/`：UI 元件
+  - `components/`：所有 Vue 元件
+    - `StatsGrid.vue`：績效卡片
+    - `PerformanceChart.vue`：績效曲線圖
+    - `HoldingsTable.vue`：持倉明細表
+    - `RecordList.vue`：交易紀錄列表
+    - `DividendManager.vue`：配息管理介面
+    - `GroupManager.vue`：群組管理介面
+    - `TradeForm.vue`：交易表單
+    - `PieChart.vue`：圓餅圖（資產配置）
+    - `LoginOverlay.vue`：登入畫面
+    - `skeletons/`：載入骨架屏
   - `stores/`：Pinia 狀態管理
-  - `composables/`：共用邏輯
-- `public/`：PWA / 靜態資源
+  - `composables/`：可重用邏輯（useAutoRefresh / useDarkMode / usePWA）
+  - `App.vue`：主應用程式
+- `public/`：PWA / CSP headers 等靜態資源
 - `worker.js`：Cloudflare Worker 主版本
 - `cloudflare worker/`：歷史/特定版本 Worker
-- `main.py`：批次計算入口
-- `journal_engine/`：核心計算引擎（Python）
-- `tests/`：單元測試
+- `main.py`：GitHub Actions 批次計算入口
+- `journal_engine/`：投資組合計算引擎（Python）
+- `tests/`：測試
 - `.env.example`：環境變數範例
 - `DEPLOYMENT_FINAL.md`：部署指南
 
 ---
 
+## 🧾 資料與交易模型
+
+### 交易資料欄位（概念）
+
+- `Date`：交易日期（以日粒度為主）
+- `Symbol`：標的代碼（美股無後綴、台股 `.TW/.TWO`、韓股 `.KS/.KQ`）
+- `Type`：`BUY` / `SELL` / `DIV`
+- `Qty`：數量
+- `Price`：成交價（DIV 時欄位語意取決於你的匯入格式）
+- `Commission` / `Tax`：費用與稅（會被正規化成正值再納入計算）
+- `Tag`：策略標籤（用於群組）
+
+---
+
+## 📢 績效計算說明（以程式碼為準）
+
+> 這一節的目標是「把程式的實際行為講清楚」，方便你日後對帳與擴充。
+
+### 1) 成本與已實現損益：FIFO
+
+- 每個 `Symbol` 維護 FIFO lots。
+- `BUY`：增加持倉 qty、增加成本（含 commission/tax）。
+- `SELL`：用 FIFO 扣減 lots，計算賣出成本；賣出收入會扣除 commission/tax。
+- 已實現損益：`proceeds_twd - cost_sold_twd`（並累加股息等現金流）。
+
+### 2) 匯率處理（有效匯率 multiplier）
+
+- 台股（`.TW/.TWO`）：effective FX = 1.0。
+- 非台股：effective FX = 匯率（或你 market client 的幣別轉換倍數）。
+
+### 3) 估值價格與 as-of 日期
+
+- 若 market client 支援 `get_price_asof()`：
+  - 會回傳「實際使用的估值日期 used_ts」與對應價格（例如遇到非交易日會向前取最近交易日）。
+- 匯率通常會用 `fx_rates.asof(used_ts)`（若 used_ts = 今日且美股盤中，可能使用即時匯率 current_fx）。
+
+### 4) TWR（時間加權報酬率）：日切分 linked returns
+
+本專案的 TWR 是「每天一個子期間」的 linked return：
+
+- 定義：
+  - `last_market_value_twd`：前一日估值（期初）
+  - `current_market_value_twd`：當日估值（期末）
+  - `daily_net_cashflow_twd`：當日淨現金流（正值代表投入、負值代表流出/回收）
+
+- 當 `last_market_value_twd > 0`：
+  - `period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd`
+
+- 首次投入（期初 0、期末 >0 且有現金流）：
+  - `period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd`
+
+- 累積：
+  - `cumulative_twr_factor *= period_hpr_factor`
+  - `twr_percent = (cumulative_twr_factor - 1) * 100`
+
+> 註：這是「日切分 linked TWR」。它不是傳統單一期間的 Modified Dietz（沒有對期間內 cashflow 做時間權重），但在你有每日估值點的情境下通常更貼近真正 TWR。
+
+### 5) 股息（DIV / pending / confirmed）
+
+- `DIV` 交易會被視為「已確認股息」（避免重複計入）。
+- 系統也會從 market data 推導「應計股息」並記錄為 dividend history：
+  - 若該日該標的沒有 `DIV` 交易，會視為 pending（並可能先行計入 realized / cashflow，依目前 engine 行為）。
+  - 若你新增 `DIV` 交易（confirmed），則該筆會轉為 confirmed，避免 double-count。
+- 股息淨額目前含預扣稅率假設（例如 0.7 = 30% withholding）；若你要支援不同市場稅率，建議未來把稅率規則化（per symbol / per market / per account）。
+
+### 6) XIRR（Money-weighted）
+
+- XIRR 由現金流序列計算：
+  - `BUY`：負現金流
+  - `SELL` / `DIV`：正現金流
+  - 最後加上一筆「當前市值」作為期末正現金流
+
+---
+
 ## 🚀 部署與開發
 
-### 前端開發
+### 快速開始（前端）
+
 ```bash
 npm install
 npm run dev
 ```
 
-### Python 引擎（本機測試）
+### Python engine（本機測試）
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -223,25 +314,25 @@ python main.py
 ```
 
 ### 部署（Cloudflare + GitHub Actions）
-請參考文件：`DEPLOYMENT_FINAL.md`
+
+請參考文件：DEPLOYMENT_FINAL.md
 
 ---
 
-## 🔐 安全性與權限
+## 🔐 安全性
 
-- **Google OAuth 2.0**：登入與 Token 驗證
-- **API_SECRET**：系統/管理用途 API Key
-- **多使用者隔離**：D1 依 user_id 存放資料
-- **CSP**：在 `public/_headers` 中設定
+- Google OAuth 2.0 / JWT（實際流程依 Worker 實作）
+- CSP（見 `public/_headers` 與 `index.html`）
+- CORS / API key / token 驗證（依 Worker 設定）
 
 ---
 
 ## ⚠️ 限制與假設
 
-- 引擎以「日粒度」運算為主，不建模盤中 cashflow。
-- 尚未支援「現金部位」資產（TWR 由持倉估值與現金流推算）。
-- 股息稅率仍偏硬編碼，若需精確對帳建議擴充規則層。
-- 若需「任意區間績效」，建議新增 Modified Dietz 報表。
+- 目前引擎以「日粒度」運算為主（交易時間、盤中 cashflow 時點不建模）。
+- 目前沒有顯式「現金部位」資產（TWR/資產曲線主要反映持倉估值 + 現金流處理邏輯）。
+- 股息稅率/市場規則目前偏 hard-coded（若要嚴格對帳，建議擴充規則層）。
+- 若你要做「任意區間」單一數字績效，建議新增一個獨立的 Modified Dietz 報表指標，而不是取代現有日切分 TWR。
 
 ---
 

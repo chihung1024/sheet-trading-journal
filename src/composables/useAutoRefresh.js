@@ -12,7 +12,7 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
   const isPaused = ref(false);
   const timeRemaining = ref(intervalMinutes * 60); // 秒
   const nextUpdateTime = ref(null);
-  
+
   let refreshTimer = null;
   let countdownTimer = null;
   let isPageVisible = true;
@@ -27,24 +27,24 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
   // 啟動刷新
   const startRefresh = () => {
     if (!isEnabled.value || isPaused.value) return;
-    
+
     stopRefresh(); // 清除舊的計時器
     calculateNextUpdateTime();
     timeRemaining.value = intervalMinutes * 60;
-    
+
     // 主要刷新計時器
     refreshTimer = setInterval(() => {
-      if (isPageVisible && !isPaused.value) {
+      if (!isPaused.value) {
         console.log('🔄 [自動刷新] 觸發定時更新...');
         callback();
         calculateNextUpdateTime();
         timeRemaining.value = intervalMinutes * 60;
       }
     }, intervalMinutes * 60 * 1000);
-    
+
     // 倒數計時器 (每秒更新)
     countdownTimer = setInterval(() => {
-      if (isPageVisible && !isPaused.value && timeRemaining.value > 0) {
+      if (!isPaused.value && timeRemaining.value > 0) {
         timeRemaining.value--;
       }
     }, 1000);
@@ -80,7 +80,7 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
   // 頁面可見性監聽
   const handleVisibilityChange = () => {
     isPageVisible = !document.hidden;
-    
+
     if (isPageVisible && isEnabled.value && !isPaused.value) {
       console.log('👁️ 頁面恢復可見，恢復刷新計時');
       // 頁面恢復可見時，如果距離上次更新已超過5分鐘，立即刷新
@@ -101,10 +101,10 @@ export function useAutoRefresh(callback, intervalMinutes = 5) {
 
   onMounted(() => {
     console.log(`✨ [自動刷新] 系統已啟動，每 ${intervalMinutes} 分鐘更新一次`);
-    
+
     // 監聽頁面可見性
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     // 啟動刷新
     if (isEnabled.value) {
       startRefresh();

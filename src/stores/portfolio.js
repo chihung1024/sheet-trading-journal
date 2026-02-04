@@ -9,7 +9,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const rawData = ref(null);
     const records = ref([]);
     const lastUpdate = ref('');
-    const connectionStatus = ref('connected'); 
+    const connectionStatus = ref('connected');
     const isPolling = ref(false);
     let pollTimer = null;
 
@@ -36,7 +36,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             });
 
             if (res.status === 401) {
-                console.warn("Token expired, logging out...");
+                console.warn("Token expired, attempting refresh...");
+                const refreshed = await auth.refreshToken();
+                if (refreshed) {
+                    // 重試原請求
+                    console.log("Token refreshed, retrying request...");
+                    return fetchWithAuth(endpoint, options);
+                }
                 connectionStatus.value = 'error';
                 auth.logout();
                 return null;
@@ -67,10 +73,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const fetchAll = async () => {
         if (loading.value) return;
         loading.value = true;
-        
+
         try {
             await fetchRecords();
-            
+
             // [v2.54] 從 API 獲取用戶的 benchmark 設定
             try {
                 const settingsJson = await fetchWithAuth('/api/user-settings');
@@ -81,7 +87,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             } catch (e) {
                 console.warn('無法載入 benchmark 設定，使用預設值', e);
             }
-            
+
             if (records.value && records.value.length > 0) {
                 await fetchSnapshot();
             } else {
@@ -98,7 +104,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const fetchSnapshot = async () => {
         try {
             const json = await fetchWithAuth('/api/portfolio');
-            
+
             if (json && json.success && json.data) {
                 if (!json.data.updated_at) {
                     if (records.value.length === 0) resetData();
@@ -109,7 +115,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     return;
                 }
 
-                rawData.value = json.data; 
+                rawData.value = json.data;
                 lastUpdate.value = json.data.updated_at;
             } else {
                 if (records.value.length === 0) resetData();
@@ -123,11 +129,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const fetchRecords = async () => {
         try {
             const json = await fetchWithAuth('/api/records');
-            
+
             if (json && json.success) {
                 records.value = json.data || [];
                 localStorage.setItem('cached_records', JSON.stringify(records.value));
-                
+
                 if (records.value.length === 0) resetData();
             }
         } catch (error) {
@@ -139,7 +145,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const handleAutoUpdateSignal = (message = "✨ 系統正自動同步股價與數據，請稍候...") => {
         const { addToast } = useToast();
         addToast(message, "info");
-        startPolling(); 
+        startPolling();
     };
 
     const addRecord = async (formData) => {
@@ -149,11 +155,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 method: 'POST',
                 body: JSON.stringify(formData)
             });
-            
+
             if (json && json.success) {
                 addToast("新增成功", "success");
                 await fetchRecords();
-                
+
                 if (json.auto_update) {
                     handleAutoUpdateSignal("🚀 這是您的第一筆交易，系統正自動啟動背景計算...");
                 }
@@ -192,10 +198,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 method: 'DELETE',
                 body: JSON.stringify({ id })
             });
-            
+
             if (json && json.success) {
                 addToast("刪除成功", "success");
-                
+
                 if (json.message === "RELOAD_UI") {
                     records.value = [];
                     handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據...");
@@ -254,11 +260,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     const startPolling = () => {
         if (isPolling.value) return;
-        
+
         isPolling.value = true;
         const startTime = Date.now();
-        const initialTime = lastUpdate.value; 
-        const { addToast } = useToast(); 
+        const initialTime = lastUpdate.value;
+        const { addToast } = useToast();
 
         pollTimer = setInterval(async () => {
             if (Date.now() - startTime > 180000) {
@@ -268,7 +274,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
             try {
                 const json = await fetchWithAuth('/api/portfolio');
-                
+
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
                     const isNewData = newTime && (newTime !== initialTime) && (json.data.holdings?.length > 0 || records.value.length === 0);
@@ -284,7 +290,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             } catch (e) {
                 console.warn('SmartPolling check error:', e);
             }
-        }, 5000); 
+        }, 5000);
     };
 
     const stopPolling = () => {
@@ -298,8 +304,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     // [v2.54] 修改 triggerUpdate 函數，先保存 benchmark 到資料庫
     const triggerUpdate = async (benchmark = null) => {
         const token = getToken();
-        if (!token) throw new Error("請先登入"); 
-        
+        if (!token) throw new Error("請先登入");
+
         // 如果提供了新的 benchmark，先保存到資料庫
         if (benchmark && benchmark !== selectedBenchmark.value) {
             try {
@@ -311,11 +317,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     },
                     body: JSON.stringify({ benchmark: benchmark.toUpperCase().trim() })
                 });
-                
+
                 if (!saveResponse.ok) {
                     throw new Error('無法保存 benchmark 設定');
                 }
-                
+
                 const saveJson = await saveResponse.json();
                 if (saveJson.success) {
                     selectedBenchmark.value = saveJson.benchmark;
@@ -326,41 +332,41 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 throw new Error('無法保存 benchmark 設定: ' + e.message);
             }
         }
-        
+
         const targetBenchmark = benchmark || selectedBenchmark.value;
-        
+
         try {
             const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
                 method: "POST",
-                headers: { 
+                headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ benchmark: targetBenchmark })
             });
-            
+
             if (response.ok || response.status === 204) {
-                handleAutoUpdateSignal("🔄 已手動觸發數據重算，正在同步中..."); 
-                return true; 
+                handleAutoUpdateSignal("🔄 已手動觸發數據重算，正在同步中...");
+                return true;
             } else {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.error || '後端無回應');
             }
-        } catch (e) { 
+        } catch (e) {
             console.error('Trigger failed:', e);
-            throw e; 
+            throw e;
         }
     };
 
-    return { 
-        loading, 
+    return {
+        loading,
         rawData,
-        stats, 
-        holdings, 
-        history, 
-        records, 
+        stats,
+        holdings,
+        history,
+        records,
         pending_dividends,
-        lastUpdate, 
+        lastUpdate,
         unrealizedPnL,
         dailyPnL,
         connectionStatus,
@@ -370,13 +376,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         selectedBenchmark,
         setGroup,
         getGroupsWithHolding,
-        fetchAll, 
-        fetchRecords, 
-        addRecord,      
-        updateRecord,   
-        deleteRecord, 
+        fetchAll,
+        fetchRecords,
+        fetchSnapshot,
+        addRecord,
+        updateRecord,
+        deleteRecord,
         triggerUpdate,
         resetData,
-        startPolling    
+        startPolling
     };
 });
