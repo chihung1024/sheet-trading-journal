@@ -88,6 +88,7 @@
                     inputmode="decimal"
                 >
             </div>
+            <p class="field-hint">可輸入成交單價或留白，擇一與總額搭配即可。</p>
         </div>
 
         <div class="form-group">
@@ -114,6 +115,7 @@
                     <span class="sub-label">稅金</span>
                 </div>
             </div>
+            <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
         </div>
     </div>
 
@@ -133,7 +135,7 @@
                 inputmode="decimal"
             >
         </div>
-        <p class="field-hint">填寫成交單價或交易總額其中一項，再輸入手續費/稅金，系統會以總成本計算平均成本。</p>
+        <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
     </div>
     
     <div class="action-buttons">
@@ -397,14 +399,8 @@ label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-lef
     opacity: 0.8;
 }
 
-.wide-inputs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-}
-
 .wide-inputs .input-with-label input {
-    min-width: 0;
+    min-width: 120px;
 }
 
 /* 輸入框通用樣式 */
