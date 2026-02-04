@@ -114,7 +114,7 @@
                         </span>
                     </td>
                     <td class="text-right font-num">{{ formatNumber(r.qty, 2) }}</td>
-                    <td class="text-right font-num">{{ formatNumber(r.price, 4) }}</td>
+                    <td class="text-right font-num">{{ formatNumber(getRecordAvgPrice(r), 4) }}</td>
                     <td class="text-right font-num font-bold">
                         NT${{ formatNumber(getTotalAmountTWD(r), 0) }}
                     </td>
@@ -153,7 +153,7 @@
                 </div>
                 <div class="m-sub-info">
                     <span class="m-detail">
-                        {{ formatNumber(r.qty, 2) }} 股 @ ${{ formatNumber(r.price, 2) }}
+                        {{ formatNumber(r.qty, 2) }} 股 @ ${{ formatNumber(getRecordAvgPrice(r), 2) }}
                     </span>
                     <span class="m-fee" v-if="r.fee > 0 || r.tax > 0">
                         (費: {{ (r.fee||0) + (r.tax||0) }})
@@ -285,9 +285,28 @@ const getFxRateByDate = (dateStr) => {
 const calculateTotalAmountUSD = (record) => {
     const qty = Number(record.qty) || 0;
     const price = Number(record.price) || 0;
+    const totalAmount = Number(record.total_amount) || 0;
     const commission = Number(record.fee || record.commission) || 0;
     const tax = Number(record.tax) || 0;
-    return Math.abs(qty * price) + commission + tax;
+    const baseTotal = totalAmount > 0 ? totalAmount : Math.abs(qty * price);
+    return baseTotal + commission + tax;
+};
+
+const getRecordAvgPrice = (record) => {
+    const qty = Number(record.qty) || 0;
+    if (qty <= 0) return 0;
+    const price = Number(record.price) || 0;
+    const totalAmount = Number(record.total_amount) || 0;
+    const commission = Number(record.fee || record.commission) || 0;
+    const tax = Number(record.tax) || 0;
+    const baseTotal = totalAmount > 0 ? totalAmount : Math.abs(qty * price);
+    if (record.txn_type === 'BUY') {
+        return (baseTotal + commission + tax) / qty;
+    }
+    if (record.txn_type === 'SELL') {
+        return (baseTotal - commission - tax) / qty;
+    }
+    return price;
 };
 
 // [v2.48] 修复：台股不乘汇率
