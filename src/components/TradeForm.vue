@@ -95,7 +95,6 @@
             <input 
                 type="number" 
                 v-model="form.qty" 
-                @input="calcPriceFromInputs" 
                 placeholder="0" 
                 class="input-md font-num" 
                 step="0.0001"
@@ -107,11 +106,11 @@
             <label>費用 (Fee + Tax)</label>
             <div class="dual-input">
                 <div class="input-with-label">
-                    <input type="number" v-model="form.fee" @input="calcPriceFromInputs" placeholder="0" step="0.01" inputmode="decimal">
+                    <input type="number" v-model="form.fee" placeholder="0" step="0.01" inputmode="decimal">
                     <span class="sub-label">手續費</span>
                 </div>
                 <div class="input-with-label">
-                    <input type="number" v-model="form.tax" @input="calcPriceFromInputs" placeholder="0" step="0.01" inputmode="decimal">
+                    <input type="number" v-model="form.tax" placeholder="0" step="0.01" inputmode="decimal">
                     <span class="sub-label">稅金</span>
                 </div>
             </div>
@@ -128,7 +127,6 @@
             <input 
                 type="number" 
                 v-model="form.total_amount" 
-                @input="calcPriceFromInputs" 
                 class="summary-value" 
                 step="0.01" 
                 placeholder="0.00"
@@ -242,21 +240,8 @@ const setTxnType = (type) => {
     checkHoldings();
 };
 
-const calcPriceFromInputs = () => {
-    const qty = parseFloat(form.qty) || 0;
-    const total = parseFloat(form.total_amount) || 0;
-    const fee = parseFloat(form.fee) || 0;
-    const tax = parseFloat(form.tax) || 0;
-    if (qty <= 0 || total <= 0) return;
-    let avgCost = 0;
-    if (form.txn_type === 'BUY') { avgCost = (total + fee + tax) / qty; } 
-    else if (form.txn_type === 'SELL') { avgCost = (total - fee - tax) / qty; } 
-    else { avgCost = (total - tax) / qty; }
-    form.price = parseFloat(avgCost.toFixed(4));
-};
-
 const submit = async () => {
-    if (!form.symbol || !form.qty || !form.price) { 
+    if (!form.symbol || !form.qty || (!form.price && !form.total_amount)) { 
         addToast("請填寫完整資料", "error"); 
         return; 
     }
@@ -276,6 +261,13 @@ const submit = async () => {
     try {
         const payload = { ...form };
         ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
+        if (payload.qty > 0) {
+            if (payload.price <= 0 && payload.total_amount > 0) {
+                payload.price = payload.total_amount / payload.qty;
+            } else if (payload.total_amount <= 0 && payload.price > 0) {
+                payload.total_amount = payload.price * payload.qty;
+            }
+        }
         
         let success = false;
         if (isEditing.value) {
