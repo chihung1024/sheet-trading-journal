@@ -90,29 +90,39 @@
             </div>
         </div>
 
-        <div class="form-group">
-            <label>股數 Shares</label>
-            <input 
-                type="number" 
-                v-model="form.qty" 
-                placeholder="0" 
-                class="input-md font-num" 
-                step="0.0001"
-                inputmode="decimal"
-            >
-        </div>
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>股數 Shares</label>
+                <input 
+                    type="number" 
+                    v-model="form.qty" 
+                    placeholder="0" 
+                    class="input-md font-num" 
+                    step="0.0001"
+                    inputmode="decimal"
+                >
+            </div>
 
-        <div class="form-group">
-            <label>費用 (Fee + Tax)</label>
-            <div class="dual-input">
-                <div class="input-with-label">
-                    <input type="number" v-model="form.fee" placeholder="0" step="0.01" inputmode="decimal">
-                    <span class="sub-label">手續費</span>
-                </div>
-                <div class="input-with-label">
-                    <input type="number" v-model="form.tax" placeholder="0" step="0.01" inputmode="decimal">
-                    <span class="sub-label">稅金</span>
-                </div>
+            <div class="form-group">
+                <label>手續費 Fee</label>
+                <input
+                    type="number"
+                    v-model="form.fee"
+                    placeholder="0"
+                    step="0.01"
+                    inputmode="decimal"
+                >
+            </div>
+
+            <div class="form-group">
+                <label>稅金 Tax</label>
+                <input
+                    type="number"
+                    v-model="form.tax"
+                    placeholder="0"
+                    step="0.01"
+                    inputmode="decimal"
+                >
             </div>
         </div>
     </div>
@@ -387,6 +397,12 @@ defineExpose({ setupForm, resetForm });
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-group.full { grid-column: span 2; }
+.form-row-3 { 
+    grid-column: span 2; 
+    display: grid; 
+    grid-template-columns: repeat(3, minmax(0, 1fr)); 
+    gap: 20px; 
+}
 
 label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; }
 
