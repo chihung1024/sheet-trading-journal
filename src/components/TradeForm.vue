@@ -14,131 +14,152 @@
         </button>
     </div>
 
-    <div class="form-grid">
-        <div class="form-group span-3">
-            <label>交易標的 Symbol</label>
-            <div class="input-wrapper">
-                <input 
-                    type="text" 
-                    v-model="form.symbol" 
-                    @change="checkHoldings" 
-                    placeholder="如: NVDA, TSLA" 
-                    :disabled="isEditing" 
-                    class="input-lg uppercase bold-text"
-                >
+    <div class="form-sections">
+        <section class="form-section">
+            <div class="section-head">
+                <span class="section-title">基本資料</span>
+                <span class="section-chip">必填</span>
             </div>
-        </div>
-        
-        <div class="form-group span-3">
-            <label>策略群組 (Tags)</label>
-            
-            <div v-if="form.txn_type === 'SELL' && holdingGroups.length > 0" class="smart-sell-options">
-                <div class="hint-header">
-                    <span class="hint-icon">⚠️</span>
-                    <span class="hint-text">此標的屬於以下群組，請勾選要賣出的部位：</span>
+            <div class="section-grid">
+                <div class="form-group span-2">
+                    <label>交易標的 Symbol</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="text" 
+                            v-model="form.symbol" 
+                            @change="checkHoldings" 
+                            placeholder="如: NVDA, TSLA" 
+                            :disabled="isEditing" 
+                            class="input-lg uppercase bold-text"
+                        >
+                    </div>
                 </div>
-                <div class="checkbox-group">
-                    <label v-for="g in holdingGroups" :key="g" class="tag-checkbox">
-                        <input type="checkbox" :value="g" v-model="selectedSellGroups" @change="updateTagsFromCheckboxes">
-                        <span class="checkbox-custom"></span>
-                        <span class="tag-name">{{ g }}</span>
-                    </label>
+
+                <div class="form-group">
+                    <label>日期 Date</label>
+                    <input type="date" v-model="form.txn_date" class="input-md">
                 </div>
             </div>
-            
-            <div class="tag-input-container" :class="{ disabled: form.txn_type === 'SELL' && holdingGroups.length > 0 }">
-                <div class="tags-list">
-                    <span v-for="(tag, idx) in tagsArray" :key="idx" class="tag-chip">
-                        {{ tag }}
-                        <button class="remove-tag" @click="removeTag(idx)">×</button>
-                    </span>
+        </section>
+
+        <section class="form-section">
+            <div class="section-head">
+                <span class="section-title">策略群組</span>
+                <span class="section-note">選填</span>
+            </div>
+            <div class="section-grid">
+                <div class="form-group span-3">
+                    <label class="section-label">策略群組 (Tags)</label>
+                    
+                    <div v-if="form.txn_type === 'SELL' && holdingGroups.length > 0" class="smart-sell-options">
+                        <div class="hint-header">
+                            <span class="hint-icon">⚠️</span>
+                            <span class="hint-text">此標的屬於以下群組，請勾選要賣出的部位：</span>
+                        </div>
+                        <div class="checkbox-group">
+                            <label v-for="g in holdingGroups" :key="g" class="tag-checkbox">
+                                <input type="checkbox" :value="g" v-model="selectedSellGroups" @change="updateTagsFromCheckboxes">
+                                <span class="checkbox-custom"></span>
+                                <span class="tag-name">{{ g }}</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="tag-input-container" :class="{ disabled: form.txn_type === 'SELL' && holdingGroups.length > 0 }">
+                        <div class="tags-list">
+                            <span v-for="(tag, idx) in tagsArray" :key="idx" class="tag-chip">
+                                {{ tag }}
+                                <button class="remove-tag" @click="removeTag(idx)">×</button>
+                            </span>
+                            <input 
+                                type="text" 
+                                v-model="tagInput" 
+                                @keydown.enter.prevent="addTag"
+                                @keydown.tab.prevent="addTag"
+                                @blur="addTag"
+                                placeholder="輸入標籤..."
+                                class="tag-input-field"
+                                :disabled="form.txn_type === 'SELL' && holdingGroups.length > 0"
+                            >
+                        </div>
+                    </div>
+                    
+                    <div class="quick-tags" v-if="form.txn_type !== 'SELL' || holdingGroups.length === 0">
+                        <span v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">+ {{ t }}</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <div class="section-head">
+                <span class="section-title">價格與費用</span>
+                <span class="section-note">擇一填寫即可</span>
+            </div>
+            <div class="section-grid">
+                <div class="form-group">
+                    <label>成交單價 (USD)</label>
+                    <div class="input-with-prefix">
+                        <span class="prefix">$</span>
+                        <input 
+                            type="number" 
+                            v-model="form.price" 
+                            placeholder="0.00" 
+                            class="input-md font-num" 
+                            step="0.0001"
+                            inputmode="decimal"
+                        >
+                    </div>
+                    <p class="field-hint">可輸入成交單價或留白，擇一與總額搭配即可。</p>
+                </div>
+
+                <div class="form-group">
+                    <label>股數 Shares</label>
                     <input 
-                        type="text" 
-                        v-model="tagInput" 
-                        @keydown.enter.prevent="addTag"
-                        @keydown.tab.prevent="addTag"
-                        @blur="addTag"
-                        placeholder="輸入標籤..."
-                        class="tag-input-field"
-                        :disabled="form.txn_type === 'SELL' && holdingGroups.length > 0"
+                        type="number" 
+                        v-model="form.qty" 
+                        placeholder="0" 
+                        class="input-md font-num" 
+                        step="0.0001"
+                        inputmode="decimal"
                     >
                 </div>
-            </div>
-            
-            <div class="quick-tags" v-if="form.txn_type !== 'SELL' || holdingGroups.length === 0">
-                <span v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">+ {{ t }}</span>
-            </div>
-        </div>
-        
-        <div class="form-group">
-            <label>日期 Date</label>
-            <input type="date" v-model="form.txn_date" class="input-md">
-        </div>
-        
-        <div class="form-group">
-            <label>成交單價 (USD)</label>
-            <div class="input-with-prefix">
-                <span class="prefix">$</span>
-                <input 
-                    type="number" 
-                    v-model="form.price" 
-                    placeholder="0.00" 
-                    class="input-md font-num" 
-                    step="0.0001"
-                    inputmode="decimal"
-                >
-            </div>
-            <p class="field-hint">可輸入成交單價或留白，擇一與總額搭配即可。</p>
-        </div>
 
-        <div class="form-group">
-            <label>股數 Shares</label>
-            <input 
-                type="number" 
-                v-model="form.qty" 
-                placeholder="0" 
-                class="input-md font-num" 
-                step="0.0001"
-                inputmode="decimal"
-            >
-        </div>
-
-        <div class="form-group span-2">
-            <label>費用 (Fee + Tax)</label>
-            <div class="dual-input wide-inputs">
-                <div class="input-with-label">
-                    <input type="number" v-model="form.fee" placeholder="0" step="0.01" inputmode="decimal">
-                    <span class="sub-label">手續費</span>
+                <div class="form-group span-2">
+                    <label>費用 (Fee + Tax)</label>
+                    <div class="dual-input wide-inputs">
+                        <div class="input-with-label">
+                            <input type="number" v-model="form.fee" placeholder="0" step="0.01" inputmode="decimal">
+                            <span class="sub-label">手續費</span>
+                        </div>
+                        <div class="input-with-label">
+                            <input type="number" v-model="form.tax" placeholder="0" step="0.01" inputmode="decimal">
+                            <span class="sub-label">稅金</span>
+                        </div>
+                    </div>
+                    <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
                 </div>
-                <div class="input-with-label">
-                    <input type="number" v-model="form.tax" placeholder="0" step="0.01" inputmode="decimal">
-                    <span class="sub-label">稅金</span>
+
+                <div class="form-group summary-field">
+                    <label>交易總金額 (USD)</label>
+                    <div class="input-with-prefix">
+                        <span class="prefix">$</span>
+                        <input 
+                            type="number" 
+                            v-model="form.total_amount" 
+                            class="input-md font-num summary-input"
+                            step="0.01" 
+                            placeholder="0.00"
+                            inputmode="decimal"
+                        >
+                    </div>
+                    <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
                 </div>
             </div>
-            <p class="field-hint">請輸入單筆交易的手續費與稅金，系統會在紀錄中換算平均成本。</p>
-        </div>
+        </section>
     </div>
 
     <div class="form-footer">
-        <div class="summary-box">
-            <div class="summary-header">
-                <span class="summary-label">交易總金額 (USD)</span>
-                <span class="calc-icon">🧮</span>
-            </div>
-            <div class="summary-input-wrapper">
-                <span class="currency-symbol">$</span>
-                <input 
-                    type="number" 
-                    v-model="form.total_amount" 
-                    class="summary-value" 
-                    step="0.01" 
-                    placeholder="0.00"
-                    inputmode="decimal"
-                >
-            </div>
-            <p class="field-hint">可輸入總額或成交單價其中一項，平均成本會依費用與稅金計算。</p>
-        </div>
-        
         <div class="action-buttons">
             <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
             <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
@@ -325,7 +346,7 @@ defineExpose({ setupForm, resetForm });
 .trade-panel { 
     background: var(--bg-card); 
     border: 1px solid var(--border-color); 
-    padding: 20px; 
+    padding: 16px; 
     border-radius: var(--radius);
     transition: border-color 0.3s ease;
 }
@@ -339,7 +360,7 @@ defineExpose({ setupForm, resetForm });
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 .panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
@@ -351,7 +372,7 @@ defineExpose({ setupForm, resetForm });
     background: var(--bg-secondary); 
     padding: 4px; 
     border-radius: 12px; 
-    margin-bottom: 16px; 
+    margin-bottom: 12px; 
 }
 
 .switch-btn { 
@@ -383,32 +404,74 @@ defineExpose({ setupForm, resetForm });
 .switch-btn.div.active { color: var(--warning); }
 
 /* 表單佈局 */
-.form-grid { 
+.form-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.form-section {
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.02), transparent 85%);
+    padding: 12px;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.section-title {
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-sub);
+    font-weight: 700;
+}
+
+.section-chip {
+    font-size: 0.7rem;
+    color: var(--primary);
+    background: rgba(59, 130, 246, 0.12);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+.section-note {
+    font-size: 0.72rem;
+    color: var(--text-sub);
+    opacity: 0.7;
+}
+
+.section-grid { 
     display: grid; 
-    grid-template-columns: 1.2fr 1fr; 
-    gap: 16px; 
-    margin-bottom: 16px; 
+    grid-template-columns: repeat(3, minmax(0, 1fr)); 
+    gap: 10px; 
 }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-group.span-2 { grid-column: span 2; }
 .form-group.span-3 { grid-column: span 3; }
 
-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; }
+label { font-size: 0.82rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; letter-spacing: 0.2px; }
+.section-label { margin-left: 0; }
 .field-hint {
     margin: 2px 0 0;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     color: var(--text-sub);
     opacity: 0.75;
 }
 
-.wide-inputs .input-with-label input {
-    min-width: 120px;
-}
+.wide-inputs .input-with-label input { min-width: 110px; }
 
 /* 輸入框通用樣式 */
 input { 
-    padding: 10px 12px; 
+    padding: 8px 12px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
     font-size: 1rem; 
@@ -418,7 +481,7 @@ input {
     transition: all 0.2s; 
     color: var(--text-main); 
     background: var(--bg-card); 
-    height: 42px;
+    height: 38px;
 }
 
 input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
@@ -430,7 +493,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 
 /* 帶前綴的輸入框 */
 .input-with-prefix { position: relative; }
-.prefix { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+.prefix { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 .input-with-prefix input { padding-left: 30px; }
 
 /* 雙欄輸入 (費用) */
@@ -442,8 +505,8 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .tag-input-container { 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
-    padding: 8px; 
-    background: var(--bg-card); 
+    padding: 6px 8px; 
+    background: var(--bg-card);
     display: flex; 
     flex-wrap: wrap; 
     gap: 6px; 
@@ -468,12 +531,12 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .remove-tag:hover { color: var(--danger); }
 .tag-input-field { border: none; outline: none; background: transparent; flex: 1; min-width: 80px; padding: 4px; height: auto; }
 
-.quick-tags { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-tags { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
 .quick-tag { 
     font-size: 0.8rem; 
     color: var(--text-sub); 
     border: 1px solid var(--border-color); 
-    padding: 4px 10px; 
+    padding: 3px 10px; 
     border-radius: 12px; 
     cursor: pointer; 
     transition: all 0.2s; 
@@ -490,45 +553,31 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .tag-checkbox input { width: 18px; height: 18px; margin: 0; }
 .tag-name { font-size: 0.95rem; font-weight: 500; }
 
-/* 總金額摘要 (Calculator Style) */
-.summary-box { 
-    background: var(--bg-secondary); 
-    padding: 16px; 
-    border-radius: 12px; 
-    border: 1px solid var(--border-color); 
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+/* 總金額區塊 */
+.summary-field {
+    background: rgba(59, 130, 246, 0.08);
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid rgba(59, 130, 246, 0.2);
 }
-.summary-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.summary-labels { display: flex; align-items: center; gap: 8px; color: var(--text-sub); }
-.summary-label { font-size: 0.9rem; font-weight: 600; white-space: nowrap; }
-.summary-input-wrapper { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; flex: 1; }
-.currency-symbol { font-size: 1.3rem; color: var(--text-main); font-weight: 500; }
-.summary-value { 
-    background: transparent; 
-    border: none; 
-    text-align: right; 
-    font-size: 1.8rem; 
-    font-weight: 700; 
-    color: var(--text-main); 
-    padding: 0; 
-    width: 100%; 
-    box-shadow: none; 
-    height: auto;
-    font-family: 'JetBrains Mono', monospace;
+
+.summary-field label {
+    margin-left: 0;
 }
-.summary-value:focus { box-shadow: none; }
+
+.summary-input {
+    font-size: 1.05rem;
+    font-weight: 700;
+}
 
 /* 按鈕區 */
 .form-footer {
-    display: grid;
-    grid-template-columns: 1.1fr 0.9fr;
-    gap: 16px;
-    align-items: stretch;
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 6px;
 }
 
-.action-buttons { display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+.action-buttons { display: flex; gap: 12px; justify-content: flex-end; width: 100%; }
 .btn { 
     flex: 1; 
     padding: 12px; 
@@ -571,9 +620,17 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     
     .panel-header { display: none; } /* 手機版通常有 Sheet Header，隱藏內部標題 */
     
-    .form-grid { 
+    .form-sections {
+        gap: 10px;
+    }
+
+    .form-section {
+        padding: 12px 10px;
+    }
+
+    .section-grid { 
         grid-template-columns: 1fr; /* 強制單欄 */
-        gap: 16px; 
+        gap: 12px; 
     }
     
     .form-group.span-2,
@@ -584,14 +641,10 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     
     .dual-input { gap: 16px; }
     
-    .summary-row { flex-direction: column; align-items: flex-start; }
-    .summary-input-wrapper { width: 100%; }
-    .summary-value { font-size: 2rem; }
-    
     .switch-btn { padding: 12px; }
 
     .form-footer {
-        grid-template-columns: 1fr;
+        justify-content: center;
     }
 
     .action-buttons { flex-direction: row; }
