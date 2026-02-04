@@ -90,26 +90,26 @@
             </div>
         </div>
 
-        <div class="form-group">
-            <label>股數 Shares</label>
-            <input 
-                type="number" 
-                v-model="form.qty" 
-                placeholder="0" 
-                class="input-md font-num" 
-                step="0.0001"
-                inputmode="decimal"
-            >
-        </div>
-
-        <div class="form-group">
-            <label>費用 (Fee + Tax)</label>
-            <div class="dual-input">
+        <div class="form-group full shares-fee-row">
+            <div class="triple-input">
                 <div class="input-with-label">
+                    <label>股數 Shares</label>
+                    <input 
+                        type="number" 
+                        v-model="form.qty" 
+                        placeholder="0" 
+                        class="input-md font-num" 
+                        step="0.0001"
+                        inputmode="decimal"
+                    >
+                </div>
+                <div class="input-with-label">
+                    <label>費用 (Fee + Tax)</label>
                     <input type="number" v-model="form.fee" placeholder="0" step="0.01" inputmode="decimal">
                     <span class="sub-label">手續費</span>
                 </div>
                 <div class="input-with-label">
+                    <label class="invisible-label">稅金</label>
                     <input type="number" v-model="form.tax" placeholder="0" step="0.01" inputmode="decimal">
                     <span class="sub-label">稅金</span>
                 </div>
@@ -422,6 +422,11 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .input-with-label { display: flex; flex-direction: column; }
 .sub-label { font-size: 0.75rem; color: var(--text-sub); text-align: center; margin-top: 4px; }
 
+/* 三欄均分輸入 (股數、手續費、稅金) - 桌機版 */
+.triple-input { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.triple-input .input-with-label label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; margin-bottom: 8px; }
+.invisible-label { visibility: hidden; }
+
 /* 標籤輸入區 */
 .tag-input-container { 
     border: 1px solid var(--border-color); 
@@ -559,6 +564,10 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     input { font-size: 1.1rem; padding: 14px; }
     
     .dual-input { gap: 16px; }
+    
+    /* 手機版：三欄改為單欄，顯示隱藏的標籤 */
+    .triple-input { grid-template-columns: 1fr; gap: 16px; }
+    .invisible-label { visibility: visible; }
     
     .summary-value { font-size: 2rem; }
     
