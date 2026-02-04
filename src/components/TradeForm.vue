@@ -570,6 +570,11 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     }
     
     .form-group.full { grid-column: span 1; }
+
+    .form-row-3 {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
     
     /* 輸入框更加寬大舒適 */
     input { font-size: 1.1rem; padding: 14px; }
