@@ -3,7 +3,7 @@
     <div class="gm-header">
       <div>
         <h3 class="gm-title">管理策略群組</h3>
-        <p class="gm-subtitle">可重新命名群組，並指定每筆交易是否納入群組績效計算。</p>
+        <p class="gm-subtitle">提升分群維護效率：可快速更名、批次調整交易歸屬，並即時查看變更數量。</p>
       </div>
       <button class="action-trigger-btn" type="button" @click="$emit('back')">返回</button>
     </div>
@@ -11,30 +11,37 @@
     <section class="gm-section">
       <div class="gm-section-title-row">
         <h4 class="gm-section-title">群組更名</h4>
-        <span class="gm-section-hint">將同步更新該群組所屬交易標籤</span>
+        <span class="gm-section-hint">更名後將同步更新所有含該標籤的交易紀錄</span>
       </div>
 
-      <div class="group-list">
-        <div v-for="g in editableGroups" :key="g" class="group-item">
-          <span class="group-name">{{ g }}</span>
-          <input type="text" v-model="groupRenameMap[g]" :placeholder="`新名稱（目前：${g}）`" />
-          <button
-            class="btn-sm"
-            type="button"
-            @click="renameGroup(g)"
-            :disabled="!groupRenameMap[g] || groupRenameMap[g] === g"
-          >
-            更名
-          </button>
-        </div>
+      <div v-if="editableGroups.length > 0" class="group-list">
+        <article v-for="g in editableGroups" :key="g" class="group-item">
+          <div class="group-item-header">
+            <span class="group-label">目前群組</span>
+            <span class="group-name">{{ g }}</span>
+          </div>
+          <div class="group-input-row">
+            <input type="text" v-model="groupRenameMap[g]" :placeholder="`輸入新名稱（目前：${g}）`" />
+            <button
+              class="btn-sm"
+              type="button"
+              @click="renameGroup(g)"
+              :disabled="!groupRenameMap[g] || groupRenameMap[g] === g"
+            >
+              套用更名
+            </button>
+          </div>
+        </article>
       </div>
+
+      <p v-else class="gm-empty-hint">目前尚無可管理的策略群組。</p>
     </section>
 
     <section class="gm-section gm-section-selection">
       <div class="gm-selection-header">
         <div class="gm-select-wrap">
           <label for="gm-group-select">目標群組</label>
-          <select id="gm-group-select" v-model="selectedGroup">
+          <select id="gm-group-select" v-model="selectedGroup" :disabled="editableGroups.length === 0">
             <option v-for="g in editableGroups" :key="g" :value="g">
               {{ g }}
             </option>
@@ -42,14 +49,17 @@
         </div>
 
         <div class="gm-toolbar">
-          <button class="btn-sm" type="button" @click="selectAll">全選</button>
-          <button class="btn-sm" type="button" @click="clearAll">全不選</button>
+          <button class="btn-sm" type="button" @click="selectAll" :disabled="portfolioStore.records.length === 0">全選</button>
+          <button class="btn-sm" type="button" @click="clearAll" :disabled="portfolioStore.records.length === 0">全不選</button>
         </div>
       </div>
 
       <div class="gm-meta-row">
-        <p class="gm-help">勾選 = 納入群組計算、取消勾選 = 從群組移除。修改後按「確認儲存」。</p>
-        <span class="gm-counter">共 {{ portfolioStore.records.length }} 筆交易</span>
+        <p class="gm-help">勾選＝納入群組計算、取消勾選＝從群組移除。完成後按下「確認儲存」。</p>
+        <div class="gm-metrics" aria-live="polite">
+          <span class="gm-counter">總交易 {{ portfolioStore.records.length }}</span>
+          <span class="gm-counter gm-counter-highlight" :class="{ 'is-zero': changedCount === 0 }">已變更 {{ changedCount }}</span>
+        </div>
       </div>
 
       <div class="gm-records">
@@ -69,11 +79,7 @@
             <tr v-if="portfolioStore.records.length === 0">
               <td colspan="7" class="empty-state">目前沒有交易紀錄</td>
             </tr>
-            <tr
-              v-for="record in portfolioStore.records"
-              :key="record.id"
-              :class="{ changed: rowChanged(record) }"
-            >
+            <tr v-for="record in portfolioStore.records" :key="record.id" :class="{ changed: rowChanged(record) }">
               <td class="checkbox-col">
                 <label class="gm-checkbox">
                   <input
@@ -100,78 +106,13 @@
       </div>
 
       <div class="gm-footer">
-        <span v-if="changedCount > 0" class="gm-change">已變更 {{ changedCount }} 筆</span>
+        <span v-if="changedCount > 0" class="gm-change">已變更 {{ changedCount }} 筆，準備儲存</span>
         <span v-else class="gm-no-change">尚未變更</span>
         <button class="action-trigger-btn" type="button" @click="saveSelections" :disabled="changedCount === 0">
           確認儲存
         </button>
       </div>
-    </div>
-
-    <div class="gm-divider"></div>
-
-    <div class="gm-selection">
-      <div class="gm-selection-header">
-        <div class="gm-select">
-          <label for="gm-group-select">選擇群組：</label>
-          <select id="gm-group-select" v-model="selectedGroup">
-            <option
-              v-for="g in editableGroups"
-              :key="g"
-              :value="g"
-            >
-              {{ g }}
-            </option>
-          </select>
-        </div>
-        <div class="gm-selection-actions">
-          <button class="btn-sm" type="button" @click="selectAll">全選</button>
-          <button class="btn-sm" type="button" @click="clearAll">取消全選</button>
-        </div>
-      </div>
-
-      <p class="gm-help">勾選交易紀錄作為此群組的計算基礎；變更後請按下確認儲存。</p>
-
-      <div class="gm-records">
-        <table class="gm-table">
-          <thead>
-            <tr>
-              <th>納入</th>
-              <th>日期</th>
-              <th>標的</th>
-              <th>類型</th>
-              <th>數量</th>
-              <th>價格</th>
-              <th>群組標籤</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="record in portfolioStore.records" :key="record.id">
-              <td>
-                <input
-                  type="checkbox"
-                  :checked="recordSelections[record.id] || false"
-                  @change="toggleRecord(record.id)"
-                />
-              </td>
-              <td>{{ record.txn_date }}</td>
-              <td>{{ record.symbol }}</td>
-              <td>{{ record.txn_type }}</td>
-              <td>{{ record.qty }}</td>
-              <td>{{ record.price }}</td>
-              <td class="gm-tag">{{ record.tag || '-' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="gm-footer">
-        <span v-if="changedCount > 0" class="gm-change">已變更 {{ changedCount }} 筆</span>
-        <button class="action-trigger-btn" type="button" @click="saveSelections" :disabled="changedCount === 0">
-          確認儲存
-        </button>
-      </div>
-    </div>
+    </section>
   </div>
 </template>
 
@@ -212,10 +153,10 @@ const initializeSelections = () => {
 };
 
 watch(editableGroups, (groups) => {
-  if (!selectedGroup.value && groups.length > 0) {
-    selectedGroup.value = groups[0];
+  if (!groups.includes(selectedGroup.value)) {
+    selectedGroup.value = groups[0] || '';
   }
-});
+}, { immediate: true });
 
 watch(selectedGroup, () => {
   initializeSelections();
@@ -237,6 +178,12 @@ const changedCount = computed(() => {
   }, 0);
 });
 
+const rowChanged = (record) => {
+  if (!selectedGroup.value) return false;
+  const original = hasGroupTag(record, selectedGroup.value);
+  return original !== (recordSelections[record.id] || false);
+};
+
 const toggleRecord = (id) => {
   recordSelections[id] = !recordSelections[id];
 };
@@ -254,7 +201,7 @@ const clearAll = () => {
 };
 
 const renameGroup = async (oldName) => {
-  const newName = groupRenameMap[oldName];
+  const newName = groupRenameMap[oldName]?.trim();
   if (!newName || !confirm(`確定將 "${oldName}" 更名為 "${newName}" 嗎？`)) return;
 
   addToast('正在批次更新紀錄...', 'info');
@@ -281,6 +228,7 @@ const renameGroup = async (oldName) => {
       count++;
     }
 
+    groupRenameMap[oldName] = '';
     addToast(`成功更新 ${count} 筆紀錄`, 'success');
     await portfolioStore.fetchRecords();
     await portfolioStore.triggerUpdate();
@@ -354,9 +302,12 @@ const saveSelections = async () => {
 
 .gm-section {
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 14px;
-  background: linear-gradient(180deg, var(--bg-secondary), transparent 70%);
+  border-radius: 14px;
+  padding: 16px;
+  background:
+    linear-gradient(140deg, color-mix(in srgb, var(--primary) 7%, transparent), transparent 45%),
+    var(--bg-card);
+  box-shadow: var(--shadow-sm);
 }
 
 .gm-section-title-row {
@@ -372,8 +323,9 @@ const saveSelections = async () => {
   font-size: 0.98rem;
 }
 
-.gm-section-hint {
-  font-size: 0.8rem;
+.gm-section-hint,
+.gm-empty-hint {
+  font-size: 0.82rem;
   color: var(--text-sub);
 }
 
@@ -383,29 +335,45 @@ const saveSelections = async () => {
 }
 
 .group-item {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px;
   display: grid;
-  grid-template-columns: 110px 1fr auto;
   gap: 10px;
+  background: var(--bg-secondary);
+}
+
+.group-item-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+}
+
+.group-label {
+  font-size: 0.78rem;
+  color: var(--text-sub);
 }
 
 .group-name {
   font-family: 'JetBrains Mono', monospace;
   color: var(--primary);
   font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.group-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
 }
 
 .group-item input {
   min-width: 0;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-card);
   color: var(--text-main);
-  padding: 8px 10px;
-}
-
-.gm-section-selection {
-  padding-bottom: 12px;
+  padding: 9px 12px;
 }
 
 .gm-selection-header {
@@ -431,7 +399,7 @@ const saveSelections = async () => {
 .gm-select-wrap select {
   min-width: 220px;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-card);
   color: var(--text-main);
   padding: 8px 10px;
@@ -457,17 +425,36 @@ const saveSelections = async () => {
   font-size: 0.85rem;
 }
 
+.gm-metrics {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .gm-counter {
   font-size: 0.8rem;
   color: var(--text-sub);
   font-family: 'JetBrains Mono', monospace;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--bg-secondary);
+}
+
+.gm-counter-highlight {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border-color));
+}
+
+.gm-counter-highlight.is-zero {
+  color: var(--text-sub);
 }
 
 .gm-records {
   max-height: 420px;
   overflow: auto;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg-card);
 }
 
@@ -536,7 +523,7 @@ const saveSelections = async () => {
 .symbol-badge {
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--primary-rgb), 0.14);
   color: var(--primary);
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
@@ -551,7 +538,7 @@ const saveSelections = async () => {
 
 .type-badge.buy {
   color: var(--primary);
-  background: rgba(59, 130, 246, 0.14);
+  background: rgba(var(--primary-rgb), 0.16);
 }
 
 .type-badge.sell {
@@ -576,6 +563,7 @@ const saveSelections = async () => {
   align-items: center;
   justify-content: space-between;
   margin-top: 12px;
+  gap: 10px;
 }
 
 .gm-change {
@@ -608,10 +596,16 @@ const saveSelections = async () => {
     align-items: stretch;
   }
 
-  .group-item {
+  .gm-section-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .group-input-row {
     grid-template-columns: 1fr;
   }
 
+  .gm-select-wrap,
   .gm-select-wrap select {
     min-width: 0;
     width: 100%;
@@ -625,91 +619,11 @@ const saveSelections = async () => {
   .gm-footer {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
   }
-}
 
-.gm-divider {
-  height: 1px;
-  background: var(--card-border, rgba(255, 255, 255, 0.08));
-  margin: 20px 0;
-}
-
-.gm-selection-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.gm-select {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.gm-select select {
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
-  background: var(--card-bg, #1a1d24);
-  color: inherit;
-}
-
-.gm-selection-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.gm-help {
-  margin: 8px 0 12px;
-  color: var(--text-muted, rgba(255, 255, 255, 0.7));
-}
-
-.gm-records {
-  max-height: 360px;
-  overflow: auto;
-  border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
-  border-radius: 12px;
-}
-
-.gm-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.gm-table th,
-.gm-table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
-  white-space: nowrap;
-}
-
-.gm-table th {
-  position: sticky;
-  top: 0;
-  background: var(--card-bg, #1a1d24);
-  z-index: 1;
-}
-
-.gm-tag {
-  color: var(--text-muted, rgba(255, 255, 255, 0.7));
-}
-
-.gm-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.gm-change {
-  color: var(--accent, #9ddcff);
-  font-size: 14px;
+  .gm-metrics {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 </style>
