@@ -43,7 +43,10 @@
                         成本(USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
                     </th>
                     <th @click="sortBy('current_price_origin')" class="text-right sortable sticky-th">
-                        現價/漲跌 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
+                        現價 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
+                    </th>
+                    <th @click="sortBy('daily_change_percent')" class="text-right sortable sticky-th">
+                        漲跌幅 <span class="sort-icon">{{ getSortIcon('daily_change_percent') }}</span>
                     </th>
                     <th @click="sortBy('market_value_twd')" class="text-right sortable sticky-th">
                         市值(TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
@@ -61,7 +64,7 @@
             </thead>
             <tbody>
                  <tr v-if="filteredHoldings.length === 0">
-                    <td colspan="8" class="empty-state">
+                    <td colspan="9" class="empty-state">
                         <div class="empty-icon">📊</div>
                         <div>目前無持倉數據</div>
                     </td>
@@ -83,9 +86,13 @@
                     <td class="text-right font-num text-sub">{{ formatNumber(h.avg_cost_usd, 2) }}</td>
                     <td class="text-right font-num">
                         <div>{{ formatNumber(h.current_price_origin, 2) }}</div>
+                    </td>
+                    <td class="text-right font-num">
                         <div class="price-change" :class="getTrendClass(h.daily_change_usd)">
+                            {{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%
+                        </div>
+                        <div class="text-sub">
                             {{ h.daily_change_usd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_change_usd, 2) }}
-                            ({{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%)
                         </div>
                     </td>
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
