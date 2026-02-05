@@ -139,7 +139,7 @@
 
           <!-- 群組管理：抽成元件 -->
           <section v-else-if="activeView === 'groups'" class="section-groups">
-            <GroupManager @back="activeView = 'overview'" />
+            <GroupManager />
           </section>
         </main>
 

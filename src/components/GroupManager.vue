@@ -5,7 +5,6 @@
         <h3 class="gm-title">管理策略群組</h3>
         <p class="gm-subtitle">提升分群維護效率：可快速更名、批次調整交易歸屬，並即時查看變更數量。</p>
       </div>
-      <button class="action-trigger-btn" type="button" @click="$emit('back')">返回</button>
     </div>
 
     <section class="gm-section">
@@ -42,6 +41,7 @@
         <div class="gm-select-wrap">
           <label for="gm-group-select">目標群組</label>
           <select id="gm-group-select" v-model="selectedGroup" :disabled="editableGroups.length === 0">
+            <option value="" disabled>請先選擇群組</option>
             <option v-for="g in editableGroups" :key="g" :value="g">
               {{ g }}
             </option>
@@ -49,8 +49,8 @@
         </div>
 
         <div class="gm-toolbar">
-          <button class="btn-sm" type="button" @click="selectAll" :disabled="portfolioStore.records.length === 0">全選</button>
-          <button class="btn-sm" type="button" @click="clearAll" :disabled="portfolioStore.records.length === 0">全不選</button>
+          <button class="btn-sm" type="button" @click="selectAll" :disabled="!canEditRecords">全選</button>
+          <button class="btn-sm" type="button" @click="clearAll" :disabled="!canEditRecords">全不選</button>
         </div>
       </div>
 
@@ -85,6 +85,7 @@
                   <input
                     type="checkbox"
                     :checked="recordSelections[record.id] || false"
+                    :disabled="!selectedGroup"
                     @change="toggleRecord(record.id)"
                   />
                   <span></span>
@@ -108,7 +109,7 @@
       <div class="gm-footer">
         <span v-if="changedCount > 0" class="gm-change">已變更 {{ changedCount }} 筆，準備儲存</span>
         <span v-else class="gm-no-change">尚未變更</span>
-        <button class="action-trigger-btn" type="button" @click="saveSelections" :disabled="changedCount === 0">
+        <button class="action-trigger-btn gm-save-btn" type="button" @click="saveSelections" :disabled="changedCount === 0">
           確認儲存
         </button>
       </div>
@@ -123,8 +124,6 @@ import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
 
-defineEmits(['back']);
-
 const authStore = useAuthStore();
 const portfolioStore = usePortfolioStore();
 const { addToast } = useToast();
@@ -134,6 +133,7 @@ const selectedGroup = ref('');
 const recordSelections = reactive({});
 
 const editableGroups = computed(() => portfolioStore.availableGroups.filter(x => x !== 'all'));
+const canEditRecords = computed(() => !!selectedGroup.value && portfolioStore.records.length > 0);
 
 const normalizeTags = (tagString = '') => tagString
   .split(/[,;]/)
@@ -154,7 +154,7 @@ const initializeSelections = () => {
 
 watch(editableGroups, (groups) => {
   if (!groups.includes(selectedGroup.value)) {
-    selectedGroup.value = groups[0] || '';
+    selectedGroup.value = '';
   }
 }, { immediate: true });
 
@@ -619,6 +619,14 @@ const saveSelections = async () => {
   .gm-footer {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .gm-save-btn {
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+    padding: 10px 14px;
+    justify-content: center;
   }
 
   .gm-metrics {
