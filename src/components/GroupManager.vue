@@ -72,7 +72,7 @@
             <tr
               v-for="record in portfolioStore.records"
               :key="record.id"
-              :class="{ 'gm-row-changed': rowChanged(record) }"
+              :class="{ changed: rowChanged(record) }"
             >
               <td class="checkbox-col">
                 <label class="gm-checkbox">
@@ -102,6 +102,71 @@
       <div class="gm-footer">
         <span v-if="changedCount > 0" class="gm-change">已變更 {{ changedCount }} 筆</span>
         <span v-else class="gm-no-change">尚未變更</span>
+        <button class="action-trigger-btn" type="button" @click="saveSelections" :disabled="changedCount === 0">
+          確認儲存
+        </button>
+      </div>
+    </div>
+
+    <div class="gm-divider"></div>
+
+    <div class="gm-selection">
+      <div class="gm-selection-header">
+        <div class="gm-select">
+          <label for="gm-group-select">選擇群組：</label>
+          <select id="gm-group-select" v-model="selectedGroup">
+            <option
+              v-for="g in editableGroups"
+              :key="g"
+              :value="g"
+            >
+              {{ g }}
+            </option>
+          </select>
+        </div>
+        <div class="gm-selection-actions">
+          <button class="btn-sm" type="button" @click="selectAll">全選</button>
+          <button class="btn-sm" type="button" @click="clearAll">取消全選</button>
+        </div>
+      </div>
+
+      <p class="gm-help">勾選交易紀錄作為此群組的計算基礎；變更後請按下確認儲存。</p>
+
+      <div class="gm-records">
+        <table class="gm-table">
+          <thead>
+            <tr>
+              <th>納入</th>
+              <th>日期</th>
+              <th>標的</th>
+              <th>類型</th>
+              <th>數量</th>
+              <th>價格</th>
+              <th>群組標籤</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="record in portfolioStore.records" :key="record.id">
+              <td>
+                <input
+                  type="checkbox"
+                  :checked="recordSelections[record.id] || false"
+                  @change="toggleRecord(record.id)"
+                />
+              </td>
+              <td>{{ record.txn_date }}</td>
+              <td>{{ record.symbol }}</td>
+              <td>{{ record.txn_type }}</td>
+              <td>{{ record.qty }}</td>
+              <td>{{ record.price }}</td>
+              <td class="gm-tag">{{ record.tag || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="gm-footer">
+        <span v-if="changedCount > 0" class="gm-change">已變更 {{ changedCount }} 筆</span>
         <button class="action-trigger-btn" type="button" @click="saveSelections" :disabled="changedCount === 0">
           確認儲存
         </button>
@@ -139,11 +204,6 @@ const hasGroupTag = (record, groupName) => {
   return normalizeTags(record.tag || '').includes(groupName);
 };
 
-const rowChanged = (record) => {
-  if (!selectedGroup.value) return false;
-  return hasGroupTag(record, selectedGroup.value) !== (recordSelections[record.id] || false);
-};
-
 const initializeSelections = () => {
   if (!selectedGroup.value) return;
   for (const record of portfolioStore.records) {
@@ -151,20 +211,11 @@ const initializeSelections = () => {
   }
 };
 
-watch(
-  editableGroups,
-  (groups) => {
-    if (!selectedGroup.value && groups.length > 0) {
-      selectedGroup.value = groups[0];
-      return;
-    }
-
-    if (selectedGroup.value && !groups.includes(selectedGroup.value)) {
-      selectedGroup.value = groups[0] || '';
-    }
-  },
-  { immediate: true }
-);
+watch(editableGroups, (groups) => {
+  if (!selectedGroup.value && groups.length > 0) {
+    selectedGroup.value = groups[0];
+  }
+});
 
 watch(selectedGroup, () => {
   initializeSelections();
@@ -259,7 +310,7 @@ const saveSelections = async () => {
       await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${authStore.token}`,
+          'Authorization': `Bearer ${authStore.token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ ...record, tag: newTagStr })
@@ -445,7 +496,7 @@ const saveSelections = async () => {
   text-transform: uppercase;
 }
 
-.gm-table tr.gm-row-changed {
+.gm-table tr.changed {
   background: color-mix(in srgb, var(--primary) 9%, transparent);
 }
 
@@ -576,5 +627,89 @@ const saveSelections = async () => {
     align-items: stretch;
     gap: 8px;
   }
+}
+
+.gm-divider {
+  height: 1px;
+  background: var(--card-border, rgba(255, 255, 255, 0.08));
+  margin: 20px 0;
+}
+
+.gm-selection-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.gm-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gm-select select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
+  background: var(--card-bg, #1a1d24);
+  color: inherit;
+}
+
+.gm-selection-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.gm-help {
+  margin: 8px 0 12px;
+  color: var(--text-muted, rgba(255, 255, 255, 0.7));
+}
+
+.gm-records {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+}
+
+.gm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.gm-table th,
+.gm-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
+  white-space: nowrap;
+}
+
+.gm-table th {
+  position: sticky;
+  top: 0;
+  background: var(--card-bg, #1a1d24);
+  z-index: 1;
+}
+
+.gm-tag {
+  color: var(--text-muted, rgba(255, 255, 255, 0.7));
+}
+
+.gm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.gm-change {
+  color: var(--accent, #9ddcff);
+  font-size: 14px;
 }
 </style>
