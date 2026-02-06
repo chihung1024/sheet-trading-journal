@@ -15,7 +15,7 @@ from .validator import PortfolioValidator
 logger = logging.getLogger(__name__)
 
 class PortfolioCalculator:
-    def __init__(self, transactions_df, market_client, benchmark_ticker="SPY", api_client=None, oversell_policy="ERROR"):
+    def __init__(self, transactions_df, market_client, benchmark_ticker="SPY", api_client=None):
         self.df = transactions_df
         self.market = market_client
         self.benchmark_ticker = benchmark_ticker
@@ -23,9 +23,7 @@ class PortfolioCalculator:
         self.pnl_helper = DailyPnLHelper()
         self.currency_detector = CurrencyDetector()
         self.validator = PortfolioValidator()
-        self.oversell_policy = str(oversell_policy or "ERROR").upper()
-        if self.oversell_policy not in {"ERROR", "CLAMP", "IGNORE"}:
-            self.oversell_policy = "ERROR"
+
     def _is_taiwan_stock(self, symbol):
         return self.currency_detector.is_base_currency(symbol)
 
@@ -110,9 +108,6 @@ class PortfolioCalculator:
                 groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
             )
             
-        if '_sequence' not in self.df.columns:
-            self.df['_sequence'] = range(len(self.df))
-
         self._back_adjust_transactions_global()
 
         all_tags = set()
@@ -232,9 +227,6 @@ class PortfolioCalculator:
         confirmed_dividends = set()
         dividend_history = []
         xirr_cashflows = []
-        day_ledger = []
-        lot_ledger = []
-        anomalies = []
         
         cumulative_twr_factor = 1.0
         last_market_value_twd = 0.0
@@ -303,9 +295,7 @@ class PortfolioCalculator:
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
                 daily_txns['priority'] = daily_txns['Type'].map(priority_map).fillna(99)
-                if '_sequence' not in daily_txns.columns:
-                    daily_txns['_sequence'] = range(len(daily_txns))
-                daily_txns = daily_txns.sort_values(by=['priority', '_sequence'], kind='stable')
+                daily_txns = daily_txns.sort_values(by='priority', kind='stable')
             
             daily_net_cashflow_twd = 0.0
             
@@ -329,17 +319,12 @@ class PortfolioCalculator:
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     daily_net_cashflow_twd += cost_twd
-                    lot_ledger.append({'date': d.strftime('%Y-%m-%d'), 'symbol': sym, 'event': 'BUY', 'qty': float(row['Qty']), 'cost_twd': float(cost_twd), 'remaining_qty': float(holdings[sym]['qty'])})
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]:
-                        msg = f"[{group_name}] Oversell detected for {sym} on {current_date}: no inventory for sell qty={row['Qty']}"
-                        anomalies.append({'type': 'OVERSELL', 'symbol': sym, 'date': str(current_date), 'requested_qty': float(row['Qty']), 'filled_qty': 0.0, 'message': msg})
-                        if self.oversell_policy == 'ERROR':
-                            raise ValueError(msg)
-                        if self.oversell_policy == 'IGNORE':
-                            continue
+                        continue
                     effective_fx = self._get_effective_fx_rate(sym, fx)
+                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
                     remaining = row['Qty']
                     cost_sold_twd = 0.0
                     cost_sold_usd = 0.0
@@ -355,26 +340,14 @@ class PortfolioCalculator:
                         remaining -= take
                         if batch['qty'] < 1e-6:
                             fifo_queues[sym].popleft()
-
-                    sold_qty = row['Qty'] - remaining
-                    if sold_qty <= 1e-9:
-                        continue
-
-                    proceeds_twd = ((sold_qty * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
-                    if remaining > 1e-6:
-                        msg = f"[{group_name}] Oversell detected for {sym} on {current_date}: requested={row['Qty']}, filled={sold_qty}, remaining={remaining}"
-                        anomalies.append({'type': 'OVERSELL', 'symbol': sym, 'date': str(current_date), 'requested_qty': float(row['Qty']), 'filled_qty': float(sold_qty), 'message': msg})
-                        if self.oversell_policy == 'ERROR':
-                            raise ValueError(msg)
-
-                    holdings[sym]['qty'] -= sold_qty
+                    
+                    holdings[sym]['qty'] -= (row['Qty'] - remaining)
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
                     holdings[sym]['cost_basis_twd'] -= cost_sold_twd
                     invested_capital -= cost_sold_twd
                     total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
                     daily_net_cashflow_twd -= proceeds_twd
-                    lot_ledger.append({'date': d.strftime('%Y-%m-%d'), 'symbol': sym, 'event': 'SELL', 'qty': float(sold_qty), 'cost_sold_twd': float(cost_sold_twd), 'proceeds_twd': float(proceeds_twd), 'remaining_qty': float(holdings[sym]['qty'])})
 
                 elif row['Type'] == 'DIV':
                     effective_fx = self._get_effective_fx_rate(sym, fx)
@@ -382,7 +355,6 @@ class PortfolioCalculator:
                     total_realized_pnl_twd += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
-                    day_ledger.append({'date': d.strftime('%Y-%m-%d'), 'symbol': sym, 'event': 'DIV_CONFIRMED', 'income_pnl': float(div_twd)})
 
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
@@ -420,7 +392,6 @@ class PortfolioCalculator:
                     total_realized_pnl_twd += total_net_twd
                     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                     daily_net_cashflow_twd -= total_net_twd
-                    day_ledger.append({'date': d.strftime('%Y-%m-%d'), 'symbol': sym, 'event': 'DIV_PENDING', 'income_pnl': float(total_net_twd)})
 
             current_market_value_twd = 0.0
             logging_fx = fx
@@ -518,38 +489,6 @@ class PortfolioCalculator:
         daily_pnl_tw_raw = 0.0
         daily_pnl_us_raw = 0.0
         daily_pnl_fx_raw = 0.0  # ✅ [v3.19] 匯率損益分量
-        fx_used_global = DEFAULT_FX_RATE
-        fx_prev_global = DEFAULT_FX_RATE
-        fx_used_lookup_ts = None
-        if daily_pnl_asof_date:
-            fx_used_lookup_ts = pd.Timestamp(daily_pnl_asof_date)
-        if fx_used_lookup_ts is not None and fx_used_lookup_ts.date() == today:
-            if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
-                fx_used_global = self.market.realtime_fx_rate
-            else:
-                fx_used_global = current_fx
-        elif fx_used_lookup_ts is not None:
-            try:
-                fx_used_global = self.market.fx_rates.asof(fx_used_lookup_ts)
-                if pd.isna(fx_used_global):
-                    fx_used_global = DEFAULT_FX_RATE
-            except Exception as e:
-                logger.warning(f"Failed to get unified FX rate for {fx_used_lookup_ts}: {e}")
-                fx_used_global = DEFAULT_FX_RATE
-        else:
-            fx_used_global = current_fx
-
-        fx_prev_lookup_ts = unified_fx_prev_ts
-        if fx_prev_lookup_ts is None and daily_pnl_prev_date:
-            fx_prev_lookup_ts = pd.Timestamp(daily_pnl_prev_date)
-        if fx_prev_lookup_ts is not None:
-            try:
-                fx_prev_global = self.market.fx_rates.asof(pd.Timestamp(fx_prev_lookup_ts))
-                if pd.isna(fx_prev_global):
-                    fx_prev_global = DEFAULT_FX_RATE
-            except Exception as e:
-                logger.warning(f"Failed to get unified previous FX rate for {fx_prev_lookup_ts}: {e}")
-                fx_prev_global = DEFAULT_FX_RATE
 
         for sym in candidate_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
@@ -574,8 +513,30 @@ class PortfolioCalculator:
                 effective_fx = 1.0
                 prev_effective_fx = 1.0
             else:
-                effective_fx = self._get_effective_fx_rate(sym, fx_used_global)
-                prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev_global)
+                fx_used = DEFAULT_FX_RATE
+                fx_prev = DEFAULT_FX_RATE
+                try:
+                    # ✅ [v3.19] 盤前也使用即時匯率計算市值
+                    # 只要有 realtime_fx_rate，就使用它（無論盤中或盤前）
+                    if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
+                        fx_used = self.market.realtime_fx_rate
+                    elif used_ts.date() == today:
+                        fx_used = current_fx
+                    else:
+                        fx_used = self.market.fx_rates.asof(used_ts)
+                        if pd.isna(fx_used): fx_used = DEFAULT_FX_RATE
+
+                    # ✅ [v3.20] 使用統一的 benchmark 前日匯率，確保所有美股一致
+                    fx_prev_lookup_ts = unified_fx_prev_ts if unified_fx_prev_ts else prev_ts
+                    fx_prev = self.market.fx_rates.asof(pd.Timestamp(fx_prev_lookup_ts))
+                    if pd.isna(fx_prev): fx_prev = DEFAULT_FX_RATE
+                except Exception as e:
+                    logger.warning(f"Failed to get FX rates for {sym}: {e}")
+                    fx_used = DEFAULT_FX_RATE
+                    fx_prev = DEFAULT_FX_RATE
+
+                effective_fx = self._get_effective_fx_rate(sym, fx_used)
+                prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev)
 
             pnl_date = pd.to_datetime(used_ts).date()
             position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
@@ -592,15 +553,6 @@ class PortfolioCalculator:
 
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl
-            day_ledger.append({
-                'date': str(pnl_date),
-                'symbol': sym,
-                'realized_vs_prev_close': float(realized_pnl_today),
-                'unrealized_total': float(unrealized_pnl_today),
-                'fx_impact': 0.0,
-                'income_pnl': 0.0,
-                'total_daily_pnl': float(total_daily_pnl)
-            })
             
             # ✅ [v3.19] 計算匯率損益分量（僅美股）
             # 匯率損益 = 持倉市值 × (當前匯率 - 前日匯率) / 當前匯率
@@ -610,7 +562,6 @@ class PortfolioCalculator:
                 base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
                 fx_pnl_contribution = position_snap.qty * base_price * (effective_fx - prev_effective_fx)
                 daily_pnl_fx_raw += fx_pnl_contribution
-                day_ledger[-1]['fx_impact'] = float(fx_pnl_contribution)
             
             if is_tw:
                 daily_pnl_tw_raw += total_daily_pnl
@@ -633,8 +584,6 @@ class PortfolioCalculator:
             daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
             currency = self.currency_detector.detect(sym)
 
-            day_ledger[-1]['residual_check'] = round(day_ledger[-1]['total_daily_pnl'] - (day_ledger[-1]['realized_vs_prev_close'] + day_ledger[-1]['unrealized_total'] + day_ledger[-1]['income_pnl']), 6)
-
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
                  final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h.get('tag'), currency=currency, qty=round(h['qty'], 2),
@@ -643,12 +592,7 @@ class PortfolioCalculator:
                     current_price_origin=round(curr_p, 2), 
                     avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
-                    daily_change_percent=daily_change_pct, daily_pl_twd=round(total_daily_pnl, 0),
-                    daily_pl_breakdown={
-                        'realized_vs_prev_close': round(realized_pnl_today, 2),
-                        'unrealized_total': round(unrealized_pnl_today, 2),
-                        'fx_impact': round(fx_pnl_contribution, 2)
-                    }
+                    daily_change_percent=daily_change_pct, daily_pl_twd=round(total_daily_pnl, 0)
                 ))
 
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
@@ -657,7 +601,7 @@ class PortfolioCalculator:
         
         xirr_val = 0.0
         if xirr_cashflows:
-            curr_val_sum = sum(h['qty'] * self._get_asset_effective_price_and_fx(sym, today, current_fx)[0] * self._get_asset_effective_price_and_fx(sym, today, current_fx)[1] for sym, h in holdings.items() if h['qty'] > 1e-6)
+            curr_val_sum = sum(h.market_value_twd for h in final_holdings)
             xirr_cashflows_calc = xirr_cashflows.copy()
             xirr_cashflows_calc.append({'date': datetime.now(), 'amount': curr_val_sum})
             try:
@@ -709,8 +653,5 @@ class PortfolioCalculator:
         
         return PortfolioGroupData(
             summary=summary, holdings=final_holdings, history=history_data,
-            pending_dividends=[DividendRecord(**d) for d in dividend_history if d['status']=='pending'],
-            day_ledger=day_ledger,
-            lot_ledger=lot_ledger,
-            anomalies=anomalies
+            pending_dividends=[DividendRecord(**d) for d in dividend_history if d['status']=='pending']
         )
