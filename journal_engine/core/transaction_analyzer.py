@@ -29,6 +29,8 @@ class TransactionAnalyzer:
     def __init__(self, transactions_df: pd.DataFrame):
         self.df = transactions_df.copy()
         self.df['Date'] = pd.to_datetime(self.df['Date'])
+        if '_sequence' not in self.df.columns:
+            self.df['_sequence'] = range(len(self.df))
 
         # 兼容欄位：系統主欄位是 Commission，但 analyzer 歷史上用 Fee
         if 'Fee' not in self.df.columns:
@@ -53,7 +55,7 @@ class TransactionAnalyzer:
     ) -> PositionSnapshot:
         """分析某標的在目標日期的完整持倉狀態"""
         try:
-            symbol_txns = self.df[self.df['Symbol'] == symbol].sort_values('Date')
+            symbol_txns = self.df[self.df['Symbol'] == symbol].sort_values(['Date', '_sequence'], kind='stable')
             prior_txns = symbol_txns[symbol_txns['Date'].dt.date < target_date]
             today_txns = symbol_txns[symbol_txns['Date'].dt.date == target_date]
 

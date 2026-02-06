@@ -65,6 +65,7 @@ class HoldingPosition(BaseModel):
     daily_change_usd: float = 0.0
     daily_change_percent: float = 0.0
     daily_pl_twd: float = 0.0
+    daily_pl_breakdown: Optional[Dict[str, float]] = None
 
 class DividendRecord(BaseModel):
     symbol: str
@@ -87,6 +88,9 @@ class PortfolioGroupData(BaseModel):
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
     pending_dividends: List[DividendRecord] = []
+    day_ledger: List[Dict[str, Any]] = []
+    lot_ledger: List[Dict[str, Any]] = []
+    anomalies: List[Dict[str, Any]] = []
 
 class PortfolioSnapshot(BaseModel):
     updated_at: str
