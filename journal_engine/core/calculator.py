@@ -518,6 +518,38 @@ class PortfolioCalculator:
         daily_pnl_tw_raw = 0.0
         daily_pnl_us_raw = 0.0
         daily_pnl_fx_raw = 0.0  # ✅ [v3.19] 匯率損益分量
+        fx_used_global = DEFAULT_FX_RATE
+        fx_prev_global = DEFAULT_FX_RATE
+        fx_used_lookup_ts = None
+        if daily_pnl_asof_date:
+            fx_used_lookup_ts = pd.Timestamp(daily_pnl_asof_date)
+        if fx_used_lookup_ts is not None and fx_used_lookup_ts.date() == today:
+            if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
+                fx_used_global = self.market.realtime_fx_rate
+            else:
+                fx_used_global = current_fx
+        elif fx_used_lookup_ts is not None:
+            try:
+                fx_used_global = self.market.fx_rates.asof(fx_used_lookup_ts)
+                if pd.isna(fx_used_global):
+                    fx_used_global = DEFAULT_FX_RATE
+            except Exception as e:
+                logger.warning(f"Failed to get unified FX rate for {fx_used_lookup_ts}: {e}")
+                fx_used_global = DEFAULT_FX_RATE
+        else:
+            fx_used_global = current_fx
+
+        fx_prev_lookup_ts = unified_fx_prev_ts
+        if fx_prev_lookup_ts is None and daily_pnl_prev_date:
+            fx_prev_lookup_ts = pd.Timestamp(daily_pnl_prev_date)
+        if fx_prev_lookup_ts is not None:
+            try:
+                fx_prev_global = self.market.fx_rates.asof(pd.Timestamp(fx_prev_lookup_ts))
+                if pd.isna(fx_prev_global):
+                    fx_prev_global = DEFAULT_FX_RATE
+            except Exception as e:
+                logger.warning(f"Failed to get unified previous FX rate for {fx_prev_lookup_ts}: {e}")
+                fx_prev_global = DEFAULT_FX_RATE
 
         for sym in candidate_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
@@ -542,30 +574,8 @@ class PortfolioCalculator:
                 effective_fx = 1.0
                 prev_effective_fx = 1.0
             else:
-                fx_used = DEFAULT_FX_RATE
-                fx_prev = DEFAULT_FX_RATE
-                try:
-                    # ✅ [v3.19] 盤前也使用即時匯率計算市值
-                    # 只要有 realtime_fx_rate，就使用它（無論盤中或盤前）
-                    if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
-                        fx_used = self.market.realtime_fx_rate
-                    elif used_ts.date() == today:
-                        fx_used = current_fx
-                    else:
-                        fx_used = self.market.fx_rates.asof(used_ts)
-                        if pd.isna(fx_used): fx_used = DEFAULT_FX_RATE
-
-                    # ✅ [v3.20] 使用統一的 benchmark 前日匯率，確保所有美股一致
-                    fx_prev_lookup_ts = unified_fx_prev_ts if unified_fx_prev_ts else prev_ts
-                    fx_prev = self.market.fx_rates.asof(pd.Timestamp(fx_prev_lookup_ts))
-                    if pd.isna(fx_prev): fx_prev = DEFAULT_FX_RATE
-                except Exception as e:
-                    logger.warning(f"Failed to get FX rates for {sym}: {e}")
-                    fx_used = DEFAULT_FX_RATE
-                    fx_prev = DEFAULT_FX_RATE
-
-                effective_fx = self._get_effective_fx_rate(sym, fx_used)
-                prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev)
+                effective_fx = self._get_effective_fx_rate(sym, fx_used_global)
+                prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev_global)
 
             pnl_date = pd.to_datetime(used_ts).date()
             position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
