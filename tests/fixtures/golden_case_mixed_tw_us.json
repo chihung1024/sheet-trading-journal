@@ -1,0 +1,80 @@
+{
+  "fx": 30.0,
+  "market": {
+    "SPY": [
+      {
+        "Date": "2026-01-01",
+        "Close_Adjusted": 100
+      },
+      {
+        "Date": "2026-01-02",
+        "Close_Adjusted": 101
+      },
+      {
+        "Date": "2026-01-03",
+        "Close_Adjusted": 101
+      }
+    ],
+    "2330.TW": [
+      {
+        "Date": "2026-01-01",
+        "Close_Adjusted": 500,
+        "Dividends": 0
+      },
+      {
+        "Date": "2026-01-02",
+        "Close_Adjusted": 520,
+        "Dividends": 0
+      },
+      {
+        "Date": "2026-01-03",
+        "Close_Adjusted": 520,
+        "Dividends": 2
+      }
+    ],
+    "NVDA": [
+      {
+        "Date": "2026-01-01",
+        "Close_Adjusted": 100,
+        "Dividends": 0
+      },
+      {
+        "Date": "2026-01-02",
+        "Close_Adjusted": 110,
+        "Dividends": 0
+      },
+      {
+        "Date": "2026-01-03",
+        "Close_Adjusted": 110,
+        "Dividends": 1
+      }
+    ]
+  },
+  "transactions": [
+    {
+      "Date": "2026-01-01",
+      "Symbol": "2330.TW",
+      "Type": "BUY",
+      "Qty": 10,
+      "Price": 500,
+      "Commission": 0,
+      "Tax": 0,
+      "Tag": "core"
+    },
+    {
+      "Date": "2026-01-01",
+      "Symbol": "NVDA",
+      "Type": "BUY",
+      "Qty": 2,
+      "Price": 100,
+      "Commission": 0,
+      "Tax": 0,
+      "Tag": "growth"
+    }
+  ],
+  "expected": {
+    "total_value": 11800,
+    "realized_pnl": 56,
+    "daily_pnl_twd": 0
+  }
+}
