@@ -223,6 +223,8 @@ class PortfolioCalculator:
         fifo_queues = {}
         invested_capital = 0.0
         total_realized_pnl_twd = 0.0
+        realized_pnl_by_symbol = defaultdict(float)
+        realized_cost_by_symbol = defaultdict(float)
         history_data = []
         confirmed_dividends = set()
         dividend_history = []
@@ -345,7 +347,10 @@ class PortfolioCalculator:
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
                     holdings[sym]['cost_basis_twd'] -= cost_sold_twd
                     invested_capital -= cost_sold_twd
-                    total_realized_pnl_twd += (proceeds_twd - cost_sold_twd)
+                    realized_pnl = proceeds_twd - cost_sold_twd
+                    total_realized_pnl_twd += realized_pnl
+                    realized_pnl_by_symbol[sym] += realized_pnl
+                    realized_cost_by_symbol[sym] += cost_sold_twd
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
                     daily_net_cashflow_twd -= proceeds_twd
 
@@ -353,6 +358,7 @@ class PortfolioCalculator:
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     div_twd = (row['Qty'] * row['Price']) * effective_fx
                     total_realized_pnl_twd += div_twd
+                    realized_pnl_by_symbol[sym] += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
@@ -390,6 +396,7 @@ class PortfolioCalculator:
                 
                 if not is_confirmed:
                     total_realized_pnl_twd += total_net_twd
+                    realized_pnl_by_symbol[sym] += total_net_twd
                     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                     daily_net_cashflow_twd -= total_net_twd
 
@@ -583,12 +590,15 @@ class PortfolioCalculator:
             mkt_val = h['qty'] * curr_p * effective_fx
             daily_change_pct = round((curr_p - prev_p) / prev_p * 100, 2) if prev_p > 0 else 0.0
             currency = self.currency_detector.detect(sym)
+            realized_pnl_symbol = realized_pnl_by_symbol.get(sym, 0.0)
+            total_pnl_symbol = (mkt_val - cost) + realized_pnl_symbol
+            pnl_cost_basis = cost + realized_cost_by_symbol.get(sym, 0.0)
 
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
                  final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h.get('tag'), currency=currency, qty=round(h['qty'], 2),
-                    market_value_twd=round(mkt_val, 0), pnl_twd=round(mkt_val - cost, 0),
-                    pnl_percent=round((mkt_val - cost) / cost * 100, 2) if cost > 0 else 0,
+                    market_value_twd=round(mkt_val, 0), pnl_twd=round(total_pnl_symbol, 0),
+                    pnl_percent=round(total_pnl_symbol / pnl_cost_basis * 100, 2) if pnl_cost_basis > 0 else 0,
                     current_price_origin=round(curr_p, 2), 
                     avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
