@@ -123,7 +123,10 @@ class TransactionAnalyzer:
                         pnl_vs_cost = (sell_price - t_avg) * take - sell_fee_tax * (take / sell_qty)
                         realized_pnl += pnl_vs_cost
 
-                        pnl_vs_prev_close = (sell_price - t_avg) * take - sell_fee_tax * (take / sell_qty)
+                        if prev_close_price > 0:
+                            pnl_vs_prev_close = (sell_price - prev_close_price) * take - sell_fee_tax * (take / sell_qty)
+                        else:
+                            pnl_vs_prev_close = (sell_price - t_avg) * take - sell_fee_tax * (take / sell_qty)
                         realized_pnl_vs_prev += pnl_vs_prev_close
 
                         today_buy_pool_qty -= take
