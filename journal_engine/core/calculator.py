@@ -437,14 +437,24 @@ class PortfolioCalculator:
         final_holdings = []
         current_holdings_cost_sum = 0.0
 
+        tw_now = datetime.now(self.pnl_helper.tz_tw)
+        today = tw_now.date()
+        pnl_base_date = today
+        pnl_prev_date = None
+        if history_data:
+            try:
+                pnl_base_date = pd.to_datetime(history_data[-1]['date']).date()
+                if len(history_data) >= 2:
+                    pnl_prev_date = pd.to_datetime(history_data[-2]['date']).date()
+            except Exception as e:
+                logger.debug(f"Failed to derive pnl dates from history: {e}")
+
         daily_pnl_asof_date = None
         daily_pnl_prev_date = None
         unified_fx_prev_ts = None  # ✅ [v3.20] 統一匯率前日基準
         try:
-            tw_now = datetime.now(self.pnl_helper.tz_tw)
-            today = tw_now.date()
             if hasattr(self.market, 'get_price_asof') and hasattr(self.market, 'get_prev_trading_date'):
-                _bp, used_bm = self.market.get_price_asof(self.benchmark_ticker, pd.Timestamp(today))
+                _bp, used_bm = self.market.get_price_asof(self.benchmark_ticker, pd.Timestamp(pnl_base_date))
                 prev_bm = self.market.get_prev_trading_date(self.benchmark_ticker, used_bm)
                 daily_pnl_asof_date = pd.to_datetime(used_bm).strftime('%Y-%m-%d')
                 daily_pnl_prev_date = pd.to_datetime(prev_bm).strftime('%Y-%m-%d')
@@ -453,9 +463,6 @@ class PortfolioCalculator:
                 unified_fx_prev_ts = prev_bm
         except Exception as e:
             logger.debug(f"Failed to get pnl date info for benchmark: {e}")
-
-        tw_now = datetime.now(self.pnl_helper.tz_tw)
-        today = tw_now.date()
 
         us_asof_date = None
         tw_asof_date = None
@@ -466,10 +473,10 @@ class PortfolioCalculator:
                 tw_ref = next((s for s in unique_symbols if self._is_taiwan_stock(s)), None)
 
                 if us_ref:
-                    _p, used_ts = self.market.get_price_asof(us_ref, pd.Timestamp(today))
+                    _p, used_ts = self.market.get_price_asof(us_ref, pd.Timestamp(pnl_base_date))
                     us_asof_date = pd.to_datetime(used_ts).date()
                 if tw_ref:
-                    _p, used_ts = self.market.get_price_asof(tw_ref, pd.Timestamp(today))
+                    _p, used_ts = self.market.get_price_asof(tw_ref, pd.Timestamp(pnl_base_date))
                     tw_asof_date = pd.to_datetime(used_ts).date()
         except Exception as e:
             logger.debug(f"Failed to get asof dates: {e}")
@@ -502,10 +509,10 @@ class PortfolioCalculator:
             
             is_tw = self._is_taiwan_stock(sym)
 
-            curr_p = self.market.get_price(sym, pd.Timestamp(today))
-            used_ts = pd.Timestamp(today)
+            curr_p = self.market.get_price(sym, pd.Timestamp(pnl_base_date))
+            used_ts = pd.Timestamp(pnl_base_date)
             if hasattr(self.market, 'get_price_asof'):
-                curr_p, used_ts = self.market.get_price_asof(sym, pd.Timestamp(today))
+                curr_p, used_ts = self.market.get_price_asof(sym, pd.Timestamp(pnl_base_date))
 
             prev_ts = used_ts - pd.Timedelta(days=1)
             if hasattr(self.market, 'get_prev_trading_date'):
@@ -527,7 +534,7 @@ class PortfolioCalculator:
                     # 只要有 realtime_fx_rate，就使用它（無論盤中或盤前）
                     if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
                         fx_used = self.market.realtime_fx_rate
-                    elif used_ts.date() == today:
+                    elif used_ts.date() == pnl_base_date:
                         fx_used = current_fx
                     else:
                         fx_used = self.market.fx_rates.asof(used_ts)
