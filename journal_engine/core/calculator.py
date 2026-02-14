@@ -301,6 +301,7 @@ class PortfolioCalculator:
                 daily_txns = daily_txns.sort_values(by='priority', kind='stable')
             
             daily_net_cashflow_twd = 0.0
+            daily_buy_cost_twd = 0.0
             
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
@@ -322,6 +323,7 @@ class PortfolioCalculator:
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     daily_net_cashflow_twd += cost_twd
+                    daily_buy_cost_twd += cost_twd
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]:
@@ -411,10 +413,19 @@ class PortfolioCalculator:
                     logging_fx = effective_fx if not self._is_taiwan_stock(sym) else logging_fx
             
             period_hpr_factor = 1.0
-            if last_market_value_twd > 1e-9:
-                period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
-            elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
-                period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
+            # 使用「昨日淨值 + 當日買進總成本」作為當日資金基礎，
+            # 避免大幅加碼/當沖時僅以昨日淨值當分母而放大日報酬。
+            # 說明：daily_net_cashflow_twd 採內部符號（買進為正、賣出為負）。
+            daily_pnl_twd = (current_market_value_twd - last_market_value_twd) - daily_net_cashflow_twd
+            capital_base_twd = last_market_value_twd + daily_buy_cost_twd
+
+            if capital_base_twd > 1e-9:
+                period_hpr_factor = 1.0 + (daily_pnl_twd / capital_base_twd)
+            elif abs(daily_pnl_twd) > 1e-9 and abs(daily_net_cashflow_twd) > 1e-9:
+                # 首日/無前日淨值時，退化為以當日買進成本（若有）為基礎。
+                bootstrap_base = max(daily_buy_cost_twd, abs(daily_net_cashflow_twd))
+                if bootstrap_base > 1e-9:
+                    period_hpr_factor = 1.0 + (daily_pnl_twd / bootstrap_base)
             
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0

@@ -151,3 +151,84 @@ def test_golden_snapshot_regression_matrix():
     assert round(snap.summary.daily_pnl_twd, 0) == expected['daily_pnl_twd']
     assert len(snap.groups['all'].day_ledger) >= 1
     assert len(snap.groups['all'].lot_ledger) >= 1
+
+def test_twr_uses_previous_nav_plus_daily_buy_cost_as_base():
+    market = FakeMarketDataClient({
+        'SPY': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 100},
+            {'Date': '2026-01-02', 'Close_Adjusted': 100},
+            {'Date': '2026-01-03', 'Close_Adjusted': 100},
+        ],
+        'AAA': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 10},
+            {'Date': '2026-01-02', 'Close_Adjusted': 10},
+            {'Date': '2026-01-03', 'Close_Adjusted': 10.5},
+        ],
+    })
+    df = _build_transactions([
+        {'Date': '2026-01-02', 'Symbol': 'AAA', 'Type': 'BUY', 'Qty': 1000, 'Price': 10},
+        {'Date': '2026-01-03', 'Symbol': 'AAA', 'Type': 'BUY', 'Qty': 9000, 'Price': 10},
+        {'Date': '2026-01-03', 'Symbol': 'AAA', 'Type': 'SELL', 'Qty': 9000, 'Price': 10.5},
+    ])
+
+    calc = PortfolioCalculator(df, market)
+    snap = calc.run()
+
+    day2 = next(x for x in snap.history if x['date'] == '2026-01-03')
+    assert round(day2['twr'], 2) == 5.0
+
+
+def test_twr_reduce_position_uses_correct_daily_return_base():
+    market = FakeMarketDataClient({
+        'SPY': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 100},
+            {'Date': '2026-01-02', 'Close_Adjusted': 100},
+            {'Date': '2026-01-03', 'Close_Adjusted': 100},
+        ],
+        'AAA': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 100},
+            {'Date': '2026-01-02', 'Close_Adjusted': 100},
+            {'Date': '2026-01-03', 'Close_Adjusted': 110},
+        ],
+    })
+
+    # Day2 持有 1 股（前日淨值=100），Day3 減碼賣出 0.5 股 @110。
+    # Day3: 期末市值 55，淨現金流(內部)=-55，daily_pnl=(55-100)-(-55)=10，
+    # base=100+0=100，日報酬=10%。
+    df = _build_transactions([
+        {'Date': '2026-01-02', 'Symbol': 'AAA', 'Type': 'BUY', 'Qty': 1, 'Price': 100},
+        {'Date': '2026-01-03', 'Symbol': 'AAA', 'Type': 'SELL', 'Qty': 0.5, 'Price': 110},
+    ])
+
+    calc = PortfolioCalculator(df, market)
+    snap = calc.run()
+    day = next(x for x in snap.history if x['date'] == '2026-01-03')
+    assert round(day['twr'], 2) == 10.0
+
+
+def test_twr_full_liquidation_uses_correct_daily_return_base():
+    market = FakeMarketDataClient({
+        'SPY': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 100},
+            {'Date': '2026-01-02', 'Close_Adjusted': 100},
+            {'Date': '2026-01-03', 'Close_Adjusted': 100},
+        ],
+        'AAA': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 100},
+            {'Date': '2026-01-02', 'Close_Adjusted': 100},
+            {'Date': '2026-01-03', 'Close_Adjusted': 110},
+        ],
+    })
+
+    # Day2 持有 1 股（前日淨值=100），Day3 全數出清賣出 1 股 @110。
+    # Day3: 期末市值 0，淨現金流(內部)=-110，daily_pnl=(0-100)-(-110)=10，
+    # base=100，日報酬=10%。
+    df = _build_transactions([
+        {'Date': '2026-01-02', 'Symbol': 'AAA', 'Type': 'BUY', 'Qty': 1, 'Price': 100},
+        {'Date': '2026-01-03', 'Symbol': 'AAA', 'Type': 'SELL', 'Qty': 1, 'Price': 110},
+    ])
+
+    calc = PortfolioCalculator(df, market)
+    snap = calc.run()
+    day = next(x for x in snap.history if x['date'] == '2026-01-03')
+    assert round(day['twr'], 2) == 10.0
