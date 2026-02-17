@@ -421,16 +421,10 @@ class PortfolioCalculator:
                     logging_fx = effective_fx if not self._is_taiwan_stock(sym) else logging_fx
             
             period_hpr_factor = 1.0
-            # [TWR-FIX] Modified Dietz：先翻轉為 MD 現金流語義（正=淨流入），分母僅加淨流入。
-            c_md_twd = -daily_net_cashflow_twd
-            denominator_twd = last_market_value_twd + max(c_md_twd, 0.0)
-            numerator_twd = current_market_value_twd - last_market_value_twd - c_md_twd
-
-            if last_market_value_twd <= 1e-9:
-                # [TWR-FIX] 首日 V_begin=0 視為零持有時間，固定 HPR=1，不把當日價差算入 TWR。
-                period_hpr_factor = 1.0
-            elif denominator_twd > 1e-9:
-                period_hpr_factor = 1.0 + (numerator_twd / denominator_twd)
+            if last_market_value_twd > 1e-9:
+                period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
+            elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
+                period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
             
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
