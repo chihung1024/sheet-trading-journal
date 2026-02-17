@@ -62,7 +62,10 @@ class PortfolioCalculator:
 
         fx_to_use = DEFAULT_FX_RATE
         try:
+            # ✅ [v3.19] 今日資料優先使用即時匯率（含盤中與盤前）
+            # 確保曲線圖與當日損益卡片使用相同匯率
             if used_ts.date() == today:
+                # 優先使用即時匯率
                 if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
                     fx_to_use = self.market.realtime_fx_rate
                 else:
@@ -76,26 +79,6 @@ class PortfolioCalculator:
             fx_to_use = DEFAULT_FX_RATE
 
         return price, self._get_effective_fx_rate(symbol, fx_to_use)
-
-    # [TWR-FIX 3] 新增 helper：配息去重模糊匹配（±5 個日曆日）
-    def _is_div_confirmed(self, confirmed_dividends: dict, symbol: str, check_date, tolerance_days: int = 5) -> bool:
-        """
-        判斷某筆市場偵測配息是否已被使用者以 DIV 記錄確認。
-        使用模糊日期匹配（±tolerance_days），解決入帳日 vs 除息日不一致的問題。
-
-        :param confirmed_dividends: dict[symbol, set[pd.Timestamp]]
-        :param symbol: 股票代碼
-        :param check_date: 市場偵測的除息日
-        :param tolerance_days: 允許的日期誤差（預設 5 個日曆日）
-        :return: 是否已確認
-        """
-        if symbol not in confirmed_dividends:
-            return False
-        check_ts = pd.Timestamp(check_date).normalize()
-        for confirmed_ts in confirmed_dividends[symbol]:
-            if abs((check_ts - confirmed_ts).days) <= tolerance_days:
-                return True
-        return False
 
     def run(self):
         logger.info(f"=== 開始多群組計算 (baseline: {self.benchmark_ticker}) ===")
@@ -243,6 +226,7 @@ class PortfolioCalculator:
         realized_pnl_by_symbol = defaultdict(float)
         realized_cost_by_symbol = defaultdict(float)
         history_data = []
+        confirmed_dividends = set()
         dividend_history = []
         xirr_cashflows = []
         
@@ -254,15 +238,10 @@ class PortfolioCalculator:
         benchmark_last_val_twd = None
         benchmark_started = False
 
-        # [TWR-FIX 3] 將 confirmed_dividends 從 set[str] 改為 dict[str, set[Timestamp]]
-        # 結構：{ symbol: {confirmed_date_1, confirmed_date_2, ...} }
-        # 使用模糊日期匹配解決「入帳日 ≠ 除息日」造成去重失效的問題
-        confirmed_dividends: dict = defaultdict(set)
         div_txs = df[df['Type'] == 'DIV'].copy()
         for _, row in div_txs.iterrows():
-            sym_key = row['Symbol']
-            date_key = pd.Timestamp(row['Date']).normalize()
-            confirmed_dividends[sym_key].add(date_key)
+            key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
+            confirmed_dividends.add(key)
 
         if not df.empty:
             first_tx_date = df['Date'].min()
@@ -384,79 +363,43 @@ class PortfolioCalculator:
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
-            # =====================================================================
-            # [FIX] 市場偵測配息處理（完整修正版）
-            # 原始問題：
-            #   1. dividend_history dict 缺少 total_net_usd → DividendRecord 崩潰
-            #   2. tax_rate 未填入（模型預設 30% 但台股應為 0%）
-            #   3. 市場偵測的 pending 配息產生的現金流未納入 daily_pnl_total_raw，
-            #      導致 formula vs aggregate 偏差（根因 #4）
-            # =====================================================================
-            
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 if h_data['qty'] < 1e-6:
                     continue
-            
+                    
                 div_per_share = self.market.get_dividend(sym, d)
                 if div_per_share <= 0:
                     continue
-            
+                
                 effective_fx = self._get_effective_fx_rate(sym, fx)
-                is_confirmed = self._is_div_confirmed(confirmed_dividends, sym, d)
-            
+                div_key = f"{sym}_{date_str}"
+                is_confirmed = div_key in confirmed_dividends
+                
                 split_factor = self.market.get_transaction_multiplier(sym, d)
                 shares_at_ex = h_data['qty'] / split_factor
-            
-                total_gross = shares_at_ex * div_per_share  # 本地幣別金額（US股=USD，台股=TWD）
-            
-                # [FIX] 稅率：台股 0%，美股 30%
-                div_tax_rate = 0.0 if self._is_taiwan_stock(sym) else 0.30
-            
-                # [FIX] 正確計算兩個金額
-                total_net_local = total_gross * (1.0 - div_tax_rate)  # 稅後本地幣別
-                total_net_twd = total_net_local * effective_fx          # 轉換為 TWD
-            
+                
+                total_gross = shares_at_ex * div_per_share
+                total_net_usd = total_gross * 0.7
+                total_net_twd = total_net_usd * effective_fx
+
                 dividend_history.append({
                     'symbol': sym,
                     'ex_date': date_str,
                     'shares_held': h_data['qty'],
                     'dividend_per_share_gross': div_per_share,
-                    'total_gross': round(total_gross, 4),
-                    # [FIX] 填入 tax_rate（百分比形式）
-                    'tax_rate': div_tax_rate * 100.0,
-                    # [FIX] 填入 total_net_usd（US股=USD稅後金額；台股=TWD金額，語意特殊但欄位需存在）
-                    'total_net_usd': round(total_net_local, 4),
+                    'total_gross': round(total_gross, 2),
+                    'total_net_usd': round(total_net_usd, 2),
                     'total_net_twd': round(total_net_twd, 0),
                     'fx_rate': fx,
                     'status': 'confirmed' if is_confirmed else 'pending'
                 })
-            
+                
                 if not is_confirmed:
                     total_realized_pnl_twd += total_net_twd
                     realized_pnl_by_symbol[sym] += total_net_twd
                     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                     daily_net_cashflow_twd -= total_net_twd
-            
-                    # [FIX 根因 #4] 市場偵測 pending 配息也要計入 aggregate daily PnL
-                    # 原本只計入 formula 路徑（透過 total_realized_pnl_twd → history total_value），
-                    # 但 aggregate 路徑（daily_pnl_total_raw）完全忽略，造成系統性偏差。
-                    # 配息對持有者是「無成本收入」，屬於 realized income，應記入當日 PnL。
-                    if self._is_taiwan_stock(sym):
-                        daily_pnl_tw_raw += total_net_twd
-                    else:
-                        daily_pnl_us_raw += total_net_twd
-                    daily_pnl_total_raw += total_net_twd
-
-        # [FIX 根因 #4] 市場偵測 pending 配息也要計入 aggregate daily PnL
-        # 原本只計入 formula 路徑（透過 total_realized_pnl_twd → history total_value），
-        # 但 aggregate 路徑（daily_pnl_total_raw）完全忽略，造成系統性偏差。
-        # 配息對持有者是「無成本收入」，屬於 realized income，應記入當日 PnL。
-        if self._is_taiwan_stock(sym):
-            daily_pnl_tw_raw += total_net_twd
-        else:
-            daily_pnl_us_raw += total_net_twd
-        daily_pnl_total_raw += total_net_twd
 
             current_market_value_twd = 0.0
             logging_fx = fx
@@ -466,57 +409,22 @@ class PortfolioCalculator:
                     price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, current_fx)
                     current_market_value_twd += h['qty'] * price * effective_fx
                     logging_fx = effective_fx if not self._is_taiwan_stock(sym) else logging_fx
-
-            # ----------------------------------------------------------------
-            # [TWR-FIX 1] 修正 Modified Dietz 公式
-            #
-            # 內部符號約定：
-            #   daily_net_cashflow_twd > 0  ⟹ 淨買進（BUY 加總）
-            #   daily_net_cashflow_twd < 0  ⟹ 淨賣出/配息（SELL/DIV 加總）
-            #
-            # 關鍵發現：內部 BUY=正 本就符合 Modified Dietz 的「流入為正」，
-            # 不需要翻轉符號。
-            #
-            # 標準 Modified Dietz（W=1，假設流量在期初發生）：
-            #   C           = daily_net_cashflow_twd（BUY=正，SELL=負）
-            #   numerator   = V_end - V_begin - C
-            #   denominator = V_begin + C            ← 正負都帶入，非 max(C,0)
-            #   HPR         = 1 + numerator / denominator
-            #
-            # 修正前錯誤：denominator = V_begin + daily_buy_cost_twd（只加買進成本，忽略賣出）
-            # ----------------------------------------------------------------
-            C = daily_net_cashflow_twd  # [TWR-FIX 1] 直接使用，無需翻轉
-            numerator_twr   = current_market_value_twd - last_market_value_twd - C
-            denominator_twr = last_market_value_twd + C
-
-            # [TWR-FIX 2] Bootstrap 首日保護
-            # 當 V_begin = 0（建倉首日或清倉後重新買入）時 denominator ≈ buy_cost
-            # 此時若股價當日上漲，舊版會把「零時間持有收益」計入 TWR
-            # 修正：denominator ≤ 0 一律回傳 HPR=1.0（此日視為資金注入，不計報酬）
-            #
-            # 設計說明：全倉賣出日同樣觸發此保護（denominator = V_begin - proceeds ≈ 0）
-            # → 賣出當日的漲跌幅不被捕捉。這是 Modified Dietz W=1 的固有限制，
-            #   等同假設「資金流量發生在期初」，賣出日本身視為無風險暴露期。
-            #   如需更精確，需實作 P4 日內子期間分割。
-            if denominator_twr < 1e-9:
-                period_hpr_factor = 1.0  # [TWR-FIX 2] 無前期淨值，不計入報酬
-            else:
-                period_hpr_factor = 1.0 + numerator_twr / denominator_twr
-
+            
+            period_hpr_factor = 1.0
+            if last_market_value_twd > 1e-9:
+                period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
+            elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
+                period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
+            
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
-            # ----------------------------------------------------------------
-
+            
             cumulative_twr_factor *= period_hpr_factor
             prev_market_value_twd = last_market_value_twd
             last_market_value_twd = current_market_value_twd
             
             unrealized_pnl = current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)
             total_pnl = unrealized_pnl + total_realized_pnl_twd
-
-            # daily_pnl_formula_twd 供 history 記錄用，符號轉換回使用者語義
-            # 使用者語義：買進為負（流出）、賣出為正（流入）→ net_cashflow = -daily_net_cashflow_twd
-            user_net_cashflow = -daily_net_cashflow_twd
 
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
@@ -526,8 +434,10 @@ class PortfolioCalculator:
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(logging_fx, 4),
-                "net_cashflow_twd": round(user_net_cashflow, 0),
-                "daily_pnl_formula_twd": round(current_market_value_twd - prev_market_value_twd + user_net_cashflow, 0) if prev_market_value_twd > 1e-9 else round(current_market_value_twd + user_net_cashflow, 0)
+                # 使用者定義: 買進為負、賣出為正
+                "net_cashflow_twd": round(-daily_net_cashflow_twd, 0),
+                # 當日損益標準定義: 當天淨值 - 前一天淨值 + 當天現金流
+                "daily_pnl_formula_twd": round(current_market_value_twd - prev_market_value_twd + (-daily_net_cashflow_twd), 0) if prev_market_value_twd > 1e-9 else round(current_market_value_twd + (-daily_net_cashflow_twd), 0)
             })
 
         final_holdings = []
@@ -547,13 +457,15 @@ class PortfolioCalculator:
 
         daily_pnl_asof_date = None
         daily_pnl_prev_date = None
-        unified_fx_prev_ts = None
+        unified_fx_prev_ts = None  # ✅ [v3.20] 統一匯率前日基準
         try:
             if hasattr(self.market, 'get_price_asof') and hasattr(self.market, 'get_prev_trading_date'):
                 _bp, used_bm = self.market.get_price_asof(self.benchmark_ticker, pd.Timestamp(pnl_base_date))
                 prev_bm = self.market.get_prev_trading_date(self.benchmark_ticker, used_bm)
                 daily_pnl_asof_date = pd.to_datetime(used_bm).strftime('%Y-%m-%d')
                 daily_pnl_prev_date = pd.to_datetime(prev_bm).strftime('%Y-%m-%d')
+                # ✅ [v3.20] 統一使用 benchmark 的前日交易日作為匯率參考日
+                # 解決不同標的因數據可用性造成 fx_prev 日期不一致的問題
                 unified_fx_prev_ts = prev_bm
         except Exception as e:
             logger.debug(f"Failed to get pnl date info for benchmark: {e}")
@@ -596,7 +508,7 @@ class PortfolioCalculator:
         daily_pnl_total_raw = 0.0
         daily_pnl_tw_raw = 0.0
         daily_pnl_us_raw = 0.0
-        daily_pnl_fx_raw = 0.0
+        daily_pnl_fx_raw = 0.0  # ✅ [v3.19] 匯率損益分量
 
         for sym in candidate_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
@@ -624,6 +536,8 @@ class PortfolioCalculator:
                 fx_used = DEFAULT_FX_RATE
                 fx_prev = DEFAULT_FX_RATE
                 try:
+                    # ✅ [v3.19] 盤前也使用即時匯率計算市值
+                    # 只要有 realtime_fx_rate，就使用它（無論盤中或盤前）
                     if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
                         fx_used = self.market.realtime_fx_rate
                     elif used_ts.date() == pnl_base_date:
@@ -632,6 +546,7 @@ class PortfolioCalculator:
                         fx_used = self.market.fx_rates.asof(used_ts)
                         if pd.isna(fx_used): fx_used = DEFAULT_FX_RATE
 
+                    # ✅ [v3.20] 使用統一的 benchmark 前日匯率，確保所有美股一致
                     fx_prev_lookup_ts = unified_fx_prev_ts if unified_fx_prev_ts else prev_ts
                     fx_prev = self.market.fx_rates.asof(pd.Timestamp(fx_prev_lookup_ts))
                     if pd.isna(fx_prev): fx_prev = DEFAULT_FX_RATE
@@ -649,6 +564,8 @@ class PortfolioCalculator:
 
             unrealized_pnl_today = 0.0
             if position_snap.qty > 0:
+                # ✅ [v3.18] 使用加權基準價計算未實現損益
+                # 舊倉用前日收盤價，新倉用成本價，確保新買入當日不會虛增損益
                 base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
                 curr_mv_twd = position_snap.qty * curr_p * effective_fx
                 base_mv_twd = position_snap.qty * base_price * prev_effective_fx
@@ -657,8 +574,11 @@ class PortfolioCalculator:
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl
             
+            # ✅ [v3.19] 計算匯率損益分量（僅美股）
+            # 匯率損益 = 持倉市值 × (當前匯率 - 前日匯率) / 當前匯率
             fx_pnl_contribution = 0.0
             if not is_tw and position_snap.qty > 0 and effective_fx != prev_effective_fx:
+                # 純匯率變動帶來的損益（假設股價不變）
                 base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
                 fx_pnl_contribution = position_snap.qty * base_price * (effective_fx - prev_effective_fx)
                 daily_pnl_fx_raw += fx_pnl_contribution
@@ -666,6 +586,7 @@ class PortfolioCalculator:
             if is_tw:
                 daily_pnl_tw_raw += total_daily_pnl
             else:
+                # 美股損益扣除匯率部分，避免重複計算
                 daily_pnl_us_raw += (total_daily_pnl - fx_pnl_contribution)
 
             try:
@@ -731,10 +652,12 @@ class PortfolioCalculator:
         current_invested = current_holdings_cost_sum
         current_total_pnl = current_total_value - current_invested + total_realized_pnl_twd
         
+        # ✅ [v3.18] 後端計算當日報酬率，避免前端依賴 history 索引
         daily_pnl_base_value = None
         daily_pnl_roi_percent = None
         if len(history_data) >= 2:
-            prev_day_data = history_data[-2]
+            # 找到前一個交易日的總資產淨值作為基準
+            prev_day_data = history_data[-2]  # 倒數第二筆是前一日
             daily_pnl_base_value = prev_day_data.get('total_value', 0)
             if daily_pnl_base_value and daily_pnl_base_value > 0:
                 daily_pnl_roi_percent = round((display_daily_pnl / daily_pnl_base_value) * 100, 2)
@@ -752,7 +675,7 @@ class PortfolioCalculator:
                 {
                     "tw_pnl_twd": round(daily_pnl_tw_raw, 0), 
                     "us_pnl_twd": round(daily_pnl_us_raw, 0),
-                    "fx_pnl_twd": round(daily_pnl_fx_raw, 0)
+                    "fx_pnl_twd": round(daily_pnl_fx_raw, 0)  # ✅ [v3.19] 新增匯率損益
                 } if pnl_deviation <= 5 else None
             ),
             market_stage=current_stage,
@@ -764,6 +687,7 @@ class PortfolioCalculator:
         )
         
         self.validator.validate_twr_calculation(history_data)
+        # ✅ [v3.19] 驗證台/美/匯率損益分量加總
         if pnl_deviation <= 5:
             self.validator.validate_daily_pnl_breakdown(
                 display_daily_pnl, daily_pnl_tw_raw, daily_pnl_us_raw, daily_pnl_fx_raw

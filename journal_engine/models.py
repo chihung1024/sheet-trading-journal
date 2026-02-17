@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, Field, computed_field
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 
@@ -16,6 +16,7 @@ class TransactionRecord(BaseModel):
     @computed_field
     @property
     def total_amount(self) -> float:
+        """計算總交易金額 = 股數 × 單價 + 手續費 + 稅"""
         base_amount = abs(self.qty * self.price)
         return base_amount + self.commission + self.tax
 
@@ -30,21 +31,29 @@ class PortfolioSummary(BaseModel):
     xirr: float = 0.0
     realized_pnl: float
     benchmark_twr: float
+
+    # ✅ 當日損益（TWD）：總和（台股分量 + 美股分量）
     daily_pnl_twd: float = 0.0
+
+    # ✅ Tooltip/明細用：台/美/匯率分量
+    # { "tw_pnl_twd": <float>, "us_pnl_twd": <float>, "fx_pnl_twd": <float> }
     daily_pnl_breakdown: Optional[Dict[str, float]] = None
+
+    # ✅ 新增：市場狀態（由後端判定，避免前端自行推論）
     market_stage: Optional[str] = None
     market_stage_desc: Optional[str] = None
+
+    # ✅ 新增：當日損益的估值基準日（用 benchmark as-of / prev trading day）
     daily_pnl_asof_date: Optional[str] = None
     daily_pnl_prev_date: Optional[str] = None
-    daily_pnl_roi_percent: Optional[float] = None
-    daily_pnl_base_value: Optional[float] = None
+
+    # ✅ [v3.18] 新增：後端計算的當日報酬率，避免前端依賴 history 索引
+    daily_pnl_roi_percent: Optional[float] = None  # 精確計算的當日報酬率百分比
+    daily_pnl_base_value: Optional[float] = None   # 計算基準值（前日總資產淨值）
 
 class HoldingPosition(BaseModel):
     symbol: str
-    # [FIX] tag: str → Optional[str] = None
-    # 根因：holdings[sym] 初始化時 tag=row['Tag']，資料庫中 Tag 欄位可為 NULL。
-    # h.get('tag') 回傳 None，Pydantic str 不接受 None，觸發 ValidationError。
-    tag: Optional[str] = None
+    tag: str
     currency: str
     qty: float
     market_value_twd: float
@@ -65,42 +74,16 @@ class DividendRecord(BaseModel):
     shares_held: float
     dividend_per_share_gross: float
     total_gross: float
-
-    # 百分比形式（30.0 = 30%）；預設美股 30%，台股應傳入 0.0
     tax_rate: float = 30.0
-
-    # [FIX] Optional[float] + model_validator 自動補算
-    #
-    # 根因：calculator.py 的 dividend_history.append({...}) 從未填入此欄位，
-    # 導致三位使用者均拋出 ValidationError: Field required，全面崩潰。
-    #
-    # 修正策略（雙層防禦）：
-    #   Layer 1 → calculator.py 正確計算並填入（治本，見修正 2）
-    #   Layer 2 → 此 validator 容錯補算（防止未來類似遺漏再次崩潰）
-    total_net_usd: Optional[float] = None
-
+    total_net_usd: float
     total_net_twd: float
     fx_rate: float
     status: str = "pending"
     notes: Optional[str] = None
     record_id: Optional[int] = None
 
-    @model_validator(mode='after')
-    def compute_missing_fields(self) -> 'DividendRecord':
-        """
-        若 total_net_usd 未由上游填入，自動由 total_gross 與 tax_rate 補算。
-
-        US 股票: total_net_usd = total_gross(USD) × (1 - tax_rate/100)
-        台  股: tax_rate=0，total_net_usd = total_gross(TWD 單位)
-               台股此欄位語意有限，但維持欄位完整性避免序列化問題。
-        """
-        if self.total_net_usd is None:
-            self.total_net_usd = round(
-                self.total_gross * (1.0 - self.tax_rate / 100.0), 4
-            )
-        return self
-
 class PortfolioGroupData(BaseModel):
+    """單一策略群組的完整投資組合數據"""
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
@@ -113,8 +96,12 @@ class PortfolioSnapshot(BaseModel):
     updated_at: str
     base_currency: str
     exchange_rate: float
+    
+    # 向下相容欄位 (代表 'all' 群組的總體數據)
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
     pending_dividends: List[DividendRecord] = []
+    
+    # ✅ 新增：多群組資料字典 {group_name: PortfolioGroupData}
     groups: Dict[str, PortfolioGroupData] = {}
