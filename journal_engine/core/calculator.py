@@ -205,6 +205,47 @@ class PortfolioCalculator:
             prev_date -= timedelta(days=1)
         return pd.Timestamp(prev_date).normalize()
 
+    @staticmethod
+    def _get_dietz_cashflow_weight(index, total_count):
+        """回傳 Modified Dietz 現金流時間權重（0~1）。
+
+        目前交易資料只有日期、沒有精確時間戳，採「同日等距分布」近似：
+        - 第 i 筆（從 1 起算）發生於 i/(N+1)
+        - 權重 w = 1 - i/(N+1)
+        """
+        if total_count <= 0:
+            return 0.0
+        i = max(1, min(index, total_count))
+        return 1.0 - (i / (total_count + 1.0))
+
+    @classmethod
+    def _calculate_modified_dietz_return(cls, beginning_value, ending_value, cashflows):
+        """計算單一子期間的 Modified Dietz 報酬率。
+
+        cashflows: list[float]，正值代表外部資金流入投資組合，負值代表流出。
+        """
+        if cashflows is None:
+            cashflows = []
+
+        sum_cashflow = float(sum(cashflows))
+        weighted_cashflow = 0.0
+        flow_count = len(cashflows)
+        for idx, cf in enumerate(cashflows, start=1):
+            weighted_cashflow += float(cf) * cls._get_dietz_cashflow_weight(idx, flow_count)
+
+        denominator = float(beginning_value) + weighted_cashflow
+        numerator = float(ending_value) - float(beginning_value) - sum_cashflow
+
+        if abs(denominator) <= 1e-9:
+            if abs(numerator) <= 1e-9:
+                return 0.0
+            return 0.0
+
+        md_return = numerator / denominator
+        if not np.isfinite(md_return):
+            return 0.0
+        return md_return
+
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED", stage_desc="Markets Closed", benchmark_tax_rate=0.0):
         # (1) Normalize Commission/Tax sign BEFORE any calculation
         df = df.copy()
@@ -301,6 +342,7 @@ class PortfolioCalculator:
                 daily_txns = daily_txns.sort_values(by='priority', kind='stable')
             
             daily_net_cashflow_twd = 0.0
+            daily_cashflows_for_dietz = []
             
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
@@ -322,6 +364,7 @@ class PortfolioCalculator:
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     daily_net_cashflow_twd += cost_twd
+                    daily_cashflows_for_dietz.append(cost_twd)
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]:
@@ -354,6 +397,7 @@ class PortfolioCalculator:
                     realized_cost_by_symbol[sym] += cost_sold_twd
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
                     daily_net_cashflow_twd -= proceeds_twd
+                    daily_cashflows_for_dietz.append(-proceeds_twd)
 
                 elif row['Type'] == 'DIV':
                     effective_fx = self._get_effective_fx_rate(sym, fx)
@@ -362,6 +406,7 @@ class PortfolioCalculator:
                     realized_pnl_by_symbol[sym] += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
+                    daily_cashflows_for_dietz.append(-div_twd)
 
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
@@ -400,6 +445,7 @@ class PortfolioCalculator:
                     realized_pnl_by_symbol[sym] += total_net_twd
                     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                     daily_net_cashflow_twd -= total_net_twd
+                    daily_cashflows_for_dietz.append(-total_net_twd)
 
             current_market_value_twd = 0.0
             logging_fx = fx
@@ -411,10 +457,12 @@ class PortfolioCalculator:
                     logging_fx = effective_fx if not self._is_taiwan_stock(sym) else logging_fx
             
             period_hpr_factor = 1.0
-            if last_market_value_twd > 1e-9:
-                period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
-            elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
-                period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
+            md_return = self._calculate_modified_dietz_return(
+                beginning_value=last_market_value_twd,
+                ending_value=current_market_value_twd,
+                cashflows=daily_cashflows_for_dietz
+            )
+            period_hpr_factor = 1.0 + md_return
             
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
