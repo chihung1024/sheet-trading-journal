@@ -384,45 +384,79 @@ class PortfolioCalculator:
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
 
+            # =====================================================================
+            # [FIX] 市場偵測配息處理（完整修正版）
+            # 原始問題：
+            #   1. dividend_history dict 缺少 total_net_usd → DividendRecord 崩潰
+            #   2. tax_rate 未填入（模型預設 30% 但台股應為 0%）
+            #   3. 市場偵測的 pending 配息產生的現金流未納入 daily_pnl_total_raw，
+            #      導致 formula vs aggregate 偏差（根因 #4）
+            # =====================================================================
+            
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
                 if h_data['qty'] < 1e-6:
                     continue
-                    
+            
                 div_per_share = self.market.get_dividend(sym, d)
                 if div_per_share <= 0:
                     continue
-                
+            
                 effective_fx = self._get_effective_fx_rate(sym, fx)
-
-                # [TWR-FIX 3] 使用模糊匹配替代精確字串比對
                 is_confirmed = self._is_div_confirmed(confirmed_dividends, sym, d)
-                
+            
                 split_factor = self.market.get_transaction_multiplier(sym, d)
                 shares_at_ex = h_data['qty'] / split_factor
-                
-                total_gross = shares_at_ex * div_per_share
-                # [TWR-FIX 4] 台股配息不適用 30% 美國 NRA 預扣稅
-                # 舊版硬編碼 * 0.7，台股除息日 TWR 被系統性低估
+            
+                total_gross = shares_at_ex * div_per_share  # 本地幣別金額（US股=USD，台股=TWD）
+            
+                # [FIX] 稅率：台股 0%，美股 30%
                 div_tax_rate = 0.0 if self._is_taiwan_stock(sym) else 0.30
-                total_net_twd = total_gross * (1 - div_tax_rate) * effective_fx
-
+            
+                # [FIX] 正確計算兩個金額
+                total_net_local = total_gross * (1.0 - div_tax_rate)  # 稅後本地幣別
+                total_net_twd = total_net_local * effective_fx          # 轉換為 TWD
+            
                 dividend_history.append({
                     'symbol': sym,
                     'ex_date': date_str,
                     'shares_held': h_data['qty'],
                     'dividend_per_share_gross': div_per_share,
-                    'total_gross': round(total_gross, 2),
+                    'total_gross': round(total_gross, 4),
+                    # [FIX] 填入 tax_rate（百分比形式）
+                    'tax_rate': div_tax_rate * 100.0,
+                    # [FIX] 填入 total_net_usd（US股=USD稅後金額；台股=TWD金額，語意特殊但欄位需存在）
+                    'total_net_usd': round(total_net_local, 4),
                     'total_net_twd': round(total_net_twd, 0),
                     'fx_rate': fx,
                     'status': 'confirmed' if is_confirmed else 'pending'
                 })
-                
+            
                 if not is_confirmed:
                     total_realized_pnl_twd += total_net_twd
                     realized_pnl_by_symbol[sym] += total_net_twd
                     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                     daily_net_cashflow_twd -= total_net_twd
+            
+                    # [FIX 根因 #4] 市場偵測 pending 配息也要計入 aggregate daily PnL
+                    # 原本只計入 formula 路徑（透過 total_realized_pnl_twd → history total_value），
+                    # 但 aggregate 路徑（daily_pnl_total_raw）完全忽略，造成系統性偏差。
+                    # 配息對持有者是「無成本收入」，屬於 realized income，應記入當日 PnL。
+                    if self._is_taiwan_stock(sym):
+                        daily_pnl_tw_raw += total_net_twd
+                    else:
+                        daily_pnl_us_raw += total_net_twd
+                    daily_pnl_total_raw += total_net_twd
+
+        # [FIX 根因 #4] 市場偵測 pending 配息也要計入 aggregate daily PnL
+        # 原本只計入 formula 路徑（透過 total_realized_pnl_twd → history total_value），
+        # 但 aggregate 路徑（daily_pnl_total_raw）完全忽略，造成系統性偏差。
+        # 配息對持有者是「無成本收入」，屬於 realized income，應記入當日 PnL。
+        if self._is_taiwan_stock(sym):
+            daily_pnl_tw_raw += total_net_twd
+        else:
+            daily_pnl_us_raw += total_net_twd
+        daily_pnl_total_raw += total_net_twd
 
             current_market_value_twd = 0.0
             logging_fx = fx
