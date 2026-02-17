@@ -257,26 +257,26 @@
   - 會回傳「實際使用的估值日期 used_ts」與對應價格（例如遇到非交易日會向前取最近交易日）。
 - 匯率通常會用 `fx_rates.asof(used_ts)`（若 used_ts = 今日且美股盤中，可能使用即時匯率 current_fx）。
 
-### 4) TWR（時間加權報酬率）：日切分 linked returns
+### 4) TWR（時間加權報酬率）：Modified Dietz 子期間連結
 
-本專案的 TWR 是「每天一個子期間」的 linked return：
+本專案的 TWR 以「每天一個子期間」計算 Modified Dietz 報酬後再連結：
 
 - 定義：
   - `last_market_value_twd`：前一日估值（期初）
   - `current_market_value_twd`：當日估值（期末）
   - `daily_net_cashflow_twd`：當日淨現金流（正值代表投入、負值代表流出/回收）
 
-- 當 `last_market_value_twd > 0`：
-  - `period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd`
-
-- 首次投入（期初 0、期末 >0 且有現金流）：
-  - `period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd`
+- 子期間報酬（Modified Dietz）：
+  - `r_md = (V1 - V0 - ΣCF) / (V0 + Σ(w_i * CF_i))`
+  - `period_hpr_factor = 1 + r_md`
+  - 其中 `CF_i` 正值代表外部資金流入（買入），負值代表流出（賣出/股息）
+  - 權重 `w_i` 目前在日粒度採同日等距近似（資料無交易時間戳）
 
 - 累積：
   - `cumulative_twr_factor *= period_hpr_factor`
   - `twr_percent = (cumulative_twr_factor - 1) * 100`
 
-> 註：這是「日切分 linked TWR」。它不是傳統單一期間的 Modified Dietz（沒有對期間內 cashflow 做時間權重），但在你有每日估值點的情境下通常更貼近真正 TWR。
+> 註：目前是「日切分的 Modified Dietz 連結報酬」。若後續補齊分時交易時間戳，可再升級更精細的現金流權重模型。
 
 ### 5) 股息（DIV / pending / confirmed）
 
@@ -332,7 +332,7 @@ python main.py
 - 目前引擎以「日粒度」運算為主（交易時間、盤中 cashflow 時點不建模）。
 - 目前沒有顯式「現金部位」資產（TWR/資產曲線主要反映持倉估值 + 現金流處理邏輯）。
 - 股息稅率/市場規則目前偏 hard-coded（若要嚴格對帳，建議擴充規則層）。
-- 若你要做「任意區間」單一數字績效，建議新增一個獨立的 Modified Dietz 報表指標，而不是取代現有日切分 TWR。
+- 任意區間單一數字績效可直接以同一公式整段計算，或沿用日子期間連結結果（需在報表層定義口徑）。
 
 ---
 
