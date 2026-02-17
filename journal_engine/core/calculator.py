@@ -205,6 +205,16 @@ class PortfolioCalculator:
             prev_date -= timedelta(days=1)
         return pd.Timestamp(prev_date).normalize()
 
+    def _is_div_confirmed(self, confirmed_dividends, symbol, check_date, tolerance_days=5):
+        # [TWR-FIX] DIV 以使用者輸入入帳日為權威，市場除息偵測改為日期容忍比對，避免重複計入。
+        if symbol not in confirmed_dividends:
+            return False
+        check_ts = pd.Timestamp(check_date).normalize()
+        for confirmed_date in confirmed_dividends[symbol]:
+            if abs((check_ts - confirmed_date).days) <= tolerance_days:
+                return True
+        return False
+
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED", stage_desc="Markets Closed", benchmark_tax_rate=0.0):
         # (1) Normalize Commission/Tax sign BEFORE any calculation
         df = df.copy()
@@ -226,7 +236,7 @@ class PortfolioCalculator:
         realized_pnl_by_symbol = defaultdict(float)
         realized_cost_by_symbol = defaultdict(float)
         history_data = []
-        confirmed_dividends = set()
+        confirmed_dividends = defaultdict(set)  # [TWR-FIX] 以 symbol -> {入帳日} 結構做模糊去重。
         dividend_history = []
         xirr_cashflows = []
         
@@ -240,8 +250,8 @@ class PortfolioCalculator:
 
         div_txs = df[df['Type'] == 'DIV'].copy()
         for _, row in div_txs.iterrows():
-            key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
-            confirmed_dividends.add(key)
+            # [TWR-FIX] 使用 DIV 交易列 Date(入帳日) 作為權威日期。
+            confirmed_dividends[row['Symbol']].add(pd.Timestamp(row['Date']).normalize())
 
         if not df.empty:
             first_tx_date = df['Date'].min()
@@ -301,7 +311,6 @@ class PortfolioCalculator:
                 daily_txns = daily_txns.sort_values(by='priority', kind='stable')
             
             daily_net_cashflow_twd = 0.0
-            daily_buy_cost_twd = 0.0
             
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
@@ -323,7 +332,6 @@ class PortfolioCalculator:
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     daily_net_cashflow_twd += cost_twd
-                    daily_buy_cost_twd += cost_twd
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]:
@@ -375,8 +383,8 @@ class PortfolioCalculator:
                     continue
                 
                 effective_fx = self._get_effective_fx_rate(sym, fx)
-                div_key = f"{sym}_{date_str}"
-                is_confirmed = div_key in confirmed_dividends
+                # [TWR-FIX] 以 symbol + ±5 天模糊日期比對確認配息，避免除息日/入帳日不一致造成重複。
+                is_confirmed = self._is_div_confirmed(confirmed_dividends, sym, d)
                 
                 split_factor = self.market.get_transaction_multiplier(sym, d)
                 shares_at_ex = h_data['qty'] / split_factor
@@ -413,19 +421,16 @@ class PortfolioCalculator:
                     logging_fx = effective_fx if not self._is_taiwan_stock(sym) else logging_fx
             
             period_hpr_factor = 1.0
-            # 使用「昨日淨值 + 當日買進總成本」作為當日資金基礎，
-            # 避免大幅加碼/當沖時僅以昨日淨值當分母而放大日報酬。
-            # 說明：daily_net_cashflow_twd 採內部符號（買進為正、賣出為負）。
-            daily_pnl_twd = (current_market_value_twd - last_market_value_twd) - daily_net_cashflow_twd
-            capital_base_twd = last_market_value_twd + daily_buy_cost_twd
+            # [TWR-FIX] Modified Dietz：先翻轉為 MD 現金流語義（正=淨流入），分母僅加淨流入。
+            c_md_twd = -daily_net_cashflow_twd
+            denominator_twd = last_market_value_twd + max(c_md_twd, 0.0)
+            numerator_twd = current_market_value_twd - last_market_value_twd - c_md_twd
 
-            if capital_base_twd > 1e-9:
-                period_hpr_factor = 1.0 + (daily_pnl_twd / capital_base_twd)
-            elif abs(daily_pnl_twd) > 1e-9 and abs(daily_net_cashflow_twd) > 1e-9:
-                # 首日/無前日淨值時，退化為以當日買進成本（若有）為基礎。
-                bootstrap_base = max(daily_buy_cost_twd, abs(daily_net_cashflow_twd))
-                if bootstrap_base > 1e-9:
-                    period_hpr_factor = 1.0 + (daily_pnl_twd / bootstrap_base)
+            if last_market_value_twd <= 1e-9:
+                # [TWR-FIX] 首日 V_begin=0 視為零持有時間，固定 HPR=1，不把當日價差算入 TWR。
+                period_hpr_factor = 1.0
+            elif denominator_twd > 1e-9:
+                period_hpr_factor = 1.0 + (numerator_twd / denominator_twd)
             
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
