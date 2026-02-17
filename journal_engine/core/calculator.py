@@ -258,6 +258,18 @@ class PortfolioCalculator:
                 logger.warning(f"[{group_name}] {col} has {neg_cnt} negative rows; normalized with abs().")
             df[col] = df[col].abs()
 
+        def _normalized_tag_key(tag_value):
+            """Normalize a transaction tag into a stable bucket key.
+
+            In `all` view we must keep FIFO ledgers isolated per strategy group,
+            otherwise selling one group's position can consume another group's cost
+            lots and make realized/unrealized split non-additive across groups.
+            """
+            parts = [t.strip() for t in str(tag_value or '').replace(';', ',').split(',') if t.strip()]
+            if not parts:
+                return '__untagged__'
+            return '|'.join(sorted(parts))
+
         txn_analyzer = TransactionAnalyzer(df)
         
         holdings = {}
@@ -348,7 +360,10 @@ class PortfolioCalculator:
                 sym = row['Symbol']
                 if sym not in holdings:
                     holdings[sym] = {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': row['Tag']}
-                    fifo_queues[sym] = deque()
+
+                fifo_key = (sym, _normalized_tag_key(row['Tag'])) if group_name == 'all' else sym
+                if fifo_key not in fifo_queues:
+                    fifo_queues[fifo_key] = deque()
 
                 if row['Type'] == 'BUY':
                     effective_fx = self._get_effective_fx_rate(sym, fx)
@@ -357,7 +372,7 @@ class PortfolioCalculator:
                     holdings[sym]['qty'] += row['Qty']
                     holdings[sym]['cost_basis_usd'] += cost_usd
                     holdings[sym]['cost_basis_twd'] += cost_twd
-                    fifo_queues[sym].append({
+                    fifo_queues[fifo_key].append({
                         'qty': row['Qty'], 'price': row['Price'], 'cost_total_usd': cost_usd, 
                         'cost_total_twd': cost_twd, 'date': d
                     })
@@ -367,15 +382,15 @@ class PortfolioCalculator:
                     daily_cashflows_for_dietz.append(cost_twd)
 
                 elif row['Type'] == 'SELL':
-                    if not fifo_queues.get(sym) or not fifo_queues[sym]:
+                    if not fifo_queues.get(fifo_key) or not fifo_queues[fifo_key]:
                         continue
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
                     remaining = row['Qty']
                     cost_sold_twd = 0.0
                     cost_sold_usd = 0.0
-                    while remaining > 1e-6 and fifo_queues[sym]:
-                        batch = fifo_queues[sym][0]
+                    while remaining > 1e-6 and fifo_queues[fifo_key]:
+                        batch = fifo_queues[fifo_key][0]
                         take = min(remaining, batch['qty'])
                         frac = take / batch['qty']
                         cost_sold_usd += batch['cost_total_usd'] * frac
@@ -385,7 +400,7 @@ class PortfolioCalculator:
                         batch['cost_total_twd'] -= batch['cost_total_twd'] * frac
                         remaining -= take
                         if batch['qty'] < 1e-6:
-                            fifo_queues[sym].popleft()
+                            fifo_queues[fifo_key].popleft()
                     
                     holdings[sym]['qty'] -= (row['Qty'] - remaining)
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
