@@ -205,6 +205,16 @@ class PortfolioCalculator:
             prev_date -= timedelta(days=1)
         return pd.Timestamp(prev_date).normalize()
 
+    def _is_div_confirmed(self, confirmed_dividends, symbol, check_date, tolerance_days=5):
+        # [TWR-FIX] DIV 以使用者輸入入帳日為權威，市場除息偵測改為日期容忍比對，避免重複計入。
+        if symbol not in confirmed_dividends:
+            return False
+        check_ts = pd.Timestamp(check_date).normalize()
+        for confirmed_date in confirmed_dividends[symbol]:
+            if abs((check_ts - confirmed_date).days) <= tolerance_days:
+                return True
+        return False
+
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED", stage_desc="Markets Closed", benchmark_tax_rate=0.0):
         # (1) Normalize Commission/Tax sign BEFORE any calculation
         df = df.copy()
@@ -226,7 +236,7 @@ class PortfolioCalculator:
         realized_pnl_by_symbol = defaultdict(float)
         realized_cost_by_symbol = defaultdict(float)
         history_data = []
-        confirmed_dividends = set()
+        confirmed_dividends = defaultdict(set)  # [TWR-FIX] 以 symbol -> {入帳日} 結構做模糊去重。
         dividend_history = []
         xirr_cashflows = []
         
@@ -240,8 +250,8 @@ class PortfolioCalculator:
 
         div_txs = df[df['Type'] == 'DIV'].copy()
         for _, row in div_txs.iterrows():
-            key = f"{row['Symbol']}_{row['Date'].strftime('%Y-%m-%d')}"
-            confirmed_dividends.add(key)
+            # [TWR-FIX] 使用 DIV 交易列 Date(入帳日) 作為權威日期。
+            confirmed_dividends[row['Symbol']].add(pd.Timestamp(row['Date']).normalize())
 
         if not df.empty:
             first_tx_date = df['Date'].min()
@@ -373,8 +383,8 @@ class PortfolioCalculator:
                     continue
                 
                 effective_fx = self._get_effective_fx_rate(sym, fx)
-                div_key = f"{sym}_{date_str}"
-                is_confirmed = div_key in confirmed_dividends
+                # [TWR-FIX] 以 symbol + ±5 天模糊日期比對確認配息，避免除息日/入帳日不一致造成重複。
+                is_confirmed = self._is_div_confirmed(confirmed_dividends, sym, d)
                 
                 split_factor = self.market.get_transaction_multiplier(sym, d)
                 shares_at_ex = h_data['qty'] / split_factor
