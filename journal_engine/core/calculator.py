@@ -322,7 +322,6 @@ class PortfolioCalculator:
                 daily_txns = daily_txns.sort_values(by='priority', kind='stable')
             
             daily_net_cashflow_twd = 0.0
-            daily_buy_cost_twd = 0.0
             
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
@@ -344,7 +343,6 @@ class PortfolioCalculator:
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     daily_net_cashflow_twd += cost_twd
-                    daily_buy_cost_twd += cost_twd
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]:
@@ -404,8 +402,10 @@ class PortfolioCalculator:
                 shares_at_ex = h_data['qty'] / split_factor
                 
                 total_gross = shares_at_ex * div_per_share
-                total_net_usd = total_gross * 0.7
-                total_net_twd = total_net_usd * effective_fx
+                # [TWR-FIX 4] 台股配息不適用 30% 美國 NRA 預扣稅
+                # 舊版硬編碼 * 0.7，台股除息日 TWR 被系統性低估
+                div_tax_rate = 0.0 if self._is_taiwan_stock(sym) else 0.30
+                total_net_twd = total_gross * (1 - div_tax_rate) * effective_fx
 
                 dividend_history.append({
                     'symbol': sym,
@@ -413,7 +413,6 @@ class PortfolioCalculator:
                     'shares_held': h_data['qty'],
                     'dividend_per_share_gross': div_per_share,
                     'total_gross': round(total_gross, 2),
-                    'total_net_usd': round(total_net_usd, 2),
                     'total_net_twd': round(total_net_twd, 0),
                     'fx_rate': fx,
                     'status': 'confirmed' if is_confirmed else 'pending'
@@ -450,8 +449,7 @@ class PortfolioCalculator:
             #   denominator = V_begin + C            ← 正負都帶入，非 max(C,0)
             #   HPR         = 1 + numerator / denominator
             #
-            # 修正前錯誤：denominator = V_begin + daily_buy_cost_twd
-            #   → 賣出/配息日分母高估，HPR 被系統性低估
+            # 修正前錯誤：denominator = V_begin + daily_buy_cost_twd（只加買進成本，忽略賣出）
             # ----------------------------------------------------------------
             C = daily_net_cashflow_twd  # [TWR-FIX 1] 直接使用，無需翻轉
             numerator_twr   = current_market_value_twd - last_market_value_twd - C
@@ -461,6 +459,11 @@ class PortfolioCalculator:
             # 當 V_begin = 0（建倉首日或清倉後重新買入）時 denominator ≈ buy_cost
             # 此時若股價當日上漲，舊版會把「零時間持有收益」計入 TWR
             # 修正：denominator ≤ 0 一律回傳 HPR=1.0（此日視為資金注入，不計報酬）
+            #
+            # 設計說明：全倉賣出日同樣觸發此保護（denominator = V_begin - proceeds ≈ 0）
+            # → 賣出當日的漲跌幅不被捕捉。這是 Modified Dietz W=1 的固有限制，
+            #   等同假設「資金流量發生在期初」，賣出日本身視為無風險暴露期。
+            #   如需更精確，需實作 P4 日內子期間分割。
             if denominator_twr < 1e-9:
                 period_hpr_factor = 1.0  # [TWR-FIX 2] 無前期淨值，不計入報酬
             else:
