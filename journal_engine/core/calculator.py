@@ -682,19 +682,34 @@ class PortfolioCalculator:
                 ))
 
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
+
         daily_pnl_formula_twd = None
+        formula_is_comparable = False
         if len(history_data) >= 2:
             last_day = history_data[-1]
             prev_day = history_data[-2]
-            daily_pnl_formula_twd = (
-                (last_day.get('total_value', 0) - prev_day.get('total_value', 0)) +
-                last_day.get('net_cashflow_twd', 0)
+            last_day_date = str(last_day.get('date', ''))
+            prev_day_date = str(prev_day.get('date', ''))
+
+            # ✅ [v3.21] 只有在 history 的日期與當前日損益比較基準一致時，
+            # 才允許用公式值覆蓋聚合值，避免「交易日序列」與「估值日序列」不同步。
+            formula_is_comparable = (
+                daily_pnl_asof_date is not None and
+                daily_pnl_prev_date is not None and
+                last_day_date == daily_pnl_asof_date and
+                prev_day_date == daily_pnl_prev_date
             )
 
-        display_daily_pnl = daily_pnl_formula_twd if daily_pnl_formula_twd is not None else daily_pnl_total_raw
+            if formula_is_comparable:
+                daily_pnl_formula_twd = (
+                    (last_day.get('total_value', 0) - prev_day.get('total_value', 0)) +
+                    last_day.get('net_cashflow_twd', 0)
+                )
+
+        display_daily_pnl = daily_pnl_formula_twd if formula_is_comparable else daily_pnl_total_raw
 
         pnl_deviation = abs(display_daily_pnl - daily_pnl_total_raw)
-        if pnl_deviation > 5:
+        if formula_is_comparable and pnl_deviation > 5:
             logger.warning(
                 f"Daily PnL formula/aggregation mismatch: formula={display_daily_pnl:.2f}, "
                 f"aggregate={daily_pnl_total_raw:.2f}, deviation={pnl_deviation:.2f}"
