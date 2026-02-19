@@ -29,7 +29,7 @@ class PortfolioCalculator:
 
     def _get_effective_fx_rate(self, symbol, fx_rate):
         return self.currency_detector.get_fx_multiplier(symbol, fx_rate)
-
+    
     def _is_us_market_open(self, tw_datetime):
         tw_hour = tw_datetime.hour
         tw_weekday = tw_datetime.weekday()
@@ -43,9 +43,9 @@ class PortfolioCalculator:
         return BENCHMARK_TAX_RATE_US
 
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
-        """取得估值價格與匯率。"""
+        """取得估值價格與匯率（與先前版本相同）。"""
         is_tw = self._is_taiwan_stock(symbol)
-
+        
         if is_tw:
             price = self.market.get_price(symbol, pd.Timestamp(target_date))
             return price, 1.0
@@ -62,9 +62,10 @@ class PortfolioCalculator:
 
         fx_to_use = DEFAULT_FX_RATE
         try:
-            # [P0-FIX #3] 統一使用同一個 FX 來源：今日一律用 realtime_fx_rate，
-            # 歷史日期一律用歷史收盤匯率，確保 history 序列與聚合法 FX 一致。
+            # ✅ [v3.19] 今日資料優先使用即時匯率（含盤中與盤前）
+            # 確保曲線圖與當日損益卡片使用相同匯率
             if used_ts.date() == today:
+                # 優先使用即時匯率
                 if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
                     fx_to_use = self.market.realtime_fx_rate
                 else:
@@ -81,8 +82,7 @@ class PortfolioCalculator:
 
     def run(self):
         logger.info(f"=== 開始多群組計算 (baseline: {self.benchmark_ticker}) ===")
-
-        # [P0-FIX #3] current_fx 統一在此確定，作為「今日 FX」的唯一來源
+        
         current_fx = DEFAULT_FX_RATE
         if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
             current_fx = self.market.realtime_fx_rate
@@ -95,7 +95,7 @@ class PortfolioCalculator:
         if self.df.empty:
             logger.warning("無交易記錄")
             empty_summary = PortfolioSummary(
-                total_value=0, invested_capital=0, total_pnl=0,
+                total_value=0, invested_capital=0, total_pnl=0, 
                 twr=0, xirr=0, realized_pnl=0, benchmark_twr=0, daily_pnl_twd=0,
                 daily_pnl_breakdown={"tw_pnl_twd": 0.0, "us_pnl_twd": 0.0},
                 market_stage=current_stage, market_stage_desc=stage_desc,
@@ -107,14 +107,14 @@ class PortfolioCalculator:
                 summary=empty_summary, holdings=[], history=[], pending_dividends=[],
                 groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
             )
-
+            
         self._back_adjust_transactions_global()
 
         all_tags = set()
         for tags_str in self.df['Tag'].dropna().unique():
             if tags_str:
                 all_tags.update([t.strip() for t in tags_str.replace(';', ',').split(',') if t.strip()])
-
+        
         groups_to_calc = ['all'] + sorted(list(all_tags))
 
         final_groups_data = {}
@@ -126,7 +126,7 @@ class PortfolioCalculator:
                     lambda x: group_name in [t.strip() for t in (x or '').replace(';', ',').split(',')]
                 )
                 group_df = self.df[mask].copy()
-
+            
             if group_df.empty: continue
 
             group_start_date = group_df['Date'].min()
@@ -143,7 +143,7 @@ class PortfolioCalculator:
         if not all_data:
             logger.error("無法產出 'all' 群組數據")
             return None
-
+        
         return PortfolioSnapshot(
             updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
             base_currency=BASE_CURRENCY, exchange_rate=round(current_fx, 2),
@@ -205,39 +205,6 @@ class PortfolioCalculator:
             prev_date -= timedelta(days=1)
         return pd.Timestamp(prev_date).normalize()
 
-    @staticmethod
-    def _get_dietz_cashflow_weight(index, total_count):
-        """回傳 Modified Dietz 現金流時間權重（0~1）。"""
-        if total_count <= 0:
-            return 0.0
-        i = max(1, min(index, total_count))
-        return 1.0 - (i / (total_count + 1.0))
-
-    @classmethod
-    def _calculate_modified_dietz_return(cls, beginning_value, ending_value, cashflows):
-        """計算單一子期間的 Modified Dietz 報酬率。"""
-        if cashflows is None:
-            cashflows = []
-
-        sum_cashflow = float(sum(cashflows))
-        weighted_cashflow = 0.0
-        flow_count = len(cashflows)
-        for idx, cf in enumerate(cashflows, start=1):
-            weighted_cashflow += float(cf) * cls._get_dietz_cashflow_weight(idx, flow_count)
-
-        denominator = float(beginning_value) + weighted_cashflow
-        numerator = float(ending_value) - float(beginning_value) - sum_cashflow
-
-        if abs(denominator) <= 1e-9:
-            if abs(numerator) <= 1e-9:
-                return 0.0
-            return 0.0
-
-        md_return = numerator / denominator
-        if not np.isfinite(md_return):
-            return 0.0
-        return md_return
-
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED", stage_desc="Markets Closed", benchmark_tax_rate=0.0):
         # (1) Normalize Commission/Tax sign BEFORE any calculation
         df = df.copy()
@@ -250,24 +217,10 @@ class PortfolioCalculator:
                 logger.warning(f"[{group_name}] {col} has {neg_cnt} negative rows; normalized with abs().")
             df[col] = df[col].abs()
 
-        def _normalized_tag_key(tag_value):
-            """Normalize a transaction tag into a stable bucket key."""
-            parts = [t.strip() for t in str(tag_value or '').replace(';', ',').split(',') if t.strip()]
-            if not parts:
-                return '__untagged__'
-            return '|'.join(sorted(parts))
-
         txn_analyzer = TransactionAnalyzer(df)
-
-        # ─────────────────────────────────────────────────────────────────
-        # [P0-FIX #1] holdings 與 fifo_queues 使用相同的 holdings_key
-        #   - all 群組：key = (symbol, tag_bucket)，避免跨策略成本污染
-        #   - 子群組：key = symbol（行為與原版相同）
-        #   - 最終輸出時，合併相同 symbol 的持倉數據
-        # ─────────────────────────────────────────────────────────────────
-        holdings = {}          # holdings_key -> dict
-        fifo_queues = {}       # holdings_key -> deque
-
+        
+        holdings = {}
+        fifo_queues = {}
         invested_capital = 0.0
         total_realized_pnl_twd = 0.0
         realized_pnl_by_symbol = defaultdict(float)
@@ -276,10 +229,11 @@ class PortfolioCalculator:
         confirmed_dividends = set()
         dividend_history = []
         xirr_cashflows = []
-
+        
         cumulative_twr_factor = 1.0
         last_market_value_twd = 0.0
 
+        # Benchmark: total-return (linked / TWR-style)
         benchmark_cum_factor = 1.0
         benchmark_last_val_twd = None
         benchmark_started = False
@@ -308,20 +262,15 @@ class PortfolioCalculator:
             })
 
         last_fx = current_fx
-
+        
         for d in date_range:
             current_date = d.date()
-
+            
             try:
                 fx = self.market.fx_rates.asof(d)
                 if pd.isna(fx): fx = DEFAULT_FX_RATE
             except:
                 fx = DEFAULT_FX_RATE
-
-            # [P0-FIX #3] history 序列的今日 FX 也使用 realtime_fx_rate
-            if current_date == datetime.now(self.pnl_helper.tz_tw).date():
-                if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
-                    fx = self.market.realtime_fx_rate
 
             benchmark_p, benchmark_fx = self._get_asset_effective_price_and_fx(self.benchmark_ticker, current_date, current_fx)
             px_twd = benchmark_p * benchmark_fx
@@ -345,62 +294,45 @@ class PortfolioCalculator:
                 benchmark_last_val_twd = px_twd
 
             daily_txns = df[df['Date'].dt.date == current_date].copy()
-
+            
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
                 daily_txns['priority'] = daily_txns['Type'].map(priority_map).fillna(99)
                 daily_txns = daily_txns.sort_values(by='priority', kind='stable')
-
+            
             daily_net_cashflow_twd = 0.0
-            daily_cashflows_for_dietz = []
-
+            
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
-
-                # [P0-FIX #1] 統一使用 holdings_key
-                if group_name == 'all':
-                    hkey = (sym, _normalized_tag_key(row['Tag']))
-                else:
-                    hkey = sym
-
-                if hkey not in holdings:
-                    holdings[hkey] = {
-                        'symbol': sym,
-                        'qty': 0.0,
-                        'cost_basis_usd': 0.0,
-                        'cost_basis_twd': 0.0,
-                        'tag': row['Tag']
-                    }
-                if hkey not in fifo_queues:
-                    fifo_queues[hkey] = deque()
+                if sym not in holdings:
+                    holdings[sym] = {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': row['Tag']}
+                    fifo_queues[sym] = deque()
 
                 if row['Type'] == 'BUY':
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     cost_usd = (row['Qty'] * row['Price']) + row['Commission'] + row['Tax']
                     cost_twd = cost_usd * effective_fx
-                    holdings[hkey]['qty'] += row['Qty']
-                    holdings[hkey]['cost_basis_usd'] += cost_usd
-                    holdings[hkey]['cost_basis_twd'] += cost_twd
-                    fifo_queues[hkey].append({
-                        'qty': row['Qty'], 'price': row['Price'], 'cost_total_usd': cost_usd,
+                    holdings[sym]['qty'] += row['Qty']
+                    holdings[sym]['cost_basis_usd'] += cost_usd
+                    holdings[sym]['cost_basis_twd'] += cost_twd
+                    fifo_queues[sym].append({
+                        'qty': row['Qty'], 'price': row['Price'], 'cost_total_usd': cost_usd, 
                         'cost_total_twd': cost_twd, 'date': d
                     })
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     daily_net_cashflow_twd += cost_twd
-                    daily_cashflows_for_dietz.append(cost_twd)
 
                 elif row['Type'] == 'SELL':
-                    if not fifo_queues.get(hkey) or not fifo_queues[hkey]:
-                        logger.warning(f"[{group_name}] SELL {sym} on {current_date} but no FIFO queue for key={hkey}")
+                    if not fifo_queues.get(sym) or not fifo_queues[sym]:
                         continue
                     effective_fx = self._get_effective_fx_rate(sym, fx)
                     proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
                     remaining = row['Qty']
                     cost_sold_twd = 0.0
                     cost_sold_usd = 0.0
-                    while remaining > 1e-6 and fifo_queues[hkey]:
-                        batch = fifo_queues[hkey][0]
+                    while remaining > 1e-6 and fifo_queues[sym]:
+                        batch = fifo_queues[sym][0]
                         take = min(remaining, batch['qty'])
                         frac = take / batch['qty']
                         cost_sold_usd += batch['cost_total_usd'] * frac
@@ -410,11 +342,11 @@ class PortfolioCalculator:
                         batch['cost_total_twd'] -= batch['cost_total_twd'] * frac
                         remaining -= take
                         if batch['qty'] < 1e-6:
-                            fifo_queues[hkey].popleft()
-
-                    holdings[hkey]['qty'] -= (row['Qty'] - remaining)
-                    holdings[hkey]['cost_basis_usd'] -= cost_sold_usd
-                    holdings[hkey]['cost_basis_twd'] -= cost_sold_twd
+                            fifo_queues[sym].popleft()
+                    
+                    holdings[sym]['qty'] -= (row['Qty'] - remaining)
+                    holdings[sym]['cost_basis_usd'] -= cost_sold_usd
+                    holdings[sym]['cost_basis_twd'] -= cost_sold_twd
                     invested_capital -= cost_sold_twd
                     realized_pnl = proceeds_twd - cost_sold_twd
                     total_realized_pnl_twd += realized_pnl
@@ -422,7 +354,6 @@ class PortfolioCalculator:
                     realized_cost_by_symbol[sym] += cost_sold_twd
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
                     daily_net_cashflow_twd -= proceeds_twd
-                    daily_cashflows_for_dietz.append(-proceeds_twd)
 
                 elif row['Type'] == 'DIV':
                     effective_fx = self._get_effective_fx_rate(sym, fx)
@@ -431,106 +362,68 @@ class PortfolioCalculator:
                     realized_pnl_by_symbol[sym] += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
-                    daily_cashflows_for_dietz.append(-div_twd)
 
-            # ─────────────────────────────────────────────────────────────
-            # 自動偵測股息（未有 DIV 記錄的市場配息）
-            # [P0-FIX #2] 台股配息稅率正確設為 0%
-            # ─────────────────────────────────────────────────────────────
             date_str = d.strftime('%Y-%m-%d')
-
-            # 彙總每個 symbol 的持倉數量（跨 tag bucket）
-            qty_by_symbol = defaultdict(float)
-            for hkey, h_data in holdings.items():
-                sym = h_data['symbol'] if 'symbol' in h_data else (hkey[0] if isinstance(hkey, tuple) else hkey)
-                if h_data['qty'] > 1e-6:
-                    qty_by_symbol[sym] += h_data['qty']
-
-            for sym, total_qty in qty_by_symbol.items():
-                if total_qty < 1e-6:
+            for sym, h_data in holdings.items():
+                if h_data['qty'] < 1e-6:
                     continue
-
+                    
                 div_per_share = self.market.get_dividend(sym, d)
                 if div_per_share <= 0:
                     continue
-
+                
                 effective_fx = self._get_effective_fx_rate(sym, fx)
                 div_key = f"{sym}_{date_str}"
                 is_confirmed = div_key in confirmed_dividends
-
+                
                 split_factor = self.market.get_transaction_multiplier(sym, d)
-                # [P0-FIX #2] 使用已拆股調整的持倉數量，
-                # total_qty 已是拆股調整後的股數，Dividends 欄位亦對應調整後股數，
-                # 因此直接相乘，不需再除以 split_factor。
-                shares_for_div = total_qty
-
-                # [P0-FIX #2] 台股稅率 0%，美股 30%
-                is_tw_sym = self._is_taiwan_stock(sym)
-                div_tax_rate = BENCHMARK_TAX_RATE_TW if is_tw_sym else BENCHMARK_TAX_RATE_US
-
-                total_gross = shares_for_div * div_per_share
-                total_net_origin = total_gross * (1 - div_tax_rate)   # 台股 = gross * 1.0
-                total_net_twd = total_net_origin * effective_fx
+                shares_at_ex = h_data['qty'] / split_factor
+                
+                total_gross = shares_at_ex * div_per_share
+                total_net_usd = total_gross * 0.7
+                total_net_twd = total_net_usd * effective_fx
 
                 dividend_history.append({
                     'symbol': sym,
                     'ex_date': date_str,
-                    'shares_held': total_qty,
+                    'shares_held': h_data['qty'],
                     'dividend_per_share_gross': div_per_share,
                     'total_gross': round(total_gross, 2),
-                    'total_net_usd': round(total_net_origin, 2),
+                    'total_net_usd': round(total_net_usd, 2),
                     'total_net_twd': round(total_net_twd, 0),
                     'fx_rate': fx,
                     'status': 'confirmed' if is_confirmed else 'pending'
                 })
-
+                
                 if not is_confirmed:
                     total_realized_pnl_twd += total_net_twd
                     realized_pnl_by_symbol[sym] += total_net_twd
                     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                     daily_net_cashflow_twd -= total_net_twd
-                    daily_cashflows_for_dietz.append(-total_net_twd)
 
-            # ─────────────────────────────────────────────────────────────
-            # 計算當日市值（合併跨 tag bucket 的相同 symbol）
-            # ─────────────────────────────────────────────────────────────
             current_market_value_twd = 0.0
             logging_fx = fx
-
-            # 先彙總各 symbol 的總持倉
-            mv_by_symbol = defaultdict(float)
-            for hkey, h in holdings.items():
-                sym = h['symbol'] if 'symbol' in h else (hkey[0] if isinstance(hkey, tuple) else hkey)
+            
+            for sym, h in holdings.items():
                 if h['qty'] > 1e-6:
                     price, effective_fx = self._get_asset_effective_price_and_fx(sym, current_date, current_fx)
-                    mv_by_symbol[sym] += h['qty'] * price * effective_fx
-                    if not self._is_taiwan_stock(sym):
-                        logging_fx = effective_fx
-
-            current_market_value_twd = sum(mv_by_symbol.values())
-
+                    current_market_value_twd += h['qty'] * price * effective_fx
+                    logging_fx = effective_fx if not self._is_taiwan_stock(sym) else logging_fx
+            
             period_hpr_factor = 1.0
-            md_return = self._calculate_modified_dietz_return(
-                beginning_value=last_market_value_twd,
-                ending_value=current_market_value_twd,
-                cashflows=daily_cashflows_for_dietz
-            )
-            period_hpr_factor = 1.0 + md_return
-
+            if last_market_value_twd > 1e-9:
+                period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
+            elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
+                period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
+            
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
-
+            
             cumulative_twr_factor *= period_hpr_factor
             prev_market_value_twd = last_market_value_twd
             last_market_value_twd = current_market_value_twd
-
-            # 未實現損益：從 holdings dict 彙總（按 hkey）
-            total_cost_held = sum(
-                h['cost_basis_twd']
-                for h in holdings.values()
-                if h['qty'] > 1e-6
-            )
-            unrealized_pnl = current_market_value_twd - total_cost_held
+            
+            unrealized_pnl = current_market_value_twd - sum(h['cost_basis_twd'] for h in holdings.values() if h['qty'] > 1e-6)
             total_pnl = unrealized_pnl + total_realized_pnl_twd
 
             history_data.append({
@@ -538,33 +431,17 @@ class PortfolioCalculator:
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
                 "realized_pnl": round(total_realized_pnl_twd, 0),
                 "unrealized_pnl": round(unrealized_pnl, 0),
-                "twr": round((cumulative_twr_factor - 1) * 100, 2),
+                "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(logging_fx, 4),
+                # 使用者定義: 買進為負、賣出為正
                 "net_cashflow_twd": round(-daily_net_cashflow_twd, 0),
+                # 當日損益標準定義: 當天淨值 - 前一天淨值 + 當天現金流
                 "daily_pnl_formula_twd": round(current_market_value_twd - prev_market_value_twd + (-daily_net_cashflow_twd), 0) if prev_market_value_twd > 1e-9 else round(current_market_value_twd + (-daily_net_cashflow_twd), 0)
             })
 
-        # ─────────────────────────────────────────────────────────────────
-        # 建立 final_holdings：合併跨 tag bucket 的相同 symbol
-        # ─────────────────────────────────────────────────────────────────
         final_holdings = []
         current_holdings_cost_sum = 0.0
-
-        # 先按 symbol 彙總所有 bucket 的數量與成本
-        merged: dict[str, dict] = {}
-        for hkey, h in holdings.items():
-            sym = h['symbol'] if 'symbol' in h else (hkey[0] if isinstance(hkey, tuple) else hkey)
-            if sym not in merged:
-                merged[sym] = {
-                    'qty': 0.0,
-                    'cost_basis_usd': 0.0,
-                    'cost_basis_twd': 0.0,
-                    'tag': h.get('tag', '')
-                }
-            merged[sym]['qty'] += h['qty']
-            merged[sym]['cost_basis_usd'] += h['cost_basis_usd']
-            merged[sym]['cost_basis_twd'] += h['cost_basis_twd']
 
         tw_now = datetime.now(self.pnl_helper.tz_tw)
         today = tw_now.date()
@@ -580,13 +457,15 @@ class PortfolioCalculator:
 
         daily_pnl_asof_date = None
         daily_pnl_prev_date = None
-        unified_fx_prev_ts = None
+        unified_fx_prev_ts = None  # ✅ [v3.20] 統一匯率前日基準
         try:
             if hasattr(self.market, 'get_price_asof') and hasattr(self.market, 'get_prev_trading_date'):
                 _bp, used_bm = self.market.get_price_asof(self.benchmark_ticker, pd.Timestamp(pnl_base_date))
                 prev_bm = self.market.get_prev_trading_date(self.benchmark_ticker, used_bm)
                 daily_pnl_asof_date = pd.to_datetime(used_bm).strftime('%Y-%m-%d')
                 daily_pnl_prev_date = pd.to_datetime(prev_bm).strftime('%Y-%m-%d')
+                # ✅ [v3.20] 統一使用 benchmark 的前日交易日作為匯率參考日
+                # 解決不同標的因數據可用性造成 fx_prev 日期不一致的問題
                 unified_fx_prev_ts = prev_bm
         except Exception as e:
             logger.debug(f"Failed to get pnl date info for benchmark: {e}")
@@ -607,8 +486,10 @@ class PortfolioCalculator:
                     tw_asof_date = pd.to_datetime(used_ts).date()
         except Exception as e:
             logger.debug(f"Failed to get asof dates: {e}")
+            us_asof_date = None
+            tw_asof_date = None
 
-        candidate_symbols = set([sym for sym, h in merged.items() if h['qty'] > 1e-4])
+        candidate_symbols = set([k for k, v in holdings.items() if v['qty'] > 1e-4])
 
         try:
             if us_asof_date:
@@ -627,11 +508,11 @@ class PortfolioCalculator:
         daily_pnl_total_raw = 0.0
         daily_pnl_tw_raw = 0.0
         daily_pnl_us_raw = 0.0
-        daily_pnl_fx_raw = 0.0
+        daily_pnl_fx_raw = 0.0  # ✅ [v3.19] 匯率損益分量
 
         for sym in candidate_symbols:
-            h = merged.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
-
+            h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
+            
             is_tw = self._is_taiwan_stock(sym)
 
             curr_p = self.market.get_price(sym, pd.Timestamp(pnl_base_date))
@@ -655,7 +536,8 @@ class PortfolioCalculator:
                 fx_used = DEFAULT_FX_RATE
                 fx_prev = DEFAULT_FX_RATE
                 try:
-                    # [P0-FIX #3] 當日 FX 統一使用 realtime_fx_rate（與 history 序列一致）
+                    # ✅ [v3.19] 盤前也使用即時匯率計算市值
+                    # 只要有 realtime_fx_rate，就使用它（無論盤中或盤前）
                     if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
                         fx_used = self.market.realtime_fx_rate
                     elif used_ts.date() == pnl_base_date:
@@ -664,6 +546,7 @@ class PortfolioCalculator:
                         fx_used = self.market.fx_rates.asof(used_ts)
                         if pd.isna(fx_used): fx_used = DEFAULT_FX_RATE
 
+                    # ✅ [v3.20] 使用統一的 benchmark 前日匯率，確保所有美股一致
                     fx_prev_lookup_ts = unified_fx_prev_ts if unified_fx_prev_ts else prev_ts
                     fx_prev = self.market.fx_rates.asof(pd.Timestamp(fx_prev_lookup_ts))
                     if pd.isna(fx_prev): fx_prev = DEFAULT_FX_RATE
@@ -681,6 +564,8 @@ class PortfolioCalculator:
 
             unrealized_pnl_today = 0.0
             if position_snap.qty > 0:
+                # ✅ [v3.18] 使用加權基準價計算未實現損益
+                # 舊倉用前日收盤價，新倉用成本價，確保新買入當日不會虛增損益
                 base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
                 curr_mv_twd = position_snap.qty * curr_p * effective_fx
                 base_mv_twd = position_snap.qty * base_price * prev_effective_fx
@@ -688,16 +573,20 @@ class PortfolioCalculator:
 
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl
-
+            
+            # ✅ [v3.19] 計算匯率損益分量（僅美股）
+            # 匯率損益 = 持倉市值 × (當前匯率 - 前日匯率) / 當前匯率
             fx_pnl_contribution = 0.0
             if not is_tw and position_snap.qty > 0 and effective_fx != prev_effective_fx:
+                # 純匯率變動帶來的損益（假設股價不變）
                 base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
                 fx_pnl_contribution = position_snap.qty * base_price * (effective_fx - prev_effective_fx)
                 daily_pnl_fx_raw += fx_pnl_contribution
-
+            
             if is_tw:
                 daily_pnl_tw_raw += total_daily_pnl
             else:
+                # 美股損益扣除匯率部分，避免重複計算
                 daily_pnl_us_raw += (total_daily_pnl - fx_pnl_contribution)
 
             try:
@@ -719,51 +608,36 @@ class PortfolioCalculator:
             pnl_cost_basis = cost + realized_cost_by_symbol.get(sym, 0.0)
 
             if h['qty'] > 1e-4 or abs(total_daily_pnl) > 1:
-                final_holdings.append(HoldingPosition(
+                 final_holdings.append(HoldingPosition(
                     symbol=sym, tag=h.get('tag'), currency=currency, qty=round(h['qty'], 2),
                     market_value_twd=round(mkt_val, 0), pnl_twd=round(total_pnl_symbol, 0),
                     pnl_percent=round(total_pnl_symbol / pnl_cost_basis * 100, 2) if pnl_cost_basis > 0 else 0,
-                    current_price_origin=round(curr_p, 2),
+                    current_price_origin=round(curr_p, 2), 
                     avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
                     daily_change_percent=daily_change_pct, daily_pl_twd=round(total_daily_pnl, 0)
                 ))
 
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
-
         daily_pnl_formula_twd = None
-        formula_is_comparable = False
         if len(history_data) >= 2:
             last_day = history_data[-1]
             prev_day = history_data[-2]
-            last_day_date = str(last_day.get('date', ''))
-            prev_day_date = str(prev_day.get('date', ''))
-
-            formula_is_comparable = (
-                daily_pnl_asof_date is not None and
-                daily_pnl_prev_date is not None and
-                last_day_date == daily_pnl_asof_date and
-                prev_day_date == daily_pnl_prev_date
+            daily_pnl_formula_twd = (
+                (last_day.get('total_value', 0) - prev_day.get('total_value', 0)) +
+                last_day.get('net_cashflow_twd', 0)
             )
 
-            if formula_is_comparable:
-                daily_pnl_formula_twd = (
-                    (last_day.get('total_value', 0) - prev_day.get('total_value', 0)) +
-                    last_day.get('net_cashflow_twd', 0)
-                )
-
-        display_daily_pnl = daily_pnl_formula_twd if formula_is_comparable else daily_pnl_total_raw
+        display_daily_pnl = daily_pnl_formula_twd if daily_pnl_formula_twd is not None else daily_pnl_total_raw
 
         pnl_deviation = abs(display_daily_pnl - daily_pnl_total_raw)
-        if formula_is_comparable and pnl_deviation > 5:
+        if pnl_deviation > 5:
             logger.warning(
                 f"Daily PnL formula/aggregation mismatch: formula={display_daily_pnl:.2f}, "
                 f"aggregate={daily_pnl_total_raw:.2f}, deviation={pnl_deviation:.2f}"
             )
-
-        self.validator.validate_daily_balance(merged, invested_capital, current_holdings_cost_sum)
-
-        # [IMPROVEMENT] XIRR 失敗時給出明確警告而非靜默返回 0
+        self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
+        
         xirr_val = 0.0
         if xirr_cashflows:
             curr_val_sum = sum(h.market_value_twd for h in final_holdings)
@@ -771,25 +645,23 @@ class PortfolioCalculator:
             xirr_cashflows_calc.append({'date': datetime.now(), 'amount': curr_val_sum})
             try:
                 xirr_res = xirr([x['date'] for x in xirr_cashflows_calc], [x['amount'] for x in xirr_cashflows_calc])
-                if xirr_res is not None and np.isfinite(xirr_res):
-                    xirr_val = round(xirr_res * 100, 2)
-                else:
-                    logger.warning(f"[{group_name}] XIRR 返回非有限值: {xirr_res}")
-            except Exception as e:
-                logger.warning(f"[{group_name}] XIRR 計算失敗: {e}. Cashflows count={len(xirr_cashflows_calc)}")
+                xirr_val = round(xirr_res * 100, 2)
+            except: pass
 
         current_total_value = sum(h.market_value_twd for h in final_holdings)
         current_invested = current_holdings_cost_sum
         current_total_pnl = current_total_value - current_invested + total_realized_pnl_twd
-
+        
+        # ✅ [v3.18] 後端計算當日報酬率，避免前端依賴 history 索引
         daily_pnl_base_value = None
         daily_pnl_roi_percent = None
         if len(history_data) >= 2:
-            prev_day_data = history_data[-2]
+            # 找到前一個交易日的總資產淨值作為基準
+            prev_day_data = history_data[-2]  # 倒數第二筆是前一日
             daily_pnl_base_value = prev_day_data.get('total_value', 0)
             if daily_pnl_base_value and daily_pnl_base_value > 0:
                 daily_pnl_roi_percent = round((display_daily_pnl / daily_pnl_base_value) * 100, 2)
-
+        
         summary = PortfolioSummary(
             total_value=round(current_total_value, 0),
             invested_capital=round(current_invested, 0),
@@ -801,9 +673,9 @@ class PortfolioCalculator:
             daily_pnl_twd=round(display_daily_pnl, 0),
             daily_pnl_breakdown=(
                 {
-                    "tw_pnl_twd": round(daily_pnl_tw_raw, 0),
+                    "tw_pnl_twd": round(daily_pnl_tw_raw, 0), 
                     "us_pnl_twd": round(daily_pnl_us_raw, 0),
-                    "fx_pnl_twd": round(daily_pnl_fx_raw, 0)
+                    "fx_pnl_twd": round(daily_pnl_fx_raw, 0)  # ✅ [v3.19] 新增匯率損益
                 } if pnl_deviation <= 5 else None
             ),
             market_stage=current_stage,
@@ -813,14 +685,15 @@ class PortfolioCalculator:
             daily_pnl_roi_percent=daily_pnl_roi_percent,
             daily_pnl_base_value=round(daily_pnl_base_value, 0) if daily_pnl_base_value else None
         )
-
+        
         self.validator.validate_twr_calculation(history_data)
+        # ✅ [v3.19] 驗證台/美/匯率損益分量加總
         if pnl_deviation <= 5:
             self.validator.validate_daily_pnl_breakdown(
                 display_daily_pnl, daily_pnl_tw_raw, daily_pnl_us_raw, daily_pnl_fx_raw
             )
-
+        
         return PortfolioGroupData(
             summary=summary, holdings=final_holdings, history=history_data,
-            pending_dividends=[DividendRecord(**d) for d in dividend_history if d['status'] == 'pending']
+            pending_dividends=[DividendRecord(**d) for d in dividend_history if d['status']=='pending']
         )
