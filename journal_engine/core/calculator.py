@@ -571,6 +571,10 @@ class PortfolioCalculator:
                 base_mv_twd = position_snap.qty * base_price * prev_effective_fx
                 unrealized_pnl_today = curr_mv_twd - base_mv_twd
 
+            # 持倉列上的「當日損益」應與「漲跌幅 / 市值」口徑一致，
+            # 僅呈現目前仍持有部位的未實現變動；
+            # 已實現（當日減碼/當沖）損益仍計入 summary 的整體當日損益。
+            holding_daily_pnl = unrealized_pnl_today
             total_daily_pnl = realized_pnl_today + unrealized_pnl_today
             daily_pnl_total_raw += total_daily_pnl
             
@@ -615,7 +619,7 @@ class PortfolioCalculator:
                     current_price_origin=round(curr_p, 2), 
                     avg_cost_usd=round(h['cost_basis_usd'] / h['qty'], 2) if h['qty'] > 0 else 0,
                     prev_close_price=round(prev_p, 2), daily_change_usd=round(curr_p - prev_p, 2),
-                    daily_change_percent=daily_change_pct, daily_pl_twd=round(total_daily_pnl, 0)
+                    daily_change_percent=daily_change_pct, daily_pl_twd=round(holding_daily_pnl, 0)
                 ))
 
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
