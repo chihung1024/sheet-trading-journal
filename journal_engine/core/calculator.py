@@ -15,7 +15,7 @@ from .validator import PortfolioValidator
 logger = logging.getLogger(__name__)
 
 class PortfolioCalculator:
-    def __init__(self, transactions_df, market_client, benchmark_ticker="SPY", api_client=None):
+    def __init__(self, transactions_df, market_client, benchmark_ticker="SPY", api_client=None, oversell_policy="CLAMP"):
         self.df = transactions_df
         self.market = market_client
         self.benchmark_ticker = benchmark_ticker
@@ -23,6 +23,9 @@ class PortfolioCalculator:
         self.pnl_helper = DailyPnLHelper()
         self.currency_detector = CurrencyDetector()
         self.validator = PortfolioValidator()
+        self.oversell_policy = str(oversell_policy or "CLAMP").upper()
+        if self.oversell_policy not in {"CLAMP", "ERROR"}:
+            raise ValueError(f"Invalid oversell_policy={oversell_policy}. Use 'CLAMP' or 'ERROR'.")
 
     def _is_taiwan_stock(self, symbol):
         return self.currency_detector.is_base_currency(symbol)
@@ -205,6 +208,45 @@ class PortfolioCalculator:
             prev_date -= timedelta(days=1)
         return pd.Timestamp(prev_date).normalize()
 
+    @staticmethod
+    def _get_dietz_cashflow_weight(flow_index: int, flow_count: int) -> float:
+        """Return Modified Dietz weight for a cashflow in a sub-period.
+
+        With only daily granularity (no intraday timestamp), we approximate each
+        day's cashflows as equally spaced events inside the period.
+        """
+        if flow_count <= 0:
+            return 0.0
+        if flow_count == 1:
+            return 0.5
+        # equally-spaced timestamps in (0, 1), e.g. n=3 -> 0.25,0.5,0.75
+        t_i = flow_index / (flow_count + 1)
+        return 1.0 - t_i
+
+    @classmethod
+    def _calculate_modified_dietz_return(cls, beginning_value: float, ending_value: float, cashflows: list[float]) -> float:
+        """Calculate Modified Dietz return for a sub-period.
+
+        r = (V1 - V0 - ΣCF) / (V0 + Σ(w_i * CF_i))
+        """
+        if beginning_value < 0:
+            return 0.0
+
+        flow_count = len(cashflows)
+        weighted_cashflows = 0.0
+        for idx, cf in enumerate(cashflows, start=1):
+            weighted_cashflows += cls._get_dietz_cashflow_weight(idx, flow_count) * cf
+
+        denominator = beginning_value + weighted_cashflows
+        if abs(denominator) < 1e-9:
+            return 0.0
+
+        numerator = ending_value - beginning_value - sum(cashflows)
+        r = numerator / denominator
+        if not np.isfinite(r):
+            return 0.0
+        return r
+
     def _calculate_single_portfolio(self, df, date_range, current_fx, group_name="unknown", current_stage="CLOSED", stage_desc="Markets Closed", benchmark_tax_rate=0.0):
         # (1) Normalize Commission/Tax sign BEFORE any calculation
         df = df.copy()
@@ -301,6 +343,7 @@ class PortfolioCalculator:
                 daily_txns = daily_txns.sort_values(by='priority', kind='stable')
             
             daily_net_cashflow_twd = 0.0
+            daily_cashflows_for_dietz = []
             
             for _, row in daily_txns.iterrows():
                 sym = row['Symbol']
@@ -322,13 +365,34 @@ class PortfolioCalculator:
                     invested_capital += cost_twd
                     xirr_cashflows.append({'date': d, 'amount': -cost_twd})
                     daily_net_cashflow_twd += cost_twd
+                    daily_cashflows_for_dietz.append(cost_twd)
 
                 elif row['Type'] == 'SELL':
                     if not fifo_queues.get(sym) or not fifo_queues[sym]:
+                        logger.warning(f"[{group_name}] {sym} on {current_date}: SELL ignored due to empty position.")
                         continue
+
+                    sell_qty_requested = float(row['Qty'])
+                    available_qty = sum(batch['qty'] for batch in fifo_queues[sym])
+                    executable_qty = min(sell_qty_requested, available_qty)
+                    if executable_qty <= 1e-9:
+                        logger.warning(f"[{group_name}] {sym} on {current_date}: SELL ignored (available=0).")
+                        continue
+                    if executable_qty + 1e-9 < sell_qty_requested:
+                        msg = (
+                            f"Oversell detected for {sym} on {current_date}: "
+                            f"requested={sell_qty_requested}, executable={executable_qty}"
+                        )
+                        if self.oversell_policy == "ERROR":
+                            raise ValueError(msg)
+                        logger.warning(f"[{group_name}] {msg}")
+
+                    execution_ratio = executable_qty / sell_qty_requested if sell_qty_requested > 0 else 0.0
                     effective_fx = self._get_effective_fx_rate(sym, fx)
-                    proceeds_twd = ((row['Qty'] * row['Price']) - row['Commission'] - row['Tax']) * effective_fx
-                    remaining = row['Qty']
+                    executed_commission = row['Commission'] * execution_ratio
+                    executed_tax = row['Tax'] * execution_ratio
+                    proceeds_twd = ((executable_qty * row['Price']) - executed_commission - executed_tax) * effective_fx
+                    remaining = executable_qty
                     cost_sold_twd = 0.0
                     cost_sold_usd = 0.0
                     while remaining > 1e-6 and fifo_queues[sym]:
@@ -344,7 +408,8 @@ class PortfolioCalculator:
                         if batch['qty'] < 1e-6:
                             fifo_queues[sym].popleft()
                     
-                    holdings[sym]['qty'] -= (row['Qty'] - remaining)
+                    executed_qty = executable_qty - remaining
+                    holdings[sym]['qty'] -= executed_qty
                     holdings[sym]['cost_basis_usd'] -= cost_sold_usd
                     holdings[sym]['cost_basis_twd'] -= cost_sold_twd
                     invested_capital -= cost_sold_twd
@@ -354,6 +419,7 @@ class PortfolioCalculator:
                     realized_cost_by_symbol[sym] += cost_sold_twd
                     xirr_cashflows.append({'date': d, 'amount': proceeds_twd})
                     daily_net_cashflow_twd -= proceeds_twd
+                    daily_cashflows_for_dietz.append(-proceeds_twd)
 
                 elif row['Type'] == 'DIV':
                     effective_fx = self._get_effective_fx_rate(sym, fx)
@@ -362,6 +428,7 @@ class PortfolioCalculator:
                     realized_pnl_by_symbol[sym] += div_twd
                     xirr_cashflows.append({'date': d, 'amount': div_twd})
                     daily_net_cashflow_twd -= div_twd
+                    daily_cashflows_for_dietz.append(-div_twd)
 
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
@@ -400,6 +467,7 @@ class PortfolioCalculator:
                     realized_pnl_by_symbol[sym] += total_net_twd
                     xirr_cashflows.append({'date': d, 'amount': total_net_twd})
                     daily_net_cashflow_twd -= total_net_twd
+                    daily_cashflows_for_dietz.append(-total_net_twd)
 
             current_market_value_twd = 0.0
             logging_fx = fx
@@ -412,10 +480,15 @@ class PortfolioCalculator:
             
             period_hpr_factor = 1.0
             if last_market_value_twd > 1e-9:
-                period_hpr_factor = (current_market_value_twd - daily_net_cashflow_twd) / last_market_value_twd
+                period_return = self._calculate_modified_dietz_return(
+                    beginning_value=last_market_value_twd,
+                    ending_value=current_market_value_twd,
+                    cashflows=daily_cashflows_for_dietz,
+                )
+                period_hpr_factor = 1.0 + period_return
             elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
                 period_hpr_factor = current_market_value_twd / daily_net_cashflow_twd
-            
+
             if not np.isfinite(period_hpr_factor):
                 period_hpr_factor = 1.0
             

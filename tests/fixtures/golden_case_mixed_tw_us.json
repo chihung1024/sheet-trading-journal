@@ -75,6 +75,6 @@
   "expected": {
     "total_value": 11800,
     "realized_pnl": 56,
-    "daily_pnl_twd": 0
+    "daily_pnl_twd": 56
   }
 }
