@@ -93,14 +93,30 @@ class MarketDataClient:
 
                     # 盤中即時價覆蓋最後一筆日線
                     try:
-                        intraday = ticker_obj.history(period="1d", interval="1m")
-                        if not intraday.empty:
-                            latest_price = float(intraday['Close'].iloc[-1])
+                        latest_price = None
+                        
+                        # 1. 優先使用 fast_info 獲取即時價格 (速度最快，較不易被 Ban)
+                        try:
+                            raw_price = ticker_obj.fast_info.get('last_price') or ticker_obj.fast_info.get('regular_market_price')
+                            if raw_price:
+                                latest_price = float(raw_price)
+                        except Exception:
+                            pass
+
+                        # 2. 如果 fast_info 失敗，退回使用 1m K線
+                        if latest_price is None:
+                            intraday = ticker_obj.history(period="1d", interval="1m")
+                            if not intraday.empty:
+                                latest_price = float(intraday['Close'].iloc[-1])
+
+                        # 3. 覆蓋最後一筆日線資料
+                        if latest_price is not None:
                             last_date = hist.index[-1]
                             hist.at[last_date, 'Close'] = latest_price
                             if 'Adj Close' in hist.columns:
                                 hist.at[last_date, 'Adj Close'] = latest_price
                             print(f"[{t}] ✅ 即時報價覆蓋: {latest_price:.2f}")
+
                     except Exception:
                         pass
 
