@@ -286,6 +286,7 @@ class PortfolioCalculator:
                 "date": prev_trading_day.strftime('%Y-%m-%d'), "total_value": 0,
                 "invested": 0, "net_profit": 0, "realized_pnl": 0, "unrealized_pnl": 0,
                 "twr": 0.0, "benchmark_twr": 0.0, "fx_rate": round(prev_benchmark_fx if prev_benchmark_fx else DEFAULT_FX_RATE, 4),
+                "_raw_fx_rate": prev_benchmark_fx if prev_benchmark_fx else DEFAULT_FX_RATE,  # ✅ 加入原始精度匯率
                 "net_cashflow_twd": 0, "daily_pnl_formula_twd": 0
             })
 
@@ -502,6 +503,7 @@ class PortfolioCalculator:
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(logging_fx, 4),
+                "_raw_fx_rate": logging_fx,  # ✅ 加入原始精度匯率
                 "net_cashflow_twd": round(-daily_net_cashflow_twd, 0),
                 "daily_pnl_formula_twd": round(current_market_value_twd - prev_market_value_twd + (-daily_net_cashflow_twd), 0) if prev_market_value_twd > 1e-9 else round(current_market_value_twd + (-daily_net_cashflow_twd), 0)
             })
@@ -522,13 +524,14 @@ class PortfolioCalculator:
                 logger.debug(f"Failed to derive pnl dates from history: {e}")
 
         # ✅ [核心修正] 強制取得歷史迴圈結算時確切使用的 FX Rate，消除匯率時間差錯位
+        # 這裡改用 .get('_raw_fx_rate') 以確保取得未四捨五入的最精準原始匯率
         last_fx_used = current_fx
         prev_fx_used = current_fx
         if len(history_data) >= 2:
-            last_fx_used = history_data[-1].get('fx_rate', current_fx)
-            prev_fx_used = history_data[-2].get('fx_rate', current_fx)
+            last_fx_used = history_data[-1].get('_raw_fx_rate', history_data[-1].get('fx_rate', current_fx))
+            prev_fx_used = history_data[-2].get('_raw_fx_rate', history_data[-2].get('fx_rate', current_fx))
         elif len(history_data) == 1:
-            last_fx_used = history_data[-1].get('fx_rate', current_fx)
+            last_fx_used = history_data[-1].get('_raw_fx_rate', history_data[-1].get('fx_rate', current_fx))
             prev_fx_used = last_fx_used
 
         us_asof_date = None
