@@ -286,7 +286,7 @@ class PortfolioCalculator:
                 "date": prev_trading_day.strftime('%Y-%m-%d'), "total_value": 0,
                 "invested": 0, "net_profit": 0, "realized_pnl": 0, "unrealized_pnl": 0,
                 "twr": 0.0, "benchmark_twr": 0.0, "fx_rate": round(prev_benchmark_fx if prev_benchmark_fx else DEFAULT_FX_RATE, 4),
-                "_raw_fx_rate": prev_benchmark_fx if prev_benchmark_fx else DEFAULT_FX_RATE,  # ✅ 加入原始精度匯率
+                "_raw_fx_rate": prev_benchmark_fx if prev_benchmark_fx else DEFAULT_FX_RATE,
                 "net_cashflow_twd": 0, "daily_pnl_formula_twd": 0
             })
 
@@ -321,6 +321,9 @@ class PortfolioCalculator:
                 benchmark_cum_factor *= bm_hpr
                 benchmark_twr = (benchmark_cum_factor - 1) * 100
                 benchmark_last_val_twd = px_twd
+
+            # ✅ [修正] 在處理今日交易前，先快照「期初股數 (begin_qty)」，這才是真正有資格領股息的部位
+            begin_qtys_for_dividend = {sym: h['qty'] for sym, h in holdings.items()}
 
             daily_txns = df[df['Date'].dt.date == current_date].copy()
             
@@ -428,7 +431,9 @@ class PortfolioCalculator:
 
             date_str = d.strftime('%Y-%m-%d')
             for sym, h_data in holdings.items():
-                if h_data['qty'] < 1e-6:
+                # ✅ [修正] 改用期初股數判斷配息資格，避免當日買賣造成股息錯亂
+                eligible_qty = begin_qtys_for_dividend.get(sym, 0.0)
+                if eligible_qty < 1e-6:
                     continue
                     
                 div_per_share = self.market.get_dividend(sym, d)
@@ -440,7 +445,8 @@ class PortfolioCalculator:
                 is_confirmed = div_key in confirmed_dividends
                 
                 split_factor = self.market.get_transaction_multiplier(sym, d)
-                shares_at_ex = h_data['qty'] / split_factor
+                # ✅ [修正] 使用 eligible_qty 計算除權息
+                shares_at_ex = eligible_qty / split_factor
                 
                 total_gross = shares_at_ex * div_per_share
                 total_net_usd = total_gross * 0.7
@@ -449,7 +455,7 @@ class PortfolioCalculator:
                 dividend_history.append({
                     'symbol': sym,
                     'ex_date': date_str,
-                    'shares_held': h_data['qty'],
+                    'shares_held': eligible_qty,  # ✅ 顯示除權息時持有的正確股數
                     'dividend_per_share_gross': div_per_share,
                     'total_gross': round(total_gross, 2),
                     'total_net_usd': round(total_net_usd, 2),
@@ -503,8 +509,11 @@ class PortfolioCalculator:
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(logging_fx, 4),
-                "_raw_fx_rate": logging_fx,  # ✅ 加入原始精度匯率
+                "_raw_fx_rate": logging_fx,
                 "net_cashflow_twd": round(-daily_net_cashflow_twd, 0),
+                # ✅ [修正] 加入隱藏的原始精度，杜絕 1~2 元的捨入誤差
+                "_raw_total_value": current_market_value_twd,
+                "_raw_net_cashflow_twd": -daily_net_cashflow_twd,
                 "daily_pnl_formula_twd": round(current_market_value_twd - prev_market_value_twd + (-daily_net_cashflow_twd), 0) if prev_market_value_twd > 1e-9 else round(current_market_value_twd + (-daily_net_cashflow_twd), 0)
             })
 
@@ -524,7 +533,6 @@ class PortfolioCalculator:
                 logger.debug(f"Failed to derive pnl dates from history: {e}")
 
         # ✅ [核心修正] 強制取得歷史迴圈結算時確切使用的 FX Rate，消除匯率時間差錯位
-        # 這裡改用 .get('_raw_fx_rate') 以確保取得未四捨五入的最精準原始匯率
         last_fx_used = current_fx
         prev_fx_used = current_fx
         if len(history_data) >= 2:
@@ -619,24 +627,25 @@ class PortfolioCalculator:
                 elif r['Type'] == 'DIV':
                     div_income_twd += (r['Qty'] * r['Price']) * effective_fx
 
+            end_qty = h['qty']
+            begin_qty = end_qty - buy_qty + sell_qty
+            if abs(begin_qty) < 1e-6:
+                begin_qty = 0.0
+
             # Pending Dividends 也必須視作正現金流
             div_per_share_today = self.market.get_dividend(sym, pd.Timestamp(pnl_base_date))
             if div_per_share_today > 0:
                 div_key = f"{sym}_{pnl_base_date.strftime('%Y-%m-%d')}"
                 if div_key not in confirmed_dividends:
                     split_factor = self.market.get_transaction_multiplier(sym, pd.Timestamp(pnl_base_date))
-                    shares_at_ex = h['qty'] / split_factor
+                    # ✅ [修正] 除權息必須基於 begin_qty (昨日留倉)，而非今日買賣後的 h['qty']
+                    shares_at_ex = begin_qty / split_factor
                     total_gross = shares_at_ex * div_per_share_today
                     total_net_usd = total_gross * 0.7
                     div_income_twd += total_net_usd * effective_fx
 
             # 該標的當日淨現金流 = 買入成本 - 賣出所得 - 股息收入 (正數代表現金轉股票)
             sym_net_cf = buy_cost_twd - sell_proceeds_twd - div_income_twd
-            
-            end_qty = h['qty']
-            begin_qty = end_qty - buy_qty + sell_qty
-            if abs(begin_qty) < 1e-6:
-                begin_qty = 0.0
                 
             end_mv_twd = end_qty * curr_p * effective_fx
             begin_mv_twd = begin_qty * prev_p * prev_effective_fx
@@ -707,9 +716,11 @@ class PortfolioCalculator:
         if len(history_data) >= 2:
             last_day = history_data[-1]
             prev_day = history_data[-2]
+            # ✅ [修正] 提取 _raw 欄位進行無損相減，徹底將 pnl_deviation 逼近 0.00
             daily_pnl_formula_twd = (
-                (last_day.get('total_value', 0) - prev_day.get('total_value', 0)) +
-                last_day.get('net_cashflow_twd', 0)
+                (last_day.get('_raw_total_value', last_day.get('total_value', 0)) - 
+                 prev_day.get('_raw_total_value', prev_day.get('total_value', 0))) +
+                last_day.get('_raw_net_cashflow_twd', last_day.get('net_cashflow_twd', 0))
             )
 
         display_daily_pnl = daily_pnl_formula_twd if daily_pnl_formula_twd is not None else daily_pnl_total_raw
