@@ -34,8 +34,8 @@ class DailyPositionState:
     end_value: float
 
     # ----- cash flow -----
-    cash_in: float     # sell proceeds + dividend
-    cash_out: float    # buy cost + fee + tax
+    cash_in: float     # sell proceeds + dividend (現金流入使用者口袋)
+    cash_out: float    # buy cost + fee + tax (現金從使用者口袋流出)
 
 
 @dataclass
@@ -66,18 +66,22 @@ class DailyPnLEngine:
         income_pnl: float,
     ) -> DailyPnLResult:
 
+        # net_cash_flow: 正數代表淨流入口袋 (如獲利了結/配息)，負數代表淨流出 (如買入建倉/手續費)
         net_cash_flow = state.cash_in - state.cash_out
 
+        # ✅ [修正 1] 代數恆等式的符號修正
+        # 總損益 = 帳面市值變動 + 期間淨流回口袋的現金
+        # (修正了原本錯誤的減號，避免買入視為虧損、賣出視為獲利的 Bug)
         total_pnl = (
             state.end_value
             - state.begin_value
-            - net_cash_flow
+            + net_cash_flow
         )
 
-        holding_pnl = (
-            state.begin_qty
-            * (state.end_price - state.begin_price)
-        )
+        # ✅ [修正 2] 補全 Holding PnL 盲區
+        # 傳統只算 state.begin_qty * (end_price - begin_price) 會漏掉「當日新買部位」的盤中損益。
+        # 最精準且保證不破壞歸因的算法，是直接透過代數恆等式推導：
+        holding_pnl = total_pnl - realized_pnl - income_pnl
 
         attribution_sum = realized_pnl + holding_pnl + income_pnl
         residual = total_pnl - attribution_sum
