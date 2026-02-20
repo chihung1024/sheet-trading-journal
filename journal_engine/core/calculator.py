@@ -208,36 +208,24 @@ class PortfolioCalculator:
             prev_date -= timedelta(days=1)
         return pd.Timestamp(prev_date).normalize()
 
-    @staticmethod
-    def _get_dietz_cashflow_weight(flow_index: int, flow_count: int) -> float:
-        """Return Modified Dietz weight for a cashflow in a sub-period.
-
-        With only daily granularity (no intraday timestamp), we approximate each
-        day's cashflows as equally spaced events inside the period.
-        """
-        if flow_count <= 0:
-            return 0.0
-        if flow_count == 1:
-            return 0.5
-        # equally-spaced timestamps in (0, 1), e.g. n=3 -> 0.25,0.5,0.75
-        t_i = flow_index / (flow_count + 1)
-        return 1.0 - t_i
-
     @classmethod
-    def _calculate_modified_dietz_return(cls, beginning_value: float, ending_value: float, cashflows: list[float]) -> float:
+    def _calculate_modified_dietz_return(cls, beginning_value: float, ending_value: float, cashflows: list[float], weights: list[float] = None) -> float:
         """Calculate Modified Dietz return for a sub-period.
-
         r = (V1 - V0 - ΣCF) / (V0 + Σ(w_i * CF_i))
         """
         if beginning_value < 0:
             return 0.0
 
-        flow_count = len(cashflows)
-        weighted_cashflows = 0.0
-        for idx, cf in enumerate(cashflows, start=1):
-            weighted_cashflows += cls._get_dietz_cashflow_weight(idx, flow_count) * cf
+        if not cashflows:
+            return (ending_value - beginning_value) / beginning_value if beginning_value > 1e-9 else 0.0
 
+        if weights is None:
+            # 日頻資料預設：假設所有現金流發生在期中 (weight = 0.5)
+            weights = [0.5] * len(cashflows)
+
+        weighted_cashflows = sum(w * cf for w, cf in zip(weights, cashflows))
         denominator = beginning_value + weighted_cashflows
+
         if abs(denominator) < 1e-9:
             return 0.0
 
@@ -340,7 +328,16 @@ class PortfolioCalculator:
             if not daily_txns.empty:
                 priority_map = {'BUY': 1, 'DIV': 2, 'SELL': 3}
                 daily_txns['priority'] = daily_txns['Type'].map(priority_map).fillna(99)
-                daily_txns = daily_txns.sort_values(by='priority', kind='stable')
+                
+                # 優先使用 Timestamp 或 Sequence 保持真實交易軌跡，最後才 fallback 到交易類型 priority
+                sort_cols = []
+                if 'Timestamp' in daily_txns.columns:
+                    sort_cols.append('Timestamp')
+                if 'Sequence' in daily_txns.columns:
+                    sort_cols.append('Sequence')
+                sort_cols.append('priority')
+                
+                daily_txns = daily_txns.sort_values(by=sort_cols, kind='stable')
             
             daily_net_cashflow_twd = 0.0
             daily_cashflows_for_dietz = []
@@ -484,6 +481,7 @@ class PortfolioCalculator:
                     beginning_value=last_market_value_twd,
                     ending_value=current_market_value_twd,
                     cashflows=daily_cashflows_for_dietz,
+                    # 此處不帶入 weights，交由內部預設為 [0.5] 中點權重
                 )
                 period_hpr_factor = 1.0 + period_return
             elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
@@ -610,7 +608,6 @@ class PortfolioCalculator:
                 fx_prev = DEFAULT_FX_RATE
                 try:
                     # ✅ [v3.19] 盤前也使用即時匯率計算市值
-                    # 只要有 realtime_fx_rate，就使用它（無論盤中或盤前）
                     if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
                         fx_used = self.market.realtime_fx_rate
                     elif used_ts.date() == pnl_base_date:
@@ -636,29 +633,61 @@ class PortfolioCalculator:
             realized_pnl_today = position_snap.realized_pnl_vs_prev_close
 
             unrealized_pnl_today = 0.0
+            fx_pnl_contribution = 0.0
+
             if position_snap.qty > 0:
-                # ✅ [v3.18] 使用加權基準價計算未實現損益
-                # 舊倉用前日收盤價，新倉用成本價，確保新買入當日不會虛增損益
-                base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
-                curr_mv_twd = position_snap.qty * curr_p * effective_fx
-                base_mv_twd = position_snap.qty * base_price * prev_effective_fx
-                unrealized_pnl_today = curr_mv_twd - base_mv_twd
+                # ✅ 拆解新舊倉，解決新倉錯誤繼承前日匯率基準的問題
+                sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date)]
+                buy_txs = sym_txs[sym_txs['Type'] == 'BUY']
+                
+                new_qty_today = buy_txs['Qty'].sum() if not buy_txs.empty else 0.0
+                new_qty = min(new_qty_today, position_snap.qty)
+                old_qty = position_snap.qty - new_qty
+
+                # 計算舊倉 (Old Lot)
+                if old_qty > 0:
+                    base_price_old = prev_p
+                    curr_mv_old = old_qty * curr_p * effective_fx
+                    base_mv_old = old_qty * base_price_old * prev_effective_fx
+                    unrealized_pnl_today += (curr_mv_old - base_mv_old)
+                    
+                    if not is_tw and effective_fx != prev_effective_fx:
+                        fx_pnl_contribution += old_qty * base_price_old * (effective_fx - prev_effective_fx)
+
+                # 計算新倉 (New Lot)
+                if new_qty > 0:
+                    buy_cost_usd_total = (buy_txs['Qty'] * buy_txs['Price']).sum()
+                    avg_buy_price = buy_cost_usd_total / new_qty_today if new_qty_today > 0 else curr_p
+                    curr_mv_new = new_qty * curr_p * effective_fx
+                    base_mv_new = new_qty * avg_buy_price * effective_fx
+                    unrealized_pnl_today += (curr_mv_new - base_mv_new)
+
+            # ✅ 精確獲取當日的 Income PnL 分量
+            income_pnl_today = 0.0
+            # 1. 處理當日發生且已實現的 DIV 交易
+            sym_div_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date) & (df['Type'] == 'DIV')]
+            for _, r in sym_div_txs.iterrows():
+                income_pnl_today += (r['Qty'] * r['Price']) * effective_fx
+                
+            # 2. 處理當日除息但尚未入帳的 Pending Dividend
+            div_per_share_today = self.market.get_dividend(sym, pd.Timestamp(pnl_date))
+            if div_per_share_today > 0:
+                div_key = f"{sym}_{pnl_date.strftime('%Y-%m-%d')}"
+                if div_key not in confirmed_dividends:
+                    split_factor = self.market.get_transaction_multiplier(sym, pd.Timestamp(pnl_date))
+                    shares_at_ex = h['qty'] / split_factor
+                    total_gross = shares_at_ex * div_per_share_today
+                    total_net_usd = total_gross * 0.7
+                    income_pnl_today += total_net_usd * effective_fx
 
             # 持倉列上的「當日損益」應與「漲跌幅 / 市值」口徑一致，
             # 僅呈現目前仍持有部位的未實現變動；
-            # 已實現（當日減碼/當沖）損益仍計入 summary 的整體當日損益。
+            # 已實現（當日減碼/當沖）損益與配息仍計入 summary 的整體當日損益。
             holding_daily_pnl = unrealized_pnl_today
-            total_daily_pnl = realized_pnl_today + unrealized_pnl_today
-            daily_pnl_total_raw += total_daily_pnl
+            total_daily_pnl = realized_pnl_today + unrealized_pnl_today + income_pnl_today
             
-            # ✅ [v3.19] 計算匯率損益分量（僅美股）
-            # 匯率損益 = 持倉市值 × (當前匯率 - 前日匯率) / 當前匯率
-            fx_pnl_contribution = 0.0
-            if not is_tw and position_snap.qty > 0 and effective_fx != prev_effective_fx:
-                # 純匯率變動帶來的損益（假設股價不變）
-                base_price = txn_analyzer.get_base_price_for_pnl(position_snap, prev_p)
-                fx_pnl_contribution = position_snap.qty * base_price * (effective_fx - prev_effective_fx)
-                daily_pnl_fx_raw += fx_pnl_contribution
+            daily_pnl_total_raw += total_daily_pnl
+            daily_pnl_fx_raw += fx_pnl_contribution
             
             if is_tw:
                 daily_pnl_tw_raw += total_daily_pnl
