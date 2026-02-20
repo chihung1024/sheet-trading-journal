@@ -246,8 +246,6 @@ class PortfolioCalculator:
             if neg_cnt > 0:
                 logger.warning(f"[{group_name}] {col} has {neg_cnt} negative rows; normalized with abs().")
             df[col] = df[col].abs()
-
-        txn_analyzer = TransactionAnalyzer(df)
         
         holdings = {}
         fifo_queues = {}
@@ -481,7 +479,6 @@ class PortfolioCalculator:
                     beginning_value=last_market_value_twd,
                     ending_value=current_market_value_twd,
                     cashflows=daily_cashflows_for_dietz,
-                    # 此處不帶入 weights，交由內部預設為 [0.5] 中點權重
                 )
                 period_hpr_factor = 1.0 + period_return
             elif current_market_value_twd > 1e-9 and daily_net_cashflow_twd > 1e-9:
@@ -505,9 +502,7 @@ class PortfolioCalculator:
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(logging_fx, 4),
-                # 使用者定義: 買進為負、賣出為正
                 "net_cashflow_twd": round(-daily_net_cashflow_twd, 0),
-                # 當日損益標準定義: 當天淨值 - 前一天淨值 + 當天現金流
                 "daily_pnl_formula_twd": round(current_market_value_twd - prev_market_value_twd + (-daily_net_cashflow_twd), 0) if prev_market_value_twd > 1e-9 else round(current_market_value_twd + (-daily_net_cashflow_twd), 0)
             })
 
@@ -526,20 +521,15 @@ class PortfolioCalculator:
             except Exception as e:
                 logger.debug(f"Failed to derive pnl dates from history: {e}")
 
-        daily_pnl_asof_date = None
-        daily_pnl_prev_date = None
-        unified_fx_prev_ts = None  # ✅ [v3.20] 統一匯率前日基準
-        try:
-            if hasattr(self.market, 'get_price_asof') and hasattr(self.market, 'get_prev_trading_date'):
-                _bp, used_bm = self.market.get_price_asof(self.benchmark_ticker, pd.Timestamp(pnl_base_date))
-                prev_bm = self.market.get_prev_trading_date(self.benchmark_ticker, used_bm)
-                daily_pnl_asof_date = pd.to_datetime(used_bm).strftime('%Y-%m-%d')
-                daily_pnl_prev_date = pd.to_datetime(prev_bm).strftime('%Y-%m-%d')
-                # ✅ [v3.20] 統一使用 benchmark 的前日交易日作為匯率參考日
-                # 解決不同標的因數據可用性造成 fx_prev 日期不一致的問題
-                unified_fx_prev_ts = prev_bm
-        except Exception as e:
-            logger.debug(f"Failed to get pnl date info for benchmark: {e}")
+        # ✅ [核心修正] 強制取得歷史迴圈結算時確切使用的 FX Rate，消除匯率時間差錯位
+        last_fx_used = current_fx
+        prev_fx_used = current_fx
+        if len(history_data) >= 2:
+            last_fx_used = history_data[-1].get('fx_rate', current_fx)
+            prev_fx_used = history_data[-2].get('fx_rate', current_fx)
+        elif len(history_data) == 1:
+            last_fx_used = history_data[-1].get('fx_rate', current_fx)
+            prev_fx_used = last_fx_used
 
         us_asof_date = None
         tw_asof_date = None
@@ -579,124 +569,108 @@ class PortfolioCalculator:
         daily_pnl_total_raw = 0.0
         daily_pnl_tw_raw = 0.0
         daily_pnl_us_raw = 0.0
-        daily_pnl_fx_raw = 0.0  # ✅ [v3.19] 匯率損益分量
+        daily_pnl_fx_raw = 0.0 
 
         for sym in candidate_symbols:
             h = holdings.get(sym, {'qty': 0.0, 'cost_basis_usd': 0.0, 'cost_basis_twd': 0.0, 'tag': None})
-            
             is_tw = self._is_taiwan_stock(sym)
 
+            # 強制對齊歷史迴圈使用的確切價格
             curr_p = self.market.get_price(sym, pd.Timestamp(pnl_base_date))
-            used_ts = pd.Timestamp(pnl_base_date)
             if hasattr(self.market, 'get_price_asof'):
-                curr_p, used_ts = self.market.get_price_asof(sym, pd.Timestamp(pnl_base_date))
+                curr_p, _ = self.market.get_price_asof(sym, pd.Timestamp(pnl_base_date))
 
-            prev_ts = used_ts - pd.Timedelta(days=1)
-            if hasattr(self.market, 'get_prev_trading_date'):
-                prev_ts = self.market.get_prev_trading_date(sym, used_ts)
+            if pnl_prev_date:
+                prev_p = self.market.get_price(sym, pd.Timestamp(pnl_prev_date))
+                if hasattr(self.market, 'get_price_asof'):
+                    prev_p, _ = self.market.get_price_asof(sym, pd.Timestamp(pnl_prev_date))
             else:
-                while prev_ts.weekday() >= 5:
-                    prev_ts -= pd.Timedelta(days=1)
-
-            prev_p = self.market.get_price(sym, pd.Timestamp(prev_ts))
+                prev_p = curr_p
 
             if is_tw:
                 effective_fx = 1.0
                 prev_effective_fx = 1.0
             else:
-                fx_used = DEFAULT_FX_RATE
-                fx_prev = DEFAULT_FX_RATE
-                try:
-                    # ✅ [v3.19] 盤前也使用即時匯率計算市值
-                    if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
-                        fx_used = self.market.realtime_fx_rate
-                    elif used_ts.date() == pnl_base_date:
-                        fx_used = current_fx
-                    else:
-                        fx_used = self.market.fx_rates.asof(used_ts)
-                        if pd.isna(fx_used): fx_used = DEFAULT_FX_RATE
+                # 確保聚合法採用與 Formula 完全一致的匯率基礎
+                effective_fx = self._get_effective_fx_rate(sym, last_fx_used)
+                prev_effective_fx = self._get_effective_fx_rate(sym, prev_fx_used)
 
-                    # ✅ [v3.20] 使用統一的 benchmark 前日匯率，確保所有美股一致
-                    fx_prev_lookup_ts = unified_fx_prev_ts if unified_fx_prev_ts else prev_ts
-                    fx_prev = self.market.fx_rates.asof(pd.Timestamp(fx_prev_lookup_ts))
-                    if pd.isna(fx_prev): fx_prev = DEFAULT_FX_RATE
-                except Exception as e:
-                    logger.warning(f"Failed to get FX rates for {sym}: {e}")
-                    fx_used = DEFAULT_FX_RATE
-                    fx_prev = DEFAULT_FX_RATE
+            # ✅ 嚴格還原該標的當日現金流，確保 100% 數學對齊
+            sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_base_date)]
+            buy_cost_twd = 0.0
+            sell_proceeds_twd = 0.0
+            div_income_twd = 0.0
+            buy_qty = 0.0
+            sell_qty = 0.0
+            
+            for _, r in sym_txs.iterrows():
+                if r['Type'] == 'BUY':
+                    cost_usd = (r['Qty'] * r['Price']) + r['Commission'] + r['Tax']
+                    buy_cost_twd += cost_usd * effective_fx
+                    buy_qty += r['Qty']
+                elif r['Type'] == 'SELL':
+                    # 扣除手續費/稅以得到真實淨流出
+                    proceeds_usd = (r['Qty'] * r['Price']) - r['Commission'] - r['Tax']
+                    sell_proceeds_twd += proceeds_usd * effective_fx
+                    sell_qty += r['Qty']
+                elif r['Type'] == 'DIV':
+                    div_income_twd += (r['Qty'] * r['Price']) * effective_fx
 
-                effective_fx = self._get_effective_fx_rate(sym, fx_used)
-                prev_effective_fx = self._get_effective_fx_rate(sym, fx_prev)
-
-            pnl_date = pd.to_datetime(used_ts).date()
-            position_snap = txn_analyzer.analyze_today_position(sym, pnl_date, effective_fx, prev_p)
-            realized_pnl_today = position_snap.realized_pnl_vs_prev_close
-
-            unrealized_pnl_today = 0.0
-            fx_pnl_contribution = 0.0
-
-            if position_snap.qty > 0:
-                # ✅ 拆解新舊倉，解決新倉錯誤繼承前日匯率基準的問題
-                sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date)]
-                buy_txs = sym_txs[sym_txs['Type'] == 'BUY']
-                
-                new_qty_today = buy_txs['Qty'].sum() if not buy_txs.empty else 0.0
-                new_qty = min(new_qty_today, position_snap.qty)
-                old_qty = position_snap.qty - new_qty
-
-                # 計算舊倉 (Old Lot)
-                if old_qty > 0:
-                    base_price_old = prev_p
-                    curr_mv_old = old_qty * curr_p * effective_fx
-                    base_mv_old = old_qty * base_price_old * prev_effective_fx
-                    unrealized_pnl_today += (curr_mv_old - base_mv_old)
-                    
-                    if not is_tw and effective_fx != prev_effective_fx:
-                        fx_pnl_contribution += old_qty * base_price_old * (effective_fx - prev_effective_fx)
-
-                # 計算新倉 (New Lot)
-                if new_qty > 0:
-                    buy_cost_usd_total = (buy_txs['Qty'] * buy_txs['Price']).sum()
-                    avg_buy_price = buy_cost_usd_total / new_qty_today if new_qty_today > 0 else curr_p
-                    curr_mv_new = new_qty * curr_p * effective_fx
-                    base_mv_new = new_qty * avg_buy_price * effective_fx
-                    unrealized_pnl_today += (curr_mv_new - base_mv_new)
-
-            # ✅ 精確獲取當日的 Income PnL 分量
-            income_pnl_today = 0.0
-            # 1. 處理當日發生且已實現的 DIV 交易
-            sym_div_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date) & (df['Type'] == 'DIV')]
-            for _, r in sym_div_txs.iterrows():
-                income_pnl_today += (r['Qty'] * r['Price']) * effective_fx
-                
-            # 2. 處理當日除息但尚未入帳的 Pending Dividend
-            div_per_share_today = self.market.get_dividend(sym, pd.Timestamp(pnl_date))
+            # Pending Dividends 也必須視作正現金流
+            div_per_share_today = self.market.get_dividend(sym, pd.Timestamp(pnl_base_date))
             if div_per_share_today > 0:
-                div_key = f"{sym}_{pnl_date.strftime('%Y-%m-%d')}"
+                div_key = f"{sym}_{pnl_base_date.strftime('%Y-%m-%d')}"
                 if div_key not in confirmed_dividends:
-                    split_factor = self.market.get_transaction_multiplier(sym, pd.Timestamp(pnl_date))
+                    split_factor = self.market.get_transaction_multiplier(sym, pd.Timestamp(pnl_base_date))
                     shares_at_ex = h['qty'] / split_factor
                     total_gross = shares_at_ex * div_per_share_today
                     total_net_usd = total_gross * 0.7
-                    income_pnl_today += total_net_usd * effective_fx
+                    div_income_twd += total_net_usd * effective_fx
 
-            # 持倉列上的「當日損益」應與「漲跌幅 / 市值」口徑一致，
-            # 僅呈現目前仍持有部位的未實現變動；
-            # 已實現（當日減碼/當沖）損益與配息仍計入 summary 的整體當日損益。
-            holding_daily_pnl = unrealized_pnl_today
-            total_daily_pnl = realized_pnl_today + unrealized_pnl_today + income_pnl_today
+            # 該標的當日淨現金流 = 買入成本 - 賣出所得 - 股息收入 (正數代表現金轉股票)
+            sym_net_cf = buy_cost_twd - sell_proceeds_twd - div_income_twd
             
+            end_qty = h['qty']
+            begin_qty = end_qty - buy_qty + sell_qty
+            if abs(begin_qty) < 1e-6:
+                begin_qty = 0.0
+                
+            end_mv_twd = end_qty * curr_p * effective_fx
+            begin_mv_twd = begin_qty * prev_p * prev_effective_fx
+            
+            # ✅ [核心代數恆等式] 單一標的當日損益 = 市值差額 + 當日淨現金流入
+            # 如此確保每一分錢的變動 (包含匯差、除權息、交易稅) 都被 100% 收斂
+            total_daily_pnl = (end_mv_twd - begin_mv_twd) + (-sym_net_cf)
+            
+            # 純匯率損益 (FX PnL) 僅歸因於昨日結轉留倉的原始部位
+            fx_pnl_contribution = 0.0
+            if not is_tw and begin_qty > 0 and effective_fx != prev_effective_fx:
+                fx_pnl_contribution = begin_qty * prev_p * (effective_fx - prev_effective_fx)
+
+            # 持倉列 UI 顯示值 (Holding Daily PnL)：僅顯示未實現之當前持倉損益
+            holding_daily_pnl = 0.0
+            if end_qty > 0:
+                old_qty_retained = max(0.0, begin_qty - sell_qty)
+                new_qty_retained = max(0.0, end_qty - old_qty_retained)
+                
+                if old_qty_retained > 0:
+                    holding_daily_pnl += old_qty_retained * (curr_p * effective_fx - prev_p * prev_effective_fx)
+                
+                if new_qty_retained > 0:
+                    buy_txs = sym_txs[sym_txs['Type'] == 'BUY']
+                    buy_cost_usd_total = (buy_txs['Qty'] * buy_txs['Price'] + buy_txs['Commission'] + buy_txs['Tax']).sum() if not buy_txs.empty else 0.0
+                    avg_buy_price = buy_cost_usd_total / buy_qty if buy_qty > 0 else curr_p
+                    holding_daily_pnl += new_qty_retained * (curr_p - avg_buy_price) * effective_fx
+
             daily_pnl_total_raw += total_daily_pnl
             daily_pnl_fx_raw += fx_pnl_contribution
             
             if is_tw:
                 daily_pnl_tw_raw += total_daily_pnl
             else:
-                # 美股損益扣除匯率部分，避免重複計算
                 daily_pnl_us_raw += (total_daily_pnl - fx_pnl_contribution)
 
             try:
-                sym_txs = df[(df['Symbol'] == sym) & (df['Date'].dt.date == pnl_date)]
                 if (not h.get('tag')) and (not sym_txs.empty):
                     tags = sym_txs['Tag'].dropna()
                     if not tags.empty:
@@ -725,6 +699,7 @@ class PortfolioCalculator:
                 ))
 
         final_holdings.sort(key=lambda x: x.market_value_twd, reverse=True)
+        
         daily_pnl_formula_twd = None
         if len(history_data) >= 2:
             last_day = history_data[-1]
@@ -762,8 +737,7 @@ class PortfolioCalculator:
         daily_pnl_base_value = None
         daily_pnl_roi_percent = None
         if len(history_data) >= 2:
-            # 找到前一個交易日的總資產淨值作為基準
-            prev_day_data = history_data[-2]  # 倒數第二筆是前一日
+            prev_day_data = history_data[-2]  
             daily_pnl_base_value = prev_day_data.get('total_value', 0)
             if daily_pnl_base_value and daily_pnl_base_value > 0:
                 daily_pnl_roi_percent = round((display_daily_pnl / daily_pnl_base_value) * 100, 2)
@@ -781,19 +755,18 @@ class PortfolioCalculator:
                 {
                     "tw_pnl_twd": round(daily_pnl_tw_raw, 0), 
                     "us_pnl_twd": round(daily_pnl_us_raw, 0),
-                    "fx_pnl_twd": round(daily_pnl_fx_raw, 0)  # ✅ [v3.19] 新增匯率損益
+                    "fx_pnl_twd": round(daily_pnl_fx_raw, 0)
                 } if pnl_deviation <= 5 else None
             ),
             market_stage=current_stage,
             market_stage_desc=stage_desc,
-            daily_pnl_asof_date=daily_pnl_asof_date,
-            daily_pnl_prev_date=daily_pnl_prev_date,
+            daily_pnl_asof_date=pd.to_datetime(pnl_base_date).strftime('%Y-%m-%d') if pnl_base_date else None,
+            daily_pnl_prev_date=pd.to_datetime(pnl_prev_date).strftime('%Y-%m-%d') if pnl_prev_date else None,
             daily_pnl_roi_percent=daily_pnl_roi_percent,
             daily_pnl_base_value=round(daily_pnl_base_value, 0) if daily_pnl_base_value else None
         )
         
         self.validator.validate_twr_calculation(history_data)
-        # ✅ [v3.19] 驗證台/美/匯率損益分量加總
         if pnl_deviation <= 5:
             self.validator.validate_daily_pnl_breakdown(
                 display_daily_pnl, daily_pnl_tw_raw, daily_pnl_us_raw, daily_pnl_fx_raw
