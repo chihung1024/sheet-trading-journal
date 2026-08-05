@@ -17,8 +17,8 @@ head_sampling_rate = 0.1
 binding = "CF_VERSION_METADATA"
 
 [vars]
-RELEASE_VERSION = "4.05.1"
-API_VERSION = "2.58"
+RELEASE_VERSION = "4.06"
+API_VERSION = "2.59"
 SCHEMA_VERSION = "1"
 SOURCE_COMMIT = "development"
 

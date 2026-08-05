@@ -1,12 +1,11 @@
 /**
  * Worker: Trading Journal API
- * v2.58 / PR-05D: restore repository-owned GitHub workflow dispatch,
- * classify upstream failures, and preserve reproducible deployment metadata.
+ * v2.59 / PR-06: deterministic cursor pagination and records data-access layer.
  */
 
 const SERVICE_NAME = "trading-journal-api";
-const RELEASE_VERSION = "4.05.1";
-const API_VERSION = "2.58";
+const RELEASE_VERSION = "4.06";
+const API_VERSION = "2.59";
 const GITHUB_DISPATCH = Object.freeze({
   owner: "chihung1024",
   repository: "sheet-trading-journal",
@@ -39,6 +38,9 @@ const CORS_HEADERS = ["Content-Type", "Authorization"];
 const MAX_JSON_BYTES = 1_048_576;
 const MAX_TOKEN_LENGTH = 8_192;
 const TRIGGER_COOLDOWN_SECONDS = 60;
+const RECORD_PAGE_DEFAULT_LIMIT = 250;
+const RECORD_PAGE_MAX_LIMIT = 1_000;
+const RECORD_CURSOR_VERSION = 1;
 const GOOGLE_ISSUERS = new Set([
   "accounts.google.com",
   "https://accounts.google.com",
@@ -372,45 +374,156 @@ async function handleUploadPortfolio(request, env, principal, requestId) {
 async function handleGetRecords(request, env, principal, requestId) {
   try {
     const scope = resolveRecordScope(principal, request.headers.get("X-Target-User"));
-    let statement;
-    if (scope.kind === "single-user") {
-      statement = env.DB.prepare(
-        "SELECT * FROM records WHERE user_id = ? ORDER BY txn_date DESC, created_at DESC LIMIT 1000",
-      ).bind(scope.userId);
-    } else {
-      statement = env.DB.prepare(
-        "SELECT * FROM records ORDER BY txn_date DESC, created_at DESC LIMIT 1000",
-      );
-    }
-
-    const result = await statement.all();
-    return jsonResponse({ success: true, data: Array.isArray(result.results) ? result.results : [] });
+    const pagination = parseRecordPageRequest(new URL(request.url));
+    const page = await recordsRepository.listPage(env.DB, scope, pagination);
+    return jsonResponse({
+      success: true,
+      data: page.items,
+      page: {
+        limit: pagination.limit,
+        count: page.items.length,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor,
+      },
+    });
   } catch (error) {
     if (error instanceof RequestValidationError) {
-      return apiError("INVALID_TARGET_USER", error.message, 400, requestId);
+      return apiError("INVALID_REQUEST", error.message, 400, requestId);
     }
     console.error(`[request_id=${requestId}] Records read failed`, safeErrorName(error));
     return apiError("DATABASE_ERROR", "Records are unavailable", 500, requestId);
   }
 }
 
+function parseRecordPageRequest(url) {
+  const rawLimit = url.searchParams.get("limit");
+  let limit = RECORD_PAGE_DEFAULT_LIMIT;
+  if (rawLimit !== null) {
+    if (!/^\d+$/.test(rawLimit)) {
+      throw new RequestValidationError("limit must be an integer");
+    }
+    limit = Number(rawLimit);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > RECORD_PAGE_MAX_LIMIT) {
+      throw new RequestValidationError(`limit must be between 1 and ${RECORD_PAGE_MAX_LIMIT}`);
+    }
+  }
+  const rawCursor = url.searchParams.get("cursor");
+  return { limit, cursor: rawCursor ? decodeRecordCursor(rawCursor) : null };
+}
+
+function encodeRecordCursor(row) {
+  const payload = {
+    v: RECORD_CURSOR_VERSION,
+    d: String(row.txn_date || ""),
+    c: String(row.created_at || ""),
+    i: Number(row.id),
+  };
+  validateRecordCursorPayload(payload);
+  return recordCursorBase64Encode(JSON.stringify(payload));
+}
+
+function decodeRecordCursor(value) {
+  if (typeof value !== "string" || value.length < 8 || value.length > 512 || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new RequestValidationError("cursor is invalid");
+  }
+  try {
+    const payload = JSON.parse(recordCursorBase64Decode(value));
+    validateRecordCursorPayload(payload);
+    return payload;
+  } catch (error) {
+    if (error instanceof RequestValidationError) throw error;
+    throw new RequestValidationError("cursor is invalid");
+  }
+}
+
+function validateRecordCursorPayload(payload) {
+  if (!isPlainObject(payload) || payload.v !== RECORD_CURSOR_VERSION) {
+    throw new RequestValidationError("cursor version is invalid");
+  }
+  if (typeof payload.d !== "string" || !DATE_RE.test(payload.d)) {
+    throw new RequestValidationError("cursor date is invalid");
+  }
+  if (typeof payload.c !== "string" || payload.c.length < 1 || payload.c.length > 64) {
+    throw new RequestValidationError("cursor timestamp is invalid");
+  }
+  if (!Number.isSafeInteger(payload.i) || payload.i <= 0) {
+    throw new RequestValidationError("cursor id is invalid");
+  }
+}
+
+function recordCursorBase64Encode(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function recordCursorBase64Decode(value) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
+  const binary = atob(padded);
+  return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+}
+
+const recordsRepository = Object.freeze({
+  async listPage(db, scope, pagination) {
+    const { limit, cursor } = pagination;
+    const fetchLimit = limit + 1;
+    let statement;
+    if (scope.kind === "single-user" && cursor) {
+      statement = db.prepare(
+        "SELECT * FROM records WHERE user_id = ? AND (txn_date < ? OR (txn_date = ? AND created_at < ?) OR (txn_date = ? AND created_at = ? AND id < ?)) ORDER BY txn_date DESC, created_at DESC, id DESC LIMIT ?",
+      ).bind(scope.userId, cursor.d, cursor.d, cursor.c, cursor.d, cursor.c, cursor.i, fetchLimit);
+    } else if (scope.kind === "single-user") {
+      statement = db.prepare(
+        "SELECT * FROM records WHERE user_id = ? ORDER BY txn_date DESC, created_at DESC, id DESC LIMIT ?",
+      ).bind(scope.userId, fetchLimit);
+    } else if (cursor) {
+      statement = db.prepare(
+        "SELECT * FROM records WHERE (txn_date < ? OR (txn_date = ? AND created_at < ?) OR (txn_date = ? AND created_at = ? AND id < ?)) ORDER BY txn_date DESC, created_at DESC, id DESC LIMIT ?",
+      ).bind(cursor.d, cursor.d, cursor.c, cursor.d, cursor.c, cursor.i, fetchLimit);
+    } else {
+      statement = db.prepare(
+        "SELECT * FROM records ORDER BY txn_date DESC, created_at DESC, id DESC LIMIT ?",
+      ).bind(fetchLimit);
+    }
+    const result = await statement.all();
+    const rows = Array.isArray(result?.results) ? result.results : [];
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore && items.length ? encodeRecordCursor(items[items.length - 1]) : null;
+    return { items, hasMore, nextCursor };
+  },
+
+  async insert(db, userId, body) {
+    return db.prepare(
+      "INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(userId, body.txn_date, body.symbol, body.txn_type, body.qty, body.price, body.fee, body.tax, body.tag, body.note).run();
+  },
+
+  async update(db, userId, body) {
+    const result = await db.prepare(
+      "UPDATE records SET txn_date=?, symbol=?, txn_type=?, qty=?, price=?, fee=?, tax=?, tag=?, note=? WHERE id=? AND user_id=?",
+    ).bind(body.txn_date, body.symbol, body.txn_type, body.qty, body.price, body.fee, body.tax, body.tag, body.note, body.id, userId).run();
+    return affectedRows(result);
+  },
+
+  async delete(db, userId, id) {
+    const result = await db.prepare("DELETE FROM records WHERE id = ? AND user_id = ?").bind(id, userId).run();
+    return affectedRows(result);
+  },
+
+  async countForUser(db, userId) {
+    const result = await db.prepare("SELECT COUNT(*) as total FROM records WHERE user_id = ?").bind(userId).first();
+    const count = Number(result?.total);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("InvalidRecordCount");
+    return count;
+  },
+});
+
 async function handleAddRecord(request, env, principal, requestId) {
   try {
     const body = validateTransactionPayload(await readJsonObject(request), { requireId: false });
-    await env.DB.prepare(
-      "INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(
-      principal.email,
-      body.txn_date,
-      body.symbol,
-      body.txn_type,
-      body.qty,
-      body.price,
-      body.fee,
-      body.tax,
-      body.tag,
-      body.note,
-    ).run();
+    await recordsRepository.insert(env.DB, principal.email, body);
     return jsonResponse({ success: true });
   } catch (error) {
     return mutationError(error, requestId, "Record creation failed");
@@ -420,23 +533,9 @@ async function handleAddRecord(request, env, principal, requestId) {
 async function handleUpdateRecord(request, env, principal, requestId) {
   try {
     const body = validateTransactionPayload(await readJsonObject(request), { requireId: true });
-    const result = await env.DB.prepare(
-      "UPDATE records SET txn_date=?, symbol=?, txn_type=?, qty=?, price=?, fee=?, tax=?, tag=?, note=? WHERE id=? AND user_id=?",
-    ).bind(
-      body.txn_date,
-      body.symbol,
-      body.txn_type,
-      body.qty,
-      body.price,
-      body.fee,
-      body.tax,
-      body.tag,
-      body.note,
-      body.id,
-      principal.email,
-    ).run();
+    const changed = await recordsRepository.update(env.DB, principal.email, body);
 
-    if (affectedRows(result) !== 1) {
+    if (changed !== 1) {
       return apiError("NOT_FOUND", "Record not found", 404, requestId);
     }
     return jsonResponse({ success: true });
@@ -451,19 +550,15 @@ async function handleDeleteRecord(request, env, principal, requestId) {
     rejectOwnerFields(body);
     const id = requirePositiveInteger(body.id, "id");
 
-    const result = await env.DB.prepare(
-      "DELETE FROM records WHERE id = ? AND user_id = ?",
-    ).bind(id, principal.email).run();
+    const changed = await recordsRepository.delete(env.DB, principal.email, id);
 
-    if (affectedRows(result) !== 1) {
+    if (changed !== 1) {
       return apiError("NOT_FOUND", "Record not found", 404, requestId);
     }
 
-    const check = await env.DB.prepare(
-      "SELECT COUNT(*) as total FROM records WHERE user_id = ?",
-    ).bind(principal.email).first();
+    const remaining = await recordsRepository.countForUser(env.DB, principal.email);
 
-    if (!check || Number(check.total) === 0) {
+    if (remaining === 0) {
       await env.DB.prepare(
         "DELETE FROM portfolio_snapshots WHERE user_id = ?",
       ).bind(principal.email).run();
@@ -1074,6 +1169,10 @@ export const __test = {
   isOriginAllowed,
   resolveRecordScope,
   resolveSettingsTarget,
+  parseRecordPageRequest,
+  encodeRecordCursor,
+  decodeRecordCursor,
+  recordsRepository,
   validateCorsRequest,
   validateGoogleClaims,
   validateTransactionPayload,
