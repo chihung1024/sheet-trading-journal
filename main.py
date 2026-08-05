@@ -11,6 +11,7 @@ from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.config import API_KEY
 from journal_engine.core.calculator import PortfolioCalculator
+from journal_engine.core.split_ledger import build_split_adjusted_validation_ledger
 from journal_engine.core.validator import PortfolioValidator
 
 
@@ -172,7 +173,7 @@ def validate_before_upload(snapshot, user_df: pd.DataFrame) -> None:
 
 def run_update() -> None:
     logger = logging.getLogger("main")
-    logger.info("=== 啟動交易日誌更新程序 (PR-02 fail-closed runner) ===")
+    logger.info("=== 啟動交易日誌更新程序 (PR-02A split-aware validator) ===")
 
     if not API_KEY:
         raise PortfolioUpdateError("環境變數中找不到 API_KEY")
@@ -221,12 +222,12 @@ def run_update() -> None:
 
         try:
             logger.info("正在處理使用者 %s (Benchmark: %s)", masked_user, benchmark)
-            user_df = df[df["user_id"] == user_id].copy()
-            if user_df.empty:
+            raw_user_df = df[df["user_id"] == user_id].copy(deep=True)
+            if raw_user_df.empty:
                 raise PortfolioUpdateError("使用者交易資料意外為空")
 
             calculator = PortfolioCalculator(
-                user_df,
+                raw_user_df.copy(deep=True),
                 market_client,
                 benchmark_ticker=benchmark,
                 api_client=api_client,
@@ -239,7 +240,11 @@ def run_update() -> None:
                     f"計算期間 validator 回報 {len(calculation_capture.messages)} 項錯誤"
                 )
 
-            validate_before_upload(snapshot, user_df)
+            validation_df = build_split_adjusted_validation_ledger(
+                raw_user_df,
+                market_client,
+            )
+            validate_before_upload(snapshot, validation_df)
             if api_client.upload_portfolio(snapshot, target_user_id=user_id) is not True:
                 raise PortfolioUpdateError("Worker 未明確確認上傳成功")
 
