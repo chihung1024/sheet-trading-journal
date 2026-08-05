@@ -11,7 +11,10 @@ from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.config import API_KEY
 from journal_engine.core.calculator import PortfolioCalculator
-from journal_engine.core.split_ledger import build_split_adjusted_validation_ledger
+from journal_engine.core.split_ledger import (
+    build_split_adjusted_validation_ledger,
+    validate_adjusted_ledger_parity,
+)
 from journal_engine.core.transaction_calendar import ensure_transaction_dates_in_market_calendar
 from journal_engine.core.validator import PortfolioValidator
 
@@ -254,6 +257,9 @@ def run_update() -> None:
                 raw_user_df,
                 market_client,
             )
+            if not validate_adjusted_ledger_parity(calculator.df, validation_df):
+                raise PortfolioUpdateError("計算器與驗證器的拆股復權交易帳本不一致")
+
             validate_before_upload(snapshot, validation_df)
             if api_client.upload_portfolio(snapshot, target_user_id=user_id) is not True:
                 raise PortfolioUpdateError("Worker 未明確確認上傳成功")
