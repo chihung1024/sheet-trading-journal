@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 import pandas as pd
 import pytest
 
@@ -243,6 +241,28 @@ def test_transaction_before_first_market_row_fails_closed():
 
     with pytest.raises(TransactionCalendarError, match="precedes available market data"):
         ensure_transaction_dates_in_market_calendar(market, transactions)
+
+
+def test_future_transaction_date_fails_closed():
+    market = base_market()
+    transactions = make_transactions(
+        [
+            {
+                "Date": "2026-01-03",
+                "Symbol": "AAA",
+                "Type": "BUY",
+                "Qty": 1.0,
+                "Price": 100.0,
+            }
+        ]
+    )
+
+    with pytest.raises(TransactionCalendarError, match="is after calculation date"):
+        ensure_transaction_dates_in_market_calendar(
+            market,
+            transactions,
+            as_of_date="2026-01-02",
+        )
 
 
 def test_missing_market_symbol_fails_closed():
