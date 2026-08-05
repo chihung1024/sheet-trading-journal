@@ -13,6 +13,9 @@ from ..models import PortfolioSnapshot
 
 
 REQUEST_TIMEOUT: Tuple[float, float] = (5.0, 30.0)
+RECORD_PAGE_LIMIT = 1_000
+MAX_RECORD_PAGES = 2_000
+MAX_RECORD_COUNT = 1_000_000
 
 
 class CloudflareAPIError(RuntimeError):
@@ -55,32 +58,93 @@ class CloudflareClient:
         return payload
 
     def fetch_records(self, target_user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Fetch transaction records and reject unverifiable API responses."""
+        """Fetch every records page and fail closed on inconsistent pagination."""
         self.logger.info("正在連線至交易紀錄 API")
-        try:
-            response = requests.get(
-                WORKER_API_URL_RECORDS,
-                headers=self._headers(target_user_id),
-                timeout=REQUEST_TIMEOUT,
+        records: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
+        seen_cursors = set()
+        seen_record_ids = set()
+
+        for page_number in range(1, MAX_RECORD_PAGES + 1):
+            params: Dict[str, Any] = {"limit": RECORD_PAGE_LIMIT}
+            if cursor:
+                params["cursor"] = cursor
+            try:
+                response = requests.get(
+                    WORKER_API_URL_RECORDS,
+                    headers=self._headers(target_user_id),
+                    params=params,
+                    timeout=REQUEST_TIMEOUT,
+                )
+            except requests.RequestException as exc:
+                raise CloudflareAPIError("交易紀錄 API 連線失敗") from exc
+
+            if response.status_code != 200:
+                raise CloudflareAPIError(
+                    f"交易紀錄 API 回應失敗 [status={response.status_code}]"
+                )
+
+            payload = self._decode_json(response, "交易紀錄 API")
+            if payload.get("success") is not True:
+                raise CloudflareAPIError("交易紀錄 API 未回傳 success=true")
+
+            page_records = payload.get("data")
+            page = payload.get("page")
+            if not isinstance(page_records, list):
+                raise CloudflareAPIError("交易紀錄 API 的 data 欄位不是陣列")
+            if page is None and page_number == 1 and cursor is None:
+                if len(page_records) >= RECORD_PAGE_LIMIT:
+                    raise CloudflareAPIError("舊版交易紀錄 API 可能已截斷資料")
+                self.logger.warning("交易紀錄 API 使用舊版單頁格式")
+                self.logger.info("成功取得 %s 筆交易紀錄", len(page_records))
+                return page_records
+            if not isinstance(page, dict):
+                raise CloudflareAPIError("交易紀錄 API 缺少分頁資訊")
+
+            count = page.get("count")
+            limit = page.get("limit")
+            has_more = page.get("has_more")
+            next_cursor = page.get("next_cursor")
+            if not isinstance(count, int) or count != len(page_records):
+                raise CloudflareAPIError("交易紀錄 API 分頁筆數不一致")
+            if not isinstance(limit, int) or limit < 1 or limit > RECORD_PAGE_LIMIT:
+                raise CloudflareAPIError("交易紀錄 API 分頁上限無效")
+            if not isinstance(has_more, bool):
+                raise CloudflareAPIError("交易紀錄 API has_more 無效")
+            if has_more:
+                if not isinstance(next_cursor, str) or not next_cursor:
+                    raise CloudflareAPIError("交易紀錄 API 缺少 next_cursor")
+                if next_cursor in seen_cursors:
+                    raise CloudflareAPIError("交易紀錄 API 發生 cursor 循環")
+                seen_cursors.add(next_cursor)
+            elif next_cursor is not None:
+                raise CloudflareAPIError("交易紀錄 API 結束頁仍回傳 cursor")
+
+            for record in page_records:
+                if not isinstance(record, dict):
+                    raise CloudflareAPIError("交易紀錄 API 包含非物件紀錄")
+                record_id = record.get("id")
+                if not isinstance(record_id, int) or isinstance(record_id, bool) or record_id <= 0:
+                    raise CloudflareAPIError("交易紀錄 API 包含無效 record id")
+                if record_id in seen_record_ids:
+                    raise CloudflareAPIError("交易紀錄 API 跨頁回傳重複紀錄")
+                seen_record_ids.add(record_id)
+
+            records.extend(page_records)
+            if len(records) > MAX_RECORD_COUNT:
+                raise CloudflareAPIError("交易紀錄 API 回傳筆數超過安全上限")
+            self.logger.info(
+                "交易紀錄 API 第 %s 頁完成：本頁 %s 筆，累計 %s 筆",
+                page_number,
+                len(page_records),
+                len(records),
             )
-        except requests.RequestException as exc:
-            raise CloudflareAPIError("交易紀錄 API 連線失敗") from exc
+            if not has_more:
+                self.logger.info("成功取得 %s 筆交易紀錄", len(records))
+                return records
+            cursor = next_cursor
 
-        if response.status_code != 200:
-            raise CloudflareAPIError(
-                f"交易紀錄 API 回應失敗 [status={response.status_code}]"
-            )
-
-        payload = self._decode_json(response, "交易紀錄 API")
-        if payload.get("success") is not True:
-            raise CloudflareAPIError("交易紀錄 API 未回傳 success=true")
-
-        records = payload.get("data")
-        if not isinstance(records, list):
-            raise CloudflareAPIError("交易紀錄 API 的 data 欄位不是陣列")
-
-        self.logger.info("成功取得 %s 筆交易紀錄", len(records))
-        return records
+        raise CloudflareAPIError("交易紀錄 API 分頁數超過安全上限")
 
     def delete_record(self, record_id: int) -> bool:
         """Delete one transaction record; retain bool semantics for existing callers."""

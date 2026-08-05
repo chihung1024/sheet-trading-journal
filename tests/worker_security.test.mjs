@@ -178,7 +178,7 @@ test("system target record request is filtered at the Worker database layer", as
   const response = await worker.fetch(request, { API_SECRET: "runner-secret", DB }, {});
   assert.equal(response.status, 200);
   assert.match(DB.calls[0].sql, /WHERE user_id = \?/);
-  assert.deepEqual(DB.calls[0].binds, ["target@example.com"]);
+  assert.deepEqual(DB.calls[0].binds, ["target@example.com", 1001]);
 });
 
 test("system principal cannot mutate source transaction records", async () => {
@@ -236,7 +236,7 @@ test("scheduled system record reads retain explicit all-user compatibility", asy
   const response = await worker.fetch(request, { API_SECRET: "runner-secret", DB }, {});
   assert.equal(response.status, 200);
   assert.doesNotMatch(DB.calls[0].sql, /WHERE user_id/);
-  assert.deepEqual(DB.calls[0].binds, []);
+  assert.deepEqual(DB.calls[0].binds, [1001]);
 });
 
 test("malformed JSON is rejected before any snapshot write", async () => {
