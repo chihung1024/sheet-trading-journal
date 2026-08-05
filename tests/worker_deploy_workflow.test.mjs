@@ -2,21 +2,25 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("production deploy workflow waits for the expected semantic deployment", async () => {
+test("production deploy workflow waits for the exact manifest-declared deployment", async () => {
   const workflow = await readFile(".github/workflows/deploy-worker.yml", "utf8");
 
   assert.match(workflow, /source_sha:/);
   assert.match(workflow, /persist-credentials: false/);
   assert.match(workflow, /git merge-base --is-ancestor/);
+  assert.match(workflow, /id: manifest/);
+  assert.match(workflow, /node tools\/export_worker_manifest\.mjs/);
   assert.match(workflow, /wait_for_expected_deployment\(\)/);
   assert.match(workflow, /for attempt in \$\(seq 1 20\)/);
   assert.match(workflow, /--write-out '%\{http_code\}'/);
   assert.match(workflow, /WORKER_BASE_URL\/api\/version/);
   assert.match(workflow, /WORKER_BASE_URL\/api\/health/);
   assert.match(workflow, /node tools\/verify_worker_deployment\.mjs/);
-  assert.match(workflow, /EXPECTED_RELEASE_VERSION: '4\.05'/);
-  assert.match(workflow, /EXPECTED_API_VERSION: '2\.57'/);
-  assert.match(workflow, /EXPECTED_SCHEMA_VERSION: '1'/);
+  assert.match(workflow, /EXPECTED_RELEASE_VERSION: \$\{\{ steps\.manifest\.outputs\.release_version \}\}/);
+  assert.match(workflow, /EXPECTED_API_VERSION: \$\{\{ steps\.manifest\.outputs\.api_version \}\}/);
+  assert.match(workflow, /EXPECTED_SCHEMA_VERSION: \$\{\{ steps\.manifest\.outputs\.schema_version \}\}/);
+  assert.doesNotMatch(workflow, /EXPECTED_RELEASE_VERSION: ['"]\d/);
+  assert.doesNotMatch(workflow, /EXPECTED_API_VERSION: ['"]\d/);
   assert.doesNotMatch(
     workflow,
     /fetch_until_200/,
