@@ -1,6 +1,8 @@
-requests
-pandas
-numpy
-yfinance
-pydantic
-pyxirr
+# Runtime dependencies pinned to the versions validated by the latest successful
+# production workflow run on 2026-08-05.
+requests==2.34.2
+pandas==2.3.3
+numpy==2.2.6
+yfinance==1.5.2
+pydantic==2.13.4
+pyxirr==0.10.8
