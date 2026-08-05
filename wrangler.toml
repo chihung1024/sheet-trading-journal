@@ -1,0 +1,30 @@
+# Canonical Cloudflare Worker deployment configuration.
+#
+# The all-zero D1 UUID is intentionally safe for local development only.
+# Production deployment MUST run `npm run worker:config:render`, which refuses
+# the sentinel and writes `.wrangler/deploy.toml` from protected CI variables.
+
+name = "journal-backend"
+main = "worker.js"
+compatibility_date = "2026-08-05"
+workers_dev = true
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[vars]
+RELEASE_VERSION = "4.05"
+API_VERSION = "2.57"
+SCHEMA_VERSION = "1"
+SOURCE_COMMIT = "development"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "trading-journal-local"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+migrations_table = "d1_migrations"
