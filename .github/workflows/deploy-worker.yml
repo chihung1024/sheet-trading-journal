@@ -52,6 +52,10 @@ jobs:
           echo "sha=$actual" >> "$GITHUB_OUTPUT"
           git status --short
 
+      - name: Load expected versions from Worker manifest
+        id: manifest
+        run: node tools/export_worker_manifest.mjs
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -107,9 +111,9 @@ jobs:
         shell: bash
         env:
           EXPECTED_SHA: ${{ steps.source.outputs.sha }}
-          EXPECTED_RELEASE_VERSION: '4.05'
-          EXPECTED_API_VERSION: '2.57'
-          EXPECTED_SCHEMA_VERSION: '1'
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
           WORKER_BASE_URL: https://journal-backend.chired.workers.dev
         run: |
           set -euo pipefail
