@@ -1,3 +1,5 @@
+"""Regression tests for complete, fail-closed records pagination ingestion."""
+
 from unittest.mock import Mock
 
 import pytest
