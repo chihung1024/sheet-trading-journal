@@ -240,6 +240,7 @@ def test_run_update_only_touches_requested_user(monkeypatch):
 
     class FakeCalculator:
         def __init__(self, user_df, market_client, benchmark_ticker, api_client):
+            self.df = user_df.copy(deep=True)
             observed["calculator_users"].extend(user_df["user_id"].unique().tolist())
 
         def run(self):
