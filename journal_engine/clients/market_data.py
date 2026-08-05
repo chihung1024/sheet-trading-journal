@@ -237,20 +237,26 @@ class MarketDataClient:
             return pd.to_datetime(used_date).tz_localize(None).normalize()
 
     def get_transaction_multiplier(self, symbol, date):
-        """取得交易日的拆股復權因子。"""
+        """取得交易日的累積拆股復權因子，使用 as-of/pad 語意。"""
         if symbol not in self.market_data:
             return 1.0
 
         try:
             df = self.market_data[symbol]
-            if date in df.index:
-                return float(df.loc[date, 'Split_Factor'])
+            dt = pd.to_datetime(date)
+            if getattr(dt, 'tzinfo', None) is not None:
+                dt = dt.tz_localize(None)
+            dt = dt.normalize()
 
-            if date < df.index.min():
-                return float(df.iloc[0]['Split_Factor'])
+            if dt in df.index:
+                return float(df.loc[dt, 'Split_Factor'])
 
-            return float(df.iloc[-1]['Split_Factor'])
-        except:
+            idx = df.index.get_indexer([dt], method='pad')[0]
+            if idx != -1:
+                return float(df.iloc[idx]['Split_Factor'])
+
+            return float(df.iloc[0]['Split_Factor'])
+        except Exception:
             return 1.0
 
     def get_dividend_adjustment_factor(self, symbol, date):
