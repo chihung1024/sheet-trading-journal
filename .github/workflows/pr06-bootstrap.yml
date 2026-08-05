@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'PR06 finalize cursor pagination DAL'
+    if: github.event.head_commit.message == 'PR06 verify cursor pagination DAL'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -41,6 +41,7 @@ jobs:
         run: |
           python .pr06/fix_legacy_compat.py
           python .pr06/fix_duplicate_helper.py
+          python .pr06/fix_regression_expectations.py
           python .pr06/apply_pr06.py
 
       - name: Install dependencies
