@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve, sep } from "node:path";
 
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -22,6 +22,12 @@ if (!COMMIT_RE.test(sourceCommit)) {
 }
 
 let config = await readFile(sourcePath, "utf8");
+config = rewriteRelativeConfigPath(config, /^main = "([^"]+)"$/m, "main");
+config = rewriteRelativeConfigPath(
+  config,
+  /^migrations_dir = "([^"]+)"$/m,
+  "migrations_dir",
+);
 config = replaceExactly(
   config,
   /^database_name = ".*"$/m,
@@ -46,6 +52,19 @@ await writeFile(outputPath, config, { encoding: "utf8", mode: 0o600 });
 console.log(`Rendered production Wrangler config: ${outputPath}`);
 console.log(`Worker source commit: ${sourceCommit.toLowerCase()}`);
 console.log(`D1 database name: ${databaseName}`);
+
+function rewriteRelativeConfigPath(input, pattern, label) {
+  const matches = [...input.matchAll(new RegExp(pattern.source, "gm"))];
+  if (matches.length !== 1 || !matches[0][1]) {
+    throw new Error(`Expected exactly one ${label} path entry, found ${matches.length}`);
+  }
+
+  const absoluteTarget = resolve(dirname(sourcePath), matches[0][1]);
+  let renderedPath = relative(dirname(outputPath), absoluteTarget).split(sep).join("/");
+  if (!renderedPath) renderedPath = ".";
+
+  return input.replace(pattern, `${label} = "${renderedPath}"`);
+}
 
 function replaceExactly(input, pattern, replacement, label) {
   const matches = input.match(new RegExp(pattern.source, "gm")) || [];
