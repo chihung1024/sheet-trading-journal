@@ -11,6 +11,11 @@ from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.config import API_KEY
 from journal_engine.core.calculator import PortfolioCalculator
+from journal_engine.core.split_ledger import (
+    build_split_adjusted_validation_ledger,
+    validate_adjusted_ledger_parity,
+)
+from journal_engine.core.transaction_calendar import ensure_transaction_dates_in_market_calendar
 from journal_engine.core.validator import PortfolioValidator
 
 
@@ -172,7 +177,7 @@ def validate_before_upload(snapshot, user_df: pd.DataFrame) -> None:
 
 def run_update() -> None:
     logger = logging.getLogger("main")
-    logger.info("=== 啟動交易日誌更新程序 (PR-02 fail-closed runner) ===")
+    logger.info("=== 啟動交易日誌更新程序 (PR-02B transaction-aware calendar) ===")
 
     if not API_KEY:
         raise PortfolioUpdateError("環境變數中找不到 API_KEY")
@@ -209,6 +214,15 @@ def run_update() -> None:
     logger.info("開始下載市場數據，標的數: %s", len(all_tickers))
     market_client.download_data(sorted(all_tickers), fetch_start_date)
 
+    inserted_dates = ensure_transaction_dates_in_market_calendar(market_client, df)
+    if inserted_dates:
+        inserted_count = sum(len(dates) for dates in inserted_dates.values())
+        logger.info(
+            "已加入 %s 個缺失交易估值日期，涵蓋 %s 個標的",
+            inserted_count,
+            len(inserted_dates),
+        )
+
     failed_users: List[str] = []
     successful_users = 0
 
@@ -221,12 +235,12 @@ def run_update() -> None:
 
         try:
             logger.info("正在處理使用者 %s (Benchmark: %s)", masked_user, benchmark)
-            user_df = df[df["user_id"] == user_id].copy()
-            if user_df.empty:
+            raw_user_df = df[df["user_id"] == user_id].copy(deep=True)
+            if raw_user_df.empty:
                 raise PortfolioUpdateError("使用者交易資料意外為空")
 
             calculator = PortfolioCalculator(
-                user_df,
+                raw_user_df.copy(deep=True),
                 market_client,
                 benchmark_ticker=benchmark,
                 api_client=api_client,
@@ -239,7 +253,14 @@ def run_update() -> None:
                     f"計算期間 validator 回報 {len(calculation_capture.messages)} 項錯誤"
                 )
 
-            validate_before_upload(snapshot, user_df)
+            validation_df = build_split_adjusted_validation_ledger(
+                raw_user_df,
+                market_client,
+            )
+            if not validate_adjusted_ledger_parity(calculator.df, validation_df):
+                raise PortfolioUpdateError("計算器與驗證器的拆股復權交易帳本不一致")
+
+            validate_before_upload(snapshot, validation_df)
             if api_client.upload_portfolio(snapshot, target_user_id=user_id) is not True:
                 raise PortfolioUpdateError("Worker 未明確確認上傳成功")
 

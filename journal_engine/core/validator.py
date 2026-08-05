@@ -151,24 +151,88 @@ class PortfolioValidator:
         transactions_df: pd.DataFrame,
         tolerance: float = 0.011,
     ) -> bool:
-        """Validate open quantities against BUY minus SELL transactions."""
-        for symbol, holding in holdings.items():
-            symbol_txns = transactions_df[transactions_df["Symbol"] == symbol]
-            buy_qty = symbol_txns[symbol_txns["Type"] == "BUY"]["Qty"].sum()
-            sell_qty = symbol_txns[symbol_txns["Type"] == "SELL"]["Qty"].sum()
-            expected_qty = buy_qty - sell_qty
-            actual_qty = holding.get("qty", 0)
+        """Validate BUY minus SELL quantities for the union of ledger and holdings.
 
-            if abs(actual_qty - expected_qty) > tolerance:
-                logger.error(
-                    "[%s] Holdings quantity mismatch: Expected=%.4f, Actual=%.4f",
-                    symbol,
-                    expected_qty,
-                    actual_qty,
-                )
+        Iterating only over serialized holdings misses the most dangerous failure mode:
+        a newly purchased symbol can be skipped by the calculator and therefore be
+        absent from the snapshot entirely.  This validator audits the union of symbols
+        from both sides and treats an absent snapshot holding as quantity zero.
+        """
+        required_columns = {"Symbol", "Type", "Qty"}
+        missing_columns = sorted(required_columns - set(transactions_df.columns))
+        if missing_columns:
+            logger.error(
+                "Holdings validation missing required transaction columns: %s",
+                ", ".join(missing_columns),
+            )
+            return False
+
+        normalized = transactions_df.copy(deep=True)
+        normalized["Symbol"] = normalized["Symbol"].astype(str).str.strip().str.upper()
+        normalized["Type"] = normalized["Type"].astype(str).str.strip().str.upper()
+        normalized["Qty"] = pd.to_numeric(normalized["Qty"], errors="coerce")
+
+        if normalized["Qty"].isna().any() or not normalized["Qty"].map(math.isfinite).all():
+            logger.error("Holdings validation contains a non-finite transaction quantity")
+            return False
+
+        normalized_holdings: Dict[str, Dict[str, Any]] = {}
+        for raw_symbol, holding in holdings.items():
+            symbol = str(raw_symbol).strip().upper()
+            if not symbol:
+                logger.error("Snapshot holdings contain an empty symbol")
                 return False
+            normalized_holdings[symbol] = holding
 
-        return True
+        transaction_symbols = set(normalized["Symbol"].dropna()) - {""}
+        all_symbols = sorted(transaction_symbols | set(normalized_holdings))
+        valid = True
+
+        for symbol in all_symbols:
+            symbol_txns = normalized[normalized["Symbol"] == symbol]
+            buy_qty = float(
+                symbol_txns[symbol_txns["Type"] == "BUY"]["Qty"].sum()
+            )
+            sell_qty = float(
+                symbol_txns[symbol_txns["Type"] == "SELL"]["Qty"].sum()
+            )
+            expected_qty = buy_qty - sell_qty
+            actual_qty = float(normalized_holdings.get(symbol, {}).get("qty", 0.0))
+
+            if not math.isfinite(actual_qty):
+                logger.error("[%s] Snapshot holding quantity is not finite", symbol)
+                valid = False
+                continue
+
+            if abs(actual_qty - expected_qty) <= tolerance:
+                continue
+
+            if "Date" in symbol_txns.columns and not symbol_txns.empty:
+                parsed_dates = pd.to_datetime(symbol_txns["Date"], errors="coerce").dropna()
+                if not parsed_dates.empty:
+                    date_range = (
+                        f"{parsed_dates.min().strftime('%Y-%m-%d')}.."
+                        f"{parsed_dates.max().strftime('%Y-%m-%d')}"
+                    )
+                else:
+                    date_range = "unavailable"
+            else:
+                date_range = "unavailable"
+
+            logger.error(
+                "[%s] Holdings quantity mismatch: Buy=%.4f, Sell=%.4f, "
+                "Expected=%.4f, Actual=%.4f, Rows=%s, Dates=%s",
+                symbol,
+                buy_qty,
+                sell_qty,
+                expected_qty,
+                actual_qty,
+                len(symbol_txns),
+                date_range,
+            )
+            valid = False
+
+        return valid
 
     @staticmethod
     def validate_xirr_value(value: Any) -> bool:
@@ -259,7 +323,7 @@ class PortfolioValidator:
             valid = False
 
         holdings = {holding.symbol: holding.model_dump() for holding in snapshot.holdings}
-        if holdings and not cls.validate_holdings_consistency(holdings, transactions_df):
+        if not cls.validate_holdings_consistency(holdings, transactions_df):
             valid = False
 
         for holding in snapshot.holdings:
