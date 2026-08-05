@@ -46,14 +46,16 @@ jobs:
           npm run worker:schema:test
           npm run build
 
-      - name: Commit PR-05 implementation
+      - name: Commit non-workflow PR-05 implementation
         shell: bash
         run: |
           set -euo pipefail
+          git checkout origin/main -- .github/workflows/ci.yml
+          rm -f .github/workflows/deploy-worker.yml
           rm -rf .pr05-bootstrap
           rm -f .github/workflows/pr05-bootstrap.yml
           git config user.name "chihung1024"
           git config user.email "104315542+chihung1024@users.noreply.github.com"
           git add --all
-          git commit -m "PR-05: add reproducible Worker deployment and version traceability"
+          git commit -m "PR-05: add reproducible Worker source, schema, and traceability"
           git push origin HEAD:pr-05/worker-reproducible-deployment
