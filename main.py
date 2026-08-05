@@ -2,7 +2,7 @@ import logging
 import math
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List, Optional, Tuple
 
 import pandas as pd
@@ -12,6 +12,9 @@ from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.config import API_KEY
 from journal_engine.core.calculator import PortfolioCalculator
 from journal_engine.core.validator import PortfolioValidator
+
+
+SUPPORTED_TRANSACTION_TYPES = {"BUY", "SELL", "DIV"}
 
 
 class PortfolioUpdateError(RuntimeError):
@@ -73,6 +76,8 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
             f"交易紀錄缺少必要欄位: {', '.join(missing_columns)}"
         )
 
+    if df["user_id"].isna().any():
+        raise PortfolioUpdateError("交易紀錄包含空白 user_id")
     df["user_id"] = df["user_id"].astype(str).str.strip()
     if (df["user_id"] == "").any():
         raise PortfolioUpdateError("交易紀錄包含空白 user_id")
@@ -93,6 +98,10 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
     ):
         if optional_column not in df.columns:
             df[optional_column] = default_value
+    df["tag"] = df["tag"].fillna("")
+
+    if df["symbol"].isna().any() or df["txn_type"].isna().any():
+        raise PortfolioUpdateError("交易紀錄包含空白 Symbol 或 Type")
 
     df.rename(
         columns={
@@ -127,6 +136,12 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
     df["Type"] = df["Type"].astype(str).str.strip().str.upper()
     if (df["Symbol"] == "").any() or (df["Type"] == "").any():
         raise PortfolioUpdateError("交易紀錄包含空白 Symbol 或 Type")
+
+    unsupported_types = sorted(set(df["Type"]) - SUPPORTED_TRANSACTION_TYPES)
+    if unsupported_types:
+        raise PortfolioUpdateError(
+            f"交易紀錄包含不支援的 Type: {', '.join(unsupported_types)}"
+        )
 
     sort_columns = ["Date"]
     if "id" in df.columns:
