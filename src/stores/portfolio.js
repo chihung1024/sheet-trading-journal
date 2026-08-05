@@ -3,6 +3,11 @@ import { ref, computed } from 'vue';
 import { CONFIG } from '../config';
 import { useAuthStore } from './auth';
 import { useToast } from '../composables/useToast';
+import {
+    clearPendingCalculationRequest as clearStoredCalculationRequest,
+    readPendingCalculationRequest as readStoredCalculationRequest,
+    rememberPendingCalculationRequest as rememberStoredCalculationRequest,
+} from '../services/calculationJobState';
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -15,19 +20,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     let pollTimer = null;
     let calculationJobPollTimer = null;
     let triggerUpdatePromise = null;
-    const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
-    const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
+    let didAttemptCalculationRecovery = false;
 
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
     const currentGroup = ref('all');
 
-    const getToken = () => {
-        const auth = useAuthStore();
-        return auth.token;
-    };
+    const getAuth = () => useAuthStore();
+    const getToken = () => getAuth().token;
+    const getCalculationOwner = () => getAuth().user?.email || '';
 
-    const fetchWithAuth = async (endpoint, options = {}) => {
-        const auth = useAuthStore();
+    const fetchWithAuth = async (endpoint, options = {}, retryAfterRefresh = true) => {
+        const auth = getAuth();
         if (!auth.token) return null;
 
         try {
@@ -41,12 +44,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             });
 
             if (res.status === 401) {
-                console.warn("Token expired, attempting refresh...");
-                const refreshed = await auth.refreshToken();
-                if (refreshed) {
-                    // 重試原請求
-                    console.log("Token refreshed, retrying request...");
-                    return fetchWithAuth(endpoint, options);
+                if (retryAfterRefresh) {
+                    console.warn('Token expired, attempting refresh...');
+                    const refreshed = await auth.refreshToken();
+                    if (refreshed) return fetchWithAuth(endpoint, options, false);
                 }
                 connectionStatus.value = 'error';
                 auth.logout();
@@ -56,15 +57,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (!res.ok) {
                 connectionStatus.value = 'error';
                 const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || `API Error: ${res.status}`);
+                const error = new Error(err.error || `API Error: ${res.status}`);
+                error.status = res.status;
+                throw error;
             }
 
             connectionStatus.value = 'connected';
             return await res.json();
-        } catch (e) {
-            console.error(`Fetch error [${endpoint}]:`, e);
+        } catch (error) {
+            console.error(`Fetch error [${endpoint}]:`, error);
             connectionStatus.value = 'error';
-            throw e;
+            throw error;
         }
     };
 
@@ -75,55 +78,19 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         localStorage.removeItem('cached_records');
     };
 
-    const fetchAll = async () => {
-        if (loading.value) return;
-        loading.value = true;
-
-        try {
-            await fetchRecords();
-
-            // [v2.54] 從 API 獲取用戶的 benchmark 設定
-            try {
-                const settingsJson = await fetchWithAuth('/api/user-settings');
-                if (settingsJson && settingsJson.success && settingsJson.benchmark) {
-                    selectedBenchmark.value = settingsJson.benchmark;
-                    localStorage.setItem('user_benchmark', settingsJson.benchmark);
-                }
-            } catch (e) {
-                console.warn('無法載入 benchmark 設定，使用預設值', e);
-            }
-
-            if (records.value && records.value.length > 0) {
-                await fetchSnapshot();
-            } else {
-                resetData();
-            }
-        } catch (error) {
-            console.error('fetchAll error:', error);
-            connectionStatus.value = 'error';
-        } finally {
-            loading.value = false;
-        }
-    };
-
     const fetchSnapshot = async () => {
         try {
             const json = await fetchWithAuth('/api/portfolio');
-
             if (json && json.success && json.data) {
                 if (!json.data.updated_at) {
                     if (records.value.length === 0) resetData();
                     return;
                 }
-
-                if (records.value.length === 0 && json.data.holdings && json.data.holdings.length > 0) {
-                    return;
-                }
-
+                if (records.value.length === 0 && json.data.holdings && json.data.holdings.length > 0) return;
                 rawData.value = json.data;
                 lastUpdate.value = json.data.updated_at;
-            } else {
-                if (records.value.length === 0) resetData();
+            } else if (records.value.length === 0) {
+                resetData();
             }
         } catch (error) {
             console.error('fetchSnapshot error:', error);
@@ -134,11 +101,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const fetchRecords = async () => {
         try {
             const json = await fetchWithAuth('/api/records');
-
             if (json && json.success) {
                 records.value = json.data || [];
                 localStorage.setItem('cached_records', JSON.stringify(records.value));
-
                 if (records.value.length === 0) resetData();
             }
         } catch (error) {
@@ -147,9 +112,124 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    const handleAutoUpdateSignal = (message = "✨ 系統正自動同步股價與數據，請稍候...") => {
+    const readPendingCalculationRequest = () => readStoredCalculationRequest(
+        localStorage,
+        getCalculationOwner(),
+    );
+
+    const rememberPendingCalculationRequest = (pending) => rememberStoredCalculationRequest(
+        localStorage,
+        getCalculationOwner(),
+        pending,
+    );
+
+    const clearPendingCalculationRequest = () => clearStoredCalculationRequest(localStorage);
+
+    const updatePollingState = () => {
+        isPolling.value = Boolean(pollTimer || calculationJobPollTimer);
+    };
+
+    const stopCalculationJobPolling = () => {
+        if (calculationJobPollTimer) {
+            clearInterval(calculationJobPollTimer);
+            calculationJobPollTimer = null;
+        }
+        updatePollingState();
+    };
+
+    const completeCalculationJob = async (job, addToast) => {
+        stopCalculationJobPolling();
+        clearPendingCalculationRequest();
+        if (job.status === 'succeeded') {
+            await fetchAll();
+            addToast('✅ 數據已更新完畢！', 'success');
+        } else {
+            addToast(`後端計算失敗 (${job.error_code || 'UNKNOWN'})`, 'error');
+        }
+    };
+
+    const pollCalculationJobOnce = async (jobId, addToast) => {
+        try {
+            const json = await fetchWithAuth(`/api/calculation-jobs/${encodeURIComponent(jobId)}`);
+            if (!json?.success || !json.job) return false;
+            calculationJob.value = json.job;
+            if (json.job.status === 'queued' || json.job.status === 'running') {
+                isPolling.value = true;
+                return false;
+            }
+            if (json.job.status === 'succeeded' || json.job.status === 'failed') {
+                await completeCalculationJob(json.job, addToast);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            if (error?.status === 404) {
+                stopCalculationJobPolling();
+                clearPendingCalculationRequest();
+                calculationJob.value = null;
+                addToast('找不到先前的計算工作，已清除本機恢復狀態', 'info');
+                return true;
+            }
+            console.warn('Calculation job polling error:', error);
+            return false;
+        }
+    };
+
+    const startCalculationJobPolling = async (jobId) => {
+        stopCalculationJobPolling();
+        const startedAt = Date.now();
         const { addToast } = useToast();
-        addToast(message, "info");
+        isPolling.value = true;
+
+        const completedImmediately = await pollCalculationJobOnce(jobId, addToast);
+        if (completedImmediately) return;
+
+        calculationJobPollTimer = setInterval(async () => {
+            if (Date.now() - startedAt > 20 * 60 * 1000) {
+                stopCalculationJobPolling();
+                addToast('計算工作仍在排隊或執行中，稍後重新整理可繼續追蹤', 'info');
+                return;
+            }
+            await pollCalculationJobOnce(jobId, addToast);
+        }, 5000);
+        updatePollingState();
+    };
+
+    const resumePendingCalculationJob = () => {
+        if (didAttemptCalculationRecovery) return;
+        didAttemptCalculationRecovery = true;
+        const pending = readPendingCalculationRequest();
+        if (pending?.jobId) void startCalculationJobPolling(pending.jobId);
+    };
+
+    const fetchAll = async () => {
+        if (loading.value) return;
+        resumePendingCalculationJob();
+        loading.value = true;
+        try {
+            await fetchRecords();
+            try {
+                const settingsJson = await fetchWithAuth('/api/user-settings');
+                if (settingsJson && settingsJson.success && settingsJson.benchmark) {
+                    selectedBenchmark.value = settingsJson.benchmark;
+                    localStorage.setItem('user_benchmark', settingsJson.benchmark);
+                }
+            } catch (error) {
+                console.warn('無法載入 benchmark 設定，使用預設值', error);
+            }
+            if (records.value && records.value.length > 0) await fetchSnapshot();
+            else resetData();
+        } catch (error) {
+            console.error('fetchAll error:', error);
+            connectionStatus.value = 'error';
+        } finally {
+            loading.value = false;
+        }
+    };
+
+    const handleAutoUpdateSignal = (message = '✨ 系統正自動同步股價與數據，請稍候...') => {
+        const { addToast } = useToast();
+        addToast(message, 'info');
         startPolling();
     };
 
@@ -160,19 +240,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 method: 'POST',
                 body: JSON.stringify(formData)
             });
-
             if (json && json.success) {
-                addToast("新增成功", "success");
+                addToast('新增成功', 'success');
                 await fetchRecords();
-
-                if (json.auto_update) {
-                    handleAutoUpdateSignal("🚀 這是您的第一筆交易，系統正自動啟動背景計算...");
-                }
+                if (json.auto_update) handleAutoUpdateSignal('🚀 這是您的第一筆交易，系統正自動啟動背景計算...');
                 return true;
             }
             return false;
-        } catch (e) {
-            addToast(e.message || "新增失敗", "error");
+        } catch (error) {
+            addToast(error.message || '新增失敗', 'error');
             return false;
         }
     };
@@ -185,13 +261,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 body: JSON.stringify(formData)
             });
             if (json && json.success) {
-                addToast("更新成功", "success");
+                addToast('更新成功', 'success');
                 await fetchRecords();
                 return true;
             }
             return false;
-        } catch (e) {
-            addToast(e.message || "更新失敗", "error");
+        } catch (error) {
+            addToast(error.message || '更新失敗', 'error');
             return false;
         }
     };
@@ -203,21 +279,19 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 method: 'DELETE',
                 body: JSON.stringify({ id })
             });
-
             if (json && json.success) {
-                addToast("刪除成功", "success");
-
-                if (json.message === "RELOAD_UI") {
+                addToast('刪除成功', 'success');
+                if (json.message === 'RELOAD_UI') {
                     records.value = [];
-                    handleAutoUpdateSignal("🧹 紀錄已清空，系統正重置資產數據...");
+                    handleAutoUpdateSignal('🧹 紀錄已清空，系統正重置資產數據...');
                 } else {
                     await fetchRecords();
                 }
                 return true;
             }
             return false;
-        } catch (e) {
-            addToast("刪除失敗", "error");
+        } catch {
+            addToast('刪除失敗', 'error');
             return false;
         }
     };
@@ -233,9 +307,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     const currentGroupData = computed(() => {
         if (!rawData.value) return {};
-        if (rawData.value.groups && rawData.value.groups[currentGroup.value]) {
-            return rawData.value.groups[currentGroup.value];
-        }
+        if (rawData.value.groups && rawData.value.groups[currentGroup.value]) return rawData.value.groups[currentGroup.value];
         return rawData.value;
     });
 
@@ -247,9 +319,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const dailyPnL = computed(() => stats.value.daily_pnl_twd || 0);
 
     const setGroup = (group) => {
-        if (availableGroups.value.includes(group)) {
-            currentGroup.value = group;
-        }
+        if (availableGroups.value.includes(group)) currentGroup.value = group;
     };
 
     const getGroupsWithHolding = (symbol) => {
@@ -257,69 +327,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         const groups = [];
         for (const [groupName, data] of Object.entries(rawData.value.groups)) {
             if (groupName === 'all') continue;
-            const hasStock = data.holdings.some(h => h.symbol === symbol && h.qty > 0);
-            if (hasStock) groups.push(groupName);
+            if (data.holdings.some(holding => holding.symbol === symbol && holding.qty > 0)) groups.push(groupName);
         }
         return groups;
-    };
-
-    const stopCalculationJobPolling = () => {
-        if (calculationJobPollTimer) {
-  clearInterval(calculationJobPollTimer);
-  calculationJobPollTimer = null;
-        }
-    };
-
-    const readPendingCalculationRequest = () => {
-        try {
-  const pending = JSON.parse(localStorage.getItem(CALCULATION_REQUEST_STORAGE_KEY) || 'null');
-  if (!pending || typeof pending.key !== 'string' || !Number.isFinite(pending.createdAt)) return null;
-  if (Date.now() - pending.createdAt >= CALCULATION_REQUEST_TTL_MS) {
-      localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
-      return null;
-  }
-  return pending;
-        } catch {
-  localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
-  return null;
-        }
-    };
-
-    const rememberPendingCalculationRequest = (pending) => {
-        localStorage.setItem(CALCULATION_REQUEST_STORAGE_KEY, JSON.stringify(pending));
-    };
-
-    const clearPendingCalculationRequest = () => {
-        localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
-    };
-
-    const startCalculationJobPolling = (jobId) => {
-        stopCalculationJobPolling();
-        const startedAt = Date.now();
-        const { addToast } = useToast();
-
-        calculationJobPollTimer = setInterval(async () => {
-  if (Date.now() - startedAt > 20 * 60 * 1000) {
-      stopCalculationJobPolling();
-      addToast("計算工作仍在排隊或執行中，稍後可重新整理查看結果", "info");
-      return;
-  }
-  try {
-      const json = await fetchWithAuth(`/api/calculation-jobs/${encodeURIComponent(jobId)}`);
-      if (!json?.success || !json.job) return;
-      calculationJob.value = json.job;
-      if (json.job.status === 'succeeded') {
-          stopCalculationJobPolling();
-          await fetchAll();
-          addToast("✅ 數據已更新完畢！", "success");
-      } else if (json.job.status === 'failed') {
-          stopCalculationJobPolling();
-          addToast(`後端計算失敗 (${json.job.error_code || 'UNKNOWN'})`, "error");
-      }
-  } catch (error) {
-      console.warn('Calculation job polling error:', error);
-  }
-        }, 5000);
     };
 
     const createIdempotencyKey = () => {
@@ -337,133 +347,122 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         return key;
     };
 
-    const startPolling = () => {
-        if (isPolling.value) return;
+    const stopPolling = () => {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+        updatePollingState();
+    };
 
-        isPolling.value = true;
+    const startPolling = () => {
+        if (pollTimer) return;
         const startTime = Date.now();
         const initialTime = lastUpdate.value;
         const { addToast } = useToast();
+        isPolling.value = true;
 
         pollTimer = setInterval(async () => {
             if (Date.now() - startTime > 180000) {
                 stopPolling();
                 return;
             }
-
             try {
                 const json = await fetchWithAuth('/api/portfolio');
-
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
-                    const isNewData = newTime && (newTime !== initialTime) && (json.data.holdings?.length > 0 || records.value.length === 0);
-                    const isResetConfirmed = (records.value.length === 0) && !newTime;
-
+                    const isNewData = newTime && newTime !== initialTime && (json.data.holdings?.length > 0 || records.value.length === 0);
+                    const isResetConfirmed = records.value.length === 0 && !newTime;
                     if (isNewData || isResetConfirmed) {
                         stopPolling();
                         await fetchAll();
-                        if (isResetConfirmed) addToast("✅ 所有資產數據已歸零", "success");
-                        else addToast("✅ 數據已更新完畢！", "success");
+                        addToast(isResetConfirmed ? '✅ 所有資產數據已歸零' : '✅ 數據已更新完畢！', 'success');
                     }
                 }
-            } catch (e) {
-                console.warn('SmartPolling check error:', e);
+            } catch (error) {
+                console.warn('SmartPolling check error:', error);
             }
         }, 5000);
+        updatePollingState();
     };
 
-    const stopPolling = () => {
-        isPolling.value = false;
-        if (pollTimer) {
-            clearInterval(pollTimer);
-            pollTimer = null;
-        }
-    };
-
-    // [v2.60] Durable calculation job trigger with idempotency and status polling.
     const performTriggerUpdate = async (benchmark = null) => {
         const token = getToken();
-        if (!token) throw new Error("請先登入");
+        if (!token) throw new Error('請先登入');
 
         if (benchmark && benchmark !== selectedBenchmark.value) {
-  try {
-      const saveResponse = await fetch(`${CONFIG.API_BASE_URL}/api/user-settings`, {
-          method: 'POST',
-          headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ benchmark: benchmark.toUpperCase().trim() })
-      });
-      if (!saveResponse.ok) throw new Error('無法保存 benchmark 設定');
-      const saveJson = await saveResponse.json();
-      if (saveJson.success) {
-          selectedBenchmark.value = saveJson.benchmark;
-          localStorage.setItem('user_benchmark', saveJson.benchmark);
-      }
-  } catch (e) {
-      console.error('保存 benchmark 失敗:', e);
-      throw new Error('無法保存 benchmark 設定: ' + e.message);
-  }
+            try {
+                const saveResponse = await fetch(`${CONFIG.API_BASE_URL}/api/user-settings`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ benchmark: benchmark.toUpperCase().trim() })
+                });
+                if (!saveResponse.ok) throw new Error('無法保存 benchmark 設定');
+                const saveJson = await saveResponse.json();
+                if (saveJson.success) {
+                    selectedBenchmark.value = saveJson.benchmark;
+                    localStorage.setItem('user_benchmark', saveJson.benchmark);
+                }
+            } catch (error) {
+                console.error('保存 benchmark 失敗:', error);
+                throw new Error(`無法保存 benchmark 設定: ${error.message}`);
+            }
         }
 
         const targetBenchmark = benchmark || selectedBenchmark.value;
         const idempotencyKey = getOrCreateIdempotencyKey();
-
         try {
-  const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
-      method: "POST",
-      headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey
-      },
-      body: JSON.stringify({ benchmark: targetBenchmark })
-  });
-  const responseData = await response.json().catch(() => ({}));
-  if (!response.ok) {
-      clearPendingCalculationRequest();
-      throw new Error(responseData.error || '後端無回應');
-  }
+            const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Idempotency-Key': idempotencyKey
+                },
+                body: JSON.stringify({ benchmark: targetBenchmark })
+            });
+            const responseData = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                clearPendingCalculationRequest();
+                throw new Error(responseData.error || '後端無回應');
+            }
 
-  if (responseData.job?.id) {
-      calculationJob.value = responseData.job;
-      rememberPendingCalculationRequest({
-key: idempotencyKey,
-createdAt: Date.now(),
-jobId: responseData.job.id
-      });
-      const { addToast } = useToast();
-      addToast(
-          responseData.job.deduplicated
-              ? "相同的計算要求已在排隊，繼續追蹤原工作"
-              : "🔄 已建立後端計算工作，正在同步中...",
-          "info"
-      );
-      startCalculationJobPolling(responseData.job.id);
-  } else {
-      handleAutoUpdateSignal("🔄 已手動觸發數據重算，正在同步中...");
-  }
-  return true;
-        } catch (e) {
-  console.error('Trigger failed:', e);
-  throw e;
+            if (responseData.job?.id) {
+                calculationJob.value = responseData.job;
+                rememberPendingCalculationRequest({
+                    key: idempotencyKey,
+                    createdAt: Date.now(),
+                    jobId: responseData.job.id
+                });
+                const { addToast } = useToast();
+                addToast(
+                    responseData.job.deduplicated
+                        ? '相同的計算要求已在排隊，繼續追蹤原工作'
+                        : '🔄 已建立後端計算工作，正在同步中...',
+                    'info'
+                );
+                await startCalculationJobPolling(responseData.job.id);
+            } else {
+                clearPendingCalculationRequest();
+                handleAutoUpdateSignal('🔄 已手動觸發數據重算，正在同步中...');
+            }
+            return true;
+        } catch (error) {
+            console.error('Trigger failed:', error);
+            throw error;
         }
     };
 
     const triggerUpdate = (benchmark = null) => {
         if (triggerUpdatePromise) return triggerUpdatePromise;
-        triggerUpdatePromise = performTriggerUpdate(benchmark)
-  .finally(() => {
-      triggerUpdatePromise = null;
-  });
+        triggerUpdatePromise = performTriggerUpdate(benchmark).finally(() => {
+            triggerUpdatePromise = null;
+        });
         return triggerUpdatePromise;
     };
-
-    const pendingCalculationRequest = readPendingCalculationRequest();
-    if (pendingCalculationRequest?.jobId) {
-        queueMicrotask(() => startCalculationJobPolling(pendingCalculationRequest.jobId));
-    }
 
     return {
         loading,
@@ -492,6 +491,7 @@ jobId: responseData.job.id
         deleteRecord,
         triggerUpdate,
         resetData,
-        startPolling
+        startPolling,
+        resumePendingCalculationJob,
     };
 });
