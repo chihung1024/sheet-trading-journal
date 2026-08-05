@@ -218,6 +218,9 @@ def test_run_update_only_touches_requested_user(monkeypatch):
         def download_data(self, tickers, start_date):
             observed["tickers"] = list(tickers)
 
+        def get_transaction_multiplier(self, symbol, date):
+            return 1.0
+
     class FakeCalculator:
         def __init__(self, user_df, market_client, benchmark_ticker, api_client):
             observed["calculator_users"].extend(user_df["user_id"].unique().tolist())
