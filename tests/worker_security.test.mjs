@@ -215,3 +215,85 @@ test("system snapshot upload requires a validated target and never trusts user r
   assert.equal(response.status, 200);
   assert.deepEqual(DB.calls[0].binds.slice(0, 1), ["target@example.com"]);
 });
+
+test("system settings requests fail closed without an explicit target", async () => {
+  const DB = makeDb();
+  const request = new Request("https://api.example.test/api/user-settings", {
+    headers: { "X-API-KEY": "runner-secret" },
+  });
+  const response = await worker.fetch(request, { API_SECRET: "runner-secret", DB }, {});
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(body.error_meta.code, "INVALID_REQUEST");
+  assert.equal(DB.calls.length, 0);
+});
+
+test("scheduled system record reads retain explicit all-user compatibility", async () => {
+  const DB = makeDb();
+  const request = new Request("https://api.example.test/api/records", {
+    headers: { "X-API-KEY": "runner-secret" },
+  });
+  const response = await worker.fetch(request, { API_SECRET: "runner-secret", DB }, {});
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(DB.calls[0].sql, /WHERE user_id/);
+  assert.deepEqual(DB.calls[0].binds, []);
+});
+
+test("malformed JSON is rejected before any snapshot write", async () => {
+  const DB = makeDb();
+  const request = new Request("https://api.example.test/api/portfolio", {
+    method: "POST",
+    headers: {
+      "X-API-KEY": "runner-secret",
+      "Content-Type": "application/json",
+    },
+    body: "{",
+  });
+  const response = await worker.fetch(request, { API_SECRET: "runner-secret", DB }, {});
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(body.error_meta.code, "INVALID_REQUEST");
+  assert.equal(DB.calls.length, 0);
+});
+
+test("oversized JSON is rejected before any snapshot write", async () => {
+  const DB = makeDb();
+  const request = new Request("https://api.example.test/api/portfolio", {
+    method: "POST",
+    headers: {
+      "X-API-KEY": "runner-secret",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      target_user_id: "target@example.com",
+      data: { payload: "x".repeat(1_048_576) },
+    }),
+  });
+  const response = await worker.fetch(request, { API_SECRET: "runner-secret", DB }, {});
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(body.error_meta.code, "INVALID_REQUEST");
+  assert.equal(DB.calls.length, 0);
+});
+
+test("unauthenticated portfolio reads are rejected", async () => {
+  const DB = makeDb();
+  const request = new Request("https://api.example.test/api/portfolio");
+  const response = await worker.fetch(request, { DB }, {});
+  const body = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(body.error_meta.code, "UNAUTHORIZED");
+  assert.equal(DB.calls.length, 0);
+});
+
+test("invalid system credentials fail closed", async () => {
+  const DB = makeDb();
+  const request = new Request("https://api.example.test/api/records", {
+    headers: { "X-API-KEY": "wrong-secret" },
+  });
+  const response = await worker.fetch(request, { API_SECRET: "runner-secret", DB }, {});
+  const body = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(body.error_meta.code, "UNAUTHORIZED");
+  assert.equal(DB.calls.length, 0);
+});
