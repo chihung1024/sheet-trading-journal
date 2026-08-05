@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import sys
 from datetime import datetime, timedelta
@@ -109,10 +110,18 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
 
     try:
         df["Date"] = pd.to_datetime(df["Date"], errors="raise")
-        for column in ("Qty", "Price", "Commission", "Tax"):
+        df["Qty"] = pd.to_numeric(df["Qty"], errors="raise")
+        df["Price"] = pd.to_numeric(df["Price"], errors="raise")
+        for column in ("Commission", "Tax"):
             df[column] = pd.to_numeric(df[column], errors="raise").fillna(0.0)
     except (TypeError, ValueError) as exc:
         raise PortfolioUpdateError("交易紀錄包含無法解析的日期或數字") from exc
+
+    if df["Date"].isna().any():
+        raise PortfolioUpdateError("交易紀錄包含空白日期")
+    for column in ("Qty", "Price", "Commission", "Tax"):
+        if df[column].isna().any() or not df[column].map(math.isfinite).all():
+            raise PortfolioUpdateError(f"交易紀錄欄位 {column} 包含非有限數值")
 
     df["Symbol"] = df["Symbol"].astype(str).str.strip().str.upper()
     df["Type"] = df["Type"].astype(str).str.strip().str.upper()
