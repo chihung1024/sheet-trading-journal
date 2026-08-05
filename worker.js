@@ -678,17 +678,14 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
     rejectOwnerFields(body);
     const benchmark = body.benchmark ? validateSymbol(body.benchmark, "benchmark") : "SPY";
     const idempotencyKey = resolveIdempotencyKey(request.headers.get("Idempotency-Key"));
-    const idempotencyBucket = Math.floor(Date.now() / 1000 / CALCULATION_JOB_WINDOW_SECONDS);
     const idempotencyHash = await hashCalculationJobIdempotency(
       principal.email,
       idempotencyKey,
-      idempotencyBucket,
     );
     const created = await calculationJobsRepository.createOrGet(env.DB, {
       publicId: createCalculationJobId(),
       userId: principal.email,
       idempotencyHash,
-      idempotencyBucket,
       benchmark,
     });
 
@@ -839,15 +836,12 @@ function validateIdempotencyKey(value) {
   return key;
 }
 
-async function hashCalculationJobIdempotency(userId, key, bucket) {
-  if (!Number.isSafeInteger(bucket) || bucket < 0) {
-    throw new RequestValidationError("idempotency window is invalid");
-  }
+async function hashCalculationJobIdempotency(userId, key) {
   const normalizedUser = normalizeEmail(userId);
   const normalizedKey = validateIdempotencyKey(key);
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(`${normalizedUser}\n${bucket}\n${normalizedKey}`),
+    new TextEncoder().encode(`${normalizedUser}\n${normalizedKey}`),
   );
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -903,10 +897,13 @@ function publicCalculationJob(row, deduplicated) {
 
 function normalizeCalculationJobRow(row) {
   if (!isPlainObject(row)) throw new Error("InvalidCalculationJobRow");
+  if (!CALCULATION_JOB_STATUSES.has(row.status)) {
+    throw new Error("InvalidCalculationJobStatus");
+  }
   return {
     public_id: validateCalculationJobId(row.public_id),
     user_id: normalizeEmail(row.user_id),
-    status: CALCULATION_JOB_STATUSES.has(row.status) ? row.status : "failed",
+    status: row.status,
     benchmark: validateSymbol(row.benchmark, "stored benchmark"),
     github_run_id: row.github_run_id || null,
     github_run_attempt: Number(row.github_run_attempt || 0),
@@ -921,16 +918,31 @@ function normalizeCalculationJobRow(row) {
 
 const calculationJobsRepository = Object.freeze({
   async createOrGet(db, job) {
+    const userId = normalizeEmail(job.userId);
+    const idempotencyHash = String(job.idempotencyHash || "").toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(idempotencyHash)) {
+      throw new RequestValidationError("idempotency hash is invalid");
+    }
+    const benchmark = validateSymbol(job.benchmark, "benchmark");
+    const expiryModifier = `-${CALCULATION_JOB_WINDOW_SECONDS} seconds`;
+
+    await db.prepare(`
+      UPDATE calculation_jobs
+      SET idempotency_hash = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ?
+        AND idempotency_hash = ?
+        AND created_at <= datetime('now', ?)
+    `).bind(userId, idempotencyHash, expiryModifier).run();
+
     const insert = await db.prepare(`
       INSERT OR IGNORE INTO calculation_jobs
-        (public_id, user_id, idempotency_hash, idempotency_bucket, status, benchmark)
-      VALUES (?, ?, ?, ?, 'queued', ?)
+        (public_id, user_id, idempotency_hash, status, benchmark)
+      VALUES (?, ?, ?, 'queued', ?)
     `).bind(
       validateCalculationJobId(job.publicId),
-      normalizeEmail(job.userId),
-      job.idempotencyHash,
-      job.idempotencyBucket,
-      validateSymbol(job.benchmark, "benchmark"),
+      userId,
+      idempotencyHash,
+      benchmark,
     ).run();
     const row = await db.prepare(`
       SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
@@ -938,7 +950,7 @@ const calculationJobsRepository = Object.freeze({
       FROM calculation_jobs
       WHERE user_id = ? AND idempotency_hash = ?
       LIMIT 1
-    `).bind(normalizeEmail(job.userId), job.idempotencyHash).first();
+    `).bind(userId, idempotencyHash).first();
     if (!row) throw new Error("CalculationJobInsertLost");
     return { inserted: affectedRows(insert) === 1, job: normalizeCalculationJobRow(row) };
   },

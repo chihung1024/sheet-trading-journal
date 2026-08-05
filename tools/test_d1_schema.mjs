@@ -48,6 +48,28 @@ const indexes = JSON.parse(indexesResult.stdout)?.[0]?.results?.map((item) => it
 if (JSON.stringify(indexes) !== JSON.stringify(["idx_calculation_jobs_status_created", "idx_calculation_jobs_user_created"])) {
   throw new Error(`Unexpected calculation job indexes: ${JSON.stringify(indexes)}`);
 }
+
+const idempotencyResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", `
+    INSERT OR IGNORE INTO calculation_jobs
+      (public_id, user_id, idempotency_hash, status, benchmark)
+    VALUES
+      ('job_ABCDEFGHIJKLMNOPQRSTUV', 'duplicate@example.com', '${"a".repeat(64)}', 'queued', 'SPY');
+    INSERT OR IGNORE INTO calculation_jobs
+      (public_id, user_id, idempotency_hash, status, benchmark)
+    VALUES
+      ('job_ZYXWVUTSRQPONMLKJIHGFE', 'duplicate@example.com', '${"a".repeat(64)}', 'queued', 'SPY');
+    SELECT COUNT(*) AS total FROM calculation_jobs
+    WHERE user_id = 'duplicate@example.com' AND idempotency_hash = '${"a".repeat(64)}';
+  `,
+  "--json",
+], true);
+const duplicateCount = Number(JSON.parse(idempotencyResult.stdout)?.at(-1)?.results?.[0]?.total);
+if (duplicateCount !== 1) {
+  throw new Error(`Calculation job idempotency uniqueness failed: ${duplicateCount}`);
+}
+
 console.log("D1 migrations applied and calculation job schema verified locally.");
 
 function run(args, capture = false) {

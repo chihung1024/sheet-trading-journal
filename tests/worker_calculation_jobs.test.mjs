@@ -9,13 +9,11 @@ test("idempotency keys are validated, scoped, and window bounded", async () => {
   assert.equal(__test.validateIdempotencyKey("action.0123456789abcdef"), "action.0123456789abcdef");
   assert.throws(() => __test.validateIdempotencyKey("short"), /invalid length/);
   assert.throws(() => __test.validateIdempotencyKey("invalid key with spaces"), /invalid format/);
-  const first = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef", 10);
-  const duplicate = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef", 10);
-  const otherUser = await __test.hashCalculationJobIdempotency("other@example.com", "action.0123456789abcdef", 10);
-  const nextWindow = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef", 11);
+  const first = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef");
+  const duplicate = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef");
+  const otherUser = await __test.hashCalculationJobIdempotency("other@example.com", "action.0123456789abcdef");
   assert.equal(first, duplicate);
   assert.notEqual(first, otherUser);
-  assert.notEqual(first, nextWindow);
   assert.match(first, /^[0-9a-f]{64}$/);
 });
 
@@ -61,4 +59,89 @@ test("migration and workflow enforce unique idempotency and lifecycle callbacks"
   assert.match(workflow, /steps\.calculation\.outcome == 'success'/);
   assert.match(workflow, /\/api\/calculation-jobs\/status/);
   assert.match(workflow, /always\(\)/);
+});
+
+
+test("concurrent duplicate repository requests resolve to one inserted job", async () => {
+  const rowsByHash = new Map();
+  const rowsById = new Map();
+  const db = {
+    prepare(sql) {
+      const normalized = sql.replace(/\s+/g, " ").trim();
+      return {
+        bind(...args) {
+return {
+  async run() {
+    if (normalized.startsWith("UPDATE calculation_jobs SET idempotency_hash = NULL")) {
+      return { meta: { changes: 0 } };
+    }
+    if (normalized.startsWith("INSERT OR IGNORE INTO calculation_jobs")) {
+      const [publicId, userId, hash, benchmark] = args;
+      const key = `${userId}\n${hash}`;
+      if (rowsByHash.has(key)) return { meta: { changes: 0 } };
+      const row = {
+        public_id: publicId,
+        user_id: userId,
+        status: "queued",
+        benchmark,
+        github_run_id: null,
+        github_run_attempt: 0,
+        attempt_count: 0,
+        error_code: null,
+        created_at: "2026-08-06 00:00:00",
+        started_at: null,
+        completed_at: null,
+        updated_at: "2026-08-06 00:00:00",
+      };
+      rowsByHash.set(key, row);
+      rowsById.set(publicId, row);
+      return { meta: { changes: 1 } };
+    }
+    throw new Error(`Unexpected run SQL: ${normalized}`);
+  },
+  async first() {
+    if (normalized.includes("WHERE user_id = ? AND idempotency_hash = ?")) {
+      return rowsByHash.get(`${args[0]}\n${args[1]}`) || null;
+    }
+    if (normalized.includes("WHERE public_id = ?")) {
+      return rowsById.get(args[0]) || null;
+    }
+    throw new Error(`Unexpected first SQL: ${normalized}`);
+  },
+};
+        },
+      };
+    },
+  };
+  const hash = await __test.hashCalculationJobIdempotency(
+    "user@example.com",
+    "action.concurrent.1234567890",
+  );
+  const [first, second] = await Promise.all([
+    __test.calculationJobsRepository.createOrGet(db, {
+      publicId: "job_ABCDEFGHIJKLMNOPQRSTUV",
+      userId: "user@example.com",
+      idempotencyHash: hash,
+      benchmark: "SPY",
+    }),
+    __test.calculationJobsRepository.createOrGet(db, {
+      publicId: "job_ZYXWVUTSRQPONMLKJIHGFE",
+      userId: "user@example.com",
+      idempotencyHash: hash,
+      benchmark: "SPY",
+    }),
+  ]);
+  assert.equal(Number(first.inserted) + Number(second.inserted), 1);
+  assert.equal(first.job.public_id, second.job.public_id);
+  assert.equal(rowsByHash.size, 1);
+});
+
+test("frontend reuses a pending key and collapses concurrent trigger calls", async () => {
+  const source = await readFile("src/stores/portfolio.js", "utf8");
+  assert.match(source, /triggerUpdatePromise/);
+  assert.match(source, /if \(triggerUpdatePromise\) return triggerUpdatePromise/);
+  assert.match(source, /pending_calculation_request/);
+  assert.match(source, /getOrCreateIdempotencyKey/);
+  assert.match(source, /rememberPendingCalculationRequest/);
+  assert.match(source, /queueMicrotask\(\(\) => startCalculationJobPolling/);
 });

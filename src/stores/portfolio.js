@@ -14,6 +14,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const calculationJob = ref(null);
     let pollTimer = null;
     let calculationJobPollTimer = null;
+    let triggerUpdatePromise = null;
+    const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
+    const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
 
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
     const currentGroup = ref('all');
@@ -267,6 +270,29 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
+    const readPendingCalculationRequest = () => {
+        try {
+  const pending = JSON.parse(localStorage.getItem(CALCULATION_REQUEST_STORAGE_KEY) || 'null');
+  if (!pending || typeof pending.key !== 'string' || !Number.isFinite(pending.createdAt)) return null;
+  if (Date.now() - pending.createdAt >= CALCULATION_REQUEST_TTL_MS) {
+      localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
+      return null;
+  }
+  return pending;
+        } catch {
+  localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
+  return null;
+        }
+    };
+
+    const rememberPendingCalculationRequest = (pending) => {
+        localStorage.setItem(CALCULATION_REQUEST_STORAGE_KEY, JSON.stringify(pending));
+    };
+
+    const clearPendingCalculationRequest = () => {
+        localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
+    };
+
     const startCalculationJobPolling = (jobId) => {
         stopCalculationJobPolling();
         const startedAt = Date.now();
@@ -301,6 +327,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         const bytes = new Uint8Array(16);
         globalThis.crypto.getRandomValues(bytes);
         return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    };
+
+    const getOrCreateIdempotencyKey = () => {
+        const pending = readPendingCalculationRequest();
+        if (pending) return pending.key;
+        const key = createIdempotencyKey();
+        rememberPendingCalculationRequest({ key, createdAt: Date.now(), jobId: null });
+        return key;
     };
 
     const startPolling = () => {
@@ -347,7 +381,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     // [v2.60] Durable calculation job trigger with idempotency and status polling.
-    const triggerUpdate = async (benchmark = null) => {
+    const performTriggerUpdate = async (benchmark = null) => {
         const token = getToken();
         if (!token) throw new Error("請先登入");
 
@@ -374,7 +408,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
 
         const targetBenchmark = benchmark || selectedBenchmark.value;
-        const idempotencyKey = createIdempotencyKey();
+        const idempotencyKey = getOrCreateIdempotencyKey();
 
         try {
   const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
@@ -387,10 +421,18 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       body: JSON.stringify({ benchmark: targetBenchmark })
   });
   const responseData = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(responseData.error || '後端無回應');
+  if (!response.ok) {
+      clearPendingCalculationRequest();
+      throw new Error(responseData.error || '後端無回應');
+  }
 
   if (responseData.job?.id) {
       calculationJob.value = responseData.job;
+      rememberPendingCalculationRequest({
+key: idempotencyKey,
+createdAt: Date.now(),
+jobId: responseData.job.id
+      });
       const { addToast } = useToast();
       addToast(
           responseData.job.deduplicated
@@ -408,6 +450,20 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   throw e;
         }
     };
+
+    const triggerUpdate = (benchmark = null) => {
+        if (triggerUpdatePromise) return triggerUpdatePromise;
+        triggerUpdatePromise = performTriggerUpdate(benchmark)
+  .finally(() => {
+      triggerUpdatePromise = null;
+  });
+        return triggerUpdatePromise;
+    };
+
+    const pendingCalculationRequest = readPendingCalculationRequest();
+    if (pendingCalculationRequest?.jobId) {
+        queueMicrotask(() => startCalculationJobPolling(pendingCalculationRequest.jobId));
+    }
 
     return {
         loading,

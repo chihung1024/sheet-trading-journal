@@ -4,8 +4,7 @@ CREATE TABLE IF NOT EXISTS calculation_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   public_id TEXT NOT NULL UNIQUE CHECK (length(public_id) = 26),
   user_id TEXT NOT NULL,
-  idempotency_hash TEXT NOT NULL CHECK (length(idempotency_hash) = 64),
-  idempotency_bucket INTEGER NOT NULL CHECK (idempotency_bucket >= 0),
+  idempotency_hash TEXT CHECK (idempotency_hash IS NULL OR length(idempotency_hash) = 64),
   status TEXT NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
   benchmark TEXT NOT NULL,
