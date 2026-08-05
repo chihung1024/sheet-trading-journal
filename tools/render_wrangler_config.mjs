@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const COMMIT_RE = /^[0-9a-f]{7,40}$/i;
+const COMMIT_RE = /^[0-9a-f]{40}$/i;
 
 const sourcePath = resolve(process.env.WRANGLER_TEMPLATE || "wrangler.toml");
 const outputPath = resolve(process.env.WRANGLER_OUTPUT || ".wrangler/deploy.toml");
@@ -18,7 +18,7 @@ if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(databaseName)) {
   throw new Error("CLOUDFLARE_D1_DATABASE_NAME is missing or invalid");
 }
 if (!COMMIT_RE.test(sourceCommit)) {
-  throw new Error("SOURCE_COMMIT or GITHUB_SHA must be a 7-40 character Git commit SHA");
+  throw new Error("SOURCE_COMMIT or GITHUB_SHA must be an exact 40-character Git commit SHA");
 }
 
 let config = await readFile(sourcePath, "utf8");

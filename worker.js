@@ -226,19 +226,12 @@ function getBuildMetadata(env = {}) {
 
   return {
     service: SERVICE_NAME,
-    release_version: sanitizeMetadataValue(env.RELEASE_VERSION, 32) || RELEASE_VERSION,
-    api_version: sanitizeMetadataValue(env.API_VERSION, 32) || API_VERSION,
-    schema_version: normalizeSchemaVersion(env.SCHEMA_VERSION),
+    release_version: RELEASE_VERSION,
+    api_version: API_VERSION,
+    schema_version: REQUIRED_SCHEMA_VERSION,
     source_commit: normalizeSourceCommit(env.SOURCE_COMMIT),
     worker_version: workerVersion,
   };
-}
-
-function normalizeSchemaVersion(value) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= 0
-    ? parsed
-    : REQUIRED_SCHEMA_VERSION;
 }
 
 function normalizeSourceCommit(value) {

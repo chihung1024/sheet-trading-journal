@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import worker, { __test } from "../worker.js";
 
 function healthyDb(schemaVersion = 1) {
@@ -97,9 +100,52 @@ test("build metadata sanitizes untrusted deployment variables", () => {
     SCHEMA_VERSION: "not-a-number",
     SOURCE_COMMIT: "not a commit",
   });
-  assert.equal(metadata.release_version, "4.05Injected");
+  assert.equal(metadata.release_version, "4.05");
+  assert.equal(metadata.api_version, "2.57");
   assert.equal(metadata.schema_version, 1);
   assert.equal(metadata.source_commit, "development");
+});
+
+test("production config renderer rejects sentinel IDs and non-exact commit SHAs", () => {
+  const validId = "11111111-1111-4111-8111-111111111111";
+  const exactSha = "7b5686157975ab2295d74f9edf5ddb985978d706";
+  const sentinel = runRenderer({
+    CLOUDFLARE_D1_DATABASE_ID: "00000000-0000-0000-0000-000000000000",
+    CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+    SOURCE_COMMIT: exactSha,
+  });
+  assert.notEqual(sentinel.status, 0);
+  assert.match(sentinel.stderr, /non-sentinel D1 UUID/);
+
+  const shortSha = runRenderer({
+    CLOUDFLARE_D1_DATABASE_ID: validId,
+    CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+    SOURCE_COMMIT: exactSha.slice(0, 12),
+  });
+  assert.notEqual(shortSha.status, 0);
+  assert.match(shortSha.stderr, /exact 40-character Git commit SHA/);
+});
+
+test("production config renderer writes only validated deployment metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pr05-wrangler-"));
+  const output = join(directory, "deploy.toml");
+  const exactSha = "7b5686157975ab2295d74f9edf5ddb985978d706";
+  try {
+    const result = runRenderer({
+      CLOUDFLARE_D1_DATABASE_ID: "11111111-1111-4111-8111-111111111111",
+      CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+      SOURCE_COMMIT: exactSha.toUpperCase(),
+      WRANGLER_OUTPUT: output,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const rendered = await readFile(output, "utf8");
+    assert.match(rendered, /database_name = "journal-production"/);
+    assert.match(rendered, /database_id = "11111111-1111-4111-8111-111111111111"/);
+    assert.match(rendered, new RegExp(`SOURCE_COMMIT = "${exactSha}"`));
+    assert.doesNotMatch(rendered, /00000000-0000-0000-0000-000000000000/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("tracked Worker manifest keeps one canonical source and archived legacy files", async () => {
@@ -110,3 +156,11 @@ test("tracked Worker manifest keeps one canonical source and archived legacy fil
   assert.match(config, /main = "worker\.js"/);
   assert.match(config, /database_id = "00000000-0000-0000-0000-000000000000"/);
 });
+
+function runRenderer(extraEnv) {
+  return spawnSync(process.execPath, ["tools/render_wrangler_config.mjs"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: { ...process.env, ...extraEnv },
+  });
+}

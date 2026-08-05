@@ -36,7 +36,7 @@ committed.
 ## Local verification
 
 ```bash
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run test:worker
 npm run worker:config:check
 npm run worker:schema:test
@@ -44,13 +44,14 @@ npm run worker:schema:test
 
 ## Production deployment order
 
-1. Checkout the exact reviewed or merged commit.
-2. Run Worker tests and configuration consistency checks.
-3. Render `.wrangler/deploy.toml` from protected values.
-4. Apply pending D1 migrations remotely.
-5. Deploy `worker.js` through Wrangler.
-6. Verify `/api/version` reports the exact Git source commit.
-7. Verify `/api/health` returns HTTP 200 and schema version `1`.
+1. Supply an exact 40-character commit SHA that is already reachable from `main`.
+2. Checkout that exact commit and verify it is an ancestor of `origin/main`.
+3. Run Worker tests and configuration consistency checks.
+4. Render `.wrangler/deploy.toml` from protected values.
+5. Apply pending D1 migrations remotely.
+6. Deploy `worker.js` through Wrangler.
+7. Verify `/api/version` reports the exact Git source commit.
+8. Verify `/api/health` returns HTTP 200 and schema version `1`.
 
 Use the `Deploy Worker` GitHub Actions workflow for this sequence. Manual
 Quick Edit deployment is no longer the supported production path.
