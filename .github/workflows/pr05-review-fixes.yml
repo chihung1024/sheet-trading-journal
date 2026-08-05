@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'PR-05: run independent review fixes'
+    if: github.event.head_commit.message == 'PR05 run independent review fixes'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
