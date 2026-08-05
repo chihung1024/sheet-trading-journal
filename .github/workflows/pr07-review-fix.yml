@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   fix-and-verify:
-    if: github.event.head_commit.message == 'PR07 recover store wrapper marker'
+    if: github.event.head_commit.message == 'PR07 normalize recovered store markers'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -39,14 +39,11 @@ jobs:
               raise SystemExit("Unable to recover reviewed fix script")
           body = source.split(start, 1)[1].split(end, 1)[0]
           script = "\n".join(line[10:] if line.startswith("          ") else line for line in body.splitlines())
-          old_marker = "marker = '''    };" + "\n\n" + "    return {" + "\n" + "        portfolio," + "\n'''"
-          new_marker = "marker = '''    };" + "\n\n" + "    return {" + "\n" + "        loading," + "\n'''"
-          old_wrapper_tail = "    return {" + "\n" + "        portfolio," + "\n'''" + "\n          portfolio = replace_once(portfolio, marker, wrapper,"
-          new_wrapper_tail = "    return {" + "\n" + "        loading," + "\n'''" + "\n          portfolio = replace_once(portfolio, marker, wrapper,"
-          if old_marker not in script or old_wrapper_tail not in script:
-              raise SystemExit("Recovered script store markers are unavailable")
-          script = script.replace(old_marker, new_marker, 1)
-          script = script.replace(old_wrapper_tail, new_wrapper_tail, 1)
+          needle = "        portfolio," + "\n'''"
+          replacement = "        loading," + "\n'''"
+          if script.count(needle) != 2:
+              raise SystemExit(f"Recovered store marker count is {script.count(needle)}, expected 2")
+          script = script.replace(needle, replacement, 2)
           Path("/tmp/pr07_review_fix.py").write_text(script + "\n", encoding="utf-8")
           PY
           python /tmp/pr07_review_fix.py
