@@ -55,3 +55,17 @@ test("dispatch requires only the token secret", () => {
     /token is required/,
   );
 });
+
+
+test("dispatch includes an opaque calculation job ID when provided", () => {
+  const request = __test.buildGitHubDispatchRequest({
+    token: "secret-token",
+    benchmark: "SPY",
+    userEmail: "user@example.com",
+    jobId: "job_ABCDEFGHIJKLMNOPQRSTUV",
+  });
+  assert.equal(
+    JSON.parse(request.init.body).inputs.calculation_job_id,
+    "job_ABCDEFGHIJKLMNOPQRSTUV",
+  );
+});

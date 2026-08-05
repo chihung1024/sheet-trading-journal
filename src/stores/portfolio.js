@@ -11,7 +11,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const lastUpdate = ref('');
     const connectionStatus = ref('connected');
     const isPolling = ref(false);
+    const calculationJob = ref(null);
     let pollTimer = null;
+    let calculationJobPollTimer = null;
 
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
     const currentGroup = ref('all');
@@ -258,6 +260,49 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         return groups;
     };
 
+    const stopCalculationJobPolling = () => {
+        if (calculationJobPollTimer) {
+  clearInterval(calculationJobPollTimer);
+  calculationJobPollTimer = null;
+        }
+    };
+
+    const startCalculationJobPolling = (jobId) => {
+        stopCalculationJobPolling();
+        const startedAt = Date.now();
+        const { addToast } = useToast();
+
+        calculationJobPollTimer = setInterval(async () => {
+  if (Date.now() - startedAt > 20 * 60 * 1000) {
+      stopCalculationJobPolling();
+      addToast("計算工作仍在排隊或執行中，稍後可重新整理查看結果", "info");
+      return;
+  }
+  try {
+      const json = await fetchWithAuth(`/api/calculation-jobs/${encodeURIComponent(jobId)}`);
+      if (!json?.success || !json.job) return;
+      calculationJob.value = json.job;
+      if (json.job.status === 'succeeded') {
+          stopCalculationJobPolling();
+          await fetchAll();
+          addToast("✅ 數據已更新完畢！", "success");
+      } else if (json.job.status === 'failed') {
+          stopCalculationJobPolling();
+          addToast(`後端計算失敗 (${json.job.error_code || 'UNKNOWN'})`, "error");
+      }
+  } catch (error) {
+      console.warn('Calculation job polling error:', error);
+  }
+        }, 5000);
+    };
+
+    const createIdempotencyKey = () => {
+        if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    };
+
     const startPolling = () => {
         if (isPolling.value) return;
 
@@ -301,60 +346,66 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    // [v2.54] 修改 triggerUpdate 函數，先保存 benchmark 到資料庫
+    // [v2.60] Durable calculation job trigger with idempotency and status polling.
     const triggerUpdate = async (benchmark = null) => {
         const token = getToken();
         if (!token) throw new Error("請先登入");
 
-        // 如果提供了新的 benchmark，先保存到資料庫
         if (benchmark && benchmark !== selectedBenchmark.value) {
-            try {
-                const saveResponse = await fetch(`${CONFIG.API_BASE_URL}/api/user-settings`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ benchmark: benchmark.toUpperCase().trim() })
-                });
-
-                if (!saveResponse.ok) {
-                    throw new Error('無法保存 benchmark 設定');
-                }
-
-                const saveJson = await saveResponse.json();
-                if (saveJson.success) {
-                    selectedBenchmark.value = saveJson.benchmark;
-                    localStorage.setItem('user_benchmark', saveJson.benchmark);
-                }
-            } catch (e) {
-                console.error('保存 benchmark 失敗:', e);
-                throw new Error('無法保存 benchmark 設定: ' + e.message);
-            }
+  try {
+      const saveResponse = await fetch(`${CONFIG.API_BASE_URL}/api/user-settings`, {
+          method: 'POST',
+          headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ benchmark: benchmark.toUpperCase().trim() })
+      });
+      if (!saveResponse.ok) throw new Error('無法保存 benchmark 設定');
+      const saveJson = await saveResponse.json();
+      if (saveJson.success) {
+          selectedBenchmark.value = saveJson.benchmark;
+          localStorage.setItem('user_benchmark', saveJson.benchmark);
+      }
+  } catch (e) {
+      console.error('保存 benchmark 失敗:', e);
+      throw new Error('無法保存 benchmark 設定: ' + e.message);
+  }
         }
 
         const targetBenchmark = benchmark || selectedBenchmark.value;
+        const idempotencyKey = createIdempotencyKey();
 
         try {
-            const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
-                method: "POST",
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ benchmark: targetBenchmark })
-            });
+  const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
+      method: "POST",
+      headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
+      },
+      body: JSON.stringify({ benchmark: targetBenchmark })
+  });
+  const responseData = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(responseData.error || '後端無回應');
 
-            if (response.ok || response.status === 204) {
-                handleAutoUpdateSignal("🔄 已手動觸發數據重算，正在同步中...");
-                return true;
-            } else {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || '後端無回應');
-            }
+  if (responseData.job?.id) {
+      calculationJob.value = responseData.job;
+      const { addToast } = useToast();
+      addToast(
+          responseData.job.deduplicated
+              ? "相同的計算要求已在排隊，繼續追蹤原工作"
+              : "🔄 已建立後端計算工作，正在同步中...",
+          "info"
+      );
+      startCalculationJobPolling(responseData.job.id);
+  } else {
+      handleAutoUpdateSignal("🔄 已手動觸發數據重算，正在同步中...");
+  }
+  return true;
         } catch (e) {
-            console.error('Trigger failed:', e);
-            throw e;
+  console.error('Trigger failed:', e);
+  throw e;
         }
     };
 
@@ -371,6 +422,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         dailyPnL,
         connectionStatus,
         isPolling,
+        calculationJob,
         currentGroup,
         availableGroups,
         selectedBenchmark,

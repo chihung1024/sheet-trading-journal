@@ -1,0 +1,93 @@
+name: Update Portfolio Data
+
+on:
+  schedule:
+    # Cron 使用 UTC；右側標註為台灣時間（UTC+8）。
+    - cron: '0 23 * * *'     # 07:00 - 晨間更新（雙市場收盤價）
+    - cron: '15 1 * * 1-5'  # 09:15 - 台股開盤後（週一至週五）
+    - cron: '0 6 * * 1-5'   # 14:00 - 台股收盤後（週一至週五）
+    - cron: '0 15 * * 1-5'  # 23:00 - 美股開盤後（週一至週五）
+  workflow_dispatch:
+    inputs:
+      custom_benchmark:
+        description: '自訂基準標的代碼 (例如: QQQ, TQQQ, 0050.TW)'
+        required: false
+        default: 'SPY'
+        type: string
+      target_user_id:
+        description: '目標使用者 email (留空表示全部使用者)'
+        required: false
+        default: ''
+        type: string
+      calculation_job_id:
+        description: 'Worker-issued opaque calculation job ID'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portfolio-update
+  cancel-in-progress: false
+
+jobs:
+  run-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Mark calculation job running
+        if: ${{ github.event.inputs.calculation_job_id != '' }}
+        env:
+API_KEY: ${{ secrets.API_KEY }}
+JOB_ID: ${{ github.event.inputs.calculation_job_id }}
+GITHUB_RUN_ID_VALUE: ${{ github.run_id }}
+GITHUB_RUN_ATTEMPT_VALUE: ${{ github.run_attempt }}
+WORKER_BASE_URL: https://journal-backend.chired.workers.dev
+        run: |
+set -euo pipefail
+payload="$(jq -cn --arg job_id "$JOB_ID" --arg status running --arg run_id "$GITHUB_RUN_ID_VALUE" --argjson run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" '{job_id:$job_id,status:$status,github_run_id:$run_id,github_run_attempt:$run_attempt}')"
+curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors   -X POST "$WORKER_BASE_URL/api/calculation-jobs/status"   -H "X-API-KEY: $API_KEY"   -H 'Content-Type: application/json'   --data "$payload" >/dev/null
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+python-version: '3.10'
+cache: pip
+cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Run calculation and upload to API
+        id: calculation
+        continue-on-error: true
+        env:
+API_KEY: ${{ secrets.API_KEY }}
+CUSTOM_BENCHMARK: ${{ github.event.inputs.custom_benchmark || 'SPY' }}
+TARGET_USER_ID: ${{ github.event.inputs.target_user_id || '' }}
+        run: python main.py
+
+      - name: Report calculation job result
+        if: ${{ always() && github.event.inputs.calculation_job_id != '' }}
+        env:
+API_KEY: ${{ secrets.API_KEY }}
+JOB_ID: ${{ github.event.inputs.calculation_job_id }}
+JOB_STATUS: ${{ steps.calculation.outcome == 'success' && 'succeeded' || 'failed' }}
+JOB_ERROR_CODE: ${{ steps.calculation.outcome == 'success' && '' || 'CALCULATION_FAILED' }}
+GITHUB_RUN_ID_VALUE: ${{ github.run_id }}
+GITHUB_RUN_ATTEMPT_VALUE: ${{ github.run_attempt }}
+WORKER_BASE_URL: https://journal-backend.chired.workers.dev
+        run: |
+set -euo pipefail
+payload="$(jq -cn --arg job_id "$JOB_ID" --arg status "$JOB_STATUS" --arg error_code "$JOB_ERROR_CODE" --arg run_id "$GITHUB_RUN_ID_VALUE" --argjson run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" '{job_id:$job_id,status:$status,error_code:$error_code,github_run_id:$run_id,github_run_attempt:$run_attempt}')"
+curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors   -X POST "$WORKER_BASE_URL/api/calculation-jobs/status"   -H "X-API-KEY: $API_KEY"   -H 'Content-Type: application/json'   --data "$payload" >/dev/null
+
+      - name: Fail workflow when calculation failed
+        if: ${{ always() && steps.calculation.outcome != 'success' }}
+        run: exit 1

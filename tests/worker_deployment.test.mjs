@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import worker, { __test } from "../worker.js";
 
-function healthyDb(schemaVersion = 1) {
+function healthyDb(schemaVersion = 2) {
   return {
     prepare(sql) {
       return {
@@ -20,6 +20,7 @@ function healthyDb(schemaVersion = 1) {
                 { name: "records" },
                 { name: "portfolio_snapshots" },
                 { name: "user_settings" },
+                { name: "calculation_jobs" },
               ],
             };
           }
@@ -42,7 +43,7 @@ test("public version endpoint exposes source and runtime traceability without au
     SOURCE_COMMIT: "7B5686157975AB2295D74F9EDF5DDB985978D706",
     CF_VERSION_METADATA: {
       id: "worker-version-id",
-      tag: "release-4.06",
+      tag: "release-4.07",
       timestamp: "2026-08-05T06:45:05Z",
     },
   }, {});
@@ -50,13 +51,13 @@ test("public version endpoint exposes source and runtime traceability without au
 
   assert.equal(response.status, 200);
   assert.equal(body.success, true);
-  assert.equal(body.release_version, "4.06");
-  assert.equal(body.api_version, "2.59");
-  assert.equal(body.schema_version, 1);
+  assert.equal(body.release_version, "4.07");
+  assert.equal(body.api_version, "2.60");
+  assert.equal(body.schema_version, 2);
   assert.equal(body.source_commit, "7b5686157975ab2295d74f9edf5ddb985978d706");
   assert.equal(body.worker_version.id, "worker-version-id");
-  assert.equal(response.headers.get("X-Release-Version"), "4.06");
-  assert.equal(response.headers.get("X-API-Version"), "2.59");
+  assert.equal(response.headers.get("X-Release-Version"), "4.07");
+  assert.equal(response.headers.get("X-API-Version"), "2.60");
   assert.equal(response.headers.get("X-Worker-Version-Id"), "worker-version-id");
 });
 
@@ -67,7 +68,7 @@ test("public health endpoint verifies D1 tables and schema metadata", async () =
 
   assert.equal(response.status, 200);
   assert.equal(body.status, "ok");
-  assert.equal(body.observed_schema_version, 1);
+  assert.equal(body.observed_schema_version, 2);
   assert.deepEqual(body.checks, { database: "ok", schema: "ok" });
 });
 
@@ -100,9 +101,9 @@ test("build metadata sanitizes untrusted deployment variables", () => {
     SCHEMA_VERSION: "not-a-number",
     SOURCE_COMMIT: "not a commit",
   });
-  assert.equal(metadata.release_version, "4.06");
-  assert.equal(metadata.api_version, "2.59");
-  assert.equal(metadata.schema_version, 1);
+  assert.equal(metadata.release_version, "4.07");
+  assert.equal(metadata.api_version, "2.60");
+  assert.equal(metadata.schema_version, 2);
   assert.equal(metadata.source_commit, "development");
 });
 

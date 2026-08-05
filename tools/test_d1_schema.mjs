@@ -18,7 +18,7 @@ const result = run([
 
 const parsed = JSON.parse(result.stdout);
 const row = parsed?.[0]?.results?.[0];
-if (Number(row?.schema_version) !== 1 || row?.release_version !== "4.05") {
+if (Number(row?.schema_version) !== 2 || row?.release_version !== "4.07") {
   throw new Error(`Unexpected schema metadata: ${JSON.stringify(row)}`);
 }
 
@@ -31,15 +31,24 @@ const tablesResult = run([
   "--config",
   "wrangler.toml",
   "--command",
-  "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('records','portfolio_snapshots','user_settings','schema_metadata') ORDER BY name;",
+  "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('records','portfolio_snapshots','user_settings','schema_metadata','calculation_jobs') ORDER BY name;",
   "--json",
 ], true);
 const tables = JSON.parse(tablesResult.stdout)?.[0]?.results?.map((item) => item.name) || [];
-const expected = ["portfolio_snapshots", "records", "schema_metadata", "user_settings"];
+const expected = ["calculation_jobs", "portfolio_snapshots", "records", "schema_metadata", "user_settings"];
 if (JSON.stringify(tables) !== JSON.stringify(expected)) {
   throw new Error(`Unexpected D1 tables: ${JSON.stringify(tables)}`);
 }
-console.log("D1 baseline migration applied and verified locally.");
+const indexesResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_calculation_jobs_user_created','idx_calculation_jobs_status_created') ORDER BY name;",
+  "--json",
+], true);
+const indexes = JSON.parse(indexesResult.stdout)?.[0]?.results?.map((item) => item.name) || [];
+if (JSON.stringify(indexes) !== JSON.stringify(["idx_calculation_jobs_status_created", "idx_calculation_jobs_user_created"])) {
+  throw new Error(`Unexpected calculation job indexes: ${JSON.stringify(indexes)}`);
+}
+console.log("D1 migrations applied and calculation job schema verified locally.");
 
 function run(args, capture = false) {
   const command = process.platform === "win32" ? "npx.cmd" : "npx";
