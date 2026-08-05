@@ -22,7 +22,9 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Apply hotfix
-        run: python tools/apply_pr05d_hotfix.py
+        run: |
+          python tools/apply_pr05d_hotfix.py
+          python tools/update_pr05d_test_versions.py
       - name: Verify
         run: |
           npm ci --no-audit --no-fund
@@ -32,7 +34,7 @@ jobs:
           npm run build
       - name: Commit hotfix
         run: |
-          rm -f .github/workflows/pr05d-apply.yml .github/workflows/pr05d-run.yml tools/apply_pr05d_hotfix.py
+          rm -f .github/workflows/pr05d-apply.yml .github/workflows/pr05d-run.yml tools/apply_pr05d_hotfix.py tools/update_pr05d_test_versions.py
           git config user.name "chihung1024"
           git config user.email "104315542+chihung1024@users.noreply.github.com"
           git add --all
