@@ -3,10 +3,9 @@ name: Deploy Worker
 on:
   workflow_dispatch:
     inputs:
-      source_ref:
-        description: Exact branch, tag, or commit to deploy
+      source_sha:
+        description: Exact 40-character merge commit SHA reachable from main
         required: true
-        default: main
         type: string
 
 permissions:
@@ -24,25 +23,43 @@ jobs:
     environment: production
 
     steps:
-      - name: Checkout requested source
+      - name: Checkout exact requested commit
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Resolve source commit
+      - name: Verify source is an exact main-reachable commit
         id: source
         shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
         run: |
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          expected="$(printf '%s' "$REQUESTED_SHA" | tr '[:upper:]' '[:lower:]')"
+          if [[ ! "$expected" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_sha must be an exact 40-character Git commit SHA" >&2
+            exit 1
+          fi
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$actual" refs/remotes/origin/main; then
+            echo "Refusing to deploy a commit that is not reachable from main" >&2
+            exit 1
+          fi
+          echo "sha=$actual" >> "$GITHUB_OUTPUT"
           git status --short
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: '22'
+          cache: npm
 
       - name: Install pinned dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Run Worker verification gates
         run: |
@@ -58,6 +75,7 @@ jobs:
           CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
           CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
         run: |
+          set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$CLOUDFLARE_D1_DATABASE_ID"
