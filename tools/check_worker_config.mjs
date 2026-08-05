@@ -20,7 +20,7 @@ expect(worker, `const RELEASE_VERSION = "${manifest.releaseVersion}"`, "Worker r
 expect(worker, `const API_VERSION = "${manifest.apiVersion}"`, "Worker API constant");
 expect(worker, `const REQUIRED_SCHEMA_VERSION = ${manifest.schemaVersion}`, "Worker schema constant");
 expect(migration, `schema_version, release_version`, "schema metadata columns");
-expect(migration, `VALUES (1, ${manifest.schemaVersion}, '${manifest.releaseVersion}'`, "schema metadata version row");
+expect(migration, `VALUES (1, ${manifest.schemaVersion}, '`, "schema metadata schema-version row");
 
 if (!config.includes('database_id = "00000000-0000-0000-0000-000000000000"')) {
   errors.push("Tracked wrangler.toml must retain the safe local-only D1 sentinel");

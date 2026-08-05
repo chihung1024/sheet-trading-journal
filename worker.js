@@ -1,12 +1,19 @@
 /**
  * Worker: Trading Journal API
- * v2.57 / PR-05: reproducible deployment, public health/version metadata,
- * D1 schema traceability, and Cloudflare Worker version correlation.
+ * v2.58 / PR-05D: restore repository-owned GitHub workflow dispatch,
+ * classify upstream failures, and preserve reproducible deployment metadata.
  */
 
 const SERVICE_NAME = "trading-journal-api";
-const RELEASE_VERSION = "4.05";
-const API_VERSION = "2.57";
+const RELEASE_VERSION = "4.05.1";
+const API_VERSION = "2.58";
+const GITHUB_DISPATCH = Object.freeze({
+  owner: "chihung1024",
+  repository: "sheet-trading-journal",
+  workflow: "update.yml",
+  ref: "main",
+});
+const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;
 const REQUIRED_SCHEMA_VERSION = 1;
 const SOURCE_COMMIT_FALLBACK = "development";
 const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings"];
@@ -510,9 +517,9 @@ async function handleUpdateUserSettings(request, env, principal, requestId) {
 
 async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
   try {
-    if (!env.GITHUB_TOKEN || !env.GITHUB_OWNER || !env.GITHUB_REPO) {
-      console.error(`[request_id=${requestId}] GitHub dispatch configuration is incomplete`);
-      return apiError("SERVICE_UNAVAILABLE", "Update service is unavailable", 503, requestId);
+    if (!env.GITHUB_TOKEN) {
+      console.error(`[request_id=${requestId}] GitHub dispatch token is unavailable`);
+      return apiError("GITHUB_DISPATCH_NOT_CONFIGURED", "Update service is unavailable", 503, requestId);
     }
 
     const body = await readJsonObject(request, { allowEmpty: true });
@@ -531,38 +538,112 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
       return response;
     }
 
-    const ghUrl = `https://api.github.com/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}/actions/workflows/update.yml/dispatches`;
-    const response = await fetch(ghUrl, {
+    const result = await dispatchGitHubWorkflow({
+      token: env.GITHUB_TOKEN,
+      benchmark,
+      userEmail: principal.email,
+    });
+    if (!result.ok) {
+      console.error(
+        `[request_id=${requestId}] GitHub dispatch failed ` +
+        `[status=${result.status}] [code=${result.code}] ` +
+        `[github_request_id=${result.githubRequestId || "unavailable"}]`,
+      );
+      const response = apiError(result.code, result.message, result.httpStatus, requestId);
+      if (result.retryAfter) response.headers.set("Retry-After", result.retryAfter);
+      return response;
+    }
+
+    console.info(
+      `[request_id=${requestId}] GitHub dispatch accepted ` +
+      `[github_request_id=${result.githubRequestId || "unavailable"}]`,
+    );
+    return jsonResponse({ success: true, benchmark });
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("INVALID_REQUEST", error.message, 400, requestId);
+    }
+    const isTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
+    console.error(
+      `[request_id=${requestId}] Trigger update failed ` +
+      `[error=${isTimeout ? "timeout" : safeErrorName(error)}]`,
+    );
+    return apiError(
+      isTimeout ? "GITHUB_DISPATCH_TIMEOUT" : "GITHUB_DISPATCH_FAILED",
+      isTimeout ? "Update service timed out" : "Failed to trigger update",
+      502,
+      requestId,
+    );
+  }
+}
+
+function buildGitHubDispatchRequest({ token, benchmark, userEmail }) {
+  if (typeof token !== "string" || !token.trim()) {
+    throw new RequestValidationError("GitHub dispatch token is required");
+  }
+  const owner = encodeURIComponent(GITHUB_DISPATCH.owner);
+  const repository = encodeURIComponent(GITHUB_DISPATCH.repository);
+  const workflow = encodeURIComponent(GITHUB_DISPATCH.workflow);
+  return {
+    url: `https://api.github.com/repos/${owner}/${repository}/actions/workflows/${workflow}/dispatches`,
+    init: {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "sheet-trading-journal-worker",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        ref: "main",
+        ref: GITHUB_DISPATCH.ref,
         inputs: {
           custom_benchmark: benchmark,
-          target_user_id: principal.email,
+          target_user_id: userEmail,
         },
       }),
-    });
+      signal: AbortSignal.timeout(GITHUB_DISPATCH_TIMEOUT_MS),
+    },
+  };
+}
 
-    if (!response.ok) {
-      console.error(`[request_id=${requestId}] GitHub dispatch failed [status=${response.status}]`);
-      return apiError("UPSTREAM_ERROR", "Failed to trigger update", 502, requestId);
-    }
+async function dispatchGitHubWorkflow({ token, benchmark, userEmail, fetchImpl = fetch }) {
+  const request = buildGitHubDispatchRequest({ token, benchmark, userEmail });
+  const response = await fetchImpl(request.url, request.init);
+  const githubRequestId = sanitizeHeaderValue(response.headers?.get?.("X-GitHub-Request-Id"));
+  if (response.ok) return { ok: true, status: response.status, githubRequestId };
+  return classifyGitHubDispatchFailure(response.status, {
+    githubRequestId,
+    retryAfter: sanitizeHeaderValue(response.headers?.get?.("Retry-After")),
+  });
+}
 
-    return jsonResponse({ success: true, benchmark });
-  } catch (error) {
-    if (error instanceof RequestValidationError) {
-      return apiError("INVALID_REQUEST", error.message, 400, requestId);
-    }
-    console.error(`[request_id=${requestId}] Trigger update failed`, safeErrorName(error));
-    return apiError("UPSTREAM_ERROR", "Failed to trigger update", 502, requestId);
-  }
+function classifyGitHubDispatchFailure(status, metadata = {}) {
+  const failures = {
+    401: ["GITHUB_AUTH_FAILED", "Update service authentication failed", 502],
+    403: ["GITHUB_PERMISSION_DENIED", "Update service permission denied", 502],
+    404: ["GITHUB_WORKFLOW_NOT_FOUND", "Update workflow is unavailable", 502],
+    422: ["GITHUB_DISPATCH_REJECTED", "Update request was rejected", 502],
+    429: ["GITHUB_RATE_LIMITED", "Update service is rate limited", 503],
+  };
+  const selected = failures[status] || (
+    status >= 500
+      ? ["GITHUB_UNAVAILABLE", "Update service is unavailable", 502]
+      : ["GITHUB_UPSTREAM_ERROR", "Failed to trigger update", 502]
+  );
+  return {
+    ok: false,
+    status,
+    code: selected[0],
+    message: selected[1],
+    httpStatus: selected[2],
+    githubRequestId: metadata.githubRequestId || "",
+    retryAfter: metadata.retryAfter || "",
+  };
+}
+
+function sanitizeHeaderValue(value) {
+  return typeof value === "string" ? value.replace(/[^A-Za-z0-9._:\-]/g, "").slice(0, 128) : "";
 }
 
 function validateCorsRequest(request, env, requestId) {
@@ -985,6 +1066,9 @@ export const __test = {
   authorize,
   getBuildMetadata,
   handleHealth,
+  buildGitHubDispatchRequest,
+  classifyGitHubDispatchFailure,
+  dispatchGitHubWorkflow,
   constantTimeEqual,
   getAllowedOrigins,
   isOriginAllowed,
