@@ -11,6 +11,7 @@ from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.config import API_KEY
 from journal_engine.core.calculator import PortfolioCalculator
+from journal_engine.core.daily_pnl_reconciler import reconcile_snapshot_daily_pnl
 from journal_engine.core.split_ledger import (
     build_split_adjusted_validation_ledger,
     validate_adjusted_ledger_parity,
@@ -20,6 +21,7 @@ from journal_engine.core.validator import PortfolioValidator
 
 
 SUPPORTED_TRANSACTION_TYPES = {"BUY", "SELL", "DIV"}
+LEGACY_DAILY_PNL_MISMATCH_PREFIX = "Daily PnL formula/aggregation mismatch:"
 
 
 class PortfolioUpdateError(RuntimeError):
@@ -36,6 +38,28 @@ class ValidationErrorCapture(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         if record.levelno >= logging.ERROR:
             self.messages.append(record.getMessage())
+
+
+class LegacyDailyPnLMismatchCapture(logging.Filter):
+    """Capture the superseded calculator warning before canonical reconciliation.
+
+    The calculator still computes its historical parallel aggregation for
+    compatibility. PR-04 replaces that value with a canonical component ledger
+    and fails closed if the ledger does not reconcile to history. Suppressing
+    only this obsolete intermediate warning avoids reporting it as the final
+    result; all other calculator warnings remain visible.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages: List[str] = []
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if message.startswith(LEGACY_DAILY_PNL_MISMATCH_PREFIX):
+            self.messages.append(message)
+            return False
+        return True
 
 
 def setup_logging() -> None:
@@ -177,7 +201,7 @@ def validate_before_upload(snapshot, user_df: pd.DataFrame) -> None:
 
 def run_update() -> None:
     logger = logging.getLogger("main")
-    logger.info("=== 啟動交易日誌更新程序 (PR-02B transaction-aware calendar) ===")
+    logger.info("=== 啟動交易日誌更新程序 (PR-04 canonical Daily PnL) ===")
 
     if not API_KEY:
         raise PortfolioUpdateError("環境變數中找不到 API_KEY")
@@ -245,13 +269,36 @@ def run_update() -> None:
                 benchmark_ticker=benchmark,
                 api_client=api_client,
             )
-            snapshot = calculator.run()
+            calculator_logger = logging.getLogger("journal_engine.core.calculator")
+            legacy_mismatch_capture = LegacyDailyPnLMismatchCapture()
+            calculator_logger.addFilter(legacy_mismatch_capture)
+            try:
+                snapshot = calculator.run()
+            finally:
+                calculator_logger.removeFilter(legacy_mismatch_capture)
+
             if snapshot is None:
                 raise PortfolioUpdateError("計算器未產生快照")
             if calculation_capture.messages:
                 raise PortfolioUpdateError(
                     f"計算期間 validator 回報 {len(calculation_capture.messages)} 項錯誤"
                 )
+
+            reconciliation_results = reconcile_snapshot_daily_pnl(
+                snapshot,
+                calculator.df,
+                calculator,
+            )
+            reconciled_groups = sum(
+                result.get("status") == "reconciled"
+                for result in reconciliation_results
+            )
+            logger.info(
+                "Canonical Daily PnL reconciliation completed: "
+                "groups=%s, legacy_diagnostics=%s",
+                reconciled_groups,
+                len(legacy_mismatch_capture.messages),
+            )
 
             validation_df = build_split_adjusted_validation_ledger(
                 raw_user_df,
