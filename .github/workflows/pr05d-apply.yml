@@ -1,0 +1,286 @@
+name: PR-05D Apply Hotfix
+
+on:
+  push:
+    branches:
+      - pr-05d/github-dispatch-hotfix
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'PR05D apply dispatch hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: pr-05d/github-dispatch-hotfix
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Apply hotfix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('worker.js')
+          text = path.read_text()
+          text = text.replace(
+              ' * v2.57 / PR-05: reproducible deployment, public health/version metadata,\n * D1 schema traceability, and Cloudflare Worker version correlation.',
+              ' * v2.58 / PR-05D: restore repository-owned GitHub workflow dispatch,\n * classify upstream failures, and preserve reproducible deployment metadata.'
+          )
+          text = text.replace('const RELEASE_VERSION = "4.05";\nconst API_VERSION = "2.57";', '''const RELEASE_VERSION = "4.05.1";
+const API_VERSION = "2.58";
+const GITHUB_DISPATCH = Object.freeze({
+  owner: "chihung1024",
+  repository: "sheet-trading-journal",
+  workflow: "update.yml",
+  ref: "main",
+});
+const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;''')
+
+          start = text.index('async function handleGitHubTrigger(')
+          end = text.index('\nfunction validateCorsRequest(', start)
+          replacement = r'''async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
+  try {
+    if (!env.GITHUB_TOKEN) {
+      console.error(`[request_id=${requestId}] GitHub dispatch token is unavailable`);
+      return apiError("GITHUB_DISPATCH_NOT_CONFIGURED", "Update service is unavailable", 503, requestId);
+    }
+
+    const body = await readJsonObject(request, { allowEmpty: true });
+    rejectOwnerFields(body);
+    const benchmark = body.benchmark ? validateSymbol(body.benchmark, "benchmark") : "SPY";
+
+    const rateLimit = await claimTriggerSlot(principal.email, env, ctx);
+    if (!rateLimit.allowed) {
+      const response = apiError(
+        "RATE_LIMITED",
+        "An update was triggered recently. Try again later.",
+        429,
+        requestId,
+      );
+      response.headers.set("Retry-After", String(rateLimit.retryAfter));
+      return response;
+    }
+
+    const result = await dispatchGitHubWorkflow({
+      token: env.GITHUB_TOKEN,
+      benchmark,
+      userEmail: principal.email,
+    });
+    if (!result.ok) {
+      console.error(
+        `[request_id=${requestId}] GitHub dispatch failed ` +
+        `[status=${result.status}] [code=${result.code}] ` +
+        `[github_request_id=${result.githubRequestId || "unavailable"}]`,
+      );
+      const response = apiError(result.code, result.message, result.httpStatus, requestId);
+      if (result.retryAfter) response.headers.set("Retry-After", result.retryAfter);
+      return response;
+    }
+
+    console.info(
+      `[request_id=${requestId}] GitHub dispatch accepted ` +
+      `[github_request_id=${result.githubRequestId || "unavailable"}]`,
+    );
+    return jsonResponse({ success: true, benchmark });
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("INVALID_REQUEST", error.message, 400, requestId);
+    }
+    const isTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
+    console.error(
+      `[request_id=${requestId}] Trigger update failed ` +
+      `[error=${isTimeout ? "timeout" : safeErrorName(error)}]`,
+    );
+    return apiError(
+      isTimeout ? "GITHUB_DISPATCH_TIMEOUT" : "GITHUB_DISPATCH_FAILED",
+      isTimeout ? "Update service timed out" : "Failed to trigger update",
+      502,
+      requestId,
+    );
+  }
+}
+
+function buildGitHubDispatchRequest({ token, benchmark, userEmail }) {
+  if (typeof token !== "string" || !token.trim()) {
+    throw new RequestValidationError("GitHub dispatch token is required");
+  }
+  const owner = encodeURIComponent(GITHUB_DISPATCH.owner);
+  const repository = encodeURIComponent(GITHUB_DISPATCH.repository);
+  const workflow = encodeURIComponent(GITHUB_DISPATCH.workflow);
+  return {
+    url: `https://api.github.com/repos/${owner}/${repository}/actions/workflows/${workflow}/dispatches`,
+    init: {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "sheet-trading-journal-worker",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ref: GITHUB_DISPATCH.ref,
+        inputs: {
+          custom_benchmark: benchmark,
+          target_user_id: userEmail,
+        },
+      }),
+      signal: AbortSignal.timeout(GITHUB_DISPATCH_TIMEOUT_MS),
+    },
+  };
+}
+
+async function dispatchGitHubWorkflow({ token, benchmark, userEmail, fetchImpl = fetch }) {
+  const request = buildGitHubDispatchRequest({ token, benchmark, userEmail });
+  const response = await fetchImpl(request.url, request.init);
+  const githubRequestId = sanitizeHeaderValue(response.headers?.get?.("X-GitHub-Request-Id"));
+  if (response.ok) return { ok: true, status: response.status, githubRequestId };
+  return classifyGitHubDispatchFailure(response.status, {
+    githubRequestId,
+    retryAfter: sanitizeHeaderValue(response.headers?.get?.("Retry-After")),
+  });
+}
+
+function classifyGitHubDispatchFailure(status, metadata = {}) {
+  const failures = {
+    401: ["GITHUB_AUTH_FAILED", "Update service authentication failed", 502],
+    403: ["GITHUB_PERMISSION_DENIED", "Update service permission denied", 502],
+    404: ["GITHUB_WORKFLOW_NOT_FOUND", "Update workflow is unavailable", 502],
+    422: ["GITHUB_DISPATCH_REJECTED", "Update request was rejected", 502],
+    429: ["GITHUB_RATE_LIMITED", "Update service is rate limited", 503],
+  };
+  const selected = failures[status] || (
+    status >= 500
+      ? ["GITHUB_UNAVAILABLE", "Update service is unavailable", 502]
+      : ["GITHUB_UPSTREAM_ERROR", "Failed to trigger update", 502]
+  );
+  return {
+    ok: false,
+    status,
+    code: selected[0],
+    message: selected[1],
+    httpStatus: selected[2],
+    githubRequestId: metadata.githubRequestId || "",
+    retryAfter: metadata.retryAfter || "",
+  };
+}
+
+function sanitizeHeaderValue(value) {
+  return typeof value === "string" ? value.replace(/[^A-Za-z0-9._:\-]/g, "").slice(0, 128) : "";
+}
+'''
+          text = text[:start] + replacement + text[end:]
+          text = text.replace('  getBuildMetadata,\n  handleHealth,', '''  getBuildMetadata,
+  handleHealth,
+  buildGitHubDispatchRequest,
+  classifyGitHubDispatchFailure,
+  dispatchGitHubWorkflow,''')
+          path.write_text(text)
+
+          manifest = Path('worker-manifest.json')
+          manifest_text = manifest.read_text().replace('"releaseVersion": "4.05"', '"releaseVersion": "4.05.1"').replace('"apiVersion": "2.57"', '"apiVersion": "2.58"')
+          manifest.write_text(manifest_text)
+
+          wrangler = Path('wrangler.toml')
+          wrangler_text = wrangler.read_text().replace('RELEASE_VERSION = "4.05"', 'RELEASE_VERSION = "4.05.1"').replace('API_VERSION = "2.57"', 'API_VERSION = "2.58"')
+          wrangler.write_text(wrangler_text)
+
+          deploy = Path('.github/workflows/deploy-worker.yml')
+          deploy_text = deploy.read_text().replace('version.release_version !== "4.05" || version.api_version !== "2.57"', 'version.release_version !== "4.05.1" || version.api_version !== "2.58"')
+          deploy.write_text(deploy_text)
+          PY
+
+          cat > tests/worker_dispatch.test.mjs <<'TEST'
+          import test from "node:test";
+          import assert from "node:assert/strict";
+          import { __test } from "../worker.js";
+
+          test("dispatch request uses canonical repository metadata without runtime owner variables", () => {
+            const request = __test.buildGitHubDispatchRequest({
+              token: "secret-token",
+              benchmark: "0050.TW",
+              userEmail: "user@example.com",
+            });
+            assert.equal(
+              request.url,
+              "https://api.github.com/repos/chihung1024/sheet-trading-journal/actions/workflows/update.yml/dispatches",
+            );
+            assert.equal(request.init.method, "POST");
+            assert.equal(request.init.headers.Authorization, "Bearer secret-token");
+            assert.deepEqual(JSON.parse(request.init.body), {
+              ref: "main",
+              inputs: {
+                custom_benchmark: "0050.TW",
+                target_user_id: "user@example.com",
+              },
+            });
+          });
+
+          test("dispatch accepts GitHub 204 and records request id without reading response body", async () => {
+            let bodyRead = false;
+            const result = await __test.dispatchGitHubWorkflow({
+              token: "secret-token",
+              benchmark: "SPY",
+              userEmail: "user@example.com",
+              fetchImpl: async () => ({
+                ok: true,
+                status: 204,
+                headers: new Headers({ "X-GitHub-Request-Id": "ABC1:DEF2" }),
+                text: async () => { bodyRead = true; },
+              }),
+            });
+            assert.equal(result.ok, true);
+            assert.equal(result.githubRequestId, "ABC1:DEF2");
+            assert.equal(bodyRead, false);
+          });
+
+          test("dispatch classifies GitHub failures", () => {
+            const cases = new Map([
+              [401, "GITHUB_AUTH_FAILED"],
+              [403, "GITHUB_PERMISSION_DENIED"],
+              [404, "GITHUB_WORKFLOW_NOT_FOUND"],
+              [422, "GITHUB_DISPATCH_REJECTED"],
+              [429, "GITHUB_RATE_LIMITED"],
+              [500, "GITHUB_UNAVAILABLE"],
+            ]);
+            for (const [status, code] of cases) {
+              assert.equal(__test.classifyGitHubDispatchFailure(status).code, code);
+            }
+          });
+
+          test("dispatch requires only the token secret", () => {
+            assert.throws(
+              () => __test.buildGitHubDispatchRequest({ token: "", benchmark: "SPY", userEmail: "u@example.com" }),
+              /token is required/,
+            );
+          });
+          TEST
+
+      - name: Verify
+        run: |
+          npm ci --no-audit --no-fund
+          npm run test:worker
+          npm run worker:config:check
+          npm run worker:schema:test
+          npm run build
+
+      - name: Commit hotfix
+        shell: bash
+        run: |
+          rm .github/workflows/pr05d-apply.yml
+          git config user.name "chihung1024"
+          git config user.email "104315542+chihung1024@users.noreply.github.com"
+          git add --all
+          git commit -m "fix: restore GitHub workflow dispatch after Wrangler deployment"
+          git push origin HEAD:pr-05d/github-dispatch-hotfix
