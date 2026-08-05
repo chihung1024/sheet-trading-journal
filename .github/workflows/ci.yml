@@ -42,9 +42,9 @@ jobs:
         run: python -m pytest -q
 
   worker-security:
-    name: Worker security tests
+    name: Worker security and deployment tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -55,8 +55,17 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Run Worker security suite
+      - name: Install Node dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run Worker test suites
         run: npm run test:worker
+
+      - name: Verify Worker deployment metadata
+        run: npm run worker:config:check
+
+      - name: Apply and verify D1 baseline locally
+        run: npm run worker:schema:test
 
   frontend-build:
     name: Frontend build
