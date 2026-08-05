@@ -1,0 +1,62 @@
+name: PR-06 Final Guard
+
+on:
+  push:
+    branches:
+      - pr-06/cursor-pagination-dal
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'PR06 apply duplicate page guard'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: pr-06/cursor-pagination-dal
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Apply duplicate-page guard
+        run: python .pr06-final/add_duplicate_guard.py
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          npm ci --no-audit --no-fund
+
+      - name: Verify final PR-06 implementation
+        run: |
+          python -m compileall -q journal_engine main.py tools tests
+          python -m pytest -q
+          npm run test:worker
+          npm run worker:config:check
+          npm run worker:schema:test
+          npm run build
+
+      - name: Commit final guard
+        run: |
+          set -euo pipefail
+          rm -rf .pr06-final
+          rm -f .github/workflows/pr06-final-guard.yml
+          git config user.name "chihung1024"
+          git config user.email "104315542+chihung1024@users.noreply.github.com"
+          git add --all
+          git commit -m "PR-06: reject duplicate records across pagination pages"
+          git push origin HEAD:pr-06/cursor-pagination-dal
