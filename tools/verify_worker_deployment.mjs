@@ -11,10 +11,18 @@ export function validateWorkerDeployment({
 }) {
   const errors = [];
   const normalizedSha = String(expectedSha || "").trim().toLowerCase();
+  const releaseVersion = String(expectedReleaseVersion || "").trim();
+  const apiVersion = String(expectedApiVersion || "").trim();
   const schemaVersion = Number(expectedSchemaVersion);
 
   if (!/^[0-9a-f]{40}$/.test(normalizedSha)) {
     errors.push("expected source SHA must be an exact 40-character Git commit SHA");
+  }
+  if (!releaseVersion) {
+    errors.push("expected release version is required");
+  }
+  if (!apiVersion) {
+    errors.push("expected API version is required");
   }
   if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
     errors.push("expected schema version must be a non-negative integer");
@@ -27,24 +35,31 @@ export function validateWorkerDeployment({
   }
 
   if (errors.length === 0) {
+    const reportedSchemaVersion = Number(version.schema_version);
+    const observedSchemaVersion = Number(health.observed_schema_version);
+
     if (version.source_commit !== normalizedSha) {
       errors.push(
         `source commit has not propagated: ${String(version.source_commit || "missing")} != ${normalizedSha}`,
       );
     }
-    if (version.release_version !== expectedReleaseVersion) {
+    if (version.release_version !== releaseVersion) {
       errors.push(
-        `release version mismatch: ${String(version.release_version || "missing")} != ${expectedReleaseVersion}`,
+        `release version mismatch: ${String(version.release_version || "missing")} != ${releaseVersion}`,
       );
     }
-    if (version.api_version !== expectedApiVersion) {
+    if (version.api_version !== apiVersion) {
       errors.push(
-        `API version mismatch: ${String(version.api_version || "missing")} != ${expectedApiVersion}`,
+        `API version mismatch: ${String(version.api_version || "missing")} != ${apiVersion}`,
       );
     }
-    if (Number(version.schema_version) !== schemaVersion) {
+    if (!Number.isInteger(reportedSchemaVersion) || reportedSchemaVersion < 0) {
       errors.push(
-        `version endpoint schema mismatch: ${String(version.schema_version)} != ${schemaVersion}`,
+        `version endpoint schema is missing or invalid: ${String(version.schema_version)}`,
+      );
+    } else if (reportedSchemaVersion !== schemaVersion) {
+      errors.push(
+        `version endpoint schema mismatch: ${reportedSchemaVersion} != ${schemaVersion}`,
       );
     }
     if (!version.worker_version?.id) {
@@ -53,9 +68,13 @@ export function validateWorkerDeployment({
     if (health.status !== "ok") {
       errors.push(`health status is not ready: ${String(health.status || "missing")}`);
     }
-    if (Number(health.observed_schema_version) < schemaVersion) {
+    if (!Number.isInteger(observedSchemaVersion) || observedSchemaVersion < 0) {
       errors.push(
-        `observed D1 schema is too old: ${String(health.observed_schema_version)} < ${schemaVersion}`,
+        `observed D1 schema is missing or invalid: ${String(health.observed_schema_version)}`,
+      );
+    } else if (observedSchemaVersion < schemaVersion) {
+      errors.push(
+        `observed D1 schema is too old: ${observedSchemaVersion} < ${schemaVersion}`,
       );
     }
   }
