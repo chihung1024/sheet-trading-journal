@@ -103,53 +103,52 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run worker:deploy
 
-      - name: Verify production version and health
+      - name: Verify expected production deployment has propagated
         shell: bash
         env:
           EXPECTED_SHA: ${{ steps.source.outputs.sha }}
+          EXPECTED_RELEASE_VERSION: '4.05'
+          EXPECTED_API_VERSION: '2.57'
+          EXPECTED_SCHEMA_VERSION: '1'
           WORKER_BASE_URL: https://journal-backend.chired.workers.dev
         run: |
           set -euo pipefail
 
-          fetch_until_200() {
-            local path="$1"
-            local body_file="$2"
-            local status=""
+          wait_for_expected_deployment() {
+            local version_body
+            local health_body
+            local version_status=""
+            local health_status=""
+            version_body="$(mktemp)"
+            health_body="$(mktemp)"
+
             for attempt in $(seq 1 20); do
-              status="$(curl --silent --show-error --output "$body_file" --write-out '%{http_code}' "$WORKER_BASE_URL$path" || true)"
-              if [[ "$status" == "200" ]]; then
-                echo "$path returned 200 on attempt $attempt"
-                return 0
+              version_status="$(curl --silent --show-error --output "$version_body" --write-out '%{http_code}' "$WORKER_BASE_URL/api/version" || true)"
+              health_status="$(curl --silent --show-error --output "$health_body" --write-out '%{http_code}' "$WORKER_BASE_URL/api/health" || true)"
+
+              if [[ "$version_status" == "200" && "$health_status" == "200" ]]; then
+                if VERSION_JSON="$(cat "$version_body")" \
+                  HEALTH_JSON="$(cat "$health_body")" \
+                  EXPECTED_SHA="$EXPECTED_SHA" \
+                  EXPECTED_RELEASE_VERSION="$EXPECTED_RELEASE_VERSION" \
+                  EXPECTED_API_VERSION="$EXPECTED_API_VERSION" \
+                  EXPECTED_SCHEMA_VERSION="$EXPECTED_SCHEMA_VERSION" \
+                  node tools/verify_worker_deployment.mjs; then
+                  echo "Expected deployment became ready on attempt $attempt"
+                  return 0
+                fi
+              else
+                echo "Operational endpoints not ready on attempt $attempt: version=$version_status health=$health_status"
               fi
-              echo "$path returned ${status:-curl-error} on attempt $attempt"
+
               sleep 3
             done
-            echo "$path did not become ready; final status=${status:-curl-error}" >&2
-            cat "$body_file" >&2 || true
+
+            echo "Expected deployment did not propagate within the readiness window" >&2
+            echo "Final endpoint status: version=$version_status health=$health_status" >&2
+            cat "$version_body" >&2 || true
+            cat "$health_body" >&2 || true
             return 1
           }
 
-          version_body="$(mktemp)"
-          health_body="$(mktemp)"
-          fetch_until_200 /api/version "$version_body"
-          fetch_until_200 /api/health "$health_body"
-
-          VERSION_JSON="$(cat "$version_body")" HEALTH_JSON="$(cat "$health_body")" EXPECTED_SHA="$EXPECTED_SHA" node <<'NODE'
-          const version = JSON.parse(process.env.VERSION_JSON);
-          const health = JSON.parse(process.env.HEALTH_JSON);
-          const expected = process.env.EXPECTED_SHA.toLowerCase();
-          if (version.source_commit !== expected) {
-            throw new Error(`Version source mismatch: ${version.source_commit} != ${expected}`);
-          }
-          if (version.release_version !== "4.05" || version.api_version !== "2.57" || version.schema_version !== 1) {
-            throw new Error(`Unexpected Worker version metadata: ${JSON.stringify(version)}`);
-          }
-          if (!version.worker_version?.id) {
-            throw new Error(`Missing Cloudflare Worker version ID: ${JSON.stringify(version)}`);
-          }
-          if (health.status !== "ok" || health.observed_schema_version !== 1) {
-            throw new Error(`Worker health check failed: ${JSON.stringify(health)}`);
-          }
-          console.log(`Production Worker verified at ${expected}`);
-          console.log(`Cloudflare Worker version: ${version.worker_version.id}`);
-          NODE
+          wait_for_expected_deployment
