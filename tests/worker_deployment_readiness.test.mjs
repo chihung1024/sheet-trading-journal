@@ -61,7 +61,7 @@ test("semantic deployment readiness rejects HTTP-200 metadata from the previous 
   assert.match(result.errors.join("\n"), new RegExp(EXPECTED_SHA));
 });
 
-test("semantic deployment readiness rejects unhealthy or stale D1 schema", () => {
+test("semantic deployment readiness rejects unhealthy, stale, or missing D1 schema", () => {
   const unhealthy = validate(readyVersion(), readyHealth({ status: "degraded" }));
   assert.equal(unhealthy.ok, false);
   assert.match(unhealthy.errors.join("\n"), /health status is not ready/);
@@ -72,6 +72,16 @@ test("semantic deployment readiness rejects unhealthy or stale D1 schema", () =>
   );
   assert.equal(staleSchema.ok, false);
   assert.match(staleSchema.errors.join("\n"), /observed D1 schema is too old/);
+
+  const missingSchema = validate(
+    readyVersion(),
+    { status: "ok" },
+  );
+  assert.equal(missingSchema.ok, false);
+  assert.match(
+    missingSchema.errors.join("\n"),
+    /observed D1 schema is missing or invalid/,
+  );
 });
 
 test("semantic deployment readiness rejects version and metadata mismatches", () => {
@@ -96,13 +106,15 @@ test("semantic deployment readiness fails closed for malformed expectations and 
     version: null,
     health: [],
     expectedSha: "short-sha",
-    expectedReleaseVersion: "4.05",
-    expectedApiVersion: "2.57",
+    expectedReleaseVersion: "",
+    expectedApiVersion: "",
     expectedSchemaVersion: "not-a-number",
   });
 
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /expected source SHA/);
+  assert.match(result.errors.join("\n"), /expected release version is required/);
+  assert.match(result.errors.join("\n"), /expected API version is required/);
   assert.match(result.errors.join("\n"), /expected schema version/);
   assert.match(result.errors.join("\n"), /version response must be a JSON object/);
   assert.match(result.errors.join("\n"), /health response must be a JSON object/);
