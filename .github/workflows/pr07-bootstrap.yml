@@ -72,13 +72,14 @@ jobs:
           npm run worker:schema:test
           npm run build
 
-      - name: Commit verified PR-07 implementation
+      - name: Commit verified non-workflow implementation
         shell: bash
         run: |
           set -euo pipefail
-          rm .github/workflows/pr07-bootstrap.yml
+          cp .github/workflows/update.yml tools/pr07_update_workflow.yml
+          git checkout -- .github/workflows/update.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add -A -- ':!.github/workflows/pr07-bootstrap.yml' ':!.github/workflows/update.yml'
           git commit -m "PR-07: add durable idempotent calculation jobs"
           git push origin HEAD:pr-07/calculation-jobs-idempotency
