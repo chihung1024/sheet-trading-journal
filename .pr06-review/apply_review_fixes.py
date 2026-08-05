@@ -123,3 +123,9 @@ t = t.replace('}, { limit: 1, cursor: null });', '}, { limit: 1, cursor: null },
 t = t.replace('}, { limit: 100, cursor });', '}, { limit: 100, cursor }, "cursor-test-secret-at-least-16");')
 t += '''\n\ntest("record page defaults to the legacy 1000-row compatibility limit", async () => {\n  const parsed = await parseRecordPageRequest(new URL("https://example.test/api/records"), "cursor-test-secret-at-least-16", { kind: "all-users" });\n  assert.equal(parsed.limit, 1000);\n});\n'''
 path.write_text(t, encoding='utf-8')
+
+path = Path('tests/worker_security.test.mjs')
+t = path.read_text(encoding='utf-8')
+t = t.replace('assert.deepEqual(DB.calls[0].binds, ["target@example.com", 251]);', 'assert.deepEqual(DB.calls[0].binds, ["target@example.com", 1001]);')
+t = t.replace('assert.deepEqual(DB.calls[0].binds, [251]);', 'assert.deepEqual(DB.calls[0].binds, [1001]);')
+path.write_text(t, encoding='utf-8')
