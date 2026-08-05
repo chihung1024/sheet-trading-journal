@@ -23,6 +23,12 @@ on:
 permissions:
   contents: read
 
+# 同一 repository 只允許一個 portfolio update 執行，避免重疊上傳。
+# cancel-in-progress=false 讓既有執行完成，新觸發排隊而不是中斷。
+concurrency:
+  group: portfolio-update
+  cancel-in-progress: false
+
 jobs:
   run-and-upload:
     runs-on: ubuntu-latest
