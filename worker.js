@@ -1,486 +1,865 @@
 /**
- * Worker: 交易管理與即時報價 API (多人隔離修正版)
- * 修復：解決交易紀錄刪除後數據殘留的問題
- * v2.38: 生產版本 - 使用 workflow_dispatch + inputs 傳遞自訂 benchmark
- * v2.53: 修復 admin 無法刪除用戶記錄的權限問題
- * v2.54: 新增用戶專屬 benchmark 設定 API
- * v2.55: 修復 GET user-settings 超時問題 - 添加詳細日誌
+ * Worker: Trading Journal API
+ * v2.56 / PR-03: least-privilege principals, tenant isolation, strict CORS,
+ * hardened Google token verification, validated inputs, and safe error responses.
  */
 
+const DEFAULT_GOOGLE_CLIENT_ID =
+  "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com";
 
-const GOOGLE_CLIENT_ID = "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com";
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://sheet-trading-journal.pages.dev",
+  "https://chihung1024.github.io",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
 
+const CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];
+const CORS_HEADERS = ["Content-Type", "Authorization"];
+const MAX_JSON_BYTES = 1_048_576;
+const MAX_TOKEN_LENGTH = 8_192;
+const TRIGGER_COOLDOWN_SECONDS = 60;
+const GOOGLE_ISSUERS = new Set([
+  "accounts.google.com",
+  "https://accounts.google.com",
+]);
+const TXN_TYPES = new Set(["BUY", "SELL", "DIV"]);
+const SYMBOL_RE = /^[A-Z0-9.^=\-]{1,24}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const FORBIDDEN_OWNER_FIELDS = new Set([
+  "user_id",
+  "target_user_id",
+  "email",
+  "owner",
+  "owner_id",
+  "role",
+]);
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-KEY, X-Target-User",
-};
-
+const ROUTE_PERMISSIONS = Object.freeze({
+  "POST /api/trigger-update": new Set(["user"]),
+  "GET /api/portfolio": new Set(["user"]),
+  "POST /api/portfolio": new Set(["system"]),
+  "GET /api/records": new Set(["user", "system"]),
+  "POST /api/records": new Set(["user"]),
+  "PUT /api/records": new Set(["user"]),
+  "DELETE /api/records": new Set(["user"]),
+  "GET /api/user-settings": new Set(["user", "system"]),
+  "POST /api/user-settings": new Set(["user"]),
+});
 
 export default {
   async fetch(request, env, ctx) {
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
-    }
-
-
-    const url = new URL(request.url);
-
+    const requestId = crypto.randomUUID();
 
     try {
-        // [POST] Google 登入驗證
-        if (url.pathname === "/auth/google" && request.method === "POST") {
-            return addCors(await handleAuth(request));
+      const corsFailure = validateCorsRequest(request, env, requestId);
+      if (corsFailure) return corsFailure;
+
+      if (request.method === "OPTIONS") {
+        return withCors(new Response(null, { status: 204 }), request, env);
+      }
+
+      const url = new URL(request.url);
+
+      if (url.pathname === "/auth/google") {
+        if (request.method !== "POST") {
+          return withCors(methodNotAllowed(requestId), request, env);
         }
+        return withCors(await handleAuth(request, env, requestId), request, env);
+      }
 
+      const routeKey = `${request.method} ${url.pathname}`;
+      if (!ROUTE_PERMISSIONS[routeKey]) {
+        return withCors(apiError("NOT_FOUND", "Route not found", 404, requestId), request, env);
+      }
 
-        // [POST] 觸發 GitHub Action (支援自訂 benchmark)
-        if (url.pathname === "/api/trigger-update" && request.method === "POST") {
-            const user = await authenticate(request, env);
-            if (!user) return addCors(jsonResponse({ error: "Unauthorized" }, 401));
-            return addCors(await handleGitHubTrigger(request, env, user));
-        }
+      const principal = await authenticate(request, env);
+      if (!principal) {
+        return withCors(apiError("UNAUTHORIZED", "Unauthorized", 401, requestId), request, env);
+      }
+      if (!authorize(principal, routeKey)) {
+        return withCors(apiError("FORBIDDEN", "Forbidden", 403, requestId), request, env);
+      }
 
+      let response;
+      switch (routeKey) {
+        case "POST /api/trigger-update":
+          response = await handleGitHubTrigger(request, env, ctx, principal, requestId);
+          break;
+        case "GET /api/portfolio":
+          response = await handleGetPortfolio(env, principal, requestId);
+          break;
+        case "POST /api/portfolio":
+          response = await handleUploadPortfolio(request, env, principal, requestId);
+          break;
+        case "GET /api/records":
+          response = await handleGetRecords(request, env, principal, requestId);
+          break;
+        case "POST /api/records":
+          response = await handleAddRecord(request, env, principal, requestId);
+          break;
+        case "PUT /api/records":
+          response = await handleUpdateRecord(request, env, principal, requestId);
+          break;
+        case "DELETE /api/records":
+          response = await handleDeleteRecord(request, env, principal, requestId);
+          break;
+        case "GET /api/user-settings":
+          response = await handleGetUserSettings(request, env, principal, requestId);
+          break;
+        case "POST /api/user-settings":
+          response = await handleUpdateUserSettings(request, env, principal, requestId);
+          break;
+        default:
+          response = apiError("NOT_FOUND", "Route not found", 404, requestId);
+      }
 
-        // [GET/POST] 投資組合快照
-        if (url.pathname === "/api/portfolio") {
-          const user = await authenticate(request, env);
-          
-          if (request.method === "POST") {
-              if (user) {
-                  return addCors(await handleUploadPortfolio(request, env, user));
-              }
-              return addCors(jsonResponse({ error: "Unauthorized" }, 401));
-          }
-
-
-          if (request.method === "GET") {
-              if (!user) {
-                  return addCors(jsonResponse({ success: true, data: { summary: {}, holdings: [], history: [] } }));
-              }
-              return addCors(await handleGetPortfolio(env, user));
-          }
-        }
-
-
-        // [CRUD] 交易紀錄
-        if (url.pathname === "/api/records") {
-            const user = await authenticate(request, env);
-            if (!user) return addCors(jsonResponse({ error: "Unauthorized" }, 401));
-
-
-            if (request.method === "GET") return addCors(await handleGetRecords(request, env, user));
-            else if (request.method === "POST") return addCors(await handleAddRecord(request, env, user));
-            else if (request.method === "PUT") return addCors(await handleUpdateRecord(request, env, user));
-            else if (request.method === "DELETE") return addCors(await handleDeleteRecord(request, env, user));
-            
-            return addCors(new Response("Method Not Allowed", { status: 405 }));
-        }
-
-        // [v2.54] [GET/POST] 用戶 benchmark 設定
-        if (url.pathname === "/api/user-settings") {
-            console.log('[v2.55 DEBUG] Received user-settings request:', request.method);
-            const startTime = Date.now();
-            
-            const user = await authenticate(request, env);
-            console.log('[v2.55 DEBUG] Authentication result:', user ? `user=${user.email}, role=${user.role}` : 'null');
-            
-            if (!user) return addCors(jsonResponse({ error: "Unauthorized" }, 401));
-
-            const result = request.method === "GET" 
-              ? await handleGetUserSettings(request, env, user)
-              : request.method === "POST"
-              ? await handleUpdateUserSettings(request, env, user)
-              : new Response("Method Not Allowed", { status: 405 });
-            
-            console.log('[v2.55 DEBUG] Request completed in', Date.now() - startTime, 'ms');
-            return addCors(result);
-        }
-
-
-        return addCors(jsonResponse({ error: "Route Not Found" }, 404));
-    } catch (err) {
-        console.error("[Worker Error]", err.message, err.stack);
-        return addCors(jsonResponse({ error: "Server Error: " + err.message }, 500));
+      return withCors(response, request, env);
+    } catch (error) {
+      console.error(`[request_id=${requestId}] Unhandled Worker error`, safeErrorName(error));
+      return withCors(
+        apiError("INTERNAL_ERROR", "Internal server error", 500, requestId),
+        request,
+        env,
+      );
     }
-  }
+  },
 };
 
-
-// ==========================================
-// 業務邏輯
-// ==========================================
-
-
-async function handleAuth(request) {
-  try {
-    const { id_token } = await request.json();
-    const payload = await verifyGoogleToken(id_token, GOOGLE_CLIENT_ID);
-    return jsonResponse({ 
-        success: true, 
-        user: payload.name, 
-        email: payload.email, 
-        token: id_token 
-    });
-  } catch (err) {
-    return jsonResponse({ success: false, error: "驗證失敗: " + err.message }, 401);
-  }
+function authorize(principal, routeKey) {
+  return ROUTE_PERMISSIONS[routeKey]?.has(principal.kind) === true;
 }
-
 
 async function authenticate(request, env) {
   const apiKey = request.headers.get("X-API-KEY");
-  console.log('[v2.55 AUTH] X-API-KEY present:', !!apiKey);
-  console.log('[v2.55 AUTH] API_SECRET configured:', !!env.API_SECRET);
-  
-  if (apiKey && env.API_SECRET && apiKey === env.API_SECRET) {
-    console.log('[v2.55 AUTH] ✓ API Key authentication successful');
-    return { email: 'system', role: 'admin' };
+  if (apiKey !== null) {
+    if (!env.API_SECRET || !constantTimeEqual(apiKey, env.API_SECRET)) return null;
+    return { kind: "system" };
   }
-  
+
   const authHeader = request.headers.get("Authorization");
-  if (!authHeader) {
-    console.log('[v2.55 AUTH] ✗ No Authorization header');
+  const match = authHeader?.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+
+  try {
+    const clientId = env.GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
+    const payload = await verifyGoogleToken(match[1], clientId);
+    return {
+      kind: "user",
+      email: normalizeEmail(payload.email),
+      name: sanitizeText(payload.name || "", 200),
+      sub: payload.sub,
+    };
+  } catch (error) {
+    console.warn("Google token authentication rejected", safeErrorName(error));
     return null;
   }
+}
 
+async function handleAuth(request, env, requestId) {
   try {
-    const token = authHeader.split(" ")[1];
-    const payload = await verifyGoogleToken(token, GOOGLE_CLIENT_ID);
-    console.log('[v2.55 AUTH] ✓ Google token authentication successful:', payload.email);
-    return { email: payload.email, name: payload.name, role: 'user' };
-  } catch (e) {
-    console.log('[v2.55 AUTH] ✗ Token verification failed:', e.message);
-    return null; 
+    const body = await readJsonObject(request);
+    const idToken = requireString(body.id_token, "id_token", 1, MAX_TOKEN_LENGTH);
+    const clientId = env.GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
+    const payload = await verifyGoogleToken(idToken, clientId);
+
+    return jsonResponse({
+      success: true,
+      user: sanitizeText(payload.name || "", 200),
+      email: normalizeEmail(payload.email),
+      token: idToken,
+    });
+  } catch (error) {
+    const status = error instanceof RequestValidationError ? 400 : 401;
+    const code = status === 400 ? "INVALID_REQUEST" : "INVALID_CREDENTIAL";
+    return apiError(code, status === 400 ? error.message : "Authentication failed", status, requestId);
   }
 }
 
-
-async function handleGetPortfolio(env, user) {
+async function handleGetPortfolio(env, principal, requestId) {
   try {
     const recordCheck = await env.DB.prepare(
-      "SELECT COUNT(*) as total FROM records WHERE user_id = ?"
-    ).bind(user.email).first();
+      "SELECT COUNT(*) as total FROM records WHERE user_id = ?",
+    ).bind(principal.email).first();
 
-
-    if (!recordCheck || recordCheck.total === 0) {
-      return jsonResponse({ success: true, data: { summary: {}, holdings: [], history: [] } });
+    if (!recordCheck || Number(recordCheck.total) === 0) {
+      return jsonResponse({ success: true, data: emptyPortfolio() });
     }
-
 
     const result = await env.DB.prepare(
-      "SELECT json_data FROM portfolio_snapshots WHERE user_id = ? ORDER BY id DESC LIMIT 1"
-    ).bind(user.email).first();
+      "SELECT json_data FROM portfolio_snapshots WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+    ).bind(principal.email).first();
 
+    if (!result) return jsonResponse({ success: true, data: emptyPortfolio() });
 
-    if (!result) {
-      return jsonResponse({ success: true, data: { summary: {}, holdings: [], history: [] } });
+    let parsed;
+    try {
+      parsed = JSON.parse(result.json_data);
+    } catch {
+      console.error(`[request_id=${requestId}] Stored portfolio JSON is invalid`);
+      return apiError("DATA_INTEGRITY_ERROR", "Portfolio data is unavailable", 500, requestId);
     }
-    const parsedData = JSON.parse(result.json_data);
-    return jsonResponse({ success: true, data: parsedData });
-  } catch (e) {
-    return jsonResponse({ success: false, error: e.message }, 500);
+    return jsonResponse({ success: true, data: parsed });
+  } catch (error) {
+    console.error(`[request_id=${requestId}] Portfolio read failed`, safeErrorName(error));
+    return apiError("DATABASE_ERROR", "Portfolio data is unavailable", 500, requestId);
   }
 }
 
-
-async function handleUploadPortfolio(request, env, user) {
+async function handleUploadPortfolio(request, env, principal, requestId) {
   try {
-    const payload = await request.json();
-    let ownerId = user.email;
-    let dataToSave = payload;
-
-
-    if (user.role === 'admin' && payload.target_user_id) {
-        ownerId = payload.target_user_id;
-        dataToSave = payload.data || payload; 
+    const payload = await readJsonObject(request);
+    const targetUser = normalizeEmail(
+      requireString(payload.target_user_id, "target_user_id", 3, 320),
+    );
+    if (!isPlainObject(payload.data)) {
+      throw new RequestValidationError("data must be a JSON object");
     }
 
-
-    const jsonString = JSON.stringify(dataToSave);
-    
-    await env.DB.prepare(
-      "INSERT INTO portfolio_snapshots (user_id, json_data) VALUES (?, ?)"
-    ).bind(ownerId, jsonString).run();
-
+    const jsonString = JSON.stringify(payload.data);
+    if (byteLength(jsonString) > MAX_JSON_BYTES) {
+      throw new RequestValidationError("Portfolio payload is too large");
+    }
 
     await env.DB.prepare(
-      "DELETE FROM portfolio_snapshots WHERE user_id = ? AND id NOT IN (SELECT id FROM portfolio_snapshots WHERE user_id = ? ORDER BY id DESC LIMIT 10)"
-    ).bind(ownerId, ownerId).run();
+      "INSERT INTO portfolio_snapshots (user_id, json_data) VALUES (?, ?)",
+    ).bind(targetUser, jsonString).run();
 
+    await env.DB.prepare(
+      "DELETE FROM portfolio_snapshots WHERE user_id = ? AND id NOT IN (SELECT id FROM portfolio_snapshots WHERE user_id = ? ORDER BY id DESC LIMIT 10)",
+    ).bind(targetUser, targetUser).run();
 
-    return jsonResponse({ success: true, message: `Upload success for ${ownerId}` });
-  } catch (e) {
-    return jsonResponse({ success: false, error: e.message }, 500);
+    console.info(`[request_id=${requestId}] System snapshot upload completed`);
+    return jsonResponse({ success: true });
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("INVALID_REQUEST", error.message, 400, requestId);
+    }
+    console.error(`[request_id=${requestId}] Portfolio upload failed`, safeErrorName(error));
+    return apiError("DATABASE_ERROR", "Portfolio upload failed", 500, requestId);
   }
 }
 
-
-async function handleGetRecords(req, env, user) {
-    let stmt;
-    if (user.role === 'admin') {
-        stmt = env.DB.prepare("SELECT * FROM records ORDER BY txn_date DESC, created_at DESC LIMIT 1000");
+async function handleGetRecords(request, env, principal, requestId) {
+  try {
+    const scope = resolveRecordScope(principal, request.headers.get("X-Target-User"));
+    let statement;
+    if (scope.kind === "single-user") {
+      statement = env.DB.prepare(
+        "SELECT * FROM records WHERE user_id = ? ORDER BY txn_date DESC, created_at DESC LIMIT 1000",
+      ).bind(scope.userId);
     } else {
-        stmt = env.DB.prepare("SELECT * FROM records WHERE user_id = ? ORDER BY txn_date DESC, created_at DESC LIMIT 1000").bind(user.email);
+      statement = env.DB.prepare(
+        "SELECT * FROM records ORDER BY txn_date DESC, created_at DESC LIMIT 1000",
+      );
     }
-    const { results } = await stmt.all();
-    return jsonResponse({ success: true, data: results });
-}
 
-
-async function handleAddRecord(req, env, user) {
-  const b = await req.json();
-  await env.DB.prepare(
-    "INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(
-      user.email, 
-      b.txn_date, 
-      b.symbol.toUpperCase(), 
-      b.txn_type, 
-      b.qty, 
-      b.price, 
-      b.fee || 0, 
-      b.tax || 0,
-      b.tag || 'Stock', 
-      b.note || ''
-  ).run();
-  return jsonResponse({ success: true });
-}
-
-
-async function handleUpdateRecord(req, env, user) {
-  const b = await req.json();
-  await env.DB.prepare(
-    "UPDATE records SET txn_date=?, symbol=?, txn_type=?, qty=?, price=?, fee=?, tax=?, tag=?, note=? WHERE id=? AND user_id=?"
-  ).bind(
-      b.txn_date, 
-      b.symbol.toUpperCase(), 
-      b.txn_type, 
-      b.qty, 
-      b.price, 
-      b.fee || 0, 
-      b.tax || 0,
-      b.tag || 'Stock', 
-      b.note || '', 
-      b.id, 
-      user.email
-  ).run();
-  return jsonResponse({ success: true });
-}
-
-
-async function handleDeleteRecord(req, env, user) {
-  const { id } = await req.json();
-  
-  // [v2.53 修復] Admin 可以跨用戶刪除,普通用戶只能刪除自己的記錄
-  let deleteStmt;
-  if (user.role === 'admin') {
-    // Admin: 不檢查 user_id，可以刪除任何記錄
-    deleteStmt = env.DB.prepare("DELETE FROM records WHERE id = ?").bind(id);
-    console.log(`[v2.53] Admin deleting record ID: ${id}`);
-  } else {
-    // 普通用戶: 只能刪除自己的記錄
-    deleteStmt = env.DB.prepare("DELETE FROM records WHERE id = ? AND user_id = ?").bind(id, user.email);
+    const result = await statement.all();
+    return jsonResponse({ success: true, data: Array.isArray(result.results) ? result.results : [] });
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("INVALID_TARGET_USER", error.message, 400, requestId);
+    }
+    console.error(`[request_id=${requestId}] Records read failed`, safeErrorName(error));
+    return apiError("DATABASE_ERROR", "Records are unavailable", 500, requestId);
   }
-  
-  const result = await deleteStmt.run();
-  
-  // [v2.53] 記錄刪除結果
-  if (result.meta && result.meta.changes > 0) {
-    console.log(`[v2.53] Successfully deleted record ID: ${id}`);
-  } else {
-    console.warn(`[v2.53] Failed to delete record ID: ${id} (not found or no permission)`);
-  }
+}
 
-  // 檢查是否還有記錄（只檢查當前用戶的記錄）
-  const checkUser = user.role === 'admin' ? user.email : user.email;
-  const check = await env.DB.prepare(
-    "SELECT COUNT(*) as total FROM records WHERE user_id = ?"
-  ).bind(checkUser).first();
-
-  // 如果該用戶沒有記錄了，清空快照
-  if (check.total === 0) {
+async function handleAddRecord(request, env, principal, requestId) {
+  try {
+    const body = validateTransactionPayload(await readJsonObject(request), { requireId: false });
     await env.DB.prepare(
-      "DELETE FROM portfolio_snapshots WHERE user_id = ?"
-    ).bind(checkUser).run();
-
-    return jsonResponse({ success: true, message: "RELOAD_UI" });
+      "INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      principal.email,
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      body.qty,
+      body.price,
+      body.fee,
+      body.tax,
+      body.tag,
+      body.note,
+    ).run();
+    return jsonResponse({ success: true });
+  } catch (error) {
+    return mutationError(error, requestId, "Record creation failed");
   }
-
-  return jsonResponse({ success: true, deleted: result.meta?.changes || 0 });
 }
 
-
-/**
- * [v2.54] 獲取用戶 benchmark 設定
- * [v2.55] 添加詳細日誌和錯誤處理
- */
-async function handleGetUserSettings(request, env, user) {
+async function handleUpdateRecord(request, env, principal, requestId) {
   try {
-    // 支援 Admin/System 查詢其他用戶的設定（透過 X-Target-User header）
-    const targetUser = request.headers.get("X-Target-User") || user.email;
-    console.log(`[v2.55 GetUserSettings] Query for user: ${targetUser}`);
-    
-    const dbStartTime = Date.now();
+    const body = validateTransactionPayload(await readJsonObject(request), { requireId: true });
     const result = await env.DB.prepare(
-      "SELECT benchmark FROM user_settings WHERE user_id = ?"
-    ).bind(targetUser).first();
-    console.log(`[v2.55 GetUserSettings] DB query completed in ${Date.now() - dbStartTime}ms`);
-    
-    const benchmark = result?.benchmark || 'SPY';
-    console.log(`[v2.55 GetUserSettings] Result: ${benchmark} (from ${result ? 'DB' : 'default'})`);
-    return jsonResponse({ success: true, benchmark });
-  } catch (e) {
-    console.error('[v2.55 GetUserSettings Error]', e.message, e.stack);
-    return jsonResponse({ success: true, benchmark: 'SPY' }); // 容錯回退
+      "UPDATE records SET txn_date=?, symbol=?, txn_type=?, qty=?, price=?, fee=?, tax=?, tag=?, note=? WHERE id=? AND user_id=?",
+    ).bind(
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      body.qty,
+      body.price,
+      body.fee,
+      body.tax,
+      body.tag,
+      body.note,
+      body.id,
+      principal.email,
+    ).run();
+
+    if (affectedRows(result) !== 1) {
+      return apiError("NOT_FOUND", "Record not found", 404, requestId);
+    }
+    return jsonResponse({ success: true });
+  } catch (error) {
+    return mutationError(error, requestId, "Record update failed");
   }
 }
 
-
-/**
- * [v2.54] 更新用戶 benchmark 設定
- */
-async function handleUpdateUserSettings(request, env, user) {
+async function handleDeleteRecord(request, env, principal, requestId) {
   try {
-    const { benchmark } = await request.json();
-    if (!benchmark || typeof benchmark !== 'string') {
-      return jsonResponse({ error: 'Invalid benchmark' }, 400);
+    const body = await readJsonObject(request);
+    rejectOwnerFields(body);
+    const id = requirePositiveInteger(body.id, "id");
+
+    const result = await env.DB.prepare(
+      "DELETE FROM records WHERE id = ? AND user_id = ?",
+    ).bind(id, principal.email).run();
+
+    if (affectedRows(result) !== 1) {
+      return apiError("NOT_FOUND", "Record not found", 404, requestId);
     }
-    
-    const normalizedBenchmark = benchmark.trim().toUpperCase();
-    
-    // SQLite 的 UPSERT 語法
+
+    const check = await env.DB.prepare(
+      "SELECT COUNT(*) as total FROM records WHERE user_id = ?",
+    ).bind(principal.email).first();
+
+    if (!check || Number(check.total) === 0) {
+      await env.DB.prepare(
+        "DELETE FROM portfolio_snapshots WHERE user_id = ?",
+      ).bind(principal.email).run();
+      return jsonResponse({ success: true, message: "RELOAD_UI" });
+    }
+
+    return jsonResponse({ success: true, deleted: 1 });
+  } catch (error) {
+    return mutationError(error, requestId, "Record deletion failed");
+  }
+}
+
+async function handleGetUserSettings(request, env, principal, requestId) {
+  try {
+    const targetUser = resolveSettingsTarget(principal, request.headers.get("X-Target-User"));
+    const result = await env.DB.prepare(
+      "SELECT benchmark FROM user_settings WHERE user_id = ?",
+    ).bind(targetUser).first();
+    const benchmark = result?.benchmark
+      ? validateSymbol(result.benchmark, "stored benchmark")
+      : "SPY";
+    return jsonResponse({ success: true, benchmark });
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("INVALID_REQUEST", error.message, 400, requestId);
+    }
+    console.error(`[request_id=${requestId}] User settings read failed`, safeErrorName(error));
+    return apiError("DATABASE_ERROR", "User settings are unavailable", 500, requestId);
+  }
+}
+
+async function handleUpdateUserSettings(request, env, principal, requestId) {
+  try {
+    const body = await readJsonObject(request);
+    rejectOwnerFields(body);
+    const benchmark = validateSymbol(body.benchmark, "benchmark");
+
     await env.DB.prepare(`
-      INSERT INTO user_settings (user_id, benchmark, updated_at) 
+      INSERT INTO user_settings (user_id, benchmark, updated_at)
       VALUES (?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(user_id) DO UPDATE SET 
+      ON CONFLICT(user_id) DO UPDATE SET
         benchmark = excluded.benchmark,
         updated_at = CURRENT_TIMESTAMP
-    `).bind(user.email, normalizedBenchmark).run();
-    
-    console.log(`[v2.54] Updated benchmark for ${user.email}: ${normalizedBenchmark}`);
-    return jsonResponse({ success: true, benchmark: normalizedBenchmark });
-  } catch (e) {
-    console.error('[v2.54 UpdateUserSettings Error]', e);
-    return jsonResponse({ success: false, error: e.message }, 500);
+    `).bind(principal.email, benchmark).run();
+
+    return jsonResponse({ success: true, benchmark });
+  } catch (error) {
+    return mutationError(error, requestId, "User settings update failed");
   }
 }
 
-
-/**
- * 觸發 GitHub Actions 並傳遞自訂 benchmark 參數
- */
-async function handleGitHubTrigger(req, env, user) {
-  if (!env.GITHUB_TOKEN) {
-    return jsonResponse({ error: "GitHub Token not configured" }, 500);
-  }
-  
-  let customBenchmark = 'SPY';
+async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
   try {
-    const body = await req.json();
-    if (body && body.benchmark) {
-      customBenchmark = body.benchmark.toUpperCase().trim();
+    if (!env.GITHUB_TOKEN || !env.GITHUB_OWNER || !env.GITHUB_REPO) {
+      console.error(`[request_id=${requestId}] GitHub dispatch configuration is incomplete`);
+      return apiError("SERVICE_UNAVAILABLE", "Update service is unavailable", 503, requestId);
     }
-  } catch (e) {
-    // 使用預設值
+
+    const body = await readJsonObject(request, { allowEmpty: true });
+    rejectOwnerFields(body);
+    const benchmark = body.benchmark ? validateSymbol(body.benchmark, "benchmark") : "SPY";
+
+    const rateLimit = await claimTriggerSlot(principal.email, env, ctx);
+    if (!rateLimit.allowed) {
+      const response = apiError(
+        "RATE_LIMITED",
+        "An update was triggered recently. Try again later.",
+        429,
+        requestId,
+      );
+      response.headers.set("Retry-After", String(rateLimit.retryAfter));
+      return response;
+    }
+
+    const ghUrl = `https://api.github.com/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}/actions/workflows/update.yml/dispatches`;
+    const response = await fetch(ghUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "sheet-trading-journal-worker",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ref: "main",
+        inputs: {
+          custom_benchmark: benchmark,
+          target_user_id: principal.email,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`[request_id=${requestId}] GitHub dispatch failed [status=${response.status}]`);
+      return apiError("UPSTREAM_ERROR", "Failed to trigger update", 502, requestId);
+    }
+
+    return jsonResponse({ success: true, benchmark });
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("INVALID_REQUEST", error.message, 400, requestId);
+    }
+    console.error(`[request_id=${requestId}] Trigger update failed`, safeErrorName(error));
+    return apiError("UPSTREAM_ERROR", "Failed to trigger update", 502, requestId);
   }
-  
-  const ghUrl = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/actions/workflows/update.yml/dispatches`;
-  
-  const resp = await fetch(ghUrl, { 
-      method: 'POST', 
-      headers: { 
-          'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 
-          'Accept': 'application/vnd.github.v3+json', 
-          'User-Agent': 'Cloudflare Worker',
-          'Content-Type': 'application/json'
-      }, 
-      body: JSON.stringify({ 
-          ref: 'main',
-          inputs: {
-              custom_benchmark: customBenchmark,
-              target_user_id: user.email
-          }
-      }) 
+}
+
+function validateCorsRequest(request, env, requestId) {
+  const origin = request.headers.get("Origin");
+  if (!origin) return null;
+  if (!isOriginAllowed(origin, env)) {
+    return apiError("ORIGIN_FORBIDDEN", "Origin not allowed", 403, requestId);
+  }
+
+  if (request.method !== "OPTIONS") return null;
+
+  const requestedMethod = request.headers.get("Access-Control-Request-Method");
+  if (requestedMethod && !CORS_METHODS.includes(requestedMethod.toUpperCase())) {
+    return apiError("CORS_METHOD_FORBIDDEN", "CORS method not allowed", 403, requestId);
+  }
+
+  const requestedHeaders = (request.headers.get("Access-Control-Request-Headers") || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const allowedHeaders = new Set(CORS_HEADERS.map((value) => value.toLowerCase()));
+  if (requestedHeaders.some((header) => !allowedHeaders.has(header))) {
+    return apiError("CORS_HEADER_FORBIDDEN", "CORS header not allowed", 403, requestId);
+  }
+  return null;
+}
+
+function withCors(response, request, env) {
+  const headers = new Headers(response.headers);
+  headers.set("Vary", mergeVary(headers.get("Vary"), "Origin"));
+  headers.set("Cache-Control", headers.get("Cache-Control") || "no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Referrer-Policy", "no-referrer");
+
+  const origin = request.headers.get("Origin");
+  if (origin && isOriginAllowed(origin, env)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Methods", CORS_METHODS.join(", "));
+    headers.set("Access-Control-Allow-Headers", CORS_HEADERS.join(", "));
+    headers.set("Access-Control-Max-Age", "600");
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
-  
-  if (!resp.ok) {
-    const errorText = await resp.text();
-    console.error(`[GitHub API Error] ${resp.status}: ${errorText}`);
-    return jsonResponse({ 
-        success: false, 
-        error: `Failed to trigger update: ${resp.status}` 
-    }, 500);
+}
+
+function getAllowedOrigins(env) {
+  const configured = String(env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value && value !== "*");
+  return new Set([...DEFAULT_ALLOWED_ORIGINS, ...configured]);
+}
+
+function isOriginAllowed(origin, env) {
+  if (getAllowedOrigins(env).has(origin)) return true;
+  try {
+    const parsed = new URL(origin);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.hostname.endsWith(".sheet-trading-journal.pages.dev")
+    );
+  } catch {
+    return false;
   }
-  
-  return jsonResponse({ 
-      success: true, 
-      benchmark: customBenchmark,
-      message: `Update triggered with benchmark: ${customBenchmark}`
-  });
 }
 
+function mergeVary(current, value) {
+  const values = new Set(
+    String(current || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+  values.add(value);
+  return [...values].join(", ");
+}
 
-// ==========================================
-// 輔助函數
-// ==========================================
-
-
-function addCors(response) {
-  const newHeaders = new Headers(response.headers);
-  for (const [key, value] of Object.entries(corsHeaders)) {
-    newHeaders.set(key, value);
+function resolveRecordScope(principal, targetHeader) {
+  if (principal.kind === "user") {
+    return { kind: "single-user", userId: principal.email };
   }
-  return new Response(response.body, { status: response.status, headers: newHeaders });
+  if (targetHeader === null || targetHeader.trim() === "") {
+    return { kind: "all-users" };
+  }
+  return { kind: "single-user", userId: normalizeEmail(targetHeader) };
 }
 
-
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+function resolveSettingsTarget(principal, targetHeader) {
+  if (principal.kind === "user") return principal.email;
+  if (!targetHeader || !targetHeader.trim()) {
+    throw new RequestValidationError("X-Target-User is required for system requests");
+  }
+  return normalizeEmail(targetHeader);
 }
 
+function validateTransactionPayload(body, { requireId }) {
+  rejectOwnerFields(body);
+  const result = {
+    txn_date: validateDate(body.txn_date),
+    symbol: validateSymbol(body.symbol, "symbol"),
+    txn_type: requireString(body.txn_type, "txn_type", 3, 8).toUpperCase(),
+    qty: requireFiniteNumber(body.qty, "qty", { minExclusive: 0 }),
+    price: requireFiniteNumber(body.price, "price", { minInclusive: 0 }),
+    fee: optionalFiniteNumber(body.fee, "fee", 0),
+    tax: optionalFiniteNumber(body.tax, "tax", 0),
+    tag: sanitizeText(body.tag || "Stock", 500),
+    note: sanitizeText(body.note || "", 2_000),
+  };
 
-async function verifyGoogleToken(token, aud) {
+  if (!TXN_TYPES.has(result.txn_type)) {
+    throw new RequestValidationError("txn_type must be BUY, SELL, or DIV");
+  }
+  if (requireId) result.id = requirePositiveInteger(body.id, "id");
+  return result;
+}
+
+function rejectOwnerFields(body) {
+  for (const key of Object.keys(body)) {
+    if (FORBIDDEN_OWNER_FIELDS.has(key)) {
+      throw new RequestValidationError(`${key} is not accepted from this client`);
+    }
+  }
+}
+
+async function readJsonObject(request, { allowEmpty = false } = {}) {
+  const contentType = request.headers.get("Content-Type") || "";
+  if (!contentType.toLowerCase().startsWith("application/json")) {
+    throw new RequestValidationError("Content-Type must be application/json");
+  }
+
+  const declaredLength = Number(request.headers.get("Content-Length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BYTES) {
+    throw new RequestValidationError("Request body is too large");
+  }
+
+  const text = await request.text();
+  if (!text.trim()) {
+    if (allowEmpty) return {};
+    throw new RequestValidationError("JSON body is required");
+  }
+  if (byteLength(text) > MAX_JSON_BYTES) {
+    throw new RequestValidationError("Request body is too large");
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new RequestValidationError("Malformed JSON body");
+  }
+  if (!isPlainObject(parsed)) {
+    throw new RequestValidationError("JSON body must be an object");
+  }
+  return parsed;
+}
+
+async function verifyGoogleToken(token, audience) {
+  if (typeof token !== "string" || token.length < 20 || token.length > MAX_TOKEN_LENGTH) {
+    throw new Error("Invalid token");
+  }
+
   const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("Invalid Token Format");
+  if (parts.length !== 3) throw new Error("Invalid token");
 
+  const header = decodeJwtPart(parts[0]);
+  const payload = decodeJwtPart(parts[1]);
+  validateGoogleClaims(header, payload, audience);
 
-  const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
-  const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
-  if (payload.aud !== aud) throw new Error("Invalid Audience");
-  if (payload.exp < Math.floor(Date.now()/1000)) throw new Error("Expired Token");
-
-
-  const keysResp = await fetch("https://www.googleapis.com/oauth2/v3/certs");
-  const keys = await keysResp.json();
-  const key = keys.keys.find(k => k.kid === header.kid);
-  if (!key) throw new Error("Key not found");
-
+  const keysResponse = await fetch("https://www.googleapis.com/oauth2/v3/certs", {
+    signal: AbortSignal.timeout(5_000),
+    headers: { Accept: "application/json" },
+  });
+  if (!keysResponse.ok) throw new Error("Token key service unavailable");
+  const keys = await keysResponse.json();
+  const key = Array.isArray(keys?.keys)
+    ? keys.keys.find((candidate) => candidate.kid === header.kid)
+    : null;
+  if (!key) throw new Error("Signing key unavailable");
 
   const cryptoKey = await crypto.subtle.importKey(
-    "jwk", key, 
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, 
-    false, ["verify"]
+    "jwk",
+    key,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"],
   );
-
-
   const valid = await crypto.subtle.verify(
-    "RSASSA-PKCS1-v1_5", 
-    cryptoKey, 
-    base64UrlDecode(parts[2]), 
-    new TextEncoder().encode(parts[0] + "." + parts[1])
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    base64UrlDecode(parts[2]),
+    new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
   );
-  if (!valid) throw new Error("Invalid Signature");
+  if (!valid) throw new Error("Invalid signature");
   return payload;
 }
 
+function validateGoogleClaims(header, payload, audience, now = Math.floor(Date.now() / 1000)) {
+  if (!isPlainObject(header) || header.alg !== "RS256" || typeof header.kid !== "string") {
+    throw new Error("Invalid token header");
+  }
+  if (!isPlainObject(payload)) throw new Error("Invalid token claims");
 
-function base64UrlDecode(str) {
-  str = str.replace(/-/g, "+").replace(/_/g, "/");
-  while (str.length % 4) str += "=";
-  const bin = atob(str);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+  if (!audiences.includes(audience)) throw new Error("Invalid audience");
+  if (!GOOGLE_ISSUERS.has(payload.iss)) throw new Error("Invalid issuer");
+  if (!Number.isInteger(payload.exp) || payload.exp <= now - 30) throw new Error("Expired token");
+  if (payload.iat !== undefined && (!Number.isInteger(payload.iat) || payload.iat > now + 300)) {
+    throw new Error("Invalid issued-at time");
+  }
+  if (typeof payload.sub !== "string" || payload.sub.length < 1 || payload.sub.length > 255) {
+    throw new Error("Invalid subject");
+  }
+  if (payload.email_verified !== true) throw new Error("Email is not verified");
+  normalizeEmail(payload.email);
+}
+
+function decodeJwtPart(part) {
+  try {
+    return JSON.parse(new TextDecoder().decode(base64UrlDecode(part)));
+  } catch {
+    throw new Error("Invalid token encoding");
+  }
+}
+
+function base64UrlDecode(value) {
+  let normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+  while (normalized.length % 4) normalized += "=";
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
   return bytes;
 }
+
+function constantTimeEqual(left, right) {
+  const leftBytes = new TextEncoder().encode(String(left));
+  const rightBytes = new TextEncoder().encode(String(right));
+  const length = Math.max(leftBytes.length, rightBytes.length);
+  let difference = leftBytes.length ^ rightBytes.length;
+  for (let index = 0; index < length; index += 1) {
+    difference |= (leftBytes[index] || 0) ^ (rightBytes[index] || 0);
+  }
+  return difference === 0;
+}
+
+async function claimTriggerSlot(email, env, ctx) {
+  const cache = env.RATE_LIMIT_CACHE || globalThis.caches?.default;
+  if (!cache) return { allowed: true, retryAfter: 0 };
+
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(email));
+  const hash = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  const key = new Request(`https://rate-limit.invalid/trigger/${hash}`, { method: "GET" });
+  const existing = await cache.match(key);
+  if (existing) return { allowed: false, retryAfter: TRIGGER_COOLDOWN_SECONDS };
+
+  const marker = new Response("1", {
+    headers: { "Cache-Control": `max-age=${TRIGGER_COOLDOWN_SECONDS}` },
+  });
+  const write = cache.put(key, marker);
+  if (ctx?.waitUntil) ctx.waitUntil(write);
+  else await write;
+  return { allowed: true, retryAfter: 0 };
+}
+
+function validateDate(value) {
+  const text = requireString(value, "txn_date", 10, 10);
+  if (!DATE_RE.test(text)) throw new RequestValidationError("txn_date must use YYYY-MM-DD");
+  const [year, month, day] = text.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new RequestValidationError("txn_date is not a valid date");
+  }
+  return text;
+}
+
+function validateSymbol(value, fieldName) {
+  const symbol = requireString(value, fieldName, 1, 24).toUpperCase();
+  if (!SYMBOL_RE.test(symbol)) {
+    throw new RequestValidationError(`${fieldName} has an invalid format`);
+  }
+  return symbol;
+}
+
+function normalizeEmail(value) {
+  const email = requireString(value, "email", 3, 320).toLowerCase();
+  if (!EMAIL_RE.test(email)) throw new RequestValidationError("Invalid email address");
+  return email;
+}
+
+function requireString(value, fieldName, minLength, maxLength) {
+  if (typeof value !== "string") {
+    throw new RequestValidationError(`${fieldName} must be a string`);
+  }
+  const normalized = value.trim();
+  if (normalized.length < minLength || normalized.length > maxLength) {
+    throw new RequestValidationError(`${fieldName} has an invalid length`);
+  }
+  return normalized;
+}
+
+function sanitizeText(value, maxLength) {
+  const text = String(value ?? "").trim();
+  if (text.length > maxLength) throw new RequestValidationError("Text field is too long");
+  return text;
+}
+
+function requireFiniteNumber(value, fieldName, limits = {}) {
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(number)) {
+    throw new RequestValidationError(`${fieldName} must be a finite number`);
+  }
+  if (limits.minExclusive !== undefined && number <= limits.minExclusive) {
+    throw new RequestValidationError(`${fieldName} must be greater than ${limits.minExclusive}`);
+  }
+  if (limits.minInclusive !== undefined && number < limits.minInclusive) {
+    throw new RequestValidationError(`${fieldName} must be at least ${limits.minInclusive}`);
+  }
+  return number;
+}
+
+function optionalFiniteNumber(value, fieldName, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return requireFiniteNumber(value, fieldName, { minInclusive: 0 });
+}
+
+function requirePositiveInteger(value, fieldName) {
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(number) || number <= 0) {
+    throw new RequestValidationError(`${fieldName} must be a positive integer`);
+  }
+  return number;
+}
+
+function mutationError(error, requestId, genericMessage) {
+  if (error instanceof RequestValidationError) {
+    return apiError("INVALID_REQUEST", error.message, 400, requestId);
+  }
+  console.error(`[request_id=${requestId}] ${genericMessage}`, safeErrorName(error));
+  return apiError("DATABASE_ERROR", genericMessage, 500, requestId);
+}
+
+function affectedRows(result) {
+  return Number(result?.meta?.changes ?? result?.changes ?? 0);
+}
+
+function emptyPortfolio() {
+  return { summary: {}, holdings: [], history: [] };
+}
+
+function methodNotAllowed(requestId) {
+  return apiError("METHOD_NOT_ALLOWED", "Method not allowed", 405, requestId);
+}
+
+function apiError(code, message, status, requestId) {
+  return jsonResponse(
+    {
+      success: false,
+      error: message,
+      error_meta: {
+        code,
+        request_id: requestId,
+      },
+    },
+    status,
+  );
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function byteLength(value) {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function safeErrorName(error) {
+  return error instanceof Error ? error.name : "UnknownError";
+}
+
+class RequestValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RequestValidationError";
+  }
+}
+
+export const __test = {
+  authorize,
+  constantTimeEqual,
+  getAllowedOrigins,
+  isOriginAllowed,
+  resolveRecordScope,
+  resolveSettingsTarget,
+  validateCorsRequest,
+  validateGoogleClaims,
+  validateTransactionPayload,
+  withCors,
+};

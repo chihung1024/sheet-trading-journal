@@ -2,13 +2,15 @@
   "name": "saas-trading-journal-client",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=20 <25"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check": "npm run build",
+    "check": "npm run test:worker && npm run build",
+    "test:worker": "node --test tests/worker_security.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
