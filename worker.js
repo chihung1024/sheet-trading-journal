@@ -38,7 +38,7 @@ const CORS_HEADERS = ["Content-Type", "Authorization"];
 const MAX_JSON_BYTES = 1_048_576;
 const MAX_TOKEN_LENGTH = 8_192;
 const TRIGGER_COOLDOWN_SECONDS = 60;
-const RECORD_PAGE_DEFAULT_LIMIT = 250;
+const RECORD_PAGE_DEFAULT_LIMIT = 1_000;
 const RECORD_PAGE_MAX_LIMIT = 1_000;
 const RECORD_CURSOR_VERSION = 1;
 const GOOGLE_ISSUERS = new Set([
@@ -374,8 +374,8 @@ async function handleUploadPortfolio(request, env, principal, requestId) {
 async function handleGetRecords(request, env, principal, requestId) {
   try {
     const scope = resolveRecordScope(principal, request.headers.get("X-Target-User"));
-    const pagination = parseRecordPageRequest(new URL(request.url));
-    const page = await recordsRepository.listPage(env.DB, scope, pagination);
+    const pagination = await parseRecordPageRequest(new URL(request.url), env.API_SECRET, scope);
+    const page = await recordsRepository.listPage(env.DB, scope, pagination, env.API_SECRET);
     return jsonResponse({
       success: true,
       data: page.items,
@@ -395,7 +395,7 @@ async function handleGetRecords(request, env, principal, requestId) {
   }
 }
 
-function parseRecordPageRequest(url) {
+async function parseRecordPageRequest(url, signingSecret, scope) {
   const rawLimit = url.searchParams.get("limit");
   let limit = RECORD_PAGE_DEFAULT_LIMIT;
   if (rawLimit !== null) {
@@ -408,10 +408,10 @@ function parseRecordPageRequest(url) {
     }
   }
   const rawCursor = url.searchParams.get("cursor");
-  return { limit, cursor: rawCursor ? decodeRecordCursor(rawCursor) : null };
+  return { limit, cursor: rawCursor ? await decodeRecordCursor(rawCursor, signingSecret, scope) : null };
 }
 
-function encodeRecordCursor(row) {
+async function encodeRecordCursor(row, signingSecret, scope) {
   const payload = {
     v: RECORD_CURSOR_VERSION,
     d: String(row.txn_date || ""),
@@ -419,15 +419,26 @@ function encodeRecordCursor(row) {
     i: Number(row.id),
   };
   validateRecordCursorPayload(payload);
-  return recordCursorBase64Encode(JSON.stringify(payload));
+  const encoded = recordCursorBase64Encode(JSON.stringify(payload));
+  const signature = await signRecordCursor(encoded, signingSecret, scope);
+  return `${encoded}.${signature}`;
 }
 
-function decodeRecordCursor(value) {
-  if (typeof value !== "string" || value.length < 8 || value.length > 512 || !/^[A-Za-z0-9_-]+$/.test(value)) {
+async function decodeRecordCursor(value, signingSecret, scope) {
+  if (typeof value !== "string" || value.length < 24 || value.length > 768) {
+    throw new RequestValidationError("cursor is invalid");
+  }
+  const parts = value.split(".");
+  if (parts.length !== 2 || !parts.every((part) => /^[A-Za-z0-9_-]+$/.test(part))) {
     throw new RequestValidationError("cursor is invalid");
   }
   try {
-    const payload = JSON.parse(recordCursorBase64Decode(value));
+    const [encoded, providedSignature] = parts;
+    const expectedSignature = await signRecordCursor(encoded, signingSecret, scope);
+    if (!constantTimeEqual(providedSignature, expectedSignature)) {
+      throw new RequestValidationError("cursor signature is invalid");
+    }
+    const payload = JSON.parse(recordCursorBase64Decode(encoded));
     validateRecordCursorPayload(payload);
     return payload;
   } catch (error) {
@@ -451,8 +462,33 @@ function validateRecordCursorPayload(payload) {
   }
 }
 
+function recordCursorScope(scope) {
+  if (scope?.kind === "single-user") return `single-user:${scope.userId}`;
+  if (scope?.kind === "all-users") return "all-users";
+  throw new RequestValidationError("record scope is invalid");
+}
+
+async function signRecordCursor(encodedPayload, signingSecret, scope) {
+  if (typeof signingSecret !== "string" || signingSecret.length < 16) {
+    throw new Error("CursorSigningSecretUnavailable");
+  }
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(signingSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const message = `${recordCursorScope(scope)}\n${encodedPayload}`;
+  const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
+  return recordCursorBase64EncodeBytes(signature.slice(0, 16));
+}
+
 function recordCursorBase64Encode(value) {
-  const bytes = new TextEncoder().encode(value);
+  return recordCursorBase64EncodeBytes(new TextEncoder().encode(value));
+}
+
+function recordCursorBase64EncodeBytes(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -465,7 +501,7 @@ function recordCursorBase64Decode(value) {
 }
 
 const recordsRepository = Object.freeze({
-  async listPage(db, scope, pagination) {
+  async listPage(db, scope, pagination, signingSecret) {
     const { limit, cursor } = pagination;
     const fetchLimit = limit + 1;
     let statement;
@@ -490,7 +526,9 @@ const recordsRepository = Object.freeze({
     const rows = Array.isArray(result?.results) ? result.results : [];
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore && items.length ? encodeRecordCursor(items[items.length - 1]) : null;
+    const nextCursor = hasMore && items.length
+      ? await encodeRecordCursor(items[items.length - 1], signingSecret, scope)
+      : null;
     return { items, hasMore, nextCursor };
   },
 
