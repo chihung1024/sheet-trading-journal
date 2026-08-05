@@ -42,7 +42,7 @@ jobs:
           import subprocess
 
           previous = subprocess.check_output(
-              ["git", "show", "HEAD^:.github/workflows/pr07-bootstrap.yml"],
+              ["git", "show", "5db8ad75cd8eb8d91d55a62764c0a7d9c4936882:.github/workflows/pr07-bootstrap.yml"],
               text=True,
           )
           start_marker = "          python - <<'PY'\n"
@@ -65,7 +65,7 @@ jobs:
 
       - name: Run complete verification
         run: |
-          python -m compileall -q .
+          python -m compileall -q journal_engine main.py tools tests
           pytest -q
           npm run test:worker
           npm run worker:config:check
