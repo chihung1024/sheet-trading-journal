@@ -1,0 +1,507 @@
+name: PR-07 Review Fixes
+
+on:
+  push:
+    branches:
+      - pr-07/calculation-jobs-idempotency
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    if: github.event.head_commit.message == 'PR07 review fixes bootstrap'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout PR-07 branch
+        uses: actions/checkout@v7
+        with:
+          ref: pr-07/calculation-jobs-idempotency
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Apply independent review fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          worker_path = Path("worker.js")
+          worker = worker_path.read_text(encoding="utf-8")
+          worker = replace_once(
+              worker,
+              '''    const idempotencyBucket = Math.floor(Date.now() / 1000 / CALCULATION_JOB_WINDOW_SECONDS);
+    const idempotencyHash = await hashCalculationJobIdempotency(
+      principal.email,
+      idempotencyKey,
+      idempotencyBucket,
+    );
+''',
+              '''    const idempotencyHash = await hashCalculationJobIdempotency(
+      principal.email,
+      idempotencyKey,
+    );
+''',
+              "trigger hash window",
+          )
+          worker = replace_once(
+              worker,
+              '''      idempotencyHash,
+      idempotencyBucket,
+      benchmark,
+''',
+              '''      idempotencyHash,
+      benchmark,
+''',
+              "trigger repository payload",
+          )
+          worker = replace_once(
+              worker,
+              '''async function hashCalculationJobIdempotency(userId, key, bucket) {
+  if (!Number.isSafeInteger(bucket) || bucket < 0) {
+    throw new RequestValidationError("idempotency window is invalid");
+  }
+  const normalizedUser = normalizeEmail(userId);
+  const normalizedKey = validateIdempotencyKey(key);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${normalizedUser}\\n${bucket}\\n${normalizedKey}`),
+  );
+''',
+              '''async function hashCalculationJobIdempotency(userId, key) {
+  const normalizedUser = normalizeEmail(userId);
+  const normalizedKey = validateIdempotencyKey(key);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${normalizedUser}\\n${normalizedKey}`),
+  );
+''',
+              "stable tenant hash",
+          )
+          worker = replace_once(
+              worker,
+              '''function normalizeCalculationJobRow(row) {
+  if (!isPlainObject(row)) throw new Error("InvalidCalculationJobRow");
+  return {
+''',
+              '''function normalizeCalculationJobRow(row) {
+  if (!isPlainObject(row)) throw new Error("InvalidCalculationJobRow");
+  if (!CALCULATION_JOB_STATUSES.has(row.status)) {
+    throw new Error("InvalidCalculationJobStatus");
+  }
+  return {
+''',
+              "stored status validation",
+          )
+          worker = replace_once(
+              worker,
+              '    status: CALCULATION_JOB_STATUSES.has(row.status) ? row.status : "failed",',
+              '    status: row.status,',
+              "stored status normalization",
+          )
+
+          method_start = worker.index("  async createOrGet(db, job) {")
+          method_end = worker.index("\n\n  async findForUser", method_start)
+          create_or_get = '''  async createOrGet(db, job) {
+    const userId = normalizeEmail(job.userId);
+    const idempotencyHash = String(job.idempotencyHash || "").toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(idempotencyHash)) {
+      throw new RequestValidationError("idempotency hash is invalid");
+    }
+    const benchmark = validateSymbol(job.benchmark, "benchmark");
+    const expiryModifier = `-${CALCULATION_JOB_WINDOW_SECONDS} seconds`;
+
+    await db.prepare(`
+      UPDATE calculation_jobs
+      SET idempotency_hash = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ?
+        AND idempotency_hash = ?
+        AND created_at <= datetime('now', ?)
+    `).bind(userId, idempotencyHash, expiryModifier).run();
+
+    const insert = await db.prepare(`
+      INSERT OR IGNORE INTO calculation_jobs
+        (public_id, user_id, idempotency_hash, status, benchmark)
+      VALUES (?, ?, ?, 'queued', ?)
+    `).bind(
+      validateCalculationJobId(job.publicId),
+      userId,
+      idempotencyHash,
+      benchmark,
+    ).run();
+    const row = await db.prepare(`
+      SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
+             attempt_count, error_code, created_at, started_at, completed_at, updated_at
+      FROM calculation_jobs
+      WHERE user_id = ? AND idempotency_hash = ?
+      LIMIT 1
+    `).bind(userId, idempotencyHash).first();
+    if (!row) throw new Error("CalculationJobInsertLost");
+    return { inserted: affectedRows(insert) === 1, job: normalizeCalculationJobRow(row) };
+  },'''
+          worker = worker[:method_start] + create_or_get + worker[method_end:]
+          worker_path.write_text(worker, encoding="utf-8")
+
+          migration_path = Path("migrations/0002_calculation_jobs.sql")
+          migration = migration_path.read_text(encoding="utf-8")
+          migration = replace_once(
+              migration,
+              "  idempotency_hash TEXT NOT NULL CHECK (length(idempotency_hash) = 64),\n  idempotency_bucket INTEGER NOT NULL CHECK (idempotency_bucket >= 0),\n",
+              "  idempotency_hash TEXT CHECK (idempotency_hash IS NULL OR length(idempotency_hash) = 64),\n",
+              "nullable expiring idempotency hash",
+          )
+          migration_path.write_text(migration, encoding="utf-8")
+
+          portfolio_path = Path("src/stores/portfolio.js")
+          portfolio = portfolio_path.read_text(encoding="utf-8")
+          portfolio = replace_once(
+              portfolio,
+              '''    let pollTimer = null;
+    let calculationJobPollTimer = null;
+''',
+              '''    let pollTimer = null;
+    let calculationJobPollTimer = null;
+    let triggerUpdatePromise = null;
+    const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
+    const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
+''',
+              "frontend single flight state",
+          )
+          portfolio = replace_once(
+              portfolio,
+              '''    const stopCalculationJobPolling = () => {
+        if (calculationJobPollTimer) {
+  clearInterval(calculationJobPollTimer);
+  calculationJobPollTimer = null;
+        }
+    };
+''',
+              '''    const stopCalculationJobPolling = () => {
+        if (calculationJobPollTimer) {
+            clearInterval(calculationJobPollTimer);
+            calculationJobPollTimer = null;
+        }
+    };
+
+    const readPendingCalculationRequest = () => {
+        try {
+            const pending = JSON.parse(localStorage.getItem(CALCULATION_REQUEST_STORAGE_KEY) || 'null');
+            if (!pending || typeof pending.key !== 'string' || !Number.isFinite(pending.createdAt)) return null;
+            if (Date.now() - pending.createdAt >= CALCULATION_REQUEST_TTL_MS) {
+                localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
+                return null;
+            }
+            return pending;
+        } catch {
+            localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
+            return null;
+        }
+    };
+
+    const rememberPendingCalculationRequest = (pending) => {
+        localStorage.setItem(CALCULATION_REQUEST_STORAGE_KEY, JSON.stringify(pending));
+    };
+
+    const clearPendingCalculationRequest = () => {
+        localStorage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
+    };
+''',
+              "frontend pending request helpers",
+          )
+          portfolio = portfolio.replace(
+              '''          stopCalculationJobPolling();
+          await fetchAll();
+          addToast("✅ 數據已更新完畢！", "success");
+''',
+              '''          stopCalculationJobPolling();
+          clearPendingCalculationRequest();
+          await fetchAll();
+          addToast("✅ 數據已更新完畢！", "success");
+''',
+              1,
+          )
+          portfolio = portfolio.replace(
+              '''          stopCalculationJobPolling();
+          addToast(`後端計算失敗 (${json.job.error_code || 'UNKNOWN'})`, "error");
+''',
+              '''          stopCalculationJobPolling();
+          clearPendingCalculationRequest();
+          addToast(`後端計算失敗 (${json.job.error_code || 'UNKNOWN'})`, "error");
+''',
+              1,
+          )
+          portfolio = replace_once(
+              portfolio,
+              '''    const createIdempotencyKey = () => {
+        if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    };
+''',
+              '''    const createIdempotencyKey = () => {
+        if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    };
+
+    const getOrCreateIdempotencyKey = () => {
+        const pending = readPendingCalculationRequest();
+        if (pending) return pending.key;
+        const key = createIdempotencyKey();
+        rememberPendingCalculationRequest({ key, createdAt: Date.now(), jobId: null });
+        return key;
+    };
+''',
+              "frontend stable key helper",
+          )
+          portfolio = replace_once(
+              portfolio,
+              "    const triggerUpdate = async (benchmark = null) => {",
+              "    const performTriggerUpdate = async (benchmark = null) => {",
+              "frontend trigger implementation name",
+          )
+          portfolio = replace_once(
+              portfolio,
+              "        const idempotencyKey = createIdempotencyKey();",
+              "        const idempotencyKey = getOrCreateIdempotencyKey();",
+              "frontend request key reuse",
+          )
+          portfolio = replace_once(
+              portfolio,
+              '''  if (!response.ok) throw new Error(responseData.error || '後端無回應');
+
+  if (responseData.job?.id) {
+''',
+              '''  if (!response.ok) {
+      clearPendingCalculationRequest();
+      throw new Error(responseData.error || '後端無回應');
+  }
+
+  if (responseData.job?.id) {
+''',
+              "frontend explicit failure cleanup",
+          )
+          portfolio = replace_once(
+              portfolio,
+              '''      calculationJob.value = responseData.job;
+      const { addToast } = useToast();
+''',
+              '''      calculationJob.value = responseData.job;
+      rememberPendingCalculationRequest({
+          key: idempotencyKey,
+          createdAt: Date.now(),
+          jobId: responseData.job.id
+      });
+      const { addToast } = useToast();
+''',
+              "frontend job persistence",
+          )
+          marker = '''    };
+
+    return {
+        portfolio,
+'''
+          wrapper = '''    };
+
+    const triggerUpdate = (benchmark = null) => {
+        if (triggerUpdatePromise) return triggerUpdatePromise;
+        triggerUpdatePromise = performTriggerUpdate(benchmark)
+            .finally(() => {
+                triggerUpdatePromise = null;
+            });
+        return triggerUpdatePromise;
+    };
+
+    const pendingCalculationRequest = readPendingCalculationRequest();
+    if (pendingCalculationRequest?.jobId) {
+        queueMicrotask(() => startCalculationJobPolling(pendingCalculationRequest.jobId));
+    }
+
+    return {
+        portfolio,
+'''
+          portfolio = replace_once(portfolio, marker, wrapper, "frontend trigger wrapper")
+          portfolio_path.write_text(portfolio, encoding="utf-8")
+
+          test_path = Path("tests/worker_calculation_jobs.test.mjs")
+          test_text = test_path.read_text(encoding="utf-8")
+          test_text = test_text.replace(
+              '''  const first = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef", 10);
+  const duplicate = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef", 10);
+  const otherUser = await __test.hashCalculationJobIdempotency("other@example.com", "action.0123456789abcdef", 10);
+  const nextWindow = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef", 11);
+  assert.equal(first, duplicate);
+  assert.notEqual(first, otherUser);
+  assert.notEqual(first, nextWindow);
+''',
+              '''  const first = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef");
+  const duplicate = await __test.hashCalculationJobIdempotency("user@example.com", "action.0123456789abcdef");
+  const otherUser = await __test.hashCalculationJobIdempotency("other@example.com", "action.0123456789abcdef");
+  assert.equal(first, duplicate);
+  assert.notEqual(first, otherUser);
+''',
+          )
+          test_text += r'''
+
+test("concurrent duplicate repository requests resolve to one inserted job", async () => {
+  const rowsByHash = new Map();
+  const rowsById = new Map();
+  const db = {
+    prepare(sql) {
+      const normalized = sql.replace(/\s+/g, " ").trim();
+      return {
+        bind(...args) {
+          return {
+            async run() {
+              if (normalized.startsWith("UPDATE calculation_jobs SET idempotency_hash = NULL")) {
+                return { meta: { changes: 0 } };
+              }
+              if (normalized.startsWith("INSERT OR IGNORE INTO calculation_jobs")) {
+                const [publicId, userId, hash, benchmark] = args;
+                const key = `${userId}\n${hash}`;
+                if (rowsByHash.has(key)) return { meta: { changes: 0 } };
+                const row = {
+                  public_id: publicId,
+                  user_id: userId,
+                  status: "queued",
+                  benchmark,
+                  github_run_id: null,
+                  github_run_attempt: 0,
+                  attempt_count: 0,
+                  error_code: null,
+                  created_at: "2026-08-06 00:00:00",
+                  started_at: null,
+                  completed_at: null,
+                  updated_at: "2026-08-06 00:00:00",
+                };
+                rowsByHash.set(key, row);
+                rowsById.set(publicId, row);
+                return { meta: { changes: 1 } };
+              }
+              throw new Error(`Unexpected run SQL: ${normalized}`);
+            },
+            async first() {
+              if (normalized.includes("WHERE user_id = ? AND idempotency_hash = ?")) {
+                return rowsByHash.get(`${args[0]}\n${args[1]}`) || null;
+              }
+              if (normalized.includes("WHERE public_id = ?")) {
+                return rowsById.get(args[0]) || null;
+              }
+              throw new Error(`Unexpected first SQL: ${normalized}`);
+            },
+          };
+        },
+      };
+    },
+  };
+  const hash = await __test.hashCalculationJobIdempotency(
+    "user@example.com",
+    "action.concurrent.1234567890",
+  );
+  const [first, second] = await Promise.all([
+    __test.calculationJobsRepository.createOrGet(db, {
+      publicId: "job_ABCDEFGHIJKLMNOPQRSTUV",
+      userId: "user@example.com",
+      idempotencyHash: hash,
+      benchmark: "SPY",
+    }),
+    __test.calculationJobsRepository.createOrGet(db, {
+      publicId: "job_ZYXWVUTSRQPONMLKJIHGFE",
+      userId: "user@example.com",
+      idempotencyHash: hash,
+      benchmark: "SPY",
+    }),
+  ]);
+  assert.equal(Number(first.inserted) + Number(second.inserted), 1);
+  assert.equal(first.job.public_id, second.job.public_id);
+  assert.equal(rowsByHash.size, 1);
+});
+
+test("frontend reuses a pending key and collapses concurrent trigger calls", async () => {
+  const source = await readFile("src/stores/portfolio.js", "utf8");
+  assert.match(source, /triggerUpdatePromise/);
+  assert.match(source, /if \(triggerUpdatePromise\) return triggerUpdatePromise/);
+  assert.match(source, /pending_calculation_request/);
+  assert.match(source, /getOrCreateIdempotencyKey/);
+  assert.match(source, /rememberPendingCalculationRequest/);
+  assert.match(source, /queueMicrotask\(\(\) => startCalculationJobPolling/);
+});
+'''
+          test_path.write_text(test_text, encoding="utf-8")
+
+          schema_test_path = Path("tools/test_d1_schema.mjs")
+          schema_test = schema_test_path.read_text(encoding="utf-8")
+          insertion = '''
+const idempotencyResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", `
+    INSERT OR IGNORE INTO calculation_jobs
+      (public_id, user_id, idempotency_hash, status, benchmark)
+    VALUES
+      ('job_ABCDEFGHIJKLMNOPQRSTUV', 'duplicate@example.com', '${"a".repeat(64)}', 'queued', 'SPY');
+    INSERT OR IGNORE INTO calculation_jobs
+      (public_id, user_id, idempotency_hash, status, benchmark)
+    VALUES
+      ('job_ZYXWVUTSRQPONMLKJIHGFE', 'duplicate@example.com', '${"a".repeat(64)}', 'queued', 'SPY');
+    SELECT COUNT(*) AS total FROM calculation_jobs
+    WHERE user_id = 'duplicate@example.com' AND idempotency_hash = '${"a".repeat(64)}';
+  `,
+  "--json",
+], true);
+const duplicateCount = Number(JSON.parse(idempotencyResult.stdout)?.[0]?.results?.at(-1)?.total);
+if (duplicateCount !== 1) {
+  throw new Error(`Calculation job idempotency uniqueness failed: ${duplicateCount}`);
+}
+'''
+          schema_test = schema_test.replace(
+              'console.log("D1 migrations applied and calculation job schema verified locally.");',
+              insertion + '\nconsole.log("D1 migrations applied and calculation job schema verified locally.");',
+          )
+          schema_test_path.write_text(schema_test, encoding="utf-8")
+          PY
+
+      - name: Install dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Run complete verification
+        run: |
+          python -m compileall -q journal_engine main.py tools tests
+          pytest -q
+          npm run test:worker
+          npm run worker:config:check
+          npm run worker:schema:test
+          npm run build
+
+      - name: Commit verified review fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker.js migrations/0002_calculation_jobs.sql src/stores/portfolio.js tests/worker_calculation_jobs.test.mjs tools/test_d1_schema.mjs
+          git commit -m "PR-07: harden idempotency across retries and concurrency"
+          git push origin HEAD:pr-07/calculation-jobs-idempotency
