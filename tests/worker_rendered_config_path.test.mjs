@@ -37,6 +37,21 @@ test("rendered Wrangler config preserves canonical source and migration paths", 
     );
 
     const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+    const migrationList = spawnSync(
+      npx,
+      ["wrangler", "d1", "migrations", "list", "DB", "--local", "--config", TEST_OUTPUT],
+      { cwd: process.cwd(), encoding: "utf8" },
+    );
+    assert.equal(
+      migrationList.status,
+      0,
+      `${migrationList.stdout}\n${migrationList.stderr}`,
+    );
+    assert.match(
+      `${migrationList.stdout}\n${migrationList.stderr}`,
+      /0001_baseline\.sql/,
+    );
+
     const dryRun = spawnSync(
       npx,
       ["wrangler", "deploy", "--dry-run", "--config", TEST_OUTPUT],
