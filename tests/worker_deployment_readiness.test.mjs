@@ -8,9 +8,9 @@ const PREVIOUS_SHA = "1e0ee016efbb5833ded2cb719df4acf5ccd0b2ca";
 function readyVersion(overrides = {}) {
   return {
     service: "journal-backend",
-    release_version: "4.05",
-    api_version: "2.57",
-    schema_version: 1,
+    release_version: "4.07",
+    api_version: "2.60",
+    schema_version: 2,
     source_commit: EXPECTED_SHA,
     worker_version: {
       id: "1e21ab9a-510e-43fe-8c53-dcee33646300",
@@ -23,7 +23,7 @@ function readyVersion(overrides = {}) {
 function readyHealth(overrides = {}) {
   return {
     status: "ok",
-    observed_schema_version: 1,
+    observed_schema_version: 2,
     ...overrides,
   };
 }
@@ -33,9 +33,9 @@ function validate(version = readyVersion(), health = readyHealth(), overrides = 
     version,
     health,
     expectedSha: EXPECTED_SHA,
-    expectedReleaseVersion: "4.05",
-    expectedApiVersion: "2.57",
-    expectedSchemaVersion: "1",
+    expectedReleaseVersion: "4.07",
+    expectedApiVersion: "2.60",
+    expectedSchemaVersion: "2",
     ...overrides,
   });
 }
@@ -68,7 +68,7 @@ test("semantic deployment readiness rejects unhealthy, stale, or missing D1 sche
 
   const staleSchema = validate(
     readyVersion(),
-    readyHealth({ observed_schema_version: 0 }),
+    readyHealth({ observed_schema_version: 1 }),
   );
   assert.equal(staleSchema.ok, false);
   assert.match(staleSchema.errors.join("\n"), /observed D1 schema is too old/);
@@ -87,9 +87,9 @@ test("semantic deployment readiness rejects unhealthy, stale, or missing D1 sche
 test("semantic deployment readiness rejects version and metadata mismatches", () => {
   const result = validate(
     readyVersion({
-      release_version: "4.04",
-      api_version: "2.56",
-      schema_version: 0,
+      release_version: "4.06",
+      api_version: "2.59",
+      schema_version: 1,
       worker_version: null,
     }),
   );

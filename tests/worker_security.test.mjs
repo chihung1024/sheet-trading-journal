@@ -34,6 +34,9 @@ function makeDb() {
 test("permission matrix applies least privilege", () => {
   assert.equal(__test.authorize(USER, "GET /api/records"), true);
   assert.equal(__test.authorize(USER, "POST /api/portfolio"), false);
+  assert.equal(__test.authorize(USER, "GET /api/calculation-jobs/:id"), true);
+  assert.equal(__test.authorize(USER, "POST /api/calculation-jobs/status"), false);
+  assert.equal(__test.authorize(SYSTEM, "POST /api/calculation-jobs/status"), true);
   assert.equal(__test.authorize(SYSTEM, "POST /api/portfolio"), true);
   assert.equal(__test.authorize(SYSTEM, "DELETE /api/records"), false);
   assert.equal(__test.authorize(SYSTEM, "POST /api/user-settings"), false);
@@ -131,7 +134,7 @@ test("CORS allowlist reflects only approved browser origin", () => {
     response.headers.get("Access-Control-Allow-Origin"),
     "https://sheet-trading-journal.pages.dev",
   );
-  assert.equal(response.headers.get("Access-Control-Allow-Headers"), "Content-Type, Authorization");
+  assert.equal(response.headers.get("Access-Control-Allow-Headers"), "Content-Type, Authorization, Idempotency-Key");
   assert.equal(response.headers.get("Access-Control-Allow-Headers").includes("X-API-KEY"), false);
 });
 

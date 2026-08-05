@@ -1,11 +1,11 @@
 /**
  * Worker: Trading Journal API
- * v2.59 / PR-06: deterministic cursor pagination and records data-access layer.
+ * v2.60 / PR-07: durable calculation jobs, idempotent triggers, and observable status.
  */
 
 const SERVICE_NAME = "trading-journal-api";
-const RELEASE_VERSION = "4.06";
-const API_VERSION = "2.59";
+const RELEASE_VERSION = "4.07";
+const API_VERSION = "2.60";
 const GITHUB_DISPATCH = Object.freeze({
   owner: "chihung1024",
   repository: "sheet-trading-journal",
@@ -13,9 +13,9 @@ const GITHUB_DISPATCH = Object.freeze({
   ref: "main",
 });
 const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;
-const REQUIRED_SCHEMA_VERSION = 1;
+const REQUIRED_SCHEMA_VERSION = 2;
 const SOURCE_COMMIT_FALLBACK = "development";
-const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings"];
+const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings", "calculation_jobs"];
 const PUBLIC_ROUTE_METHODS = Object.freeze({
   "/api/health": new Set(["GET"]),
   "/api/version": new Set(["GET"]),
@@ -34,13 +34,19 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 const CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];
-const CORS_HEADERS = ["Content-Type", "Authorization"];
+const CORS_HEADERS = ["Content-Type", "Authorization", "Idempotency-Key"];
 const MAX_JSON_BYTES = 1_048_576;
 const MAX_TOKEN_LENGTH = 8_192;
 const TRIGGER_COOLDOWN_SECONDS = 60;
 const RECORD_PAGE_DEFAULT_LIMIT = 1_000;
 const RECORD_PAGE_MAX_LIMIT = 1_000;
 const RECORD_CURSOR_VERSION = 1;
+const CALCULATION_JOB_WINDOW_SECONDS = 15 * 60;
+const CALCULATION_JOB_ID_RE = /^job_[A-Za-z0-9_-]{22}$/;
+const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._~-]{16,128}$/;
+const CALCULATION_JOB_ERROR_RE = /^[A-Z0-9_]{1,64}$/;
+const CALCULATION_JOB_TERMINAL_STATUSES = new Set(["succeeded", "failed"]);
+const CALCULATION_JOB_STATUSES = new Set(["queued", "running", "succeeded", "failed"]);
 const GOOGLE_ISSUERS = new Set([
   "accounts.google.com",
   "https://accounts.google.com",
@@ -60,6 +66,8 @@ const FORBIDDEN_OWNER_FIELDS = new Set([
 
 const ROUTE_PERMISSIONS = Object.freeze({
   "POST /api/trigger-update": new Set(["user"]),
+  "GET /api/calculation-jobs/:id": new Set(["user"]),
+  "POST /api/calculation-jobs/status": new Set(["system"]),
   "GET /api/portfolio": new Set(["user"]),
   "POST /api/portfolio": new Set(["system"]),
   "GET /api/records": new Set(["user", "system"]),
@@ -102,7 +110,12 @@ export default {
         return withCors(response, request, env);
       }
 
-      const routeKey = `${request.method} ${url.pathname}`;
+      const calculationJobMatch = request.method === "GET"
+        ? url.pathname.match(/^\/api\/calculation-jobs\/(job_[A-Za-z0-9_-]{22})$/)
+        : null;
+      const routeKey = calculationJobMatch
+        ? "GET /api/calculation-jobs/:id"
+        : `${request.method} ${url.pathname}`;
       if (!ROUTE_PERMISSIONS[routeKey]) {
         return withCors(apiError("NOT_FOUND", "Route not found", 404, requestId), request, env);
       }
@@ -120,6 +133,12 @@ export default {
         case "POST /api/trigger-update":
           response = await handleGitHubTrigger(request, env, ctx, principal, requestId);
           break;
+        case "GET /api/calculation-jobs/:id":
+response = await handleGetCalculationJob(calculationJobMatch[1], env, principal, requestId);
+break;
+        case "POST /api/calculation-jobs/status":
+response = await handleCalculationJobStatus(request, env, requestId);
+break;
         case "GET /api/portfolio":
           response = await handleGetPortfolio(env, principal, requestId);
           break;
@@ -658,15 +677,38 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
     const body = await readJsonObject(request, { allowEmpty: true });
     rejectOwnerFields(body);
     const benchmark = body.benchmark ? validateSymbol(body.benchmark, "benchmark") : "SPY";
+    const idempotencyKey = resolveIdempotencyKey(request.headers.get("Idempotency-Key"));
+    const idempotencyHash = await hashCalculationJobIdempotency(
+      principal.email,
+      idempotencyKey,
+    );
+    const created = await calculationJobsRepository.createOrGet(env.DB, {
+      publicId: createCalculationJobId(),
+      userId: principal.email,
+      idempotencyHash,
+      benchmark,
+    });
+
+    if (!created.inserted) {
+      return jsonResponse({
+        success: true,
+        job: publicCalculationJob(created.job, true),
+      });
+    }
 
     const rateLimit = await claimTriggerSlot(principal.email, env, ctx);
     if (!rateLimit.allowed) {
-      const response = apiError(
-        "RATE_LIMITED",
-        "An update was triggered recently. Try again later.",
-        429,
-        requestId,
-      );
+      const failed = await calculationJobsRepository.transition(env.DB, {
+        publicId: created.job.public_id,
+        nextStatus: "failed",
+        errorCode: "RATE_LIMITED",
+      });
+      const response = jsonResponse({
+        success: false,
+        error: "An update was triggered recently. Try again later.",
+        error_meta: { code: "RATE_LIMITED", request_id: requestId },
+        job: publicCalculationJob(failed.job || created.job, false),
+      }, 429);
       response.headers.set("Retry-After", String(rateLimit.retryAfter));
       return response;
     }
@@ -675,8 +717,14 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
       token: env.GITHUB_TOKEN,
       benchmark,
       userEmail: principal.email,
+      jobId: created.job.public_id,
     });
     if (!result.ok) {
+      await calculationJobsRepository.transition(env.DB, {
+        publicId: created.job.public_id,
+        nextStatus: "failed",
+        errorCode: result.code,
+      });
       console.error(
         `[request_id=${requestId}] GitHub dispatch failed ` +
         `[status=${result.status}] [code=${result.code}] ` +
@@ -689,9 +737,13 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
 
     console.info(
       `[request_id=${requestId}] GitHub dispatch accepted ` +
+      `[job_id=${created.job.public_id}] ` +
       `[github_request_id=${result.githubRequestId || "unavailable"}]`,
     );
-    return jsonResponse({ success: true, benchmark });
+    return jsonResponse({
+      success: true,
+      job: publicCalculationJob(created.job, false),
+    }, 202);
   } catch (error) {
     if (error instanceof RequestValidationError) {
       return apiError("INVALID_REQUEST", error.message, 400, requestId);
@@ -710,10 +762,272 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
   }
 }
 
-function buildGitHubDispatchRequest({ token, benchmark, userEmail }) {
+async function handleGetCalculationJob(jobId, env, principal, requestId) {
+  try {
+    const normalizedJobId = validateCalculationJobId(jobId);
+    const job = await calculationJobsRepository.findForUser(env.DB, normalizedJobId, principal.email);
+    if (!job) return apiError("NOT_FOUND", "Calculation job not found", 404, requestId);
+    return jsonResponse({ success: true, job: publicCalculationJob(job, false) });
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("NOT_FOUND", "Calculation job not found", 404, requestId);
+    }
+    console.error(`[request_id=${requestId}] Calculation job read failed`, safeErrorName(error));
+    return apiError("DATABASE_ERROR", "Calculation job is unavailable", 500, requestId);
+  }
+}
+
+async function handleCalculationJobStatus(request, env, requestId) {
+  try {
+    const body = await readJsonObject(request);
+    const publicId = validateCalculationJobId(body.job_id);
+    const nextStatus = requireString(body.status, "status", 6, 9).toLowerCase();
+    if (!CALCULATION_JOB_STATUSES.has(nextStatus) || nextStatus === "queued") {
+      throw new RequestValidationError("status transition is invalid");
+    }
+    const githubRunId = body.github_run_id === undefined || body.github_run_id === null
+      ? null
+      : requireString(String(body.github_run_id), "github_run_id", 1, 32);
+    if (githubRunId !== null && !/^\d+$/.test(githubRunId)) {
+      throw new RequestValidationError("github_run_id is invalid");
+    }
+    const githubRunAttempt = body.github_run_attempt === undefined
+      ? 0
+      : requireNonNegativeInteger(body.github_run_attempt, "github_run_attempt");
+    const errorCode = nextStatus === "failed"
+      ? validateCalculationJobErrorCode(body.error_code || "CALCULATION_FAILED")
+      : null;
+
+    const result = await calculationJobsRepository.transition(env.DB, {
+      publicId,
+      nextStatus,
+      githubRunId,
+      githubRunAttempt,
+      errorCode,
+    });
+    if (result.kind === "not-found") {
+      return apiError("NOT_FOUND", "Calculation job not found", 404, requestId);
+    }
+    if (result.kind === "invalid-transition" || result.kind === "conflict") {
+      return apiError("INVALID_STATE_TRANSITION", "Calculation job transition rejected", 409, requestId);
+    }
+    return jsonResponse({ success: true, job: publicCalculationJob(result.job, false) });
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("INVALID_REQUEST", error.message, 400, requestId);
+    }
+    console.error(`[request_id=${requestId}] Calculation job status update failed`, safeErrorName(error));
+    return apiError("DATABASE_ERROR", "Calculation job status update failed", 500, requestId);
+  }
+}
+
+function resolveIdempotencyKey(value) {
+  if (value === null || String(value).trim() === "") {
+    return `legacy.${crypto.randomUUID()}`;
+  }
+  return validateIdempotencyKey(value);
+}
+
+function validateIdempotencyKey(value) {
+  const key = requireString(value, "Idempotency-Key", 16, 128);
+  if (!IDEMPOTENCY_KEY_RE.test(key)) {
+    throw new RequestValidationError("Idempotency-Key has an invalid format");
+  }
+  return key;
+}
+
+async function hashCalculationJobIdempotency(userId, key) {
+  const normalizedUser = normalizeEmail(userId);
+  const normalizedKey = validateIdempotencyKey(key);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${normalizedUser}\n${normalizedKey}`),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function createCalculationJobId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `job_${recordCursorBase64EncodeBytes(bytes)}`;
+}
+
+function validateCalculationJobId(value) {
+  const jobId = requireString(value, "job_id", 26, 26);
+  if (!CALCULATION_JOB_ID_RE.test(jobId)) {
+    throw new RequestValidationError("job_id is invalid");
+  }
+  return jobId;
+}
+
+function validateCalculationJobErrorCode(value) {
+  const code = requireString(value, "error_code", 1, 64).toUpperCase();
+  if (!CALCULATION_JOB_ERROR_RE.test(code)) {
+    throw new RequestValidationError("error_code is invalid");
+  }
+  return code;
+}
+
+function canTransitionCalculationJob(currentStatus, nextStatus) {
+  if (!CALCULATION_JOB_STATUSES.has(currentStatus) || !CALCULATION_JOB_STATUSES.has(nextStatus)) {
+    return false;
+  }
+  if (currentStatus === nextStatus) return true;
+  if (CALCULATION_JOB_TERMINAL_STATUSES.has(currentStatus)) return false;
+  if (currentStatus === "queued") return nextStatus === "running" || nextStatus === "failed";
+  if (currentStatus === "running") return nextStatus === "succeeded" || nextStatus === "failed";
+  return false;
+}
+
+function publicCalculationJob(row, deduplicated) {
+  return {
+    id: row.public_id,
+    status: row.status,
+    benchmark: row.benchmark,
+    attempt_count: Number(row.attempt_count || 0),
+    created_at: row.created_at,
+    started_at: row.started_at || null,
+    completed_at: row.completed_at || null,
+    error_code: row.error_code || null,
+    deduplicated: Boolean(deduplicated),
+  };
+}
+
+function normalizeCalculationJobRow(row) {
+  if (!isPlainObject(row)) throw new Error("InvalidCalculationJobRow");
+  if (!CALCULATION_JOB_STATUSES.has(row.status)) {
+    throw new Error("InvalidCalculationJobStatus");
+  }
+  return {
+    public_id: validateCalculationJobId(row.public_id),
+    user_id: normalizeEmail(row.user_id),
+    status: row.status,
+    benchmark: validateSymbol(row.benchmark, "stored benchmark"),
+    github_run_id: row.github_run_id || null,
+    github_run_attempt: Number(row.github_run_attempt || 0),
+    attempt_count: Number(row.attempt_count || 0),
+    error_code: row.error_code || null,
+    created_at: String(row.created_at || ""),
+    started_at: row.started_at || null,
+    completed_at: row.completed_at || null,
+    updated_at: String(row.updated_at || ""),
+  };
+}
+
+const calculationJobsRepository = Object.freeze({
+  async createOrGet(db, job) {
+    const userId = normalizeEmail(job.userId);
+    const idempotencyHash = String(job.idempotencyHash || "").toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(idempotencyHash)) {
+      throw new RequestValidationError("idempotency hash is invalid");
+    }
+    const benchmark = validateSymbol(job.benchmark, "benchmark");
+    const expiryModifier = `-${CALCULATION_JOB_WINDOW_SECONDS} seconds`;
+
+    await db.prepare(`
+      UPDATE calculation_jobs
+      SET idempotency_hash = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ?
+        AND idempotency_hash = ?
+        AND created_at <= datetime('now', ?)
+    `).bind(userId, idempotencyHash, expiryModifier).run();
+
+    const insert = await db.prepare(`
+      INSERT OR IGNORE INTO calculation_jobs
+        (public_id, user_id, idempotency_hash, status, benchmark)
+      VALUES (?, ?, ?, 'queued', ?)
+    `).bind(
+      validateCalculationJobId(job.publicId),
+      userId,
+      idempotencyHash,
+      benchmark,
+    ).run();
+    const row = await db.prepare(`
+      SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
+   attempt_count, error_code, created_at, started_at, completed_at, updated_at
+      FROM calculation_jobs
+      WHERE user_id = ? AND idempotency_hash = ?
+      LIMIT 1
+    `).bind(userId, idempotencyHash).first();
+    if (!row) throw new Error("CalculationJobInsertLost");
+    return { inserted: affectedRows(insert) === 1, job: normalizeCalculationJobRow(row) };
+  },
+
+  async findForUser(db, publicId, userId) {
+    const row = await db.prepare(`
+      SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
+   attempt_count, error_code, created_at, started_at, completed_at, updated_at
+      FROM calculation_jobs
+      WHERE public_id = ? AND user_id = ?
+      LIMIT 1
+    `).bind(validateCalculationJobId(publicId), normalizeEmail(userId)).first();
+    return row ? normalizeCalculationJobRow(row) : null;
+  },
+
+  async findById(db, publicId) {
+    const row = await db.prepare(`
+      SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
+   attempt_count, error_code, created_at, started_at, completed_at, updated_at
+      FROM calculation_jobs
+      WHERE public_id = ?
+      LIMIT 1
+    `).bind(validateCalculationJobId(publicId)).first();
+    return row ? normalizeCalculationJobRow(row) : null;
+  },
+
+  async transition(db, transition) {
+    const current = await this.findById(db, transition.publicId);
+    if (!current) return { kind: "not-found", job: null };
+    if (current.status === transition.nextStatus) return { kind: "idempotent", job: current };
+    if (!canTransitionCalculationJob(current.status, transition.nextStatus)) {
+      return { kind: "invalid-transition", job: current };
+    }
+    const runId = transition.githubRunId || null;
+    const runAttempt = Number.isSafeInteger(transition.githubRunAttempt)
+      ? transition.githubRunAttempt
+      : 0;
+    const errorCode = transition.nextStatus === "failed"
+      ? validateCalculationJobErrorCode(transition.errorCode || "CALCULATION_FAILED")
+      : null;
+    const result = await db.prepare(`
+      UPDATE calculation_jobs SET
+        status = ?,
+        github_run_id = COALESCE(?, github_run_id),
+        github_run_attempt = CASE WHEN ? > github_run_attempt THEN ? ELSE github_run_attempt END,
+        attempt_count = CASE WHEN ? = 'running' THEN attempt_count + 1 ELSE attempt_count END,
+        error_code = ?,
+        started_at = CASE WHEN ? = 'running' THEN COALESCE(started_at, CURRENT_TIMESTAMP) ELSE started_at END,
+        completed_at = CASE WHEN ? IN ('succeeded', 'failed') THEN CURRENT_TIMESTAMP ELSE completed_at END,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE public_id = ? AND status = ?
+    `).bind(
+      transition.nextStatus,
+      runId,
+      runAttempt,
+      runAttempt,
+      transition.nextStatus,
+      errorCode,
+      transition.nextStatus,
+      transition.nextStatus,
+      transition.publicId,
+      current.status,
+    ).run();
+    if (affectedRows(result) !== 1) return { kind: "conflict", job: current };
+    return { kind: "updated", job: await this.findById(db, transition.publicId) };
+  },
+});
+
+function buildGitHubDispatchRequest({ token, benchmark, userEmail, jobId = "" }) {
   if (typeof token !== "string" || !token.trim()) {
     throw new RequestValidationError("GitHub dispatch token is required");
   }
+  const inputs = {
+    custom_benchmark: benchmark,
+    target_user_id: userEmail,
+  };
+  if (jobId) inputs.calculation_job_id = validateCalculationJobId(jobId);
   const owner = encodeURIComponent(GITHUB_DISPATCH.owner);
   const repository = encodeURIComponent(GITHUB_DISPATCH.repository);
   const workflow = encodeURIComponent(GITHUB_DISPATCH.workflow);
@@ -728,20 +1042,14 @@ function buildGitHubDispatchRequest({ token, benchmark, userEmail }) {
         "User-Agent": "sheet-trading-journal-worker",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        ref: GITHUB_DISPATCH.ref,
-        inputs: {
-          custom_benchmark: benchmark,
-          target_user_id: userEmail,
-        },
-      }),
+      body: JSON.stringify({ ref: GITHUB_DISPATCH.ref, inputs }),
       signal: AbortSignal.timeout(GITHUB_DISPATCH_TIMEOUT_MS),
     },
   };
 }
 
-async function dispatchGitHubWorkflow({ token, benchmark, userEmail, fetchImpl = fetch }) {
-  const request = buildGitHubDispatchRequest({ token, benchmark, userEmail });
+async function dispatchGitHubWorkflow({ token, benchmark, userEmail, jobId = "", fetchImpl = fetch }) {
+  const request = buildGitHubDispatchRequest({ token, benchmark, userEmail, jobId });
   const response = await fetchImpl(request.url, request.init);
   const githubRequestId = sanitizeHeaderValue(response.headers?.get?.("X-GitHub-Request-Id"));
   if (response.ok) return { ok: true, status: response.status, githubRequestId };
@@ -1121,6 +1429,14 @@ function optionalFiniteNumber(value, fieldName, fallback) {
   return requireFiniteNumber(value, fieldName, { minInclusive: 0 });
 }
 
+function requireNonNegativeInteger(value, fieldName) {
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new RequestValidationError(`${fieldName} must be a non-negative integer`);
+  }
+  return number;
+}
+
 function requirePositiveInteger(value, fieldName) {
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(number) || number <= 0) {
@@ -1200,6 +1516,16 @@ export const __test = {
   getBuildMetadata,
   handleHealth,
   buildGitHubDispatchRequest,
+  handleGetCalculationJob,
+  handleCalculationJobStatus,
+  resolveIdempotencyKey,
+  validateIdempotencyKey,
+  hashCalculationJobIdempotency,
+  createCalculationJobId,
+  validateCalculationJobId,
+  canTransitionCalculationJob,
+  publicCalculationJob,
+  calculationJobsRepository,
   classifyGitHubDispatchFailure,
   dispatchGitHubWorkflow,
   constantTimeEqual,
