@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   fix-and-verify:
-    if: github.event.head_commit.message == 'PR07 normalize recovered store markers'
+    if: github.event.head_commit.message == 'PR07 fix D1 uniqueness result parsing'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -39,11 +39,15 @@ jobs:
               raise SystemExit("Unable to recover reviewed fix script")
           body = source.split(start, 1)[1].split(end, 1)[0]
           script = "\n".join(line[10:] if line.startswith("          ") else line for line in body.splitlines())
-          needle = "        portfolio," + "\n'''"
-          replacement = "        loading," + "\n'''"
-          if script.count(needle) != 2:
-              raise SystemExit(f"Recovered store marker count is {script.count(needle)}, expected 2")
-          script = script.replace(needle, replacement, 2)
+          marker = "        portfolio," + "\n'''"
+          if script.count(marker) != 2:
+              raise SystemExit(f"Recovered store marker count is {script.count(marker)}, expected 2")
+          script = script.replace(marker, "        loading," + "\n'''", 2)
+          old_parse = "const duplicateCount = Number(JSON.parse(idempotencyResult.stdout)?.[0]?.results?.at(-1)?.total);"
+          new_parse = "const duplicateCount = Number(JSON.parse(idempotencyResult.stdout)?.at(-1)?.results?.[0]?.total);"
+          if script.count(old_parse) != 1:
+              raise SystemExit("D1 result parser marker is unavailable")
+          script = script.replace(old_parse, new_parse, 1)
           Path("/tmp/pr07_review_fix.py").write_text(script + "\n", encoding="utf-8")
           PY
           python /tmp/pr07_review_fix.py
