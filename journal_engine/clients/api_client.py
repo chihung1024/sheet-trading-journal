@@ -63,6 +63,7 @@ class CloudflareClient:
         records: List[Dict[str, Any]] = []
         cursor: Optional[str] = None
         seen_cursors = set()
+        seen_record_ids = set()
 
         for page_number in range(1, MAX_RECORD_PAGES + 1):
             params: Dict[str, Any] = {"limit": RECORD_PAGE_LIMIT}
@@ -118,6 +119,16 @@ class CloudflareClient:
                 seen_cursors.add(next_cursor)
             elif next_cursor is not None:
                 raise CloudflareAPIError("交易紀錄 API 結束頁仍回傳 cursor")
+
+            for record in page_records:
+                if not isinstance(record, dict):
+                    raise CloudflareAPIError("交易紀錄 API 包含非物件紀錄")
+                record_id = record.get("id")
+                if not isinstance(record_id, int) or isinstance(record_id, bool) or record_id <= 0:
+                    raise CloudflareAPIError("交易紀錄 API 包含無效 record id")
+                if record_id in seen_record_ids:
+                    raise CloudflareAPIError("交易紀錄 API 跨頁回傳重複紀錄")
+                seen_record_ids.add(record_id)
 
             records.extend(page_records)
             if len(records) > MAX_RECORD_COUNT:

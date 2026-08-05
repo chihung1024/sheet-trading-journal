@@ -47,3 +47,20 @@ def test_fetch_records_rejects_ambiguous_legacy_cap(monkeypatch):
     monkeypatch.setattr("journal_engine.clients.api_client.requests.get", Mock(return_value=response(payload)))
     with pytest.raises(CloudflareAPIError, match="截斷"):
         CloudflareClient().fetch_records()
+
+
+def test_fetch_records_rejects_duplicate_record_across_pages(monkeypatch):
+    pages = [
+        response({"success": True, "data": [{"id": 2}], "page": {"limit": 1000, "count": 1, "has_more": True, "next_cursor": "next-one"}}),
+        response({"success": True, "data": [{"id": 2}], "page": {"limit": 1000, "count": 1, "has_more": False, "next_cursor": None}}),
+    ]
+    monkeypatch.setattr("journal_engine.clients.api_client.requests.get", Mock(side_effect=pages))
+    with pytest.raises(CloudflareAPIError, match="重複"):
+        CloudflareClient().fetch_records()
+
+
+def test_fetch_records_rejects_invalid_record_id(monkeypatch):
+    payload = {"success": True, "data": [{"id": "1"}], "page": {"limit": 1000, "count": 1, "has_more": False, "next_cursor": None}}
+    monkeypatch.setattr("journal_engine.clients.api_client.requests.get", Mock(return_value=response(payload)))
+    with pytest.raises(CloudflareAPIError, match="record id"):
+        CloudflareClient().fetch_records()
