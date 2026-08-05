@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from ..config import DEFAULT_FX_RATE
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,7 @@ class SymbolDailyPnL:
     end_price: float
     begin_fx: float
     end_fx: float
+    cashflow_fx: float
     buy_cost_twd: float
     sell_proceeds_twd: float
     dividend_income_twd: float
@@ -55,6 +58,7 @@ class SymbolDailyPnL:
             "end_price": self.end_price,
             "begin_fx": self.begin_fx,
             "end_fx": self.end_fx,
+            "cashflow_fx": self.cashflow_fx,
             "buy_cost_twd": self.buy_cost_twd,
             "sell_proceeds_twd": self.sell_proceeds_twd,
             "dividend_income_twd": self.dividend_income_twd,
@@ -81,6 +85,12 @@ def _group_transactions(df: pd.DataFrame, group_name: str) -> pd.DataFrame:
 
 
 def _ordered_transactions(df: pd.DataFrame) -> pd.DataFrame:
+    """Use the exact intraday precedence used by PortfolioCalculator.
+
+    PortfolioCalculator sorts each valuation day's rows by Timestamp, Sequence,
+    and then BUY -> DIV -> SELL. The normalized input is already stable by id,
+    so id is retained only as the final deterministic tie-breaker.
+    """
     if df.empty:
         return df.copy(deep=True)
     ordered = df.copy(deep=True)
@@ -91,9 +101,9 @@ def _ordered_transactions(df: pd.DataFrame) -> pd.DataFrame:
         sort_columns.append("Timestamp")
     if "Sequence" in ordered.columns:
         sort_columns.append("Sequence")
-    elif "id" in ordered.columns:
-        sort_columns.append("id")
     sort_columns.append("_priority")
+    if "id" in ordered.columns:
+        sort_columns.append("id")
     return ordered.sort_values(sort_columns, kind="stable").drop(
         columns=["_priority"]
     )
@@ -164,6 +174,28 @@ def _price_and_fx(
     return price, fx
 
 
+def _cashflow_fx(calculator: Any, symbol: str, value_date: date) -> float:
+    """Return the FX used by the calculator's daily transaction loop.
+
+    Transaction cash flows use `market.fx_rates.asof(d)` even when an equity
+    quote is padded from an earlier trading day. Valuation FX, by contrast,
+    follows the quote's actual as-of date. Keeping these two FX timestamps
+    separate is required for synthetic transaction valuation dates.
+    """
+    try:
+        raw_fx = calculator.market.fx_rates.asof(pd.Timestamp(value_date))
+        if pd.isna(raw_fx):
+            raw_fx = DEFAULT_FX_RATE
+    except Exception:
+        raw_fx = DEFAULT_FX_RATE
+    fx = float(calculator._get_effective_fx_rate(symbol, float(raw_fx)))
+    if not math.isfinite(fx) or fx <= 0:
+        raise DailyPnLReconciliationError(
+            f"Invalid cash-flow FX for {symbol} on {value_date}"
+        )
+    return fx
+
+
 def _replay_symbol(
     symbol_df: pd.DataFrame,
     base_date: date,
@@ -223,6 +255,7 @@ def _symbol_component(
     begin_qty, end_qty, executed_rows = _replay_symbol(symbol_df, base_date)
     end_price, end_fx = _price_and_fx(calculator, symbol, base_date)
     begin_price, begin_fx = _price_and_fx(calculator, symbol, prev_date)
+    cashflow_fx = _cashflow_fx(calculator, symbol, base_date)
 
     buy_cost_twd = 0.0
     sell_proceeds_twd = 0.0
@@ -237,8 +270,8 @@ def _symbol_component(
         if txn_type == "BUY":
             buy_cost_twd += (
                 requested_qty * float(row["Price"]) + fee + tax
-            ) * end_fx
-            fee_tax_total_twd += (fee + tax) * end_fx
+            ) * cashflow_fx
+            fee_tax_total_twd += (fee + tax) * cashflow_fx
         elif txn_type == "SELL":
             ratio = executed_qty / requested_qty if requested_qty > 0 else 0.0
             executed_fee = fee * ratio
@@ -247,11 +280,11 @@ def _symbol_component(
                 executed_qty * float(row["Price"])
                 - executed_fee
                 - executed_tax
-            ) * end_fx
-            fee_tax_total_twd += (executed_fee + executed_tax) * end_fx
+            ) * cashflow_fx
+            fee_tax_total_twd += (executed_fee + executed_tax) * cashflow_fx
         elif txn_type == "DIV":
             dividend_income_twd += (
-                requested_qty * float(row["Price"]) * end_fx
+                requested_qty * float(row["Price"]) * cashflow_fx
             )
 
     dividend_key = f"{symbol}_{base_date.isoformat()}"
@@ -274,7 +307,9 @@ def _symbol_component(
                 f"Invalid split factor for {symbol} on {base_date}"
             )
         shares_at_ex = begin_qty / split_factor
-        dividend_income_twd += shares_at_ex * market_dividend * 0.7 * end_fx
+        dividend_income_twd += (
+            shares_at_ex * market_dividend * 0.7 * cashflow_fx
+        )
 
     begin_value = begin_qty * begin_price * begin_fx
     end_value = end_qty * end_price * end_fx
@@ -306,6 +341,7 @@ def _symbol_component(
         end_price,
         begin_fx,
         end_fx,
+        cashflow_fx,
         buy_cost_twd,
         sell_proceeds_twd,
         dividend_income_twd,
@@ -329,6 +365,7 @@ def _symbol_component(
         end_price=end_price,
         begin_fx=begin_fx,
         end_fx=end_fx,
+        cashflow_fx=cashflow_fx,
         buy_cost_twd=buy_cost_twd,
         sell_proceeds_twd=sell_proceeds_twd,
         dividend_income_twd=dividend_income_twd,
