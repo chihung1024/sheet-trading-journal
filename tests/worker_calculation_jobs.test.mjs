@@ -61,7 +61,6 @@ test("migration and workflow enforce unique idempotency and lifecycle callbacks"
   assert.match(workflow, /always\(\)/);
 });
 
-
 test("concurrent duplicate repository requests resolve to one inserted job", async () => {
   const rowsByHash = new Map();
   const rowsById = new Map();
@@ -70,45 +69,45 @@ test("concurrent duplicate repository requests resolve to one inserted job", asy
       const normalized = sql.replace(/\s+/g, " ").trim();
       return {
         bind(...args) {
-return {
-  async run() {
-    if (normalized.startsWith("UPDATE calculation_jobs SET idempotency_hash = NULL")) {
-      return { meta: { changes: 0 } };
-    }
-    if (normalized.startsWith("INSERT OR IGNORE INTO calculation_jobs")) {
-      const [publicId, userId, hash, benchmark] = args;
-      const key = `${userId}\n${hash}`;
-      if (rowsByHash.has(key)) return { meta: { changes: 0 } };
-      const row = {
-        public_id: publicId,
-        user_id: userId,
-        status: "queued",
-        benchmark,
-        github_run_id: null,
-        github_run_attempt: 0,
-        attempt_count: 0,
-        error_code: null,
-        created_at: "2026-08-06 00:00:00",
-        started_at: null,
-        completed_at: null,
-        updated_at: "2026-08-06 00:00:00",
-      };
-      rowsByHash.set(key, row);
-      rowsById.set(publicId, row);
-      return { meta: { changes: 1 } };
-    }
-    throw new Error(`Unexpected run SQL: ${normalized}`);
-  },
-  async first() {
-    if (normalized.includes("WHERE user_id = ? AND idempotency_hash = ?")) {
-      return rowsByHash.get(`${args[0]}\n${args[1]}`) || null;
-    }
-    if (normalized.includes("WHERE public_id = ?")) {
-      return rowsById.get(args[0]) || null;
-    }
-    throw new Error(`Unexpected first SQL: ${normalized}`);
-  },
-};
+          return {
+            async run() {
+              if (normalized.startsWith("UPDATE calculation_jobs SET idempotency_hash = NULL")) {
+                return { meta: { changes: 0 } };
+              }
+              if (normalized.startsWith("INSERT OR IGNORE INTO calculation_jobs")) {
+                const [publicId, userId, hash, benchmark] = args;
+                const key = `${userId}\n${hash}`;
+                if (rowsByHash.has(key)) return { meta: { changes: 0 } };
+                const row = {
+                  public_id: publicId,
+                  user_id: userId,
+                  status: "queued",
+                  benchmark,
+                  github_run_id: null,
+                  github_run_attempt: 0,
+                  attempt_count: 0,
+                  error_code: null,
+                  created_at: "2026-08-06 00:00:00",
+                  started_at: null,
+                  completed_at: null,
+                  updated_at: "2026-08-06 00:00:00",
+                };
+                rowsByHash.set(key, row);
+                rowsById.set(publicId, row);
+                return { meta: { changes: 1 } };
+              }
+              throw new Error(`Unexpected run SQL: ${normalized}`);
+            },
+            async first() {
+              if (normalized.includes("WHERE user_id = ? AND idempotency_hash = ?")) {
+                return rowsByHash.get(`${args[0]}\n${args[1]}`) || null;
+              }
+              if (normalized.includes("WHERE public_id = ?")) {
+                return rowsById.get(args[0]) || null;
+              }
+              throw new Error(`Unexpected first SQL: ${normalized}`);
+            },
+          };
         },
       };
     },
@@ -136,12 +135,17 @@ return {
   assert.equal(rowsByHash.size, 1);
 });
 
-test("frontend reuses a pending key and collapses concurrent trigger calls", async () => {
-  const source = await readFile("src/stores/portfolio.js", "utf8");
-  assert.match(source, /triggerUpdatePromise/);
-  assert.match(source, /if \(triggerUpdatePromise\) return triggerUpdatePromise/);
-  assert.match(source, /pending_calculation_request/);
-  assert.match(source, /getOrCreateIdempotencyKey/);
-  assert.match(source, /rememberPendingCalculationRequest/);
-  assert.match(source, /queueMicrotask\(\(\) => startCalculationJobPolling/);
+test("frontend reuses a tenant-bound pending key and collapses concurrent trigger calls", async () => {
+  const storeSource = await readFile("src/stores/portfolio.js", "utf8");
+  const stateSource = await readFile("src/services/calculationJobState.js", "utf8");
+  assert.match(storeSource, /triggerUpdatePromise/);
+  assert.match(storeSource, /if \(triggerUpdatePromise\) return triggerUpdatePromise/);
+  assert.match(storeSource, /getOrCreateIdempotencyKey/);
+  assert.match(storeSource, /rememberPendingCalculationRequest/);
+  assert.match(storeSource, /getCalculationOwner/);
+  assert.match(storeSource, /resumePendingCalculationJob/);
+  assert.match(storeSource, /await startCalculationJobPolling\(responseData\.job\.id\)/);
+  assert.match(stateSource, /pending_calculation_request/);
+  assert.match(stateSource, /normalizeCalculationOwner/);
+  assert.match(stateSource, /CALCULATION_REQUEST_TTL_MS/);
 });
