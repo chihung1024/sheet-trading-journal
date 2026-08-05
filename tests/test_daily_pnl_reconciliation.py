@@ -10,11 +10,24 @@ from journal_engine.core.daily_pnl_reconciler import (
 
 
 class FakeMarket:
-    def __init__(self, prices, fx=32.0, dividends=None):
+    def __init__(
+        self,
+        prices,
+        fx=32.0,
+        dividends=None,
+        fx_rates=None,
+        valuation_fx=None,
+    ):
         self.prices = prices
         self.fx = fx
         self.realtime_fx_rate = None
         self.dividends = dividends or {}
+        self.fx_rates = (
+            fx_rates
+            if fx_rates is not None
+            else pd.Series([fx], index=[pd.Timestamp("2000-01-01")])
+        )
+        self.valuation_fx = valuation_fx or {}
 
     def get_price_asof(self, symbol, value_date):
         date_key = pd.Timestamp(value_date).strftime("%Y-%m-%d")
@@ -45,14 +58,24 @@ class FakeCalculator:
     def _is_taiwan_stock(self, symbol):
         return symbol.endswith(".TW")
 
+    def _get_effective_fx_rate(self, symbol, fx_rate):
+        return 1.0 if self._is_taiwan_stock(symbol) else float(fx_rate)
+
     def _get_asset_effective_price_and_fx(
         self,
         symbol,
         value_date,
         current_fx,
     ):
-        price, _used = self.market.get_price_asof(symbol, value_date)
-        return price, 1.0 if self._is_taiwan_stock(symbol) else self.market.fx
+        price, used = self.market.get_price_asof(symbol, value_date)
+        if self._is_taiwan_stock(symbol):
+            return price, 1.0
+        used_key = pd.Timestamp(used).strftime("%Y-%m-%d")
+        valuation_fx = self.market.valuation_fx.get(
+            (symbol, used_key),
+            self.market.fx,
+        )
+        return price, valuation_fx
 
 
 def make_group(history):
@@ -192,6 +215,125 @@ def test_same_day_buy_fee_and_price_move_reconcile():
     ledger = snapshot.groups["all"].day_ledger[0]
     assert ledger["fee_tax_pnl_twd"] == -3.0
     assert ledger["execution_pnl_twd"] == 10.0
+
+
+def test_same_day_priority_matches_calculator_when_sell_id_precedes_buy():
+    df = pd.DataFrame(
+        [
+            {
+                "Date": "2026-08-05",
+                "Symbol": "2330.TW",
+                "Type": "SELL",
+                "Qty": 1,
+                "Price": 110,
+                "Commission": 0,
+                "Tax": 0,
+                "Tag": "Core",
+                "id": 1,
+            },
+            {
+                "Date": "2026-08-05",
+                "Symbol": "2330.TW",
+                "Type": "BUY",
+                "Qty": 1,
+                "Price": 100,
+                "Commission": 0,
+                "Tax": 0,
+                "Tag": "Core",
+                "id": 2,
+            },
+        ]
+    )
+    df["Date"] = pd.to_datetime(df["Date"])
+    market = FakeMarket(
+        {
+            ("2330.TW", "2026-08-04"): 100,
+            ("2330.TW", "2026-08-05"): 100,
+        }
+    )
+    calculator = FakeCalculator(market)
+    history = [
+        {
+            "date": "2026-08-04",
+            "_raw_total_value": 0.0,
+            "_raw_net_cashflow_twd": 0.0,
+        },
+        {
+            "date": "2026-08-05",
+            "_raw_total_value": 0.0,
+            "_raw_net_cashflow_twd": 10.0,
+        },
+    ]
+    snapshot = make_snapshot(history)
+
+    reconcile_snapshot_daily_pnl(snapshot, df, calculator)
+
+    ledger = snapshot.groups["all"].day_ledger[0]
+    assert ledger["begin_qty"] == 0.0
+    assert ledger["end_qty"] == 0.0
+    assert snapshot.summary.daily_pnl_twd == 10.0
+
+
+def test_synthetic_date_uses_transaction_day_fx_not_quote_asof_fx():
+    df = pd.DataFrame(
+        [
+            {
+                "Date": "2026-08-05",
+                "Symbol": "SPCH",
+                "Type": "BUY",
+                "Qty": 1,
+                "Price": 10,
+                "Commission": 0,
+                "Tax": 0,
+                "Tag": "Core",
+                "id": 1,
+            },
+            {
+                "Date": "2026-08-05",
+                "Symbol": "SPCH",
+                "Type": "SELL",
+                "Qty": 1,
+                "Price": 12,
+                "Commission": 0,
+                "Tax": 0,
+                "Tag": "Core",
+                "id": 2,
+            },
+        ]
+    )
+    df["Date"] = pd.to_datetime(df["Date"])
+    market = FakeMarket(
+        {
+            ("SPCH", "2026-08-04"): 11,
+        },
+        fx=31.0,
+        fx_rates=pd.Series(
+            [31.0, 32.0],
+            index=[pd.Timestamp("2026-08-04"), pd.Timestamp("2026-08-05")],
+        ),
+        valuation_fx={("SPCH", "2026-08-04"): 31.0},
+    )
+    calculator = FakeCalculator(market)
+    history = [
+        {
+            "date": "2026-08-04",
+            "_raw_total_value": 0.0,
+            "_raw_net_cashflow_twd": 0.0,
+        },
+        {
+            "date": "2026-08-05",
+            "_raw_total_value": 0.0,
+            "_raw_net_cashflow_twd": 64.0,
+        },
+    ]
+    snapshot = make_snapshot(history)
+
+    reconcile_snapshot_daily_pnl(snapshot, df, calculator)
+
+    ledger = snapshot.groups["all"].day_ledger[0]
+    assert ledger["end_fx"] == 31.0
+    assert ledger["cashflow_fx"] == 32.0
+    assert snapshot.summary.daily_pnl_twd == 64.0
 
 
 def test_group_and_root_use_same_canonical_result():
