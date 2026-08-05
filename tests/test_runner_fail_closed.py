@@ -190,3 +190,53 @@ def test_main_returns_nonzero_when_update_fails(monkeypatch):
     monkeypatch.setattr(runner, "run_update", fail)
 
     assert runner.main() == 1
+
+
+def test_run_update_only_touches_requested_user(monkeypatch):
+    observed = {
+        "fetch_target": None,
+        "benchmarks": [],
+        "tickers": [],
+        "uploads": [],
+        "calculator_users": [],
+    }
+
+    class FakeAPIClient:
+        def fetch_records(self, target_user_id=None):
+            observed["fetch_target"] = target_user_id
+            return make_records()
+
+        def get_user_benchmark(self, user_id):
+            observed["benchmarks"].append(user_id)
+            return "0050.TW"
+
+        def upload_portfolio(self, snapshot, target_user_id=None):
+            observed["uploads"].append(target_user_id)
+            return True
+
+    class FakeMarketClient:
+        def download_data(self, tickers, start_date):
+            observed["tickers"] = list(tickers)
+
+    class FakeCalculator:
+        def __init__(self, user_df, market_client, benchmark_ticker, api_client):
+            observed["calculator_users"].extend(user_df["user_id"].unique().tolist())
+
+        def run(self):
+            return make_snapshot()
+
+    monkeypatch.setattr(runner, "API_KEY", "secret")
+    monkeypatch.setattr(runner, "CloudflareClient", FakeAPIClient)
+    monkeypatch.setattr(runner, "MarketDataClient", FakeMarketClient)
+    monkeypatch.setattr(runner, "PortfolioCalculator", FakeCalculator)
+    monkeypatch.setattr(runner, "validate_before_upload", lambda snapshot, user_df: None)
+    monkeypatch.setenv("TARGET_USER_ID", "beta@example.com")
+    monkeypatch.setenv("CUSTOM_BENCHMARK", "SPY")
+
+    runner.run_update()
+
+    assert observed["fetch_target"] == "beta@example.com"
+    assert observed["benchmarks"] == ["beta@example.com"]
+    assert observed["uploads"] == ["beta@example.com"]
+    assert observed["calculator_users"] == ["beta@example.com"]
+    assert set(observed["tickers"]) == {"0050.TW"}
