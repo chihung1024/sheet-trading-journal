@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -43,13 +43,15 @@ def _normalize_date(value: Any, label: str) -> pd.Timestamp:
 def ensure_transaction_dates_in_market_calendar(
     market_client: Any,
     transactions_df: pd.DataFrame,
+    as_of_date: Optional[Any] = None,
 ) -> Dict[str, List[pd.Timestamp]]:
     """Insert missing transaction dates into each symbol's market-data calendar.
 
     A missing date is valued using the most recent market row at or before that date.
     The copied row keeps price and cumulative split information, but action cash/event
     columns are reset to zero. The function fails closed if the symbol has no market
-    data or no prior row from which a defensible as-of valuation can be obtained.
+    data, no prior row from which a defensible as-of valuation can be obtained, or a
+    transaction is dated after the calculation's current Taiwan calendar date.
     """
     if transactions_df is None or transactions_df.empty:
         return {}
@@ -65,14 +67,27 @@ def ensure_transaction_dates_in_market_calendar(
     if not isinstance(market_data, dict):
         raise TransactionCalendarError("market client does not expose market_data")
 
+    calculation_date = _normalize_date(
+        as_of_date if as_of_date is not None else pd.Timestamp.now(tz="Asia/Taipei"),
+        "transaction calendar as-of date",
+    )
+
     dates_by_symbol: Dict[str, set[pd.Timestamp]] = defaultdict(set)
     for _, row in transactions_df.iterrows():
         symbol = str(row["Symbol"]).strip().upper()
         if not symbol:
             raise TransactionCalendarError("transaction calendar contains an empty symbol")
-        dates_by_symbol[symbol].add(
-            _normalize_date(row["Date"], f"{symbol} transaction date")
+
+        transaction_date = _normalize_date(
+            row["Date"],
+            f"{symbol} transaction date",
         )
+        if transaction_date > calculation_date:
+            raise TransactionCalendarError(
+                f"{symbol} transaction date {transaction_date.date()} is after calculation date "
+                f"{calculation_date.date()}"
+            )
+        dates_by_symbol[symbol].add(transaction_date)
 
     inserted: Dict[str, List[pd.Timestamp]] = {}
     action_columns = ("Dividends", "Stock Splits", "Capital Gains")
