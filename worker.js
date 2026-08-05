@@ -1,8 +1,19 @@
 /**
  * Worker: Trading Journal API
- * v2.56 / PR-03: least-privilege principals, tenant isolation, strict CORS,
- * hardened Google token verification, validated inputs, and safe error responses.
+ * v2.57 / PR-05: reproducible deployment, public health/version metadata,
+ * D1 schema traceability, and Cloudflare Worker version correlation.
  */
+
+const SERVICE_NAME = "trading-journal-api";
+const RELEASE_VERSION = "4.05";
+const API_VERSION = "2.57";
+const REQUIRED_SCHEMA_VERSION = 1;
+const SOURCE_COMMIT_FALLBACK = "development";
+const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings"];
+const PUBLIC_ROUTE_METHODS = Object.freeze({
+  "/api/health": new Set(["GET"]),
+  "/api/version": new Set(["GET"]),
+});
 
 const DEFAULT_GOOGLE_CLIENT_ID =
   "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com";
@@ -71,6 +82,17 @@ export default {
         return withCors(await handleAuth(request, env, requestId), request, env);
       }
 
+      const publicMethods = PUBLIC_ROUTE_METHODS[url.pathname];
+      if (publicMethods) {
+        if (!publicMethods.has(request.method)) {
+          return withCors(methodNotAllowed(requestId), request, env);
+        }
+        const response = url.pathname === "/api/health"
+          ? await handleHealth(env, requestId)
+          : handleVersion(env, requestId);
+        return withCors(response, request, env);
+      }
+
       const routeKey = `${request.method} ${url.pathname}`;
       if (!ROUTE_PERMISSIONS[routeKey]) {
         return withCors(apiError("NOT_FOUND", "Route not found", 404, requestId), request, env);
@@ -128,6 +150,103 @@ export default {
     }
   },
 };
+
+function handleVersion(env, requestId) {
+  const metadata = getBuildMetadata(env);
+  return jsonResponse({
+    success: true,
+    status: "ok",
+    request_id: requestId,
+    ...metadata,
+  });
+}
+
+async function handleHealth(env, requestId) {
+  const metadata = getBuildMetadata(env);
+  const checks = { database: "unavailable", schema: "unknown" };
+  let schemaVersion = null;
+
+  try {
+    if (!env.DB || typeof env.DB.prepare !== "function") {
+      throw new Error("D1BindingUnavailable");
+    }
+
+    const placeholders = CORE_DATA_TABLES.map(() => "?").join(", ");
+    const tableResult = await env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders})`,
+    ).bind(...CORE_DATA_TABLES).all();
+    const tableNames = new Set(
+      (Array.isArray(tableResult?.results) ? tableResult.results : [])
+        .map((row) => String(row?.name || "")),
+    );
+    checks.database = CORE_DATA_TABLES.every((name) => tableNames.has(name))
+      ? "ok"
+      : "degraded";
+
+    const schemaRow = await env.DB.prepare(
+      "SELECT schema_version FROM schema_metadata WHERE id = 1",
+    ).first();
+    schemaVersion = Number(schemaRow?.schema_version);
+    checks.schema = Number.isInteger(schemaVersion)
+      && schemaVersion >= REQUIRED_SCHEMA_VERSION
+      ? "ok"
+      : "degraded";
+  } catch (error) {
+    console.warn(`[request_id=${requestId}] Health check degraded`, safeErrorName(error));
+    checks.database = checks.database === "ok" ? "ok" : "unavailable";
+    checks.schema = "unavailable";
+  }
+
+  const healthy = checks.database === "ok" && checks.schema === "ok";
+  return jsonResponse(
+    {
+      success: healthy,
+      status: healthy ? "ok" : "degraded",
+      request_id: requestId,
+      ...metadata,
+      required_schema_version: REQUIRED_SCHEMA_VERSION,
+      observed_schema_version: Number.isInteger(schemaVersion) ? schemaVersion : null,
+      checks,
+    },
+    healthy ? 200 : 503,
+  );
+}
+
+function getBuildMetadata(env = {}) {
+  const runtime = isPlainObject(env.CF_VERSION_METADATA)
+    ? {
+        id: sanitizeMetadataValue(env.CF_VERSION_METADATA.id, 128),
+        tag: sanitizeMetadataValue(env.CF_VERSION_METADATA.tag, 128),
+        timestamp: sanitizeMetadataValue(env.CF_VERSION_METADATA.timestamp, 128),
+      }
+    : null;
+  const workerVersion = runtime && (runtime.id || runtime.tag || runtime.timestamp)
+    ? runtime
+    : null;
+
+  return {
+    service: SERVICE_NAME,
+    release_version: RELEASE_VERSION,
+    api_version: API_VERSION,
+    schema_version: REQUIRED_SCHEMA_VERSION,
+    source_commit: normalizeSourceCommit(env.SOURCE_COMMIT),
+    worker_version: workerVersion,
+  };
+}
+
+function normalizeSourceCommit(value) {
+  const normalized = sanitizeMetadataValue(value, 64);
+  if (/^[0-9a-f]{7,40}$/i.test(normalized)) return normalized.toLowerCase();
+  if (normalized === "development" || normalized === "unknown") return normalized;
+  return SOURCE_COMMIT_FALLBACK;
+}
+
+function sanitizeMetadataValue(value, maxLength) {
+  return String(value || "")
+    .replace(/[\r\n]/g, "")
+    .trim()
+    .slice(0, maxLength);
+}
 
 function authorize(principal, routeKey) {
   return ROUTE_PERMISSIONS[routeKey]?.has(principal.kind) === true;
@@ -473,10 +592,18 @@ function validateCorsRequest(request, env, requestId) {
 
 function withCors(response, request, env) {
   const headers = new Headers(response.headers);
+  const metadata = getBuildMetadata(env);
   headers.set("Vary", mergeVary(headers.get("Vary"), "Origin"));
   headers.set("Cache-Control", headers.get("Cache-Control") || "no-store");
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "no-referrer");
+  headers.set("X-API-Version", metadata.api_version);
+  headers.set("X-Release-Version", metadata.release_version);
+  headers.set("X-Schema-Version", String(metadata.schema_version));
+  headers.set("X-Source-Commit", metadata.source_commit);
+  if (metadata.worker_version?.id) {
+    headers.set("X-Worker-Version-Id", metadata.worker_version.id);
+  }
 
   const origin = request.headers.get("Origin");
   if (origin && isOriginAllowed(origin, env)) {
@@ -852,7 +979,12 @@ class RequestValidationError extends Error {
 }
 
 export const __test = {
+  API_VERSION,
+  RELEASE_VERSION,
+  REQUIRED_SCHEMA_VERSION,
   authorize,
+  getBuildMetadata,
+  handleHealth,
   constantTimeEqual,
   getAllowedOrigins,
   isOriginAllowed,
