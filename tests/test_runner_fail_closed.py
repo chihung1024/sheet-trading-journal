@@ -215,8 +215,25 @@ def test_run_update_only_touches_requested_user(monkeypatch):
             return True
 
     class FakeMarketClient:
+        def __init__(self):
+            self.market_data = {}
+
         def download_data(self, tickers, start_date):
             observed["tickers"] = list(tickers)
+            market_date = pd.Timestamp("2026-01-02")
+            self.market_data = {
+                ticker: pd.DataFrame(
+                    {
+                        "Close_Adjusted": [50.0],
+                        "Close_Raw": [50.0],
+                        "Split_Factor": [1.0],
+                        "Dividends": [0.0],
+                        "Stock Splits": [0.0],
+                    },
+                    index=[market_date],
+                )
+                for ticker in tickers
+            }
 
         def get_transaction_multiplier(self, symbol, date):
             return 1.0
