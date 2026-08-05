@@ -180,6 +180,14 @@ deploy.write_text(
     )
 )
 
+checker = Path("tools/check_worker_config.mjs")
+checker.write_text(
+    checker.read_text().replace(
+        'expect(migration, `VALUES (1, ${manifest.schemaVersion}, \'${manifest.releaseVersion}\'`, "schema metadata version row");',
+        'expect(migration, `VALUES (1, ${manifest.schemaVersion}, \'`, "schema metadata schema-version row");',
+    )
+)
+
 Path("tests/worker_dispatch.test.mjs").write_text(r'''import test from "node:test";
 import assert from "node:assert/strict";
 import { __test } from "../worker.js";
