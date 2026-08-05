@@ -1,0 +1,34 @@
+name: Publish Release 4.05.1
+
+on:
+  push:
+    branches:
+      - ops/release-4.05.1
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 53a141c0a0160d8d4fb97181f7edea22352e06db
+          fetch-depth: 0
+      - name: Verify release target
+        run: |
+          test "$(git rev-parse HEAD)" = "53a141c0a0160d8d4fb97181f7edea22352e06db"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor HEAD refs/remotes/origin/main
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view 4.05.1 >/dev/null 2>&1; then
+            echo "Release 4.05.1 already exists"
+          else
+            gh release create 4.05.1 \
+              --target 53a141c0a0160d8d4fb97181f7edea22352e06db \
+              --title "Release 4.05.1" \
+              --notes "Production hotfix restoring frontend-triggered GitHub Actions dispatch after reproducible Wrangler deployment. Repository/workflow/ref metadata are now source-controlled; only GITHUB_TOKEN remains a runtime secret. Adds upstream timeout and structured error classification, preserves tenant isolation and rate limiting, and leaves D1 schema version 1 unchanged. Production acceptance: Update Portfolio Data #3127 completed successfully for the authenticated user, canonical Daily PnL reconciled, split-ledger parity verified, and snapshot upload succeeded."
