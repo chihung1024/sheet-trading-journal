@@ -20,14 +20,14 @@
             <span class="group-name">{{ g }}</span>
           </div>
           <div class="group-input-row">
-            <input type="text" v-model="groupRenameMap[g]" :placeholder="`輸入新名稱（目前：${g}）`" />
+            <input type="text" v-model="groupRenameMap[g]" :placeholder="`輸入新名稱（目前：${g}）`" :disabled="isSaving" />
             <button
               class="btn-sm"
               type="button"
               @click="renameGroup(g)"
-              :disabled="!groupRenameMap[g] || groupRenameMap[g] === g"
+              :disabled="isSaving || !groupRenameMap[g] || groupRenameMap[g] === g"
             >
-              套用更名
+              {{ isSaving ? '處理中...' : '套用更名' }}
             </button>
           </div>
         </article>
@@ -40,7 +40,7 @@
       <div class="gm-selection-header">
         <div class="gm-select-wrap">
           <label for="gm-group-select">目標群組</label>
-          <select id="gm-group-select" v-model="selectedGroup" :disabled="editableGroups.length === 0">
+          <select id="gm-group-select" v-model="selectedGroup" :disabled="isSaving || editableGroups.length === 0">
             <option value="" disabled>請先選擇群組</option>
             <option v-for="g in editableGroups" :key="g" :value="g">
               {{ g }}
@@ -49,8 +49,8 @@
         </div>
 
         <div class="gm-toolbar">
-          <button class="btn-sm" type="button" @click="selectAll" :disabled="!canEditRecords">全選</button>
-          <button class="btn-sm" type="button" @click="clearAll" :disabled="!canEditRecords">全不選</button>
+          <button class="btn-sm" type="button" @click="selectAll" :disabled="isSaving || !canEditRecords">全選</button>
+          <button class="btn-sm" type="button" @click="clearAll" :disabled="isSaving || !canEditRecords">全不選</button>
         </div>
       </div>
 
@@ -85,7 +85,7 @@
                   <input
                     type="checkbox"
                     :checked="recordSelections[record.id] || false"
-                    :disabled="!selectedGroup"
+                    :disabled="isSaving || !selectedGroup"
                     @change="toggleRecord(record.id)"
                   />
                   <span></span>
@@ -109,8 +109,8 @@
       <div class="gm-footer">
         <span v-if="changedCount > 0" class="gm-change">已變更 {{ changedCount }} 筆，準備儲存</span>
         <span v-else class="gm-no-change">尚未變更</span>
-        <button class="action-trigger-btn gm-save-btn" type="button" @click="saveSelections" :disabled="changedCount === 0">
-          確認儲存
+        <button class="action-trigger-btn gm-save-btn" type="button" @click="saveSelections" :disabled="isSaving || changedCount === 0">
+          {{ isSaving ? '儲存中...' : '確認儲存' }}
         </button>
       </div>
     </section>
@@ -123,6 +123,10 @@ import { useAuthStore } from '../stores/auth';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
+import {
+  PartialRecordTagBatchError,
+  updateRecordTagsSequentially,
+} from '../services/groupRecordMutation';
 
 const authStore = useAuthStore();
 const portfolioStore = usePortfolioStore();
@@ -131,6 +135,7 @@ const { addToast } = useToast();
 const groupRenameMap = reactive({});
 const selectedGroup = ref('');
 const recordSelections = reactive({});
+const isSaving = ref(false);
 
 const editableGroups = computed(() => portfolioStore.availableGroups.filter(x => x !== 'all'));
 const canEditRecords = computed(() => !!selectedGroup.value && portfolioStore.records.length > 0);
@@ -185,93 +190,123 @@ const rowChanged = (record) => {
 };
 
 const toggleRecord = (id) => {
+  if (isSaving.value) return;
   recordSelections[id] = !recordSelections[id];
 };
 
 const selectAll = () => {
+  if (isSaving.value) return;
   for (const record of portfolioStore.records) {
     recordSelections[record.id] = true;
   }
 };
 
 const clearAll = () => {
+  if (isSaving.value) return;
   for (const record of portfolioStore.records) {
     recordSelections[record.id] = false;
   }
 };
 
-const renameGroup = async (oldName) => {
-  const newName = groupRenameMap[oldName]?.trim();
-  if (!newName || !confirm(`確定將 "${oldName}" 更名為 "${newName}" 嗎？`)) return;
-
-  addToast('正在批次更新紀錄...', 'info');
+const refreshRecordsAfterMutation = async () => {
   try {
-    const targetRecords = portfolioStore.records.filter(r => {
-      const tags = (r.tag || '').split(/[,;]/).map(t => t.trim());
-      return tags.includes(oldName);
-    });
-
-    let count = 0;
-    for (const r of targetRecords) {
-      let tags = (r.tag || '').split(/[,;]/).map(t => t.trim());
-      tags = tags.map(t => (t === oldName ? newName : t));
-      const newTagStr = tags.join(', ');
-
-      await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${authStore.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ ...r, tag: newTagStr })
-      });
-      count++;
-    }
-
-    groupRenameMap[oldName] = '';
-    addToast(`成功更新 ${count} 筆紀錄`, 'success');
     await portfolioStore.fetchRecords();
-    await portfolioStore.triggerUpdate();
-  } catch (e) {
-    addToast('更新失敗', 'error');
+  } catch (error) {
+    console.error('GroupManager refresh failed:', error);
+    addToast('紀錄已變更，但畫面重新載入失敗，請重新整理頁面', 'warning');
   }
 };
 
+const triggerRecalculationAfterSuccess = async () => {
+  try {
+    await portfolioStore.triggerUpdate();
+  } catch (error) {
+    console.error('GroupManager recalculation trigger failed:', error);
+    addToast('紀錄已更新，但後端重算觸發失敗，請稍後手動觸發', 'warning');
+  }
+};
+
+const runTagUpdateBatch = async (updates, successMessage) => {
+  if (isSaving.value) return false;
+  isSaving.value = true;
+
+  try {
+    const result = await updateRecordTagsSequentially({
+      apiBaseUrl: CONFIG.API_BASE_URL,
+      token: authStore.token,
+      updates,
+    });
+    await refreshRecordsAfterMutation();
+    addToast(successMessage(result.succeeded), 'success');
+    await triggerRecalculationAfterSuccess();
+    return true;
+  } catch (error) {
+    await refreshRecordsAfterMutation();
+    if (error instanceof PartialRecordTagBatchError) {
+      const failedId = error.failedRecordId ? `（紀錄 #${error.failedRecordId}）` : '';
+      addToast(
+        `批次未完成：已更新 ${error.succeeded}/${error.total} 筆${failedId}，已重新載入目前狀態`,
+        'error',
+      );
+    } else {
+      console.error('GroupManager batch failed:', error);
+      addToast('更新失敗，已重新載入目前狀態', 'error');
+    }
+    return false;
+  } finally {
+    isSaving.value = false;
+  }
+};
+
+const renameGroup = async (oldName) => {
+  if (isSaving.value) return;
+  const newName = groupRenameMap[oldName]?.trim();
+  if (!newName || !confirm(`確定將 "${oldName}" 更名為 "${newName}" 嗎？`)) return;
+
+  const updates = portfolioStore.records
+    .filter(record => hasGroupTag(record, oldName))
+    .map(record => {
+      const tags = normalizeTags(record.tag || '');
+      const renamedTags = Array.from(new Set(tags.map(tag => (tag === oldName ? newName : tag))));
+      return { record, tag: renamedTags.join(', ') };
+    });
+
+  if (updates.length === 0) {
+    addToast('找不到需要更名的交易紀錄，請先重新整理', 'error');
+    return;
+  }
+
+  addToast('正在批次更新紀錄...', 'info');
+  const success = await runTagUpdateBatch(
+    updates,
+    count => `成功更新 ${count} 筆紀錄`,
+  );
+  if (success) groupRenameMap[oldName] = '';
+};
+
 const saveSelections = async () => {
-  if (!selectedGroup.value) return;
+  if (isSaving.value || !selectedGroup.value) return;
   if (!confirm(`確定更新 "${selectedGroup.value}" 的交易歸屬嗎？`)) return;
 
-  addToast('正在更新群組歸屬...', 'info');
-  try {
-    let count = 0;
-    for (const record of portfolioStore.records) {
-      const shouldInclude = recordSelections[record.id] || false;
-      const hasTag = hasGroupTag(record, selectedGroup.value);
-      if (shouldInclude === hasTag) continue;
+  const updates = [];
+  for (const record of portfolioStore.records) {
+    const shouldInclude = recordSelections[record.id] || false;
+    const hasTag = hasGroupTag(record, selectedGroup.value);
+    if (shouldInclude === hasTag) continue;
 
-      const tags = normalizeTags(record.tag || '');
-      const updatedTags = shouldInclude
-        ? Array.from(new Set([...tags, selectedGroup.value]))
-        : tags.filter(tag => tag !== selectedGroup.value);
-      const newTagStr = updatedTags.join(', ');
-
-      await fetch(`${CONFIG.API_BASE_URL}/api/records`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${authStore.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ ...record, tag: newTagStr })
-      });
-      count++;
-    }
-
-    addToast(`成功更新 ${count} 筆紀錄`, 'success');
-    await portfolioStore.fetchRecords();
-    await portfolioStore.triggerUpdate();
-  } catch (e) {
-    addToast('更新失敗', 'error');
+    const tags = normalizeTags(record.tag || '');
+    const updatedTags = shouldInclude
+      ? Array.from(new Set([...tags, selectedGroup.value]))
+      : tags.filter(tag => tag !== selectedGroup.value);
+    updates.push({ record, tag: updatedTags.join(', ') });
   }
+
+  if (updates.length === 0) return;
+  addToast('正在更新群組歸屬...', 'info');
+  await runTagUpdateBatch(
+    updates,
+    count => `成功更新 ${count} 筆紀錄`,
+  );
 };
 </script>
 
