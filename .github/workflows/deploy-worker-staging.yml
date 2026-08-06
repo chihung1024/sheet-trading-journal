@@ -26,12 +26,6 @@ jobs:
     timeout-minutes: 30
     environment: staging
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
-      CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
-      STAGING_API_SECRET: ${{ secrets.STAGING_API_SECRET }}
-      STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
       STAGING_WORKER_BASE_URL: https://journal-backend-staging.chired.workers.dev
 
     steps:
@@ -85,6 +79,13 @@ jobs:
           npm run worker:schema:test
 
       - name: Verify protected staging inputs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+          STAGING_API_SECRET: ${{ secrets.STAGING_API_SECRET }}
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
         shell: bash
         run: |
           set -euo pipefail
@@ -118,6 +119,9 @@ jobs:
 
       - name: Render isolated staging Wrangler config
         env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
           SOURCE_COMMIT: ${{ steps.source.outputs.source_sha }}
         run: npm run worker:staging:config:render
 
@@ -129,6 +133,9 @@ jobs:
           --config .wrangler/staging.toml
 
       - name: Apply migrations to staging D1 only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: >-
           npx wrangler d1 migrations apply DB --remote
           --experimental-provision=false
@@ -136,6 +143,10 @@ jobs:
           --config .wrangler/staging.toml
 
       - name: Install isolated staging API secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAGING_API_SECRET: ${{ secrets.STAGING_API_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
@@ -145,6 +156,9 @@ jobs:
             --config .wrangler/staging.toml
 
       - name: Deploy exact staging Worker source
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run worker:staging:deploy
 
       - name: Verify exact staging deployment readiness
