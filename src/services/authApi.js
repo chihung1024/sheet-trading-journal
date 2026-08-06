@@ -94,7 +94,7 @@ export const exchangeGoogleCredential = async (
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ id_token: googleCredential.trim() }),
+            body: JSON.stringify({ id_token: googleCredential }),
         },
         {
             timeoutMs,
