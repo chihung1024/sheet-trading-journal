@@ -54,27 +54,33 @@ export const isMutationMethod = (method = 'GET') => !['GET', 'HEAD', 'OPTIONS'].
     normalizeRequestMethod(method),
 );
 
+export const isExplicitServerRejection = (error) => (
+    error instanceof ApiHttpError || error instanceof ApiApplicationError
+);
+
 export const markRequestOutcome = (error, method = 'GET') => {
-    if (error instanceof RequestTimeoutError && isMutationMethod(method)) {
+    if (
+        error
+        && isMutationMethod(method)
+        && !isExplicitServerRejection(error)
+    ) {
         error.outcomeAmbiguous = true;
     }
     return error;
 };
 
-export const isExplicitServerRejection = (error) => (
-    error instanceof ApiHttpError || error instanceof ApiApplicationError
+const mutationAmbiguityMessage = (action) => (
+    `${action}結果不確定，伺服器可能已完成操作。請先重新整理確認結果，再決定是否重試。`
 );
 
 export const formatRequestError = (
     error,
     { action = '請求', method = 'GET', fallback = `${action}失敗` } = {},
 ) => {
-    if (error instanceof RequestTimeoutError) {
-        if (isMutationMethod(method)) {
-            return `${action}逾時，伺服器可能已完成操作。請先重新整理確認結果，再決定是否重試。`;
-        }
-        return `${action}逾時，請稍後重試。`;
+    if (isMutationMethod(method) && error?.outcomeAmbiguous === true) {
+        return mutationAmbiguityMessage(action);
     }
+    if (error instanceof RequestTimeoutError) return `${action}逾時，請稍後重試。`;
     if (error instanceof RequestAbortedError) return `${action}已取消。`;
     if (error instanceof MalformedApiResponseError) return `${action}失敗：伺服器回應格式不正確。`;
     return error?.message || fallback;
