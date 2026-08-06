@@ -115,18 +115,28 @@ test('refresh composable uses centralized policy and leadership at schedule and 
   assert.doesNotMatch(source, /無視頁面可見性/);
 });
 
-test('pause and hidden-page transitions release leadership and stop active timers', () => {
+test('pause is shared across tabs while hidden-page transitions release only local leadership', () => {
   const source = readComposable();
 
   const pauseBlock = sourceBlock(source, 'const togglePause', 'const stopMarketRefresh');
-  assert.match(pauseBlock, /if \(isPaused\.value\) \{/);
-  assert.match(pauseBlock, /stopLeadership\(\);/);
-  assert.match(pauseBlock, /syncLeadership\(\)/);
+  assert.match(pauseBlock, /const requestedPause = !isPaused\.value/);
+  assert.match(pauseBlock, /coordinator\.setPaused\(requestedPause\)/);
+  assert.match(pauseBlock, /isPaused\.value = coordinator\.isPaused\(\)/);
+  assert.match(pauseBlock, /stopActiveSchedule\(\);/);
+  assert.doesNotMatch(pauseBlock, /leadership\?\.stop\(\)/);
 
   const visibilityBlock = sourceBlock(source, 'const handleVisibilityChange', 'const manualTrigger');
   assert.match(visibilityBlock, /if \(!isPageVisible\(\)\) \{/);
   assert.match(visibilityBlock, /stopLeadership\(\);/);
   assert.match(visibilityBlock, /syncLeadership\(\)/);
+
+  const pauseCallbackBlock = sourceBlock(source, 'const handleSharedPauseChange', 'const ensureLeadership');
+  assert.match(pauseCallbackBlock, /isPaused\.value = nextPaused === true/);
+  assert.match(pauseCallbackBlock, /stopActiveSchedule\(\);/);
+  assert.match(pauseCallbackBlock, /syncLeadership\(\)/);
+
+  assert.match(source, /onPauseChange: handleSharedPauseChange/);
+  assert.match(source, /const observationContext = \{ \.\.\.baseContext, paused: false \}/);
 
   const stopBlock = sourceBlock(source, 'const stopActiveSchedule', 'const triggerRefresh');
   assert.match(stopBlock, /stopRefreshTimer\(\);/);
@@ -155,6 +165,7 @@ test('followers cannot create automatic timers or reach triggerUpdate without a 
   const triggerBlock = sourceBlock(source, 'const triggerRefresh', 'const evaluateMarketRefresh');
   assert.match(triggerBlock, /if \(!shouldTriggerMarketRefresh\(/);
   assert.match(triggerBlock, /claimAutomaticAction\(INTERVAL_MS\)/);
+  assert.match(triggerBlock, /isPaused\.value = leadership\?\.isPaused\(\) === true/);
   assert.match(triggerBlock, /const updatePromise = portfolioStore\.triggerUpdate\(\);/);
   assert.ok(
     triggerBlock.indexOf('shouldTriggerMarketRefresh') < triggerBlock.indexOf('claimAutomaticAction'),
@@ -179,7 +190,8 @@ test('stale leadership sync results are invalidated across token and lifecycle c
   assert.match(source, /const requestEpoch = \+\+leadershipSyncEpoch/);
   assert.match(source, /requestEpoch !== leadershipSyncEpoch/);
   assert.match(source, /requestedToken !== authStore\.token/);
-  assert.match(source, /if \(newToken !== previousToken\) stopLeadership\(\)/);
+  assert.match(source, /if \(newToken !== previousToken\) \{/);
+  assert.match(source, /stopLeadership\(\);\n\s+isPaused\.value = false;/);
 });
 
 test('follower tabs show distributed ownership instead of a false zero countdown', () => {
