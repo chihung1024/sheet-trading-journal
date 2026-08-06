@@ -5,7 +5,7 @@
 # the sentinel and writes `.wrangler/deploy.toml` from protected CI variables.
 
 name = "journal-backend"
-main = "worker.js"
+main = "worker-entry.js"
 compatibility_date = "2026-08-05"
 workers_dev = true
 
