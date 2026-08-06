@@ -93,6 +93,14 @@ test('fixed staging Pages branch fails closed when explicit configuration is mis
   assert.match(cli.stderr, /VITE_GOOGLE_CLIENT_ID is required/);
 });
 
+test('fixed staging Pages branch rejects every deploy mode except staging', () => {
+  for (const deployEnvironment of ['preview', 'production', 'test', 'development', 'qa']) {
+    const cli = runCli(validStaging({ VITE_DEPLOY_ENV: deployEnvironment }));
+    assert.notEqual(cli.status, 0, deployEnvironment);
+    assert.match(cli.stderr, /requires VITE_DEPLOY_ENV=staging/, deployEnvironment);
+  }
+});
+
 test('fixed staging Pages branch accepts only the reviewed staging configuration', () => {
   const result = validateFrontendEnvironment(cleanEnvironment(validStaging()));
   assert.equal(result.context, 'pages-staging');
