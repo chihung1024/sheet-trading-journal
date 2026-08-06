@@ -73,5 +73,11 @@ export const readApiJson = async (response, { endpoint = 'API' } = {}) => {
         );
     }
 
+    if (payload.success !== true) {
+        throw new MalformedApiResponseError(
+            `${endpoint} did not provide explicit success evidence`,
+        );
+    }
+
     return payload;
 };
