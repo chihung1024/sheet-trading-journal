@@ -33,23 +33,34 @@
         
         <div class="right-controls">
           <div class="benchmark-selector" v-if="chartType === 'twr'">
-            <label class="control-label">基準</label> 
-            <div class="input-group-merged">
-              <input 
-                type="text" 
-                v-model="benchmarkInput" 
-                placeholder="SPY"
-                @keyup.enter="handleBenchmarkChange"
-                :disabled="isChangingBenchmark"
-                class="benchmark-input"
-              /> 
-              <button 
-                @click="handleBenchmarkChange"
-                :disabled="isChangingBenchmark || !benchmarkInput || benchmarkInput === portfolioStore.selectedBenchmark"
-                class="btn-icon-apply"
-              >
-                ✓
-              </button>
+            <div class="benchmark-control-row">
+              <label class="control-label">基準</label>
+              <div class="input-group-merged">
+                <input 
+                  type="text"
+                  list="benchmark-symbol-options"
+                  v-model="benchmarkInput" 
+                  placeholder="SPY"
+                  @keyup.enter="handleBenchmarkChange"
+                  :disabled="isChangingBenchmark"
+                  class="benchmark-input"
+                  aria-label="要求使用的基準標的"
+                />
+                <datalist id="benchmark-symbol-options">
+                  <option v-for="symbol in benchmarkSuggestions" :key="symbol" :value="symbol" />
+                </datalist>
+                <button 
+                  @click="handleBenchmarkChange"
+                  :disabled="isChangingBenchmark || !normalizedBenchmarkInput || normalizedBenchmarkInput === portfolioStore.selectedBenchmark"
+                  class="btn-icon-apply"
+                  title="儲存要求值並觸發重新計算"
+                >
+                  ✓
+                </button>
+              </div>
+            </div>
+            <div class="benchmark-status" :class="benchmarkApplicationState.status">
+              {{ benchmarkApplicationState.statusText }}
             </div>
           </div>
           
@@ -82,6 +93,11 @@ import { ref, onMounted, watch, nextTick, onUnmounted, computed } from 'vue';
 import Chart from 'chart.js/auto';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
+import {
+  benchmarkLegendLabel,
+  normalizeBenchmarkSymbol,
+  resolveBenchmarkApplicationState,
+} from '../services/benchmarkState.js';
 
 const portfolioStore = usePortfolioStore();
 const { addToast } = useToast();
@@ -99,6 +115,14 @@ const customEndDate = ref('');
 
 const benchmarkInput = ref(portfolioStore.selectedBenchmark);
 const isChangingBenchmark = ref(false);
+const benchmarkSuggestions = ['SPY', '^GSPC', 'QQQ', 'VT', 'URTH', 'IXN', '^SOX', '^TWII'];
+
+const normalizedBenchmarkInput = computed(() => normalizeBenchmarkSymbol(benchmarkInput.value));
+const benchmarkApplicationState = computed(() => resolveBenchmarkApplicationState({
+  snapshot: portfolioStore.rawData,
+  requestedBenchmark: portfolioStore.selectedBenchmark,
+}));
+const publishedBenchmarkLegend = computed(() => benchmarkLegendLabel(benchmarkApplicationState.value));
 
 const todayStr = computed(() => new Date().toISOString().split('T')[0]);
 
@@ -111,7 +135,6 @@ const timeRanges = [
   { value: 'ALL', label: 'ALL' }
 ];
 
-// ✅ 合併日期處理邏輯
 const parseDate = (dateStr) => {
   const d = new Date(dateStr.replace(/-/g, '/'));
   d.setHours(0, 0, 0, 0);
@@ -141,22 +164,27 @@ const getDateRange = (rangeType) => {
 };
 
 const handleBenchmarkChange = async () => {
-  const newBenchmark = benchmarkInput.value.trim().toUpperCase();
-  if (!newBenchmark || newBenchmark === portfolioStore.selectedBenchmark) {
+  const newBenchmark = normalizedBenchmarkInput.value;
+  if (!newBenchmark) {
+    addToast('基準標的格式無效', 'error');
+    benchmarkInput.value = portfolioStore.selectedBenchmark;
+    return;
+  }
+  if (newBenchmark === portfolioStore.selectedBenchmark) {
     benchmarkInput.value = portfolioStore.selectedBenchmark;
     return;
   }
   
-  if (!confirm(`確定要將基準標的改為 ${newBenchmark} 嗎？需重新計算所有資料。`)) {
+  if (!confirm(`確定要將要求的基準標的改為 ${newBenchmark} 嗎？需重新計算所有資料。`)) {
     benchmarkInput.value = portfolioStore.selectedBenchmark;
     return;
   }
   
   isChangingBenchmark.value = true;
   try {
-    addToast(`🔄 切換基準標的至 ${newBenchmark}...`, 'info');
+    addToast(`🔄 儲存要求基準 ${newBenchmark} 並觸發重新計算...`, 'info');
     await portfolioStore.triggerUpdate(newBenchmark);
-    addToast(`✅ 已觸發計算，請稍候刷新。`, 'success');
+    addToast('✅ 要求值已儲存；新快照完成前，圖表仍標示目前已發布基準。', 'success');
   } catch (error) {
     addToast(`❌ 切換失敗: ${error.message}`, 'error');
     benchmarkInput.value = portfolioStore.selectedBenchmark;
@@ -165,7 +193,6 @@ const handleBenchmarkChange = async () => {
   }
 };
 
-// ✅ [修復] 自訂日期變更時直接觸發篩選
 const applyCustomRange = () => {
   if (!customStartDate.value || !customEndDate.value) return;
   const start = parseDate(customStartDate.value);
@@ -175,11 +202,9 @@ const applyCustomRange = () => {
     return;
   }
   
-  // 確保 timeRange 設為 CUSTOM
   if (timeRange.value !== 'CUSTOM') {
     timeRange.value = 'CUSTOM';
   } else {
-    // 如果已經是 CUSTOM，直接觸發篩選（因為 watch 不會觸發）
     filterData();
   }
 };
@@ -197,10 +222,7 @@ const filterData = () => {
     const startDateOnly = new Date(start); startDateOnly.setHours(0,0,0,0);
     const endDateOnly = new Date(end); endDateOnly.setHours(23,59,59,999);
 
-    // ✅ 修復 baseline 選擇邏輯
     let baseline = null;
-    
-    // 尋找區間開始前最近的數據點
     for (let i = fullHistory.length - 1; i >= 0; i--) {
         const itemDate = parseDate(fullHistory[i].date);
         if (itemDate < startDateOnly) {
@@ -208,21 +230,14 @@ const filterData = () => {
             break;
         }
     }
-    
-    // ✅ 如果找不到（例如 ALL 模式），使用第一個數據點
-    if (!baseline) {
-        baseline = fullHistory[0];
-    }
-    
+    if (!baseline) baseline = fullHistory[0];
     baselineData.value = baseline;
 
-    // ✅ 簡化築選邏輯
     displayedData.value = fullHistory.filter(d => {
         const itemDate = parseDate(d.date);
         const dayOfWeek = itemDate.getDay();
         return itemDate >= startDateOnly && itemDate <= endDateOnly && dayOfWeek !== 0 && dayOfWeek !== 6;
     });
-    
     drawChart();
 };
 
@@ -246,7 +261,6 @@ const drawChart = () => {
         pointBorderWidth: 2
     };
 
-    // ✅ 簡化數據合併邏輯
     const dataWithBaseline = displayedData.value[0]?.date === baselineData.value.date 
       ? displayedData.value 
       : [baselineData.value, ...displayedData.value];
@@ -260,7 +274,6 @@ const drawChart = () => {
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
-        
         datasets = [{
             label: '總資產',
             data: displayedData.value.map(d => d.total_value),
@@ -273,7 +286,6 @@ const drawChart = () => {
         const hasBreakdown = dataWithBaseline.every(d => d.realized_pnl !== undefined);
         const basePnl = baselineData.value.net_profit;
         const baseRealized = baselineData.value.realized_pnl || 0;
-        
         if (hasBreakdown) {
              datasets = [
                 {
@@ -300,7 +312,6 @@ const drawChart = () => {
             const gradient = ctx.createLinearGradient(0, 0, 0, 400);
             gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
             gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
-            
             datasets = [{
                 label: '淨損益',
                 data: dataWithBaseline.map(d => d.net_profit - basePnl),
@@ -313,7 +324,6 @@ const drawChart = () => {
     } else {
         const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
-        
         datasets = [
             {
                 label: '策略 TWR',
@@ -324,7 +334,7 @@ const drawChart = () => {
                 ...common
             },
             {
-                label: portfolioStore.selectedBenchmark,
+                label: publishedBenchmarkLegend.value,
                 data: dataWithBaseline.map(d => ((1 + d.benchmark_twr/100) / (1 + baseBenchmark/100) - 1) * 100),
                 borderColor: '#94a3b8',
                 borderWidth: 1.5,
@@ -342,9 +352,7 @@ const drawChart = () => {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            layout: {
-                padding: { left: 5, right: 80, top: 20, bottom: 0 }
-            },
+            layout: { padding: { left: 5, right: 80, top: 20, bottom: 0 } },
             plugins: {
                 legend: {
                     display: chartType.value === 'twr' || (chartType.value === 'pnl' && datasets.length > 1),
@@ -353,21 +361,15 @@ const drawChart = () => {
                     labels: { boxWidth: 10, padding: 10, font: { size: fontSize } }
                 },
                 tooltip: {
-                    mode: 'index',
-                    intersect: false,
+                    mode: 'index', intersect: false,
                     backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                    titleFont: { size: 13 },
-                    bodyFont: { size: 13 },
-                    padding: 10,
+                    titleFont: { size: 13 }, bodyFont: { size: 13 }, padding: 10,
                     callbacks: {
                         label: (context) => {
                             let label = context.dataset.label ? context.dataset.label + ': ' : '';
                             if (context.parsed.y !== null) {
-                                if (chartType.value === 'twr') {
-                                    label += (context.parsed.y > 0 ? '+' : '') + context.parsed.y.toFixed(2) + '%';
-                                } else {
-                                    label += Math.round(context.parsed.y).toLocaleString();
-                                }
+                                if (chartType.value === 'twr') label += (context.parsed.y > 0 ? '+' : '') + context.parsed.y.toFixed(2) + '%';
+                                else label += Math.round(context.parsed.y).toLocaleString();
                             }
                             return label;
                         },
@@ -375,9 +377,7 @@ const drawChart = () => {
                              if (chartType.value === 'pnl' && tooltipItems.length > 1) {
                                  const realized = tooltipItems.find(i => i.dataset.label === '已實現損益')?.parsed.y;
                                  const total = tooltipItems.find(i => i.dataset.label === '總淨損益')?.parsed.y;
-                                 if (realized !== undefined && total !== undefined) {
-                                     return `----------------\n未實現: ${Math.round(total - realized).toLocaleString()}`;
-                                 }
+                                 if (realized !== undefined && total !== undefined) return `----------------\n未實現: ${Math.round(total - realized).toLocaleString()}`;
                              }
                              return '';
                         }
@@ -385,15 +385,8 @@ const drawChart = () => {
                 }
             },
             scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: isMobile ? 5 : 10, font: { size: fontSize } }
-                },
-                y: {
-                    display: false,
-                    grid: { color: 'rgba(200, 200, 200, 0.1)' },
-                    grace: '5%'
-                }
+                x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: isMobile ? 5 : 10, font: { size: fontSize } } },
+                y: { display: false, grid: { color: 'rgba(200, 200, 200, 0.1)' }, grace: '5%' }
             },
             interaction: { mode: 'nearest', axis: 'x', intersect: false }
         },
@@ -406,17 +399,14 @@ const drawChart = () => {
                     if (!meta.hidden && dataset.data.length > 0) {
                         const lastPoint = meta.data[meta.data.length - 1];
                         const value = dataset.data[dataset.data.length - 1];
-                        
                         let displayValue;
-                        if (chartType.value === 'twr') {
-                            displayValue = (value > 0 ? '+' : '') + value.toFixed(2) + '%';
-                        } else {
+                        if (chartType.value === 'twr') displayValue = (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+                        else {
                             const absVal = Math.abs(value);
                             displayValue = absVal >= 1000000 ? (value > 0 ? '+' : '') + (value/1000000).toFixed(2) + 'M'
                                          : absVal >= 1000 ? (value > 0 ? '+' : '') + (value/1000).toFixed(1) + 'k'
                                          : Math.round(value).toLocaleString();
                         }
-                        
                         ctx.save();
                         ctx.font = `bold ${labelFontSize}px JetBrains Mono`;
                         ctx.fillStyle = dataset.borderColor;
@@ -431,7 +421,6 @@ const drawChart = () => {
     });
 };
 
-// ✅ 合併為單一 watch
 watch([chartType, timeRange], () => {
   if (timeRange.value === 'CUSTOM') {
     const { start, end } = getDateRange('CUSTOM');
@@ -450,18 +439,21 @@ watch(() => portfolioStore.selectedBenchmark, (newVal) => {
   benchmarkInput.value = newVal;
 });
 
+watch(() => portfolioStore.rawData?.benchmark_symbol, async () => {
+  if (chartType.value === 'twr') {
+    await nextTick();
+    filterData();
+  }
+});
+
 onMounted(async () => {
     await nextTick();
     filterData();
-    
     if (canvas.value && window.ResizeObserver) {
         resizeObserver = new ResizeObserver(() => {
             if (canvas.value && myChart && myChart.ctx?.canvas) {
-                try {
-                    myChart.resize();
-                } catch (e) {
-                    console.warn('Chart resize failed:', e);
-                }
+                try { myChart.resize(); }
+                catch (e) { console.warn('Chart resize failed:', e); }
             }
         });
         resizeObserver.observe(canvas.value.parentElement);
@@ -493,16 +485,21 @@ onUnmounted(() => {
 .toggle-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
 .toggle-pills button { border: none; background: transparent; padding: 6px 14px; font-size: 0.9rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; font-weight: 500; }
 .toggle-pills button.active { background: var(--bg-card); color: var(--primary); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-.controls-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.controls-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 .time-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
 .time-pills button { border: none; background: transparent; padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; }
 .time-pills button:hover { color: var(--text-main); }
 .time-pills button.active { background: var(--bg-card); color: var(--text-main); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-.right-controls { display: flex; gap: 10px; align-items: center; }
-.benchmark-selector { display: flex; align-items: center; gap: 6px; }
+.right-controls { display: flex; gap: 10px; align-items: flex-start; }
+.benchmark-selector { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 360px; }
+.benchmark-control-row { display: flex; align-items: center; gap: 6px; }
+.benchmark-status { font-size: 0.72rem; line-height: 1.35; text-align: right; color: var(--text-sub); }
+.benchmark-status.applied { color: var(--success); }
+.benchmark-status.pending { color: #d97706; }
+.benchmark-status.unknown { color: var(--text-sub); }
 .control-label { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); }
 .input-group-merged { display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; background: var(--bg-card); }
-.benchmark-input { border: none; padding: 4px 8px; width: 60px; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; text-transform: uppercase; background: transparent; color: var(--text-main); text-align: center; }
+.benchmark-input { border: none; padding: 4px 8px; width: 72px; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; text-transform: uppercase; background: transparent; color: var(--text-main); text-align: center; }
 .benchmark-input:focus { outline: none; background: var(--bg-secondary); }
 .btn-icon-apply { border: none; background: var(--bg-secondary); color: var(--success); cursor: pointer; padding: 0 8px; font-weight: bold; border-left: 1px solid var(--border-color); }
 .btn-icon-apply:disabled { color: var(--text-sub); cursor: not-allowed; }
@@ -522,7 +519,8 @@ onUnmounted(() => {
     .time-pills-scroll { width: 100%; }
     .time-pills { width: max-content; }
     .right-controls { width: 100%; justify-content: space-between; }
-    .benchmark-selector { flex: 1; }
+    .benchmark-selector { flex: 1; align-items: flex-start; max-width: none; }
+    .benchmark-status { text-align: left; }
     .benchmark-input { width: 100%; min-width: 0; }
     .date-range-selector { width: 100%; justify-content: space-between; }
     .date-input { width: auto; flex: 1; }
