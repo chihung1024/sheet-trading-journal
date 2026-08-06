@@ -69,7 +69,7 @@ test('browser persistence matches the reviewed inventory exactly', () => {
   }
 });
 
-test('global localStorage clearing remains a known isolated debt', () => {
+test('global localStorage clearing matches the reviewed debt baseline', () => {
   const baseline = JSON.parse(read(STORAGE_BASELINE_PATH));
   const owners = [];
 
@@ -80,7 +80,20 @@ test('global localStorage clearing remains a known isolated debt', () => {
   }
 
   assert.equal(owners.length, baseline.known_global_clear.count);
-  assert.deepEqual([...new Set(owners)], [baseline.known_global_clear.owner_path]);
+  if (baseline.known_global_clear.count === 0) {
+    assert.deepEqual(owners, []);
+    assert.equal(baseline.known_global_clear.owner_path, null);
+  } else {
+    assert.deepEqual([...new Set(owners)], [baseline.known_global_clear.owner_path]);
+  }
+});
+
+test('full transaction records are not written to browser storage', () => {
+  const portfolioStore = read(path.join(ROOT, 'src', 'stores', 'portfolio.js'));
+  assert.doesNotMatch(
+    portfolioStore,
+    /localStorage\.setItem\(\s*['"`]cached_records['"`]/,
+  );
 });
 
 test('browser code cannot use system-only authorization headers', () => {
