@@ -125,6 +125,37 @@ test('deadline expiry aborts the fetch and returns a typed timeout', async () =>
     assert.deepEqual(timers.cleared, [41]);
 });
 
+test('deadline remains active while the response handler consumes the body', async () => {
+    const timers = createManualTimers();
+    let receivedSignal = null;
+    let handlerStarted = false;
+    const pending = fetchWithDeadline('/api/test', {}, {
+        timeoutMs: 750,
+        fetchImpl: async (_input, init) => {
+            receivedSignal = init.signal;
+            return response({ payload: { success: true } });
+        },
+        responseHandler: async () => {
+            handlerStarted = true;
+            return new Promise(() => {});
+        },
+        setTimeoutImpl: timers.setTimeoutImpl,
+        clearTimeoutImpl: timers.clearTimeoutImpl,
+    });
+
+    await flushMicrotasks();
+    assert.equal(handlerStarted, true);
+    timers.fire();
+
+    await assert.rejects(pending, (error) => {
+        assert.equal(error instanceof RequestTimeoutError, true);
+        assert.equal(error.timeoutMs, 750);
+        return true;
+    });
+    assert.equal(receivedSignal.aborted, true);
+    assert.deepEqual(timers.cleared, [41]);
+});
+
 test('external abort is distinct, aborts the underlying fetch, and removes its listener', async () => {
     const timers = createManualTimers();
     const listeners = new Set();
@@ -209,6 +240,7 @@ test('deadline service rejects invalid configuration', async () => {
     await assert.rejects(fetchWithDeadline('/api/test', {}, { timeoutMs: 0 }), TypeError);
     await assert.rejects(fetchWithDeadline('/api/test', {}, { timeoutMs: Number.NaN }), TypeError);
     await assert.rejects(fetchWithDeadline('/api/test', {}, { fetchImpl: null }), TypeError);
+    await assert.rejects(fetchWithDeadline('/api/test', {}, { responseHandler: true }), TypeError);
     await assert.rejects(fetchWithDeadline('/api/test', {}, { setTimeoutImpl: null }), TypeError);
 });
 
@@ -294,7 +326,7 @@ test('only explicit HTTP/application rejections are classified as definite serve
     assert.equal(isExplicitServerRejection(new TypeError('network')), false);
 });
 
-test('portfolio store routes all API traffic through the bounded authenticated path', async () => {
+test('portfolio store routes all API traffic and body parsing through the bounded authenticated path', async () => {
     const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
     const fetchWithAuthStart = source.indexOf('const fetchWithAuth');
     const fetchWithAuthEnd = source.indexOf('const resetData');
@@ -307,6 +339,8 @@ test('portfolio store routes all API traffic through the bounded authenticated p
     assert.match(source, /from '\.\.\/services\/requestErrors'/);
     assert.match(fetchWithAuthBlock, /fetchWithDeadline\(/);
     assert.match(fetchWithAuthBlock, /DEFAULT_REQUEST_TIMEOUT_MS/);
+    assert.match(fetchWithAuthBlock, /responseHandler:\s*async \(response\)/);
+    assert.match(fetchWithAuthBlock, /response\.status === 401[\s\S]*?await readApiJson\(response, \{ endpoint \}\)/);
     assert.doesNotMatch(source, /\bfetch\s*\(/);
     assert.match(source, /fetchWithAuth\('\/api\/user-settings',\s*\{\s*method:\s*'POST'/s);
     assert.match(source, /fetchWithAuth\('\/api\/trigger-update',\s*\{\s*method:\s*'POST'/s);
