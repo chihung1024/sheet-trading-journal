@@ -302,20 +302,41 @@ test('API parser rejects application failures and malformed success payloads', a
     await assert.rejects(readApiJson(null), MalformedApiResponseError);
 });
 
-test('mutation timeout is marked outcome-ambiguous and formatted with refresh guidance', () => {
-    const mutationTimeout = markRequestOutcome(new RequestTimeoutError(30_000), 'POST');
+test('read timeout is definite local failure, but every non-explicit mutation failure is ambiguous', () => {
     const readTimeout = markRequestOutcome(new RequestTimeoutError(30_000), 'GET');
-
-    assert.equal(mutationTimeout.outcomeAmbiguous, true);
     assert.equal(readTimeout.outcomeAmbiguous, false);
-    assert.match(
-        formatRequestError(mutationTimeout, { action: '新增交易', method: 'POST' }),
-        /伺服器可能已完成操作.*重新整理確認結果.*重試/,
-    );
     assert.match(
         formatRequestError(readTimeout, { action: '載入資料', method: 'GET' }),
         /載入資料逾時/,
     );
+
+    const uncertainFailures = [
+        new RequestTimeoutError(30_000),
+        new RequestAbortedError({ reason: 'navigation' }),
+        new MalformedApiResponseError(),
+        new TypeError('network down'),
+        'non-Error rejection',
+        null,
+    ];
+    for (const failure of uncertainFailures) {
+        const contextual = markRequestOutcome(failure, 'POST');
+        assert.equal(contextual instanceof Error, true);
+        assert.equal(contextual.outcomeAmbiguous, true);
+        assert.match(
+            formatRequestError(contextual, { action: '新增交易', method: 'POST' }),
+            /新增交易結果不確定.*伺服器可能已完成操作.*重新整理確認結果.*重試/,
+        );
+    }
+});
+
+test('explicit HTTP/application rejection stays definite and keeps its server message', () => {
+    const httpError = markRequestOutcome(new ApiHttpError('Conflict', { status: 409 }), 'POST');
+    const applicationError = markRequestOutcome(new ApiApplicationError('Denied'), 'DELETE');
+
+    assert.equal(httpError.outcomeAmbiguous, false);
+    assert.equal(applicationError.outcomeAmbiguous, false);
+    assert.equal(formatRequestError(httpError, { action: '更新交易', method: 'POST' }), 'Conflict');
+    assert.equal(formatRequestError(applicationError, { action: '刪除交易', method: 'DELETE' }), 'Denied');
 });
 
 test('only explicit HTTP/application rejections are classified as definite server rejection', () => {
