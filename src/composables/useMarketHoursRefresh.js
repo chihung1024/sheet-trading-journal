@@ -303,6 +303,7 @@ export function useMarketHoursRefresh() {
     };
 
     const formattedTimeRemaining = () => {
+        if (!isPaused.value && !isLeader.value) return '其他分頁處理中';
         const minutes = Math.floor(timeRemaining.value / 60);
         const seconds = timeRemaining.value % 60;
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
