@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "main_branch": "main",
+  "allowed_deploy_environments": [
+    "development",
+    "test",
+    "preview",
+    "staging",
+    "production"
+  ],
+  "production": {
+    "api_origins": [
+      "https://journal-backend.chired.workers.dev"
+    ],
+    "google_client_ids": [
+      "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com"
+    ],
+    "frontend_origins": [
+      "https://sheet-trading-journal.pages.dev",
+      "https://chihung1024.github.io"
+    ]
+  },
+  "non_production": {
+    "allowed_deploy_environments": [
+      "preview",
+      "staging"
+    ],
+    "require_explicit_api_origin": true,
+    "require_explicit_google_client_id": true,
+    "require_https": true,
+    "forbid_localhost": true,
+    "forbid_production_api_origins": true,
+    "forbid_production_google_client_ids": true
+  }
+}
