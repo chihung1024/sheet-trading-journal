@@ -16,9 +16,11 @@
     "test:frontend": "node --test tests/frontend_*.test.mjs",
     "worker:config:check": "node tools/check_worker_config.mjs",
     "worker:config:render": "node tools/render_wrangler_config.mjs",
+    "worker:staging:config:render": "node tools/render_staging_wrangler_config.mjs",
     "worker:schema:test": "node tools/test_d1_schema.mjs",
     "worker:dev": "wrangler dev --config wrangler.toml",
     "worker:deploy": "wrangler deploy --config .wrangler/deploy.toml",
+    "worker:staging:deploy": "wrangler deploy --experimental-provision=false --experimental-auto-create=false --config .wrangler/staging.toml",
     "preview": "vite preview"
   },
   "dependencies": {

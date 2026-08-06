@@ -1,110 +1,155 @@
-# Frontend environment isolation
+# Environment isolation
 
 ## Scope
 
-This document governs the frontend side of B03. It prevents Cloudflare Pages branch and pull-request previews from silently using production services while staging infrastructure is created separately.
+This document governs B03 frontend and Worker environment separation.
 
-PR-10D1 does **not** create or mutate Cloudflare Worker, D1, Pages, secret, or Google OAuth resources. Those resources must exist before preview builds are made usable again.
-
-## Reviewed environments
-
-| Frontend environment | Pages branch | API | Google OAuth client |
-|---|---|---|---|
-| Production | `main` | Production Worker | Production web client |
-| Preview | Any non-`main` branch | Staging Worker only | Staging web client only |
-| Staging | Dedicated staging build | Staging Worker only | Staging web client only |
-| Development / test | Local or CI | Local/test as explicitly configured | Local/test client as needed |
+- PR-10D1 prevents unconfigured non-main Pages builds from silently using production services.
+- PR-10D2 adds a fail-closed staging Worker/D1 deployment contract.
+- Neither batch claims that the external staging resources already exist.
 
 The machine-readable source of truth is `config/deployment-environments.json`.
 
-## Build-time policy
+## Reviewed environments
 
-The same policy is invoked in two paths:
+| Environment | Pages branch/origin | Worker | D1 | OAuth |
+|---|---|---|---|---|
+| Production | `main` / `https://sheet-trading-journal.pages.dev` | `journal-backend` | Production D1 | Production web client |
+| Staging | `staging` / `https://staging.sheet-trading-journal.pages.dev` | `journal-backend-staging` | `trading-journal-staging` | Dedicated staging web client |
+| Development/test | Local or CI | Local/test | Local/test | Local/test client as needed |
 
-1. `npm run build` runs `prebuild`, which calls `tools/check_frontend_environment.mjs`.
-2. `vite.config.js` invokes `validateFrontendEnvironment(process.env)` for every Vite build, including direct `vite build` calls.
+Arbitrary pull-request and feature-branch Pages deployments remain disabled. A fixed hostname is required so the Google web OAuth client and Worker CORS policy can use an exact reviewed origin.
 
-For a Cloudflare Pages non-`main` branch, all of the following are mandatory:
+## Frontend build-time policy
 
-- `VITE_DEPLOY_ENV` is `preview` or `staging`.
-- `VITE_API_URL` is an HTTPS origin only.
-- `VITE_API_URL` is not the production Worker origin.
-- `VITE_API_URL` has no path, query, fragment, trailing slash, credentials, or localhost host.
-- `VITE_GOOGLE_CLIENT_ID` is a valid Google web OAuth client ID.
-- `VITE_GOOGLE_CLIENT_ID` is not the production OAuth client.
+The same policy runs through:
 
-A missing or invalid value terminates the build. This is intentional: an unavailable preview is safer than a preview that can read or mutate production data.
+1. `npm run build` → `prebuild` → `tools/check_frontend_environment.mjs`.
+2. `vite.config.js`, including direct `vite build` calls.
 
-## External staging prerequisites
-
-Before setting Preview variables in Cloudflare Pages, create all of these as independent resources:
-
-1. A staging Worker with a distinct service name.
-2. A staging D1 database with no production tenant records.
-3. Staging-only Worker secrets and service credentials.
-4. A separate Google OAuth web client.
-5. Exact preview/staging authorized JavaScript origins for that client.
-6. A staging test account containing synthetic records only.
-
-Do not copy production D1 data or production secrets into staging.
-
-## Cloudflare Pages Preview variables
-
-Set the following in the **Preview** environment, not the Production environment:
+The fixed `staging` Pages branch requires all of these:
 
 ```text
-VITE_DEPLOY_ENV=preview
-VITE_API_URL=https://<staging-worker-origin>
-VITE_GOOGLE_CLIENT_ID=<staging-google-web-client-id>
+VITE_DEPLOY_ENV=staging
+VITE_API_URL=https://journal-backend-staging.chired.workers.dev
+VITE_GOOGLE_CLIENT_ID=<dedicated-staging-google-web-client-id>
 ```
 
-Use `.env.preview.example` only as a shape reference. Do not commit actual staging secrets. Google OAuth client IDs are public identifiers, but environment separation still requires different clients.
+The API must be the exact reviewed HTTPS origin. The OAuth client must be syntactically valid and different from production. Missing values, production values, localhost, another Worker, URL paths, trailing slashes, queries, fragments, credentials, unsupported environments, and arbitrary Pages branches fail the build.
 
-## Production compatibility window
+Use `.env.staging.example` as the shape reference. `.env.preview.example` documents that arbitrary previews are intentionally disabled.
 
-During PR-10D1, `main` Pages builds may continue using the existing reviewed production fallback when no production Vite variables are supplied. This exception exists only to avoid interrupting the current production site before Cloudflare Pages production variables are confirmed.
+## Staging Worker runtime boundary
 
-A later B03 sub-batch must:
+`staging-worker.js` wraps the canonical `worker.js`. Before delegation it requires:
 
-- make production values explicit;
-- deploy and verify the staging Worker and D1;
-- point previews to staging;
-- remove permissive production Worker origin defaults;
-- restrict production CORS and OAuth origins to exact production origins.
+- `DEPLOYMENT_ENVIRONMENT=staging`;
+- exactly one allowed origin: `https://staging.sheet-trading-journal.pages.dev`;
+- a dedicated non-production Google OAuth client;
+- an `API_SECRET` between 32 and 4096 characters;
+- no `GITHUB_TOKEN` binding.
 
-## Deterministic verification
+The wrapper rejects production, GitHub Pages, localhost, and arbitrary `*.pages.dev` origins even though the production Worker retains its compatibility defaults during the rollout. All delegated responses carry:
 
-Run:
+```text
+X-Deployment-Environment: staging
+X-Worker-Service: journal-backend-staging
+```
+
+A staging Worker cannot dispatch the production calculation workflow. A separate staging compute path is required before calculation testing is enabled.
+
+## External prerequisites
+
+Create these outside the repository before running the staging workflow:
+
+1. Cloudflare D1 database named `trading-journal-staging`, containing no production tenant data.
+2. Dedicated Google web OAuth client with authorized JavaScript origin:
+   `https://staging.sheet-trading-journal.pages.dev`.
+3. GitHub environment named `staging`, preferably with required reviewer protection.
+4. Environment-scoped values:
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+   - `CLOUDFLARE_D1_DATABASE_ID`
+   - `CLOUDFLARE_D1_DATABASE_NAME=trading-journal-staging`
+   - `STAGING_API_SECRET`
+   - `STAGING_GOOGLE_CLIENT_ID`
+5. Cloudflare Pages branch-specific variables for the `staging` branch using `.env.staging.example`.
+6. A staging test account with synthetic records only.
+
+Do not copy production D1 data, production API secrets, production OAuth credentials, or production dispatch tokens into staging.
+
+## Protected staging deployment workflow
+
+`.github/workflows/deploy-worker-staging.yml` is manual only. It requires:
+
+- an exact 40-character source SHA reachable from `main`;
+- `confirm_environment=staging`;
+- GitHub environment `staging`;
+- read-only repository permissions;
+- SHA-pinned actions and disabled checkout credential persistence;
+- fixed staging resource identities;
+- automatic Cloudflare resource provisioning disabled.
+
+The workflow:
+
+1. Verifies confirmation and source ancestry.
+2. Runs Worker, config, migration, and supply-chain gates.
+3. Renders `.wrangler/staging.toml` from the sentinel template.
+4. Dry-runs the exact staging bundle.
+5. Applies migrations only to the configured staging D1 binding.
+6. Installs the dedicated staging `API_SECRET`.
+7. Deploys `journal-backend-staging`.
+8. Polls `/api/version` and `/api/health` until exact source, release, API, schema, Worker version, staging environment header, and staging service header all match.
+
+The workflow is not run by PR CI and must not be triggered until the external prerequisites are independently verified.
+
+## Deterministic repository verification
 
 ```bash
 npm run test:frontend
+npm run test:worker
+npm run worker:config:check
 npm run build
 ```
 
-To simulate a valid preview build:
+To simulate the reviewed staging frontend:
 
 ```bash
 CF_PAGES=1 \
-CF_PAGES_BRANCH=feature/example \
-VITE_DEPLOY_ENV=preview \
-VITE_API_URL=https://staging-worker.example.workers.dev \
+CF_PAGES_BRANCH=staging \
+VITE_DEPLOY_ENV=staging \
+VITE_API_URL=https://journal-backend-staging.chired.workers.dev \
 VITE_GOOGLE_CLIENT_ID=123456789012-stagingclient.apps.googleusercontent.com \
 npm run environment:check
 ```
 
-To verify fail-closed behavior, replace either staging value with the production value. The command must exit non-zero.
+To verify fail-closed behavior, change the branch, API, or OAuth client to a production value. The command must exit non-zero.
 
 ## Staging smoke test after provisioning
 
-Use synthetic data only and verify:
+Use synthetic data only:
 
-1. Preview login succeeds with the staging OAuth client.
-2. `/api/version` and `/api/health` identify the staging Worker.
-3. Creating, updating, and deleting a synthetic record affects staging D1 only.
-4. Triggering a calculation cannot create a production calculation job.
-5. Browser network requests contain no production Worker origin.
-6. The production Worker rejects the preview origin after the later CORS cutover.
+1. Confirm the staging Pages build uses no production Worker URL.
+2. Log in with the staging OAuth client.
+3. Verify `/api/version` and `/api/health` staging identity headers.
+4. Create, update, list, and delete a synthetic record.
+5. Confirm only staging D1 changed.
+6. Confirm `/api/trigger-update` returns unavailable because no staging dispatch token exists.
+7. Confirm production and arbitrary preview origins receive CORS rejection from staging.
+8. Confirm production Worker and D1 were unchanged.
+
+## Production compatibility window
+
+Production Pages may continue using the existing reviewed fallback when production Vite variables are absent. Production Worker CORS defaults are also unchanged in PR-10D2.
+
+Remaining B03 work:
+
+- create and smoke-test the external staging resources;
+- set exact Pages `staging` branch variables;
+- make production frontend values explicit;
+- restrict production CORS/OAuth origins after verified staging cutover;
+- add a separate staging compute path only if calculation testing is required.
 
 ## Rollback
 
-Revert the PR-10D1 merge to remove the repository guard. No Worker, D1, OAuth, record, snapshot, or financial-data rollback is involved.
+Revert the B03 repository merges. If the staging workflow has never been invoked, no cloud or data rollback is needed. If it has been invoked, delete only the staging Worker/D1/OAuth resources after preserving any required synthetic test evidence; never alter production resources as part of staging rollback.

@@ -1,14 +1,14 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "main_branch": "main",
   "allowed_deploy_environments": [
     "development",
     "test",
-    "preview",
     "staging",
     "production"
   ],
   "production": {
+    "worker_service": "journal-backend",
     "api_origins": [
       "https://journal-backend.chired.workers.dev"
     ],
@@ -20,9 +20,16 @@
       "https://chihung1024.github.io"
     ]
   },
+  "staging": {
+    "pages_branch": "staging",
+    "frontend_origin": "https://staging.sheet-trading-journal.pages.dev",
+    "worker_service": "journal-backend-staging",
+    "api_origin": "https://journal-backend-staging.chired.workers.dev",
+    "d1_database_name": "trading-journal-staging",
+    "github_environment": "staging"
+  },
   "non_production": {
     "allowed_deploy_environments": [
-      "preview",
       "staging"
     ],
     "require_explicit_api_origin": true,
