@@ -1,6 +1,7 @@
 import pandas as pd
 import yfinance as yf
 import concurrent.futures
+import math
 import pytz
 from datetime import datetime, timedelta
 from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
@@ -16,7 +17,7 @@ class MarketDataClient:
         """
         try:
             r = float(rate)
-            if r <= 0:
+            if not math.isfinite(r) or r <= 0:
                 return DEFAULT_FX_RATE
             return (1.0 / r) if r < 1.0 else r
         except Exception:
