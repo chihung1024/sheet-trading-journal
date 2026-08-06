@@ -69,13 +69,15 @@ test('staging renderer produces the exact isolated Worker configuration and dry-
   }
 });
 
-test('staging renderer rejects sentinel, production, malformed, and cross-environment values', () => {
+test('staging renderer rejects sentinel, production, malformed, cross-environment, and unsafe output values', () => {
   const invalidCases = [
     { CLOUDFLARE_D1_DATABASE_ID: '00000000-0000-0000-0000-000000000000' },
     { CLOUDFLARE_D1_DATABASE_NAME: 'trading-journal-production' },
     { STAGING_GOOGLE_CLIENT_ID: PRODUCTION_CLIENT_ID },
     { STAGING_GOOGLE_CLIENT_ID: 'not-a-client' },
     { SOURCE_COMMIT: 'abcdef0' },
+    { WRANGLER_STAGING_OUTPUT: resolve('ops/staging/rendered.toml') },
+    { WRANGLER_STAGING_OUTPUT: resolve('wrangler.staging.toml') },
   ];
   for (const overrides of invalidCases) {
     const result = render(overrides);
