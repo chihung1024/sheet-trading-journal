@@ -77,7 +77,7 @@ test('staging renderer produces the exact isolated Worker configuration and work
   }
 });
 
-test('pinned Wrangler exposes the secret inventory JSON interface used by staging workflow', () => {
+test('pinned Wrangler exposes the secret inventory format interface used by staging workflow', () => {
   const result = spawnSync(
     NPX,
     ['wrangler', 'secret', 'list', '--help'],
@@ -85,7 +85,8 @@ test('pinned Wrangler exposes the secret inventory JSON interface used by stagin
   );
   const output = `${result.stdout}\n${result.stderr}`;
   assert.equal(result.status, 0, output);
-  assert.match(output, /--json/);
+  assert.match(output, /--format/);
+  assert.match(output, /"json"/);
   assert.match(output, /--config/);
 });
 
