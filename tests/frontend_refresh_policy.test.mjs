@@ -181,3 +181,13 @@ test('stale leadership sync results are invalidated across token and lifecycle c
   assert.match(source, /requestedToken !== authStore\.token/);
   assert.match(source, /if \(newToken !== previousToken\) stopLeadership\(\)/);
 });
+
+test('follower tabs show distributed ownership instead of a false zero countdown', () => {
+  const source = readComposable();
+  const formattedBlock = sourceBlock(source, 'const formattedTimeRemaining', 'const togglePause');
+  assert.match(formattedBlock, /if \(!isPaused\.value && !isLeader\.value\) return '其他分頁處理中';/);
+  assert.ok(
+    formattedBlock.indexOf("return '其他分頁處理中'") < formattedBlock.indexOf('Math.floor'),
+    'Follower status must be decided before countdown formatting',
+  );
+});
