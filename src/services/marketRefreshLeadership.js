@@ -171,18 +171,20 @@ export const createMarketRefreshLeadership = ({
         }
     };
 
-    const readCurrent = () => {
+    const readAt = (key) => {
+        if (!key) return { kind: 'invalid', record: null };
         try {
-            return parseLeaseRecord(targetStorage.getItem(storageKey));
+            return parseLeaseRecord(targetStorage.getItem(key));
         } catch (error) {
             safeLogger.error?.('[Market refresh leadership] storage read failed', error);
             return { kind: 'invalid', record: null };
         }
     };
 
-    const writeCurrent = (record) => {
+    const writeAt = (key, record) => {
+        if (!key) return false;
         try {
-            targetStorage.setItem(storageKey, serializeRecord(record));
+            targetStorage.setItem(key, serializeRecord(record));
             return true;
         } catch (error) {
             safeLogger.error?.('[Market refresh leadership] storage write failed', error);
@@ -198,15 +200,22 @@ export const createMarketRefreshLeadership = ({
         return run;
     };
 
+    const isCurrentInvocation = (observedEpoch, observedKey) => (
+        started
+        && observedEpoch === lifecycleEpoch
+        && observedKey !== null
+        && observedKey === storageKey
+    );
+
     const loseLeadership = () => {
         currentLeaseId = null;
         setLeader(false);
     };
 
-    const acquire = async (observedEpoch) => {
-        if (!started || observedEpoch !== lifecycleEpoch || !storageKey) return false;
+    const acquire = async (observedEpoch, observedKey) => {
+        if (!isCurrentInvocation(observedEpoch, observedKey)) return false;
 
-        const state = readCurrent();
+        const state = readAt(observedKey);
         if (state.kind === 'invalid') {
             loseLeadership();
             return false;
@@ -234,18 +243,18 @@ export const createMarketRefreshLeadership = ({
             lastActionAt: existing?.lastActionAt ?? null,
             actionClaimId: existing?.actionClaimId ?? null,
         };
-        if (!writeCurrent(candidate)) {
+        if (!writeAt(observedKey, candidate)) {
             loseLeadership();
             return false;
         }
 
         await delay(settleMs);
-        if (!started || observedEpoch !== lifecycleEpoch || storageKey === null) {
+        if (!isCurrentInvocation(observedEpoch, observedKey)) {
             loseLeadership();
             return false;
         }
 
-        const confirmation = readCurrent();
+        const confirmation = readAt(observedKey);
         const confirmed = confirmation.kind === 'valid'
             && confirmation.record?.ownerId === ownerId
             && confirmation.record?.leaseId === candidateLeaseId
@@ -255,10 +264,14 @@ export const createMarketRefreshLeadership = ({
         return confirmed;
     };
 
-    const renew = async (observedEpoch) => {
-        if (!started || observedEpoch !== lifecycleEpoch || !leader || !currentLeaseId) return false;
+    const renew = async (observedEpoch, observedKey) => {
+        if (
+            !isCurrentInvocation(observedEpoch, observedKey)
+            || !leader
+            || !currentLeaseId
+        ) return false;
 
-        const state = readCurrent();
+        const state = readAt(observedKey);
         const record = state.kind === 'valid' ? state.record : null;
         if (
             !record
@@ -267,19 +280,19 @@ export const createMarketRefreshLeadership = ({
             || record.expiresAt <= now()
         ) {
             loseLeadership();
-            return acquire(observedEpoch);
+            return acquire(observedEpoch, observedKey);
         }
 
         const renewed = {
             ...record,
             expiresAt: now() + leaseTtlMs,
         };
-        if (!writeCurrent(renewed)) {
+        if (!writeAt(observedKey, renewed)) {
             loseLeadership();
             return false;
         }
 
-        const confirmation = readCurrent();
+        const confirmation = readAt(observedKey);
         const confirmed = confirmation.kind === 'valid'
             && confirmation.record?.ownerId === ownerId
             && confirmation.record?.leaseId === currentLeaseId
@@ -289,12 +302,16 @@ export const createMarketRefreshLeadership = ({
         return confirmed;
     };
 
-    const runElection = () => enqueue(async () => {
+    const runElection = () => {
         const observedEpoch = lifecycleEpoch;
-        return leader
-            ? renew(observedEpoch)
-            : acquire(observedEpoch);
-    });
+        const observedKey = storageKey;
+        return enqueue(async () => {
+            if (!isCurrentInvocation(observedEpoch, observedKey)) return false;
+            return leader
+                ? renew(observedEpoch, observedKey)
+                : acquire(observedEpoch, observedKey);
+        });
+    };
 
     const handleStorage = (event) => {
         if (started && event?.key === storageKey) void runElection();
@@ -325,12 +342,12 @@ export const createMarketRefreshLeadership = ({
         monitorTimer = null;
     };
 
-    const releaseOwnLease = () => {
-        if (!storageKey) return;
-        const state = readCurrent();
+    const releaseOwnLease = (key) => {
+        if (!key) return;
+        const state = readAt(key);
         const record = state.kind === 'valid' ? state.record : null;
         if (!record || record.ownerId !== ownerId) return;
-        writeCurrent({
+        writeAt(key, {
             version: MARKET_REFRESH_LEASE_VERSION,
             ownerId: null,
             leaseId: null,
@@ -341,11 +358,12 @@ export const createMarketRefreshLeadership = ({
     };
 
     const stop = () => {
+        const previousKey = storageKey;
         lifecycleEpoch += 1;
         started = false;
         stopMonitor();
         detachListener();
-        releaseOwnLease();
+        releaseOwnLease(previousKey);
         storageKey = null;
         currentLeaseId = null;
         setLeader(false);
@@ -377,59 +395,62 @@ export const createMarketRefreshLeadership = ({
         return runElection();
     };
 
-    const claimAutomaticAction = (minimumIntervalMs) => enqueue(async () => {
+    const claimAutomaticAction = (minimumIntervalMs) => {
         const observedEpoch = lifecycleEpoch;
-        if (
-            !started
-            || !leader
-            || !currentLeaseId
-            || !Number.isFinite(minimumIntervalMs)
-            || minimumIntervalMs < 0
-        ) return false;
+        const observedKey = storageKey;
+        return enqueue(async () => {
+            if (
+                !isCurrentInvocation(observedEpoch, observedKey)
+                || !leader
+                || !currentLeaseId
+                || !Number.isFinite(minimumIntervalMs)
+                || minimumIntervalMs < 0
+            ) return false;
 
-        const state = readCurrent();
-        const record = state.kind === 'valid' ? state.record : null;
-        const currentTime = now();
-        if (
-            !record
-            || record.ownerId !== ownerId
-            || record.leaseId !== currentLeaseId
-            || record.expiresAt <= currentTime
-        ) {
-            loseLeadership();
-            return false;
-        }
-        if (
-            record.lastActionAt !== null
-            && currentTime - record.lastActionAt < minimumIntervalMs
-        ) return false;
+            const state = readAt(observedKey);
+            const record = state.kind === 'valid' ? state.record : null;
+            const currentTime = now();
+            if (
+                !record
+                || record.ownerId !== ownerId
+                || record.leaseId !== currentLeaseId
+                || record.expiresAt <= currentTime
+            ) {
+                loseLeadership();
+                return false;
+            }
+            if (
+                record.lastActionAt !== null
+                && currentTime - record.lastActionAt < minimumIntervalMs
+            ) return false;
 
-        const actionClaimId = randomId();
-        if (!isNonEmptyString(actionClaimId)) return false;
-        const claimed = {
-            ...record,
-            expiresAt: currentTime + leaseTtlMs,
-            lastActionAt: currentTime,
-            actionClaimId,
-        };
-        if (!writeCurrent(claimed)) {
-            loseLeadership();
-            return false;
-        }
+            const actionClaimId = randomId();
+            if (!isNonEmptyString(actionClaimId)) return false;
+            const claimed = {
+                ...record,
+                expiresAt: currentTime + leaseTtlMs,
+                lastActionAt: currentTime,
+                actionClaimId,
+            };
+            if (!writeAt(observedKey, claimed)) {
+                loseLeadership();
+                return false;
+            }
 
-        await delay(settleMs);
-        if (!started || observedEpoch !== lifecycleEpoch || !leader) return false;
+            await delay(settleMs);
+            if (!isCurrentInvocation(observedEpoch, observedKey) || !leader) return false;
 
-        const confirmation = readCurrent();
-        const confirmed = confirmation.kind === 'valid'
-            && confirmation.record?.ownerId === ownerId
-            && confirmation.record?.leaseId === currentLeaseId
-            && confirmation.record?.actionClaimId === actionClaimId
-            && confirmation.record?.lastActionAt === currentTime
-            && confirmation.record.expiresAt > now();
-        if (!confirmed) loseLeadership();
-        return confirmed;
-    });
+            const confirmation = readAt(observedKey);
+            const confirmed = confirmation.kind === 'valid'
+                && confirmation.record?.ownerId === ownerId
+                && confirmation.record?.leaseId === currentLeaseId
+                && confirmation.record?.actionClaimId === actionClaimId
+                && confirmation.record?.lastActionAt === currentTime
+                && confirmation.record.expiresAt > now();
+            if (!confirmed) loseLeadership();
+            return confirmed;
+        });
+    };
 
     return {
         start,
