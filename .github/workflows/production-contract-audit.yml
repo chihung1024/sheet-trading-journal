@@ -1,0 +1,83 @@
+name: Production Contract Audit
+
+on:
+  pull_request:
+    paths:
+      - 'tools/verify_production_contract.mjs'
+      - 'tests/test_production_contract_audit.mjs'
+      - '.github/workflows/production-contract-audit.yml'
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed source commit
+        required: true
+        type: string
+      expected_release:
+        description: Expected Worker release version
+        required: true
+        type: string
+      expected_api:
+        description: Expected API version
+        required: true
+        type: string
+      expected_schema:
+        description: Expected D1 schema version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Verify audit implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: node --test tests/test_production_contract_audit.mjs
+
+  production:
+    name: Audit exact production contract
+    if: github.event_name == 'workflow_dispatch'
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.expected_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Validate requested SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor HEAD refs/remotes/origin/main
+      - name: Run sanitized production audit
+        env:
+          WORKER_BASE_URL: https://journal-backend.chired.workers.dev
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          EXPECTED_RELEASE_VERSION: ${{ inputs.expected_release }}
+          EXPECTED_API_VERSION: ${{ inputs.expected_api }}
+          EXPECTED_SCHEMA_VERSION: ${{ inputs.expected_schema }}
+          API_KEY: ${{ secrets.API_KEY }}
+          AUDIT_OUTPUT: production-contract-audit.json
+        run: node tools/verify_production_contract.mjs
+      - name: Upload sanitized audit evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-contract-audit-${{ inputs.expected_sha }}
+          path: production-contract-audit.json
+          if-no-files-found: error
+          retention-days: 30
