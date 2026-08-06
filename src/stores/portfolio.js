@@ -8,6 +8,11 @@ import {
     readPendingCalculationRequest as readStoredCalculationRequest,
     rememberPendingCalculationRequest as rememberStoredCalculationRequest,
 } from '../services/calculationJobState';
+import {
+    buildRecordsPageEndpoint,
+    fetchAllRecordPages,
+} from '../services/recordPagination';
+import { clearLegacyRecordCache } from '../services/projectStorage';
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -75,7 +80,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         rawData.value = null;
         records.value = [];
         lastUpdate.value = '';
-        localStorage.removeItem('cached_records');
+        clearLegacyRecordCache(localStorage);
     };
 
     const fetchSnapshot = async () => {
@@ -100,12 +105,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     const fetchRecords = async () => {
         try {
-            const json = await fetchWithAuth('/api/records');
-            if (json && json.success) {
-                records.value = json.data || [];
-                localStorage.setItem('cached_records', JSON.stringify(records.value));
-                if (records.value.length === 0) resetData();
-            }
+            const allRecords = await fetchAllRecordPages(async ({ limit, cursor }) => {
+                const endpoint = buildRecordsPageEndpoint({ limit, cursor });
+                return fetchWithAuth(endpoint);
+            });
+            records.value = allRecords;
+            clearLegacyRecordCache(localStorage);
+            if (records.value.length === 0) resetData();
         } catch (error) {
             console.error('fetchRecords error:', error);
             throw error;
@@ -205,6 +211,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const fetchAll = async () => {
         if (loading.value) return;
         resumePendingCalculationJob();
+        clearLegacyRecordCache(localStorage);
         loading.value = true;
         try {
             await fetchRecords();

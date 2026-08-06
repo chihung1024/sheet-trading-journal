@@ -1,17 +1,17 @@
 {
   "schema_version": 1,
-  "baseline_sha": "9eff93e7c997f4343a8360121655d5c686effe8b",
+  "baseline_sha": "c5b608bbbde1c13105f9dcb7d5ae8f789b9f4bae",
   "review_date": "2026-08-06",
   "purpose": "Inventory current browser persistence so new keys cannot be introduced silently. Presence in this baseline is not a declaration that a key is safe.",
   "keys": [
     {
       "key": "cached_records",
-      "classification": "financial-sensitive",
+      "classification": "legacy-financial-sensitive-cleanup-key",
       "authoritative": false,
       "risk_ids": ["RISK-009"],
       "target_batch": "B02",
-      "planned_action": "remove",
-      "owner_paths": ["src/stores/portfolio.js"]
+      "planned_action": "cleanup-only-no-write",
+      "owner_paths": ["src/services/projectStorage.js"]
     },
     {
       "key": "confirmed_dividend_keys",
@@ -20,7 +20,7 @@
       "risk_ids": ["RISK-012"],
       "target_batch": "B11",
       "planned_action": "replace-with-server-ledger",
-      "owner_paths": ["src/components/DividendManager.vue"]
+      "owner_paths": ["src/components/DividendManager.vue", "src/services/projectStorage.js"]
     },
     {
       "key": "email",
@@ -29,7 +29,7 @@
       "risk_ids": ["RISK-025", "RISK-026"],
       "target_batch": "B05",
       "planned_action": "replace-with-session-profile",
-      "owner_paths": ["src/stores/auth.js"]
+      "owner_paths": ["src/stores/auth.js", "src/services/projectStorage.js"]
     },
     {
       "key": "name",
@@ -38,7 +38,7 @@
       "risk_ids": ["RISK-025"],
       "target_batch": "B05",
       "planned_action": "replace-with-session-profile",
-      "owner_paths": ["src/stores/auth.js"]
+      "owner_paths": ["src/stores/auth.js", "src/services/projectStorage.js"]
     },
     {
       "key": "pending_calculation_request",
@@ -47,7 +47,7 @@
       "risk_ids": ["RISK-020", "RISK-038"],
       "target_batch": "B07",
       "planned_action": "retain-only-as-opaque-tenant-bound-hint",
-      "owner_paths": ["src/services/calculationJobState.js", "src/stores/portfolio.js"]
+      "owner_paths": ["src/services/calculationJobState.js", "src/services/projectStorage.js", "src/stores/portfolio.js"]
     },
     {
       "key": "sheet_trading_journal.activeView",
@@ -74,7 +74,7 @@
       "risk_ids": ["RISK-025", "RISK-050"],
       "target_batch": "B05",
       "planned_action": "replace-with-http-only-session",
-      "owner_paths": ["src/stores/auth.js"]
+      "owner_paths": ["src/stores/auth.js", "src/services/projectStorage.js"]
     },
     {
       "key": "user_benchmark",
@@ -83,14 +83,14 @@
       "risk_ids": ["RISK-041"],
       "target_batch": "B02",
       "planned_action": "treat-as-pending-cache-only",
-      "owner_paths": ["src/stores/portfolio.js"]
+      "owner_paths": ["src/stores/portfolio.js", "src/services/projectStorage.js"]
     }
   ],
   "known_global_clear": {
-    "count": 1,
-    "owner_path": "src/stores/auth.js",
+    "count": 0,
+    "owner_path": null,
     "risk_ids": ["RISK-025"],
     "target_batch": "B02",
-    "planned_action": "replace-with-project-key-removal"
+    "planned_action": "removed-in-pr10c1"
   }
 }

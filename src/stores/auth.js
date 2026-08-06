@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { CONFIG } from '../config';
+import { clearSensitiveProjectStorage } from '../services/projectStorage';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref('');
@@ -95,11 +96,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  // 登出
+  // 登出：只清除本專案的敏感／租戶綁定狀態，保留主題等非敏感偏好。
   const logout = () => {
     token.value = '';
-    user.value = {};
-    localStorage.clear();
+    user.value = { name: '', email: '' };
+    try {
+      clearSensitiveProjectStorage(localStorage);
+    } catch (error) {
+      console.warn('⚠️ 部分本機專案狀態清除失敗:', error);
+    }
     console.log('✅ 已登出');
     location.reload();
   };
