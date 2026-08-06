@@ -40,12 +40,16 @@ export const createTokenRefreshMonitor = ({
     const safeLogger = normalizeLogger(logger);
     let timerId = null;
     let checkPromise = null;
+    let lifecycleEpoch = 0;
 
     const checkAndRefresh = () => {
         if (checkPromise) return checkPromise;
 
+        const observedEpoch = lifecycleEpoch;
         let trackedPromise;
         const operation = Promise.resolve().then(async () => {
+            if (observedEpoch !== lifecycleEpoch) return false;
+
             const observedToken = getToken();
             if (!observedToken) return false;
 
@@ -55,10 +59,13 @@ export const createTokenRefreshMonitor = ({
                     `[Token refresh] Token remaining: ${Math.floor(secondsRemaining / 60)} minutes`,
                 );
                 if (secondsRemaining < refreshThresholdSeconds) {
-                    if (getToken() !== observedToken) return false;
+                    if (
+                        observedEpoch !== lifecycleEpoch
+                        || getToken() !== observedToken
+                    ) return false;
                     return (await refreshToken()) === true;
                 }
-                return true;
+                return observedEpoch === lifecycleEpoch;
             } catch (error) {
                 safeLogger.error?.('[Token refresh] Token check failed', error);
                 return false;
@@ -74,6 +81,7 @@ export const createTokenRefreshMonitor = ({
 
     const start = () => {
         if (timerId !== null || !getToken()) return false;
+        lifecycleEpoch += 1;
         timerId = setIntervalImpl(() => {
             void checkAndRefresh();
         }, checkIntervalMs);
@@ -82,10 +90,13 @@ export const createTokenRefreshMonitor = ({
     };
 
     const stop = () => {
-        if (timerId === null) return false;
-        clearIntervalImpl(timerId);
-        timerId = null;
-        return true;
+        const wasRunning = timerId !== null;
+        lifecycleEpoch += 1;
+        if (wasRunning) {
+            clearIntervalImpl(timerId);
+            timerId = null;
+        }
+        return wasRunning;
     };
 
     const syncToken = (token) => {
