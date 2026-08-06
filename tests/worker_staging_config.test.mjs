@@ -12,6 +12,7 @@ const STAGING_CLIENT_ID = '123456789012-stagingclient.apps.googleusercontent.com
 const PRODUCTION_CLIENT_ID =
   '951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com';
 const TEST_OUTPUT = resolve('.wrangler/pr10d2a-staging-render-test.toml');
+const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 function render(overrides = {}) {
   return spawnSync(process.execPath, ['tools/render_staging_wrangler_config.mjs'], {
@@ -29,7 +30,7 @@ function render(overrides = {}) {
   });
 }
 
-test('staging renderer produces the exact isolated Worker configuration and dry-runs', async () => {
+test('staging renderer produces the exact isolated Worker configuration and workflow-equivalent dry-run', async () => {
   await rm(TEST_OUTPUT, { force: true });
   try {
     const result = render();
@@ -57,16 +58,35 @@ test('staging renderer produces the exact isolated Worker configuration and dry-
     );
     assert.equal(resolve(dirname(TEST_OUTPUT), '../migrations'), resolve('migrations'));
 
-    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
     const dryRun = spawnSync(
-      npx,
-      ['wrangler', 'deploy', '--dry-run', '--config', TEST_OUTPUT],
+      NPX,
+      [
+        'wrangler',
+        'deploy',
+        '--dry-run',
+        '--experimental-provision=false',
+        '--experimental-auto-create=false',
+        '--config',
+        TEST_OUTPUT,
+      ],
       { cwd: process.cwd(), encoding: 'utf8' },
     );
     assert.equal(dryRun.status, 0, `${dryRun.stdout}\n${dryRun.stderr}`);
   } finally {
     await rm(TEST_OUTPUT, { force: true });
   }
+});
+
+test('pinned Wrangler exposes the secret inventory JSON interface used by staging workflow', () => {
+  const result = spawnSync(
+    NPX,
+    ['wrangler', 'secret', 'list', '--help'],
+    { cwd: process.cwd(), encoding: 'utf8' },
+  );
+  const output = `${result.stdout}\n${result.stderr}`;
+  assert.equal(result.status, 0, output);
+  assert.match(output, /--json/);
+  assert.match(output, /--config/);
 });
 
 test('staging renderer rejects sentinel, production, malformed, cross-environment, and unsafe output values', () => {
