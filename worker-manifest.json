@@ -1,6 +1,7 @@
 {
   "service": "journal-backend",
   "runtimeService": "trading-journal-api",
+  "deploymentEntry": "worker-entry.js",
   "canonicalSource": "worker.js",
   "releaseVersion": "4.07",
   "apiVersion": "2.60",

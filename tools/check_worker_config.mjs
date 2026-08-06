@@ -1,8 +1,16 @@
 import { readFile } from "node:fs/promises";
 
-const [manifestRaw, config, worker, baselineMigration, latestMigration] = await Promise.all([
+const [
+  manifestRaw,
+  config,
+  deploymentEntry,
+  worker,
+  baselineMigration,
+  latestMigration,
+] = await Promise.all([
   readFile("worker-manifest.json", "utf8"),
   readFile("wrangler.toml", "utf8"),
+  readFile("worker-entry.js", "utf8"),
   readFile("worker.js", "utf8"),
   readFile("migrations/0001_baseline.sql", "utf8"),
   readFile("migrations/0002_calculation_jobs.sql", "utf8"),
@@ -11,12 +19,19 @@ const manifest = JSON.parse(manifestRaw);
 const errors = [];
 
 expect(config, `name = "${manifest.service}"`, "Worker service name");
-expect(config, `main = "${manifest.canonicalSource}"`, "canonical source");
+expect(config, `main = "${manifest.deploymentEntry}"`, "deployment entry");
 expect(config, `binding = "${manifest.d1Binding}"`, "D1 binding");
 expect(config, `binding = "${manifest.versionMetadataBinding}"`, "version metadata binding");
 expect(config, `RELEASE_VERSION = "${manifest.releaseVersion}"`, "release version variable");
 expect(config, `API_VERSION = "${manifest.apiVersion}"`, "API version variable");
 expect(config, `SCHEMA_VERSION = "${manifest.schemaVersion}"`, "schema version variable");
+expect(
+  deploymentEntry,
+  `from './${manifest.canonicalSource}'`,
+  "deployment entry canonical source import",
+);
+expect(deploymentEntry, "ALLOWED_ORIGINS", "deployment entry CORS binding");
+expect(deploymentEntry, "ORIGIN_FORBIDDEN", "deployment entry fail-closed response");
 expect(worker, `const RELEASE_VERSION = "${manifest.releaseVersion}"`, "Worker release constant");
 expect(worker, `const API_VERSION = "${manifest.apiVersion}"`, "Worker API constant");
 expect(worker, `const REQUIRED_SCHEMA_VERSION = ${manifest.schemaVersion}`, "Worker schema constant");
@@ -36,7 +51,7 @@ if (errors.length) {
   console.error(errors.map((error) => `- ${error}`).join("\n"));
   process.exit(1);
 }
-console.log("Worker manifest, source, Wrangler config, and migration are synchronized.");
+console.log("Worker manifest, deployment entry, canonical source, Wrangler config, and migrations are synchronized.");
 
 function expect(content, needle, label) {
   if (!content.includes(needle)) errors.push(`Missing or inconsistent ${label}: ${needle}`);

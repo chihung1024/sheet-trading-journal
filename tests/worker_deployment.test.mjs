@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import worker, { __test } from "../worker.js";
 
 function healthyDb(schemaVersion = 2) {
@@ -140,6 +140,12 @@ test("production config renderer writes only validated deployment metadata", asy
     });
     assert.equal(result.status, 0, result.stderr);
     const rendered = await readFile(output, "utf8");
+    const mainMatch = rendered.match(/^main = "([^"]+)"$/m);
+    const migrationsMatch = rendered.match(/^migrations_dir = "([^"]+)"$/m);
+    assert.ok(mainMatch, "rendered config must contain exactly one main path");
+    assert.ok(migrationsMatch, "rendered config must contain exactly one migrations path");
+    assert.equal(resolve(dirname(output), mainMatch[1]), resolve("worker-entry.js"));
+    assert.equal(resolve(dirname(output), migrationsMatch[1]), resolve("migrations"));
     assert.match(rendered, /database_name = "journal-production"/);
     assert.match(rendered, /database_id = "11111111-1111-4111-8111-111111111111"/);
     assert.match(rendered, new RegExp(`SOURCE_COMMIT = "${exactSha}"`));
@@ -149,12 +155,17 @@ test("production config renderer writes only validated deployment metadata", asy
   }
 });
 
-test("tracked Worker manifest keeps one canonical source and archived legacy files", async () => {
+test("tracked Worker manifest distinguishes deployment entry from one canonical source", async () => {
   const manifest = JSON.parse(await readFile("worker-manifest.json", "utf8"));
   const config = await readFile("wrangler.toml", "utf8");
+  const entry = await readFile("worker-entry.js", "utf8");
+
+  assert.equal(manifest.deploymentEntry, "worker-entry.js");
   assert.equal(manifest.canonicalSource, "worker.js");
   assert.equal(manifest.legacyArchive, "cloudflare worker/");
-  assert.match(config, /main = "worker\.js"/);
+  assert.match(config, /main = "worker-entry\.js"/);
+  assert.match(entry, /from '\.\/worker\.js'/);
+  assert.match(entry, /ALLOWED_ORIGINS/);
   assert.match(config, /database_id = "00000000-0000-0000-0000-000000000000"/);
 });
 
