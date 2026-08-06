@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -13,12 +13,12 @@ const PRODUCTION_GOOGLE_CLIENT_ID =
 const PLACEHOLDER_GOOGLE_CLIENT_ID =
   '000000000000-staging-placeholder.apps.googleusercontent.com';
 
-const sourcePath = resolve(
-  process.env.WRANGLER_STAGING_TEMPLATE || 'ops/staging/wrangler.toml',
-);
+const sourcePath = resolve('ops/staging/wrangler.toml');
+const outputRoot = resolve('.wrangler');
 const outputPath = resolve(
   process.env.WRANGLER_STAGING_OUTPUT || '.wrangler/staging.toml',
 );
+const outputRelative = relative(outputRoot, outputPath);
 const databaseId = String(process.env.CLOUDFLARE_D1_DATABASE_ID || '').trim();
 const databaseName = String(process.env.CLOUDFLARE_D1_DATABASE_NAME || '').trim();
 const googleClientId = String(process.env.STAGING_GOOGLE_CLIENT_ID || '').trim();
@@ -26,8 +26,13 @@ const sourceCommit = String(
   process.env.SOURCE_COMMIT || process.env.GITHUB_SHA || '',
 ).trim();
 
-if (sourcePath === outputPath) {
-  throw new Error('Staging Wrangler output must not overwrite the tracked template');
+if (
+  !outputRelative
+  || outputRelative === '..'
+  || outputRelative.startsWith(`..${sep}`)
+  || isAbsolute(outputRelative)
+) {
+  throw new Error('Staging Wrangler output must remain inside the ignored .wrangler directory');
 }
 if (!UUID_RE.test(databaseId) || databaseId === ZERO_UUID) {
   throw new Error('CLOUDFLARE_D1_DATABASE_ID must be a non-sentinel D1 UUID');
