@@ -177,6 +177,26 @@ class CoveragePolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(CoveragePolicyError, "weaker than retained history"):
             validate_baseline(payload)
 
+    def test_history_cannot_weaken_between_revisions(self) -> None:
+        payload = baseline()
+        first_gates = copy.deepcopy(payload["gates"])
+        second_gates = copy.deepcopy(first_gates)
+        second_gates["minimum_covered_lines"] = 6
+        payload["history"] = [
+            {
+                "baseline_main_sha": "b" * 40,
+                "observed": totals(),
+                "gates": first_gates,
+            },
+            {
+                "baseline_main_sha": "c" * 40,
+                "observed": totals(),
+                "gates": second_gates,
+            },
+        ]
+        with self.assertRaisesRegex(CoveragePolicyError, "history\[1\] gates are weaker"):
+            validate_baseline(payload)
+
     def test_stricter_current_gates_are_accepted_with_history(self) -> None:
         payload = baseline()
         previous = copy.deepcopy(payload["gates"])
