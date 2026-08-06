@@ -90,10 +90,11 @@ export const useAuthStore = defineStore('auth', () => {
   const initAuth = () => {
     try {
       const stored = readAuthenticationStorage(localStorage);
-      if (!stored.token) return false;
+      const storedToken = stored.token;
+      if (!storedToken) return false;
 
-      const claims = decodeJwtClaims(stored.token);
-      if (isJwtExpired(stored.token, { skewSeconds: 300 })) {
+      const claims = decodeJwtClaims(storedToken);
+      if (isJwtExpired(storedToken, { skewSeconds: 300 })) {
         throw new Error('Stored token is expired or too close to expiry');
       }
 
@@ -111,7 +112,7 @@ export const useAuthStore = defineStore('auth', () => {
         : (typeof stored.name === 'string' ? stored.name : '');
 
       // 所有 claims 驗證完成後才發布 token，避免 watcher 啟動無效排程。
-      token.value = stored.token;
+      token.value = storedToken;
       user.value = {
         name: restoredName,
         email: signedEmail,
