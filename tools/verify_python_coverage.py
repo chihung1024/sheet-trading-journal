@@ -118,6 +118,24 @@ def _sanitize_gates(raw_gates: Any, label: str = "baseline gates") -> dict[str, 
     }
 
 
+def _weaker_gate_keys(
+    candidate: dict[str, int | float],
+    previous: dict[str, int | float],
+) -> list[str]:
+    weaker = []
+    for key in (
+        "minimum_percent_covered",
+        "minimum_covered_lines",
+        "minimum_covered_branches",
+    ):
+        if candidate[key] < previous[key]:
+            weaker.append(key)
+    for key in ("maximum_missing_lines", "maximum_missing_branches"):
+        if candidate[key] > previous[key]:
+            weaker.append(key)
+    return weaker
+
+
 def _validate_revision(revision: Any) -> None:
     if not isinstance(revision, dict):
         raise CoveragePolicyError("current_revision must be an object")
@@ -143,20 +161,18 @@ def _validate_history(history: Any, current_gates: dict[str, int | float]) -> No
             raise CoveragePolicyError(f"{label} must be an object")
         _exact_sha(item.get("baseline_main_sha"), f"{label}.baseline_main_sha")
         sanitize_totals(item.get("observed"), f"{label}.observed")
-        previous_gates = _sanitize_gates(item.get("gates"), f"{label}.gates")
+        item_gates = _sanitize_gates(item.get("gates"), f"{label}.gates")
+        if previous_gates is not None:
+            weaker = _weaker_gate_keys(item_gates, previous_gates)
+            if weaker:
+                raise CoveragePolicyError(
+                    f"{label} gates are weaker than prior history: " + ", ".join(weaker)
+                )
+        previous_gates = item_gates
 
-    assert previous_gates is not None
-    weaker = []
-    for key in (
-        "minimum_percent_covered",
-        "minimum_covered_lines",
-        "minimum_covered_branches",
-    ):
-        if current_gates[key] < previous_gates[key]:
-            weaker.append(key)
-    for key in ("maximum_missing_lines", "maximum_missing_branches"):
-        if current_gates[key] > previous_gates[key]:
-            weaker.append(key)
+    if previous_gates is None:
+        raise CoveragePolicyError("baseline history has no valid gate record")
+    weaker = _weaker_gate_keys(current_gates, previous_gates)
     if weaker:
         raise CoveragePolicyError(
             "current coverage gates are weaker than retained history: " + ", ".join(weaker)
