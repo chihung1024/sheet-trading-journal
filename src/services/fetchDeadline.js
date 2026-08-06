@@ -17,6 +17,7 @@ export const fetchWithDeadline = async (
     {
         timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
         signal = init.signal || null,
+        responseHandler = null,
         fetchImpl = globalThis.fetch,
         setTimeoutImpl = globalThis.setTimeout,
         clearTimeoutImpl = globalThis.clearTimeout,
@@ -24,6 +25,9 @@ export const fetchWithDeadline = async (
 ) => {
     validateTimeout(timeoutMs);
     if (typeof fetchImpl !== 'function') throw new TypeError('fetch implementation is unavailable');
+    if (responseHandler !== null && typeof responseHandler !== 'function') {
+        throw new TypeError('responseHandler must be a function or null');
+    }
     if (typeof setTimeoutImpl !== 'function' || typeof clearTimeoutImpl !== 'function') {
         throw new TypeError('timer implementation is unavailable');
     }
@@ -45,13 +49,15 @@ export const fetchWithDeadline = async (
         }, timeoutMs);
     });
 
-    const candidates = [
-        Promise.resolve().then(() => fetchImpl(input, {
+    const requestPromise = Promise.resolve().then(async () => {
+        const response = await fetchImpl(input, {
             ...init,
             signal: controller.signal,
-        })),
-        timeoutPromise,
-    ];
+        });
+        return responseHandler ? responseHandler(response) : response;
+    });
+
+    const candidates = [requestPromise, timeoutPromise];
 
     if (signal) {
         candidates.push(new Promise((_, reject) => {
