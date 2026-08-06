@@ -1,7 +1,7 @@
 import {
     RequestAbortedError,
     RequestTimeoutError,
-} from './requestErrors';
+} from './requestErrors.js';
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
