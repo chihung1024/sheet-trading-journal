@@ -32,80 +32,135 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import { usePortfolioStore } from '../stores/portfolio'; 
+import { usePortfolioStore } from '../stores/portfolio';
 import { CONFIG } from '../config';
+
+const GOOGLE_SCRIPT_POLL_MS = 100;
+const GOOGLE_SCRIPT_TIMEOUT_MS = 10_000;
 
 const googleBtn = ref(null);
 const authStore = useAuthStore();
-const portfolioStore = usePortfolioStore(); 
+const portfolioStore = usePortfolioStore();
 const error = ref('');
 
-onMounted(() => {
-  // 定義 callback（保留錯誤處理）
-  window.handleCredentialResponse = async (response) => {
-    console.log('🔐 收到 Google 憑證');
-    try {
-      // 執行登入 (這一步只會更新 Token 與 User 狀態，已不含抓資料邏輯)
-      await authStore.login(response.credential); 
-      
-      // ✅ 3. 關鍵修正：登入成功後，主動載入投資組合數據
-      console.log('🎉 登入成功，開始載入數據...');
-      await portfolioStore.fetchAll();
+let isActive = false;
+let isGoogleInitialized = false;
+let googlePollTimer = null;
+let googleLoadTimeout = null;
 
-    } catch (err) {
-      console.error('登入流程發生錯誤:', err);
-      error.value = '登入驗證失敗: ' + (err.message || '無法連接後端伺服器');
-    }
-  };  
-
-  // 初始化 Google 登入按鈕
-  if (window.google) {
-    initGoogleSignIn();
-  } else {
-    // 如果 Google Script 還沒載入，等待一下
-    const checkGoogle = setInterval(() => {
-      if (window.google) {
-        clearInterval(checkGoogle);
-        initGoogleSignIn();
-      }
-    }, 100);
-    
-    // 10 秒後仍未載入，顯示錯誤
-    setTimeout(() => {
-      if (!window.google) {
-        clearInterval(checkGoogle);
-        error.value = '無法載入 Google 登入服務，請檢查網路連線';
-      }
-    }, 10000);
+const clearGoogleWaitTimers = () => {
+  if (googlePollTimer !== null) {
+    clearInterval(googlePollTimer);
+    googlePollTimer = null;
   }
-});
+  if (googleLoadTimeout !== null) {
+    clearTimeout(googleLoadTimeout);
+    googleLoadTimeout = null;
+  }
+};
+
+const getGoogleIdentity = () => {
+  try {
+    return window.google?.accounts?.id || null;
+  } catch (err) {
+    console.error('❌ 讀取 Google Identity Services 失敗:', err);
+    return null;
+  }
+};
+
+const handleCredentialResponse = async (response) => {
+  if (!isActive) return;
+
+  const credential = response?.credential;
+  if (typeof credential !== 'string' || !credential.trim()) {
+    error.value = '登入驗證失敗: Google 未提供有效憑證';
+    return;
+  }
+
+  console.log('🔐 收到 Google 憑證');
+  try {
+    await authStore.login(credential);
+    if (!isActive) return;
+
+    console.log('🎉 登入成功，開始載入數據...');
+    await portfolioStore.fetchAll();
+  } catch (err) {
+    if (!isActive) return;
+    console.error('登入流程發生錯誤:', err);
+    error.value = '登入驗證失敗: ' + (err?.message || '無法連接後端伺服器');
+  }
+};
 
 const initGoogleSignIn = () => {
+  if (!isActive || isGoogleInitialized) return false;
+
+  const googleIdentity = getGoogleIdentity();
+  if (!googleIdentity || typeof googleIdentity.initialize !== 'function' || typeof googleIdentity.renderButton !== 'function') {
+    return false;
+  }
+  if (!googleBtn.value) return false;
+
+  clearGoogleWaitTimers();
+
   try {
-    window.google.accounts.id.initialize({
+    googleIdentity.initialize({
       client_id: CONFIG.GOOGLE_CLIENT_ID,
-      callback: window.handleCredentialResponse,
+      callback: handleCredentialResponse,
       auto_select: false,
       cancel_on_tap_outside: false
     });
 
-    window.google.accounts.id.renderButton(googleBtn.value, {
+    googleIdentity.renderButton(googleBtn.value, {
       theme: 'outline',
       size: 'large',
       width: '280',
       text: 'signin_with',
-      shape: 'pill', // 優化為圓角 pill 形狀
+      shape: 'pill',
       logo_alignment: 'left'
     });
 
+    isGoogleInitialized = true;
     console.log('✅ Google 登入按鈕已渲染');
+    return true;
   } catch (err) {
-    console.error('❌ 初始化錯誤:', err);
-    error.value = '初始化登入系統失敗';
+    if (isActive) {
+      console.error('❌ 初始化錯誤:', err);
+      error.value = '初始化登入系統失敗';
+    }
+    return false;
   }
 };
+
+const waitForGoogleIdentity = () => {
+  if (initGoogleSignIn()) return;
+
+  googlePollTimer = setInterval(() => {
+    if (!isActive) return;
+    initGoogleSignIn();
+  }, GOOGLE_SCRIPT_POLL_MS);
+
+  googleLoadTimeout = setTimeout(() => {
+    clearGoogleWaitTimers();
+    if (!isActive || isGoogleInitialized) return;
+    error.value = '無法載入 Google 登入服務，請檢查網路連線';
+  }, GOOGLE_SCRIPT_TIMEOUT_MS);
+};
+
+onMounted(() => {
+  isActive = true;
+  window.handleCredentialResponse = handleCredentialResponse;
+  waitForGoogleIdentity();
+});
+
+onUnmounted(() => {
+  isActive = false;
+  clearGoogleWaitTimers();
+  if (window.handleCredentialResponse === handleCredentialResponse) {
+    delete window.handleCredentialResponse;
+  }
+});
 </script>
 
 <style scoped>
@@ -291,7 +346,7 @@ const initGoogleSignIn = () => {
   .login-card h1 {
     font-size: 1.5rem;
   }
-  
+
   .subtitle {
     font-size: 0.9rem;
   }
