@@ -33,6 +33,7 @@ export function useMarketHoursRefresh() {
     let countdownTimer = null;
     let leadership = null;
     let leadershipSyncEpoch = 0;
+    let pauseMutationInProgress = false;
 
     const INTERVAL_MS = 3 * 60 * 1000;
     const INTERVAL_SECONDS = 3 * 60;
@@ -153,11 +154,14 @@ export function useMarketHoursRefresh() {
             ? context
             : { ...context, hasLeadership: true };
 
-        if (!shouldTriggerMarketRefresh({
-            ...policyContext,
-            busy: portfolioStore.isPolling || portfolioStore.loading,
-            running: isRunning.value,
-        })) {
+        if (
+            pauseMutationInProgress
+            || !shouldTriggerMarketRefresh({
+                ...policyContext,
+                busy: portfolioStore.isPolling || portfolioStore.loading,
+                running: isRunning.value,
+            })
+        ) {
             console.log('⏸️ [盤中刷新] 目前條件不允許刷新，跳過此次更新');
             return false;
         }
@@ -171,11 +175,14 @@ export function useMarketHoursRefresh() {
 
             isPaused.value = leadership?.isPaused() === true;
             const confirmedContext = getRefreshContext();
-            if (!shouldTriggerMarketRefresh({
-                ...confirmedContext,
-                busy: portfolioStore.isPolling || portfolioStore.loading,
-                running: isRunning.value,
-            })) return false;
+            if (
+                pauseMutationInProgress
+                || !shouldTriggerMarketRefresh({
+                    ...confirmedContext,
+                    busy: portfolioStore.isPolling || portfolioStore.loading,
+                    running: isRunning.value,
+                })
+            ) return false;
         }
 
         isRunning.value = true;
@@ -208,7 +215,7 @@ export function useMarketHoursRefresh() {
 
     const evaluateMarketRefresh = ({ triggerImmediately = false } = {}) => {
         const context = getRefreshContext();
-        if (!shouldScheduleMarketRefresh(context)) {
+        if (pauseMutationInProgress || !shouldScheduleMarketRefresh(context)) {
             stopActiveSchedule();
             return false;
         }
@@ -220,7 +227,7 @@ export function useMarketHoursRefresh() {
 
         refreshTimer = setInterval(() => {
             const intervalContext = getRefreshContext();
-            if (!shouldScheduleMarketRefresh(intervalContext)) {
+            if (pauseMutationInProgress || !shouldScheduleMarketRefresh(intervalContext)) {
                 stopActiveSchedule();
                 return;
             }
@@ -234,7 +241,7 @@ export function useMarketHoursRefresh() {
 
     const handleLeadershipChange = (nextLeader) => {
         isLeader.value = nextLeader === true;
-        if (!isLeader.value) {
+        if (!isLeader.value || pauseMutationInProgress) {
             stopActiveSchedule();
             return;
         }
@@ -248,7 +255,12 @@ export function useMarketHoursRefresh() {
             stopActiveSchedule();
             return;
         }
-        if (authStore.token && isEnabled.value && isPageVisible()) {
+        if (
+            !pauseMutationInProgress
+            && authStore.token
+            && isEnabled.value
+            && isPageVisible()
+        ) {
             void syncLeadership();
         }
     };
@@ -302,7 +314,7 @@ export function useMarketHoursRefresh() {
             ) return false;
 
             isPaused.value = coordinator.isPaused();
-            if (isPaused.value) {
+            if (isPaused.value || pauseMutationInProgress) {
                 isLeader.value = false;
                 stopActiveSchedule();
                 return false;
@@ -333,15 +345,19 @@ export function useMarketHoursRefresh() {
     };
 
     const togglePause = async () => {
-        const requestedPause = !isPaused.value;
         const coordinator = ensureLeadership();
-        if (!coordinator || !authStore.token) return false;
+        if (!coordinator || !authStore.token || pauseMutationInProgress) return false;
 
-        if (!coordinator.isStarted()) {
+        pauseMutationInProgress = true;
+        let updated = false;
+        try {
             await coordinator.start(authStore.token);
+            const requestedPause = !coordinator.isPaused();
+            updated = await coordinator.setPaused(requestedPause);
+            isPaused.value = coordinator.isPaused();
+        } finally {
+            pauseMutationInProgress = false;
         }
-        const updated = await coordinator.setPaused(requestedPause);
-        isPaused.value = coordinator.isPaused();
 
         if (!updated) {
             console.warn('⚠️ [盤中刷新] 共享暫停狀態更新未確認');
