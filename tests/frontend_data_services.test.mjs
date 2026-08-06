@@ -52,12 +52,20 @@ test('records endpoint encodes the signed cursor and bounded limit', () => {
   assert.throws(() => buildRecordsPageEndpoint({ limit: 1_001 }), /limit/);
 });
 
-test('legacy unpaginated records response remains compatible', async () => {
+test('legacy unpaginated records response remains compatible below the limit', async () => {
   const result = await fetchAllRecordPages(async () => ({
     success: true,
     data: [record(1), record(2)],
   }));
   assert.deepEqual(result.map((item) => item.id), [1, 2]);
+});
+
+test('legacy response at the page limit fails because completeness is unknowable', async () => {
+  const legacyLimitPage = Array.from({ length: 1_000 }, (_, index) => record(index + 1));
+  await assert.rejects(
+    fetchAllRecordPages(async () => ({ success: true, data: legacyLimitPage })),
+    /without pagination metadata/,
+  );
 });
 
 test('browser retrieves every records page beyond one thousand rows', async () => {

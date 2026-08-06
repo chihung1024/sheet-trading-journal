@@ -31,7 +31,8 @@ Any other changed path is a release blocker unless Issue #70 and this contract a
 - The frontend continues to call the existing `GET /api/records` endpoint.
 - The first request explicitly uses `limit=1000`.
 - Signed `next_cursor` values are treated as opaque and URL encoded.
-- A response without `page` metadata is accepted as the complete legacy response.
+- A legacy response without `page` metadata is accepted only when it contains fewer rows than the requested limit.
+- A legacy response at the requested limit fails closed because completeness cannot be proven.
 - A paginated response must have matching `limit`, `count`, `has_more`, and `next_cursor` metadata.
 - Partial records are never committed to Pinia state after a pagination failure.
 - Worker, D1, snapshots, jobs, service worker, and calculation engine are unchanged.
@@ -60,14 +61,15 @@ Any other changed path is a release blocker unless Issue #70 and this contract a
 5. Existing local D1 migration verification.
 6. Existing production frontend build.
 7. More than 1,000 records are assembled from multiple pages.
-8. Legacy single-response compatibility is tested.
-9. Malformed page metadata fails closed.
-10. Missing or repeated cursors fail closed.
-11. Duplicate record IDs fail closed.
-12. Maximum page and record bounds fail closed.
-13. Browser-storage inventory and public-evidence tests remain green.
-14. No dependency or package-lock change.
-15. Exact diff contains only the allowed paths.
+8. Legacy single-response compatibility below the page limit is tested.
+9. A legacy response at the page limit is rejected as ambiguous.
+10. Malformed page metadata fails closed.
+11. Missing or repeated cursors fail closed.
+12. Duplicate record IDs fail closed.
+13. Maximum page and record bounds fail closed.
+14. Browser-storage inventory and public-evidence tests remain green.
+15. No dependency or package-lock change.
+16. Exact diff contains only the allowed paths.
 
 ## Explicit exclusions
 

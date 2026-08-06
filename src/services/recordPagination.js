@@ -73,8 +73,14 @@ export async function fetchAllRecordPages(fetchPage, options = {}) {
       }
     }
 
-    // Compatibility with the pre-pagination response contract.
-    if (payload.page === undefined || payload.page === null) return records;
+    // Compatibility with a pre-pagination response is safe only below the
+    // requested page limit. At the limit, completeness is unknowable.
+    if (payload.page === undefined || payload.page === null) {
+      if (payload.data.length >= limit) {
+        throw new Error('legacy records response reached the limit without pagination metadata');
+      }
+      return records;
+    }
 
     const page = requirePlainObject(payload.page, 'records page metadata');
     if (page.limit !== limit) throw new Error('records page limit does not match the request');
