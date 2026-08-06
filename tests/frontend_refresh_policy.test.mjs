@@ -119,11 +119,18 @@ test('pause is shared across tabs while hidden-page transitions release only loc
   const source = readComposable();
 
   const pauseBlock = sourceBlock(source, 'const togglePause', 'const stopMarketRefresh');
-  assert.match(pauseBlock, /const requestedPause = !isPaused\.value/);
+  assert.match(pauseBlock, /pauseMutationInProgress = true/);
+  assert.match(pauseBlock, /await coordinator\.start\(authStore\.token\)/);
+  assert.match(pauseBlock, /const requestedPause = !coordinator\.isPaused\(\)/);
   assert.match(pauseBlock, /coordinator\.setPaused\(requestedPause\)/);
   assert.match(pauseBlock, /isPaused\.value = coordinator\.isPaused\(\)/);
+  assert.match(pauseBlock, /pauseMutationInProgress = false/);
   assert.match(pauseBlock, /stopActiveSchedule\(\);/);
   assert.doesNotMatch(pauseBlock, /leadership\?\.stop\(\)/);
+  assert.ok(
+    pauseBlock.indexOf('await coordinator.start') < pauseBlock.indexOf('const requestedPause'),
+    'Shared pause state must be synchronized before computing the toggle direction',
+  );
 
   const visibilityBlock = sourceBlock(source, 'const handleVisibilityChange', 'const manualTrigger');
   assert.match(visibilityBlock, /if \(!isPageVisible\(\)\) \{/);
@@ -133,6 +140,7 @@ test('pause is shared across tabs while hidden-page transitions release only loc
   const pauseCallbackBlock = sourceBlock(source, 'const handleSharedPauseChange', 'const ensureLeadership');
   assert.match(pauseCallbackBlock, /isPaused\.value = nextPaused === true/);
   assert.match(pauseCallbackBlock, /stopActiveSchedule\(\);/);
+  assert.match(pauseCallbackBlock, /!pauseMutationInProgress/);
   assert.match(pauseCallbackBlock, /syncLeadership\(\)/);
 
   assert.match(source, /onPauseChange: handleSharedPauseChange/);
@@ -156,6 +164,7 @@ test('visibility and storage listeners are lifecycle-bound and timer creation is
   assert.equal((startBlock.match(/checkTimer = setInterval/g) || []).length, 1);
 
   const evaluateBlock = sourceBlock(source, 'const evaluateMarketRefresh', 'const handleLeadershipChange');
+  assert.match(evaluateBlock, /pauseMutationInProgress \|\| !shouldScheduleMarketRefresh\(context\)/);
   assert.match(evaluateBlock, /if \(refreshTimer\) return true;/);
   assert.equal((evaluateBlock.match(/refreshTimer = setInterval/g) || []).length, 1);
 });
@@ -163,7 +172,8 @@ test('visibility and storage listeners are lifecycle-bound and timer creation is
 test('followers cannot create automatic timers or reach triggerUpdate without a shared action claim', () => {
   const source = readComposable();
   const triggerBlock = sourceBlock(source, 'const triggerRefresh', 'const evaluateMarketRefresh');
-  assert.match(triggerBlock, /if \(!shouldTriggerMarketRefresh\(/);
+  assert.match(triggerBlock, /pauseMutationInProgress/);
+  assert.match(triggerBlock, /shouldTriggerMarketRefresh\(/);
   assert.match(triggerBlock, /claimAutomaticAction\(INTERVAL_MS\)/);
   assert.match(triggerBlock, /isPaused\.value = leadership\?\.isPaused\(\) === true/);
   assert.match(triggerBlock, /const updatePromise = portfolioStore\.triggerUpdate\(\);/);
