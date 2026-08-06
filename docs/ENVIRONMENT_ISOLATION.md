@@ -1,110 +1,84 @@
-# Frontend environment isolation
+# Environment isolation
 
-## Scope
+## Purpose
 
-This document governs the frontend side of B03. It prevents Cloudflare Pages branch and pull-request previews from silently using production services while staging infrastructure is created separately.
+B03 separates production, staging, and local/test execution so non-production code cannot silently read or mutate production services.
 
-PR-10D1 does **not** create or mutate Cloudflare Worker, D1, Pages, secret, or Google OAuth resources. Those resources must exist before preview builds are made usable again.
+The machine-readable frontend source of truth is `config/deployment-environments.json`.
+
+Detailed contracts:
+
+- Backend staging Worker: `docs/STAGING_WORKER_CONTRACT.md`
+- Frontend staging Pages branch: `docs/STAGING_FRONTEND_CONTRACT.md`
 
 ## Reviewed environments
 
-| Frontend environment | Pages branch | API | Google OAuth client |
+| Environment | Frontend identity | API identity | Status |
 |---|---|---|---|
-| Production | `main` | Production Worker | Production web client |
-| Preview | Any non-`main` branch | Staging Worker only | Staging web client only |
-| Staging | Dedicated staging build | Staging Worker only | Staging web client only |
-| Development / test | Local or CI | Local/test as explicitly configured | Local/test client as needed |
+| Production | Cloudflare Pages `main` | Production Worker | Active |
+| Staging | Cloudflare Pages `staging` only | `journal-backend-staging` only | Contract defined; external resources not yet evidenced |
+| Development / test | Local or CI | Explicit local/test services | Active as needed |
+| Arbitrary preview / PR branch | None | None | Build blocked |
 
-The machine-readable source of truth is `config/deployment-environments.json`.
+The generic deployed `preview` mode is no longer reviewed. Every non-`main` Pages branch fails closed except the single fixed `staging` branch.
 
-## Build-time policy
+## Shared build gate
 
-The same policy is invoked in two paths:
+The same frontend environment policy runs through two independent paths:
 
-1. `npm run build` runs `prebuild`, which calls `tools/check_frontend_environment.mjs`.
-2. `vite.config.js` invokes `validateFrontendEnvironment(process.env)` for every Vite build, including direct `vite build` calls.
+1. `npm run build` invokes `prebuild`, which runs `tools/check_frontend_environment.mjs`.
+2. `vite.config.js` invokes `validateFrontendEnvironment(process.env)` for direct Vite builds.
 
-For a Cloudflare Pages non-`main` branch, all of the following are mandatory:
-
-- `VITE_DEPLOY_ENV` is `preview` or `staging`.
-- `VITE_API_URL` is an HTTPS origin only.
-- `VITE_API_URL` is not the production Worker origin.
-- `VITE_API_URL` has no path, query, fragment, trailing slash, credentials, or localhost host.
-- `VITE_GOOGLE_CLIENT_ID` is a valid Google web OAuth client ID.
-- `VITE_GOOGLE_CLIENT_ID` is not the production OAuth client.
-
-A missing or invalid value terminates the build. This is intentional: an unavailable preview is safer than a preview that can read or mutate production data.
-
-## External staging prerequisites
-
-Before setting Preview variables in Cloudflare Pages, create all of these as independent resources:
-
-1. A staging Worker with a distinct service name.
-2. A staging D1 database with no production tenant records.
-3. Staging-only Worker secrets and service credentials.
-4. A separate Google OAuth web client.
-5. Exact preview/staging authorized JavaScript origins for that client.
-6. A staging test account containing synthetic records only.
-
-Do not copy production D1 data or production secrets into staging.
-
-## Cloudflare Pages Preview variables
-
-Set the following in the **Preview** environment, not the Production environment:
-
-```text
-VITE_DEPLOY_ENV=preview
-VITE_API_URL=https://<staging-worker-origin>
-VITE_GOOGLE_CLIENT_ID=<staging-google-web-client-id>
-```
-
-Use `.env.preview.example` only as a shape reference. Do not commit actual staging secrets. Google OAuth client IDs are public identifiers, but environment separation still requires different clients.
+This prevents bypassing the environment contract by changing the build entry point.
 
 ## Production compatibility window
 
-During PR-10D1, `main` Pages builds may continue using the existing reviewed production fallback when no production Vite variables are supplied. This exception exists only to avoid interrupting the current production site before Cloudflare Pages production variables are confirmed.
+The Cloudflare Pages `main` branch may continue using the current reviewed production fallback when explicit production Vite values are absent. This compatibility window prevents an environment-isolation rollout from interrupting the production site.
 
-A later B03 sub-batch must:
+A later B03 batch must make production values explicit only after Cloudflare production variables are independently confirmed and exact-SHA deployment remains green.
 
-- make production values explicit;
-- deploy and verify the staging Worker and D1;
-- point previews to staging;
-- remove permissive production Worker origin defaults;
-- restrict production CORS and OAuth origins to exact production origins.
+## Staging boundary
 
-## Deterministic verification
+Only the fixed `staging` Pages branch may enter staging mode. It must use:
 
-Run:
-
-```bash
-npm run test:frontend
-npm run build
+```text
+VITE_DEPLOY_ENV=staging
+VITE_API_URL=https://journal-backend-staging.chired.workers.dev
+VITE_GOOGLE_CLIENT_ID=<dedicated staging Google web client ID>
 ```
 
-To simulate a valid preview build:
+The API URL must be the exact HTTPS origin shown above. The OAuth client must be valid and different from production. Temporary PR hostnames are not staging origins.
 
-```bash
-CF_PAGES=1 \
-CF_PAGES_BRANCH=feature/example \
-VITE_DEPLOY_ENV=preview \
-VITE_API_URL=https://staging-worker.example.workers.dev \
-VITE_GOOGLE_CLIENT_ID=123456789012-stagingclient.apps.googleusercontent.com \
-npm run environment:check
-```
+The backend staging Worker contract additionally requires a separate D1 database, separate API secret, exact staging CORS origin, and no production calculation-dispatch token.
 
-To verify fail-closed behavior, replace either staging value with the production value. The command must exit non-zero.
+## External resources
 
-## Staging smoke test after provisioning
+Repository contracts do not prove that external resources exist. Before staging is enabled, independently provision and review:
 
-Use synthetic data only and verify:
+1. Staging Worker `journal-backend-staging`.
+2. Staging D1 database `trading-journal-staging` with synthetic data only.
+3. Dedicated staging Worker secrets.
+4. Fixed Cloudflare Pages `staging` branch.
+5. Separate Google OAuth web client authorizing only the fixed staging frontend origin required by the application.
+6. Protected GitHub `staging` environment and least-privilege Cloudflare credentials.
 
-1. Preview login succeeds with the staging OAuth client.
-2. `/api/version` and `/api/health` identify the staging Worker.
-3. Creating, updating, and deleting a synthetic record affects staging D1 only.
-4. Triggering a calculation cannot create a production calculation job.
-5. Browser network requests contain no production Worker origin.
-6. The production Worker rejects the preview origin after the later CORS cutover.
+Do not copy production records, D1 data, API secrets, OAuth credentials, or GitHub dispatch credentials into staging.
+
+## Verification
+
+Repository CI verifies:
+
+- production `main` compatibility;
+- arbitrary Pages branch rejection;
+- fixed staging frontend branch/API policy;
+- staging Worker runtime isolation;
+- renderer and Wrangler dry-run boundaries;
+- workflow permissions and immutable action pins;
+- local D1 schema regression;
+- exact deployment readiness metadata.
+
+After external staging provisioning, use synthetic records only and verify login, version/health identity, CRUD isolation, and absence of production calculation dispatch.
 
 ## Rollback
 
-Revert the PR-10D1 merge to remove the repository guard. No Worker, D1, OAuth, record, snapshot, or financial-data rollback is involved.
+Revert the specific B03 sub-batch that introduced the failing contract. Repository-only contract batches do not require cloud-data rollback unless their deployment workflows were separately executed.
