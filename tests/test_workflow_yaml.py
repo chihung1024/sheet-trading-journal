@@ -50,6 +50,9 @@ def test_staging_deploy_workflow_is_valid_yaml_and_environment_protected():
     job = workflow["jobs"]["deploy-staging"]
     assert job["environment"] == "staging"
     assert job["timeout-minutes"] == "30"
+    assert job["env"] == {
+        "STAGING_WORKER_BASE_URL": "https://journal-backend-staging.chired.workers.dev"
+    }
 
     steps = {step["name"]: step for step in job["steps"]}
     assert "Verify staging confirmation and exact main-reachable source" in steps
@@ -59,3 +62,9 @@ def test_staging_deploy_workflow_is_valid_yaml_and_environment_protected():
     assert "Install isolated staging API secret" in steps
     assert "Deploy exact staging Worker source" in steps
     assert "Verify exact staging deployment readiness" in steps
+
+    checkout = steps["Checkout repository history"]
+    assert checkout["with"]["persist-credentials"] == "false"
+    assert "secrets." not in str(checkout)
+    setup = steps["Set up Node.js"]
+    assert "secrets." not in str(setup)
