@@ -22,15 +22,12 @@ export function validateFrontendEnvironment(source = process.env) {
   const env = readEnvironment(source);
   const errors = [];
   const mainBranch = DEPLOYMENT_CONTRACT.main_branch;
+  const stagingBranch = DEPLOYMENT_CONTRACT.staging.pages_branch;
   const allowedEnvironments = new Set(DEPLOYMENT_CONTRACT.allowed_deploy_environments);
-  const nonProductionEnvironments = new Set(
-    DEPLOYMENT_CONTRACT.non_production.allowed_deploy_environments,
-  );
 
   if (env.deployEnvironment && !allowedEnvironments.has(env.deployEnvironment)) {
     errors.push('VITE_DEPLOY_ENV is not one of the reviewed deployment environments');
   }
-
   if (env.isCloudflarePages && !env.pagesBranch) {
     errors.push('CF_PAGES_BRANCH is required when CF_PAGES identifies a Pages build');
   }
@@ -39,23 +36,24 @@ export function validateFrontendEnvironment(source = process.env) {
   if (env.isCloudflarePages && env.pagesBranch === mainBranch) {
     context = 'pages-production';
     validateProductionEnvironment(env, errors, { requireExplicitValues: false });
-  } else if (env.isCloudflarePages && env.pagesBranch && env.pagesBranch !== mainBranch) {
-    context = 'pages-preview';
-    if (!nonProductionEnvironments.has(env.deployEnvironment)) {
-      errors.push('Cloudflare Pages non-main builds require VITE_DEPLOY_ENV=preview or staging');
+  } else if (env.isCloudflarePages && env.pagesBranch === stagingBranch) {
+    context = 'pages-staging';
+    if (env.deployEnvironment !== 'staging') {
+      errors.push('The staging Pages branch requires VITE_DEPLOY_ENV=staging');
     }
-    validateNonProductionEnvironment(env, errors);
-  } else if (nonProductionEnvironments.has(env.deployEnvironment)) {
-    context = env.deployEnvironment;
-    validateNonProductionEnvironment(env, errors);
+    validateStagingEnvironment(env, errors);
+  } else if (env.isCloudflarePages && env.pagesBranch) {
+    context = 'pages-unreviewed';
+    errors.push('Only the reviewed staging Pages branch may build a non-production deployment');
+  } else if (env.deployEnvironment === 'staging') {
+    context = 'staging';
+    validateStagingEnvironment(env, errors);
   } else if (env.deployEnvironment === 'production') {
     context = 'explicit-production';
     validateProductionEnvironment(env, errors, { requireExplicitValues: true });
   }
 
-  if (errors.length > 0) {
-    throw new FrontendEnvironmentPolicyError(errors);
-  }
+  if (errors.length > 0) throw new FrontendEnvironmentPolicyError(errors);
 
   return Object.freeze({
     context,
@@ -84,19 +82,17 @@ function readEnvironment(source) {
   };
 }
 
-function validateNonProductionEnvironment(env, errors) {
+function validateStagingEnvironment(env, errors) {
   const apiOrigin = parseOrigin(env.apiUrl, 'VITE_API_URL', errors, {
     required: DEPLOYMENT_CONTRACT.non_production.require_explicit_api_origin,
     requireHttps: DEPLOYMENT_CONTRACT.non_production.require_https,
     forbidLocalhost: DEPLOYMENT_CONTRACT.non_production.forbid_localhost,
   });
-
-  if (
-    apiOrigin
-    && DEPLOYMENT_CONTRACT.non_production.forbid_production_api_origins
-    && DEPLOYMENT_CONTRACT.production.api_origins.includes(apiOrigin)
-  ) {
-    errors.push('Non-production builds cannot use a production API origin');
+  if (apiOrigin && DEPLOYMENT_CONTRACT.production.api_origins.includes(apiOrigin)) {
+    errors.push('Staging builds cannot use a production API origin');
+  }
+  if (apiOrigin && apiOrigin !== DEPLOYMENT_CONTRACT.staging.api_origin) {
+    errors.push('Staging builds must use the reviewed staging API origin');
   }
 
   const clientId = validateGoogleClientId(env.googleClientId, errors, {
@@ -104,10 +100,9 @@ function validateNonProductionEnvironment(env, errors) {
   });
   if (
     clientId
-    && DEPLOYMENT_CONTRACT.non_production.forbid_production_google_client_ids
     && DEPLOYMENT_CONTRACT.production.google_client_ids.includes(clientId)
   ) {
-    errors.push('Non-production builds cannot use a production Google OAuth client');
+    errors.push('Staging builds cannot use a production Google OAuth client');
   }
 }
 
@@ -180,7 +175,7 @@ function validateGoogleClientId(rawValue, errors, { required }) {
 
 function validateContract(contract) {
   const errors = [];
-  if (contract.schema_version !== 1) errors.push('unsupported schema_version');
+  if (contract.schema_version !== 2) errors.push('unsupported schema_version');
   if (!contract.main_branch) errors.push('main_branch is required');
   if (!Array.isArray(contract.allowed_deploy_environments)) {
     errors.push('allowed_deploy_environments must be an array');
@@ -189,6 +184,16 @@ function validateContract(contract) {
     if (!Array.isArray(contract.production?.[key]) || contract.production[key].length === 0) {
       errors.push(`production.${key} must be a non-empty array`);
     }
+  }
+  for (const key of [
+    'pages_branch',
+    'frontend_origin',
+    'worker_service',
+    'api_origin',
+    'd1_database_name',
+    'github_environment',
+  ]) {
+    if (!contract.staging?.[key]) errors.push(`staging.${key} is required`);
   }
   if (!Array.isArray(contract.non_production?.allowed_deploy_environments)) {
     errors.push('non_production.allowed_deploy_environments must be an array');
