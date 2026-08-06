@@ -50,7 +50,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         const method = options.method || 'GET';
 
         try {
-            const res = await fetchWithDeadline(
+            const { response: res, json } = await fetchWithDeadline(
                 `${CONFIG.API_BASE_URL}${endpoint}`,
                 {
                     ...options,
@@ -60,7 +60,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                         'Content-Type': 'application/json'
                     }
                 },
-                { timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
+                {
+                    timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+                    responseHandler: async (response) => ({
+                        response,
+                        json: response.status === 401
+                            ? null
+                            : await readApiJson(response, { endpoint }),
+                    }),
+                },
             );
 
             if (res.status === 401) {
@@ -74,7 +82,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 return null;
             }
 
-            const json = await readApiJson(res, { endpoint });
             connectionStatus.value = 'connected';
             return json;
         } catch (error) {
