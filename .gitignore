@@ -25,6 +25,8 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.preview.example
+!.env.staging.example
 
 # IDE / OS
 .vscode/
