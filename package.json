@@ -9,8 +9,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check": "npm run test:worker && npm run worker:config:check && npm run build",
+    "check": "npm run test:worker && npm run test:frontend && npm run worker:config:check && npm run build",
     "test:worker": "node --test tests/worker_*.test.mjs",
+    "test:frontend": "node --test tests/frontend_security_contracts.test.mjs",
     "worker:config:check": "node tools/check_worker_config.mjs",
     "worker:config:render": "node tools/render_wrangler_config.mjs",
     "worker:schema:test": "node tools/test_d1_schema.mjs",
