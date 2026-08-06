@@ -4,7 +4,9 @@ import {
     fetchWithDeadline,
 } from './fetchDeadline.js';
 import { MalformedApiResponseError } from './requestErrors.js';
-import { isJwtExpired } from './jwtClaims.js';
+import { decodeJwtClaims } from './jwtClaims.js';
+
+const AUTH_TOKEN_MIN_REMAINING_SECONDS = 300;
 
 const readRequiredString = (payload, key, { allowEmpty = false } = {}) => {
     const value = payload?.[key];
@@ -16,6 +18,50 @@ const readRequiredString = (payload, key, { allowEmpty = false } = {}) => {
         throw new MalformedApiResponseError(`Authentication response field ${key} is required`);
     }
     return allowEmpty ? value : normalized;
+};
+
+const normalizeEmail = (value, label) => {
+    if (typeof value !== 'string' || !value.trim()) {
+        throw new MalformedApiResponseError(`${label} is required`);
+    }
+    return value.trim().toLowerCase();
+};
+
+const validateAuthenticatedToken = (
+    token,
+    responseEmail,
+    {
+        nowMs,
+        atobImpl,
+        TextDecoderImpl,
+    },
+) => {
+    if (!Number.isFinite(nowMs) || nowMs < 0) {
+        throw new TypeError('Current time must be finite and non-negative');
+    }
+
+    let claims;
+    try {
+        claims = decodeJwtClaims(token, { atobImpl, TextDecoderImpl });
+    } catch (error) {
+        throw new MalformedApiResponseError('Authentication token claims are invalid', {
+            cause: error,
+        });
+    }
+
+    const secondsRemaining = claims.exp - Math.floor(nowMs / 1000);
+    if (secondsRemaining < AUTH_TOKEN_MIN_REMAINING_SECONDS) {
+        throw new MalformedApiResponseError('Authentication token is expired or too close to expiry');
+    }
+
+    const signedEmail = normalizeEmail(claims.email, 'Authentication token email claim');
+    if (signedEmail !== responseEmail) {
+        throw new MalformedApiResponseError(
+            'Authentication response email does not match the signed token identity',
+        );
+    }
+
+    return claims;
 };
 
 export const exchangeGoogleCredential = async (
@@ -40,14 +86,15 @@ export const exchangeGoogleCredential = async (
     }
 
     const endpoint = '/auth/google';
+    const normalizedBaseUrl = apiBaseUrl.trim().replace(/\/+$/, '');
     const payload = await fetchWithDeadline(
-        `${apiBaseUrl}${endpoint}`,
+        `${normalizedBaseUrl}${endpoint}`,
         {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ id_token: googleCredential }),
+            body: JSON.stringify({ id_token: googleCredential.trim() }),
         },
         {
             timeoutMs,
@@ -61,30 +108,21 @@ export const exchangeGoogleCredential = async (
 
     const token = readRequiredString(payload, 'token');
     const name = readRequiredString(payload, 'user', { allowEmpty: true });
-    const email = readRequiredString(payload, 'email');
+    const responseEmail = normalizeEmail(readRequiredString(payload, 'email'), 'Authentication response email');
+    const claims = validateAuthenticatedToken(token, responseEmail, {
+        nowMs,
+        atobImpl,
+        TextDecoderImpl,
+    });
     const picture = typeof payload.picture === 'string' && payload.picture.trim()
         ? payload.picture.trim()
-        : '';
-
-    try {
-        if (isJwtExpired(token, {
-            nowMs,
-            skewSeconds: 300,
-            atobImpl,
-            TextDecoderImpl,
-        })) {
-            throw new MalformedApiResponseError('Authentication token is expired or too close to expiry');
-        }
-    } catch (error) {
-        if (error instanceof MalformedApiResponseError) throw error;
-        throw new MalformedApiResponseError('Authentication token claims are invalid', { cause: error });
-    }
+        : (typeof claims.picture === 'string' ? claims.picture : '');
 
     return {
         token,
         user: {
             name,
-            email,
+            email: responseEmail,
             picture,
         },
     };
