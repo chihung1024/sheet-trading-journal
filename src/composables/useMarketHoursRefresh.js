@@ -31,7 +31,7 @@ export function useMarketHoursRefresh() {
     let checkTimer = null;
     let countdownTimer = null;
     let leadership = null;
-    let leadershipSyncPromise = null;
+    let leadershipSyncEpoch = 0;
 
     const INTERVAL_MS = 3 * 60 * 1000;
     const INTERVAL_SECONDS = 3 * 60;
@@ -256,37 +256,40 @@ export function useMarketHoursRefresh() {
     };
 
     const stopLeadership = () => {
+        leadershipSyncEpoch += 1;
         leadership?.stop();
         isLeader.value = false;
         stopActiveSchedule();
     };
 
     const syncLeadership = () => {
-        if (leadershipSyncPromise) return leadershipSyncPromise;
+        const requestEpoch = ++leadershipSyncEpoch;
+        const requestedToken = authStore.token;
 
-        leadershipSyncPromise = Promise.resolve().then(async () => {
+        return Promise.resolve().then(async () => {
             const baseContext = getBaseRefreshContext();
             if (!shouldCompeteForMarketRefreshLeadership(baseContext)) {
-                stopLeadership();
+                if (requestEpoch === leadershipSyncEpoch) stopLeadership();
                 return false;
             }
 
             const coordinator = ensureLeadership();
             if (!coordinator) {
-                stopActiveSchedule();
+                if (requestEpoch === leadershipSyncEpoch) stopActiveSchedule();
                 return false;
             }
 
-            const elected = await coordinator.start(authStore.token);
+            const elected = await coordinator.start(requestedToken);
+            if (
+                requestEpoch !== leadershipSyncEpoch
+                || requestedToken !== authStore.token
+            ) return false;
+
             isLeader.value = elected && coordinator.isLeader();
             if (isLeader.value) evaluateMarketRefresh({ triggerImmediately: true });
             else stopActiveSchedule();
             return isLeader.value;
-        }).finally(() => {
-            leadershipSyncPromise = null;
         });
-
-        return leadershipSyncPromise;
     };
 
     const startMarketRefresh = () => {
@@ -337,7 +340,8 @@ export function useMarketHoursRefresh() {
         void triggerRefresh({ automatic: false });
     };
 
-    watch(() => authStore.token, (newToken) => {
+    watch(() => authStore.token, (newToken, previousToken) => {
+        if (newToken !== previousToken) stopLeadership();
         if (newToken && isEnabled.value) startMarketRefresh();
         else stopMarketRefresh();
     });
