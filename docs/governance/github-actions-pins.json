@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "batch": "PR-10B2",
+  "issue": 80,
+  "baseline_main_sha": "7c4545f4e822af37452cc62e0b594e9d21a0c653",
+  "baseline_tree_sha": "86d754f20641a01bc51855b4f08ab8477b8129eb",
+  "captured_at_utc": "2026-08-06T05:40:23Z",
+  "policy": {
+    "external_actions_must_use_full_commit_sha": true,
+    "checkout_persist_credentials": false,
+    "workflow_default_permissions": {
+      "contents": "read"
+    },
+    "runtime_change": "none",
+    "cost_model": "free-only"
+  },
+  "workflows": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/deploy-worker.yml",
+    ".github/workflows/production-contract-audit.yml",
+    ".github/workflows/update.yml"
+  ],
+  "pins": [
+    {
+      "action": "actions/checkout",
+      "semantic_tag": "v7",
+      "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "upstream_ref": "https://api.github.com/repos/actions/checkout/git/ref/tags/v7"
+    },
+    {
+      "action": "actions/setup-python",
+      "semantic_tag": "v7",
+      "sha": "5fda3b95a4ea91299a34e894583c3862153e4b97",
+      "upstream_ref": "https://api.github.com/repos/actions/setup-python/git/ref/tags/v7"
+    },
+    {
+      "action": "actions/setup-node",
+      "semantic_tag": "v7",
+      "sha": "820762786026740c76f36085b0efc47a31fe5020",
+      "upstream_ref": "https://api.github.com/repos/actions/setup-node/git/ref/tags/v7"
+    },
+    {
+      "action": "actions/upload-artifact",
+      "semantic_tag": "v6",
+      "sha": "b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+      "upstream_ref": "https://api.github.com/repos/actions/upload-artifact/git/ref/tags/v6"
+    }
+  ],
+  "recovery": {
+    "pre_change_branch": "backup-pre-pr10b2-7c4545f",
+    "work_branch": "pr10b2-workflow-supply-chain",
+    "rollback": "revert the PR merge or reset workflow files to the pre-change backup branch"
+  }
+}
