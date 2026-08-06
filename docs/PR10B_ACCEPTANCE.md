@@ -54,7 +54,7 @@ The frontend contract test must fail closed when:
 
 - an unregistered browser-storage key is introduced;
 - system-only `X-API-KEY` or `X-Target-User` is used by browser source;
-- the production Worker URL is duplicated outside `src/config.js`;
+- the production Worker URL is duplicated outside the reviewed API configuration and CSP allowlist locations (`src/config.js` and `index.html`);
 - `v-html`, an `innerHTML` assignment, `eval`, or `new Function` is added;
 - a GitHub token, Google API key, private key, or full email is hard-coded in browser source;
 - global localStorage clearing expands beyond the inventoried location.
