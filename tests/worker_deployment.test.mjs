@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import worker, { __test } from "../worker.js";
 
 function healthyDb(schemaVersion = 2) {
@@ -140,7 +140,12 @@ test("production config renderer writes only validated deployment metadata", asy
     });
     assert.equal(result.status, 0, result.stderr);
     const rendered = await readFile(output, "utf8");
-    assert.match(rendered, /main = "\.\.\/worker-entry\.js"/);
+    const mainMatch = rendered.match(/^main = "([^"]+)"$/m);
+    const migrationsMatch = rendered.match(/^migrations_dir = "([^"]+)"$/m);
+    assert.ok(mainMatch, "rendered config must contain exactly one main path");
+    assert.ok(migrationsMatch, "rendered config must contain exactly one migrations path");
+    assert.equal(resolve(dirname(output), mainMatch[1]), resolve("worker-entry.js"));
+    assert.equal(resolve(dirname(output), migrationsMatch[1]), resolve("migrations"));
     assert.match(rendered, /database_name = "journal-production"/);
     assert.match(rendered, /database_id = "11111111-1111-4111-8111-111111111111"/);
     assert.match(rendered, new RegExp(`SOURCE_COMMIT = "${exactSha}"`));
