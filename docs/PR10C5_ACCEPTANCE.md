@@ -63,6 +63,19 @@ The final policy is based on evidence, not a single error class:
 
 Non-`Error` thrown values are normalized into `Error` objects before classification so the error pipeline cannot fail while handling an abnormal rejection.
 
+### Root cause 3 — object-shaped JSON was accepted without success evidence
+
+The first parser rejected arrays, primitives, null, invalid JSON, and explicit `success:false`, but a plain object such as `{}` still passed. That is not merely cosmetic: the calculation-trigger code could interpret an object without a job as the supported legacy success path, clear the pending idempotency state, and begin snapshot polling.
+
+The final parser requires every successful portfolio API response to contain the literal boolean `success:true`.
+
+- `success:false` remains a definite application rejection;
+- missing `success`, string values such as `"true"`, or other non-boolean forms are malformed protocol responses;
+- malformed mutation responses remain outcome-ambiguous because the server may have committed before returning or truncating the response;
+- malformed reads remain ordinary read failures.
+
+This converts success from an assumption into explicit protocol evidence.
+
 ### Parallel same-class inventory
 
 Repository-wide raw-fetch scanning found a separate authenticated-login request in `src/stores/auth.js` and an independent Google refresh promise/timer lifecycle. Those are recorded as the next auth-lifecycle batch rather than being mixed into this PR, because changing Google OAuth and token-refresh behavior requires its own compatibility and rollback evidence.
@@ -102,7 +115,7 @@ The frontend distinguishes:
 - `RequestAbortedError` — external cancellation;
 - `ApiHttpError` — server returned a non-2xx status;
 - `ApiApplicationError` — JSON explicitly returned `success:false`;
-- `MalformedApiResponseError` — invalid response object, invalid JSON, array, primitive, or null successful payload;
+- `MalformedApiResponseError` — invalid response object, invalid JSON, array, primitive, null, missing `success:true`, or non-boolean success evidence;
 - ordinary transport errors — retained as their original `Error` type;
 - non-`Error` thrown values — normalized to `Error`.
 
@@ -137,7 +150,7 @@ The existing calculation idempotency and recovery state remains intact.
 
 - The existing `Idempotency-Key` is still sent.
 - A successful response with a job ID stores the same key/job recovery data and starts the same polling path.
-- A successful legacy response without a job ID clears pending state and starts the same snapshot polling path.
+- A successful legacy response without a job ID requires explicit `success:true`, clears pending state, and starts the same snapshot polling path.
 - An explicit HTTP or application rejection clears the pending trigger state.
 - Timeout, abort, network failure, malformed response, or other non-explicit failure preserves the pending idempotency key because the outcome is ambiguous.
 - No second trigger request is generated automatically.
@@ -182,10 +195,11 @@ The dependency-free Node suite covers:
 - already-aborted input;
 - ordinary network failure cleanup;
 - invalid timeout/fetch/timer/response-handler configuration;
-- successful JSON parsing;
+- explicit `success:true` JSON parsing;
 - HTTP error status/code classification;
 - malformed HTTP body fallback;
 - `success:false` application errors;
+- missing, string-valued, and malformed success evidence;
 - malformed successful JSON and invalid response objects;
 - read timeout as non-ambiguous;
 - timeout, abort, malformed response, network error, string rejection, and null rejection as ambiguous mutations;
@@ -220,7 +234,7 @@ No change to:
 ## Compatibility dimensions
 
 - Old frontend → current Worker: unchanged.
-- New frontend → current Worker: unchanged request and response contracts.
+- New frontend → current Worker: requires the already-existing explicit `success:true` contract used by current Worker routes.
 - Queued calculation jobs: unchanged IDs, status reads, and recovery state.
 - Existing snapshots: unchanged.
 - Legacy service workers: no service-worker or asset-routing change in this batch.
@@ -229,16 +243,17 @@ No change to:
 
 1. All new dependency-free frontend tests pass.
 2. The complete deadline includes response-body consumption.
-3. Every non-explicit mutation failure is outcome-ambiguous and is not retried.
-4. Existing frontend security and correctness tests pass.
-5. Frontend production build passes.
-6. Complete Python coverage gates remain non-regressed.
-7. Worker/security/config/local-D1 tests pass.
-8. Exact diff is limited to the six paths listed above.
-9. Independent exact-head review confirms no retry loop and no idempotency-state loss on ambiguous trigger outcomes.
-10. Merge uses expected-head locking.
-11. A post-merge backup is created from the exact merge SHA.
-12. Main exact-SHA CI passes.
+3. Successful API processing requires explicit `success:true`.
+4. Every non-explicit mutation failure is outcome-ambiguous and is not retried.
+5. Existing frontend security and correctness tests pass.
+6. Frontend production build passes.
+7. Complete Python coverage gates remain non-regressed.
+8. Worker/security/config/local-D1 tests pass.
+9. Exact diff is limited to the six paths listed above.
+10. Independent exact-head review confirms no retry loop and no idempotency-state loss on ambiguous trigger outcomes.
+11. Merge uses expected-head locking.
+12. A post-merge backup is created from the exact merge SHA.
+13. Main exact-SHA CI passes.
 
 ## Rollback
 
