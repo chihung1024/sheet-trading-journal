@@ -56,6 +56,8 @@ if (!COMMIT_RE.test(sourceCommit)) {
 let config = await readFile(sourcePath, 'utf8');
 requireExact(config, `name = "${EXPECTED_SERVICE}"`, 'staging Worker service');
 requireExact(config, 'main = "staging-worker.js"', 'staging Worker entry point');
+requireExact(config, 'workers_dev = true', 'fixed workers.dev service endpoint');
+requireExact(config, 'preview_urls = false', 'disabled Worker preview URLs');
 requireExact(config, 'DEPLOYMENT_ENVIRONMENT = "staging"', 'staging environment');
 requireExact(
   config,
