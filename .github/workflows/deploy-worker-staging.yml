@@ -1,0 +1,199 @@
+name: Deploy Staging Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character commit SHA reachable from main
+        required: true
+        type: string
+      confirm_environment:
+        description: Type staging to authorize the isolated staging deployment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: Deploy exact source to staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    env:
+      STAGING_WORKER_BASE_URL: https://journal-backend-staging.chired.workers.dev
+
+    steps:
+      - name: Checkout exact requested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify staging confirmation and exact main-reachable source
+        id: source
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+          CONFIRM_ENVIRONMENT: ${{ inputs.confirm_environment }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM_ENVIRONMENT" != "staging" ]; then
+            echo "confirm_environment must equal staging" >&2
+            exit 1
+          fi
+          expected="$(printf '%s' "$REQUESTED_SHA" | tr '[:upper:]' '[:lower:]')"
+          if [[ ! "$expected" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_sha must be an exact 40-character Git commit SHA" >&2
+            exit 1
+          fi
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$actual" refs/remotes/origin/main; then
+            echo "Refusing to deploy a commit that is not reachable from main" >&2
+            exit 1
+          fi
+          echo "sha=$actual" >> "$GITHUB_OUTPUT"
+
+      - name: Load expected versions from Worker manifest
+        id: manifest
+        run: node tools/export_worker_manifest.mjs
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run repository deployment gates
+        run: |
+          npm run test:worker
+          npm run worker:config:check
+          npm run worker:schema:test
+
+      - name: Verify protected staging configuration
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          for name in \
+            CLOUDFLARE_API_TOKEN \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_D1_DATABASE_ID \
+            CLOUDFLARE_D1_DATABASE_NAME \
+            STAGING_GOOGLE_CLIENT_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required staging value: $name" >&2
+              exit 1
+            fi
+          done
+          test "$CLOUDFLARE_D1_DATABASE_NAME" = "trading-journal-staging"
+          if ! [[ "$CLOUDFLARE_D1_DATABASE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]]; then
+            echo "Invalid staging D1 database ID" >&2
+            exit 1
+          fi
+          test "$CLOUDFLARE_D1_DATABASE_ID" != "00000000-0000-0000-0000-000000000000"
+          if ! [[ "$STAGING_GOOGLE_CLIENT_ID" =~ ^[0-9]+-[a-zA-Z0-9-]+\.apps\.googleusercontent\.com$ ]]; then
+            echo "Invalid staging Google OAuth client ID" >&2
+            exit 1
+          fi
+          test "$STAGING_GOOGLE_CLIENT_ID" != "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com"
+
+      - name: Render isolated staging Wrangler config
+        env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.sha }}
+        run: node tools/render_staging_wrangler_config.mjs
+
+      - name: Dry-run exact staging bundle
+        run: >-
+          npx wrangler deploy --dry-run
+          --experimental-provision=false
+          --experimental-auto-create=false
+          --config .wrangler/staging.toml
+
+      - name: Verify pre-provisioned staging secret inventory
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx wrangler secret list \
+            --config .wrangler/staging.toml \
+            --json > staging-secrets.json
+          STAGING_SECRET_LIST_JSON="$(cat staging-secrets.json)" \
+            node tools/verify_staging_secret_inventory.mjs
+
+      - name: Apply migrations to staging D1 only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: >-
+          npx wrangler d1 migrations apply DB --remote
+          --experimental-provision=false
+          --experimental-auto-create=false
+          --config .wrangler/staging.toml
+
+      - name: Deploy exact staging Worker source
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: >-
+          npx wrangler deploy
+          --experimental-provision=false
+          --experimental-auto-create=false
+          --config .wrangler/staging.toml
+
+      - name: Verify exact staging deployment readiness
+        env:
+          EXPECTED_SHA: ${{ steps.source.outputs.sha }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for attempt in $(seq 1 20); do
+            rm -f version.json health.json version.headers health.headers
+            if curl --silent --show-error --fail --max-time 15 \
+              --dump-header version.headers \
+              --output version.json \
+              "$STAGING_WORKER_BASE_URL/api/version" \
+              && curl --silent --show-error --fail --max-time 15 \
+              --dump-header health.headers \
+              --output health.json \
+              "$STAGING_WORKER_BASE_URL/api/health"; then
+              if VERSION_JSON="$(cat version.json)" \
+                HEALTH_JSON="$(cat health.json)" \
+                VERSION_HEADERS="$(cat version.headers)" \
+                HEALTH_HEADERS="$(cat health.headers)" \
+                node tools/verify_staging_worker_deployment.mjs; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 6
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Exact staging deployment did not become ready" >&2
+            exit 1
+          fi
