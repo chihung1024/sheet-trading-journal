@@ -8,10 +8,15 @@ const ARBITRARY_PREVIEW_ORIGIN = 'https://feature-123.sheet-trading-journal.page
 const GITHUB_PAGES_ORIGIN = 'https://chihung1024.github.io';
 const LOCAL_ORIGIN = 'http://localhost:5173';
 
-test('staging Wrangler template explicitly disables version preview URLs', async () => {
-  const config = await readFile('ops/staging/wrangler.toml', 'utf8');
+test('staging Wrangler template and renderer explicitly disable version preview URLs', async () => {
+  const [config, renderer] = await Promise.all([
+    readFile('ops/staging/wrangler.toml', 'utf8'),
+    readFile('tools/render_staging_wrangler_config.mjs', 'utf8'),
+  ]);
   assert.match(config, /^workers_dev = true$/m);
   assert.match(config, /^preview_urls = false$/m);
+  assert.match(renderer, /requireExact\(config, 'workers_dev = true'/);
+  assert.match(renderer, /requireExact\(config, 'preview_urls = false'/);
 });
 
 test('staging deployment verifies the live browser-origin boundary after readiness', async () => {
