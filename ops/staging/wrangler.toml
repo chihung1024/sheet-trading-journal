@@ -1,0 +1,36 @@
+# Canonical staging Worker deployment template.
+#
+# This file lives outside the frontend root configuration path and is
+# intentionally non-deployable until the fail-closed renderer replaces the
+# all-zero D1 UUID and placeholder OAuth client.
+
+name = "journal-backend-staging"
+main = "staging-worker.js"
+compatibility_date = "2026-08-05"
+workers_dev = true
+
+[observability]
+enabled = true
+head_sampling_rate = 1.0
+
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[secrets]
+required = ["API_SECRET"]
+
+[vars]
+RELEASE_VERSION = "4.07"
+API_VERSION = "2.60"
+SCHEMA_VERSION = "2"
+SOURCE_COMMIT = "development"
+DEPLOYMENT_ENVIRONMENT = "staging"
+ALLOWED_ORIGINS = "https://staging.sheet-trading-journal.pages.dev"
+GOOGLE_CLIENT_ID = "000000000000-staging-placeholder.apps.googleusercontent.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "trading-journal-staging"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../../migrations"
+migrations_table = "d1_migrations"
