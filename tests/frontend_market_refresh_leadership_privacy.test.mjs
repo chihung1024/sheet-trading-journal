@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
     createMarketRefreshLeadership,
     MARKET_REFRESH_LEASE_STORAGE_KEY,
+    MARKET_REFRESH_PAUSE_STORAGE_KEY,
 } from '../src/services/marketRefreshLeadership.js';
 
 const encodeBase64Url = (value) => Buffer.from(value)
@@ -16,7 +17,7 @@ const makeJwt = (claims) => (
     `${encodeBase64Url('{"alg":"none"}')}.${encodeBase64Url(JSON.stringify(claims))}.signature`
 );
 
-test('lease storage key and payload contain no raw token, email, or signed subject', async () => {
+test('lease and pause storage contain no raw token, email, or signed subject', async () => {
     const email = 'tenant@example.test';
     const subject = 'opaque-google-subject-123456789';
     const token = makeJwt({
@@ -29,7 +30,7 @@ test('lease storage key and payload contain no raw token, email, or signed subje
         getItem: (key) => values.get(key) ?? null,
         setItem: (key, value) => values.set(key, String(value)),
     };
-    const ids = ['owner-id', 'lease-id'];
+    const ids = ['owner-id', 'lease-id', 'pause-claim-id'];
     const leadership = createMarketRefreshLeadership({
         storage,
         eventTarget: null,
@@ -45,17 +46,34 @@ test('lease storage key and payload contain no raw token, email, or signed subje
     });
 
     assert.equal(await leadership.start(token), true);
-    const key = leadership.getStorageKey();
-    const rawRecord = values.get(key);
+    assert.equal(await leadership.setPaused(true), true);
 
-    assert.match(key, new RegExp(`^${MARKET_REFRESH_LEASE_STORAGE_KEY.replace(/\./g, '\\.')}[0-9a-f]{16}$`));
+    const leaseKey = leadership.getStorageKey();
+    const pauseKey = leadership.getPauseStorageKey();
+    const rawLease = values.get(leaseKey);
+    const rawPause = values.get(pauseKey);
+
+    assert.match(
+        leaseKey,
+        new RegExp(`^${MARKET_REFRESH_LEASE_STORAGE_KEY.replace(/\./g, '\\.')}[0-9a-f]{16}$`),
+    );
+    assert.match(
+        pauseKey,
+        new RegExp(`^${MARKET_REFRESH_PAUSE_STORAGE_KEY.replace(/\./g, '\\.')}[0-9a-f]{16}$`),
+    );
+    assert.equal(
+        leaseKey.slice(MARKET_REFRESH_LEASE_STORAGE_KEY.length),
+        pauseKey.slice(MARKET_REFRESH_PAUSE_STORAGE_KEY.length),
+    );
+
     for (const forbidden of [token, email, subject]) {
-        assert.equal(key.includes(forbidden), false);
-        assert.equal(rawRecord.includes(forbidden), false);
+        for (const persisted of [leaseKey, pauseKey, rawLease, rawPause]) {
+            assert.equal(persisted.includes(forbidden), false);
+        }
     }
 
-    const record = JSON.parse(rawRecord);
-    assert.deepEqual(Object.keys(record).sort(), [
+    const leaseRecord = JSON.parse(rawLease);
+    assert.deepEqual(Object.keys(leaseRecord).sort(), [
         'actionClaimId',
         'expiresAt',
         'lastActionAt',
@@ -63,7 +81,18 @@ test('lease storage key and payload contain no raw token, email, or signed subje
         'ownerId',
         'version',
     ]);
-    assert.equal('scope' in record, false);
-    assert.equal('token' in record, false);
-    assert.equal('email' in record, false);
+    assert.equal('scope' in leaseRecord, false);
+    assert.equal('token' in leaseRecord, false);
+    assert.equal('email' in leaseRecord, false);
+
+    const pauseRecord = JSON.parse(rawPause);
+    assert.deepEqual(Object.keys(pauseRecord).sort(), [
+        'claimId',
+        'paused',
+        'version',
+    ]);
+    assert.equal(pauseRecord.paused, true);
+    assert.equal('scope' in pauseRecord, false);
+    assert.equal('token' in pauseRecord, false);
+    assert.equal('email' in pauseRecord, false);
 });
