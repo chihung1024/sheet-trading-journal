@@ -1,19 +1,9 @@
 import { readFile } from "node:fs/promises";
 
-const [
-  manifestRaw,
-  config,
-  stagingConfig,
-  worker,
-  stagingWorker,
-  baselineMigration,
-  latestMigration,
-] = await Promise.all([
+const [manifestRaw, config, worker, baselineMigration, latestMigration] = await Promise.all([
   readFile("worker-manifest.json", "utf8"),
   readFile("wrangler.toml", "utf8"),
-  readFile("wrangler.staging.toml", "utf8"),
   readFile("worker.js", "utf8"),
-  readFile("staging-worker.js", "utf8"),
   readFile("migrations/0001_baseline.sql", "utf8"),
   readFile("migrations/0002_calculation_jobs.sql", "utf8"),
 ]);
@@ -42,57 +32,11 @@ if (!config.includes('database_id = "00000000-0000-0000-0000-000000000000"')) {
 if (!config.includes('SOURCE_COMMIT = "development"')) {
   errors.push("Tracked wrangler.toml must not claim a production source SHA");
 }
-
-expect(stagingConfig, 'name = "journal-backend-staging"', "staging Worker service name");
-expect(stagingConfig, 'main = "staging-worker.js"', "staging wrapper source");
-expect(stagingConfig, `binding = "${manifest.d1Binding}"`, "staging D1 binding");
-expect(
-  stagingConfig,
-  `binding = "${manifest.versionMetadataBinding}"`,
-  "staging version metadata binding",
-);
-expect(
-  stagingConfig,
-  `RELEASE_VERSION = "${manifest.releaseVersion}"`,
-  "staging release version variable",
-);
-expect(
-  stagingConfig,
-  `API_VERSION = "${manifest.apiVersion}"`,
-  "staging API version variable",
-);
-expect(
-  stagingConfig,
-  `SCHEMA_VERSION = "${manifest.schemaVersion}"`,
-  "staging schema version variable",
-);
-expect(stagingConfig, 'DEPLOYMENT_ENVIRONMENT = "staging"', "staging environment marker");
-expect(
-  stagingConfig,
-  'ALLOWED_ORIGINS = "https://staging.sheet-trading-journal.pages.dev"',
-  "staging frontend origin",
-);
-expect(stagingConfig, 'database_name = "trading-journal-staging"', "staging D1 name");
-expect(
-  stagingConfig,
-  'GOOGLE_CLIENT_ID = "000000000000-staging-placeholder.apps.googleusercontent.com"',
-  "staging OAuth placeholder",
-);
-expect(stagingWorker, "import canonicalWorker from './worker.js'", "canonical Worker delegation");
-expect(stagingWorker, "GITHUB_TOKEN is forbidden in the staging Worker", "staging dispatch boundary");
-
-if (!stagingConfig.includes('database_id = "00000000-0000-0000-0000-000000000000"')) {
-  errors.push("Tracked wrangler.staging.toml must retain the safe D1 sentinel");
-}
-if (!stagingConfig.includes('SOURCE_COMMIT = "development"')) {
-  errors.push("Tracked wrangler.staging.toml must not claim a deployed source SHA");
-}
-
 if (errors.length) {
   console.error(errors.map((error) => `- ${error}`).join("\n"));
   process.exit(1);
 }
-console.log("Worker production and staging manifests, sources, configs, and migrations are synchronized.");
+console.log("Worker manifest, source, Wrangler config, and migration are synchronized.");
 
 function expect(content, needle, label) {
   if (!content.includes(needle)) errors.push(`Missing or inconsistent ${label}: ${needle}`);

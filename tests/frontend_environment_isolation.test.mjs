@@ -18,8 +18,7 @@ const POLICY_KEYS = [
 ];
 const PRODUCTION_API = DEPLOYMENT_CONTRACT.production.api_origins[0];
 const PRODUCTION_CLIENT_ID = DEPLOYMENT_CONTRACT.production.google_client_ids[0];
-const STAGING_API = DEPLOYMENT_CONTRACT.staging.api_origin;
-const STAGING_BRANCH = DEPLOYMENT_CONTRACT.staging.pages_branch;
+const STAGING_API = 'https://journal-backend-staging.example.workers.dev';
 const STAGING_CLIENT_ID = '123456789012-stagingclient.apps.googleusercontent.com';
 
 function cleanEnvironment(overrides = {}) {
@@ -36,11 +35,11 @@ function runCli(overrides = {}) {
   });
 }
 
-function validStaging(overrides = {}) {
+function validPreview(overrides = {}) {
   return {
     CF_PAGES: '1',
-    CF_PAGES_BRANCH: STAGING_BRANCH,
-    VITE_DEPLOY_ENV: 'staging',
+    CF_PAGES_BRANCH: 'feature/isolated-preview',
+    VITE_DEPLOY_ENV: 'preview',
     VITE_API_URL: STAGING_API,
     VITE_GOOGLE_CLIENT_ID: STAGING_CLIENT_ID,
     ...overrides,
@@ -66,65 +65,51 @@ test('current main Pages production build remains compatible during staged rollo
   assert.equal(result.configurationMode, 'legacy-production-fallback');
 });
 
-test('main Pages build rejects a staging environment declaration', () => {
+test('main Pages build rejects a non-production environment declaration', () => {
   assert.throws(
     () => validateFrontendEnvironment(cleanEnvironment({
-      ...validStaging(),
+      CF_PAGES: '1',
       CF_PAGES_BRANCH: 'main',
+      VITE_DEPLOY_ENV: 'preview',
+      VITE_API_URL: STAGING_API,
+      VITE_GOOGLE_CLIENT_ID: STAGING_CLIENT_ID,
     })),
     (error) => error instanceof FrontendEnvironmentPolicyError
       && error.errors.some((message) => message.includes('main Cloudflare Pages branch')),
   );
 });
 
-test('arbitrary non-main Pages branches remain disabled even with valid-looking staging values', () => {
-  const cli = runCli({
-    ...validStaging(),
-    CF_PAGES_BRANCH: 'feature/unreviewed-preview',
-  });
-  assert.notEqual(cli.status, 0);
-  assert.match(cli.stderr, /Only the reviewed staging Pages branch/);
-});
-
-test('the fixed staging branch fails closed when isolated configuration is missing', () => {
+test('non-main Pages builds fail closed when isolated configuration is missing', () => {
   const cli = runCli({
     CF_PAGES: '1',
-    CF_PAGES_BRANCH: STAGING_BRANCH,
+    CF_PAGES_BRANCH: 'feature/missing-isolation',
   });
   assert.notEqual(cli.status, 0);
-  assert.match(cli.stderr, /VITE_DEPLOY_ENV=staging/);
+  assert.match(cli.stderr, /VITE_DEPLOY_ENV=preview or staging/);
   assert.match(cli.stderr, /VITE_API_URL is required/);
   assert.match(cli.stderr, /VITE_GOOGLE_CLIENT_ID is required/);
 });
 
-test('staging rejects the production API origin and production OAuth client', () => {
-  const productionApi = runCli(validStaging({ VITE_API_URL: PRODUCTION_API }));
-  assert.notEqual(productionApi.status, 0);
-  assert.match(productionApi.stderr, /cannot use a production API origin/);
-
-  const productionClient = runCli(validStaging({
-    VITE_GOOGLE_CLIENT_ID: PRODUCTION_CLIENT_ID,
-  }));
-  assert.notEqual(productionClient.status, 0);
-  assert.match(productionClient.stderr, /cannot use a production Google OAuth client/);
+test('non-main Pages builds reject the production API origin', () => {
+  const cli = runCli(validPreview({ VITE_API_URL: PRODUCTION_API }));
+  assert.notEqual(cli.status, 0);
+  assert.match(cli.stderr, /cannot use a production API origin/);
 });
 
-test('the fixed staging branch accepts only the reviewed staging API and a distinct OAuth client', () => {
-  const result = validateFrontendEnvironment(cleanEnvironment(validStaging()));
-  assert.equal(result.context, 'pages-staging');
-  assert.equal(result.deployEnvironment, 'staging');
+test('non-main Pages builds reject the production Google OAuth client', () => {
+  const cli = runCli(validPreview({ VITE_GOOGLE_CLIENT_ID: PRODUCTION_CLIENT_ID }));
+  assert.notEqual(cli.status, 0);
+  assert.match(cli.stderr, /cannot use a production Google OAuth client/);
+});
 
-  const cli = runCli(validStaging());
+test('non-main Pages builds accept an explicit isolated staging configuration', () => {
+  const result = validateFrontendEnvironment(cleanEnvironment(validPreview()));
+  assert.equal(result.context, 'pages-preview');
+  assert.equal(result.deployEnvironment, 'preview');
+
+  const cli = runCli(validPreview());
   assert.equal(cli.status, 0, cli.stderr);
-  assert.match(cli.stdout, /pages-staging/);
-
-  assert.throws(
-    () => validateFrontendEnvironment(cleanEnvironment(validStaging({
-      VITE_API_URL: 'https://other-staging.example.workers.dev',
-    }))),
-    (error) => error instanceof FrontendEnvironmentPolicyError
-      && error.errors.some((message) => message.includes('reviewed staging API origin')),
-  );
+  assert.match(cli.stdout, /pages-preview/);
 });
 
 test('dedicated staging builds outside Pages use the same strict policy', () => {
@@ -136,21 +121,21 @@ test('dedicated staging builds outside Pages use the same strict policy', () => 
   assert.equal(result.context, 'staging');
 });
 
-test('staging API URLs must be exact HTTPS non-local origins', () => {
+test('deployed non-production API URLs must be exact HTTPS non-local origins', () => {
   const invalidUrls = [
-    STAGING_API.replace('https:', 'http:'),
+    'http://journal-backend-staging.example.workers.dev',
     'https://localhost',
     'https://127.0.0.1',
     `${STAGING_API}/api`,
     `${STAGING_API}/`,
     `${STAGING_API}?environment=staging`,
     `${STAGING_API}#staging`,
-    'https://user:password@journal-backend-staging.chired.workers.dev',
+    'https://user:password@journal-backend-staging.example.workers.dev',
   ];
 
   for (const apiUrl of invalidUrls) {
     assert.throws(
-      () => validateFrontendEnvironment(cleanEnvironment(validStaging({ VITE_API_URL: apiUrl }))),
+      () => validateFrontendEnvironment(cleanEnvironment(validPreview({ VITE_API_URL: apiUrl }))),
       FrontendEnvironmentPolicyError,
       apiUrl,
     );
@@ -159,11 +144,11 @@ test('staging API URLs must be exact HTTPS non-local origins', () => {
 
 test('unsupported environment names and malformed OAuth clients fail closed', () => {
   assert.throws(
-    () => validateFrontendEnvironment(cleanEnvironment(validStaging({ VITE_DEPLOY_ENV: 'preview' }))),
+    () => validateFrontendEnvironment(cleanEnvironment(validPreview({ VITE_DEPLOY_ENV: 'qa' }))),
     FrontendEnvironmentPolicyError,
   );
   assert.throws(
-    () => validateFrontendEnvironment(cleanEnvironment(validStaging({
+    () => validateFrontendEnvironment(cleanEnvironment(validPreview({
       VITE_GOOGLE_CLIENT_ID: 'not-a-google-client',
     }))),
     FrontendEnvironmentPolicyError,
