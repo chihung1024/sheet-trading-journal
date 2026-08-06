@@ -17,11 +17,21 @@ const makeJwt = (claims) => (
     `${encodeBase64Url('{"alg":"none"}')}.${encodeBase64Url(JSON.stringify(claims))}.signature`
 );
 
-const createStorage = ({ initial = {}, failRead = false, failWrite = false } = {}) => {
+const createStorage = ({
+    initial = {},
+    failRead = false,
+    failWrite = false,
+    staleEmptyReads = 0,
+} = {}) => {
     const values = new Map(Object.entries(initial));
+    let remainingStaleEmptyReads = staleEmptyReads;
     return {
         getItem(key) {
             if (failRead) throw new Error('read failed');
+            if (remainingStaleEmptyReads > 0) {
+                remainingStaleEmptyReads -= 1;
+                return null;
+            }
             return values.has(key) ? values.get(key) : null;
         },
         setItem(key, value) {
@@ -169,7 +179,8 @@ test('session scope uses signed sub and does not expose the raw identifier', () 
 });
 
 test('simultaneous contenders stabilize to exactly one confirmed leader', async () => {
-    const storage = createStorage();
+    // Model two real tabs that both read the pre-election empty value before either write is visible.
+    const storage = createStorage({ staleEmptyReads: 2 });
     const clock = { value: 100 };
     const manualDelay = createManualDelay();
     const changesA = [];
@@ -242,15 +253,22 @@ test('lease expiry permits failover and the displaced owner fails closed on obse
 test('released leadership preserves automatic action cooldown across failover', async () => {
     const storage = createStorage();
     const clock = { value: 1000 };
+    const timing = {
+        leaseTtlMs: 500_000,
+        renewIntervalMs: 100_000,
+        settleMs: 10,
+    };
     const a = coordinator({
         storage,
         now: () => clock.value,
         randomId: sequence('owner-a', 'lease-a', 'action-a'),
+        ...timing,
     }).instance;
     const b = coordinator({
         storage,
         now: () => clock.value,
         randomId: sequence('owner-b', 'lease-b', 'action-b'),
+        ...timing,
     }).instance;
 
     assert.equal(await a.start('token'), true);
