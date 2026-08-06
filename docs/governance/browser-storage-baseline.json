@@ -68,6 +68,15 @@
       "owner_paths": ["src/services/marketRefreshLeadership.js"]
     },
     {
+      "key": "sheet_trading_journal.market_refresh_pause.",
+      "classification": "tenant-operation-control-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-039"],
+      "target_batch": "B02",
+      "planned_action": "retain-opaque-scope-cross-tab-pause-intent",
+      "owner_paths": ["src/services/marketRefreshLeadership.js"]
+    },
+    {
       "key": "theme",
       "classification": "ui-preference",
       "authoritative": false,
