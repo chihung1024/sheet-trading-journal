@@ -6,6 +6,12 @@ const hasGoogleIdentity = (googleIdentity) => (
     && typeof googleIdentity.prompt === 'function'
 );
 
+const normalizeLogger = (logger) => (
+    logger && (typeof logger === 'object' || typeof logger === 'function')
+        ? logger
+        : {}
+);
+
 export const createGoogleCredentialRefreshController = ({
     getGoogleIdentity = () => globalThis.window?.google?.accounts?.id,
     clientId,
@@ -15,6 +21,9 @@ export const createGoogleCredentialRefreshController = ({
     clearTimeoutImpl = globalThis.clearTimeout,
     logger = console,
 } = {}) => {
+    if (typeof getGoogleIdentity !== 'function') {
+        throw new TypeError('getGoogleIdentity must be a function');
+    }
     if (typeof clientId !== 'string' || !clientId.trim()) {
         throw new TypeError('Google client ID is required');
     }
@@ -28,6 +37,7 @@ export const createGoogleCredentialRefreshController = ({
         throw new TypeError('refresh timer implementation is unavailable');
     }
 
+    const safeLogger = normalizeLogger(logger);
     let inFlightPromise = null;
     let cancelCurrent = null;
 
@@ -36,7 +46,14 @@ export const createGoogleCredentialRefreshController = ({
 
         let trackedPromise;
         const operation = new Promise((resolve) => {
-            const googleIdentity = getGoogleIdentity();
+            let googleIdentity;
+            try {
+                googleIdentity = getGoogleIdentity();
+            } catch (error) {
+                safeLogger.error?.('[Token refresh] Google Identity lookup failed', error);
+                resolve(false);
+                return;
+            }
             if (!hasGoogleIdentity(googleIdentity)) {
                 resolve(false);
                 return;
@@ -68,7 +85,7 @@ export const createGoogleCredentialRefreshController = ({
                         if (settled) return;
                         const credential = response?.credential;
                         if (typeof credential !== 'string' || !credential.trim()) {
-                            logger.warn?.('[Token refresh] Google returned no credential');
+                            safeLogger.warn?.('[Token refresh] Google returned no credential');
                             settle(false, { abort: true });
                             return;
                         }
@@ -78,7 +95,9 @@ export const createGoogleCredentialRefreshController = ({
                             });
                             settle(exchanged !== false, { abort: exchanged === false });
                         } catch (error) {
-                            if (!settled) logger.error?.('[Token refresh] Credential exchange failed', error);
+                            if (!settled) {
+                                safeLogger.error?.('[Token refresh] Credential exchange failed', error);
+                            }
                             settle(false, { abort: true });
                         }
                     },
@@ -96,12 +115,12 @@ export const createGoogleCredentialRefreshController = ({
                             settle(false, { abort: true });
                         }
                     } catch (error) {
-                        logger.error?.('[Token refresh] Prompt notification failed', error);
+                        safeLogger.error?.('[Token refresh] Prompt notification failed', error);
                         settle(false, { abort: true });
                     }
                 });
             } catch (error) {
-                logger.error?.('[Token refresh] Google Identity initialization failed', error);
+                safeLogger.error?.('[Token refresh] Google Identity initialization failed', error);
                 settle(false, { abort: true });
             }
         });
