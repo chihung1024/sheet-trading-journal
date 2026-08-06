@@ -60,6 +60,7 @@ export const createGoogleCredentialRefreshController = ({
             }
 
             let settled = false;
+            let credentialReceived = false;
             let timeoutId = null;
             const controller = new AbortController();
 
@@ -82,7 +83,9 @@ export const createGoogleCredentialRefreshController = ({
                 googleIdentity.initialize({
                     client_id: clientId,
                     callback: async (response) => {
-                        if (settled) return;
+                        if (settled || credentialReceived) return;
+                        credentialReceived = true;
+
                         const credential = response?.credential;
                         if (typeof credential !== 'string' || !credential.trim()) {
                             safeLogger.warn?.('[Token refresh] Google returned no credential');
@@ -93,7 +96,7 @@ export const createGoogleCredentialRefreshController = ({
                             const exchanged = await exchangeCredential(credential, {
                                 signal: controller.signal,
                             });
-                            settle(exchanged !== false, { abort: exchanged === false });
+                            settle(exchanged === true, { abort: exchanged !== true });
                         } catch (error) {
                             if (!settled) {
                                 safeLogger.error?.('[Token refresh] Credential exchange failed', error);
@@ -106,7 +109,7 @@ export const createGoogleCredentialRefreshController = ({
                 });
 
                 googleIdentity.prompt((notification) => {
-                    if (settled) return;
+                    if (settled || credentialReceived) return;
                     try {
                         const unavailable = notification?.isNotDisplayed?.() === true;
                         const skipped = notification?.isSkippedMoment?.() === true;
