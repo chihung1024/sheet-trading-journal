@@ -20,7 +20,7 @@
     "worker:schema:test": "node tools/test_d1_schema.mjs",
     "worker:dev": "wrangler dev --config wrangler.toml",
     "worker:deploy": "wrangler deploy --config .wrangler/deploy.toml",
-    "worker:staging:deploy": "wrangler deploy --config .wrangler/staging.toml",
+    "worker:staging:deploy": "wrangler deploy --experimental-provision=false --experimental-auto-create=false --config .wrangler/staging.toml",
     "preview": "vite preview"
   },
   "dependencies": {
