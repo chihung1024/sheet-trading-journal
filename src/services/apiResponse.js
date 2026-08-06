@@ -2,7 +2,7 @@ import {
     ApiApplicationError,
     ApiHttpError,
     MalformedApiResponseError,
-} from './requestErrors';
+} from './requestErrors.js';
 
 const isPlainObject = (value) => (
     value !== null
