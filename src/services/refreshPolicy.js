@@ -1,4 +1,4 @@
-export function shouldScheduleMarketRefresh({
+export function shouldCompeteForMarketRefreshLeadership({
   enabled,
   paused,
   visible,
@@ -16,6 +16,25 @@ export function shouldScheduleMarketRefresh({
   );
 }
 
+export function shouldScheduleMarketRefresh({
+  enabled,
+  paused,
+  visible,
+  marketHours,
+  hasToken,
+  tokenExpired,
+  hasLeadership,
+}) {
+  return shouldCompeteForMarketRefreshLeadership({
+    enabled,
+    paused,
+    visible,
+    marketHours,
+    hasToken,
+    tokenExpired,
+  }) && hasLeadership === true;
+}
+
 export function shouldTriggerMarketRefresh({
   enabled,
   paused,
@@ -23,6 +42,7 @@ export function shouldTriggerMarketRefresh({
   marketHours,
   hasToken,
   tokenExpired,
+  hasLeadership,
   busy,
   running,
 }) {
@@ -33,5 +53,6 @@ export function shouldTriggerMarketRefresh({
     marketHours,
     hasToken,
     tokenExpired,
+    hasLeadership,
   }) && !busy && !running;
 }

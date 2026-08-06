@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  shouldCompeteForMarketRefreshLeadership,
   shouldScheduleMarketRefresh,
   shouldTriggerMarketRefresh,
 } from '../src/services/refreshPolicy.js';
@@ -20,6 +21,7 @@ function eligibleContext(overrides = {}) {
     marketHours: true,
     hasToken: true,
     tokenExpired: false,
+    hasLeadership: true,
     busy: false,
     running: false,
     ...overrides,
@@ -38,7 +40,32 @@ function sourceBlock(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test('market refresh scheduling requires every non-busy prerequisite', () => {
+test('leadership competition requires every session and visibility prerequisite', () => {
+  assert.equal(shouldCompeteForMarketRefreshLeadership(eligibleContext()), true);
+
+  for (const blocked of [
+    { enabled: false },
+    { paused: true },
+    { visible: false },
+    { marketHours: false },
+    { hasToken: false },
+    { tokenExpired: true },
+  ]) {
+    assert.equal(
+      shouldCompeteForMarketRefreshLeadership(eligibleContext(blocked)),
+      false,
+      `Expected competition rejection for ${JSON.stringify(blocked)}`,
+    );
+  }
+
+  assert.equal(
+    shouldCompeteForMarketRefreshLeadership(eligibleContext({ hasLeadership: false })),
+    true,
+    'Followers must remain eligible to compete after lease expiry',
+  );
+});
+
+test('market refresh scheduling requires leadership and every non-busy prerequisite', () => {
   assert.equal(shouldScheduleMarketRefresh(eligibleContext()), true);
 
   for (const blocked of [
@@ -48,6 +75,8 @@ test('market refresh scheduling requires every non-busy prerequisite', () => {
     { marketHours: false },
     { hasToken: false },
     { tokenExpired: true },
+    { hasLeadership: false },
+    { hasLeadership: undefined },
   ]) {
     assert.equal(
       shouldScheduleMarketRefresh(eligibleContext(blocked)),
@@ -69,33 +98,53 @@ test('market refresh trigger additionally rejects busy and already-running state
     { marketHours: false },
     { hasToken: false },
     { tokenExpired: true },
+    { hasLeadership: false },
   ]) {
     assert.equal(shouldTriggerMarketRefresh(eligibleContext(blocked)), false);
   }
 });
 
-test('refresh composable uses the centralized policy at schedule and trigger boundaries', () => {
+test('refresh composable uses centralized policy and leadership at schedule and trigger boundaries', () => {
   const source = readComposable();
+  assert.match(source, /shouldCompeteForMarketRefreshLeadership/);
   assert.match(source, /shouldScheduleMarketRefresh/);
   assert.match(source, /shouldTriggerMarketRefresh/);
-  assert.match(source, /const context = getRefreshContext\(\);/);
+  assert.match(source, /hasLeadership: isLeader\.value && leadership\?\.isLeader\(\) === true/);
   assert.match(source, /busy: portfolioStore\.isPolling \|\| portfolioStore\.loading/);
   assert.match(source, /running: isRunning\.value/);
   assert.doesNotMatch(source, /無視頁面可見性/);
 });
 
-test('pause and hidden-page transitions stop active refresh and countdown timers', () => {
+test('pause is shared across tabs while hidden-page transitions release only local leadership', () => {
   const source = readComposable();
 
   const pauseBlock = sourceBlock(source, 'const togglePause', 'const stopMarketRefresh');
-  assert.match(pauseBlock, /if \(isPaused\.value\) \{/);
+  assert.match(pauseBlock, /pauseMutationInProgress = true/);
+  assert.match(pauseBlock, /await coordinator\.start\(authStore\.token\)/);
+  assert.match(pauseBlock, /const requestedPause = !coordinator\.isPaused\(\)/);
+  assert.match(pauseBlock, /coordinator\.setPaused\(requestedPause\)/);
+  assert.match(pauseBlock, /isPaused\.value = coordinator\.isPaused\(\)/);
+  assert.match(pauseBlock, /pauseMutationInProgress = false/);
   assert.match(pauseBlock, /stopActiveSchedule\(\);/);
-  assert.match(pauseBlock, /evaluateMarketRefresh\(\{ triggerImmediately: true \}\);/);
+  assert.doesNotMatch(pauseBlock, /leadership\?\.stop\(\)/);
+  assert.ok(
+    pauseBlock.indexOf('await coordinator.start') < pauseBlock.indexOf('const requestedPause'),
+    'Shared pause state must be synchronized before computing the toggle direction',
+  );
 
   const visibilityBlock = sourceBlock(source, 'const handleVisibilityChange', 'const manualTrigger');
   assert.match(visibilityBlock, /if \(!isPageVisible\(\)\) \{/);
-  assert.match(visibilityBlock, /stopActiveSchedule\(\);/);
-  assert.match(visibilityBlock, /evaluateMarketRefresh\(\{ triggerImmediately: true \}\);/);
+  assert.match(visibilityBlock, /stopLeadership\(\);/);
+  assert.match(visibilityBlock, /syncLeadership\(\)/);
+
+  const pauseCallbackBlock = sourceBlock(source, 'const handleSharedPauseChange', 'const ensureLeadership');
+  assert.match(pauseCallbackBlock, /isPaused\.value = nextPaused === true/);
+  assert.match(pauseCallbackBlock, /stopActiveSchedule\(\);/);
+  assert.match(pauseCallbackBlock, /!pauseMutationInProgress/);
+  assert.match(pauseCallbackBlock, /syncLeadership\(\)/);
+
+  assert.match(source, /onPauseChange: handleSharedPauseChange/);
+  assert.match(source, /const observationContext = \{ \.\.\.baseContext, paused: false \}/);
 
   const stopBlock = sourceBlock(source, 'const stopActiveSchedule', 'const triggerRefresh');
   assert.match(stopBlock, /stopRefreshTimer\(\);/);
@@ -103,27 +152,64 @@ test('pause and hidden-page transitions stop active refresh and countdown timers
   assert.match(stopBlock, /timeRemaining\.value = 0;/);
 });
 
-test('visibility listener is lifecycle-bound and timer creation is idempotent', () => {
+test('visibility and storage listeners are lifecycle-bound and timer creation is idempotent', () => {
   const source = readComposable();
   assert.match(source, /document\.addEventListener\('visibilitychange', handleVisibilityChange\);/);
   assert.match(source, /document\.removeEventListener\('visibilitychange', handleVisibilityChange\);/);
+  assert.match(source, /createMarketRefreshLeadership/);
+  assert.match(source, /leadership\?\.stop\(\)/);
 
   const startBlock = sourceBlock(source, 'const startMarketRefresh', 'const formattedTimeRemaining');
   assert.match(startBlock, /if \(!checkTimer\) \{/);
   assert.equal((startBlock.match(/checkTimer = setInterval/g) || []).length, 1);
 
-  const evaluateBlock = sourceBlock(source, 'const evaluateMarketRefresh', 'const startMarketRefresh');
+  const evaluateBlock = sourceBlock(source, 'const evaluateMarketRefresh', 'const handleLeadershipChange');
+  assert.match(evaluateBlock, /pauseMutationInProgress \|\| !shouldScheduleMarketRefresh\(context\)/);
   assert.match(evaluateBlock, /if \(refreshTimer\) return true;/);
   assert.equal((evaluateBlock.match(/refreshTimer = setInterval/g) || []).length, 1);
 });
 
-test('hidden, paused, or invalid authentication cannot reach automatic triggerUpdate', () => {
+test('followers cannot create automatic timers or reach triggerUpdate without a shared action claim', () => {
   const source = readComposable();
   const triggerBlock = sourceBlock(source, 'const triggerRefresh', 'const evaluateMarketRefresh');
-  assert.match(triggerBlock, /if \(!shouldTriggerMarketRefresh\(/);
+  assert.match(triggerBlock, /pauseMutationInProgress/);
+  assert.match(triggerBlock, /shouldTriggerMarketRefresh\(/);
+  assert.match(triggerBlock, /claimAutomaticAction\(INTERVAL_MS\)/);
+  assert.match(triggerBlock, /isPaused\.value = leadership\?\.isPaused\(\) === true/);
   assert.match(triggerBlock, /const updatePromise = portfolioStore\.triggerUpdate\(\);/);
   assert.ok(
-    triggerBlock.indexOf('shouldTriggerMarketRefresh') < triggerBlock.indexOf('portfolioStore.triggerUpdate'),
-    'Eligibility must be checked before triggerUpdate',
+    triggerBlock.indexOf('shouldTriggerMarketRefresh') < triggerBlock.indexOf('claimAutomaticAction'),
+    'Eligibility must be checked before the distributed action claim',
+  );
+  assert.ok(
+    triggerBlock.indexOf('claimAutomaticAction') < triggerBlock.indexOf('portfolioStore.triggerUpdate'),
+    'Distributed action claim must be confirmed before triggerUpdate',
+  );
+
+  const evaluateBlock = sourceBlock(source, 'const evaluateMarketRefresh', 'const handleLeadershipChange');
+  assert.match(evaluateBlock, /shouldScheduleMarketRefresh\(context\)/);
+  assert.ok(
+    evaluateBlock.indexOf('shouldScheduleMarketRefresh') < evaluateBlock.indexOf('refreshTimer = setInterval'),
+    'Leadership-aware schedule policy must run before timer creation',
+  );
+});
+
+test('stale leadership sync results are invalidated across token and lifecycle changes', () => {
+  const source = readComposable();
+  assert.match(source, /let leadershipSyncEpoch = 0/);
+  assert.match(source, /const requestEpoch = \+\+leadershipSyncEpoch/);
+  assert.match(source, /requestEpoch !== leadershipSyncEpoch/);
+  assert.match(source, /requestedToken !== authStore\.token/);
+  assert.match(source, /if \(newToken !== previousToken\) \{/);
+  assert.match(source, /stopLeadership\(\);\n\s+isPaused\.value = false;/);
+});
+
+test('follower tabs show distributed ownership instead of a false zero countdown', () => {
+  const source = readComposable();
+  const formattedBlock = sourceBlock(source, 'const formattedTimeRemaining', 'const togglePause');
+  assert.match(formattedBlock, /if \(!isPaused\.value && !isLeader\.value\) return '其他分頁處理中';/);
+  assert.ok(
+    formattedBlock.indexOf("return '其他分頁處理中'") < formattedBlock.indexOf('Math.floor'),
+    'Follower status must be decided before countdown formatting',
   );
 });
