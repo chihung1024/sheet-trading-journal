@@ -47,10 +47,10 @@ test('SPY is the aligned default and remains available as a suggested input', as
 test('portfolio store reads requested benchmark explicitly and never infers published identity from settings', async () => {
     const source = await read('src/stores/portfolio.js');
 
-    assert.match(source, /const fetchSettings = async/);
-    assert.match(source, /apiFetch\('\/api\/user-settings'/);
-    assert.match(source, /selectedBenchmark\.value = data\.benchmark/);
-    assert.match(source, /Promise\.all\(\[fetchPortfolio\(\), fetchRecords\(\), fetchSettings\(\)\]\)/);
+    assert.match(source, /const settingsJson = await fetchWithAuth\('\/api\/user-settings'\)/);
+    assert.match(source, /settingsJson && settingsJson\.success && settingsJson\.benchmark/);
+    assert.match(source, /selectedBenchmark\.value = settingsJson\.benchmark/);
+    assert.match(source, /localStorage\.setItem\('user_benchmark', settingsJson\.benchmark\)/);
     assert.doesNotMatch(source, /snapshot\.settings\?\.benchmark/);
     assert.doesNotMatch(source, /rawData\.value\.settings\?\.benchmark/);
 });
@@ -62,13 +62,15 @@ test('requested state changes only after explicit settings success', async () =>
     assert.ok(start >= 0 && end > start);
     const block = source.slice(start, end);
 
-    const requestIndex = block.indexOf("await apiFetch('/api/user-settings'");
-    const publishRequestedIndex = block.indexOf('selectedBenchmark.value = benchmark');
-    const localCacheIndex = block.indexOf("localStorage.setItem('user_benchmark', benchmark)");
+    const requestIndex = block.indexOf("const saveJson = await fetchWithAuth('/api/user-settings'");
+    const successCheckIndex = block.indexOf('if (!saveJson?.success)');
+    const publishRequestedIndex = block.indexOf('selectedBenchmark.value = saveJson.benchmark');
+    const localCacheIndex = block.indexOf("localStorage.setItem('user_benchmark', saveJson.benchmark)");
     assert.ok(requestIndex >= 0);
-    assert.ok(publishRequestedIndex > requestIndex);
+    assert.ok(successCheckIndex > requestIndex);
+    assert.ok(publishRequestedIndex > successCheckIndex);
     assert.ok(localCacheIndex > publishRequestedIndex);
-    assert.doesNotMatch(block.slice(0, requestIndex), /selectedBenchmark\.value = benchmark/);
+    assert.doesNotMatch(block.slice(0, successCheckIndex), /selectedBenchmark\.value = saveJson\.benchmark/);
 });
 
 test('published benchmark changes redraw TWR labels without mutating the requested control', async () => {
