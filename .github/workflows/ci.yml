@@ -43,8 +43,20 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q journal_engine main.py tools tests
 
-      - name: Run test suite
-        run: python -m pytest -q
+      - name: Run test suite and measure branch coverage
+        run: >-
+          python -m pytest -q
+          --cov=journal_engine
+          --cov=main
+          --cov-branch
+          --cov-report=term-missing
+          --cov-report=json:coverage.json
+
+      - name: Verify measured Python coverage baseline
+        run: >-
+          python tools/verify_python_coverage.py
+          coverage.json
+          docs/governance/python-coverage-baseline.json
 
   worker-security:
     name: Worker security and deployment tests
