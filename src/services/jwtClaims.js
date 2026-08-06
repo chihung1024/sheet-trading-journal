@@ -12,16 +12,23 @@ const isPlainObject = (value) => (
     && !Array.isArray(value)
 );
 
-const normalizePayloadSegment = (segment) => {
+const validateCompactSegment = (segment, label) => {
     if (typeof segment !== 'string' || !segment || !/^[A-Za-z0-9_-]+$/.test(segment)) {
-        throw new JwtClaimsError('JWT payload segment is invalid');
+        throw new JwtClaimsError(`JWT ${label} segment is invalid`);
     }
-    const remainder = segment.length % 4;
-    if (remainder === 1) throw new JwtClaimsError('JWT payload padding is invalid');
-    return segment
+    if (segment.length % 4 === 1) {
+        throw new JwtClaimsError(`JWT ${label} segment padding is invalid`);
+    }
+    return segment;
+};
+
+const normalizePayloadSegment = (segment) => {
+    const validated = validateCompactSegment(segment, 'payload');
+    const remainder = validated.length % 4;
+    return validated
         .replace(/-/g, '+')
         .replace(/_/g, '/')
-        .padEnd(segment.length + ((4 - remainder) % 4), '=');
+        .padEnd(validated.length + ((4 - remainder) % 4), '=');
 };
 
 const decodeUtf8 = (binary, TextDecoderImpl) => {
@@ -50,8 +57,10 @@ export const decodeJwtClaims = (
         throw new JwtClaimsError('Base64 decoder is unavailable');
     }
 
-    const parts = token.split('.');
+    const parts = token.trim().split('.');
     if (parts.length !== 3) throw new JwtClaimsError('JWT must contain three segments');
+    validateCompactSegment(parts[0], 'header');
+    validateCompactSegment(parts[2], 'signature');
 
     let jsonText;
     try {
