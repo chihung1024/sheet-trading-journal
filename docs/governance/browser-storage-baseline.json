@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "baseline_sha": "9eff93e7c997f4343a8360121655d5c686effe8b",
+  "review_date": "2026-08-06",
+  "purpose": "Inventory current browser persistence so new keys cannot be introduced silently. Presence in this baseline is not a declaration that a key is safe.",
+  "keys": [
+    {
+      "key": "cached_records",
+      "classification": "financial-sensitive",
+      "authoritative": false,
+      "risk_ids": ["RISK-009"],
+      "target_batch": "B02",
+      "planned_action": "remove",
+      "owner_paths": ["src/stores/portfolio.js"]
+    },
+    {
+      "key": "confirmed_dividend_keys",
+      "classification": "tenant-financial-state",
+      "authoritative": false,
+      "risk_ids": ["RISK-012"],
+      "target_batch": "B11",
+      "planned_action": "replace-with-server-ledger",
+      "owner_paths": ["src/components/DividendManager.vue"]
+    },
+    {
+      "key": "email",
+      "classification": "personal-identity",
+      "authoritative": false,
+      "risk_ids": ["RISK-025", "RISK-026"],
+      "target_batch": "B05",
+      "planned_action": "replace-with-session-profile",
+      "owner_paths": ["src/stores/auth.js"]
+    },
+    {
+      "key": "name",
+      "classification": "personal-identity",
+      "authoritative": false,
+      "risk_ids": ["RISK-025"],
+      "target_batch": "B05",
+      "planned_action": "replace-with-session-profile",
+      "owner_paths": ["src/stores/auth.js"]
+    },
+    {
+      "key": "pending_calculation_request",
+      "classification": "operation-recovery-state",
+      "authoritative": false,
+      "risk_ids": ["RISK-020", "RISK-038"],
+      "target_batch": "B07",
+      "planned_action": "retain-only-as-opaque-tenant-bound-hint",
+      "owner_paths": ["src/services/calculationJobState.js", "src/stores/portfolio.js"]
+    },
+    {
+      "key": "sheet_trading_journal.activeView",
+      "classification": "ui-preference",
+      "authoritative": false,
+      "risk_ids": [],
+      "target_batch": "B14",
+      "planned_action": "retain-project-scoped",
+      "owner_paths": ["src/App.vue"]
+    },
+    {
+      "key": "theme",
+      "classification": "ui-preference",
+      "authoritative": false,
+      "risk_ids": [],
+      "target_batch": "B14",
+      "planned_action": "retain-project-scoped",
+      "owner_paths": ["src/composables/useDarkMode.js", "index.html"]
+    },
+    {
+      "key": "token",
+      "classification": "authentication-sensitive",
+      "authoritative": false,
+      "risk_ids": ["RISK-025", "RISK-050"],
+      "target_batch": "B05",
+      "planned_action": "replace-with-http-only-session",
+      "owner_paths": ["src/stores/auth.js"]
+    },
+    {
+      "key": "user_benchmark",
+      "classification": "user-setting-cache",
+      "authoritative": false,
+      "risk_ids": ["RISK-041"],
+      "target_batch": "B02",
+      "planned_action": "treat-as-pending-cache-only",
+      "owner_paths": ["src/stores/portfolio.js"]
+    }
+  ],
+  "known_global_clear": {
+    "count": 1,
+    "owner_path": "src/stores/auth.js",
+    "risk_ids": ["RISK-025"],
+    "target_batch": "B02",
+    "planned_action": "replace-with-project-key-removal"
+  }
+}
