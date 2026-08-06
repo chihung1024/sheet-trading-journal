@@ -13,6 +13,16 @@ import {
     fetchAllRecordPages,
 } from '../services/recordPagination';
 import { clearLegacyRecordCache } from '../services/projectStorage';
+import { readApiJson } from '../services/apiResponse';
+import {
+    formatRequestError,
+    isExplicitServerRejection,
+    markRequestOutcome,
+} from '../services/requestErrors';
+import {
+    DEFAULT_REQUEST_TIMEOUT_MS,
+    fetchWithDeadline,
+} from '../services/fetchDeadline';
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -37,16 +47,21 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const fetchWithAuth = async (endpoint, options = {}, retryAfterRefresh = true) => {
         const auth = getAuth();
         if (!auth.token) return null;
+        const method = options.method || 'GET';
 
         try {
-            const res = await fetch(`${CONFIG.API_BASE_URL}${endpoint}`, {
-                ...options,
-                headers: {
-                    ...options.headers,
-                    'Authorization': `Bearer ${auth.token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
+            const res = await fetchWithDeadline(
+                `${CONFIG.API_BASE_URL}${endpoint}`,
+                {
+                    ...options,
+                    headers: {
+                        ...options.headers,
+                        'Authorization': `Bearer ${auth.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                },
+                { timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
+            );
 
             if (res.status === 401) {
                 if (retryAfterRefresh) {
@@ -59,20 +74,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 return null;
             }
 
-            if (!res.ok) {
-                connectionStatus.value = 'error';
-                const err = await res.json().catch(() => ({}));
-                const error = new Error(err.error || `API Error: ${res.status}`);
-                error.status = res.status;
-                throw error;
-            }
-
+            const json = await readApiJson(res, { endpoint });
             connectionStatus.value = 'connected';
-            return await res.json();
+            return json;
         } catch (error) {
-            console.error(`Fetch error [${endpoint}]:`, error);
+            const contextualError = markRequestOutcome(error, method);
+            console.error(`Fetch error [${endpoint}]:`, contextualError);
             connectionStatus.value = 'error';
-            throw error;
+            throw contextualError;
         }
     };
 
@@ -255,7 +264,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
             return false;
         } catch (error) {
-            addToast(error.message || '新增失敗', 'error');
+            addToast(formatRequestError(error, {
+                action: '新增交易',
+                method: 'POST',
+                fallback: '新增失敗',
+            }), 'error');
             return false;
         }
     };
@@ -274,7 +287,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
             return false;
         } catch (error) {
-            addToast(error.message || '更新失敗', 'error');
+            addToast(formatRequestError(error, {
+                action: '更新交易',
+                method: 'PUT',
+                fallback: '更新失敗',
+            }), 'error');
             return false;
         }
     };
@@ -297,8 +314,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 return true;
             }
             return false;
-        } catch {
-            addToast('刪除失敗', 'error');
+        } catch (error) {
+            addToast(formatRequestError(error, {
+                action: '刪除交易',
+                method: 'DELETE',
+                fallback: '刪除失敗',
+            }), 'error');
             return false;
         }
     };
@@ -399,43 +420,36 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
         if (benchmark && benchmark !== selectedBenchmark.value) {
             try {
-                const saveResponse = await fetch(`${CONFIG.API_BASE_URL}/api/user-settings`, {
+                const saveJson = await fetchWithAuth('/api/user-settings', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
                     body: JSON.stringify({ benchmark: benchmark.toUpperCase().trim() })
                 });
-                if (!saveResponse.ok) throw new Error('無法保存 benchmark 設定');
-                const saveJson = await saveResponse.json();
-                if (saveJson.success) {
-                    selectedBenchmark.value = saveJson.benchmark;
-                    localStorage.setItem('user_benchmark', saveJson.benchmark);
-                }
+                if (!saveJson?.success) throw new Error('無法保存 benchmark 設定');
+                selectedBenchmark.value = saveJson.benchmark;
+                localStorage.setItem('user_benchmark', saveJson.benchmark);
             } catch (error) {
-                console.error('保存 benchmark 失敗:', error);
-                throw new Error(`無法保存 benchmark 設定: ${error.message}`);
+                const contextualError = markRequestOutcome(error, 'POST');
+                contextualError.message = formatRequestError(contextualError, {
+                    action: '保存 benchmark',
+                    method: 'POST',
+                    fallback: '無法保存 benchmark 設定',
+                });
+                console.error('保存 benchmark 失敗:', contextualError);
+                throw contextualError;
             }
         }
 
         const targetBenchmark = benchmark || selectedBenchmark.value;
         const idempotencyKey = getOrCreateIdempotencyKey();
         try {
-            const response = await fetch(`${CONFIG.API_BASE_URL}/api/trigger-update`, {
+            const responseData = await fetchWithAuth('/api/trigger-update', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
                     'Idempotency-Key': idempotencyKey
                 },
                 body: JSON.stringify({ benchmark: targetBenchmark })
             });
-            const responseData = await response.json().catch(() => ({}));
-            if (!response.ok) {
-                clearPendingCalculationRequest();
-                throw new Error(responseData.error || '後端無回應');
-            }
+            if (!responseData) throw new Error('後端無回應');
 
             if (responseData.job?.id) {
                 calculationJob.value = responseData.job;
@@ -458,8 +472,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
             return true;
         } catch (error) {
-            console.error('Trigger failed:', error);
-            throw error;
+            const contextualError = markRequestOutcome(error, 'POST');
+            if (isExplicitServerRejection(contextualError)) clearPendingCalculationRequest();
+            contextualError.message = formatRequestError(contextualError, {
+                action: '觸發重算',
+                method: 'POST',
+                fallback: '觸發重算失敗',
+            });
+            console.error('Trigger failed:', contextualError);
+            throw contextualError;
         }
     };
 
