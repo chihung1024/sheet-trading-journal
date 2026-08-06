@@ -82,8 +82,8 @@ const handleCredentialResponse = async (response) => {
   console.log('🔐 收到 Google 憑證');
   try {
     await authStore.login(credential);
-    if (!isActive) return;
 
+    // token 寫入後 Overlay 會正常卸載，但已開始的成功登入仍須完成資料載入。
     console.log('🎉 登入成功，開始載入數據...');
     await portfolioStore.fetchAll();
   } catch (err) {
