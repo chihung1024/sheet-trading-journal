@@ -3,6 +3,12 @@ import { getJwtSecondsUntilExpiry } from './jwtClaims.js';
 export const TOKEN_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 export const TOKEN_REFRESH_THRESHOLD_SECONDS = 10 * 60;
 
+const normalizeLogger = (logger) => (
+    logger && (typeof logger === 'object' || typeof logger === 'function')
+        ? logger
+        : {}
+);
+
 export const createTokenRefreshMonitor = ({
     getToken,
     refreshToken,
@@ -31,6 +37,7 @@ export const createTokenRefreshMonitor = ({
         throw new TypeError('interval implementation is unavailable');
     }
 
+    const safeLogger = normalizeLogger(logger);
     let timerId = null;
     let checkPromise = null;
 
@@ -39,20 +46,21 @@ export const createTokenRefreshMonitor = ({
 
         let trackedPromise;
         const operation = Promise.resolve().then(async () => {
-            const token = getToken();
-            if (!token) return false;
+            const observedToken = getToken();
+            if (!observedToken) return false;
 
             try {
-                const secondsRemaining = getSecondsUntilExpiry(token, nowMs());
-                logger.log?.(
+                const secondsRemaining = getSecondsUntilExpiry(observedToken, nowMs());
+                safeLogger.log?.(
                     `[Token refresh] Token remaining: ${Math.floor(secondsRemaining / 60)} minutes`,
                 );
                 if (secondsRemaining < refreshThresholdSeconds) {
+                    if (getToken() !== observedToken) return false;
                     return (await refreshToken()) === true;
                 }
                 return true;
             } catch (error) {
-                logger.error?.('[Token refresh] Token check failed', error);
+                safeLogger.error?.('[Token refresh] Token check failed', error);
                 return false;
             }
         });
@@ -66,10 +74,10 @@ export const createTokenRefreshMonitor = ({
 
     const start = () => {
         if (timerId !== null || !getToken()) return false;
-        void checkAndRefresh();
         timerId = setIntervalImpl(() => {
             void checkAndRefresh();
         }, checkIntervalMs);
+        void checkAndRefresh();
         return true;
     };
 
