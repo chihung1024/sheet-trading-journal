@@ -1,6 +1,7 @@
 import { decodeJwtClaims } from './jwtClaims.js';
 
 export const MARKET_REFRESH_LEASE_STORAGE_KEY = 'sheet_trading_journal.market_refresh_leader.';
+export const MARKET_REFRESH_PAUSE_STORAGE_KEY = 'sheet_trading_journal.market_refresh_pause.';
 export const MARKET_REFRESH_LEASE_VERSION = 1;
 export const MARKET_REFRESH_LEASE_TTL_MS = 15_000;
 export const MARKET_REFRESH_LEASE_RENEW_MS = 5_000;
@@ -65,10 +66,22 @@ const validateLeaseRecord = (value) => {
     };
 };
 
-const parseLeaseRecord = (rawValue) => {
+const validatePauseRecord = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    if (value.version !== MARKET_REFRESH_LEASE_VERSION) return null;
+    if (typeof value.paused !== 'boolean') return null;
+    if (!isNonEmptyString(value.claimId)) return null;
+    return {
+        version: MARKET_REFRESH_LEASE_VERSION,
+        paused: value.paused,
+        claimId: value.claimId,
+    };
+};
+
+const parseRecord = (rawValue, validator) => {
     if (rawValue === null) return { kind: 'empty', record: null };
     try {
-        const record = validateLeaseRecord(JSON.parse(rawValue));
+        const record = validator(JSON.parse(rawValue));
         return record
             ? { kind: 'valid', record }
             : { kind: 'invalid', record: null };
@@ -121,6 +134,7 @@ export const createMarketRefreshLeadership = ({
     renewIntervalMs = MARKET_REFRESH_LEASE_RENEW_MS,
     settleMs = MARKET_REFRESH_LEASE_SETTLE_MS,
     onLeadershipChange = () => {},
+    onPauseChange = () => {},
     logger = console,
 } = {}) => {
     const targetStorage = requireStorage(storage);
@@ -133,8 +147,8 @@ export const createMarketRefreshLeadership = ({
     if (typeof randomId !== 'function' || typeof deriveScopeKey !== 'function') {
         throw new TypeError('Identity providers must be functions');
     }
-    if (typeof onLeadershipChange !== 'function') {
-        throw new TypeError('onLeadershipChange must be a function');
+    if (typeof onLeadershipChange !== 'function' || typeof onPauseChange !== 'function') {
+        throw new TypeError('Leadership and pause callbacks must be functions');
     }
     if (
         !Number.isFinite(leaseTtlMs)
@@ -153,7 +167,9 @@ export const createMarketRefreshLeadership = ({
 
     let started = false;
     let leader = false;
+    let sharedPaused = false;
     let storageKey = null;
+    let pauseStorageKey = null;
     let currentLeaseId = null;
     let monitorTimer = null;
     let listenerAttached = false;
@@ -171,10 +187,21 @@ export const createMarketRefreshLeadership = ({
         }
     };
 
-    const readAt = (key) => {
+    const setSharedPaused = (nextPaused) => {
+        const normalized = nextPaused === true;
+        if (sharedPaused === normalized) return;
+        sharedPaused = normalized;
+        try {
+            onPauseChange(sharedPaused);
+        } catch (error) {
+            safeLogger.error?.('[Market refresh leadership] pause callback failed', error);
+        }
+    };
+
+    const readAt = (key, validator) => {
         if (!key) return { kind: 'invalid', record: null };
         try {
-            return parseLeaseRecord(targetStorage.getItem(key));
+            return parseRecord(targetStorage.getItem(key), validator);
         } catch (error) {
             safeLogger.error?.('[Market refresh leadership] storage read failed', error);
             return { kind: 'invalid', record: null };
@@ -192,6 +219,9 @@ export const createMarketRefreshLeadership = ({
         }
     };
 
+    const readLeaseAt = (key) => readAt(key, validateLeaseRecord);
+    const readPauseAt = (key) => readAt(key, validatePauseRecord);
+
     const enqueue = (operation) => {
         const run = operationChain
             .catch(() => false)
@@ -200,22 +230,57 @@ export const createMarketRefreshLeadership = ({
         return run;
     };
 
-    const isCurrentInvocation = (observedEpoch, observedKey) => (
+    const isCurrentInvocation = (observedEpoch, observedKey, observedPauseKey) => (
         started
         && observedEpoch === lifecycleEpoch
         && observedKey !== null
         && observedKey === storageKey
+        && observedPauseKey !== null
+        && observedPauseKey === pauseStorageKey
     );
+
+    const readSharedPause = (key) => {
+        const state = readPauseAt(key);
+        if (state.kind === 'invalid') {
+            setSharedPaused(true);
+            return { valid: false, paused: true };
+        }
+        const paused = state.record?.paused === true;
+        setSharedPaused(paused);
+        return { valid: true, paused };
+    };
 
     const loseLeadership = () => {
         currentLeaseId = null;
         setLeader(false);
     };
 
-    const acquire = async (observedEpoch, observedKey) => {
-        if (!isCurrentInvocation(observedEpoch, observedKey)) return false;
+    const releaseOwnLease = (key) => {
+        if (!key) return;
+        const state = readLeaseAt(key);
+        const record = state.kind === 'valid' ? state.record : null;
+        if (!record || record.ownerId !== ownerId) return;
+        writeAt(key, {
+            version: MARKET_REFRESH_LEASE_VERSION,
+            ownerId: null,
+            leaseId: null,
+            expiresAt: 0,
+            lastActionAt: record.lastActionAt,
+            actionClaimId: record.actionClaimId,
+        });
+    };
 
-        const state = readAt(observedKey);
+    const acquire = async (observedEpoch, observedKey, observedPauseKey) => {
+        if (!isCurrentInvocation(observedEpoch, observedKey, observedPauseKey)) return false;
+
+        const pauseState = readSharedPause(observedPauseKey);
+        if (!pauseState.valid || pauseState.paused) {
+            releaseOwnLease(observedKey);
+            loseLeadership();
+            return false;
+        }
+
+        const state = readLeaseAt(observedKey);
         if (state.kind === 'invalid') {
             loseLeadership();
             return false;
@@ -249,29 +314,42 @@ export const createMarketRefreshLeadership = ({
         }
 
         await delay(settleMs);
-        if (!isCurrentInvocation(observedEpoch, observedKey)) {
+        if (!isCurrentInvocation(observedEpoch, observedKey, observedPauseKey)) {
             loseLeadership();
             return false;
         }
 
-        const confirmation = readAt(observedKey);
-        const confirmed = confirmation.kind === 'valid'
+        const confirmedPause = readSharedPause(observedPauseKey);
+        const confirmation = readLeaseAt(observedKey);
+        const confirmed = confirmedPause.valid
+            && !confirmedPause.paused
+            && confirmation.kind === 'valid'
             && confirmation.record?.ownerId === ownerId
             && confirmation.record?.leaseId === candidateLeaseId
             && confirmation.record.expiresAt > now();
         setLeader(confirmed);
-        if (!confirmed) currentLeaseId = null;
+        if (!confirmed) {
+            releaseOwnLease(observedKey);
+            currentLeaseId = null;
+        }
         return confirmed;
     };
 
-    const renew = async (observedEpoch, observedKey) => {
+    const renew = async (observedEpoch, observedKey, observedPauseKey) => {
         if (
-            !isCurrentInvocation(observedEpoch, observedKey)
+            !isCurrentInvocation(observedEpoch, observedKey, observedPauseKey)
             || !leader
             || !currentLeaseId
         ) return false;
 
-        const state = readAt(observedKey);
+        const pauseState = readSharedPause(observedPauseKey);
+        if (!pauseState.valid || pauseState.paused) {
+            releaseOwnLease(observedKey);
+            loseLeadership();
+            return false;
+        }
+
+        const state = readLeaseAt(observedKey);
         const record = state.kind === 'valid' ? state.record : null;
         if (
             !record
@@ -280,7 +358,7 @@ export const createMarketRefreshLeadership = ({
             || record.expiresAt <= now()
         ) {
             loseLeadership();
-            return acquire(observedEpoch, observedKey);
+            return acquire(observedEpoch, observedKey, observedPauseKey);
         }
 
         const renewed = {
@@ -292,29 +370,39 @@ export const createMarketRefreshLeadership = ({
             return false;
         }
 
-        const confirmation = readAt(observedKey);
-        const confirmed = confirmation.kind === 'valid'
+        const confirmation = readLeaseAt(observedKey);
+        const confirmedPause = readSharedPause(observedPauseKey);
+        const confirmed = confirmedPause.valid
+            && !confirmedPause.paused
+            && confirmation.kind === 'valid'
             && confirmation.record?.ownerId === ownerId
             && confirmation.record?.leaseId === currentLeaseId
             && confirmation.record.expiresAt > now();
         setLeader(confirmed);
-        if (!confirmed) currentLeaseId = null;
+        if (!confirmed) {
+            releaseOwnLease(observedKey);
+            currentLeaseId = null;
+        }
         return confirmed;
     };
 
     const runElection = () => {
         const observedEpoch = lifecycleEpoch;
         const observedKey = storageKey;
+        const observedPauseKey = pauseStorageKey;
         return enqueue(async () => {
-            if (!isCurrentInvocation(observedEpoch, observedKey)) return false;
+            if (!isCurrentInvocation(observedEpoch, observedKey, observedPauseKey)) return false;
             return leader
-                ? renew(observedEpoch, observedKey)
-                : acquire(observedEpoch, observedKey);
+                ? renew(observedEpoch, observedKey, observedPauseKey)
+                : acquire(observedEpoch, observedKey, observedPauseKey);
         });
     };
 
     const handleStorage = (event) => {
-        if (started && event?.key === storageKey) void runElection();
+        if (
+            started
+            && (event?.key === storageKey || event?.key === pauseStorageKey)
+        ) void runElection();
     };
 
     const attachListener = () => {
@@ -342,21 +430,6 @@ export const createMarketRefreshLeadership = ({
         monitorTimer = null;
     };
 
-    const releaseOwnLease = (key) => {
-        if (!key) return;
-        const state = readAt(key);
-        const record = state.kind === 'valid' ? state.record : null;
-        if (!record || record.ownerId !== ownerId) return;
-        writeAt(key, {
-            version: MARKET_REFRESH_LEASE_VERSION,
-            ownerId: null,
-            leaseId: null,
-            expiresAt: 0,
-            lastActionAt: record.lastActionAt,
-            actionClaimId: record.actionClaimId,
-        });
-    };
-
     const stop = () => {
         const previousKey = storageKey;
         lifecycleEpoch += 1;
@@ -365,6 +438,7 @@ export const createMarketRefreshLeadership = ({
         detachListener();
         releaseOwnLease(previousKey);
         storageKey = null;
+        pauseStorageKey = null;
         currentLeaseId = null;
         setLeader(false);
     };
@@ -384,30 +458,87 @@ export const createMarketRefreshLeadership = ({
         }
 
         const nextStorageKey = `${MARKET_REFRESH_LEASE_STORAGE_KEY}${nextScopeKey}`;
-        if (started && storageKey === nextStorageKey) return runElection();
+        const nextPauseStorageKey = `${MARKET_REFRESH_PAUSE_STORAGE_KEY}${nextScopeKey}`;
+        if (
+            started
+            && storageKey === nextStorageKey
+            && pauseStorageKey === nextPauseStorageKey
+        ) return runElection();
 
         stop();
         lifecycleEpoch += 1;
         started = true;
         storageKey = nextStorageKey;
+        pauseStorageKey = nextPauseStorageKey;
         attachListener();
         startMonitor();
         return runElection();
     };
 
+    const setPaused = (nextPaused) => {
+        const observedEpoch = lifecycleEpoch;
+        const observedKey = storageKey;
+        const observedPauseKey = pauseStorageKey;
+        return enqueue(async () => {
+            if (
+                !isCurrentInvocation(observedEpoch, observedKey, observedPauseKey)
+                || typeof nextPaused !== 'boolean'
+            ) return false;
+
+            const claimId = randomId();
+            if (!isNonEmptyString(claimId)) return false;
+            if (!writeAt(observedPauseKey, {
+                version: MARKET_REFRESH_LEASE_VERSION,
+                paused: nextPaused,
+                claimId,
+            })) return false;
+
+            if (nextPaused) {
+                releaseOwnLease(observedKey);
+                loseLeadership();
+            }
+
+            await delay(settleMs);
+            if (!isCurrentInvocation(observedEpoch, observedKey, observedPauseKey)) return false;
+
+            const confirmation = readPauseAt(observedPauseKey);
+            const confirmed = confirmation.kind === 'valid'
+                && confirmation.record?.claimId === claimId
+                && confirmation.record?.paused === nextPaused;
+            if (confirmation.kind === 'valid') {
+                setSharedPaused(confirmation.record.paused);
+            } else {
+                setSharedPaused(true);
+            }
+            if (confirmed && nextPaused) {
+                releaseOwnLease(observedKey);
+                loseLeadership();
+            }
+            return confirmed;
+        });
+    };
+
     const claimAutomaticAction = (minimumIntervalMs) => {
         const observedEpoch = lifecycleEpoch;
         const observedKey = storageKey;
+        const observedPauseKey = pauseStorageKey;
         return enqueue(async () => {
             if (
-                !isCurrentInvocation(observedEpoch, observedKey)
+                !isCurrentInvocation(observedEpoch, observedKey, observedPauseKey)
                 || !leader
                 || !currentLeaseId
                 || !Number.isFinite(minimumIntervalMs)
                 || minimumIntervalMs < 0
             ) return false;
 
-            const state = readAt(observedKey);
+            const pauseState = readSharedPause(observedPauseKey);
+            if (!pauseState.valid || pauseState.paused) {
+                releaseOwnLease(observedKey);
+                loseLeadership();
+                return false;
+            }
+
+            const state = readLeaseAt(observedKey);
             const record = state.kind === 'valid' ? state.record : null;
             const currentTime = now();
             if (
@@ -438,10 +569,15 @@ export const createMarketRefreshLeadership = ({
             }
 
             await delay(settleMs);
-            if (!isCurrentInvocation(observedEpoch, observedKey) || !leader) return false;
+            if (!isCurrentInvocation(observedEpoch, observedKey, observedPauseKey) || !leader) {
+                return false;
+            }
 
-            const confirmation = readAt(observedKey);
-            const confirmed = confirmation.kind === 'valid'
+            const confirmedPause = readSharedPause(observedPauseKey);
+            const confirmation = readLeaseAt(observedKey);
+            const confirmed = confirmedPause.valid
+                && !confirmedPause.paused
+                && confirmation.kind === 'valid'
                 && confirmation.record?.ownerId === ownerId
                 && confirmation.record?.leaseId === currentLeaseId
                 && confirmation.record?.actionClaimId === actionClaimId
@@ -456,10 +592,13 @@ export const createMarketRefreshLeadership = ({
         start,
         stop,
         runElection,
+        setPaused,
         claimAutomaticAction,
         isLeader: () => leader,
+        isPaused: () => sharedPaused,
         isStarted: () => started,
         getStorageKey: () => storageKey,
+        getPauseStorageKey: () => pauseStorageKey,
         getOwnerId: () => ownerId,
     };
 };
