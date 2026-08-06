@@ -26,6 +26,18 @@ function eligibleContext(overrides = {}) {
   };
 }
 
+function readComposable() {
+  return fs.readFileSync(COMPOSABLE_PATH, 'utf8').replace(/\r\n/g, '\n');
+}
+
+function sourceBlock(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.ok(start >= 0, `Missing source marker: ${startMarker}`);
+  assert.ok(end > start, `Missing source marker: ${endMarker}`);
+  return source.slice(start, end);
+}
+
 test('market refresh scheduling requires every non-busy prerequisite', () => {
   assert.equal(shouldScheduleMarketRefresh(eligibleContext()), true);
 
@@ -64,7 +76,7 @@ test('market refresh trigger additionally rejects busy and already-running state
 });
 
 test('refresh composable uses the centralized policy at schedule and trigger boundaries', () => {
-  const source = fs.readFileSync(COMPOSABLE_PATH, 'utf8');
+  const source = readComposable();
   assert.match(source, /shouldScheduleMarketRefresh/);
   assert.match(source, /shouldTriggerMarketRefresh/);
   assert.match(source, /const context = getRefreshContext\(\);/);
@@ -74,42 +86,41 @@ test('refresh composable uses the centralized policy at schedule and trigger bou
 });
 
 test('pause and hidden-page transitions stop active refresh and countdown timers', () => {
-  const source = fs.readFileSync(COMPOSABLE_PATH, 'utf8');
+  const source = readComposable();
 
-  const pauseBlock = source.match(/const togglePause = \(\) => \{([\s\S]*?)\n\s*\};/)?.[1] || '';
+  const pauseBlock = sourceBlock(source, 'const togglePause', 'const stopMarketRefresh');
   assert.match(pauseBlock, /if \(isPaused\.value\) \{/);
   assert.match(pauseBlock, /stopActiveSchedule\(\);/);
   assert.match(pauseBlock, /evaluateMarketRefresh\(\{ triggerImmediately: true \}\);/);
 
-  const visibilityBlock = source.match(/const handleVisibilityChange = \(\) => \{([\s\S]*?)\n\s*\};/)?.[1] || '';
+  const visibilityBlock = sourceBlock(source, 'const handleVisibilityChange', '/**\n     * 手動觸發');
   assert.match(visibilityBlock, /if \(!isPageVisible\(\)\) \{/);
   assert.match(visibilityBlock, /stopActiveSchedule\(\);/);
   assert.match(visibilityBlock, /evaluateMarketRefresh\(\{ triggerImmediately: true \}\);/);
 
-  const stopBlock = source.match(/const stopActiveSchedule = \(\) => \{([\s\S]*?)\n\s*\};/)?.[1] || '';
+  const stopBlock = sourceBlock(source, 'const stopActiveSchedule', '/**\n     * 觸發更新');
   assert.match(stopBlock, /stopRefreshTimer\(\);/);
   assert.match(stopBlock, /stopCountdown\(\);/);
   assert.match(stopBlock, /timeRemaining\.value = 0;/);
 });
 
 test('visibility listener is lifecycle-bound and timer creation is idempotent', () => {
-  const source = fs.readFileSync(COMPOSABLE_PATH, 'utf8');
+  const source = readComposable();
   assert.match(source, /document\.addEventListener\('visibilitychange', handleVisibilityChange\);/);
   assert.match(source, /document\.removeEventListener\('visibilitychange', handleVisibilityChange\);/);
 
-  const startBlock = source.match(/const startMarketRefresh = \(\) => \{([\s\S]*?)\n\s*\};/)?.[1] || '';
+  const startBlock = sourceBlock(source, 'const startMarketRefresh', '// 格式化倒數時間');
   assert.match(startBlock, /if \(!checkTimer\) \{/);
   assert.equal((startBlock.match(/checkTimer = setInterval/g) || []).length, 1);
 
-  const evaluateMatch = source.match(/const evaluateMarketRefresh = \([\s\S]*?\n\s*\};\n\n\s*\/\*\*/);
-  const evaluateBlock = evaluateMatch?.[0] || '';
+  const evaluateBlock = sourceBlock(source, 'const evaluateMarketRefresh', '/**\n     * 啟動盤中刷新');
   assert.match(evaluateBlock, /if \(refreshTimer\) return true;/);
   assert.equal((evaluateBlock.match(/refreshTimer = setInterval/g) || []).length, 1);
 });
 
 test('hidden, paused, or invalid authentication cannot reach automatic triggerUpdate', () => {
-  const source = fs.readFileSync(COMPOSABLE_PATH, 'utf8');
-  const triggerBlock = source.match(/const triggerRefresh = async \(\) => \{([\s\S]*?)\n\s*\};\n\n\s*const evaluateMarketRefresh/)?.[1] || '';
+  const source = readComposable();
+  const triggerBlock = sourceBlock(source, 'const triggerRefresh', 'const evaluateMarketRefresh');
   assert.match(triggerBlock, /if \(!shouldTriggerMarketRefresh\(/);
   assert.match(triggerBlock, /const updatePromise = portfolioStore\.triggerUpdate\(\);/);
   assert.ok(
