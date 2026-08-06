@@ -1,0 +1,100 @@
+import { getJwtSecondsUntilExpiry } from './jwtClaims.js';
+
+export const TOKEN_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+export const TOKEN_REFRESH_THRESHOLD_SECONDS = 10 * 60;
+
+export const createTokenRefreshMonitor = ({
+    getToken,
+    refreshToken,
+    checkIntervalMs = TOKEN_CHECK_INTERVAL_MS,
+    refreshThresholdSeconds = TOKEN_REFRESH_THRESHOLD_SECONDS,
+    nowMs = () => Date.now(),
+    getSecondsUntilExpiry = (token, currentTime) => getJwtSecondsUntilExpiry(token, {
+        nowMs: currentTime,
+    }),
+    setIntervalImpl = globalThis.setInterval,
+    clearIntervalImpl = globalThis.clearInterval,
+    logger = console,
+} = {}) => {
+    if (typeof getToken !== 'function') throw new TypeError('getToken must be a function');
+    if (typeof refreshToken !== 'function') throw new TypeError('refreshToken must be a function');
+    if (!Number.isFinite(checkIntervalMs) || checkIntervalMs <= 0) {
+        throw new TypeError('checkIntervalMs must be a finite positive number');
+    }
+    if (!Number.isFinite(refreshThresholdSeconds) || refreshThresholdSeconds < 0) {
+        throw new TypeError('refreshThresholdSeconds must be finite and non-negative');
+    }
+    if (typeof nowMs !== 'function' || typeof getSecondsUntilExpiry !== 'function') {
+        throw new TypeError('token time providers must be functions');
+    }
+    if (typeof setIntervalImpl !== 'function' || typeof clearIntervalImpl !== 'function') {
+        throw new TypeError('interval implementation is unavailable');
+    }
+
+    let timerId = null;
+    let checkPromise = null;
+
+    const checkAndRefresh = () => {
+        if (checkPromise) return checkPromise;
+
+        let trackedPromise;
+        const operation = Promise.resolve().then(async () => {
+            const token = getToken();
+            if (!token) return false;
+
+            try {
+                const secondsRemaining = getSecondsUntilExpiry(token, nowMs());
+                logger.log?.(
+                    `[Token refresh] Token remaining: ${Math.floor(secondsRemaining / 60)} minutes`,
+                );
+                if (secondsRemaining < refreshThresholdSeconds) {
+                    return (await refreshToken()) === true;
+                }
+                return true;
+            } catch (error) {
+                logger.error?.('[Token refresh] Token check failed', error);
+                return false;
+            }
+        });
+
+        trackedPromise = operation.finally(() => {
+            if (checkPromise === trackedPromise) checkPromise = null;
+        });
+        checkPromise = trackedPromise;
+        return trackedPromise;
+    };
+
+    const start = () => {
+        if (timerId !== null || !getToken()) return false;
+        void checkAndRefresh();
+        timerId = setIntervalImpl(() => {
+            void checkAndRefresh();
+        }, checkIntervalMs);
+        return true;
+    };
+
+    const stop = () => {
+        if (timerId === null) return false;
+        clearIntervalImpl(timerId);
+        timerId = null;
+        return true;
+    };
+
+    const syncToken = (token) => {
+        if (token) return start();
+        stop();
+        return false;
+    };
+
+    const isRunning = () => timerId !== null;
+    const isChecking = () => checkPromise !== null;
+
+    return {
+        checkAndRefresh,
+        start,
+        stop,
+        syncToken,
+        isRunning,
+        isChecking,
+    };
+};
