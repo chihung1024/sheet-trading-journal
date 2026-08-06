@@ -15,7 +15,8 @@ import {
  * 2. 每 3 分鐘執行一次，60 秒逾時
  * 3. 暫停、隱藏、登出或失去跨分頁 leadership 時停止自動排程
  * 4. 同一登入者只有一個可見分頁擁有自動刷新與倒數 timer
- * 5. 自動判斷夏令/冬令時間
+ * 5. 暫停意圖在同一瀏覽器的同租戶分頁間共享
+ * 6. 自動判斷夏令/冬令時間
  */
 export function useMarketHoursRefresh() {
     const isEnabled = ref(true);
@@ -164,10 +165,11 @@ export function useMarketHoursRefresh() {
         if (automatic) {
             const claimed = await leadership?.claimAutomaticAction(INTERVAL_MS);
             if (!claimed) {
-                console.log('🔗 [盤中刷新] 其他分頁已取得本次自動刷新權');
+                console.log('🔗 [盤中刷新] 其他分頁或共享暫停狀態已阻止本次自動刷新');
                 return false;
             }
 
+            isPaused.value = leadership?.isPaused() === true;
             const confirmedContext = getRefreshContext();
             if (!shouldTriggerMarketRefresh({
                 ...confirmedContext,
@@ -239,6 +241,18 @@ export function useMarketHoursRefresh() {
         evaluateMarketRefresh({ triggerImmediately: true });
     };
 
+    const handleSharedPauseChange = (nextPaused) => {
+        isPaused.value = nextPaused === true;
+        if (isPaused.value) {
+            isLeader.value = false;
+            stopActiveSchedule();
+            return;
+        }
+        if (authStore.token && isEnabled.value && isPageVisible()) {
+            void syncLeadership();
+        }
+    };
+
     const ensureLeadership = () => {
         if (leadership) return leadership;
         try {
@@ -246,6 +260,7 @@ export function useMarketHoursRefresh() {
                 storage: globalThis.localStorage,
                 eventTarget: globalThis.window,
                 onLeadershipChange: handleLeadershipChange,
+                onPauseChange: handleSharedPauseChange,
                 logger: console,
             });
         } catch (error) {
@@ -268,7 +283,8 @@ export function useMarketHoursRefresh() {
 
         return Promise.resolve().then(async () => {
             const baseContext = getBaseRefreshContext();
-            if (!shouldCompeteForMarketRefreshLeadership(baseContext)) {
+            const observationContext = { ...baseContext, paused: false };
+            if (!shouldCompeteForMarketRefreshLeadership(observationContext)) {
                 if (requestEpoch === leadershipSyncEpoch) stopLeadership();
                 return false;
             }
@@ -284,6 +300,13 @@ export function useMarketHoursRefresh() {
                 requestEpoch !== leadershipSyncEpoch
                 || requestedToken !== authStore.token
             ) return false;
+
+            isPaused.value = coordinator.isPaused();
+            if (isPaused.value) {
+                isLeader.value = false;
+                stopActiveSchedule();
+                return false;
+            }
 
             isLeader.value = elected && coordinator.isLeader();
             if (isLeader.value) evaluateMarketRefresh({ triggerImmediately: true });
@@ -309,13 +332,29 @@ export function useMarketHoursRefresh() {
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
-    const togglePause = () => {
-        isPaused.value = !isPaused.value;
-        if (isPaused.value) {
-            stopLeadership();
-            return;
+    const togglePause = async () => {
+        const requestedPause = !isPaused.value;
+        const coordinator = ensureLeadership();
+        if (!coordinator || !authStore.token) return false;
+
+        if (!coordinator.isStarted()) {
+            await coordinator.start(authStore.token);
         }
+        const updated = await coordinator.setPaused(requestedPause);
+        isPaused.value = coordinator.isPaused();
+
+        if (!updated) {
+            console.warn('⚠️ [盤中刷新] 共享暫停狀態更新未確認');
+            return false;
+        }
+        if (isPaused.value) {
+            isLeader.value = false;
+            stopActiveSchedule();
+            return true;
+        }
+
         void syncLeadership();
+        return true;
     };
 
     const stopMarketRefresh = () => {
@@ -342,7 +381,10 @@ export function useMarketHoursRefresh() {
     };
 
     watch(() => authStore.token, (newToken, previousToken) => {
-        if (newToken !== previousToken) stopLeadership();
+        if (newToken !== previousToken) {
+            stopLeadership();
+            isPaused.value = false;
+        }
         if (newToken && isEnabled.value) startMarketRefresh();
         else stopMarketRefresh();
     });
