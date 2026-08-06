@@ -72,6 +72,33 @@ test('successful deadline request passes an internal signal and releases its tim
     assert.deepEqual(timers.cleared, [41]);
 });
 
+test('successful request removes an external abort listener', async () => {
+    const timers = createManualTimers();
+    const listeners = new Set();
+    const externalSignal = {
+        aborted: false,
+        reason: undefined,
+        addEventListener(type, listener) {
+            assert.equal(type, 'abort');
+            listeners.add(listener);
+        },
+        removeEventListener(type, listener) {
+            assert.equal(type, 'abort');
+            listeners.delete(listener);
+        },
+    };
+
+    await fetchWithDeadline('/api/test', {}, {
+        signal: externalSignal,
+        fetchImpl: async () => ({ ok: true }),
+        setTimeoutImpl: timers.setTimeoutImpl,
+        clearTimeoutImpl: timers.clearTimeoutImpl,
+    });
+
+    assert.equal(listeners.size, 0);
+    assert.deepEqual(timers.cleared, [41]);
+});
+
 test('deadline expiry aborts the fetch and returns a typed timeout', async () => {
     const timers = createManualTimers();
     let receivedSignal = null;
@@ -269,22 +296,28 @@ test('only explicit HTTP/application rejections are classified as definite serve
 
 test('portfolio store routes all API traffic through the bounded authenticated path', async () => {
     const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+    const fetchWithAuthStart = source.indexOf('const fetchWithAuth');
+    const fetchWithAuthEnd = source.indexOf('const resetData');
+    assert.notEqual(fetchWithAuthStart, -1);
+    assert.notEqual(fetchWithAuthEnd, -1);
+    const fetchWithAuthBlock = source.slice(fetchWithAuthStart, fetchWithAuthEnd);
 
     assert.match(source, /from '\.\.\/services\/fetchDeadline'/);
     assert.match(source, /from '\.\.\/services\/apiResponse'/);
     assert.match(source, /from '\.\.\/services\/requestErrors'/);
-    assert.match(source, /fetchWithDeadline\(/);
-    assert.match(source, /DEFAULT_REQUEST_TIMEOUT_MS/);
+    assert.match(fetchWithAuthBlock, /fetchWithDeadline\(/);
+    assert.match(fetchWithAuthBlock, /DEFAULT_REQUEST_TIMEOUT_MS/);
     assert.doesNotMatch(source, /\bfetch\s*\(/);
     assert.match(source, /fetchWithAuth\('\/api\/user-settings',\s*\{\s*method:\s*'POST'/s);
     assert.match(source, /fetchWithAuth\('\/api\/trigger-update',\s*\{\s*method:\s*'POST'/s);
     assert.match(source, /'Idempotency-Key':\s*idempotencyKey/);
-    assert.match(source, /if \(refreshed\) return fetchWithAuth\(endpoint, options, false\)/);
+    assert.match(fetchWithAuthBlock, /if \(refreshed\) return fetchWithAuth\(endpoint, options, false\)/);
     assert.match(source, /if \(isExplicitServerRejection\(contextualError\)\) clearPendingCalculationRequest\(\)/);
     assert.match(source, /formatRequestError\(error,\s*\{\s*action:\s*'新增交易',\s*method:\s*'POST'/s);
     assert.match(source, /formatRequestError\(error,\s*\{\s*action:\s*'更新交易',\s*method:\s*'PUT'/s);
     assert.match(source, /formatRequestError\(error,\s*\{\s*action:\s*'刪除交易',\s*method:\s*'DELETE'/s);
-    assert.doesNotMatch(source, /retryAfterRefresh\s*=\s*true[\s\S]*?setTimeout\s*\(/);
+    assert.doesNotMatch(fetchWithAuthBlock, /setTimeout\s*\(/);
+    assert.doesNotMatch(fetchWithAuthBlock, /while\s*\(|for\s*\(/);
 });
 
 test('default deadline remains thirty seconds', () => {
