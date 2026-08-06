@@ -279,6 +279,7 @@ def run_update() -> None:
 
             if snapshot is None:
                 raise PortfolioUpdateError("計算器未產生快照")
+            snapshot.benchmark_symbol = benchmark
             if calculation_capture.messages:
                 raise PortfolioUpdateError(
                     f"計算期間 validator 回報 {len(calculation_capture.messages)} 項錯誤"
