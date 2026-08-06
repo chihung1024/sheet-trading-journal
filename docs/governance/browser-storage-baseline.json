@@ -59,6 +59,15 @@
       "owner_paths": ["src/App.vue"]
     },
     {
+      "key": "sheet_trading_journal.market_refresh_leader.",
+      "classification": "ephemeral-operation-coordination-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-039"],
+      "target_batch": "B02",
+      "planned_action": "retain-expiring-opaque-scope-lease-only",
+      "owner_paths": ["src/services/marketRefreshLeadership.js"]
+    },
+    {
       "key": "theme",
       "classification": "ui-preference",
       "authoritative": false,
