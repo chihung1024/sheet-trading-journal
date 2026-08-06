@@ -4,7 +4,7 @@ import {
     createTokenRefreshMonitor,
     TOKEN_CHECK_INTERVAL_MS,
     TOKEN_REFRESH_THRESHOLD_SECONDS,
-} from '../services/tokenRefreshMonitor';
+} from '../services/tokenRefreshMonitor.js';
 
 export function useTokenRefresh() {
     const authStore = useAuthStore();
@@ -20,6 +20,7 @@ export function useTokenRefresh() {
         () => authStore.token,
         (currentToken) => {
             monitor.syncToken(currentToken);
+            if (!currentToken) authStore.cancelTokenRefresh();
         },
         { immediate: true },
     );
@@ -27,6 +28,7 @@ export function useTokenRefresh() {
     onUnmounted(() => {
         stopTokenWatch();
         monitor.stop();
+        authStore.cancelTokenRefresh();
     });
 
     return {
