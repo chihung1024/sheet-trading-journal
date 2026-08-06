@@ -31,7 +31,7 @@ The baseline was not guessed.
 
 ### Exact sanitized measurement
 
-A second measurement added a strict aggregate reader that exposes only totals, not source contents, user identifiers, transactions, secrets, account data, or coverage artifacts.
+A second measurement added a strict aggregate reader. The verifier emits only totals and never emits source contents, user identifiers, transactions, secrets, or account data.
 
 - Exact measurement head: `1c38510f03139dce4abbe9dd1d928f2480476601`
 - CI run: `31075638834`
@@ -68,13 +68,16 @@ The final verifier requires all of the following:
 
 A production Python file addition or removal intentionally fails source-scope validation until the baseline is reviewed and updated. This prevents new modules from silently escaping measurement.
 
-## Reproducibility
+## Reproducibility and evidence privacy
 
 - `pytest==9.0.2` remains pinned.
 - `pytest-cov==7.0.0` remains pinned.
 - The measured transitive engine is explicitly pinned as `coverage==7.15.3`.
-- Coverage JSON remains ephemeral inside the GitHub runner.
-- No Codecov, SonarCloud, external telemetry, badge, source upload, or public artifact is used.
+- Coverage JSON remains ephemeral inside the GitHub runner and is ignored by Git locally.
+- The standard terminal diagnostic lists repository source filenames and missing line numbers; it does not print source contents or private runtime data.
+- The policy verifier prints only sanitized aggregate totals.
+- No coverage report is uploaded as a public artifact.
+- No Codecov, SonarCloud, external telemetry, badge, source upload, or paid service is used.
 
 ## Known test-debt ordering
 
@@ -91,6 +94,7 @@ These are future test-only or narrowly scoped batches. Their low coverage is rec
 ## Changed paths in final PR
 
 - `.github/workflows/ci.yml`
+- `.gitignore`
 - `requirements-dev.txt`
 - `tools/verify_python_coverage.py`
 - `tests/test_python_coverage_policy.py`
@@ -117,7 +121,7 @@ No change to:
 3. The exact report passes the measured baseline verifier.
 4. Worker security/deployment/config/local-D1 tests pass.
 5. Frontend contracts and production build pass.
-6. Exact diff is restricted to the six paths listed above.
+6. Exact diff is restricted to the seven paths listed above.
 7. Independent exact-head review finds no hidden source exclusion or runtime change.
 8. Merge uses expected-head locking.
 9. A post-merge backup branch is created from the exact merge SHA.
@@ -138,6 +142,6 @@ A gate must not be lowered solely to make CI pass.
 
 ## Rollback
 
-Revert the merge or restore CI, development requirements, verifier, test, and governance records from `backup-pre-pr10b3-a325624`.
+Revert the merge or restore CI, ignore rules, development requirements, verifier, test, and governance records from `backup-pre-pr10b3-a325624`.
 
 No production deployment or data rollback is required.
