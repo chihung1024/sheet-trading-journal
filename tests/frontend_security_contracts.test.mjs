@@ -94,12 +94,12 @@ test('browser code cannot use system-only authorization headers', () => {
   assert.deepEqual(violations, []);
 });
 
-test('production Worker URL is centralized in src/config.js', () => {
+test('production Worker URL is limited to API configuration and the CSP allowlist', () => {
   const owners = browserFiles
     .filter((filePath) => read(filePath).includes(PRODUCTION_WORKER_URL))
     .map(relative)
     .sort();
-  assert.deepEqual(owners, ['src/config.js']);
+  assert.deepEqual(owners, ['index.html', 'src/config.js']);
 });
 
 test('browser code contains no reviewed dangerous rendering or execution primitives', () => {
