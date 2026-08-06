@@ -179,8 +179,8 @@ test('session scope uses signed sub and does not expose the raw identifier', () 
 });
 
 test('simultaneous contenders stabilize to exactly one confirmed leader', async () => {
-    // Model two real tabs that both read the pre-election empty value before either write is visible.
-    const storage = createStorage({ staleEmptyReads: 2 });
+    // Model two tabs that both see empty pause controls and empty leases before either write is visible.
+    const storage = createStorage({ staleEmptyReads: 4 });
     const clock = { value: 100 };
     const manualDelay = createManualDelay();
     const changesA = [];
