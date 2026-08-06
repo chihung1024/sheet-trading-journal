@@ -96,6 +96,10 @@ class PortfolioSnapshot(BaseModel):
     updated_at: str
     base_currency: str
     exchange_rate: float
+
+    # Additive provenance for benchmark-derived summary/history values.
+    # Optional preserves compatibility with snapshots published before PR-10C8.
+    benchmark_symbol: Optional[str] = None
     
     # 向下相容欄位 (代表 'all' 群組的總體數據)
     summary: PortfolioSummary
