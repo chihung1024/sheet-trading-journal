@@ -5,16 +5,20 @@ import { readFile } from 'node:fs/promises';
 const read = (relativePath) => readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 
 test('PerformanceChart labels benchmark history only from published snapshot provenance', async () => {
-    const source = await read('src/components/PerformanceChart.vue');
+    const component = await read('src/components/PerformanceChart.vue');
+    const stateService = await read('src/services/benchmarkState.js');
 
-    assert.match(source, /resolveBenchmarkApplicationState/);
-    assert.match(source, /snapshot: portfolioStore\.rawData/);
-    assert.match(source, /requestedBenchmark: portfolioStore\.selectedBenchmark/);
-    assert.match(source, /label: publishedBenchmarkLegend\.value/);
-    assert.doesNotMatch(source, /label: `基準 \(\$\{portfolioStore\.selectedBenchmark\}\)`/);
-    assert.match(source, /benchmark-status/);
-    assert.match(source, /benchmarkApplicationState\.statusText/);
-    assert.match(source, /舊快照未記錄基準身分/);
+    assert.match(component, /resolveBenchmarkApplicationState/);
+    assert.match(component, /snapshot: portfolioStore\.rawData/);
+    assert.match(component, /requestedBenchmark: portfolioStore\.selectedBenchmark/);
+    assert.match(component, /label: publishedBenchmarkLegend\.value/);
+    assert.doesNotMatch(component, /label: `基準 \(\$\{portfolioStore\.selectedBenchmark\}\)`/);
+    assert.match(component, /benchmark-status/);
+    assert.match(component, /benchmarkApplicationState\.statusText/);
+
+    // The state service owns legacy/pending wording; the component renders that state.
+    assert.match(stateService, /舊快照未記錄基準身分/);
+    assert.match(stateService, /待計算套用/);
 });
 
 test('benchmark input is local and server-confirmed requested state remains separate', async () => {
