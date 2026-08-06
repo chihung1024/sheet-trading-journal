@@ -1,13 +1,24 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { CONFIG } from '../config';
-import { exchangeGoogleCredential } from '../services/authApi';
-import { createGoogleCredentialRefreshController } from '../services/googleCredentialRefresh';
+import { exchangeGoogleCredential } from '../services/authApi.js';
+import {
+  persistAuthentication,
+  readAuthenticationStorage,
+} from '../services/authStorage.js';
+import { createGoogleCredentialRefreshController } from '../services/googleCredentialRefresh.js';
 import {
   decodeJwtClaims,
   isJwtExpired,
-} from '../services/jwtClaims';
-import { clearSensitiveProjectStorage } from '../services/projectStorage';
+} from '../services/jwtClaims.js';
+import { clearSensitiveProjectStorage } from '../services/projectStorage.js';
+
+const readSignedEmail = (claims) => {
+  if (typeof claims?.email !== 'string' || !claims.email.trim()) {
+    throw new Error('Authentication token has no signed tenant email');
+  }
+  return claims.email.trim().toLowerCase();
+};
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref('');
@@ -32,12 +43,13 @@ export const useAuthStore = defineStore('auth', () => {
         signal,
       });
 
-      token.value = authenticated.token;
-      user.value = authenticated.user;
-
-      localStorage.setItem('token', authenticated.token);
-      localStorage.setItem('name', authenticated.user.name);
-      localStorage.setItem('email', authenticated.user.email);
+      // 先完成可回滾的持久化，再公布 reactive 登入狀態，避免半登入。
+      const persisted = persistAuthentication(localStorage, authenticated);
+      token.value = persisted.token;
+      user.value = {
+        ...authenticated.user,
+        email: persisted.user.email,
+      };
 
       console.log('✅ 登入成功，認證狀態已保存');
       return true;
@@ -60,9 +72,10 @@ export const useAuthStore = defineStore('auth', () => {
   };
 
   const refreshToken = () => getRefreshController().refresh();
+  const cancelTokenRefresh = () => refreshController?.cancel();
 
   const logout = () => {
-    refreshController?.cancel();
+    cancelTokenRefresh();
     token.value = '';
     user.value = { name: '', email: '', picture: '' };
     try {
@@ -75,29 +88,33 @@ export const useAuthStore = defineStore('auth', () => {
   };
 
   const initAuth = () => {
-    const storedToken = localStorage.getItem('token');
-    if (!storedToken) return false;
-
     try {
-      const claims = decodeJwtClaims(storedToken);
-      if (isJwtExpired(storedToken, { skewSeconds: 300 })) {
+      const stored = readAuthenticationStorage(localStorage);
+      if (!stored.token) return false;
+
+      const claims = decodeJwtClaims(stored.token);
+      if (isJwtExpired(stored.token, { skewSeconds: 300 })) {
         throw new Error('Stored token is expired or too close to expiry');
       }
 
-      const storedName = localStorage.getItem('name');
-      const storedEmail = localStorage.getItem('email');
-      const restoredName = typeof storedName === 'string' && storedName.trim()
-        ? storedName
-        : (typeof claims.name === 'string' ? claims.name : '');
-      const restoredEmail = typeof storedEmail === 'string' && storedEmail.trim()
-        ? storedEmail.trim()
-        : (typeof claims.email === 'string' ? claims.email.trim() : '');
-      if (!restoredEmail) throw new Error('Stored authentication has no tenant email');
+      const signedEmail = readSignedEmail(claims);
+      if (
+        typeof stored.email === 'string'
+        && stored.email.trim()
+        && stored.email.trim().toLowerCase() !== signedEmail
+      ) {
+        console.warn('⚠️ 忽略與簽章 Token 不一致的本機 email');
+      }
 
-      token.value = storedToken;
+      const restoredName = typeof claims.name === 'string'
+        ? claims.name
+        : (typeof stored.name === 'string' ? stored.name : '');
+
+      // 所有 claims 驗證完成後才發布 token，避免 watcher 啟動無效排程。
+      token.value = stored.token;
       user.value = {
         name: restoredName,
-        email: restoredEmail,
+        email: signedEmail,
         picture: typeof claims.picture === 'string' ? claims.picture : '',
       };
 
@@ -118,5 +135,6 @@ export const useAuthStore = defineStore('auth', () => {
     initAuth,
     isTokenExpired,
     refreshToken,
+    cancelTokenRefresh,
   };
 });
