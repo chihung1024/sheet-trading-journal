@@ -291,6 +291,15 @@ test('API parser rejects application failures and malformed success payloads', a
             return true;
         },
     );
+    await assert.rejects(readApiJson(response({ payload: {} })), (error) => {
+        assert.equal(error instanceof MalformedApiResponseError, true);
+        assert.match(error.message, /explicit success evidence/);
+        return true;
+    });
+    await assert.rejects(
+        readApiJson(response({ payload: { success: 'true' } })),
+        MalformedApiResponseError,
+    );
     await assert.rejects(
         readApiJson(response({ payload: [] })),
         MalformedApiResponseError,
