@@ -7,7 +7,7 @@ import { dirname, resolve } from "node:path";
 const EXACT_SHA = "3f5f3d385bbfe0137d17b1e681ece2e963c6c0c0";
 const TEST_OUTPUT = resolve(".wrangler/pr05-rendered-path-test.toml");
 
-test("rendered Wrangler config preserves canonical source and migration paths", async () => {
+test("rendered Wrangler config preserves deployment entry and migration paths", async () => {
   await rm(TEST_OUTPUT, { force: true });
   try {
     const render = spawnSync(process.execPath, ["tools/render_wrangler_config.mjs"], {
@@ -24,12 +24,12 @@ test("rendered Wrangler config preserves canonical source and migration paths", 
     assert.equal(render.status, 0, render.stderr);
 
     const config = await readFile(TEST_OUTPUT, "utf8");
-    assert.match(config, /^main = "\.\.\/worker\.js"$/m);
+    assert.match(config, /^main = "\.\.\/worker-entry\.js"$/m);
     assert.match(config, /^migrations_dir = "\.\.\/migrations"$/m);
 
     assert.equal(
-      resolve(dirname(TEST_OUTPUT), "../worker.js"),
-      resolve("worker.js"),
+      resolve(dirname(TEST_OUTPUT), "../worker-entry.js"),
+      resolve("worker-entry.js"),
     );
     assert.equal(
       resolve(dirname(TEST_OUTPUT), "../migrations"),
