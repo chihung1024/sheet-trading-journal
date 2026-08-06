@@ -20,6 +20,10 @@ COUNT_KEYS = (
     "missing_branches",
 )
 TOTAL_KEYS = (*COUNT_KEYS, "percent_covered")
+ALLOWED_RUNTIME_CHANGES = {
+    "none",
+    "non_finite_fx_fail_safe_only",
+}
 
 
 class CoveragePolicyError(ValueError):
@@ -52,6 +56,12 @@ def _count(value: Any, label: str) -> int:
     return int(numeric)
 
 
+def _exact_sha(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not SHA_RE.fullmatch(value):
+        raise CoveragePolicyError(f"{label} must be an exact commit SHA")
+    return value
+
+
 def sanitize_totals(raw_totals: Any, label: str = "coverage totals") -> dict[str, int | float]:
     if not isinstance(raw_totals, dict):
         raise CoveragePolicyError(f"{label} must be an object")
@@ -81,20 +91,96 @@ def sanitize_totals(raw_totals: Any, label: str = "coverage totals") -> dict[str
     return totals
 
 
+def _sanitize_gates(raw_gates: Any, label: str = "baseline gates") -> dict[str, int | float]:
+    if not isinstance(raw_gates, dict):
+        raise CoveragePolicyError(f"{label} are missing")
+    return {
+        "minimum_percent_covered": _finite_number(
+            raw_gates.get("minimum_percent_covered"),
+            f"{label}.minimum_percent_covered",
+        ),
+        "minimum_covered_lines": _count(
+            raw_gates.get("minimum_covered_lines"),
+            f"{label}.minimum_covered_lines",
+        ),
+        "minimum_covered_branches": _count(
+            raw_gates.get("minimum_covered_branches"),
+            f"{label}.minimum_covered_branches",
+        ),
+        "maximum_missing_lines": _count(
+            raw_gates.get("maximum_missing_lines"),
+            f"{label}.maximum_missing_lines",
+        ),
+        "maximum_missing_branches": _count(
+            raw_gates.get("maximum_missing_branches"),
+            f"{label}.maximum_missing_branches",
+        ),
+    }
+
+
+def _validate_revision(revision: Any) -> None:
+    if not isinstance(revision, dict):
+        raise CoveragePolicyError("current_revision must be an object")
+    if not isinstance(revision.get("batch"), str) or not revision["batch"].startswith("PR-"):
+        raise CoveragePolicyError("current_revision.batch is invalid")
+    if not isinstance(revision.get("issue"), int) or isinstance(revision["issue"], bool) or revision["issue"] <= 0:
+        raise CoveragePolicyError("current_revision.issue must be a positive integer")
+    _exact_sha(revision.get("baseline_main_sha"), "current_revision.baseline_main_sha")
+    if not isinstance(revision.get("captured_at_utc"), str) or not revision["captured_at_utc"]:
+        raise CoveragePolicyError("current_revision.captured_at_utc is invalid")
+
+
+def _validate_history(history: Any, current_gates: dict[str, int | float]) -> None:
+    if history is None:
+        return
+    if not isinstance(history, list) or not history:
+        raise CoveragePolicyError("baseline history must be a non-empty list")
+
+    previous_gates: dict[str, int | float] | None = None
+    for index, item in enumerate(history):
+        label = f"history[{index}]"
+        if not isinstance(item, dict):
+            raise CoveragePolicyError(f"{label} must be an object")
+        _exact_sha(item.get("baseline_main_sha"), f"{label}.baseline_main_sha")
+        sanitize_totals(item.get("observed"), f"{label}.observed")
+        previous_gates = _sanitize_gates(item.get("gates"), f"{label}.gates")
+
+    assert previous_gates is not None
+    weaker = []
+    for key in (
+        "minimum_percent_covered",
+        "minimum_covered_lines",
+        "minimum_covered_branches",
+    ):
+        if current_gates[key] < previous_gates[key]:
+            weaker.append(key)
+    for key in ("maximum_missing_lines", "maximum_missing_branches"):
+        if current_gates[key] > previous_gates[key]:
+            weaker.append(key)
+    if weaker:
+        raise CoveragePolicyError(
+            "current coverage gates are weaker than retained history: " + ", ".join(weaker)
+        )
+
+
 def validate_baseline(baseline: dict[str, Any]) -> None:
     if baseline.get("schema_version") != 1:
         raise CoveragePolicyError("baseline schema_version must be 1")
     if baseline.get("batch") != "PR-10B3" or baseline.get("issue") != 82:
-        raise CoveragePolicyError("baseline batch identity is invalid")
-    baseline_sha = baseline.get("baseline_main_sha")
-    if not isinstance(baseline_sha, str) or not SHA_RE.fullmatch(baseline_sha):
-        raise CoveragePolicyError("baseline_main_sha must be an exact commit SHA")
+        raise CoveragePolicyError("baseline control-origin identity is invalid")
+    _exact_sha(baseline.get("baseline_main_sha"), "baseline_main_sha")
+
+    current_revision = baseline.get("current_revision")
+    if current_revision is not None:
+        _validate_revision(current_revision)
 
     policy = baseline.get("policy")
     if not isinstance(policy, dict):
         raise CoveragePolicyError("baseline policy is missing")
-    if policy.get("cost_model") != "free-only" or policy.get("runtime_change") != "none":
-        raise CoveragePolicyError("baseline cost/runtime policy is invalid")
+    if policy.get("cost_model") != "free-only":
+        raise CoveragePolicyError("baseline cost policy is invalid")
+    if policy.get("runtime_change") not in ALLOWED_RUNTIME_CHANGES:
+        raise CoveragePolicyError("baseline runtime-change policy is invalid")
     if policy.get("baseline_update_requires_review") is not True:
         raise CoveragePolicyError("baseline updates must require review")
 
@@ -111,17 +197,8 @@ def validate_baseline(baseline: dict[str, Any]) -> None:
         raise CoveragePolicyError("source_scope.exact_files must be sorted and unique")
 
     sanitize_totals(baseline.get("observed"), "baseline observed totals")
-    gates = baseline.get("gates")
-    if not isinstance(gates, dict):
-        raise CoveragePolicyError("baseline gates are missing")
-    _finite_number(gates.get("minimum_percent_covered"), "minimum_percent_covered")
-    for key in (
-        "minimum_covered_lines",
-        "minimum_covered_branches",
-        "maximum_missing_lines",
-        "maximum_missing_branches",
-    ):
-        _count(gates.get(key), key)
+    gates = _sanitize_gates(baseline.get("gates"))
+    _validate_history(baseline.get("history"), gates)
 
 
 def verify_coverage(report: dict[str, Any], baseline: dict[str, Any]) -> dict[str, int | float]:
