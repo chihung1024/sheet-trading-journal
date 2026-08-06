@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "batch": "PR-10D2",
-  "issue": 97,
-  "baseline_main_sha": "689508ec14477b0e8871244014f3e52f75b208a1",
-  "baseline_tree_sha": "37f53ac8bfbd3a0806c0ac0405412f2dffa45ad6",
-  "captured_at_utc": "2026-08-06T10:57:00Z",
+  "batch": "PR-10B2",
+  "issue": 80,
+  "baseline_main_sha": "7c4545f4e822af37452cc62e0b594e9d21a0c653",
+  "baseline_tree_sha": "86d754f20641a01bc51855b4f08ab8477b8129eb",
+  "captured_at_utc": "2026-08-06T05:40:23Z",
   "policy": {
     "external_actions_must_use_full_commit_sha": true,
     "checkout_persist_credentials": false,
@@ -16,7 +16,6 @@
   },
   "workflows": [
     ".github/workflows/ci.yml",
-    ".github/workflows/deploy-worker-staging.yml",
     ".github/workflows/deploy-worker.yml",
     ".github/workflows/production-contract-audit.yml",
     ".github/workflows/update.yml"
@@ -48,8 +47,8 @@
     }
   ],
   "recovery": {
-    "pre_change_branch": "backup-pre-pr10d2-689508e",
-    "work_branch": "pr10d2-staging-worker-contract",
-    "rollback": "revert the PR merge or reset staging workflow and contract files to the pre-change backup branch"
+    "pre_change_branch": "backup-pre-pr10b2-7c4545f",
+    "work_branch": "pr10b2-workflow-supply-chain",
+    "rollback": "revert the PR merge or reset workflow files to the pre-change backup branch"
   }
 }
