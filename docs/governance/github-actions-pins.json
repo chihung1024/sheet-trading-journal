@@ -11,7 +11,7 @@
     "workflow_default_permissions": {
       "contents": "read"
     },
-    "runtime_change": "backend-staging-contract-only",
+    "runtime_change": "none",
     "cost_model": "free-only"
   },
   "workflows": [
