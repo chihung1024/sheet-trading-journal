@@ -52,8 +52,11 @@ jobs:
           --cov-report=term-missing
           --cov-report=json:coverage.json
 
-      - name: Print sanitized aggregate coverage totals
-        run: python tools/verify_python_coverage.py coverage.json
+      - name: Verify measured Python coverage baseline
+        run: >-
+          python tools/verify_python_coverage.py
+          coverage.json
+          docs/governance/python-coverage-baseline.json
 
   worker-security:
     name: Worker security and deployment tests

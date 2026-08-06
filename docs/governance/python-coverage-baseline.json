@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "batch": "PR-10B3",
+  "issue": 82,
+  "baseline_main_sha": "a32562471849f1f35cd25da327ea5fa32835ebb7",
+  "captured_at_utc": "2026-08-06T05:56:59Z",
+  "measurement": {
+    "pr_number": 83,
+    "head_sha": "1c38510f03139dce4abbe9dd1d928f2480476601",
+    "run_id": 31075638834,
+    "initial_run_id": 31075500378,
+    "python_version": "3.10.20",
+    "pytest_version": "9.0.2",
+    "pytest_cov_version": "7.0.0",
+    "coverage_version": "7.15.3",
+    "test_result": "92 passed, 1 existing warning",
+    "coverage_json_persisted": false
+  },
+  "source_scope": {
+    "branch_coverage": true,
+    "exact_files": [
+      "journal_engine/__init__.py",
+      "journal_engine/clients/__init__.py",
+      "journal_engine/clients/api_client.py",
+      "journal_engine/clients/auto_price_selector.py",
+      "journal_engine/clients/market_data.py",
+      "journal_engine/config.py",
+      "journal_engine/core/__init__.py",
+      "journal_engine/core/calculator.py",
+      "journal_engine/core/currency_detector.py",
+      "journal_engine/core/daily_pnl_engine.py",
+      "journal_engine/core/daily_pnl_helper.py",
+      "journal_engine/core/daily_pnl_reconciler.py",
+      "journal_engine/core/market_stage_detector.py",
+      "journal_engine/core/split_ledger.py",
+      "journal_engine/core/transaction_analyzer.py",
+      "journal_engine/core/transaction_calendar.py",
+      "journal_engine/core/validator.py",
+      "journal_engine/models.py",
+      "main.py"
+    ]
+  },
+  "observed": {
+    "num_statements": 2113,
+    "covered_lines": 1431,
+    "missing_lines": 682,
+    "num_branches": 748,
+    "covered_branches": 404,
+    "missing_branches": 344,
+    "percent_covered": 64.13841314225795
+  },
+  "gates": {
+    "minimum_percent_covered": 64.13,
+    "minimum_covered_lines": 1431,
+    "minimum_covered_branches": 404,
+    "maximum_missing_lines": 682,
+    "maximum_missing_branches": 344
+  },
+  "policy": {
+    "cost_model": "free-only",
+    "runtime_change": "none",
+    "hosted_coverage_service": false,
+    "public_coverage_artifact": false,
+    "baseline_update_requires_review": true,
+    "source_scope_change_requires_baseline_update": true,
+    "coverage_regression_must_not_be_hidden_by_rounding": true
+  },
+  "recovery": {
+    "pre_change_branch": "backup-pre-pr10b3-a325624",
+    "work_branch": "pr10b3-python-coverage-baseline",
+    "rollback": "revert PR-10B3 or restore CI and governance files from the pre-change backup"
+  }
+}
