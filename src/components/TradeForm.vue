@@ -148,7 +148,9 @@ import { reactive, ref, computed, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
+import { formatLocalCalendarDate } from '../services/calendarDate';
 
+const emit = defineEmits(['submitted']);
 const store = usePortfolioStore();
 const auth = useAuthStore();
 const { addToast } = useToast();
@@ -161,7 +163,7 @@ const selectedSellGroups = ref([]);
 const holdingGroups = ref([]);
 
 const form = reactive({
-    txn_date: new Date().toISOString().split('T')[0],
+    txn_date: formatLocalCalendarDate(),
     symbol: '', 
     txn_type: 'BUY', 
     qty: '', 
@@ -276,9 +278,8 @@ const submit = async () => {
         }
         
         if (success) {
-            resetForm(); 
-            // 如果是在手機 Bottom Sheet 中，這裡可以 emit event 通知父層關閉，
-            // 但 App.vue 已經有監聽 @submitted 事件，這裡可以透過 emit 傳遞
+            resetForm();
+            emit('submitted');
         }
     } catch(e) { 
         console.error('❌ 提交錯誤:', e);
@@ -290,6 +291,7 @@ const submit = async () => {
 const resetForm = () => {
     isEditing.value = false; 
     editingId.value = null;
+    form.txn_date = formatLocalCalendarDate();
     form.symbol = ''; 
     form.qty = ''; 
     form.price = ''; 
