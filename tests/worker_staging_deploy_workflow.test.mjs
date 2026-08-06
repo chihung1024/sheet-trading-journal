@@ -46,7 +46,9 @@ test('staging secrets are scoped to required steps and never exposed at job leve
   assert.match(workflow, /Verify protected staging configuration[\s\S]*secrets\.CLOUDFLARE_API_TOKEN/);
   assert.match(workflow, /Verify pre-provisioned staging secret inventory/);
   assert.match(workflow, /wrangler secret list/);
+  assert.match(workflow, /--format json/);
   assert.match(workflow, /verify_staging_secret_inventory\.mjs/);
+  assert.doesNotMatch(workflow, /--json/);
   assert.doesNotMatch(workflow, /wrangler secret put/);
 });
 
