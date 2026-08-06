@@ -12,18 +12,20 @@ const isPlainObject = (value) => (
     && !Array.isArray(value)
 );
 
-const validateCompactSegment = (segment, label) => {
+const validateCompactSegment = (segment, label, { requireDecodableLength = false } = {}) => {
     if (typeof segment !== 'string' || !segment || !/^[A-Za-z0-9_-]+$/.test(segment)) {
         throw new JwtClaimsError(`JWT ${label} segment is invalid`);
     }
-    if (segment.length % 4 === 1) {
+    if (requireDecodableLength && segment.length % 4 === 1) {
         throw new JwtClaimsError(`JWT ${label} segment padding is invalid`);
     }
     return segment;
 };
 
 const normalizePayloadSegment = (segment) => {
-    const validated = validateCompactSegment(segment, 'payload');
+    const validated = validateCompactSegment(segment, 'payload', {
+        requireDecodableLength: true,
+    });
     const remainder = validated.length % 4;
     return validated
         .replace(/-/g, '+')
