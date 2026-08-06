@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import worker, { __test } from '../worker.js';
+import worker, { __test } from '../worker-entry.js';
 
 const STAGING_ORIGIN = 'https://staging.sheet-trading-journal.pages.dev';
 const PRODUCTION_ORIGIN = 'https://sheet-trading-journal.pages.dev';
