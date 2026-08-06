@@ -41,15 +41,14 @@ function sourceBlock(source, startMarker, endMarker) {
 test('market refresh scheduling requires every non-busy prerequisite', () => {
   assert.equal(shouldScheduleMarketRefresh(eligibleContext()), true);
 
-  const blockedCases = [
+  for (const blocked of [
     { enabled: false },
     { paused: true },
     { visible: false },
     { marketHours: false },
     { hasToken: false },
     { tokenExpired: true },
-  ];
-  for (const blocked of blockedCases) {
+  ]) {
     assert.equal(
       shouldScheduleMarketRefresh(eligibleContext(blocked)),
       false,
@@ -93,12 +92,12 @@ test('pause and hidden-page transitions stop active refresh and countdown timers
   assert.match(pauseBlock, /stopActiveSchedule\(\);/);
   assert.match(pauseBlock, /evaluateMarketRefresh\(\{ triggerImmediately: true \}\);/);
 
-  const visibilityBlock = sourceBlock(source, 'const handleVisibilityChange', '/**\n     * 手動觸發');
+  const visibilityBlock = sourceBlock(source, 'const handleVisibilityChange', 'const manualTrigger');
   assert.match(visibilityBlock, /if \(!isPageVisible\(\)\) \{/);
   assert.match(visibilityBlock, /stopActiveSchedule\(\);/);
   assert.match(visibilityBlock, /evaluateMarketRefresh\(\{ triggerImmediately: true \}\);/);
 
-  const stopBlock = sourceBlock(source, 'const stopActiveSchedule', '/**\n     * 觸發更新');
+  const stopBlock = sourceBlock(source, 'const stopActiveSchedule', 'const triggerRefresh');
   assert.match(stopBlock, /stopRefreshTimer\(\);/);
   assert.match(stopBlock, /stopCountdown\(\);/);
   assert.match(stopBlock, /timeRemaining\.value = 0;/);
@@ -109,11 +108,11 @@ test('visibility listener is lifecycle-bound and timer creation is idempotent', 
   assert.match(source, /document\.addEventListener\('visibilitychange', handleVisibilityChange\);/);
   assert.match(source, /document\.removeEventListener\('visibilitychange', handleVisibilityChange\);/);
 
-  const startBlock = sourceBlock(source, 'const startMarketRefresh', '// 格式化倒數時間');
+  const startBlock = sourceBlock(source, 'const startMarketRefresh', 'const formattedTimeRemaining');
   assert.match(startBlock, /if \(!checkTimer\) \{/);
   assert.equal((startBlock.match(/checkTimer = setInterval/g) || []).length, 1);
 
-  const evaluateBlock = sourceBlock(source, 'const evaluateMarketRefresh', '/**\n     * 啟動盤中刷新');
+  const evaluateBlock = sourceBlock(source, 'const evaluateMarketRefresh', 'const startMarketRefresh');
   assert.match(evaluateBlock, /if \(refreshTimer\) return true;/);
   assert.equal((evaluateBlock.match(/refreshTimer = setInterval/g) || []).length, 1);
 });
