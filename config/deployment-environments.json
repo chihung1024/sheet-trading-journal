@@ -4,7 +4,6 @@
   "allowed_deploy_environments": [
     "development",
     "test",
-    "preview",
     "staging",
     "production"
   ],
@@ -20,9 +19,14 @@
       "https://chihung1024.github.io"
     ]
   },
+  "staging": {
+    "pages_branch": "staging",
+    "frontend_origin": "https://staging.sheet-trading-journal.pages.dev",
+    "api_origin": "https://journal-backend-staging.chired.workers.dev",
+    "deploy_environment": "staging"
+  },
   "non_production": {
     "allowed_deploy_environments": [
-      "preview",
       "staging"
     ],
     "require_explicit_api_origin": true,
@@ -30,6 +34,7 @@
     "require_https": true,
     "forbid_localhost": true,
     "forbid_production_api_origins": true,
-    "forbid_production_google_client_ids": true
+    "forbid_production_google_client_ids": true,
+    "allow_arbitrary_pages_branches": false
   }
 }
