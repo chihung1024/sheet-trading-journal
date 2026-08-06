@@ -58,15 +58,20 @@ export const isExplicitServerRejection = (error) => (
     error instanceof ApiHttpError || error instanceof ApiApplicationError
 );
 
+const normalizeThrownValue = (error) => {
+    if ((typeof error === 'object' && error !== null) || typeof error === 'function') return error;
+    return new Error(error == null ? 'Unknown request failure' : String(error));
+};
+
 export const markRequestOutcome = (error, method = 'GET') => {
+    const normalizedError = normalizeThrownValue(error);
     if (
-        error
-        && isMutationMethod(method)
-        && !isExplicitServerRejection(error)
+        isMutationMethod(method)
+        && !isExplicitServerRejection(normalizedError)
     ) {
-        error.outcomeAmbiguous = true;
+        normalizedError.outcomeAmbiguous = true;
     }
-    return error;
+    return normalizedError;
 };
 
 const mutationAmbiguityMessage = (action) => (
