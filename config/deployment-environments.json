@@ -18,7 +18,9 @@
       "https://sheet-trading-journal.pages.dev",
       "https://chihung1024.github.io"
     ],
-    "d1_database_name": "trading-journal-production"
+    "d1_identity_status": "unverified",
+    "d1_database_name": null,
+    "d1_database_id_sha256": null
   },
   "staging": {
     "pages_branch": "staging",
