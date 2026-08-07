@@ -1,0 +1,119 @@
+name: Publish 4.07.3 exact-SHA release
+
+on:
+  push:
+    branches:
+      - ops/release-4.07.3-20260807
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release-4.07.3
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact release target and absence of existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: 74fe12010ee3138e07a079a3d45271fddb80b536
+          RELEASE_TAG: 4.07.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "chihung1024/sheet-trading-journal"
+          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.sha')"
+          test "$main_sha" = "$TARGET_SHA"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists" >&2
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: 74fe12010ee3138e07a079a3d45271fddb80b536
+          RELEASE_TAG: 4.07.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/release-notes.md <<'EOF'
+          ## V5 staging/browser closeout and deployment governance
+
+          Target commit: `74fe12010ee3138e07a079a3d45271fddb80b536`
+          Previous release: `4.07.2`
+
+          This patch release records the V5 governance, frontend correctness, environment-isolation, fixed-staging deployment and authenticated Chromium smoke work completed after 4.07.2.
+
+          ### Major updates
+          - Enforced protected-main PR/CI/merge governance and separate staging/production environment controls.
+          - Added deterministic coverage governance and zero-downtime evidence discipline.
+          - Hardened frontend refresh single-flight behavior, truthful snapshot freshness, bounded mutation transport, cross-tab logout, accessibility semantics and TW/TWO currency presentation.
+          - Made frontend CSP environment-aware for production vs fixed staging and kept arbitrary previews fail-closed.
+          - Added an isolated fixed staging Worker/Pages deployment contract with exact-SHA readiness, D1/config/secret isolation and live CORS verification.
+          - Added authenticated Playwright/Chromium staging smoke using a dedicated Google identity and fresh Google-issued ID token, with no auth bypass.
+          - Real browser smoke verified login, authenticated GET/POST/PUT/DELETE, deterministic synthetic cleanup, semantic logout/localStorage clearing, and zero browser requests to production origins.
+          - Preserved the first Browser Smoke failure as fail-closed evidence when OAuth bootstrap secrets were absent.
+          - Closed the post-merge GitHub Actions compiler-context regression via PR #124 and regression guard.
+          - Closed PR-10D3C after Browser Smoke #18 passed at the exact staging source.
+
+          ### Exact evidence
+          - D3C closeout source before evidence merge: `09a741abaf581bfb20d4a59eaffcda345776757b`
+          - Staging Pages external deployment: `fdf06697-6ff7-480a-aca4-ef5b17a88ef3`
+          - Staging Worker deploy run/job: `31152810991` / `92785841332`
+          - Cloudflare staging Worker version: `bbd55ac6-bbcb-48e9-9ea2-155f4c636512`
+          - Browser Smoke #17: `31153666032` — fail-closed before browser write
+          - Browser Smoke #18: `31156230969` / job `92796212558` — SUCCESS
+          - Browser result: `1 passed (5.6s)`
+          - Post-delete synthetic marker count: `0`
+          - Browser production-origin requests: `0`
+          - D3C closeout PR: #125
+          - Post-closeout main CI: `31157677760` — SUCCESS
+          - Post-closeout Pages: `31157675019` — SUCCESS
+
+          ### Version state
+          - Canonical Worker runtime: `4.07`
+          - API: `2.60`
+          - D1 schema: `2`
+
+          `4.07.3` is a patch-level governance/frontend/staging-validation milestone; it does not claim a Worker 4.07.3 runtime binary and does not introduce Schema 3.
+
+          ### Still open
+          - B01 E2E npm lockfile/integrity graph
+          - B05 revocable application sessions / true logout-all
+          - B06/B07 ledger revision and snapshot publication consistency
+          - B08/B09 instrument master and currency truth
+          - B11/N31 corporate-action economic correctness
+          - B14 remaining CSP/PWA hardening
+          - Recovery Evidence Gate
+          - Schema 3 remains blocked until that gate closes
+
+          Recovery: `backup-d3c-browser-smoke-pass-09a741a`.
+          Detailed release notes are committed at `docs/governance/evidence/RELEASE_4_07_3_V5_STAGING_BROWSER_CLOSEOUT.md`.
+          EOF
+
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "4.07.3 — V5 Staging Browser Closeout & Deployment Governance" \
+            --notes-file /tmp/release-notes.md
+
+      - name: Verify published release target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: 74fe12010ee3138e07a079a3d45271fddb80b536
+          RELEASE_TAG: 4.07.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          test "$(jq -r '.tag_name' <<<"$release_json")" = "$RELEASE_TAG"
+          test "$(jq -r '.draft' <<<"$release_json")" = "false"
+          test "$(jq -r '.prerelease' <<<"$release_json")" = "false"
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
+          test "$tag_sha" = "$TARGET_SHA"
+          echo "Release $RELEASE_TAG verified at $TARGET_SHA"
