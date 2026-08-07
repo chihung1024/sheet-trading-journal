@@ -6,7 +6,12 @@ import pandas as pd
 import pytz
 import yfinance as yf
 
-from ..config import DEFAULT_FX_RATE, EXCHANGE_SYMBOL, FX_USD_QUOTE_SYMBOLS
+from ..config import (
+    DEFAULT_FX_RATE,
+    EXCHANGE_SYMBOL,
+    FX_NATIVE_UNIT_SCALES,
+    FX_USD_QUOTE_SYMBOLS,
+)
 from ..core.currency_detector import CurrencyDetector
 from .auto_price_selector import AutoPriceSelector
 
@@ -46,10 +51,11 @@ class MarketDataClient:
         twd_per_usd: pd.Series,
         native_per_usd: pd.Series,
     ) -> pd.Series:
-        """Derive TWD per native unit from two USD quote series.
+        """Derive TWD per one major native currency unit from USD quote series.
 
-        Yahoo `CUR=X` is native units per 1 USD, therefore:
-        TWD/native = (TWD/USD) / (native/USD).
+        Yahoo `CUR=X` is native currency units per 1 USD, therefore:
+        TWD/native-major-unit = (TWD/USD) / (native/USD).
+        Market-specific subunit scaling (for example GBp) is applied separately.
         """
         if twd_per_usd.empty or native_per_usd.empty:
             return pd.Series(dtype=float)
@@ -64,11 +70,10 @@ class MarketDataClient:
         """Initialize market, USD/TWD compatibility, and currency-aware FX data."""
         self.market_data = {}
 
-        # Backward-compatible USD/TWD fields used by existing snapshot/tests.
         self.fx_rates = pd.Series(dtype=float)
         self.realtime_fx_rate = None
 
-        # Canonical currency-aware context: TWD per 1 native-currency unit.
+        # Canonical currency-aware context: TWD per 1 native quote unit.
         self.fx_rates_by_currency = {}
         self.realtime_fx_rates_by_currency = {}
 
@@ -127,8 +132,6 @@ class MarketDataClient:
         self.fx_rates_by_currency = {}
         self.realtime_fx_rates_by_currency = {}
 
-        # USD/TWD is the cross base for every non-TWD currency and remains the
-        # compatibility exchange_rate exposed by snapshots.
         try:
             usd_twd_history, usd_twd_ticker = self._download_fx_history(
                 EXCHANGE_SYMBOL,
@@ -156,8 +159,9 @@ class MarketDataClient:
         )
         for currency in foreign_currencies:
             quote_symbol = FX_USD_QUOTE_SYMBOLS.get(currency)
-            if not quote_symbol:
-                print(f"[FX:{currency}] 未設定 Yahoo USD quote symbol")
+            unit_scale = FX_NATIVE_UNIT_SCALES.get(currency)
+            if not quote_symbol or unit_scale is None:
+                print(f"[FX:{currency}] 未設定 Yahoo USD quote symbol / native-unit scale")
                 continue
             try:
                 quote_history, quote_ticker = self._download_fx_history(
@@ -169,6 +173,8 @@ class MarketDataClient:
                     self.fx_rates,
                     quote_history,
                 )
+                if not derived.empty:
+                    derived = self._clean_positive_series(derived * float(unit_scale))
                 if derived.empty:
                     print(f"[FX:{currency}] 警告: 無法建立 {currency}/TWD 歷史匯率")
                     continue
@@ -184,7 +190,9 @@ class MarketDataClient:
                     and native_per_usd is not None
                     and native_per_usd > 0
                 ):
-                    twd_per_native = self.realtime_fx_rate / native_per_usd
+                    twd_per_native = (
+                        self.realtime_fx_rate / native_per_usd * float(unit_scale)
+                    )
                     if math.isfinite(twd_per_native) and twd_per_native > 0:
                         self.realtime_fx_rates_by_currency[currency] = twd_per_native
                         print(
@@ -195,7 +203,7 @@ class MarketDataClient:
                 print(f"[FX:{currency}] 匯率下載失敗: {exc}")
 
     def validate_required_fx_data(self, tickers):
-        """Return currencies whose required TWD conversion series is unavailable."""
+        """Return native quote units whose required TWD conversion is unavailable."""
         required_currencies = {
             CurrencyDetector.detect(ticker)
             for ticker in tickers
@@ -255,7 +263,6 @@ class MarketDataClient:
         }
         self._download_currency_fx(required_currencies, start_date)
 
-        # ==================== 下載個股數據 (平行化) ====================
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
 
         def fetch_single_ticker(t):
@@ -266,7 +273,6 @@ class MarketDataClient:
                 if not hist.empty:
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
 
-                    # 盤中即時價覆蓋最後一筆日線
                     try:
                         latest_price = None
 
