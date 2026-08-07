@@ -89,3 +89,34 @@ Each subsequent entry should record, when applicable:
 - unresolved external/manual control-plane actions.
 
 Do not edit a historical entry to make an earlier batch appear more complete. Append a correction or later verification entry instead.
+
+## Entry 001 — G00 repository-side implementation opened for review
+
+- PR: `#112` — `G00C: record V5 execution baseline and tombstone legacy deployment runbook`
+- PR base at creation: `main@2557fc582d3555f7b129f36d2cf5ad67c141375e`
+- PR head at creation: `b4bfc8db7787ba6f66cda1272100f09e4db39cbe`
+- Initial CI run observed: `31138302102` (`CI`, run number 214), initially queued when first recorded.
+- Runtime/data change: **none**
+
+### Initial independent diff check
+
+A direct commit comparison from the approved baseline to the work branch reported four changed files only:
+
+1. `DEPLOYMENT_FINAL.md` — historical manual deployment instructions replaced by an archive/tombstone notice.
+2. `docs/V5_ZERO_DOWNTIME_EXECUTION_PLAN.md` — approved V5 execution authority.
+3. `docs/governance/G00_CONTROL_PLANE_ACCEPTANCE.md` — enforceable closeout requirements for G00A/G00B/G00C.
+4. `docs/governance/V5_EXECUTION_HISTORY.md` — this append-only history.
+
+No Worker, Python financial engine, frontend runtime, workflow YAML, migration, D1 schema/data, OAuth or CORS file was changed at the time of the independent comparison.
+
+### G00C result at PR creation
+
+Repository-side G00C implementation is present in the PR: obsolete Worker v2.38 Quick Edit instructions no longer appear as the current production deployment procedure. The exact historical content remains available at the pre-change commit and `backup-pre-v5-wave0-2557fc5`.
+
+### G00A/G00B result at PR creation
+
+Still open. This entry deliberately does not upgrade either control to PASS because their authoritative state lives in GitHub control-plane settings, not repository prose.
+
+### Why the PR head may move after this entry
+
+This execution journal is intentionally updated with review/CI/merge evidence. Therefore later evidence-only commits can move the PR head without changing runtime scope. The final reviewed head SHA, CI conclusion and merge SHA must be appended in a later entry rather than retroactively editing this one.
