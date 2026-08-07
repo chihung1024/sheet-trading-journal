@@ -33,7 +33,7 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout exact requested commit
+      - name: Checkout exact requested runtime source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.source_sha }}
@@ -59,13 +59,22 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Verify Recovery Evidence Gate
+      - name: Verify runtime Recovery Evidence Gate
         run: node tools/verify_recovery_evidence_gate.mjs
 
-      - name: Verify production activation authority
+      - name: Verify production activation authority from protected main control plane
+        shell: bash
         env:
-          EXPECTED_SHA: ${{ inputs.source_sha }}
-        run: node tools/verify_production_activation_authority.mjs
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          control_plane="$RUNNER_TEMP/production-control-plane-preflight"
+          rm -rf "$control_plane"
+          git worktree add --detach "$control_plane" refs/remotes/origin/main
+          (
+            cd "$control_plane"
+            EXPECTED_SHA="$REQUESTED_SHA" node tools/verify_production_activation_authority.mjs
+          )
 
   deploy:
     name: Migrate, deploy, and verify Worker
@@ -86,7 +95,7 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout exact requested commit
+      - name: Checkout exact requested runtime source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.source_sha }}
@@ -130,10 +139,19 @@ jobs:
           npm run worker:schema:test
           npm run worker:recovery-gate:check
 
-      - name: Re-verify production activation authority after reviewer approval
+      - name: Re-verify production activation authority from latest protected main
+        shell: bash
         env:
-          EXPECTED_SHA: ${{ steps.source.outputs.sha }}
-        run: node tools/verify_production_activation_authority.mjs
+          REQUESTED_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          control_plane="$RUNNER_TEMP/production-control-plane-after-approval"
+          rm -rf "$control_plane"
+          git worktree add --detach "$control_plane" refs/remotes/origin/main
+          (
+            cd "$control_plane"
+            EXPECTED_SHA="$REQUESTED_SHA" node tools/verify_production_activation_authority.mjs
+          )
 
       - name: Verify protected deployment configuration
         shell: bash
