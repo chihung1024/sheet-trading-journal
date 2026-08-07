@@ -10,6 +10,7 @@ from ..config import BASE_CURRENCY, DEFAULT_FX_RATE, BENCHMARK_TAX_RATE_US, BENC
 from .transaction_analyzer import TransactionAnalyzer, PositionSnapshot
 from .daily_pnl_helper import DailyPnLHelper
 from .currency_detector import CurrencyDetector
+from .dividend_policy import dividend_net_multiplier, dividend_withholding_rate
 from .validator import PortfolioValidator
 
 logger = logging.getLogger(__name__)
@@ -449,7 +450,7 @@ class PortfolioCalculator:
                 shares_at_ex = eligible_qty / split_factor
                 
                 total_gross = shares_at_ex * div_per_share
-                total_net_usd = total_gross * 0.7
+                total_net_usd = total_gross * dividend_net_multiplier(sym)
                 total_net_twd = total_net_usd * effective_fx
 
                 dividend_history.append({
@@ -458,6 +459,7 @@ class PortfolioCalculator:
                     'shares_held': eligible_qty,  # ✅ 顯示除權息時持有的正確股數
                     'dividend_per_share_gross': div_per_share,
                     'total_gross': round(total_gross, 2),
+                    'tax_rate': round(dividend_withholding_rate(sym) * 100, 2),
                     'total_net_usd': round(total_net_usd, 2),
                     'total_net_twd': round(total_net_twd, 0),
                     'fx_rate': fx,
@@ -641,7 +643,7 @@ class PortfolioCalculator:
                     # ✅ [修正] 除權息必須基於 begin_qty (昨日留倉)，而非今日買賣後的 h['qty']
                     shares_at_ex = begin_qty / split_factor
                     total_gross = shares_at_ex * div_per_share_today
-                    total_net_usd = total_gross * 0.7
+                    total_net_usd = total_gross * dividend_net_multiplier(sym)
                     div_income_twd += total_net_usd * effective_fx
 
             # 該標的當日淨現金流 = 買入成本 - 賣出所得 - 股息收入 (正數代表現金轉股票)

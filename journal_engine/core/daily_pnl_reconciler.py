@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from ..config import DEFAULT_FX_RATE
+from .dividend_policy import dividend_net_multiplier
 
 
 logger = logging.getLogger(__name__)
@@ -308,7 +309,10 @@ def _symbol_component(
             )
         shares_at_ex = begin_qty / split_factor
         dividend_income_twd += (
-            shares_at_ex * market_dividend * 0.7 * cashflow_fx
+            shares_at_ex
+            * market_dividend
+            * dividend_net_multiplier(symbol)
+            * cashflow_fx
         )
 
     begin_value = begin_qty * begin_price * begin_fx
