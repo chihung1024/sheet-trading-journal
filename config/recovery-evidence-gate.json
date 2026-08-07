@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "gate_id": "RECOVERY-EVIDENCE-GATE",
+  "status": "blocked",
+  "max_schema_version_without_pass": 2,
+  "passed_at": null,
+  "required_evidence": [
+    "export_backup",
+    "restore_drill",
+    "rollback_timing",
+    "integrity_verification",
+    "migration_rollback_forward_strategy",
+    "d1_recovery_proof"
+  ],
+  "evidence": {},
+  "notes": "Schema 3 and later remain blocked until every required recovery evidence item is populated and status is explicitly set to passed after an actual drill. Cloudflare Time Travel availability alone is not sufficient."
+}
