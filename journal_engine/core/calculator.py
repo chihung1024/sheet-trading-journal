@@ -10,7 +10,11 @@ from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 from .transaction_analyzer import TransactionAnalyzer, PositionSnapshot
 from .daily_pnl_helper import DailyPnLHelper
 from .currency_detector import CurrencyDetector
-from .dividend_policy import dividend_net_multiplier, dividend_withholding_rate
+from .dividend_policy import (
+    UnsupportedDividendPolicyError,
+    reviewed_dividend_net_multiplier,
+    reviewed_dividend_withholding_rate,
+)
 from .validator import PortfolioValidator
 
 logger = logging.getLogger(__name__)
@@ -62,8 +66,8 @@ class PortfolioCalculator:
         return tw_hour >= 22 or tw_hour < 5
 
     def _get_benchmark_tax_rate(self):
-        """Use the same reviewed dividend policy as portfolio holdings."""
-        return dividend_withholding_rate(self.benchmark_ticker)
+        """Return a reviewed benchmark dividend rate, or ``None`` if unavailable."""
+        return reviewed_dividend_withholding_rate(self.benchmark_ticker)
 
     def _get_asset_effective_price_and_fx(self, symbol, target_date, current_fx):
         """Return native price and TWD/native valuation multiplier."""
@@ -283,6 +287,8 @@ class PortfolioCalculator:
         history_data = []
         confirmed_dividends = set()
         dividend_history = []
+        anomalies = []
+        anomaly_keys = set()
         xirr_cashflows = []
         
         cumulative_twr_factor = 1.0
@@ -344,6 +350,11 @@ class PortfolioCalculator:
             net_div_twd = 0.0
             bm_div_per_share = self.market.get_dividend(self.benchmark_ticker, d)
             if bm_div_per_share > 0 and px_twd > 0:
+                if benchmark_tax_rate is None:
+                    currency = self.currency_detector.detect(self.benchmark_ticker)
+                    raise UnsupportedDividendPolicyError(
+                        f"Benchmark dividend withholding policy is undefined for {currency} symbol {self.benchmark_ticker}"
+                    )
                 net_div_twd = bm_div_per_share * (1 - benchmark_tax_rate) * benchmark_fx
 
             benchmark_twr = 0.0
@@ -471,12 +482,30 @@ class PortfolioCalculator:
                 effective_fx = self._get_effective_fx_rate(sym, fx_context)
                 div_key = f"{sym}_{date_str}"
                 is_confirmed = div_key in confirmed_dividends
+                withholding_rate = reviewed_dividend_withholding_rate(sym)
+                if withholding_rate is None:
+                    if not is_confirmed and div_key not in anomaly_keys:
+                        currency = self.currency_detector.detect(sym)
+                        anomalies.append({
+                            'code': 'DIVIDEND_POLICY_REVIEW_REQUIRED',
+                            'symbol': sym,
+                            'date': date_str,
+                            'currency': currency,
+                            'message': (
+                                f"Automatic pending dividend not accrued because "
+                                f"withholding policy is unreviewed for {currency}"
+                            ),
+                        })
+                        anomaly_keys.add(div_key)
+                    # A confirmed DIV already carries the actual net cash flow; an
+                    # unconfirmed event must wait for review rather than guess tax.
+                    continue
                 
                 split_factor = self.market.get_transaction_multiplier(sym, d)
                 shares_at_ex = eligible_qty / split_factor
                 
                 total_gross = shares_at_ex * div_per_share
-                total_net_native = total_gross * dividend_net_multiplier(sym)
+                total_net_native = total_gross * (1.0 - withholding_rate)
                 total_net_twd = total_net_native * effective_fx
                 currency = self.currency_detector.detect(sym)
 
@@ -486,7 +515,7 @@ class PortfolioCalculator:
                     'shares_held': eligible_qty,
                     'dividend_per_share_gross': div_per_share,
                     'total_gross': round(total_gross, 2),
-                    'tax_rate': round(dividend_withholding_rate(sym) * 100, 2),
+                    'tax_rate': round(withholding_rate * 100, 2),
                     'currency': currency,
                     'total_net_native': round(total_net_native, 2),
                     'total_net_usd': round(total_net_native, 2),
@@ -533,8 +562,7 @@ class PortfolioCalculator:
             history_data.append({
                 "date": date_str, "total_value": round(current_market_value_twd, 0),
                 "invested": round(invested_capital, 0), "net_profit": round(total_pnl, 0),
-                "realized_pnl": round(total_realized_pnl_twd, 0),
-                "unrealized_pnl": round(unrealized_pnl, 0),
+                "realized_pnl": round(total_realized_pnl_twd, 0), "unrealized_pnl": round(unrealized_pnl, 0),
                 "twr": round((cumulative_twr_factor - 1) * 100, 2), 
                 "benchmark_twr": round(benchmark_twr, 2),
                 "fx_rate": round(float(fx), 4),
@@ -669,11 +697,13 @@ class PortfolioCalculator:
             if div_per_share_today > 0:
                 div_key = f"{sym}_{pnl_base_date.strftime('%Y-%m-%d')}"
                 if div_key not in confirmed_dividends:
-                    split_factor = self.market.get_transaction_multiplier(sym, pd.Timestamp(pnl_base_date))
-                    shares_at_ex = begin_qty / split_factor
-                    total_gross = shares_at_ex * div_per_share_today
-                    total_net_native = total_gross * dividend_net_multiplier(sym)
-                    div_income_twd += total_net_native * effective_fx
+                    net_multiplier = reviewed_dividend_net_multiplier(sym)
+                    if net_multiplier is not None:
+                        split_factor = self.market.get_transaction_multiplier(sym, pd.Timestamp(pnl_base_date))
+                        shares_at_ex = begin_qty / split_factor
+                        total_gross = shares_at_ex * div_per_share_today
+                        total_net_native = total_gross * net_multiplier
+                        div_income_twd += total_net_native * effective_fx
 
             sym_net_cf = buy_cost_twd - sell_proceeds_twd - div_income_twd
                 
@@ -813,5 +843,6 @@ class PortfolioCalculator:
         
         return PortfolioGroupData(
             summary=summary, holdings=final_holdings, history=history_data,
-            pending_dividends=[DividendRecord(**d) for d in dividend_history if d['status']=='pending']
+            pending_dividends=[DividendRecord(**d) for d in dividend_history if d['status']=='pending'],
+            anomalies=anomalies,
         )
