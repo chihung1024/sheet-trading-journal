@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, StrictBool, computed_field
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 
@@ -34,7 +34,7 @@ class PortfolioSummary(BaseModel):
     xirr_status: Optional[str] = None
     xirr_reason: Optional[str] = None
     xirr_asof_date: Optional[str] = None
-    xirr_cashflow_conventional: Optional[bool] = None
+    xirr_cashflow_conventional: Optional[StrictBool] = None
     realized_pnl: float
     benchmark_twr: float
 
