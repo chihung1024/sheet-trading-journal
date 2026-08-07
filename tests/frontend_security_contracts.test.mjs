@@ -8,7 +8,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STORAGE_BASELINE_PATH = path.join(ROOT, 'docs', 'governance', 'browser-storage-baseline.json');
 const RISK_REGISTER_PATH = path.join(ROOT, 'docs', 'governance', 'risk-register.json');
-const PRODUCTION_WORKER_URL = 'https://journal-backend.chired.workers.dev';
+const DEPLOYMENT_CONTRACT_PATH = path.join(ROOT, 'config', 'deployment-environments.json');
+const DEPLOYMENT_CONTRACT = JSON.parse(fs.readFileSync(DEPLOYMENT_CONTRACT_PATH, 'utf8'));
+const PRODUCTION_WORKER_URL = DEPLOYMENT_CONTRACT.production.api_origins[0];
+const CSP_API_ORIGIN_TOKEN = '__TRADING_JOURNAL_API_ORIGIN__';
 
 function walkFiles(directory) {
   const files = [];
@@ -107,12 +110,23 @@ test('browser code cannot use system-only authorization headers', () => {
   assert.deepEqual(violations, []);
 });
 
-test('production Worker URL is limited to API configuration and the CSP allowlist', () => {
+test('production Worker authority is limited to API configuration and the deployment contract', () => {
   const owners = browserFiles
     .filter((filePath) => read(filePath).includes(PRODUCTION_WORKER_URL))
     .map(relative)
     .sort();
-  assert.deepEqual(owners, ['index.html', 'src/config.js']);
+  assert.deepEqual(owners, ['src/config.js']);
+  assert.ok(DEPLOYMENT_CONTRACT.production.api_origins.includes(PRODUCTION_WORKER_URL));
+
+  const indexHtml = read(path.join(ROOT, 'index.html'));
+  const pageHeaders = read(path.join(ROOT, 'public', '_headers'));
+  const cspRenderer = read(path.join(ROOT, 'tools', 'frontend_csp.mjs'));
+
+  assert.equal(indexHtml.split(CSP_API_ORIGIN_TOKEN).length - 1, 1);
+  assert.equal(pageHeaders.split(CSP_API_ORIGIN_TOKEN).length - 1, 1);
+  assert.ok(!indexHtml.includes(PRODUCTION_WORKER_URL));
+  assert.ok(!pageHeaders.includes(PRODUCTION_WORKER_URL));
+  assert.match(cspRenderer, /DEPLOYMENT_CONTRACT/);
 });
 
 test('browser code contains no reviewed dangerous rendering or execution primitives', () => {
