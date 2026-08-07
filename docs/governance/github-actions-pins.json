@@ -19,6 +19,7 @@
     ".github/workflows/deploy-worker-staging.yml",
     ".github/workflows/deploy-worker.yml",
     ".github/workflows/production-contract-audit.yml",
+    ".github/workflows/staging-browser-smoke.yml",
     ".github/workflows/update.yml"
   ],
   "pins": [

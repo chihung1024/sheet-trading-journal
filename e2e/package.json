@@ -1,0 +1,12 @@
+{
+  "name": "trading-journal-staging-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0"
+  }
+}

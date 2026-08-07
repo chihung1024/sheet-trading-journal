@@ -1,0 +1,164 @@
+name: Staging Browser Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character staging source SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-browser-smoke
+  cancel-in-progress: false
+
+jobs:
+  staging-browser-smoke:
+    name: Authenticated staging browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      STAGING_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/staging-e2e-google-id-token
+
+    steps:
+      - name: Validate exact source input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "source_sha must be an exact 40-character commit SHA" >&2
+            exit 1
+          fi
+
+      - name: Checkout exact requested source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify source is protected-main reviewed and is the fixed staging ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main staging
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse origin/staging)" = "$SOURCE_SHA"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+
+      - name: Resolve fixed staging identities from deployment contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "$GITHUB_ENV"
+          const contract = require('./config/deployment-environments.json');
+          console.log(`STAGING_E2E_BASE_URL=${contract.staging.frontend_origin}`);
+          console.log(`STAGING_E2E_API_ORIGIN=${contract.staging.api_origin}`);
+          NODE
+
+      - name: Load expected Worker versions from manifest
+        id: manifest
+        run: node tools/export_worker_manifest.mjs
+
+      - name: Verify exact staging Worker source is live
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          for attempt in $(seq 1 10); do
+            rm -f "$probe_dir/version.json" "$probe_dir/health.json" \
+              "$probe_dir/version.headers" "$probe_dir/health.headers"
+            if curl --silent --show-error --fail --max-time 15 \
+              --dump-header "$probe_dir/version.headers" \
+              --output "$probe_dir/version.json" \
+              "$STAGING_E2E_API_ORIGIN/api/version" \
+              && curl --silent --show-error --fail --max-time 15 \
+              --dump-header "$probe_dir/health.headers" \
+              --output "$probe_dir/health.json" \
+              "$STAGING_E2E_API_ORIGIN/api/health"; then
+              if VERSION_JSON="$(cat "$probe_dir/version.json")" \
+                HEALTH_JSON="$(cat "$probe_dir/health.json")" \
+                VERSION_HEADERS="$(cat "$probe_dir/version.headers")" \
+                HEALTH_HEADERS="$(cat "$probe_dir/health.headers")" \
+                node tools/verify_staging_worker_deployment.mjs; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 6
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Exact staging Worker source is not ready for browser smoke" >&2
+            exit 1
+          fi
+
+      - name: Verify dedicated staging OAuth client is non-production
+        env:
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const contract = require('./config/deployment-environments.json');
+          const stagingClient = String(process.env.STAGING_GOOGLE_CLIENT_ID || '').trim();
+          if (!/^\d+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i.test(stagingClient)) {
+            throw new Error('STAGING_GOOGLE_CLIENT_ID is not a valid Google web OAuth client ID');
+          }
+          if (contract.production.google_client_ids.includes(stagingClient)) {
+            throw new Error('Staging E2E cannot use a production Google client ID');
+          }
+          NODE
+
+      - name: Mint fresh Google ID token for synthetic staging account
+        env:
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
+          STAGING_E2E_GOOGLE_CLIENT_SECRET: ${{ secrets.STAGING_E2E_GOOGLE_CLIENT_SECRET }}
+          STAGING_E2E_GOOGLE_REFRESH_TOKEN: ${{ secrets.STAGING_E2E_GOOGLE_REFRESH_TOKEN }}
+          STAGING_E2E_EXPECTED_GOOGLE_SUB: ${{ secrets.STAGING_E2E_EXPECTED_GOOGLE_SUB }}
+          STAGING_E2E_EXPECTED_GOOGLE_EMAIL: ${{ secrets.STAGING_E2E_EXPECTED_GOOGLE_EMAIL }}
+        run: node tools/mint_staging_e2e_id_token.mjs
+
+      - name: Install exact-pinned Playwright test runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix e2e --no-package-lock --ignore-scripts --no-audit --no-fund
+          node <<'NODE'
+          const fs = require('node:fs');
+          for (const name of ['@playwright/test', 'playwright', 'playwright-core']) {
+            const pkg = JSON.parse(fs.readFileSync(`e2e/node_modules/${name}/package.json`, 'utf8'));
+            if (pkg.version !== '1.62.0') throw new Error(`${name} resolved to unexpected version ${pkg.version}`);
+          }
+          NODE
+
+      - name: Install Chromium runtime
+        run: e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run authenticated staging browser smoke
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          STAGING_E2E_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
+        run: e2e/node_modules/.bin/playwright test e2e/staging-smoke.spec.mjs --config=e2e/playwright.config.mjs
+
+      - name: Remove temporary Google ID token
+        if: ${{ always() }}
+        shell: bash
+        run: rm -f "$STAGING_E2E_ID_TOKEN_FILE"
