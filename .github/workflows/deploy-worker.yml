@@ -16,8 +16,60 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Verify production activation before reviewer gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Validate exact SHA syntax before checkout
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_sha must be an exact lowercase 40-character Git commit SHA" >&2
+            exit 1
+          fi
+
+      - name: Checkout exact requested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify source is reachable from protected main
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$REQUESTED_SHA"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$actual" refs/remotes/origin/main; then
+            echo "Refusing to deploy a commit that is not reachable from main" >&2
+            exit 1
+          fi
+
+      - name: Set up Node.js for policy verification
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+
+      - name: Verify Recovery Evidence Gate
+        run: node tools/verify_recovery_evidence_gate.mjs
+
+      - name: Verify production activation authority
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+        run: node tools/verify_production_activation_authority.mjs
+
   deploy:
     name: Migrate, deploy, and verify Worker
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -77,6 +129,11 @@ jobs:
           npm run worker:config:check
           npm run worker:schema:test
           npm run worker:recovery-gate:check
+
+      - name: Re-verify production activation authority after reviewer approval
+        env:
+          EXPECTED_SHA: ${{ steps.source.outputs.sha }}
+        run: node tools/verify_production_activation_authority.mjs
 
       - name: Verify protected deployment configuration
         shell: bash
