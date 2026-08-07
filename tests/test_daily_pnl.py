@@ -159,7 +159,6 @@ def test_taiwan_dividend_pending_and_confirmed_have_same_economic_value():
         {'Date': '2026-01-02', 'Symbol': '2330.TW', 'Type': 'DIV', 'Qty': 1, 'Price': 20},
     ])
 
-    pending = PortfolioCalculator(FakeMarketDataClient(price_table), pending_df).run() if False else None
     pending = PortfolioCalculator(pending_df, FakeMarketDataClient(price_table)).run()
     confirmed = PortfolioCalculator(confirmed_df, FakeMarketDataClient(price_table)).run()
 
