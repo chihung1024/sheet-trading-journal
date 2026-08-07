@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "request_id": "PR-10D3D-B-READONLY-2026-08-07",
+  "status": "requested",
+  "baseline_main_sha": "6bf0f4002ac6ed7fead64d49084ac31c1d33fb39",
+  "scope": [
+    "production_frontend_live_contract",
+    "production_frontend_explicit_environment",
+    "production_worker_control_plane_link",
+    "production_d1_identity"
+  ],
+  "writes_allowed": false,
+  "production_deployment_allowed": false,
+  "d1_migration_allowed": false,
+  "synthetic_production_write_allowed": false,
+  "notes": "This file is a one-shot trigger for the D3D-B read-only evidence workflow after protected merge. It does not authorize production deployment."
+}
