@@ -93,6 +93,7 @@ test("production deployment workflow performs control-plane preflight before rev
   const deploy = workflow.slice(deployIndex);
 
   assert.doesNotMatch(preflight, /environment: production/);
+  assert.match(preflight, /git fetch --no-tags origin main:refs\/remotes\/origin\/main/);
   assert.match(preflight, /git worktree add --detach .* refs\/remotes\/origin\/main/);
   assert.match(preflight, /production-control-plane-preflight/);
   assert.match(preflight, /verify_production_activation_authority\.mjs/);
@@ -102,6 +103,25 @@ test("production deployment workflow performs control-plane preflight before rev
   assert.match(deploy, /production-control-plane-after-approval/);
   assert.match(deploy, /git worktree add --detach .* refs\/remotes\/origin\/main/);
   assert.match(deploy, /Re-verify production activation authority from latest protected main/);
+});
+
+test("activation authority is freshly re-fetched before each production mutation boundary", async () => {
+  const workflow = await readFile(".github/workflows/deploy-worker.yml", "utf8");
+  assert.match(workflow, /Final activation authority check before remote D1 mutation/);
+  assert.match(workflow, /production-control-plane-before-migration/);
+  assert.match(workflow, /Final activation authority check before Worker deploy/);
+  assert.match(workflow, /production-control-plane-before-worker-deploy/);
+
+  const fetches = workflow.match(/git fetch --no-tags origin main:refs\/remotes\/origin\/main/g) || [];
+  assert.ok(fetches.length >= 5, `expected at least five protected-main fetches, got ${fetches.length}`);
+
+  const beforeMigration = workflow.indexOf("Final activation authority check before remote D1 mutation");
+  const migration = workflow.indexOf("Apply additive D1 migrations");
+  const beforeDeploy = workflow.indexOf("Final activation authority check before Worker deploy");
+  const deploy = workflow.indexOf("Deploy canonical Worker source");
+  assert.ok(beforeMigration >= 0 && beforeMigration < migration);
+  assert.ok(migration >= 0 && migration < beforeDeploy);
+  assert.ok(beforeDeploy >= 0 && beforeDeploy < deploy);
 });
 
 test("runtime source and production authority remain separate control planes", async () => {
