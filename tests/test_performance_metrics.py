@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 import pandas as pd
+import pytest
 
 from journal_engine.core import calculator as calculator_module
 from journal_engine.core.calculator import PortfolioCalculator
@@ -244,8 +245,8 @@ def test_calculator_passes_raw_terminal_value_and_history_date_to_xirr(monkeypat
 
     # Serialized holding market value is rounded to 30, but raw final valuation is 30.12.
     assert group.holdings[0].market_value_twd == 30.0
-    assert group.history[-1]["_raw_total_value"] == 30.12
-    assert observed["terminal_value_twd"] == 30.12
+    assert group.history[-1]["_raw_total_value"] == pytest.approx(30.12)
+    assert observed["terminal_value_twd"] == pytest.approx(30.12)
     assert observed["terminal_date"] == "2026-01-02"
     assert group.summary.xirr == 1.23
     assert group.summary.xirr_status == "ok"
