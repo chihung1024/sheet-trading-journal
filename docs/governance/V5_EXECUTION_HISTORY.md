@@ -269,3 +269,80 @@ The newly active `main-protection-v5` ruleset successfully governed its own clos
 G00A, G00B control-plane governance and G00C are therefore closed. The environment-secret inventory limitation remains explicitly documented and is carried forward as an operational verification item for the reviewed staging deployment and the first exact-SHA production deployment; it is not silently treated as proven.
 
 Subsequent V5 batches must preserve the active ruleset/environment protections and must continue the same evidence discipline: exact pre-change SHA, backup branch, scoped PR, required CI, independent review, merge evidence, and post-merge verification.
+
+## Entry 006 — PR-10C9 frontend residual correctness closed
+
+- Baseline: `626fba89133dac8238d86c2464ee15479285881a`.
+- Pre-change recovery branch: `backup-pre-10c9-frontend-626fba8`.
+- Work branch: `pr-10c9-frontend-residual-correctness`.
+- PR: `#118` — `PR-10C9: frontend residual correctness and truthful state`.
+- Runtime scope: frontend only; no Worker, D1, migration, canonical Python financial engine, corporate-action model, CSP policy, or PWA/service-worker change.
+
+### Expected-red proof
+
+- Test-first head: `594d31d34faa9c973817303278c6c3d0601c61cc`.
+- CI run: `31143456207`.
+- Python: PASS.
+- Worker/security/D1: PASS.
+- Frontend: expected FAIL at the newly added residual-correctness contract tests before implementation.
+
+### First divergence after root fix
+
+- First production-fix head: `7a9d67a4d8b0f07d0c2de7c74f4fc46eae38defb`.
+- All six new PR-10C9 guards passed.
+- Existing Group mutation contract then exposed a compatibility regression: internal shared-parser code `API_APPLICATION_ERROR` leaked through an adapter whose existing public fallback was `APPLICATION_ERROR`.
+- Fix remained at the Group service adapter boundary; the shared deadline/parser path and regression guards were preserved.
+
+### Second divergence after compatibility repair
+
+- Compatibility-fix head: `c89169cb233dc8b2546659fed48dadb34d7e48db`.
+- CI run: `31144348926`.
+- Frontend contracts: `133/133` PASS.
+- Vite production build exposed a wrong-module import for `TOKEN_STORAGE_KEY`.
+- Canonical source was verified as `projectStorage.js`; the key was imported from that authority rather than duplicated or migrated.
+
+### Green implementation and final review
+
+- Green implementation head: `7f18cb724e31db603ae48945a625815108581c0d`.
+- CI run: `31144433365`, all three repository jobs PASS.
+- Final evidence/review head: `61cc62071b3dd3fee355d8c566c61968383fb738`.
+- Final PR CI run: `31144526687`, all protected-main required checks PASS.
+- Independent AI review id: `4879709204`, no blocking finding.
+- Final PR changed files: exactly 8, all in the documented 10C9 allowlist.
+- Review threads: `0`.
+- `index.html` changed only the viewport line; the CSP policy itself remained unchanged for PR-10D3A.
+- Merge method: `merge`.
+- Bypass used: **no**.
+
+### Merge and post-merge proof
+
+- Merge SHA: `415d408d65a41cb9da12abe055a3bbdcef39e9f4`.
+- Post-merge main CI run: `31144710972`, PASS for Frontend, Python, and Worker/D1.
+- Post-merge Pages deployment run: `31144709919`, PASS.
+- Post-change recovery branch: `backup-post-10c9-415d408`.
+
+### Closed defects / containment delivered
+
+- asynchronous 5-second interval polling was replaced by single-flight recursive timeout loops with stale-completion epochs;
+- connection verification and snapshot freshness are separate UI states;
+- record mutations and accepted recalculation requests mark the displayed snapshot stale rather than implying current holdings/performance;
+- Group record mutations now use the shared bounded transport/parser while preserving the existing public error contract;
+- cross-tab browser logout clears other tabs' in-memory auth state using the canonical token storage key;
+- browser zoom was restored and scoped clickable controls became semantic buttons;
+- `.TW`/`.TWO` transaction presentation uses TWD/NT$ rather than hardcoded USD.
+
+### Explicitly carried forward
+
+The following remain open by design and must not be mistaken for PR-10C9 completion:
+
+- backend ledger revision + guaranteed recomputation / snapshot publication consistency: B06/B07;
+- revocable application sessions and true logout-all: B05;
+- authoritative Instrument Master and unsupported/global asset currency truth: B08/B09;
+- environment-specific CSP mismatch N24: next PR-10D3A;
+- PWA/service-worker control plane: B14;
+- dividend/corporate-action economic model N31: B11;
+- Schema 3 remains blocked until B03 closeout plus the recovery evidence gate.
+
+### Result
+
+PR-10C9 is **CLOSED / PASS**. The next isolated batch is PR-10D3A environment-aware CSP. It must derive CSP from the deployment environment contract, keep arbitrary preview origins fail-closed, and must not bundle later `unsafe-inline` / `unsafe-eval` hardening.

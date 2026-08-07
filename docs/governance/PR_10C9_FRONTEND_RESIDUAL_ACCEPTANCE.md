@@ -1,156 +1,137 @@
 # PR-10C9 — Frontend Residual Correctness Acceptance
 
-Status: IMPLEMENTED / FINAL REVIEW PENDING  
+Status: CLOSED / PASS  
 Baseline: `626fba89133dac8238d86c2464ee15479285881a`  
-Recovery branch: `backup-pre-10c9-frontend-626fba8`  
+Pre-change recovery branch: `backup-pre-10c9-frontend-626fba8`  
 Work branch: `pr-10c9-frontend-residual-correctness`  
-Draft PR: `#118`
+PR: `#118`  
+Final reviewed head: `61cc62071b3dd3fee355d8c566c61968383fb738`  
+Merge SHA: `415d408d65a41cb9da12abe055a3bbdcef39e9f4`  
+Post-change recovery branch: `backup-post-10c9-415d408`
 
 ## Purpose
 
-Close the remaining frontend-only correctness/safety defects identified in the fourth independent audit without changing Worker semantics, D1 schema/data, CSP deployment contracts, or canonical financial calculations.
+PR-10C9 closed the remaining frontend-only correctness and safety defects identified in the fourth independent audit without changing Worker semantics, D1 schema/data, CSP deployment contracts, or canonical financial calculations.
 
-## Reconfirmed defects on baseline
+## Closed invariants
 
-1. Calculation-job polling used `setInterval(async ..., 5000)` while the authenticated API deadline is 30 seconds. Requests could overlap and stale completions could race newer polling state.
-2. Legacy snapshot polling had the same async-interval overlap pattern.
-3. Group record mutation delegated out of the component but its service still performed raw fetch without the shared deadline/parser path.
-4. Connection state initialized as connected and App rendered unconditional `連線正常` whenever it was not loading/polling; mutation success did not separately mark the portfolio snapshot as potentially stale.
-5. Logout cleared the current tab's reactive state/localStorage but there was no storage-event synchronization to clear another open tab's in-memory auth state.
-6. The viewport disabled user zoom and App/TradeForm retained non-semantic clickable span/div controls.
-7. TradeForm hardcoded USD labels even though the journal accepts Taiwan symbols; this presentation could misstate transaction currency.
-
-## Invariants
-
-- A polling loop must have at most one in-flight poll request per loop instance.
-- Stopping/restarting a polling loop must invalidate stale in-flight completions before they publish state or schedule another poll.
-- Every frontend API mutation/read path in this batch must retain a bounded deadline and structured error parsing.
-- A successful record mutation must never imply that holdings/performance snapshot is current; the UI must expose a stale/pending-recalculation state until a refreshed snapshot is observed after calculation.
-- `連線正常` must only be shown after a verified successful API response, never as the idle default.
-- A logout in one tab must clear the other tab's in-memory auth state on the browser `storage` event; full server-side revocation remains B05 Session V2.
-- Browser zoom must remain available.
-- Clickable controls changed in this batch must use semantic buttons.
-- Currency presentation must distinguish Taiwan/TWD from default US/USD behavior and must not claim every symbol is USD.
+- Polling loops are single-flight: a next poll is scheduled only after the previous request settles.
+- Stop/restart invalidates stale in-flight completions before they can publish state or schedule another poll.
+- Group record mutations use the shared bounded request/parser path.
+- Record mutation success no longer implies that holdings/performance snapshot is current.
+- API connectivity and snapshot freshness are distinct UI states; idle UI no longer claims an unverified `連線正常` state.
+- Browser storage-token removal in another tab clears the current tab's in-memory auth state.
+- Browser zoom remains available and scoped clickable controls use semantic buttons.
+- TradeForm no longer labels Taiwan symbols as USD.
 
 ## Test-first chronology
 
 ### Phase A — expected red
 
-- Test-first head: `594d31d34faa9c973817303278c6c3d0601c61cc`.
-- CI run: `31143456207`.
-- Python job: PASS.
-- Worker/security/D1 job: PASS.
-- Frontend job: FAIL at `Run frontend security contract tests`, as expected before production fixes.
+- Head: `594d31d34faa9c973817303278c6c3d0601c61cc`.
+- CI: `31143456207`.
+- Python: PASS.
+- Worker/security/D1: PASS.
+- Frontend: FAIL at `Run frontend security contract tests`, expected before implementation.
 - Build was skipped because the contract-test step failed first.
 
-The initial GitHub job annotation exposed only the failing step/exit code rather than every assertion. This evidence record therefore does not invent an assertion list. The committed regression file is the authoritative specification of the intended failing guards.
+GitHub exposed the failing step/exit code rather than every assertion. The committed regression test is the authoritative assertion specification; this record does not invent missing log detail.
 
-### Phase B — first root fix exposed an existing compatibility regression
+### Phase B — first root fix exposed compatibility divergence
 
-- First production-fix head: `7a9d67a4d8b0f07d0c2de7c74f4fc46eae38defb`.
-- The six new PR-10C9 regression guards passed.
-- One pre-existing functional contract test failed: `one update requires both HTTP and application success`.
-- Root cause: the new shared `readApiJson` parser correctly emitted `ApiApplicationError`, but the Group mutation adapter leaked its internal parser code `API_APPLICATION_ERROR` instead of preserving the service's existing public fallback code `APPLICATION_ERROR`.
-- Repair location: `src/services/groupRecordMutation.js` adapter boundary.
-- The shared deadline/parser path was retained; no test or timeout was weakened.
+- Head: `7a9d67a4d8b0f07d0c2de7c74f4fc46eae38defb`.
+- All six new PR-10C9 regression guards passed.
+- One existing Group mutation contract test failed.
+- Root cause: the shared `readApiJson` parser emitted `ApiApplicationError`, but the Group adapter leaked internal `API_APPLICATION_ERROR` rather than preserving its existing public fallback `APPLICATION_ERROR`.
+- Repair: normalize the parser error at the Group service adapter boundary while retaining the shared deadline/parser path and existing server error codes.
 
-### Phase C — public error compatibility restored, then production build exposed an import-interface defect
+### Phase C — compatibility restored; build exposed module-interface divergence
 
-- Compatibility-fix head: `c89169cb233dc8b2546659fed48dadb34d7e48db`.
-- CI run: `31144348926`.
-- Frontend contract result: `133/133` PASS.
+- Head: `c89169cb233dc8b2546659fed48dadb34d7e48db`.
+- CI: `31144348926`.
+- Frontend contracts: `133/133` PASS.
 - Vite production build: FAIL.
-- Exact build error: `TOKEN_STORAGE_KEY` was imported from `authStorage.js`, which did not export it.
-- Root cause: the cross-tab logout implementation referenced the correct canonical constant name through the wrong module interface.
-- Authoritative source check showed `TOKEN_STORAGE_KEY` is already exported by `projectStorage.js`.
-- Repair: import the key from canonical `projectStorage.js`; do not duplicate the literal string and do not change browser storage schema.
+- Root cause: `TOKEN_STORAGE_KEY` was imported from `authStorage.js`, while the canonical exported key already lives in `projectStorage.js`.
+- Repair: import the existing canonical key from `projectStorage.js`; no duplicate key literal and no storage migration were introduced.
 
 ### Phase D — complete green proof
 
-- Final implementation head before evidence update: `7f18cb724e31db603ae48945a625815108581c0d`.
-- CI run: `31144433365`.
-- Frontend security/contracts: PASS.
-- Frontend production build: PASS.
-- Python tests + measured coverage gate: PASS.
-- Worker security/deployment + local D1 baseline checks: PASS.
+- Implementation head: `7f18cb724e31db603ae48945a625815108581c0d`.
+- CI: `31144433365`.
+- Frontend contracts/build: PASS.
+- Python tests/measured coverage: PASS.
+- Worker security/deployment/local D1 baseline: PASS.
 
-This progression is retained intentionally. The two intermediate failures are not hidden because they demonstrate that the repair process followed the first-divergence rule rather than weakening tests until CI became green.
+### Phase E — evidence-head and independent review
+
+- Final reviewed head: `61cc62071b3dd3fee355d8c566c61968383fb738`.
+- CI: `31144526687`, all three protected-main required checks PASS.
+- Independent AI review id: `4879709204`.
+- Changed files: exactly eight and all within the documented PR-10C9 allowlist.
+- Review threads: zero.
+- `index.html` diff changed the viewport line only; the CSP policy itself was unchanged.
+- No Worker, workflow, migration, D1, Python financial engine, corporate-action, or PWA/service-worker file changed.
+- Merge method: normal protected `merge`.
+- Bypass: **not used**.
 
 ## Implemented root fixes
 
 ### Polling correctness
 
-`src/stores/portfolio.js` replaces asynchronous interval polling with recursive `setTimeout` scheduling. Calculation-job and legacy snapshot polling each carry an epoch. Stop/restart increments the epoch so stale in-flight completions cannot publish state or schedule another poll. A next poll is scheduled only after the prior request settles.
+`src/stores/portfolio.js` replaced asynchronous interval polling with recursive `setTimeout` scheduling. Calculation-job and legacy snapshot polling have independent epochs. Stop/restart increments the relevant epoch, preventing stale completions from publishing state or rescheduling work.
 
 ### Truthful connectivity and snapshot freshness
 
-`connectionStatus` now begins as `unknown`; a successful authenticated API request moves it to `connected`, while failures move it to `error`. `snapshotFreshness` is tracked separately. Successful record add/update/delete and accepted recalculation requests mark the snapshot `stale`; a subsequently fetched backend snapshot marks it `loaded`. App derives presentation from these states rather than showing an unconditional idle `連線正常` claim.
+`connectionStatus` begins as `unknown`. Successful authenticated API responses move it to `connected`; failures move it to `error`. `snapshotFreshness` is separate. Successful add/update/delete and accepted recalculation requests mark the snapshot `stale`; fetching the backend snapshot marks it `loaded`. App derives display state from these signals instead of an unconditional idle success label.
 
-This is an explicit compatibility layer, not B06/B07 ledger revision or snapshot CAS. Until those later authoritative revisions exist, `loaded` means a backend snapshot was fetched, not that cryptographic/revision identity has been proven.
+This remains a compatibility containment layer. It is not B06/B07 ledger revision or snapshot CAS; `loaded` means a backend snapshot was fetched, not that input revision identity has been proven.
 
 ### Group mutation network path
 
-`src/services/groupRecordMutation.js` now uses the shared `fetchWithDeadline` + `DEFAULT_REQUEST_TIMEOUT_MS` + `readApiJson` path. Its adapter preserves the pre-existing public `RecordTagUpdateError` contract:
-
-- server `error_meta.code` remains authoritative when present;
-- HTTP failure without a server code remains `HTTP_ERROR`;
-- application rejection without a server code remains `APPLICATION_ERROR`;
-- ordinary network failure remains `NETWORK_ERROR`;
-- the new bounded transport can additionally expose typed timeout/abort/malformed-response failures without returning to unbounded raw fetch.
+`src/services/groupRecordMutation.js` uses `fetchWithDeadline`, `DEFAULT_REQUEST_TIMEOUT_MS`, and `readApiJson`. The adapter preserves existing public `RecordTagUpdateError` semantics while retaining typed bounded-transport failures.
 
 ### Cross-tab logout compatibility
 
-`src/stores/auth.js` listens for the browser `storage` event and clears its in-memory auth state when another tab removes the canonical token key. Listener ownership is lifecycle-bound and idempotent. The key is imported from canonical `projectStorage.js`; no duplicate key literal or storage migration was introduced.
+`src/stores/auth.js` listens for browser `storage` events and clears in-memory auth state when another tab removes the canonical token key imported from `projectStorage.js`. This does not claim server-side session revocation; B05 Session V2 remains open.
 
-This does not claim server-side logout/revocation. That remains B05 Session V2.
+### Accessibility and semantic controls
 
-### Accessibility / semantic controls
-
-The viewport no longer disables pinch zoom. Header refresh/profile controls and TradeForm quick-tag/remove controls changed in this batch are semantic buttons with explicit button type/labels where appropriate.
+The viewport no longer disables pinch zoom. Scoped header and TradeForm interactions changed in this batch are semantic buttons with explicit button types/labels where appropriate.
 
 ### Currency presentation containment
 
-TradeForm no longer labels every transaction as USD. `.TW`/`.TWO` symbols display TWD/NT$; the existing default path displays USD/$. This is deliberately only a presentation containment fix. It does not pretend to support every exchange/currency; authoritative Instrument Master and fail-closed unsupported-asset behavior remain later B08/B09 work.
+`.TW`/`.TWO` symbols display TWD/NT$; the legacy default path displays USD/$. This is presentation containment only. Instrument Master and fail-closed unsupported/global asset handling remain B08/B09.
 
-## Scope actually changed
+## Merge and post-merge acceptance
 
-Expected PR scope is limited to:
+PR `#118` merged through the protected normal path at:
 
-- `index.html` — viewport only; CSP text intentionally unchanged;
-- `src/App.vue`;
-- `src/components/TradeForm.vue`;
-- `src/services/groupRecordMutation.js`;
-- `src/stores/auth.js`;
-- `src/stores/portfolio.js`;
-- `tests/frontend_residual_correctness.test.mjs`;
-- this acceptance/evidence document.
+`415d408d65a41cb9da12abe055a3bbdcef39e9f4`
 
-A final independent PR diff must confirm there are no additional runtime files before the PR is marked ready.
+Post-merge verification:
 
-## Explicit non-goals
+- main CI `31144710972`: PASS for Frontend, Python, Worker/D1.
+- Pages deployment `31144709919`: PASS.
+- post-change checkpoint: `backup-post-10c9-415d408`.
 
-- no Worker source changes;
-- no D1 schema/data or migration;
-- no CSP origin/hardening change (reserved for PR-10D3A);
-- no service-worker/PWA teardown (later B14);
-- no Google ID token → application-session redesign (B05);
-- no authoritative ledger revision/snapshot CAS implementation (B06/B07);
-- no corporate-action/dividend economic-model repair (B11);
-- no instrument-master implementation (B08/B09).
+No Worker deployment, D1 migration/schema operation, or financial-engine change was part of PR-10C9.
 
-## Final acceptance before merge
+## Explicit carried-forward limitations
 
-PR-10C9 may be marked ready and merged only if:
+PR-10C9 intentionally does **not** close the following:
 
-1. the evidence-updated final head passes all three protected-main required checks;
-2. the frontend test suite and production Vite build remain green;
-3. the PR is up to date with current `main`;
-4. independent patch review confirms the final diff is within the scoped frontend/evidence files and CSP content is unchanged except for the viewport line;
-5. no blocking review thread remains;
-6. merge uses the protected normal `merge` path with no bypass.
+- backend record mutation still lacks authoritative ledger revision + guaranteed recomputation semantics; B06/B07 remain the root fix;
+- browser cross-tab logout is not B05 server-side revocable application sessions;
+- non-Taiwan/default currency handling is not an Instrument Master; B08/B09 remain open;
+- environment-specific CSP mismatch N24 remains open for PR-10D3A;
+- service-worker/PWA lifecycle remains B14;
+- dividend/corporate-action model N31 remains B11;
+- no Schema 3 work has begun.
 
-Post-merge `main` CI and Pages deployment must be verified before PR-10C9 is considered closed.
+## Recovery
 
-## Rollback
+To roll back repository behavior introduced by PR-10C9, revert PR `#118` or compare/restore against `backup-pre-10c9-frontend-626fba8`. The exact accepted post-change state is preserved at `backup-post-10c9-415d408`. No D1 or Worker rollback is required for this batch.
 
-Revert the eventual PR or restore repository state from `backup-pre-10c9-frontend-626fba8`. This batch requires no D1 or Worker rollback because it changes neither.
+## Closeout result
+
+**PR-10C9 is CLOSED / PASS.** Its expected-red test-first evidence, intermediate compatibility/build divergences, final green checks, independent review, protected merge, and post-merge CI/Pages proof are retained. The next runtime batch is PR-10D3A environment-aware CSP; it must remain isolated from later CSP hardening and must not re-enable arbitrary preview origins.
