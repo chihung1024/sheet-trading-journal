@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 import { validateRecoveryEvidenceGate } from "../tools/verify_recovery_evidence_gate.mjs";
 
@@ -66,4 +67,10 @@ test("future schema is allowed only with complete passed recovery evidence", () 
     },
   });
   assert.equal(result.ok, true);
+});
+
+test("protected Worker CI executes the repository Recovery Evidence Gate", async () => {
+  const workflow = await readFile(".github/workflows/ci.yml", "utf8");
+  assert.match(workflow, /name: Enforce Recovery Evidence Gate/);
+  assert.match(workflow, /run: npm run worker:recovery-gate:check/);
 });
