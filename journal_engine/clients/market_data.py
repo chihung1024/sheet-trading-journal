@@ -1,87 +1,268 @@
-import pandas as pd
-import yfinance as yf
 import concurrent.futures
 import math
-import pytz
 from datetime import datetime, timedelta
-from ..config import EXCHANGE_SYMBOL, DEFAULT_FX_RATE
+
+import pandas as pd
+import pytz
+import yfinance as yf
+
+from ..config import (
+    DEFAULT_FX_RATE,
+    EXCHANGE_SYMBOL,
+    FX_NATIVE_UNIT_SCALES,
+    FX_USD_QUOTE_SYMBOLS,
+)
+from ..core.currency_detector import CurrencyDetector
 from .auto_price_selector import AutoPriceSelector
+
 
 class MarketDataClient:
     @staticmethod
-    def _normalize_twd_per_usd(rate: float) -> float:
-        """Normalize FX to 'TWD per 1 USD'.
-
-        Defensive guard: some data sources (or transforms) may return the inverse
-        (USD per 1 TWD), which is typically < 1.0.
-        """
+    def _coerce_twd_per_usd(rate):
+        """Strictly coerce Yahoo USD/TWD quote to TWD per 1 USD."""
         try:
-            r = float(rate)
-            if not math.isfinite(r) or r <= 0:
-                return DEFAULT_FX_RATE
-            return (1.0 / r) if r < 1.0 else r
+            value = float(rate)
+            if not math.isfinite(value) or value <= 0:
+                return None
+            return (1.0 / value) if value < 1.0 else value
         except Exception:
-            return DEFAULT_FX_RATE
+            return None
+
+    @classmethod
+    def _normalize_twd_per_usd(cls, rate: float) -> float:
+        """Backward-compatible helper for pure callers/tests.
+
+        Production FX ingestion uses the strict coercer and never substitutes the
+        default rate into a downloaded series; missing/invalid required FX is
+        surfaced by the orchestration gate instead.
+        """
+        normalized = cls._coerce_twd_per_usd(rate)
+        return DEFAULT_FX_RATE if normalized is None else normalized
+
+    @staticmethod
+    def _clean_positive_series(series: pd.Series) -> pd.Series:
+        values = pd.to_numeric(series, errors='coerce').astype(float)
+        valid = values.map(lambda value: math.isfinite(float(value)) and float(value) > 0)
+        return values[valid]
+
+    @classmethod
+    def _derive_twd_per_native(
+        cls,
+        twd_per_usd: pd.Series,
+        native_per_usd: pd.Series,
+    ) -> pd.Series:
+        """Derive TWD per one major native currency unit from USD quote series.
+
+        Yahoo `CUR=X` is native currency units per 1 USD, therefore:
+        TWD/native-major-unit = (TWD/USD) / (native/USD).
+        Market-specific subunit scaling (for example GBp) is applied separately.
+        """
+        if twd_per_usd.empty or native_per_usd.empty:
+            return pd.Series(dtype=float)
+
+        combined_index = twd_per_usd.index.union(native_per_usd.index).sort_values()
+        usd_twd = twd_per_usd.reindex(combined_index).ffill()
+        native_usd = native_per_usd.reindex(combined_index).ffill()
+        derived = usd_twd / native_usd
+        return cls._clean_positive_series(derived)
 
     def __init__(self):
-        """
-        初始化市場數據客戶端
-        - market_data: 存儲所有股票的歷史價格數據
-        - fx_rates: 存儲匯率數據（USD/TWD）
-        - realtime_fx_rate: [v2.52] 存儲即時匯率，與歷史數據分離
-        """
+        """Initialize market, USD/TWD compatibility, and currency-aware FX data."""
         self.market_data = {}
+
         self.fx_rates = pd.Series(dtype=float)
-        self.realtime_fx_rate = None  # [v2.52] 新增獨立的即時匯率存儲
+        self.realtime_fx_rate = None
+
+        # Canonical currency-aware context: TWD per 1 native quote unit.
+        self.fx_rates_by_currency = {}
+        self.realtime_fx_rates_by_currency = {}
+
+    def _download_fx_history(self, quote_symbol: str, start_date, *, usd_twd=False):
+        ticker = yf.Ticker(quote_symbol)
+        history = ticker.history(start=start_date - timedelta(days=5))
+        if history.empty or 'Close' not in history.columns:
+            return pd.Series(dtype=float), ticker
+
+        index = pd.to_datetime(history.index)
+        if getattr(index, 'tz', None) is not None:
+            index = index.tz_localize(None)
+        close = pd.Series(history['Close'].values, index=index.normalize())
+
+        if usd_twd:
+            close = close.map(self._coerce_twd_per_usd).dropna().astype(float)
+        else:
+            close = self._clean_positive_series(close)
+
+        if close.empty:
+            return pd.Series(dtype=float), ticker
+        return close.resample('D').ffill(), ticker
+
+    @staticmethod
+    def _get_realtime_quote(ticker, *, usd_twd=False):
+        def normalize(raw):
+            try:
+                value = float(raw)
+                if not math.isfinite(value) or value <= 0:
+                    return None
+                if usd_twd:
+                    return MarketDataClient._coerce_twd_per_usd(value)
+                return value
+            except Exception:
+                return None
+
+        try:
+            raw_price = ticker.fast_info.get('last_price') or ticker.fast_info.get('regular_market_price')
+            normalized = normalize(raw_price)
+            if normalized is not None:
+                return normalized
+        except Exception:
+            pass
+
+        try:
+            intraday = ticker.history(period='1d', interval='1m')
+            if not intraday.empty and 'Close' in intraday.columns:
+                return normalize(intraday['Close'].iloc[-1])
+        except Exception:
+            pass
+        return None
+
+    def _download_currency_fx(self, required_currencies, start_date):
+        self.fx_rates = pd.Series(dtype=float)
+        self.realtime_fx_rate = None
+        self.fx_rates_by_currency = {}
+        self.realtime_fx_rates_by_currency = {}
+
+        try:
+            usd_twd_history, usd_twd_ticker = self._download_fx_history(
+                EXCHANGE_SYMBOL,
+                start_date,
+                usd_twd=True,
+            )
+            if not usd_twd_history.empty:
+                self.fx_rates = usd_twd_history
+                self.fx_rates_by_currency['USD'] = usd_twd_history
+                realtime_usd_twd = self._get_realtime_quote(
+                    usd_twd_ticker,
+                    usd_twd=True,
+                )
+                if realtime_usd_twd is not None:
+                    self.realtime_fx_rate = realtime_usd_twd
+                    self.realtime_fx_rates_by_currency['USD'] = realtime_usd_twd
+                    print(f"[FX:USD] 即時 TWD/USD: {realtime_usd_twd:.6f}")
+            else:
+                print('[FX:USD] 警告: 無可用 USD/TWD 歷史匯率')
+        except Exception as exc:
+            print(f"[FX:USD] 匯率下載失敗: {exc}")
+
+        foreign_currencies = sorted(
+            set(required_currencies) - {'TWD', 'USD'}
+        )
+        for currency in foreign_currencies:
+            quote_symbol = FX_USD_QUOTE_SYMBOLS.get(currency)
+            unit_scale = FX_NATIVE_UNIT_SCALES.get(currency)
+            if not quote_symbol or unit_scale is None:
+                print(f"[FX:{currency}] 未設定 Yahoo USD quote symbol / native-unit scale")
+                continue
+            try:
+                quote_history, quote_ticker = self._download_fx_history(
+                    quote_symbol,
+                    start_date,
+                    usd_twd=False,
+                )
+                derived = self._derive_twd_per_native(
+                    self.fx_rates,
+                    quote_history,
+                )
+                if not derived.empty:
+                    derived = self._clean_positive_series(derived * float(unit_scale))
+                if derived.empty:
+                    print(f"[FX:{currency}] 警告: 無法建立 {currency}/TWD 歷史匯率")
+                    continue
+
+                self.fx_rates_by_currency[currency] = derived
+
+                native_per_usd = self._get_realtime_quote(
+                    quote_ticker,
+                    usd_twd=False,
+                )
+                if (
+                    self.realtime_fx_rate is not None
+                    and native_per_usd is not None
+                    and native_per_usd > 0
+                ):
+                    twd_per_native = (
+                        self.realtime_fx_rate / native_per_usd * float(unit_scale)
+                    )
+                    if math.isfinite(twd_per_native) and twd_per_native > 0:
+                        self.realtime_fx_rates_by_currency[currency] = twd_per_native
+                        print(
+                            f"[FX:{currency}] 即時 TWD/{currency}: "
+                            f"{twd_per_native:.8f}"
+                        )
+            except Exception as exc:
+                print(f"[FX:{currency}] 匯率下載失敗: {exc}")
+
+    def validate_required_fx_data(self, tickers):
+        """Return native quote units whose required TWD conversion is unavailable."""
+        required_currencies = {
+            CurrencyDetector.detect(ticker)
+            for ticker in tickers
+            if str(ticker or '').strip()
+        }
+        missing = []
+        for currency in sorted(required_currencies):
+            if currency == 'TWD':
+                continue
+            series = self.fx_rates_by_currency.get(currency)
+            if series is None or series.empty:
+                missing.append(currency)
+                continue
+            values = pd.to_numeric(series, errors='coerce')
+            if values.isna().any() or not values.map(
+                lambda value: math.isfinite(float(value)) and float(value) > 0
+            ).all():
+                missing.append(currency)
+        return missing
+
+    def get_fx_snapshot(self, value_date):
+        """Return TWD/native multipliers available as-of the requested date."""
+        target = pd.to_datetime(value_date)
+        if getattr(target, 'tzinfo', None) is not None:
+            target = target.tz_localize(None)
+        target = target.normalize()
+
+        snapshot = {'TWD': 1.0}
+        for currency, series in self.fx_rates_by_currency.items():
+            try:
+                value = float(series.asof(target))
+            except Exception:
+                continue
+            if math.isfinite(value) and value > 0:
+                snapshot[currency] = value
+        return snapshot
+
+    def get_realtime_fx_snapshot(self, value_date=None):
+        """Return historical as-of context overlaid with available realtime rates."""
+        target = value_date if value_date is not None else pd.Timestamp.now().normalize()
+        snapshot = self.get_fx_snapshot(target)
+        for currency, value in self.realtime_fx_rates_by_currency.items():
+            rate = float(value)
+            if math.isfinite(rate) and rate > 0:
+                snapshot[currency] = rate
+        snapshot['TWD'] = 1.0
+        return snapshot
 
     def download_data(self, tickers: list, start_date):
-        """下載市場數據（股票價格 + 匯率）。"""
+        """下載市場數據（股票價格 + currency-aware 匯率）。"""
         print(f"正在下載市場數據，起始日期: {start_date}...")
 
-        # ==================== 1. 下載匯率數據 ====================
-        try:
-            fx = yf.Ticker(EXCHANGE_SYMBOL)
-            fx_hist = fx.history(start=start_date - timedelta(days=5))
+        required_currencies = {
+            CurrencyDetector.detect(ticker)
+            for ticker in tickers
+            if str(ticker or '').strip()
+        }
+        self._download_currency_fx(required_currencies, start_date)
 
-            if not fx_hist.empty:
-                fx_hist.index = pd.to_datetime(fx_hist.index).tz_localize(None).normalize()
-                self.fx_rates = fx_hist['Close'].resample('D').ffill().apply(self._normalize_twd_per_usd)
-
-                # 即時匯率（獨立存放）
-                try:
-                    print("[FX] 正在獲取即時匯率...")
-                    latest_rate = None
-
-                    try:
-                        raw_price = fx.fast_info.get('last_price') or fx.fast_info.get('regular_market_price')
-                        if raw_price:
-                            latest_rate = self._normalize_twd_per_usd(float(raw_price))
-                            print(f"[FX] 使用 fast_info 獲取: {latest_rate:.4f}")
-                    except Exception:
-                        pass
-
-                    if latest_rate is None:
-                        realtime_data = fx.history(period="1d", interval="1m")
-                        if not realtime_data.empty:
-                            latest_rate = self._normalize_twd_per_usd(float(realtime_data['Close'].iloc[-1]))
-                            print(f"[FX] 使用 1m K線 獲取: {latest_rate:.4f}")
-
-                    if latest_rate is not None:
-                        self.realtime_fx_rate = latest_rate
-                        print(f"[FX] ✅ 已獲取即時匯率: {latest_rate:.4f} (存儲於 realtime_fx_rate)")
-                    else:
-                        print("[FX] ⚠️ 無法獲取即時數據，後續計算將依賴歷史收盤")
-
-                except Exception as e:
-                    print(f"[FX] ⚠️ 即時匯率抓取失敗: {e}")
-
-            else:
-                self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
-        except Exception as e:
-            print(f"[FX] 匯率下載嚴重錯誤: {e}")
-            self.fx_rates = pd.Series([DEFAULT_FX_RATE], index=[pd.Timestamp.now().normalize()])
-
-        # ==================== 2. 下載個股數據 (平行化) ====================
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
 
         def fetch_single_ticker(t):
@@ -92,11 +273,9 @@ class MarketDataClient:
                 if not hist.empty:
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
 
-                    # 盤中即時價覆蓋最後一筆日線
                     try:
                         latest_price = None
-                        
-                        # 1. 優先使用 fast_info 獲取即時價格 (速度最快，較不易被 Ban)
+
                         try:
                             raw_price = ticker_obj.fast_info.get('last_price') or ticker_obj.fast_info.get('regular_market_price')
                             if raw_price:
@@ -104,19 +283,17 @@ class MarketDataClient:
                         except Exception:
                             pass
 
-                        # 2. 如果 fast_info 失敗，退回使用 1m K線
                         if latest_price is None:
                             intraday = ticker_obj.history(period="1d", interval="1m")
                             if not intraday.empty:
                                 latest_price = float(intraday['Close'].iloc[-1])
 
-                        # 3. 覆蓋最後一筆日線資料
                         if latest_price is not None:
                             last_date = hist.index[-1]
                             hist.at[last_date, 'Close'] = latest_price
                             if 'Adj Close' in hist.columns:
                                 hist.at[last_date, 'Adj Close'] = latest_price
-                            print(f"[{t}] ✅ 即時報價覆蓋: {latest_price:.2f}")
+                            print(f"[{t}] 即時報價覆蓋: {latest_price:.2f}")
 
                     except Exception:
                         pass
@@ -144,7 +321,7 @@ class MarketDataClient:
         return self.market_data, self.fx_rates
 
     def _prepare_data(self, symbol, df):
-        """準備股票數據（方案 A）：
+        """準備股票數據（方案 A）。
 
         - 估值價格一律使用 Close（split-adjusted price return）。
         - 配息不做價格復權，配息效果由 DIV 記錄或市場配息偵測入帳。
@@ -159,7 +336,6 @@ class MarketDataClient:
 
         df['Close_Raw'] = df['Close'] if 'Close' in df.columns else df.get('Close_Adjusted')
 
-        # ==================== 計算累積拆股因子 ====================
         if 'Stock Splits' not in df.columns:
             df['Stock Splits'] = 0.0
 
@@ -169,9 +345,7 @@ class MarketDataClient:
         cum_splits = cum_splits_reversed.iloc[::-1]
         df['Split_Factor'] = cum_splits.shift(-1).fillna(1.0)
 
-        # ==================== 方案 A：不做配息價格復權 ====================
         df['Dividend_Adj_Factor'] = 1.0
-
         return df
 
     def get_price(self, symbol, date):
@@ -189,7 +363,7 @@ class MarketDataClient:
                 return float(df.iloc[idx]['Close_Adjusted'])
 
             return 0.0
-        except:
+        except Exception:
             return 0.0
 
     def get_price_asof(self, symbol, date):
@@ -211,7 +385,7 @@ class MarketDataClient:
                 return float(df.iloc[idx]['Close_Adjusted']), used
 
             return 0.0, dt
-        except:
+        except Exception:
             dt = pd.to_datetime(date).tz_localize(None).normalize()
             return 0.0, dt
 
@@ -234,7 +408,7 @@ class MarketDataClient:
             if idx <= 0:
                 return dt
             return df.index[idx - 1]
-        except:
+        except Exception:
             return pd.to_datetime(used_date).tz_localize(None).normalize()
 
     def get_transaction_multiplier(self, symbol, date):
@@ -273,7 +447,7 @@ class MarketDataClient:
             df = self.market_data[symbol]
             if date in df.index and 'Dividends' in df.columns:
                 return float(df.loc[date, 'Dividends'])
-        except:
+        except Exception:
             pass
 
         return 0.0

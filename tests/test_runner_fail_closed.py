@@ -140,7 +140,11 @@ def test_required_market_data_accepts_positive_price_series():
         }
     )
 
-    runner.validate_required_market_data(client, {"NVDA", "SPY"})
+    runner.validate_required_market_data(
+        client,
+        {"NVDA", "SPY"},
+        required_dates_by_ticker={"NVDA": "2026-01-02", "SPY": "2026-01-01"},
+    )
 
 
 def test_required_market_data_rejects_missing_required_ticker():
@@ -176,6 +180,64 @@ def test_required_market_data_rejects_nan_price_series():
 
     with pytest.raises(runner.PortfolioUpdateError, match="價格資料無效: NVDA"):
         runner.validate_required_market_data(client, {"NVDA"})
+
+
+def test_required_market_data_rejects_price_series_that_starts_after_required_date():
+    client = SimpleNamespace(
+        market_data={
+            "SPY": pd.DataFrame(
+                {"Close_Adjusted": [200.0]},
+                index=pd.to_datetime(["2026-01-02"]),
+            )
+        }
+    )
+
+    with pytest.raises(runner.PortfolioUpdateError, match="價格歷史覆蓋不足: SPY@2026-01-01"):
+        runner.validate_required_market_data(
+            client,
+            {"SPY"},
+            required_dates_by_ticker={"SPY": "2026-01-01"},
+        )
+
+
+def test_required_market_data_rejects_missing_required_currency_fx():
+    client = SimpleNamespace(
+        market_data={
+            "005930.KS": pd.DataFrame(
+                {"Close_Adjusted": [100000.0, 101000.0]},
+                index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            )
+        },
+        validate_required_fx_data=lambda tickers: ["KRW"],
+    )
+
+    with pytest.raises(runner.PortfolioUpdateError, match="缺少匯率幣別: KRW"):
+        runner.validate_required_market_data(client, {"005930.KS"})
+
+
+def test_required_market_data_rejects_fx_series_that_starts_after_required_date():
+    client = SimpleNamespace(
+        market_data={
+            "005930.KS": pd.DataFrame(
+                {"Close_Adjusted": [100000.0, 101000.0]},
+                index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            )
+        },
+        validate_required_fx_data=lambda tickers: [],
+        fx_rates_by_currency={
+            "KRW": pd.Series([0.022], index=pd.to_datetime(["2026-01-02"]))
+        },
+    )
+
+    with pytest.raises(
+        runner.PortfolioUpdateError,
+        match="匯率歷史覆蓋不足: 005930.KS/KRW@2026-01-01",
+    ):
+        runner.validate_required_market_data(
+            client,
+            {"005930.KS"},
+            required_dates_by_ticker={"005930.KS": "2026-01-01"},
+        )
 
 
 def test_mask_user_id_hides_local_part():
@@ -291,17 +353,17 @@ def test_run_update_only_touches_requested_user(monkeypatch):
 
         def download_data(self, tickers, start_date):
             observed["tickers"] = list(tickers)
-            market_date = pd.Timestamp("2026-01-02")
+            dates = pd.to_datetime(["2026-01-01", "2026-01-02"])
             self.market_data = {
                 ticker: pd.DataFrame(
                     {
-                        "Close_Adjusted": [50.0],
-                        "Close_Raw": [50.0],
-                        "Split_Factor": [1.0],
-                        "Dividends": [0.0],
-                        "Stock Splits": [0.0],
+                        "Close_Adjusted": [49.0, 50.0],
+                        "Close_Raw": [49.0, 50.0],
+                        "Split_Factor": [1.0, 1.0],
+                        "Dividends": [0.0, 0.0],
+                        "Stock Splits": [0.0, 0.0],
                     },
-                    index=[market_date],
+                    index=dates,
                 )
                 for ticker in tickers
             }

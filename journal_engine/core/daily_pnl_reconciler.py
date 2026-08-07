@@ -16,7 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from ..config import DEFAULT_FX_RATE
-from .dividend_policy import dividend_net_multiplier
+from .currency_detector import CurrencyDetector
+from .dividend_policy import reviewed_dividend_net_multiplier
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class DailyPnLReconciliationError(RuntimeError):
 class SymbolDailyPnL:
     symbol: str
     market: str
+    currency: str
     begin_qty: float
     end_qty: float
     begin_price: float
@@ -53,6 +55,7 @@ class SymbolDailyPnL:
         return {
             "symbol": self.symbol,
             "market": self.market,
+            "currency": self.currency,
             "begin_qty": self.begin_qty,
             "end_qty": self.end_qty,
             "begin_price": self.begin_price,
@@ -176,20 +179,24 @@ def _price_and_fx(
 
 
 def _cashflow_fx(calculator: Any, symbol: str, value_date: date) -> float:
-    """Return the FX used by the calculator's daily transaction loop.
+    """Return the same date-specific TWD/native FX used by the calculator.
 
-    Transaction cash flows use `market.fx_rates.asof(d)` even when an equity
-    quote is padded from an earlier trading day. Valuation FX, by contrast,
-    follows the quote's actual as-of date. Keeping these two FX timestamps
-    separate is required for synthetic transaction valuation dates.
+    Currency-aware production clients provide a complete FX snapshot for the
+    transaction date. Legacy fake/test clients retain the historical scalar
+    USD/TWD path for backward compatibility.
     """
-    try:
-        raw_fx = calculator.market.fx_rates.asof(pd.Timestamp(value_date))
-        if pd.isna(raw_fx):
+    if hasattr(calculator.market, "get_fx_snapshot"):
+        fx_context = calculator.market.get_fx_snapshot(pd.Timestamp(value_date))
+        fx = float(calculator._get_effective_fx_rate(symbol, fx_context))
+    else:
+        try:
+            raw_fx = calculator.market.fx_rates.asof(pd.Timestamp(value_date))
+            if pd.isna(raw_fx):
+                raw_fx = DEFAULT_FX_RATE
+        except Exception:
             raw_fx = DEFAULT_FX_RATE
-    except Exception:
-        raw_fx = DEFAULT_FX_RATE
-    fx = float(calculator._get_effective_fx_rate(symbol, float(raw_fx)))
+        fx = float(calculator._get_effective_fx_rate(symbol, float(raw_fx)))
+
     if not math.isfinite(fx) or fx <= 0:
         raise DailyPnLReconciliationError(
             f"Invalid cash-flow FX for {symbol} on {value_date}"
@@ -308,12 +315,14 @@ def _symbol_component(
                 f"Invalid split factor for {symbol} on {base_date}"
             )
         shares_at_ex = begin_qty / split_factor
-        dividend_income_twd += (
-            shares_at_ex
-            * market_dividend
-            * dividend_net_multiplier(symbol)
-            * cashflow_fx
-        )
+        net_multiplier = reviewed_dividend_net_multiplier(symbol)
+        if net_multiplier is not None:
+            dividend_income_twd += (
+                shares_at_ex
+                * market_dividend
+                * net_multiplier
+                * cashflow_fx
+            )
 
     begin_value = begin_qty * begin_price * begin_fx
     end_value = end_qty * end_price * end_fx
@@ -360,9 +369,11 @@ def _symbol_component(
             f"Non-finite Daily PnL component for {symbol}"
         )
 
+    currency = CurrencyDetector.detect(symbol)
     return SymbolDailyPnL(
         symbol=symbol,
         market="TW" if calculator._is_taiwan_stock(symbol) else "US",
+        currency=currency,
         begin_qty=begin_qty,
         end_qty=end_qty,
         begin_price=begin_price,
@@ -456,7 +467,7 @@ def reconcile_group_daily_pnl(
         for item in components
         if item.market == "TW"
     )
-    us_total = sum(
+    foreign_total = sum(
         item.total_pnl_twd - item.fx_pnl_twd
         for item in components
         if item.market == "US"
@@ -465,7 +476,7 @@ def reconcile_group_daily_pnl(
     breakdown = _rounded_breakdown(
         canonical_total,
         tw_total,
-        us_total,
+        foreign_total,
         fx_total,
     )
     rounded_total = float(round(canonical_total, 0))

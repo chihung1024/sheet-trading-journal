@@ -9,7 +9,7 @@
 
 **現代化的投資組合追蹤與交易日誌系統**
 
-專為美股 / 台股 / 韓股投資者設計，採用全 Serverless 架構  
+以美股 / 台股為主要使用情境，並支援韓股與其他已建模 Yahoo 市場的原生幣別估值  
 高效能 | 低成本 | 即時數據 | PWA 支援 | 策略群組 | 多人隔離（Multi-user）
 
 [🌐 Live Demo](https://sheet-trading-journal.pages.dev/) | [📖 部署文件](https://github.com/chihung1024/sheet-trading-journal/blob/main/docs/DEPLOYMENT.md) | [🐛 Issues](https://github.com/chihung1024/sheet-trading-journal/issues)
@@ -51,7 +51,7 @@
   - 投資組合 vs. Benchmark 歷史表現
   - 自訂 Benchmark ticker（SPY / QQQ / 0050.TW / 005930.KS 等）
   - 支援多時間軸切換（全部 / 1年 / 6月 / 3月 / 1月）
-  - Total-return 模式（價格 + 配息，含預扣稅率）
+  - Benchmark total-return 僅在有已審查股息預扣政策時納入自動股息；未知市場不會猜稅率
 
 ### 📈 圖表頁面
 
@@ -65,9 +65,9 @@
 當前持倉的詳細資訊表格：
 - 標的代碼（Symbol）
 - 持倉數量（Qty）
-- 平均成本（Avg Cost）
-- 當前市價（Current Price）
-- 市值（Market Value）
+- 平均成本（Avg Cost；顯示原生報價單位）
+- 當前市價（Current Price；顯示原生報價單位）
+- 市值（Market Value，TWD）
 - 未實現損益（Unrealized P&L）
 - 未實現報酬率（Unrealized %）
 - 標的權重（Weight %）
@@ -93,16 +93,18 @@
 
 股息配發與現金流追蹤：
 - **配息歷史表**
-  - 自動偵測應計股息（Pending）
+  - 自動偵測應計股息（Pending；目前只對已審查預扣政策的市場自動入帳）
   - 已確認配息（Confirmed）
   - 除息日（Ex-Date）、發放日（Pay Date）
   - 每股配息、持有數量、配息總額
   - 預扣稅率與淨收入
 
 - **快速操作**
-  - 一鍵新增 DIV 交易確認配息
+  - 一鍵新增 DIV 交易確認實際配息
   - Pending 股息提醒徽章
-  - 配息金額自動換算為台幣
+  - 已審查市場的配息金額自動換算為台幣
+
+> 目前自動 pending 股息政策只明確建模 TWD（0%）與 USD（30%，依本系統既有模型）。KRW/HKD/CNY/JPY/GBp/EUR 等市場若沒有已審查政策，系統不會猜稅率或自動計入收入；實際已確認的 `DIV` 交易仍按其原生幣別與當日 FX 計算。
 
 ### 🏷️ 群組管理頁面
 
@@ -226,11 +228,11 @@
 ### 交易資料欄位（概念）
 
 - `Date`：交易日期（以日粒度為主）
-- `Symbol`：標的代碼（美股無後綴、台股 `.TW/.TWO`、韓股 `.KS/.KQ`）
+- `Symbol`：標的代碼。現行 suffix→原生報價單位包括：美股無後綴→USD、`.TW/.TWO`→TWD、`.KS/.KQ`→KRW、`.HK/.HKG`→HKD、`.SS/.SZ`→CNY、`.T`→JPY、`.L`→GBp、`.PA/.DE`→EUR。
 - `Type`：`BUY` / `SELL` / `DIV`
 - `Qty`：數量
-- `Price`：成交價（DIV 時欄位語意取決於匯入格式）
-- `Commission` / `Tax`：費用與稅（會被正規化成正值再納入計算）
+- `Price`：原生報價單位成交價（DIV 時代表實際確認的原生幣別淨現金流單價）
+- `Commission` / `Tax`：同交易原生報價單位的費用與稅（會被正規化成正值再納入計算）
 - `Tag`：策略標籤（用於群組）
 
 ---
@@ -244,18 +246,21 @@
 - 每個 `Symbol` 維護 FIFO lots。
 - `BUY`：增加持倉 qty、增加成本（含 commission/tax）。
 - `SELL`：用 FIFO 扣減 lots，計算賣出成本；賣出收入會扣除 commission/tax。
-- 已實現損益：`proceeds_twd - cost_sold_twd`（並累加股息等現金流）。
+- 已實現損益：`proceeds_twd - cost_sold_twd`（並累加已確認股息等現金流）。
 
-### 2) 匯率處理（有效匯率 multiplier）
+### 2) 匯率處理（TWD per native quote unit）
 
-- 台股（`.TW/.TWO`）：effective FX = 1.0。
-- 非台股：effective FX = 匯率（或 market client 的幣別轉換倍數）。
+- TWD 標的（`.TW/.TWO`）：effective FX = 1.0。
+- USD、KRW、HKD、CNY、JPY、GBp、EUR 標的：計算器使用「每 1 原生報價單位可換多少 TWD」的日期化 FX context。
+- 外幣 cross-rate 由 Yahoo USD quote 建立：`TWD/native-major = (TWD/USD) ÷ (native/USD)`。
+- 倫敦 `.L` 明確視為 Yahoo/LSE 常見的 **GBp（pence）** 報價，因此 GBP cross-rate 之後再乘 `0.01`；不可把 GBp 當 GBP，否則會造成 100 倍量綱錯誤。
+- 對已知外幣若缺少所需 FX，系統不會以 `1.0` 或預設匯率冒充真實值；必要價格或 FX 在實際計算起點之前沒有可用 as-of 資料時，批次會在計算前 fail closed。
 
 ### 3) 估值價格與 as-of 日期
 
-- 若 market client 支援 `get_price_asof()`：
-  - 會回傳「實際使用的估值日期 used_ts」與對應價格（例如遇到非交易日會向前取最近交易日）。
-- 匯率通常會用 `fx_rates.asof(used_ts)`（若 used_ts = 今日且美股盤中，可能使用即時匯率 current_fx）。
+- `get_price_asof()` 會回傳實際使用的估值日期 `used_ts` 與對應原生價格（非交易日向前取最近可用交易日）。
+- 歷史估值、交易現金流、股息與 Daily P&L 皆使用對應日期的 currency-aware FX context；今日若有可驗證 realtime FX，會在即時估值 context 覆蓋歷史值。
+- runner 會先驗證每個交易標的在其最早交易日之前已有正且有限的價格/FX as-of 值；benchmark 另要求使用者第一筆交易前的基準資料，避免「series 非空但起始太晚」。
 
 ### 4) TWR（時間加權報酬率）：Modified Dietz 子期間連結
 
@@ -280,11 +285,12 @@
 
 ### 5) 股息（DIV / pending / confirmed）
 
-- `DIV` 交易會被視為「已確認股息」（避免重複計入）。
-- 系統也會從 market data 推導「應計股息」並記錄為 dividend history：
-  - 若該日該標的沒有 `DIV` 交易，會視為 pending（並可能先行計入 realized / cashflow，依目前 engine 行為）。
-  - 若新增 `DIV` 交易（confirmed），則該筆會轉為 confirmed，避免 double-count。
-- 股息淨額目前含預扣稅率假設（例如 0.7 = 30% withholding）；若要支援不同市場稅率，可再擴充規則層（per symbol / per market / per account）。
+- `DIV` 交易代表已確認的實際股息現金流，按該 Symbol 原生報價單位與日期化 FX 換算為 TWD；同日 market dividend 不再重複計入。
+- market data 的自動 pending 股息只有在「已有審查過的預扣稅政策」時才會計入 realized/cashflow。目前：
+  - TWD：0%。
+  - USD：30%（保留本系統既有模型）。
+- KRW/HKD/CNY/JPY/GBp/EUR 等尚無已審查政策時，持倉與 FX 估值仍可正常進行，但該自動股息不會被猜稅率後入帳；engine 會留下 `DIVIDEND_POLICY_REVIEW_REQUIRED` anomaly，等待實際 `DIV` 或未來政策擴充。
+- 若自訂 benchmark 在實際配息日遇到未審查的股息政策，benchmark total-return 會 fail closed，而不是忽略配息或套用美股稅率。
 
 ### 6) XIRR（Money-weighted）
 
@@ -292,6 +298,7 @@
   - `BUY`：負現金流
   - `SELL` / `DIV`：正現金流
   - 最後加上一筆「當前市值」作為期末正現金流
+- XIRR 的 raw terminal-value 精度與「solver 失敗 vs 真正 0%」語意仍列在 Product Integrity P4，尚未宣稱已修正。
 
 ---
 
@@ -331,7 +338,9 @@ python main.py
 
 - 目前引擎以「日粒度」運算為主（交易時間、盤中 cashflow 時點不建模）。
 - 目前沒有顯式「現金部位」資產（TWR/資產曲線主要反映持倉估值 + 現金流處理邏輯）。
-- 股息稅率/市場規則目前偏 hard-coded（若要嚴格對帳，建議擴充規則層）。
+- 多幣別**估值/FX**能力與各市場**股息稅務政策**是兩件事：目前自動 pending 股息只明確支援 TWD 0% / USD 30%；其他市場需以實際 `DIV` 或後續審查政策處理，不會自動猜測。
+- `us_pnl_twd` 是為舊 snapshot/API 相容而保留的欄位名稱；在 currency-aware 引擎中實際代表非 TWD（海外）價格/交易分量，前端以「海外」呈現。
+- 自動盤中 refresh 的 market-stage 排程目前仍以台股 / 美股時段為主；支援外幣估值不代表已新增所有海外交易所的盤中 refresh 時段。
 - 任意區間單一數字績效可直接以同一公式整段計算，或沿用日子期間連結結果（需在報表層定義口徑）。
 
 ---

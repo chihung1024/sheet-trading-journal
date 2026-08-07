@@ -32,11 +32,11 @@ class PortfolioSummary(BaseModel):
     realized_pnl: float
     benchmark_twr: float
 
-    # ✅ 當日損益（TWD）：總和（台股分量 + 美股分量）
+    # ✅ 當日損益（TWD）：總和（台股分量 + 海外分量）
     daily_pnl_twd: float = 0.0
 
-    # ✅ Tooltip/明細用：台/美/匯率分量
-    # { "tw_pnl_twd": <float>, "us_pnl_twd": <float>, "fx_pnl_twd": <float> }
+    # Backward-compatible keys: `us_pnl_twd` now represents all non-TWD
+    # securities. Native-currency provenance lives on holdings/day-ledger rows.
     daily_pnl_breakdown: Optional[Dict[str, float]] = None
 
     # ✅ 新增：市場狀態（由後端判定，避免前端自行推論）
@@ -60,6 +60,8 @@ class HoldingPosition(BaseModel):
     pnl_twd: float
     pnl_percent: float
     current_price_origin: float
+    # Legacy field names retained for API compatibility; values are in the
+    # holding's native currency, identified by `currency`.
     avg_cost_usd: float = 0.0
     prev_close_price: float = 0.0
     daily_change_usd: float = 0.0
@@ -75,8 +77,13 @@ class DividendRecord(BaseModel):
     dividend_per_share_gross: float
     total_gross: float
     tax_rate: float = 30.0
+    currency: Optional[str] = None
+    total_net_native: Optional[float] = None
+    # Legacy name retained for API compatibility. For non-USD assets this is
+    # numerically the native-currency net amount; prefer `total_net_native`.
     total_net_usd: float
     total_net_twd: float
+    # TWD per 1 native-currency unit for this dividend.
     fx_rate: float
     status: str = "pending"
     notes: Optional[str] = None
@@ -95,6 +102,7 @@ class PortfolioGroupData(BaseModel):
 class PortfolioSnapshot(BaseModel):
     updated_at: str
     base_currency: str
+    # Backward-compatible USD/TWD reference rate.
     exchange_rate: float
 
     # Additive provenance for benchmark-derived summary/history values.
