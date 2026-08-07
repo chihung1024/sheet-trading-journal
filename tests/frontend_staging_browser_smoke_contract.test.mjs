@@ -70,6 +70,13 @@ test('staging browser workflow is manual, protected, exact-SHA, and credential f
     /\$\{\{\s*runner\./,
     'runner context is not valid in job-level env and must be resolved at step runtime',
   );
+
+  const tokenFileRuntimeBinding = 'STAGING_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/staging-e2e-google-id-token';
+  assert.equal(
+    workflow.split(tokenFileRuntimeBinding).length - 1,
+    3,
+    'token temp path must be bound only in mint, browser, and cleanup runtime steps',
+  );
   assert.match(workflow, /- name: Mint fresh Google ID token[\s\S]*?env:[\s\S]*?STAGING_E2E_GOOGLE_CLIENT_SECRET/);
   assert.match(workflow, /- name: Mint fresh Google ID token[\s\S]*?env:[\s\S]*?STAGING_E2E_GOOGLE_REFRESH_TOKEN/);
 });
