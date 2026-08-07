@@ -226,17 +226,27 @@ def test_calculator_passes_raw_terminal_value_and_history_date_to_xirr(monkeypat
             }
         ]
     )
-
-    snapshot = PortfolioCalculator(
+    calculator = PortfolioCalculator(
         tx,
         TinyTwdMarket(),
         benchmark_ticker="0050.TW",
-    ).run()
+    )
+
+    group = calculator._calculate_single_portfolio(
+        tx,
+        pd.to_datetime(["2026-01-01", "2026-01-02"]),
+        current_fx=32.0,
+        group_name="all",
+        current_stage="CLOSED",
+        stage_desc="Markets Closed",
+        benchmark_tax_rate=0.0,
+    )
 
     # Serialized holding market value is rounded to 30, but raw final valuation is 30.12.
-    assert snapshot.holdings[0].market_value_twd == 30.0
+    assert group.holdings[0].market_value_twd == 30.0
+    assert group.history[-1]["_raw_total_value"] == 30.12
     assert observed["terminal_value_twd"] == 30.12
     assert observed["terminal_date"] == "2026-01-02"
-    assert snapshot.summary.xirr == 1.23
-    assert snapshot.summary.xirr_status == "ok"
-    assert snapshot.summary.xirr_asof_date == "2026-01-02"
+    assert group.summary.xirr == 1.23
+    assert group.summary.xirr_status == "ok"
+    assert group.summary.xirr_asof_date == "2026-01-02"
