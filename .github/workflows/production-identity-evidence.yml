@@ -1,12 +1,6 @@
 name: Production Identity Evidence
 
 on:
-  pull_request:
-    paths:
-      - 'config/deployment-environments.json'
-      - 'tools/collect_production_identity_evidence.mjs'
-      - 'tests/production_identity_evidence.test.mjs'
-      - '.github/workflows/production-identity-evidence.yml'
   workflow_dispatch:
     inputs:
       source_sha:
