@@ -2,9 +2,9 @@
 
 ## Status
 
-PR-10D2A defines a backend-only staging deployment contract. It does not create, configure, migrate, deploy, or test any external Cloudflare or Google resource.
+PR-10D2A defines a backend-only staging deployment contract. The external staging Worker and D1 resources were subsequently provisioned and the first exact-SHA staging deployment completed successfully through the protected workflow.
 
-The staging deployment workflow must not be run until every prerequisite below is independently provisioned and reviewed.
+The workflow remains manual and must be run only after every external prerequisite below is independently provisioned and reviewed.
 
 ## Fixed staging identities
 
@@ -18,13 +18,16 @@ The staging deployment workflow must not be run until every prerequisite below i
 
 The production Worker, production D1 database, production OAuth client, production secrets, records, snapshots, calculation jobs, and financial methodology are outside this contract.
 
+The fixed `workers.dev` service endpoint is enabled for the reviewed staging identity. Cloudflare Worker version preview URLs are explicitly disabled so no additional version-specific public endpoint is created outside that identity.
+
 ## Repository layout
 
 - `ops/staging/staging-worker.js`: strict runtime wrapper around the canonical Worker.
-- `ops/staging/wrangler.toml`: tracked sentinel template. It is intentionally non-deployable.
-- `tools/render_staging_wrangler_config.mjs`: validates reviewed staging identities and writes only to ignored `.wrangler/` output.
+- `ops/staging/wrangler.toml`: tracked sentinel template. It is intentionally non-deployable until rendered with reviewed external identities.
+- `tools/render_staging_wrangler_config.mjs`: validates reviewed staging identities, fixed endpoint policy, disabled preview URLs, and writes only to ignored `.wrangler/` output.
 - `tools/verify_staging_secret_inventory.mjs`: requires `API_SECRET` and forbids `GITHUB_TOKEN`.
 - `tools/verify_staging_worker_deployment.mjs`: verifies exact source, version, schema, staging environment, and service identity.
+- `tools/verify_staging_cors_deployment.mjs`: verifies the live deployed browser-origin acceptance and rejection matrix.
 - `.github/workflows/deploy-worker-staging.yml`: manual, environment-protected, exact-main-reachable deployment path.
 
 No staging Wrangler configuration is stored at repository root. The Cloudflare Pages frontend build path remains unchanged.
@@ -68,11 +71,17 @@ The workflow:
 - runs under the protected GitHub `staging` environment;
 - keeps Cloudflare and staging identity secrets out of checkout and setup actions;
 - renders `.wrangler/staging.toml` from the sentinel template;
+- retains only the fixed staging `workers.dev` endpoint and disables Worker version preview URLs;
 - disables Wrangler automatic provisioning and resource creation;
 - verifies the pre-provisioned Worker has `API_SECRET` and does not have `GITHUB_TOKEN`;
 - applies migrations only through the rendered staging D1 binding;
 - deploys only the fixed staging service;
-- verifies exact source, release, API, schema, environment, and service headers.
+- verifies exact source, release, API, schema, environment, and service headers;
+- sends live browser preflight requests after readiness;
+- requires the exact staging Pages origin to return HTTP 204 with an exact `Access-Control-Allow-Origin` value;
+- requires production Pages, arbitrary branch preview, GitHub Pages, and localhost origins to return HTTP 403 with `ORIGIN_FORBIDDEN` and no `Access-Control-Allow-Origin` header.
+
+The readiness requests omit `Origin`, preserving operational endpoint access for non-browser health and version checks. The live CORS probes are read-only `OPTIONS` requests and do not write application or D1 data.
 
 Staging calculation dispatch is deliberately unavailable because the staging Worker must not contain `GITHUB_TOKEN`. A separately isolated computation path requires a later design and review.
 
@@ -86,8 +95,8 @@ npm run worker:config:check
 npm run worker:schema:test
 ```
 
-The staging tests cover runtime isolation, renderer rejection cases, Wrangler dry-run, secret inventory, readiness identity, workflow structure, YAML parsing, and action pinning.
+The staging tests cover runtime isolation, renderer rejection cases, Wrangler dry-run, disabled preview URLs, secret inventory, readiness identity, live CORS evidence parsing, workflow structure, YAML parsing, and action pinning.
 
 ## Rollback
 
-Revert PR-10D2A. Because this batch does not run the staging deployment workflow, no Cloudflare, D1, OAuth, record, snapshot, or data rollback is expected.
+Revert the staging contract change and redeploy the last reviewed staging commit. Production resources and application data are not modified by this contract. Disabling preview URLs removes only ungoverned version-specific staging endpoints; the fixed staging service endpoint remains available.

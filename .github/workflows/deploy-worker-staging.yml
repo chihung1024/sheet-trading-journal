@@ -197,3 +197,33 @@ jobs:
             echo "Exact staging deployment did not become ready" >&2
             exit 1
           fi
+
+      - name: Verify live staging browser-origin isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+
+          probe_origin() {
+            local label="$1"
+            local origin="$2"
+            curl --silent --show-error --max-time 15 \
+              --request OPTIONS \
+              --header "Origin: $origin" \
+              --header "Access-Control-Request-Method: GET" \
+              --dump-header "$probe_dir/$label.headers" \
+              --output "$probe_dir/$label.body" \
+              --write-out '%{http_code}' \
+              "$STAGING_WORKER_BASE_URL/api/version" \
+              > "$probe_dir/$label.status"
+          }
+
+          probe_origin allowed https://staging.sheet-trading-journal.pages.dev
+          probe_origin production https://sheet-trading-journal.pages.dev
+          probe_origin arbitrary-preview https://feature-123.sheet-trading-journal.pages.dev
+          probe_origin github-pages https://chihung1024.github.io
+          probe_origin localhost http://localhost:5173
+
+          STAGING_CORS_PROBE_DIR="$probe_dir" \
+            node tools/verify_staging_cors_deployment.mjs
