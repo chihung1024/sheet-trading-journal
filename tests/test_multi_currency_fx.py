@@ -157,20 +157,24 @@ def test_confirmed_krw_dividend_uses_actual_native_cashflow_without_tax_guess():
             "2026-08-04": {"USD": 32.0, "KRW": 0.022},
             "2026-08-05": {"USD": 32.0, "KRW": 0.022},
         },
+        dividends={("005930.KS", "2026-08-05"): 1000.0},
     )
     tx = transactions([
         {"Date": "2026-08-04", "Symbol": "005930.KS", "Type": "BUY", "Qty": 10, "Price": 100000.0},
         {"Date": "2026-08-05", "Symbol": "005930.KS", "Type": "DIV", "Qty": 1, "Price": 1000.0},
     ])
 
-    snapshot = PortfolioCalculator(tx, market).run()
+    calculator = PortfolioCalculator(tx, market)
+    snapshot = calculator.run()
+    reconcile_snapshot_daily_pnl(snapshot, calculator.df, calculator)
 
     assert snapshot.summary.realized_pnl == 22.0
     assert snapshot.summary.daily_pnl_twd == 22.0
     assert snapshot.pending_dividends == []
+    assert snapshot.groups["all"].anomalies == []
 
 
-def test_automatic_krw_pending_dividend_fails_closed_without_reviewed_tax_policy():
+def test_automatic_krw_pending_dividend_is_deferred_with_review_anomaly():
     market = CurrencyAwareMarket(
         base_prices(100000.0),
         {
@@ -183,5 +187,54 @@ def test_automatic_krw_pending_dividend_fails_closed_without_reviewed_tax_policy
         {"Date": "2026-08-04", "Symbol": "005930.KS", "Type": "BUY", "Qty": 10, "Price": 100000.0},
     ])
 
-    with pytest.raises(UnsupportedDividendPolicyError):
-        PortfolioCalculator(tx, market).run()
+    calculator = PortfolioCalculator(tx, market)
+    snapshot = calculator.run()
+    reconcile_snapshot_daily_pnl(snapshot, calculator.df, calculator)
+
+    assert snapshot.summary.realized_pnl == 0.0
+    assert snapshot.summary.daily_pnl_twd == 0.0
+    assert snapshot.pending_dividends == []
+    assert snapshot.groups["all"].anomalies == [
+        {
+            "code": "DIVIDEND_POLICY_REVIEW_REQUIRED",
+            "symbol": "005930.KS",
+            "date": "2026-08-05",
+            "currency": "KRW",
+            "message": "Automatic pending dividend not accrued because withholding policy is unreviewed for KRW",
+        }
+    ]
+
+
+def test_foreign_benchmark_without_dividend_does_not_require_guessed_tax_policy():
+    market = CurrencyAwareMarket(
+        base_prices(100000.0),
+        {
+            "2026-08-04": {"USD": 32.0, "KRW": 0.022},
+            "2026-08-05": {"USD": 32.0, "KRW": 0.022},
+        },
+    )
+    tx = transactions([
+        {"Date": "2026-08-04", "Symbol": "005930.KS", "Type": "BUY", "Qty": 1, "Price": 100000.0},
+    ])
+
+    snapshot = PortfolioCalculator(tx, market, benchmark_ticker="005930.KS").run()
+
+    assert snapshot is not None
+    assert snapshot.holdings[0].currency == "KRW"
+
+
+def test_foreign_benchmark_dividend_fails_closed_when_tax_policy_is_unreviewed():
+    market = CurrencyAwareMarket(
+        base_prices(100000.0),
+        {
+            "2026-08-04": {"USD": 32.0, "KRW": 0.022},
+            "2026-08-05": {"USD": 32.0, "KRW": 0.022},
+        },
+        dividends={("005930.KS", "2026-08-05"): 1000.0},
+    )
+    tx = transactions([
+        {"Date": "2026-08-04", "Symbol": "005930.KS", "Type": "BUY", "Qty": 1, "Price": 100000.0},
+    ])
+
+    with pytest.raises(UnsupportedDividendPolicyError, match="Benchmark dividend"):
+        PortfolioCalculator(tx, market, benchmark_ticker="005930.KS").run()
