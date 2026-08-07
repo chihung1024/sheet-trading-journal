@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "evidence_type": "production-identity-b1-preaudit",
+  "status": "in_progress",
+  "recorded_at": "2026-08-07T16:50:00+08:00",
+  "baseline_sha": "3024dde0ea148a3997782614da5ca8100462d010",
+  "pre_change_recovery_branch": "backup-pre-10d3d-b-3024dde",
+  "work_branch": "pr-10d3d-b-production-identity-evidence",
+  "runtime": {
+    "worker_release": "4.07",
+    "api_version": "2.60",
+    "schema_version": 2
+  },
+  "production_activation": {
+    "status": "blocked",
+    "d1_identity_status": "unverified",
+    "production_frontend_explicit_environment": "pending",
+    "production_frontend_live_contract": "pending",
+    "production_d1_identity": "pending"
+  },
+  "b1_scope": {
+    "cloudflare_api_methods": ["GET"],
+    "d1_endpoint": "/accounts/{account_id}/d1/database/{database_id}",
+    "pages_endpoint": "/accounts/{account_id}/pages/projects/{project_name}",
+    "production_environment_reviewer_required": true,
+    "allows_runtime_deploy": false,
+    "allows_d1_mutation": false,
+    "allows_pages_mutation": false,
+    "allows_schema_change": false,
+    "allows_financial_logic_change": false
+  },
+  "implemented_files": [
+    "tools/collect_production_identity_evidence.mjs",
+    ".github/workflows/production-identity-evidence.yml",
+    "tests/production_identity_evidence.test.mjs",
+    "package.json",
+    "docs/governance/PR_10D3D_B_PRODUCTION_IDENTITY_EVIDENCE_ACCEPTANCE.md"
+  ],
+  "protected_ci": "pending",
+  "independent_review": "pending",
+  "production_readonly_dispatch": "pending",
+  "production_readonly_artifact": "pending",
+  "notes": [
+    "The D1 database name is deliberately not accepted from CLOUDFLARE_D1_DATABASE_NAME as authoritative evidence.",
+    "The sanitized artifact may contain the observed D1 name and SHA-256 of the UUID, but not the raw UUID, account ID, or API token.",
+    "N62 valid cross-audience OAuth rejection is not fabricated by this batch and remains open until a real short-lived staging-audience token can be tested."
+  ]
+}
