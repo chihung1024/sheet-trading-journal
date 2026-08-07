@@ -11,6 +11,7 @@ from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.config import API_KEY
 from journal_engine.core.calculator import PortfolioCalculator
+from journal_engine.core.currency_detector import CurrencyDetector
 from journal_engine.core.daily_pnl_reconciler import reconcile_snapshot_daily_pnl
 from journal_engine.core.split_ledger import (
     build_split_adjusted_validation_ledger,
@@ -191,33 +192,89 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
     return df, users
 
 
-def validate_required_market_data(market_client, required_tickers) -> None:
-    """Fail closed unless every required price and FX input is usable."""
+def _has_positive_asof(series: pd.Series, required_date) -> bool:
+    """Return whether a positive finite observation exists on/before required_date."""
+    if series is None or series.empty:
+        return False
+    target = pd.Timestamp(required_date)
+    if getattr(target, "tzinfo", None) is not None:
+        target = target.tz_localize(None)
+    target = target.normalize()
+    try:
+        value = float(series.asof(target))
+    except Exception:
+        return False
+    return math.isfinite(value) and value > 0
+
+
+def validate_required_market_data(
+    market_client,
+    required_tickers,
+    required_dates_by_ticker=None,
+) -> None:
+    """Fail closed unless required price/FX data covers each calculation start."""
     market_data = getattr(market_client, "market_data", None)
     if not isinstance(market_data, dict):
         raise PortfolioUpdateError("市場資料客戶端未提供可驗證的 market_data")
 
+    required_dates = {
+        str(symbol).strip().upper(): pd.Timestamp(value)
+        for symbol, value in (required_dates_by_ticker or {}).items()
+        if str(symbol or "").strip() and value is not None
+    }
+
     missing = []
     invalid = []
-    for symbol in sorted({str(ticker).strip().upper() for ticker in required_tickers if ticker}):
+    price_coverage = []
+    normalized_tickers = sorted(
+        {str(ticker).strip().upper() for ticker in required_tickers if ticker}
+    )
+    for symbol in normalized_tickers:
         frame = market_data.get(symbol)
         if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
             missing.append(symbol)
             continue
         if not PortfolioValidator.validate_price_data(symbol, frame):
             invalid.append(symbol)
+            continue
+
+        required_date = required_dates.get(symbol)
+        if required_date is not None:
+            prices = pd.to_numeric(frame["Close_Adjusted"], errors="coerce")
+            prices.index = pd.to_datetime(frame.index).tz_localize(None).normalize()
+            if not _has_positive_asof(prices, required_date):
+                price_coverage.append(
+                    f"{symbol}@{required_date.strftime('%Y-%m-%d')}"
+                )
 
     details = []
     if missing:
         details.append(f"缺少資料: {', '.join(missing)}")
     if invalid:
         details.append(f"價格資料無效: {', '.join(invalid)}")
+    if price_coverage:
+        details.append(f"價格歷史覆蓋不足: {', '.join(price_coverage)}")
 
     validate_fx = getattr(market_client, "validate_required_fx_data", None)
     if callable(validate_fx):
         missing_fx = validate_fx(required_tickers)
         if missing_fx:
             details.append(f"缺少匯率幣別: {', '.join(missing_fx)}")
+
+    fx_coverage = []
+    fx_by_currency = getattr(market_client, "fx_rates_by_currency", None)
+    if isinstance(fx_by_currency, dict) and required_dates:
+        for symbol, required_date in sorted(required_dates.items()):
+            currency = CurrencyDetector.detect(symbol)
+            if currency == "TWD":
+                continue
+            series = fx_by_currency.get(currency)
+            if not _has_positive_asof(series, required_date):
+                fx_coverage.append(
+                    f"{symbol}/{currency}@{required_date.strftime('%Y-%m-%d')}"
+                )
+    if fx_coverage:
+        details.append(f"匯率歷史覆蓋不足: {', '.join(fx_coverage)}")
 
     if details:
         raise PortfolioUpdateError(f"必要市場資料驗證失敗（{'；'.join(details)}）")
@@ -263,6 +320,10 @@ def run_update() -> None:
     logger.info("本次將處理 %s 位使用者", len(user_list))
     user_benchmarks = {}
     all_tickers = set(df["Symbol"].unique().tolist())
+    required_dates_by_ticker = {
+        str(symbol): group["Date"].min()
+        for symbol, group in df.groupby("Symbol")
+    }
 
     for user_id in user_list:
         benchmark = api_client.get_user_benchmark(user_id)
@@ -270,6 +331,13 @@ def run_update() -> None:
             benchmark = fallback_benchmark
         user_benchmarks[user_id] = benchmark
         all_tickers.add(benchmark)
+
+        user_first_date = df.loc[df["user_id"] == user_id, "Date"].min()
+        benchmark_required_date = user_first_date - timedelta(days=1)
+        existing_required = required_dates_by_ticker.get(benchmark)
+        if existing_required is None or benchmark_required_date < existing_required:
+            required_dates_by_ticker[benchmark] = benchmark_required_date
+
         logger.info("用戶 %s 使用 benchmark: %s", mask_user_id(user_id), benchmark)
 
     earliest_transaction_date = df["Date"].min()
@@ -277,7 +345,11 @@ def run_update() -> None:
     logger.info("最早交易日期: %s", earliest_transaction_date.strftime("%Y-%m-%d"))
     logger.info("開始下載市場數據，標的數: %s", len(all_tickers))
     market_client.download_data(sorted(all_tickers), fetch_start_date)
-    validate_required_market_data(market_client, all_tickers)
+    validate_required_market_data(
+        market_client,
+        all_tickers,
+        required_dates_by_ticker=required_dates_by_ticker,
+    )
 
     inserted_dates = ensure_transaction_dates_in_market_calendar(market_client, df)
     if inserted_dates:
