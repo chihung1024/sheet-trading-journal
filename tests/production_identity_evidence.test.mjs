@@ -7,11 +7,16 @@ import { collectProductionIdentityEvidence } from '../tools/collect_production_i
 const ACCOUNT_ID = '0123456789abcdef0123456789abcdef';
 const D1_ID = '11111111-1111-4111-8111-111111111111';
 const SHA = '3024dde0ea148a3997782614da5ca8100462d010';
+const STALE_SHA = '6bf0f4002ac6ed7fead64d49084ac31c1d33fb39';
 const TOKEN = 'cf-test-token-abcdefghijklmnopqrstuvwxyz';
 const PROD_FRONTEND = 'https://sheet-trading-journal.pages.dev';
 const PROD_API = 'https://journal-backend.chired.workers.dev';
 const STAGING_API = 'https://journal-backend-staging.chired.workers.dev';
 const CLIENT_ID = '951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com';
+const WORKER_SCRIPT = 'journal-backend';
+const D1_BINDING = 'DB';
+const VERSION_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const VERSION_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 function contract() {
   return {
@@ -56,16 +61,36 @@ function pagesProject(overrides = {}) {
 function liveHtml() {
   const csp = `default-src 'self'; connect-src 'self' ${PROD_API}; object-src 'none'`;
   return {
-    html: `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"></head></html>`,
+    html: `<html><head><meta content="${csp}" http-equiv="Content-Security-Policy"></head></html>`,
     csp,
   };
 }
 
-function mockFetch({ d1Name = 'trading-journal-production', pages = pagesProject(), frontendStatus = 200 } = {}) {
+function versionDetail(databaseId = D1_ID) {
+  return {
+    success: true,
+    result: {
+      resources: {
+        bindings: [
+          { type: 'd1', name: D1_BINDING, database_id: databaseId },
+          { type: 'plain_text', name: 'DEPLOYMENT_ENVIRONMENT', text: 'production' },
+        ],
+      },
+    },
+  };
+}
+
+function mockFetch({
+  d1Name = 'trading-journal-production',
+  pages = pagesProject(),
+  frontendStatus = 200,
+  versionDatabaseIds = { [VERSION_A]: D1_ID, [VERSION_B]: D1_ID },
+} = {}) {
   const { html, csp } = liveHtml();
   return async (url, options = {}) => {
     const target = String(url);
-    assert.equal(options.method || 'GET', 'GET');
+    assert.equal(options.method || 'GET', 'GET', `non-GET request attempted: ${target}`);
+
     if (target.includes('/d1/database/')) {
       return new Response(JSON.stringify({ success: true, result: { uuid: D1_ID, name: d1Name } }), {
         status: 200,
@@ -78,7 +103,33 @@ function mockFetch({ d1Name = 'trading-journal-production', pages = pagesProject
         headers: { 'content-type': 'application/json' },
       });
     }
+    if (target.endsWith(`/workers/scripts/${WORKER_SCRIPT}/deployments`)) {
+      return new Response(JSON.stringify({
+        success: true,
+        result: {
+          deployments: [
+            {
+              versions: [
+                { percentage: 80, version_id: VERSION_A },
+                { percentage: 20, version_id: VERSION_B },
+              ],
+            },
+          ],
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    const versionMatch = target.match(/\/workers\/scripts\/journal-backend\/versions\/([^/?]+)$/);
+    if (versionMatch) {
+      const versionId = decodeURIComponent(versionMatch[1]);
+      const databaseId = versionDatabaseIds[versionId];
+      if (!databaseId) throw new Error(`unexpected Worker version: ${versionId}`);
+      return new Response(JSON.stringify(versionDetail(databaseId)), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     if (target === PROD_FRONTEND) {
+      assert.equal(options.redirect, 'manual');
       return new Response(html, {
         status: frontendStatus,
         headers: { 'content-type': 'text/html', 'content-security-policy': csp },
@@ -95,20 +146,28 @@ async function collect(overrides = {}) {
     apiToken: TOKEN,
     d1DatabaseId: D1_ID,
     evidenceSourceSha: SHA,
+    workerScriptName: WORKER_SCRIPT,
+    d1BindingName: D1_BINDING,
     collectedAt: '2026-08-07T08:50:00.000Z',
     fetchImpl: mockFetch(),
     ...overrides,
   });
 }
 
-test('read-only collector passes only with exact Cloudflare D1, explicit Pages vars, and served CSP', async () => {
+test('read-only collector triangulates D1 identity across secret lookup, D1 API, and all active Worker versions', async () => {
   const result = await collect();
-  assert.equal(result.status, 'passed');
+  assert.equal(result.status, 'passed', JSON.stringify(result.errors));
   assert.deepEqual(result.errors, []);
   assert.equal(result.production_d1.database_name, 'trading-journal-production');
   assert.match(result.production_d1.database_id_sha256, /^[0-9a-f]{64}$/);
+  assert.equal(result.production_d1.worker_binding_name, D1_BINDING);
+  assert.equal(result.production_d1.active_versions_checked, 2);
+  assert.equal(result.production_worker.active_versions, 2);
+  assert.equal(result.production_worker.binding_versions_matched, 2);
   assert.equal(result.production_pages.project_name, 'sheet-trading-journal');
   assert.equal(result.production_pages.canonical_deployment_commit, SHA);
+  assert.equal(result.checks.worker_active_d1_bindings_match_protected_id, true);
+  assert.equal(result.checks.canonical_deployment_exact_audited_sha, true);
   assert.equal(result.checks.pages_explicit_production_environment, true);
   assert.equal(result.checks.live_csp_allows_production_api, true);
   assert.equal(result.checks.live_csp_rejects_staging_api, true);
@@ -117,20 +176,47 @@ test('read-only collector passes only with exact Cloudflare D1, explicit Pages v
   assert.doesNotMatch(serialized, new RegExp(D1_ID.replaceAll('-', '\\-')));
   assert.doesNotMatch(serialized, new RegExp(ACCOUNT_ID));
   assert.doesNotMatch(serialized, new RegExp(TOKEN));
+  assert.doesNotMatch(serialized, new RegExp(VERSION_A));
+  assert.doesNotMatch(serialized, new RegExp(VERSION_B));
 });
 
-test('collector rejects Pages production fallback or wrong explicit values', async () => {
+test('collector rejects a mixed gradual deployment when any serving Worker version uses another D1', async () => {
+  const result = await collect({
+    fetchImpl: mockFetch({
+      versionDatabaseIds: {
+        [VERSION_A]: D1_ID,
+        [VERSION_B]: '22222222-2222-4222-8222-222222222222',
+      },
+    }),
+  });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.production_worker.binding_versions_matched, 1);
+  assert.match(result.errors.join('\n'), /active Worker DB binding does not match/);
+});
+
+test('collector rejects Pages production fallback, wrong explicit values, or a stale canonical deployment', async () => {
   const missingEnv = pagesProject();
   delete missingEnv.deployment_configs.production.env_vars.VITE_DEPLOY_ENV;
-  const result = await collect({ fetchImpl: mockFetch({ pages: missingEnv }) });
-  assert.equal(result.status, 'failed');
-  assert.match(result.errors.join('\n'), /VITE_DEPLOY_ENV/);
+  const missing = await collect({ fetchImpl: mockFetch({ pages: missingEnv }) });
+  assert.equal(missing.status, 'failed');
+  assert.match(missing.errors.join('\n'), /VITE_DEPLOY_ENV/);
 
   const wrongApi = pagesProject();
   wrongApi.deployment_configs.production.env_vars.VITE_API_URL.value = STAGING_API;
   const wrong = await collect({ fetchImpl: mockFetch({ pages: wrongApi }) });
   assert.equal(wrong.status, 'failed');
   assert.match(wrong.errors.join('\n'), /VITE_API_URL/);
+
+  const stale = pagesProject({
+    canonical_deployment: {
+      environment: 'production',
+      latest_stage: { status: 'success' },
+      deployment_trigger: { metadata: { branch: 'main', commit_hash: STALE_SHA } },
+    },
+  });
+  const staleResult = await collect({ fetchImpl: mockFetch({ pages: stale }) });
+  assert.equal(staleResult.status, 'failed');
+  assert.match(staleResult.errors.join('\n'), /does not equal the audited protected-main SHA/);
 });
 
 test('collector rejects staging D1 identity and missing live CSP enforcement', async () => {
