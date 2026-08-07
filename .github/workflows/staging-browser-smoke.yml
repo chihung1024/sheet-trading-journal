@@ -67,6 +67,49 @@ jobs:
           console.log(`STAGING_E2E_API_ORIGIN=${contract.staging.api_origin}`);
           NODE
 
+      - name: Load expected Worker versions from manifest
+        id: manifest
+        run: node tools/export_worker_manifest.mjs
+
+      - name: Verify exact staging Worker source is live
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          for attempt in $(seq 1 10); do
+            rm -f "$probe_dir/version.json" "$probe_dir/health.json" \
+              "$probe_dir/version.headers" "$probe_dir/health.headers"
+            if curl --silent --show-error --fail --max-time 15 \
+              --dump-header "$probe_dir/version.headers" \
+              --output "$probe_dir/version.json" \
+              "$STAGING_E2E_API_ORIGIN/api/version" \
+              && curl --silent --show-error --fail --max-time 15 \
+              --dump-header "$probe_dir/health.headers" \
+              --output "$probe_dir/health.json" \
+              "$STAGING_E2E_API_ORIGIN/api/health"; then
+              if VERSION_JSON="$(cat "$probe_dir/version.json")" \
+                HEALTH_JSON="$(cat "$probe_dir/health.json")" \
+                VERSION_HEADERS="$(cat "$probe_dir/version.headers")" \
+                HEALTH_HEADERS="$(cat "$probe_dir/health.headers")" \
+                node tools/verify_staging_worker_deployment.mjs; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 6
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Exact staging Worker source is not ready for browser smoke" >&2
+            exit 1
+          fi
+
       - name: Verify dedicated staging OAuth client is non-production
         env:
           STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
@@ -112,6 +155,7 @@ jobs:
       - name: Run authenticated staging browser smoke
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
+          STAGING_E2E_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
         run: e2e/node_modules/.bin/playwright test e2e/staging-smoke.spec.mjs --config=e2e/playwright.config.mjs
 
       - name: Remove temporary Google ID token
