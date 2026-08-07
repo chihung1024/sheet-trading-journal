@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "event": "fixed_staging_activation",
+  "status": "pass",
+  "source_sha": "bb115a014b8380c61f8eb49b549c6850c1f1d5b0",
+  "refs": {
+    "main_sha": "bb115a014b8380c61f8eb49b549c6850c1f1d5b0",
+    "staging_sha": "bb115a014b8380c61f8eb49b549c6850c1f1d5b0",
+    "pre_activation_backup": "backup-staging-pre-activation-2557fc5",
+    "post_activation_backup": "backup-staging-activated-bb115a0"
+  },
+  "pages": {
+    "external_deployment_id": "0589a12e-9181-4c54-b13c-3a0aa8b0abc0",
+    "completed_check_id": 92766934697,
+    "conclusion": "success",
+    "branch_preview_url": "https://staging.sheet-trading-journal.pages.dev",
+    "immutable_preview_url": "https://0589a12e.sheet-trading-journal.pages.dev",
+    "stale_building_check_id": 92766815350,
+    "stale_check_note": "The initial Cloudflare check record remained in_progress, while the same external deployment ID later emitted completed/success check 92766934697. The completed check is authoritative for closeout."
+  },
+  "worker": {
+    "workflow": "Deploy Staging Worker",
+    "workflow_run_id": 31149167851,
+    "run_number": 2,
+    "event": "workflow_dispatch",
+    "job_id": 92775044699,
+    "conclusion": "success",
+    "github_deployment_id": 5789046012,
+    "github_deployment_final_state": "success",
+    "worker_name": "journal-backend-staging",
+    "worker_url": "https://journal-backend-staging.chired.workers.dev",
+    "cloudflare_version_id": "e0886632-823b-47ae-a2ab-d8c38c04c660",
+    "release_version": "4.07",
+    "api_version": "2.60",
+    "schema_version": "2",
+    "deployment_environment": "staging"
+  },
+  "isolation_verification": {
+    "exact_sha_checkout": true,
+    "source_reachable_from_main": true,
+    "confirm_environment_staging": true,
+    "remote_staging_d1_migrations": "no_migrations_to_apply",
+    "staging_api_secret_present": true,
+    "github_token_absent_from_worker_secrets": true,
+    "staging_google_client_distinct_from_production": true,
+    "allowed_browser_origin": "https://staging.sheet-trading-journal.pages.dev",
+    "rejected_origin_matrix_includes": [
+      "https://sheet-trading-journal.pages.dev",
+      "https://feature-123.sheet-trading-journal.pages.dev",
+      "https://chihung1024.github.io",
+      "http://localhost:5173"
+    ],
+    "live_browser_origin_isolation": "verified"
+  },
+  "propagation_evidence": {
+    "old_source_seen_initially": "ef01e2a1510a51eabc54ca6d63709e291fed63d3",
+    "new_source_verified_after_retry": "bb115a014b8380c61f8eb49b549c6850c1f1d5b0",
+    "meaning": "Readiness verification did not accept HTTP success from the previous deployment; it waited for exact source propagation."
+  },
+  "production_worker_changed": false,
+  "d1_schema_changed": false,
+  "next_gate": "PR-10D3C staging browser Playwright OAuth/CRUD smoke"
+}
