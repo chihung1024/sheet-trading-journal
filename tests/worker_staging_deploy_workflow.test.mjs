@@ -65,16 +65,18 @@ test('staging deploy workflow refuses automatic provisioning and uses rendered s
   assert.doesNotMatch(workflow, /wrangler\.staging\.toml/);
 });
 
-test('staging deploy workflow verifies exact version, schema, environment, and service readiness', async () => {
+test('staging deploy workflow verifies exact version, schema, environment, runtime service, and Recovery Gate', async () => {
   const workflow = await readFile(WORKFLOW_PATH, 'utf8');
 
   assert.match(workflow, /id: manifest/);
   assert.match(workflow, /node tools\/export_worker_manifest\.mjs/);
+  assert.match(workflow, /npm run worker:recovery-gate:check/);
   assert.match(workflow, /for attempt in \$\(seq 1 20\)/);
   assert.match(workflow, /\/api\/version/);
   assert.match(workflow, /\/api\/health/);
   assert.match(workflow, /verify_staging_worker_deployment\.mjs/);
   assert.match(workflow, /EXPECTED_SHA:/);
+  assert.match(workflow, /EXPECTED_RUNTIME_SERVICE: \$\{\{ steps\.manifest\.outputs\.runtime_service \}\}/);
   assert.match(workflow, /EXPECTED_RELEASE_VERSION:/);
   assert.match(workflow, /EXPECTED_API_VERSION:/);
   assert.match(workflow, /EXPECTED_SCHEMA_VERSION:/);
