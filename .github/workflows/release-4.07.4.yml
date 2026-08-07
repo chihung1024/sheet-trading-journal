@@ -1,0 +1,90 @@
+name: Publish 4.07.4 exact-SHA release
+
+on:
+  push:
+    branches:
+      - ops/release-4.07.4-20260807
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release-4.07.4
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact release target and absence of existing tag or release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: 3024dde0ea148a3997782614da5ca8100462d010
+          RELEASE_TAG: 4.07.4
+          EXPECTED_BRANCH: ops/release-4.07.4-20260807
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "chihung1024/sheet-trading-journal"
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.sha')"
+          test "$main_sha" = "$TARGET_SHA"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists" >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Tag $RELEASE_TAG already exists" >&2
+            exit 1
+          fi
+
+      - name: Checkout exact release target for committed notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 3024dde0ea148a3997782614da5ca8100462d010
+          persist-credentials: false
+
+      - name: Verify committed release notes and target checkout
+        shell: bash
+        env:
+          TARGET_SHA: 3024dde0ea148a3997782614da5ca8100462d010
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test -s docs/governance/evidence/RELEASE_4_07_4_V5_PRODUCTION_ACTIVATION_GATE.md
+          grep -Fq 'Worker runtime release remains: **4.07**' docs/governance/evidence/RELEASE_4_07_4_V5_PRODUCTION_ACTIVATION_GATE.md
+          grep -Fq 'D1 schema remains: **2**' docs/governance/evidence/RELEASE_4_07_4_V5_PRODUCTION_ACTIVATION_GATE.md
+          grep -Fq 'does **not** represent a production Worker deployment' docs/governance/evidence/RELEASE_4_07_4_V5_PRODUCTION_ACTIVATION_GATE.md
+
+      - name: Publish GitHub governance checkpoint
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: 3024dde0ea148a3997782614da5ca8100462d010
+          RELEASE_TAG: 4.07.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "4.07.4 — V5 Production Activation Gate Hardening" \
+            --notes-file docs/governance/evidence/RELEASE_4_07_4_V5_PRODUCTION_ACTIVATION_GATE.md
+
+      - name: Verify published release and authoritative tag target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: 3024dde0ea148a3997782614da5ca8100462d010
+          RELEASE_TAG: 4.07.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          test "$(jq -r '.tag_name' <<<"$release_json")" = "$RELEASE_TAG"
+          test "$(jq -r '.draft' <<<"$release_json")" = "false"
+          test "$(jq -r '.prerelease' <<<"$release_json")" = "false"
+          test "$(jq -r '.target_commitish' <<<"$release_json")" = "$TARGET_SHA"
+          tag_json="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")"
+          test "$(jq -r '.object.type' <<<"$tag_json")" = "commit"
+          test "$(jq -r '.object.sha' <<<"$tag_json")" = "$TARGET_SHA"
+          echo "Release $RELEASE_TAG verified at exact target $TARGET_SHA"
