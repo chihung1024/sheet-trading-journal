@@ -16,6 +16,7 @@ test("Worker manifest exporter emits validated deployment expectations", async (
     });
     assert.equal(result.status, 0, result.stderr);
     const content = await readFile(output, "utf8");
+    assert.match(content, /^runtime_service=trading-journal-api$/m);
     assert.match(content, /^release_version=4\.07$/m);
     assert.match(content, /^api_version=2\.60$/m);
     assert.match(content, /^schema_version=2$/m);
@@ -29,7 +30,7 @@ test("Worker manifest exporter fails closed for malformed metadata", async () =>
   const manifest = join(directory, "manifest.json");
   const output = join(directory, "github-output.txt");
   try {
-    await writeFile(manifest, JSON.stringify({ releaseVersion: "latest", apiVersion: "2.59", schemaVersion: 1 }), "utf8");
+    await writeFile(manifest, JSON.stringify({ runtimeService: "trading-journal-api", releaseVersion: "latest", apiVersion: "2.59", schemaVersion: 1 }), "utf8");
     const result = spawnSync(process.execPath, ["tools/export_worker_manifest.mjs"], {
       cwd: process.cwd(),
       encoding: "utf8",
@@ -46,10 +47,11 @@ test("Worker manifest exporter fails closed for malformed metadata", async () =>
   }
 });
 
-test("production deploy workflow derives readiness versions from the manifest", async () => {
+test("production deploy workflow derives readiness identity from the manifest", async () => {
   const workflow = await readFile(".github/workflows/deploy-worker.yml", "utf8");
   assert.match(workflow, /id: manifest/);
   assert.match(workflow, /node tools\/export_worker_manifest\.mjs/);
+  assert.match(workflow, /EXPECTED_RUNTIME_SERVICE: \$\{\{ steps\.manifest\.outputs\.runtime_service \}\}/);
   assert.match(workflow, /EXPECTED_RELEASE_VERSION: \$\{\{ steps\.manifest\.outputs\.release_version \}\}/);
   assert.match(workflow, /EXPECTED_API_VERSION: \$\{\{ steps\.manifest\.outputs\.api_version \}\}/);
   assert.match(workflow, /EXPECTED_SCHEMA_VERSION: \$\{\{ steps\.manifest\.outputs\.schema_version \}\}/);
