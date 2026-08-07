@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "record_type": "v5_d3d_phase_closeout",
+  "captured_at": "2026-08-07T17:55:00+08:00",
+  "status": "routine_governance_work_closed_production_activation_blocked",
+  "authoritative_baseline": {
+    "main_sha": "0c3d7162de96b569abbd7c679e09dc29bb9fd2fe",
+    "tree_sha": "a98c25828041ebf6d6c5df8e32387fda98bffba1",
+    "worker_release": "4.07",
+    "api_version": "2.60",
+    "schema_version": 2
+  },
+  "recovery": {
+    "pre_closeout_branch": "backup-pre-d3d-closeout-0c3d716",
+    "pre_d3d_a_branch": "backup-pre-10d3d-74fe120",
+    "post_d3d_a_merge_branch": "backup-post-10d3d-4dda2da",
+    "d3d_a_closed_branch": "backup-d3d-a-closed-3024dde"
+  },
+  "canonical_chain": [
+    {
+      "pr": 126,
+      "role": "production_activation_gate_hardening",
+      "merge_sha": "4dda2dacd05779ec5a53a46a17b5ea4d4d2733b6",
+      "final_reviewed_head": "0867bca32677b192701f46dda8d56a7fc9df11a5"
+    },
+    {
+      "pr": 127,
+      "role": "d3d_a_closeout_evidence",
+      "merge_sha": "3024dde0ea148a3997782614da5ca8100462d010"
+    },
+    {
+      "release": "4.07.4",
+      "role": "governance_evidence_checkpoint_not_worker_runtime_release",
+      "target_sha": "3024dde0ea148a3997782614da5ca8100462d010"
+    },
+    {
+      "pr": 128,
+      "role": "release_evidence_closeout",
+      "merge_sha": "6bf0f4002ac6ed7fead64d49084ac31c1d33fb39"
+    },
+    {
+      "pr": 129,
+      "role": "canonical_production_identity_evidence_collector",
+      "final_head": "d4d83a1ff0dfd30dabbaa989b13b084f695be244",
+      "merge_sha": "0c3d7162de96b569abbd7c679e09dc29bb9fd2fe",
+      "ci_run": 31165097984,
+      "identity_evidence_pr_run": 31165100768,
+      "post_merge_ci_run": 31165272521,
+      "post_merge_pages_run": 31165270021,
+      "verification": "passed"
+    },
+    {
+      "pr": 130,
+      "role": "duplicate_superseded_path",
+      "state": "closed_unmerged_do_not_merge",
+      "preserved_branch": "pr-10d3d-b-production-readonly-evidence",
+      "preserved_head": "9f5ca31e496a6af1a4d601a5e6ebc64a41992438"
+    }
+  ],
+  "production_state": {
+    "activation_authorized": false,
+    "schema_3_allowed": false,
+    "production_deployment_performed_by_closeout": false,
+    "d1_mutation_performed_by_closeout": false,
+    "production_pages_mutation_performed_by_closeout": false,
+    "oauth_mutation_performed_by_closeout": false,
+    "production_identity_control_plane_dispatch_performed": false
+  },
+  "deferred_non_blocking": [
+    "N58 production frontend fallback removal after explicit Pages env proof",
+    "N61 live production CSP evidence before production activation",
+    "N62 production rejection of a real staging-audience Google ID token",
+    "N64 authoritative production D1 identity proof and reviewed pinning",
+    "N69 dedicated least-privilege Cloudflare audit credential",
+    "N59/N60 stricter GitHub reviewer/admin-bypass governance if desired",
+    "RISK-032 long-lived evidence artifact retention strategy",
+    "Recovery Evidence Gate proof before any Schema 3 migration"
+  ],
+  "default_next_direction": "return_to_product_correctness_market_data_backtest_portfolio_and_ux_work",
+  "navigation": {
+    "current_handoff": "docs/governance/V5_CURRENT_HANDOFF.md",
+    "append_only_closeout_history": "docs/governance/evidence/V5_EXECUTION_HISTORY_ENTRY_012_D3D_PHASE_CLOSEOUT.md",
+    "canonical_b1_acceptance": "docs/governance/PR_10D3D_B_PRODUCTION_IDENTITY_EVIDENCE_ACCEPTANCE.md"
+  }
+}
