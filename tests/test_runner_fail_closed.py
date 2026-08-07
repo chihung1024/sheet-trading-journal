@@ -178,6 +178,21 @@ def test_required_market_data_rejects_nan_price_series():
         runner.validate_required_market_data(client, {"NVDA"})
 
 
+def test_required_market_data_rejects_missing_required_currency_fx():
+    client = SimpleNamespace(
+        market_data={
+            "005930.KS": pd.DataFrame(
+                {"Close_Adjusted": [100000.0, 101000.0]},
+                index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            )
+        },
+        validate_required_fx_data=lambda tickers: ["KRW"],
+    )
+
+    with pytest.raises(runner.PortfolioUpdateError, match="缺少匯率幣別: KRW"):
+        runner.validate_required_market_data(client, {"005930.KS"})
+
+
 def test_mask_user_id_hides_local_part():
     masked = runner.mask_user_id("chired@gmail.com")
 
