@@ -192,7 +192,7 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
 
 
 def validate_required_market_data(market_client, required_tickers) -> None:
-    """Fail closed unless every calculation input has usable positive price data."""
+    """Fail closed unless every required price and FX input is usable."""
     market_data = getattr(market_client, "market_data", None)
     if not isinstance(market_data, dict):
         raise PortfolioUpdateError("市場資料客戶端未提供可驗證的 market_data")
@@ -207,12 +207,19 @@ def validate_required_market_data(market_client, required_tickers) -> None:
         if not PortfolioValidator.validate_price_data(symbol, frame):
             invalid.append(symbol)
 
-    if missing or invalid:
-        details = []
-        if missing:
-            details.append(f"缺少資料: {', '.join(missing)}")
-        if invalid:
-            details.append(f"價格資料無效: {', '.join(invalid)}")
+    details = []
+    if missing:
+        details.append(f"缺少資料: {', '.join(missing)}")
+    if invalid:
+        details.append(f"價格資料無效: {', '.join(invalid)}")
+
+    validate_fx = getattr(market_client, "validate_required_fx_data", None)
+    if callable(validate_fx):
+        missing_fx = validate_fx(required_tickers)
+        if missing_fx:
+            details.append(f"缺少匯率幣別: {', '.join(missing_fx)}")
+
+    if details:
         raise PortfolioUpdateError(f"必要市場資料驗證失敗（{'；'.join(details)}）")
 
 
