@@ -4,10 +4,11 @@ import { validateWorkerDeployment } from "../tools/verify_worker_deployment.mjs"
 
 const EXPECTED_SHA = "2521f93917122a116af9e28c76060690de0d7f32";
 const PREVIOUS_SHA = "1e0ee016efbb5833ded2cb719df4acf5ccd0b2ca";
+const EXPECTED_SERVICE = "trading-journal-api";
 
 function readyVersion(overrides = {}) {
   return {
-    service: "journal-backend",
+    service: EXPECTED_SERVICE,
     release_version: "4.07",
     api_version: "2.60",
     schema_version: 2,
@@ -23,6 +24,7 @@ function readyVersion(overrides = {}) {
 function readyHealth(overrides = {}) {
   return {
     status: "ok",
+    source_commit: EXPECTED_SHA,
     observed_schema_version: 2,
     ...overrides,
   };
@@ -33,6 +35,7 @@ function validate(version = readyVersion(), health = readyHealth(), overrides = 
     version,
     health,
     expectedSha: EXPECTED_SHA,
+    expectedService: EXPECTED_SERVICE,
     expectedReleaseVersion: "4.07",
     expectedApiVersion: "2.60",
     expectedSchemaVersion: "2",
@@ -61,7 +64,13 @@ test("semantic deployment readiness rejects HTTP-200 metadata from the previous 
   assert.match(result.errors.join("\n"), new RegExp(EXPECTED_SHA));
 });
 
-test("semantic deployment readiness rejects unhealthy, stale, or missing D1 schema", () => {
+test("semantic deployment readiness rejects service identity drift", () => {
+  const result = validate(readyVersion({ service: "other-service" }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /runtime service mismatch/);
+});
+
+test("semantic deployment readiness rejects unhealthy, stale, advanced, or missing D1 schema", () => {
   const unhealthy = validate(readyVersion(), readyHealth({ status: "degraded" }));
   assert.equal(unhealthy.ok, false);
   assert.match(unhealthy.errors.join("\n"), /health status is not ready/);
@@ -71,11 +80,18 @@ test("semantic deployment readiness rejects unhealthy, stale, or missing D1 sche
     readyHealth({ observed_schema_version: 1 }),
   );
   assert.equal(staleSchema.ok, false);
-  assert.match(staleSchema.errors.join("\n"), /observed D1 schema is too old/);
+  assert.match(staleSchema.errors.join("\n"), /observed D1 schema mismatch/);
+
+  const advancedSchema = validate(
+    readyVersion(),
+    readyHealth({ observed_schema_version: 3 }),
+  );
+  assert.equal(advancedSchema.ok, false);
+  assert.match(advancedSchema.errors.join("\n"), /observed D1 schema mismatch/);
 
   const missingSchema = validate(
     readyVersion(),
-    { status: "ok" },
+    { status: "ok", source_commit: EXPECTED_SHA },
   );
   assert.equal(missingSchema.ok, false);
   assert.match(
@@ -101,11 +117,18 @@ test("semantic deployment readiness rejects version and metadata mismatches", ()
   assert.match(result.errors.join("\n"), /Worker version ID is missing/);
 });
 
+test("semantic deployment readiness rejects health source mismatch", () => {
+  const result = validate(readyVersion(), readyHealth({ source_commit: PREVIOUS_SHA }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /health source commit mismatch/);
+});
+
 test("semantic deployment readiness fails closed for malformed expectations and payloads", () => {
   const result = validateWorkerDeployment({
     version: null,
     health: [],
     expectedSha: "short-sha",
+    expectedService: "",
     expectedReleaseVersion: "",
     expectedApiVersion: "",
     expectedSchemaVersion: "not-a-number",
@@ -113,6 +136,7 @@ test("semantic deployment readiness fails closed for malformed expectations and 
 
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /expected source SHA/);
+  assert.match(result.errors.join("\n"), /expected runtime service is required/);
   assert.match(result.errors.join("\n"), /expected release version is required/);
   assert.match(result.errors.join("\n"), /expected API version is required/);
   assert.match(result.errors.join("\n"), /expected schema version/);
