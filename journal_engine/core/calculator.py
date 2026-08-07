@@ -58,6 +58,26 @@ class PortfolioCalculator:
             result.setdefault('TWD', 1.0)
             return result
         return {'TWD': 1.0, 'USD': float(usd_fx)}
+
+    @staticmethod
+    def _legacy_usd_reference_fx(fx_context, fallback_fx):
+        """Return compatibility USD/TWD metadata without creating an FX dependency.
+
+        `history.fx_rate` and snapshot `exchange_rate` are legacy USD/TWD reference
+        fields. A TWD-only portfolio must not fail merely because its currency-aware
+        context has no USD member; USD is required only when an actual USD/foreign
+        valuation path needs it, which is enforced separately by the runner gate.
+        """
+        if isinstance(fx_context, dict):
+            candidate = fx_context.get('USD')
+            if candidate is not None:
+                try:
+                    candidate = float(candidate)
+                    if np.isfinite(candidate) and candidate > 0:
+                        return candidate
+                except (TypeError, ValueError):
+                    pass
+        return float(fallback_fx)
     
     def _is_us_market_open(self, tw_datetime):
         tw_hour = tw_datetime.hour
@@ -331,7 +351,7 @@ class PortfolioCalculator:
 
             if hasattr(self.market, 'get_fx_snapshot'):
                 fx_context = self._get_fx_context(d, current_fx)
-                fx = self._get_effective_fx_rate('SPY', fx_context)
+                fx = self._legacy_usd_reference_fx(fx_context, current_fx)
             else:
                 try:
                     fx = self.market.fx_rates.asof(d)
