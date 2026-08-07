@@ -241,3 +241,31 @@ The newly enforced ruleset must now govern this closeout evidence itself. Wave 0
 5. merges using the allowed `merge` method.
 
 This creates operational proof that the control plane is both present and usable without bypass.
+
+## Entry 005 — Wave 0 ruleset self-test and closeout completed
+
+- Closeout PR: `#116` — `G00 closeout: record enforced ruleset and environment protections`
+- PR base at creation: `main@5d34dd0d0ea76907ee315543e10ccb400103781d`
+- Final reviewed head: `9a7528095f64288ff2b173d18db985afc1238783`
+- Changed files: exactly `3`, all under `docs/governance`.
+- Independent AI review: PASS; no runtime/workflow/migration/D1/financial logic change found.
+- PR CI run: `31142637493`.
+- Required check `Python tests`: PASS.
+- Required check `Worker security and deployment tests`: PASS.
+- Required check `Frontend contracts and build`: PASS.
+- Merge method: `merge`.
+- Bypass used: **no**.
+- Merge SHA: `98cafc64ce065c377a291967a915f0723434dcae`.
+- Post-merge main CI run: `31142702692`, PASS.
+- Post-merge Pages deployment run: `31142701631`, PASS.
+- Pre-finalization recovery branch: `backup-pre-g00-finalize-98cafc6`.
+- Finalization branch: `g00-wave0-finalize`.
+- Runtime/data/schema change: **none**.
+
+### Final Wave 0 result
+
+The newly active `main-protection-v5` ruleset successfully governed its own closeout PR. The repository accepted the merge only after the required checks passed, and the merge used the sole allowed `merge` method. Post-merge CI and Pages deployment remained healthy.
+
+G00A, G00B control-plane governance and G00C are therefore closed. The environment-secret inventory limitation remains explicitly documented and is carried forward as an operational verification item for the reviewed staging deployment and the first exact-SHA production deployment; it is not silently treated as proven.
+
+Subsequent V5 batches must preserve the active ruleset/environment protections and must continue the same evidence discipline: exact pre-change SHA, backup branch, scoped PR, required CI, independent review, merge evidence, and post-merge verification.
