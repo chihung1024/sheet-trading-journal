@@ -1,9 +1,10 @@
 # G00 Governance Control-Plane Acceptance
 
-Status: IN PROGRESS  
+Status: CONTROL PLANE VERIFIED / CLOSEOUT EVIDENCE IN REVIEW  
 Baseline: `2557fc582d3555f7b129f36d2cf5ad67c141375e`  
-Recovery branch: `backup-pre-v5-wave0-2557fc5`  
-Work branch: `v5-g00-governance-baseline`
+Pre-Wave-0 recovery branch: `backup-pre-v5-wave0-2557fc5`  
+Post-control-plane recovery branch: `backup-post-g00-control-plane-5d34dd0`  
+Verification evidence: `docs/governance/evidence/G00_CONTROL_PLANE_VERIFICATION_2026-08-07.json`
 
 ## Objective
 
@@ -22,13 +23,32 @@ G00 establishes repository/deployment governance before additional runtime or sc
 - prevents routine bypass of the PR/check evidence chain;
 - documents any break-glass/admin bypass path rather than using it as the normal merge path.
 
-### Current observation
+### Initial observation
 
-At Wave 0 start GitHub reported `main.protected=false`, protection disabled and required-status enforcement off. Therefore the acceptance state is currently **FAIL / NOT YET APPLIED**.
+At Wave 0 start GitHub reported `main.protected=false`, protection disabled and required-status enforcement off. G00A therefore began as **FAIL / NOT YET APPLIED**.
 
-### Acceptance evidence
+### Verified state — 2026-08-07T10:49+08:00
 
-G00A may be marked complete only after a fresh GitHub API read shows the reviewed control is actually enforced. A plan, screenshot, or prose statement alone is insufficient.
+Fresh GitHub API reads now prove G00A is **PASS**:
+
+- `main.protected=true`;
+- repository ruleset `main-protection-v5` exists with id `20536921`;
+- enforcement is `active`;
+- target condition is `~DEFAULT_BRANCH`;
+- deletion is blocked;
+- non-fast-forward updates / force pushes are blocked;
+- pull requests are required;
+- required approving review count is `0`, preserving the single-maintainer operating model;
+- allowed merge method is only `merge`, preserving explicit merge-commit history;
+- strict required-status-check policy is enabled, requiring the PR branch to be tested against current `main`;
+- required checks are exactly:
+  - `Python tests`;
+  - `Worker security and deployment tests`;
+  - `Frontend contracts and build`;
+- ruleset bypass actor list is empty;
+- GitHub reports `current_user_can_bypass: never`.
+
+The G00 closeout PR is intentionally the first repository change that must itself pass this newly enforced path. Successful CI and merge of that PR provide operational proof that the ruleset is not merely present but compatible with the repository's canonical review flow.
 
 ## G00B — Protect deployment environments
 
@@ -51,9 +71,43 @@ At minimum:
 - ensure the staging Worker cannot receive the production Google client or production data-plane credentials;
 - keep arbitrary Pages preview environments disabled unless a later reviewed design explicitly changes that policy.
 
-### Current observation
+### Initial observation
 
-The prior audit found both named environments present without effective protection rules. The acceptance state remains **FAIL / NOT YET APPLIED** until a fresh GitHub read proves otherwise.
+The prior audit found both named environments present without effective protection rules. G00B therefore began as **FAIL / NOT YET APPLIED**.
+
+### Verified state — 2026-08-07T10:49+08:00
+
+Fresh GitHub API reads now prove the G00B control-plane portion is **PASS**.
+
+#### Production
+
+- environment id: `11042279942`;
+- custom deployment branch policy is enabled;
+- exactly one deployment branch policy exists: `main`;
+- required-reviewer protection rule exists;
+- required reviewer is `chihung1024`;
+- `prevent_self_review=false`, avoiding a single-maintainer deadlock;
+- `can_admins_bypass=true` remains available only as documented break-glass capability, not the routine deployment path.
+
+#### Staging
+
+- environment id: `19418410152`;
+- custom deployment branch policy is enabled;
+- exactly one deployment branch policy exists: `main`;
+- no staging required reviewer is configured, intentionally allowing repeated test deployments without production-style manual approval;
+- `can_admins_bypass=true` remains break-glass only.
+
+#### Secret isolation verification boundary
+
+The connected GitHub integration receives HTTP 403 when attempting to enumerate environment secret inventory, and secret values are intentionally not readable. Therefore this acceptance does **not** claim direct API proof of secret values.
+
+Operational fail-closed controls remain in the reviewed workflows:
+
+- production workflow runs under `environment: production` and requires its named Cloudflare/D1 environment secrets;
+- staging workflow runs under `environment: staging`, requires isolated Cloudflare/D1 values plus `STAGING_GOOGLE_CLIENT_ID`, requires D1 name `trading-journal-staging`, and explicitly rejects the known production Google OAuth client id;
+- both deployment workflows require an exact 40-character source SHA reachable from `main`.
+
+The later reviewed staging and production deployment exercises must provide operational proof that the environment-specific secrets satisfy those fail-closed checks. G00B control-plane governance itself is considered verified because GitHub now enforces distinct named environments and main-only deployment branch policies, with explicit production authorization.
 
 ## G00C — Tombstone dangerous legacy deployment instructions
 
@@ -66,24 +120,31 @@ Acceptance requires:
 - canonical staging path points to `.github/workflows/deploy-worker-staging.yml` and `docs/STAGING_WORKER_CONTRACT.md`;
 - the historical material remains recoverable through Git history and the Wave 0 backup branch.
 
+G00C is **PASS**. The governance baseline was merged in PR `#112` at merge SHA `5d34dd0d0ea76907ee315543e10ccb400103781d`.
+
 ## Batch safety acceptance
 
-Before G00 repository-side changes merge:
+G00 repository-side changes remain governance/test/documentation only:
 
-- diff must contain documentation/governance changes only;
-- no Worker/engine/migration/frontend runtime source may change;
-- no D1 operation is performed;
-- no staging/production deployment is performed;
-- normal site usage must therefore remain unaffected.
+- no Worker/engine/migration/frontend runtime source changed as part of G00 closeout;
+- no D1 operation was performed by the governance batches;
+- no staging/production Worker deployment was performed by the governance batches;
+- normal site usage therefore remained unaffected by these changes.
 
-## Rollback
+## Recovery
 
 Primary pre-change recovery reference:
 
 `backup-pre-v5-wave0-2557fc5`
 
-If merged, revert the G00 repository-side PR. No database or service rollback is required because G00 repository-side changes are non-runtime.
+Post-control-plane checkpoint:
+
+`backup-post-g00-control-plane-5d34dd0`
+
+The post-control-plane branch points to the exact `main` commit that was current when the external GitHub rules were independently verified. Git branch backup does not itself store GitHub control-plane settings; the machine-readable evidence JSON and GitHub ruleset/environment APIs are the authoritative setting history.
+
+If repository-side G00 documentation must be rolled back, revert the relevant PR. No database or service rollback is required because G00 repository-side changes are non-runtime. If a GitHub control-plane rule itself must be corrected, change the GitHub setting deliberately and append a new evidence record rather than rewriting this historical verification.
 
 ## Closeout rule
 
-Wave 0 is fully closed only when **G00A + G00B + G00C** all pass. Repository documentation changes may merge before the external GitHub control-plane settings are applied, but subsequent runtime remediation must not treat G00 as fully closed until G00A/G00B are re-read and verified.
+G00A, G00B control-plane governance and G00C are verified. Wave 0 becomes fully closed when this closeout evidence PR passes the newly enforced required checks and merges through the `main-protection-v5` PR-only path. Runtime remediation must not bypass that final self-test.
