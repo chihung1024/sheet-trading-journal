@@ -65,6 +65,21 @@ async function getRecords(page) {
   return payload.data;
 }
 
+async function fallbackCleanup(request, recordId) {
+  const response = await request.delete(`${stagingApi}/api/records`, {
+    headers: {
+      Authorization: `Bearer ${googleIdToken}`,
+      'Content-Type': 'application/json',
+    },
+    data: { id: recordId },
+  });
+  if (!response.ok()) {
+    throw new Error(`fallback DELETE failed HTTP ${response.status()}`);
+  }
+  const payload = parseJsonOrThrow(await response.text(), 'fallback DELETE /api/records');
+  if (payload.success !== true) throw new Error('fallback DELETE was not successful');
+}
+
 test('fixed staging login, browser-origin CRUD, cleanup, and logout', async ({ page, context, request }) => {
   const productionRequests = [];
   let createdRecordId = null;
@@ -150,11 +165,9 @@ test('fixed staging login, browser-origin CRUD, cleanup, and logout', async ({ p
 
     const updatedRecord = {
       ...syntheticRecord,
-      ...createdMatches[0],
       id: createdRecordId,
       price: 2,
       total_amount: 0.0002,
-      tag: marker,
     };
     const updateResponse = await browserApi(page, 'PUT', '/api/records', updatedRecord);
     expect(updateResponse.ok, `PUT record failed HTTP ${updateResponse.status}`).toBe(true);
@@ -188,10 +201,23 @@ test('fixed staging login, browser-origin CRUD, cleanup, and logout', async ({ p
     expect(productionRequests, 'browser must never contact a production origin').toEqual([]);
   } finally {
     if (createdRecordId) {
+      let browserCleanupSucceeded = false;
       try {
-        await browserApi(page, 'DELETE', '/api/records', { id: createdRecordId });
+        const cleanupResponse = await browserApi(page, 'DELETE', '/api/records', { id: createdRecordId });
+        if (cleanupResponse.ok) {
+          const cleanupPayload = parseJsonOrThrow(cleanupResponse.text, 'cleanup DELETE /api/records');
+          browserCleanupSucceeded = cleanupPayload.success === true;
+        }
       } catch (error) {
-        console.error(`Synthetic staging cleanup failed for record ${createdRecordId}: ${error.message}`);
+        console.error(`Browser cleanup failed for synthetic record ${createdRecordId}: ${error.message}`);
+      }
+
+      if (!browserCleanupSucceeded) {
+        try {
+          await fallbackCleanup(request, createdRecordId);
+        } catch (error) {
+          console.error(`Fallback cleanup failed for synthetic record ${createdRecordId}: ${error.message}`);
+        }
       }
     }
   }
