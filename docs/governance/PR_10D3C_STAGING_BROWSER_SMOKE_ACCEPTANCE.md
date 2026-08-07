@@ -1,16 +1,21 @@
 # PR-10D3C — Staging Browser OAuth/CRUD Smoke Acceptance
 
-Status: IMPLEMENTED / FINAL REVIEW PENDING  
+Status: CLOSED / PASS  
 Baseline: `479dd6783a645abd8f8df406cc44c70be184af33`  
 Recovery branch: `backup-pre-10d3c-479dd67`  
 Work branch: `pr-10d3c-staging-browser-smoke`  
-Draft PR: `#123`
+PR: `#123`  
+Final reviewed infrastructure head: `a5a8b1ca69c46066395599c8ac9cd80a7ef0a11f`  
+Infrastructure merge SHA: `a1bfc40a1e22ee2624e9cff7d6324f13215ea35c`  
+Workflow compile-fix PR: `#124`  
+Exact post-fix source SHA: `09a741abaf581bfb20d4a59eaffcda345776757b`  
+Machine-readable closeout: `docs/governance/evidence/PR_10D3C_CLOSEOUT_2026-08-07.json`
 
 ## Purpose
 
 Prove in a real Chromium browser that the fixed staging frontend and exact-SHA staging Worker operate together with the intended CSP, CORS, Google authentication, record CRUD, logout, and environment isolation. This is the browser-level closeout gate after PR-10D3A and the exact-SHA staging activation.
 
-The infrastructure is implemented in this PR, but **D3C is not closed by merge alone**. A real post-merge staging browser workflow must still run successfully with a dedicated synthetic Google identity before this acceptance can become `CLOSED / PASS`.
+The infrastructure was implemented in PR #123. D3C was intentionally **not** closed by merge alone; the required post-merge staging activation and authenticated browser workflow have now both completed successfully at the exact post-fix source SHA, so this acceptance is `CLOSED / PASS`.
 
 ## Authoritative staging targets
 
@@ -230,6 +235,58 @@ Merge does **not** close D3C. After merge:
 7. `Staging Browser Smoke` must be manually dispatched from `main` using that same exact current staging SHA;
 8. the real workflow log must prove exact source/Worker identity, fresh Google token mint, frontend OAuth client identity, Chromium execution, login, GET/POST/PUT/DELETE, cleanup, logout, and production-write exclusion;
 9. only then may this document be finalized as `CLOSED / PASS`.
+
+## Post-merge activation evidence — CLOSED / PASS
+
+The gate above has now been satisfied at exact source `09a741abaf581bfb20d4a59eaffcda345776757b`.
+
+### Workflow compiler regression and repair
+
+The initial post-merge D3C workflow exposed a GitHub Actions compile-context defect and produced workflow run `31151484724` with failure and zero jobs. The cause was `${{ runner.temp }}` at job-level `env`, where the runner context is unavailable during workflow compilation. This defect is intentionally retained as historical evidence.
+
+PR #124 repaired the boundary by resolving the temporary ID-token path only at execution-time steps and added a static regression guard. Final reviewed head `f6b7f3a709994c1a669e69404a73fa99c694257c` merged as `09a741abaf581bfb20d4a59eaffcda345776757b`. Post-merge CI `31152189249` and Pages `31152188674` passed.
+
+### Exact fixed-staging activation
+
+- fixed staging Pages source: `09a741abaf581bfb20d4a59eaffcda345776757b`;
+- Cloudflare Pages external deployment: `fdf06697-6ff7-480a-aca4-ef5b17a88ef3`;
+- completed success check: `92784471873`;
+- staging Worker deploy run: `31152810991` (run #3);
+- staging Worker job: `92785841332`;
+- GitHub staging deployment: `5789693600`;
+- Cloudflare Worker version: `bbd55ac6-bbcb-48e9-9ea2-155f4c636512`;
+- Worker release/API/schema: `4.07` / `2.60` / `2`;
+- remote D1 migrations: no migrations to apply;
+- live browser-origin isolation: PASS.
+
+### Browser Smoke #17 — fail-closed before browser write
+
+Workflow run `31153666032`, job `92788401745`, failed at the Google ID-token mint step because the required staging E2E OAuth bootstrap secrets had not yet been provisioned. Chromium/browser steps were skipped, no synthetic transaction was created, and the unconditional temporary-token cleanup step passed. This run is retained as evidence of fail-closed behavior rather than erased.
+
+### Browser Smoke #18 — authoritative success
+
+Workflow run `31156230969` (run #18), job `92796212558`, completed successfully under GitHub environment `staging`; deployment `5790316215` reports `production_environment=false`.
+
+The successful log and test contract prove:
+
+- exact source, Worker release/API/schema, health, staging environment and Worker-service identity matched;
+- the staging Google OAuth client was distinct from production;
+- a fresh Google-issued ID token was minted and validated, with a 3600-second lifetime observed;
+- `@playwright/test`, `playwright`, and `playwright-core` resolved to exact `1.62.0`;
+- Chromium installed and executed;
+- the deployed frontend initialized GIS with the expected staging client ID;
+- login used the existing application authentication callback;
+- authenticated GET, POST, PUT and DELETE `/api/records` all passed;
+- the final GET verified the unique synthetic marker count returned to zero after DELETE;
+- semantic logout restored the login overlay and removed the canonical localStorage token;
+- browser production-origin request count remained zero;
+- production activity was limited to the existing read-only `/api/version` probe outside browser context;
+- temporary ID-token file cleanup succeeded;
+- Playwright reported `1 passed (5.6s)`.
+
+Recovery point after the successful browser gate: `backup-d3c-browser-smoke-pass-09a741a`.
+
+PR-10D3C is therefore **CLOSED / PASS**. Machine-readable closeout is retained in `docs/governance/evidence/PR_10D3C_CLOSEOUT_2026-08-07.json`.
 
 ## Explicit non-goals
 
