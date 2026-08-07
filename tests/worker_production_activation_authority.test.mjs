@@ -84,15 +84,29 @@ test("activation evidence is bound to check name, source SHA, time, and proof", 
   assert.equal(invalid.ok, false);
 });
 
-test("production deployment workflow performs non-secret activation preflight before reviewer job", async () => {
+test("production deployment workflow performs control-plane preflight before reviewer job", async () => {
   const workflow = await readFile(".github/workflows/deploy-worker.yml", "utf8");
   const preflightIndex = workflow.indexOf("  preflight:");
   const deployIndex = workflow.indexOf("  deploy:");
   assert.ok(preflightIndex >= 0 && deployIndex > preflightIndex);
   const preflight = workflow.slice(preflightIndex, deployIndex);
   const deploy = workflow.slice(deployIndex);
+
   assert.doesNotMatch(preflight, /environment: production/);
+  assert.match(preflight, /git worktree add --detach .* refs\/remotes\/origin\/main/);
+  assert.match(preflight, /production-control-plane-preflight/);
   assert.match(preflight, /verify_production_activation_authority\.mjs/);
+
   assert.match(deploy, /needs: preflight/);
   assert.match(deploy, /environment: production/);
+  assert.match(deploy, /production-control-plane-after-approval/);
+  assert.match(deploy, /git worktree add --detach .* refs\/remotes\/origin\/main/);
+  assert.match(deploy, /Re-verify production activation authority from latest protected main/);
+});
+
+test("runtime source and production authority remain separate control planes", async () => {
+  const workflow = await readFile(".github/workflows/deploy-worker.yml", "utf8");
+  assert.match(workflow, /Checkout exact requested runtime source/);
+  assert.match(workflow, /refs\/remotes\/origin\/main/);
+  assert.match(workflow, /EXPECTED_SHA="\$REQUESTED_SHA" node tools\/verify_production_activation_authority\.mjs/);
 });
