@@ -208,8 +208,8 @@ function extractMetaCsp(html) {
   const tags = String(html || '').match(/<meta\b[^>]*>/gi) || [];
   for (const tag of tags) {
     if (!/http-equiv\s*=\s*["']Content-Security-Policy["']/i.test(tag)) continue;
-    const content = tag.match(/content\s*=\s*["']([\s\S]*?)["']/i);
-    if (content?.[1]) return content[1];
+    const content = tag.match(/content\s*=\s*(["'])([\s\S]*?)\1/i);
+    if (content?.[2]) return content[2];
   }
   return '';
 }
