@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from ..config import DEFAULT_FX_RATE
+from .currency_detector import CurrencyDetector
 from .dividend_policy import dividend_net_multiplier
 
 
@@ -366,7 +367,7 @@ def _symbol_component(
             f"Non-finite Daily PnL component for {symbol}"
         )
 
-    currency = calculator.currency_detector.detect(symbol)
+    currency = CurrencyDetector.detect(symbol)
     return SymbolDailyPnL(
         symbol=symbol,
         market="TW" if calculator._is_taiwan_stock(symbol) else "US",
