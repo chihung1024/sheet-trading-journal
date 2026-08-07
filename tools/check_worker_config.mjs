@@ -20,8 +20,9 @@ const [
 const manifest = JSON.parse(manifestRaw);
 const environmentContract = JSON.parse(environmentContractRaw);
 const errors = [];
-const productionOrigins = environmentContract?.production?.frontend_origins;
-const productionGoogleClientIds = environmentContract?.production?.google_client_ids;
+const production = environmentContract?.production;
+const productionOrigins = production?.frontend_origins;
+const productionGoogleClientIds = production?.google_client_ids;
 
 expect(config, `name = "${manifest.service}"`, "Worker service name");
 expect(config, `main = "${manifest.deploymentEntry}"`, "deployment entry");
@@ -51,6 +52,20 @@ if (!Array.isArray(productionGoogleClientIds) || productionGoogleClientIds.lengt
     `GOOGLE_CLIENT_ID = "${productionGoogleClientIds[0]}"`,
     "production Google OAuth client",
   );
+}
+if (!production || !new Set(["unverified", "verified"]).has(production.d1_identity_status)) {
+  errors.push("Production D1 identity status must be unverified or verified");
+} else if (production.d1_identity_status === "unverified") {
+  if (production.d1_database_name !== null || production.d1_database_id_sha256 !== null) {
+    errors.push("Unverified production D1 identity must not contain guessed authority values");
+  }
+} else {
+  if (typeof production.d1_database_name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(production.d1_database_name)) {
+    errors.push("Verified production D1 identity requires a valid database name");
+  }
+  if (typeof production.d1_database_id_sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(production.d1_database_id_sha256)) {
+    errors.push("Verified production D1 identity requires a SHA-256 database ID fingerprint");
+  }
 }
 expect(
   deploymentEntry,
