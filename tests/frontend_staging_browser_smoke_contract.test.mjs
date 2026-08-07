@@ -55,6 +55,13 @@ test('staging browser workflow is manual, protected, exact-SHA, and credential f
   assert.match(workflow, /always\(\)/);
   assert.match(workflow, /rm\s+-f/);
   assertNoProductionIdentity(workflow, 'staging-browser-smoke workflow');
+
+  const jobEnv = workflow.match(/\n    env:\n([\s\S]*?)\n    steps:/);
+  assert.ok(jobEnv, 'workflow must have a bounded non-secret job env block');
+  assert.doesNotMatch(jobEnv[1], /STAGING_E2E_GOOGLE_CLIENT_SECRET/);
+  assert.doesNotMatch(jobEnv[1], /STAGING_E2E_GOOGLE_REFRESH_TOKEN/);
+  assert.match(workflow, /- name: Mint fresh Google ID token[\s\S]*?env:[\s\S]*?STAGING_E2E_GOOGLE_CLIENT_SECRET/);
+  assert.match(workflow, /- name: Mint fresh Google ID token[\s\S]*?env:[\s\S]*?STAGING_E2E_GOOGLE_REFRESH_TOKEN/);
 });
 
 test('OAuth refresh helper validates fresh Google ID-token identity without logging the token', () => {
@@ -89,6 +96,9 @@ test('Playwright smoke derives staging identities from environment and blocks pr
   assert.match(smoke, /browserApi\(page,\s*['"]POST['"]/);
   assert.match(smoke, /browserApi\(page,\s*['"]PUT['"]/);
   assert.match(smoke, /browserApi\(page,\s*['"]DELETE['"]/);
+  assert.doesNotMatch(smoke, /\.\.\.createdMatches\[0\]/);
+  assert.match(smoke, /fallbackCleanup\(request,\s*createdRecordId\)/);
+  assert.match(smoke, /request\.delete\(`\$\{stagingApi\}\/api\/records`/);
   assert.match(smoke, /finally/);
   assert.match(smoke, /logout/i);
   assert.match(smoke, /request/);
