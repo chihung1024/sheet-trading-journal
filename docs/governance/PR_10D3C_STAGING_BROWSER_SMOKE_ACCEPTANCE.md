@@ -39,6 +39,25 @@ This local payload inspection is **not** treated as cryptographic authentication
 
 The fresh ID token is written only to a mode-0600 temporary runner file. It is not committed or uploaded as an artifact, and trace/video/screenshots are disabled.
 
+## Exact environment identity gates
+
+The browser smoke may not start merely because a URL answers HTTP requests.
+
+Before authentication, the workflow:
+
+1. checks out the exact requested 40-character SHA;
+2. verifies the SHA is reachable from protected `main` and is exactly the current fixed `staging` ref;
+3. loads release/API/schema expectations from the existing Worker manifest;
+4. calls staging `/api/version` and `/api/health`;
+5. reuses the existing `verify_staging_worker_deployment.mjs` authority to require:
+   - `source_commit == source_sha`;
+   - expected release/API/schema versions;
+   - ready health and observed schema;
+   - `x-deployment-environment: staging`;
+   - `x-worker-service: journal-backend-staging`.
+
+The browser shim also records the actual `client_id` passed by the deployed frontend to `google.accounts.id.initialize()`. Playwright requires that observed value to equal the reviewed staging OAuth client ID before it enables/clicks the synthetic GIS button. Therefore a Pages build using the wrong OAuth client is not masked by the test shim.
+
 ## Browser login path
 
 The Playwright browser installs a page-local Google Identity Services shim before page scripts execute. The external GIS script request is fulfilled with an empty script so it cannot overwrite the shim. The shim only emulates the GIS JavaScript delivery surface (`initialize` / `renderButton`) and invokes the application's existing credential callback with the **real Google-issued ID token**.
@@ -49,16 +68,17 @@ No application runtime test hook, accepted fake token, Worker bypass endpoint, o
 
 1. Load the fixed staging frontend.
 2. Runtime-intercept and fail any browser request to a production frontend/API origin.
-3. Complete existing LoginOverlay/authStore login using a fresh Google-issued staging ID token.
-4. Verify authenticated browser-origin GET `/api/records`.
-5. POST one uniquely tagged minimal synthetic transaction.
-6. GET and verify exactly one matching synthetic record.
-7. PUT only allowlisted transaction fields plus the record id; do not replay server-owned GET fields.
-8. GET and verify the deterministic price update.
-9. DELETE the synthetic record and verify it is absent.
-10. Execute the real semantic `登出` control, accept its confirmation dialog, and verify the login overlay returns and browser token storage is cleared.
-11. Perform read-only production `/api/version` verification through Playwright's non-browser request context; no production write is permitted.
-12. In `finally`, retry browser DELETE if a prior step failed after creation; if browser cleanup cannot complete, use the same short-lived Google ID token for a staging-only server-side DELETE fallback.
+3. Verify the deployed frontend initialized GIS with the exact staging OAuth client ID.
+4. Complete existing LoginOverlay/authStore login using a fresh Google-issued staging ID token.
+5. Verify authenticated browser-origin GET `/api/records`.
+6. POST one uniquely tagged minimal synthetic transaction.
+7. GET and verify exactly one matching synthetic record.
+8. PUT only allowlisted transaction fields plus the record id; do not replay server-owned GET fields.
+9. GET and verify the deterministic price update.
+10. DELETE the synthetic record and verify it is absent.
+11. Execute the real semantic `登出` control, accept its confirmation dialog, and verify the login overlay returns and browser token storage is cleared.
+12. Perform read-only production `/api/version` verification through Playwright's non-browser request context; no production write is permitted.
+13. In `finally`, retry browser DELETE if a prior step failed after creation; if browser cleanup cannot complete, use the same short-lived Google ID token for a staging-only server-side DELETE fallback.
 
 ## Synthetic data safety
 
@@ -81,19 +101,21 @@ Required GitHub `staging` Environment secrets for the real smoke:
 
 No Google password is stored in GitHub.
 
-Long-lived OAuth credentials are **not job-level environment variables**. The client secret, refresh token, expected subject, and optional expected email are exposed only to the single token-mint step. Subsequent npm/Playwright/Chromium/browser steps receive only fixed staging identities plus the temporary ID-token file path; they do not receive the refresh token or client secret.
+Long-lived OAuth credentials are **not job-level environment variables**. The client secret, refresh token, expected subject, and optional expected email are exposed only to the single token-mint step. Subsequent npm/Playwright/Chromium/browser steps do not receive the refresh token or client secret. The browser step receives only the non-secret staging OAuth client ID plus the temporary short-lived ID-token file path.
 
 ## Workflow safety — implemented
 
 - `workflow_dispatch` only; authenticated external smoke does not execute arbitrary PR code.
 - caller supplies an exact 40-character source SHA.
 - workflow checks out exactly that SHA, verifies it is reachable from protected `main`, and requires current `origin/staging` to equal it.
+- live staging Worker must report that same exact SHA before any browser write is allowed.
 - job uses GitHub `environment: staging` protection.
 - fixed staging frontend/API identities are derived from the reviewed deployment contract.
-- staging Google client is rejected if it is the known production client.
+- staging Google client is rejected if it is a known production client.
+- deployed frontend's GIS client ID is observed in Chromium and must equal the staging client.
 - `actions/checkout` and `actions/setup-node` use the repository's existing full-SHA pins.
 - new workflow is registered in the existing GitHub Actions supply-chain evidence inventory; the policy itself was not weakened.
-- Playwright test package is exact version `1.62.0`; the runtime verifies `@playwright/test`, `playwright`, and `playwright-core` all resolve to `1.62.0`.
+- Playwright test package is exact version `1.62.0`; runtime verifies `@playwright/test`, `playwright`, and `playwright-core` all resolve to `1.62.0`.
 - npm lifecycle scripts are disabled during the isolated E2E install.
 - trace/video/screenshots are disabled.
 - temporary Google ID-token file is removed in an `always()` step.
@@ -138,17 +160,34 @@ The green implementation was not merged immediately. A sibling-path security rev
 
 The authoritative fix moved long-lived OAuth credentials to the single token-mint step. Additional test-harness hardening removed reflection of server-owned GET fields into PUT and added a staging-only cleanup fallback using the short-lived ID token.
 
-New static guards prevent regression of these properties.
-
 - Hardened head: `ea1971af6d81af831576fa3770f5af6d47b49c3e`.
 - CI run: `31150814710`.
 - Frontend contracts/build: PASS.
 - Python functional/coverage + workflow supply-chain policy: PASS.
 - Worker/security/local-D1: PASS.
 
+The evidence-only update after this phase produced head `60de4b90c10533faf54220dcb332d5e748521545`; CI `31150925720` also passed all three protected-main checks.
+
+### Phase E — environment-identity blind-spot sweep
+
+A second independent E2E review asked whether the smoke could still pass while either the frontend OAuth client or live Worker source was wrong.
+
+Two blind spots were identified and fixed before merge:
+
+1. the GIS shim now records the real frontend `initialize({client_id})` input, and Chromium requires it to equal the staging Google client before login;
+2. the workflow now reuses the existing staging Worker deployment verifier and requires the live Worker source commit, release/API/schema, health, deployment-environment header, and Worker-service header to match the exact requested staging SHA.
+
+Static regression guards cover both conditions.
+
+- Environment-identity hardened head: `f8e940b8b870f808ae81589ad6e1a9135e2ccbeb`.
+- CI run: `31151167952`.
+- Frontend contracts/build: PASS.
+- Python functional/coverage + workflow supply-chain policy: PASS.
+- Worker/security/local-D1: PASS.
+
 ## Files in scope before final evidence update
 
-The complete PR currently changes exactly eight files:
+The complete PR changes exactly eight files:
 
 1. `.github/workflows/staging-browser-smoke.yml`
 2. `docs/governance/PR_10D3C_STAGING_BROWSER_SMOKE_ACCEPTANCE.md`
@@ -169,24 +208,28 @@ PR-10D3C infrastructure may be marked Ready and merged only if:
 2. final diff still contains only the documented D3C infrastructure/governance files;
 3. no app/Worker/D1/financial runtime code appears in the diff;
 4. long-lived OAuth credentials remain step-scoped and absent from npm/Playwright/Chromium/browser environment scope;
-5. production origins cannot receive browser traffic from the smoke;
-6. production activity remains read-only `/api/version` outside the browser;
-7. synthetic cleanup has browser retry + staging-only fallback;
-8. no blocking review thread remains;
-9. `main` remains the reviewed PR base or the PR is explicitly synchronized and re-tested;
-10. merge uses the protected normal `merge` path without bypass.
+5. the live staging Worker must report the exact source SHA before browser activity starts;
+6. the deployed frontend must initialize GIS with the exact staging OAuth client;
+7. production origins cannot receive browser traffic from the smoke;
+8. production activity remains read-only `/api/version` outside the browser;
+9. synthetic cleanup has browser retry + staging-only fallback;
+10. no blocking review thread remains;
+11. `main` remains the reviewed PR base or the PR is explicitly synchronized and re-tested;
+12. merge uses the protected normal `merge` path without bypass.
 
 ## Post-merge activation gate
 
 Merge does **not** close D3C. After merge:
 
-1. post-merge main CI and Pages must pass;
+1. post-merge main CI and production Pages must pass;
 2. fixed `staging` must be fast-forwarded to the reviewed merge SHA without force;
-3. Cloudflare fixed-staging Pages build must succeed;
-4. the dedicated synthetic Google account and required staging Environment secrets must be provisioned out of band; secret values must not be pasted into chat or committed;
-5. `Staging Browser Smoke` must be manually dispatched from `main` using the exact current staging SHA;
-6. the real workflow log must prove fresh Google token mint, exact-source validation, Chromium execution, login, GET/POST/PUT/DELETE, cleanup, logout, and production-write exclusion;
-7. only then may this document be finalized as `CLOSED / PASS`.
+3. Cloudflare fixed-staging Pages build for that exact SHA must succeed;
+4. **Deploy Staging Worker must be run again for the same exact merge SHA** with `confirm_environment=staging`, even though this PR does not change Worker runtime, so the live Worker source metadata and browser-smoke source are identical;
+5. the exact-SHA staging Worker deployment must pass its existing D1/config/readiness/CORS gates;
+6. the dedicated synthetic Google account and required staging Environment secrets must be provisioned out of band; secret values must not be pasted into chat or committed;
+7. `Staging Browser Smoke` must be manually dispatched from `main` using that same exact current staging SHA;
+8. the real workflow log must prove exact source/Worker identity, fresh Google token mint, frontend OAuth client identity, Chromium execution, login, GET/POST/PUT/DELETE, cleanup, logout, and production-write exclusion;
+9. only then may this document be finalized as `CLOSED / PASS`.
 
 ## Explicit non-goals
 
