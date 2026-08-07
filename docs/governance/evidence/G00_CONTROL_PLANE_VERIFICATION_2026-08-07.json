@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "verification_time_local": "2026-08-07T10:49:00+08:00",
+  "repository": "chihung1024/sheet-trading-journal",
+  "verified_main_sha": "5d34dd0d0ea76907ee315543e10ccb400103781d",
+  "backup_branch": "backup-post-g00-control-plane-5d34dd0",
+  "g00a": {
+    "status": "pass",
+    "main_protected": true,
+    "ruleset": {
+      "id": 20536921,
+      "name": "main-protection-v5",
+      "target": "branch",
+      "enforcement": "active",
+      "target_condition": "~DEFAULT_BRANCH",
+      "bypass_actors": [],
+      "current_user_can_bypass": "never",
+      "rules": {
+        "deletion_blocked": true,
+        "non_fast_forward_blocked": true,
+        "pull_request_required": true,
+        "required_approving_review_count": 0,
+        "allowed_merge_methods": ["merge"],
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          "Python tests",
+          "Worker security and deployment tests",
+          "Frontend contracts and build"
+        ]
+      }
+    }
+  },
+  "g00b": {
+    "status": "pass_control_plane",
+    "production": {
+      "environment_id": 11042279942,
+      "can_admins_bypass": true,
+      "required_reviewer": "chihung1024",
+      "prevent_self_review": false,
+      "custom_branch_policies": true,
+      "allowed_deployment_branches": ["main"]
+    },
+    "staging": {
+      "environment_id": 19418410152,
+      "can_admins_bypass": true,
+      "required_reviewers": [],
+      "custom_branch_policies": true,
+      "allowed_deployment_branches": ["main"]
+    },
+    "secret_inventory_verification": {
+      "connector_api_result": "not_accessible_403",
+      "note": "Environment secret values are intentionally unreadable. The connected integration also cannot list the environment secret inventory. Runtime workflows remain fail-closed: production requires four named environment secrets; staging requires isolated Cloudflare/D1 values plus STAGING_GOOGLE_CLIENT_ID and rejects the known production Google client ID. Full operational proof is deferred to the reviewed staging/production deployment exercises."
+    }
+  },
+  "g00c": {
+    "status": "pass",
+    "merge_sha": "5d34dd0d0ea76907ee315543e10ccb400103781d",
+    "legacy_runbook_tombstoned": true
+  },
+  "wave0_runtime_or_data_change": false,
+  "next_gate": "closeout PR must itself pass the newly enforced PR plus strict status-check rules before merge"
+}
