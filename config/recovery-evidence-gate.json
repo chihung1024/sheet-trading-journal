@@ -4,6 +4,8 @@
   "status": "blocked",
   "max_schema_version_without_pass": 2,
   "passed_at": null,
+  "baseline_sha": null,
+  "evidence_root": "docs/governance/evidence/recovery",
   "required_evidence": [
     "export_backup",
     "restore_drill",
@@ -13,5 +15,5 @@
     "d1_recovery_proof"
   ],
   "evidence": {},
-  "notes": "Schema 3 and later remain blocked until every required recovery evidence item is populated and status is explicitly set to passed after an actual drill. Cloudflare Time Travel availability alone is not sufficient."
+  "notes": "Schema 3 and later remain blocked until every required recovery evidence item references an existing structured JSON proof under evidence_root and status is explicitly set to passed after an actual drill. Cloudflare Time Travel availability alone is not sufficient."
 }
