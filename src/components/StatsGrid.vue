@@ -298,7 +298,7 @@ const getPnlBgClass = (val) => {
     background: var(--bg-secondary);
     display: flex; 
     align-items: center; 
-    justify-content: center;
+    justify-content: center; 
     font-size: 1.25rem;
     transition: transform 0.2s ease, background 0.2s;
 }
@@ -319,9 +319,9 @@ const getPnlBgClass = (val) => {
 
 .stat-main { 
     display: flex; 
-    align-items: baseline;
-    gap: 6px;
-    margin-bottom: 8px;
+    align-items: baseline; 
+    gap: 6px; 
+    margin-bottom: 8px; 
     flex-grow: 1;
 }
 
@@ -360,9 +360,9 @@ const getPnlBgClass = (val) => {
 }
 
 .unit-text, .percent { 
-    font-size: 0.85rem;
-    color: var(--text-sub);
-    font-weight: 500;
+    font-size: 0.85rem; 
+    color: var(--text-sub); 
+    font-weight: 500; 
 }
 
 .stat-footer {
@@ -370,22 +370,22 @@ const getPnlBgClass = (val) => {
     border-top: 1px solid var(--border-color);
     font-size: 0.85rem;
     display: flex; 
-    align-items: center;
+    align-items: center; 
     justify-content: space-between;
     min-height: 32px;
 }
 
 .footer-item { 
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
     width: 100%;
     justify-content: space-between;
 }
 
 .f-label { color: var(--text-sub); }
 .f-val { 
-    font-weight: 600;
+    font-weight: 600; 
     font-family: 'JetBrains Mono', monospace;
     color: var(--text-main);
 }
@@ -396,21 +396,21 @@ const getPnlBgClass = (val) => {
 .text-xs { font-size: 0.8rem; }
 
 .badge { 
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.8rem;
-    display: inline-flex;
-    align-items: center;
+    padding: 2px 8px; 
+    border-radius: 6px; 
+    font-weight: 600; 
+    font-size: 0.8rem; 
+    display: inline-flex; 
+    align-items: center; 
 }
 
 .badge-green { 
-    background: rgba(16, 185, 129, 0.12);
+    background: rgba(16, 185, 129, 0.12); 
     color: var(--success);
 }
 
 .badge-red { 
-    background: rgba(239, 68, 68, 0.12);
+    background: rgba(239, 68, 68, 0.12); 
     color: var(--danger);
 }
 
@@ -468,8 +468,8 @@ const getPnlBgClass = (val) => {
     .stat-label { font-size: 0.75rem; }
     
     .icon-box { 
-        width: 30px;
-        height: 30px;
+        width: 30px; 
+        height: 30px; 
         font-size: 1rem;
         border-radius: 8px;
     }
@@ -479,7 +479,7 @@ const getPnlBgClass = (val) => {
     .stat-sub-value { font-size: 0.9rem; }
     
     .stat-footer { 
-        padding-top: 8px;
+        padding-top: 8px; 
         min-height: auto;
     }
     
