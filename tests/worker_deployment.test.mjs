@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import worker, { __test } from "../worker.js";
 
+const PRODUCTION_D1_NAME = "trading-journal-production";
+
 function healthyDb(schemaVersion = 2) {
   return {
     prepare(sql) {
@@ -107,20 +109,28 @@ test("build metadata sanitizes untrusted deployment variables", () => {
   assert.equal(metadata.source_commit, "development");
 });
 
-test("production config renderer rejects sentinel IDs and non-exact commit SHAs", () => {
+test("production config renderer rejects sentinel IDs, wrong D1 names, and non-exact commit SHAs", () => {
   const validId = "11111111-1111-4111-8111-111111111111";
   const exactSha = "7b5686157975ab2295d74f9edf5ddb985978d706";
   const sentinel = runRenderer({
     CLOUDFLARE_D1_DATABASE_ID: "00000000-0000-0000-0000-000000000000",
-    CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+    CLOUDFLARE_D1_DATABASE_NAME: PRODUCTION_D1_NAME,
     SOURCE_COMMIT: exactSha,
   });
   assert.notEqual(sentinel.status, 0);
   assert.match(sentinel.stderr, /non-sentinel D1 UUID/);
 
+  const wrongName = runRenderer({
+    CLOUDFLARE_D1_DATABASE_ID: validId,
+    CLOUDFLARE_D1_DATABASE_NAME: "trading-journal-staging",
+    SOURCE_COMMIT: exactSha,
+  });
+  assert.notEqual(wrongName.status, 0);
+  assert.match(wrongName.stderr, /reviewed production D1 name/);
+
   const shortSha = runRenderer({
     CLOUDFLARE_D1_DATABASE_ID: validId,
-    CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+    CLOUDFLARE_D1_DATABASE_NAME: PRODUCTION_D1_NAME,
     SOURCE_COMMIT: exactSha.slice(0, 12),
   });
   assert.notEqual(shortSha.status, 0);
@@ -134,7 +144,7 @@ test("production config renderer writes only validated deployment metadata", asy
   try {
     const result = runRenderer({
       CLOUDFLARE_D1_DATABASE_ID: "11111111-1111-4111-8111-111111111111",
-      CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+      CLOUDFLARE_D1_DATABASE_NAME: PRODUCTION_D1_NAME,
       SOURCE_COMMIT: exactSha.toUpperCase(),
       WRANGLER_OUTPUT: output,
     });
@@ -146,7 +156,7 @@ test("production config renderer writes only validated deployment metadata", asy
     assert.ok(migrationsMatch, "rendered config must contain exactly one migrations path");
     assert.equal(resolve(dirname(output), mainMatch[1]), resolve("worker-entry.js"));
     assert.equal(resolve(dirname(output), migrationsMatch[1]), resolve("migrations"));
-    assert.match(rendered, /database_name = "journal-production"/);
+    assert.match(rendered, new RegExp(`database_name = "${PRODUCTION_D1_NAME}"`));
     assert.match(rendered, /database_id = "11111111-1111-4111-8111-111111111111"/);
     assert.match(rendered, new RegExp(`SOURCE_COMMIT = "${exactSha}"`));
     assert.doesNotMatch(rendered, /00000000-0000-0000-0000-000000000000/);
