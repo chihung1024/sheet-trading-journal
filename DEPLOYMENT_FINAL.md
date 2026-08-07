@@ -1,214 +1,57 @@
-# 🎉 最終部署指南 - 自訂 Benchmark 功能
+# ARCHIVED — DO NOT USE FOR CURRENT PRODUCTION DEPLOYMENT
 
-## ✅ 問題已解決！
+> This file is a historical runbook from the Worker v2.38 era. Its former instructions used manual Cloudflare Worker Quick Edit deployment and referenced `portfolio-dt-proxy`. Those instructions are **not** the canonical deployment path for the current system and must not be used for production changes.
 
-**根本原因**: Worker 名稱不一致，部署到錯誤的位置。  
-**解決方案**: 將代碼部署到正確的 Worker (`portfolio-dt-proxy`)。
+## Why this file was tombstoned
 
----
+The current remediation program requires production changes to preserve exact source provenance, CI evidence, migration gates, environment isolation and post-deployment verification. Manual copy/paste or Quick Edit deployment can bypass those controls and can make the deployed code impossible to tie back to a reviewed Git commit.
 
-## 🚀 部署 Worker v2.38 (生產版本)
+The historical content remains recoverable through Git history and the Wave 0 recovery branch:
 
-### **步驟 1: 登入 Cloudflare**
-前往: https://dash.cloudflare.com/
+`backup-pre-v5-wave0-2557fc5`
 
-### **步驟 2: 找到正確的 Worker**
-- Workers & Pages > **`portfolio-dt-proxy`** (不是 `journal-backend`！)
+The baseline commit immediately before this tombstone is:
 
-### **步驟 3: 編輯 Worker**
-1. 點擊 **Quick Edit**
-2. 按 **Ctrl+A** 全選所有代碼
-3. 按 **Delete** 刪除
-4. 複製 [worker_v2.38.js](…/cloudflare%20worker/worker_v2.38.js) 的完整內容
-5. 貼上
-6. 點擊 **Save and Deploy**
+`2557fc582d3555f7b129f36d2cf5ad67c141375e`
 
-### **步驟 4: 驗證部署**
-在前端 Console 執行：
+## Canonical deployment paths
 
-```javascript
-const token = localStorage.getItem('token');
+### Production Worker
 
-fetch('https://journal-backend.chired.workers.dev/api/trigger-update', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({ benchmark: 'QQQ' })
-})
-.then(r => r.json())
-.then(data => console.log('✅ Response:', data));
-```
+Use the reviewed GitHub Actions workflow:
 
-**預期結果**:
-```json
-{
-  "success": true,
-  "benchmark": "QQQ",
-  "message": "Update triggered with benchmark: QQQ"
-}
-```
+`.github/workflows/deploy-worker.yml`
 
----
+The production workflow is designed around an exact requested Git SHA, repository deployment gates, rendered Wrangler configuration, D1 migration execution and post-deployment source/version/schema verification.
 
-## 📊 使用方法
+Do not manually replace Worker source in the Cloudflare dashboard as the routine deployment method.
 
-### **方法1: 網頁介面**
+### Staging Worker
 
-1. 切換到「報酬率」模式
-2. 在「基準標的」輸入框輸入（例如：`QQQ`, `TQQQ`, `0050.TW`）
-3. 按 **Enter** 或點擊 **✓** 按鈕
-4. 確認對話框
-5. 等待 2-3 分鐘
-6. 圖表自動更新
+Use:
 
-### **方法2: API 直接調用**
+`.github/workflows/deploy-worker-staging.yml`
 
-```javascript
-fetch('https://journal-backend.chired.workers.dev/api/trigger-update', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${your_google_token}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({ 
-    benchmark: 'NVDA'  // 任意美股/台股/韓股 ticker
-  })
-});
-```
+and the current staging contract:
 
----
+`docs/STAGING_WORKER_CONTRACT.md`
 
-## 📋 支援的 Benchmark 格式
+The fixed staging identities and isolation rules are part of that contract. Arbitrary Pages preview branches are intentionally not a trusted backend environment in the current design.
 
-| 市場 | 格式 | 範例 |
-|------|------|------|
-| 美股 | TICKER | SPY, QQQ, NVDA, AAPL |
-| 台股 | TICKER.TW | 0050.TW, 2330.TW |
-| 韓股 | TICKER.KS | 005930.KS (Samsung) |
-| ETF | TICKER | TQQQ, SQQQ, VOO |
+## Current remediation authority
 
----
+The approved staged remediation sequence is recorded in:
 
-## 🔍 查看執行結果
+`docs/V5_ZERO_DOWNTIME_EXECUTION_PLAN.md`
 
-### **GitHub Actions 日誌**
-前往: https://github.com/chihung1024/sheet-trading-journal/actions
+Execution/recovery history is append-only in:
 
-**成功指標**:
-```
-[INFO] main: 觸發參數: Benchmark=QQQ, TargetUser=chired@gmail.com
+`docs/governance/V5_EXECUTION_HISTORY.md`
 
-[QQQ] ✅ 即時報價覆蓋: 123.45
-[QQQ] 下載成功
+The current Wave 0 governance acceptance requirements are in:
 
-[INFO] journal_engine.core.calculator: === 開始執行多群組投資組合計算 (基準: QQQ) ===
-```
+`docs/governance/G00_CONTROL_PLANE_ACCEPTANCE.md`
 
-### **前端圖表確認**
-- 圖表標籤變為 `QQQ (%)`
-- 基準線跟著 QQQ 變動
-- localStorage 中的 `user_benchmark` 為 `QQQ`
+## Historical-use rule
 
----
-
-## 🛠️ 技術細節
-
-### **系統架構**
-
-```
-[前端] 輸入 QQQ
-    ↓
-[Cloudflare Worker v2.38]
-    ↓ workflow_dispatch + inputs
-[GitHub Actions]
-    ↓ CUSTOM_BENCHMARK=QQQ
-[main.py]
-    ↓ 下載 QQQ 數據
-[calculator.py] 使用 QQQ 作為基準
-    ↓
-[Cloudflare D1] 保存快照
-    ↓
-[前端] 自動更新圖表
-```
-
-### **核心檔案**
-
-| 檔案 | 說明 |
-|------|------|
-| `worker_v2.38.js` | 生產版 Worker，移除調試代碼 |
-| `.github/workflows/update.yml` | 支援 workflow_dispatch inputs |
-| `main.py` | 從環境變數讀取 CUSTOM_BENCHMARK |
-| `calculator.py` | 使用 benchmark 計算報酬率 |
-
-### **環境變數 (Cloudflare Worker)**
-
-必須配置以下變數：
-
-```
-GITHUB_TOKEN = ghp_xxxxxxxxxxxx
-GITHUB_OWNER = chihung1024
-GITHUB_REPO = sheet-trading-journal
-API_SECRET = (optional)
-```
-
----
-
-## ⚠️ 常見問題
-
-### **Q1: Worker 部署後仍然不工作？**
-
-A: 確認部署到正確的 Worker：
-- ✅ `portfolio-dt-proxy`
-- ❌ 不是 `journal-backend`
-
-### **Q2: 如何確認 Worker 版本？**
-
-A: 檢查代碼第 4 行：
-```javascript
- * v2.38: 生產版本 - 使用 workflow_dispatch + inputs 傳遞自訂 benchmark
-```
-
-### **Q3: Benchmark 沒有更新？**
-
-A: 檢查流程：
-1. 清除緩存：`Ctrl + Shift + R`
-2. 重新登入
-3. 輸入新的 benchmark
-4. 等待 2-3 分鐘
-5. 查看 GitHub Actions 日誌
-
-### **Q4: GitHub Actions 顯示 Benchmark=SPY？**
-
-A: 表示 Worker 沒有傳遞參數：
-1. 確認 Worker 版本為 v2.38
-2. 確認環境變數 GITHUB_TOKEN 正確
-3. 強制重新部署 Worker
-
----
-
-## 🎉 功能清單
-
-- ✅ 自訂 Benchmark 標的 (QQQ, NVDA, 0050.TW 等)
-- ✅ 即時更新報價數據
-- ✅ 自動觸發 GitHub Actions
-- ✅ 前端圖表自動更新
-- ✅ 多市場支援 (美/台/韓)
-- ✅ 多使用者隔離
-- ✅ 歷史數據保留 (10 筆快照)
-
----
-
-## 📞 支援
-
-如遇問題，請提供：
-1. Worker 版本號
-2. GitHub Actions 完整日誌
-3. 網頁 Console 錯誤訊息 (F12)
-
----
-
-**更新時間**: 2026-01-19 14:23 CST  
-**版本**: v2.38 (生產版本)  
-**狀態**: ✅ 已修復並測試成功
+If old instructions are needed for forensic comparison, debugging history or migration archaeology, read the pre-tombstone Git revision or recovery branch. Do not copy historical deployment commands into a current production procedure without a new review.
