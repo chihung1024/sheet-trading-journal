@@ -28,7 +28,13 @@ class PortfolioSummary(BaseModel):
     invested_capital: float
     total_pnl: float
     twr: float
+    # Legacy numeric field retained for snapshot/API compatibility. New snapshots
+    # use xirr_status to distinguish a true 0% result from an unavailable XIRR.
     xirr: float = 0.0
+    xirr_status: Optional[str] = None
+    xirr_reason: Optional[str] = None
+    xirr_asof_date: Optional[str] = None
+    xirr_cashflow_conventional: Optional[bool] = None
     realized_pnl: float
     benchmark_twr: float
 
