@@ -17,7 +17,7 @@ import pandas as pd
 
 from ..config import DEFAULT_FX_RATE
 from .currency_detector import CurrencyDetector
-from .dividend_policy import dividend_net_multiplier
+from .dividend_policy import reviewed_dividend_net_multiplier
 
 
 logger = logging.getLogger(__name__)
@@ -315,12 +315,14 @@ def _symbol_component(
                 f"Invalid split factor for {symbol} on {base_date}"
             )
         shares_at_ex = begin_qty / split_factor
-        dividend_income_twd += (
-            shares_at_ex
-            * market_dividend
-            * dividend_net_multiplier(symbol)
-            * cashflow_fx
-        )
+        net_multiplier = reviewed_dividend_net_multiplier(symbol)
+        if net_multiplier is not None:
+            dividend_income_twd += (
+                shares_at_ex
+                * market_dividend
+                * net_multiplier
+                * cashflow_fx
+            )
 
     begin_value = begin_qty * begin_price * begin_fx
     end_value = end_qty * end_price * end_fx
