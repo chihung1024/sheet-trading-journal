@@ -1,0 +1,208 @@
+name: Production Predeploy Read-Only Evidence
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/production-predeploy-readonly.yml'
+      - 'config/production-predeploy-evidence-request.json'
+      - 'config/deployment-environments.json'
+      - 'worker-manifest.json'
+      - 'tools/verify_production_public_frontend.mjs'
+      - 'tools/verify_cloudflare_production_predeploy.mjs'
+      - 'tests/worker_production_public_frontend.test.mjs'
+      - 'tests/worker_cloudflare_production_predeploy.test.mjs'
+      - 'tests/worker_production_predeploy_workflow.test.mjs'
+  push:
+    branches:
+      - main
+    paths:
+      - 'config/production-predeploy-evidence-request.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-predeploy-readonly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  public-production-proof:
+    name: Verify public production served truth
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout evidence verifier source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+
+      - name: Verify D3D-B read-only implementation contracts
+        run: >-
+          node --test
+          tests/worker_production_public_frontend.test.mjs
+          tests/worker_cloudflare_production_predeploy.test.mjs
+          tests/worker_production_predeploy_workflow.test.mjs
+
+      - name: Probe live production Pages and Worker public contract
+        env:
+          AUDIT_OUTPUT: production-public-evidence.json
+        run: node tools/verify_production_public_frontend.mjs
+
+      - name: Upload sanitized public evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: production-public-evidence-${{ github.sha }}
+          path: production-public-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+  cloudflare-control-plane-proof:
+    name: Verify Cloudflare production control plane read-only
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: public-production-proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout exact merged verifier source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+
+      - name: Verify request remains read-only and one-shot scoped
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const request = JSON.parse(fs.readFileSync('config/production-predeploy-evidence-request.json', 'utf8'));
+          const requiredScope = new Set([
+            'production_frontend_live_contract',
+            'production_frontend_explicit_environment',
+            'production_worker_control_plane_link',
+            'production_d1_identity',
+          ]);
+          if (request.status !== 'requested') throw new Error('evidence request status is not requested');
+          if (request.writes_allowed !== false) throw new Error('production writes are not forbidden');
+          if (request.production_deployment_allowed !== false) throw new Error('production deployment is not forbidden');
+          if (request.d1_migration_allowed !== false) throw new Error('D1 migration is not forbidden');
+          if (request.synthetic_production_write_allowed !== false) throw new Error('synthetic production write is not forbidden');
+          for (const item of requiredScope) if (!request.scope.includes(item)) throw new Error(`missing read-only scope: ${item}`);
+          NODE
+
+      - name: Verify protected read-only Cloudflare credentials exist
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+
+      - name: Capture live Worker version and derive immutable Cloudflare resource keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .evidence-raw
+          curl --silent --show-error --fail \
+            --output .evidence-raw/public-worker-version.json \
+            https://journal-backend.chired.workers.dev/api/version
+          node - <<'NODE' > .evidence-raw/resource-keys.env
+          const fs = require('node:fs');
+          const version = JSON.parse(fs.readFileSync('.evidence-raw/public-worker-version.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('worker-manifest.json', 'utf8'));
+          const contract = JSON.parse(fs.readFileSync('config/deployment-environments.json', 'utf8'));
+          const workerVersionId = String(version?.worker_version?.id || '');
+          if (!/^[A-Za-z0-9-]+$/.test(workerVersionId)) throw new Error('invalid public Worker version ID');
+          const script = String(manifest?.service || '');
+          if (!/^[A-Za-z0-9._-]+$/.test(script)) throw new Error('invalid Worker script name');
+          const origin = new URL(contract.production.frontend_origins[0]);
+          if (!origin.hostname.endsWith('.pages.dev')) throw new Error('production frontend is not pages.dev');
+          const project = origin.hostname.slice(0, -'.pages.dev'.length);
+          if (!/^[A-Za-z0-9-]+$/.test(project)) throw new Error('invalid Pages project name');
+          process.stdout.write(`WORKER_VERSION_ID=${workerVersionId}\nWORKER_SCRIPT_NAME=${script}\nPAGES_PROJECT_NAME=${project}\n`);
+          NODE
+          cat .evidence-raw/resource-keys.env >> "$GITHUB_ENV"
+
+      - name: Read current Cloudflare Worker version resources
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --fail \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --output .evidence-raw/cloudflare-worker-version.json \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_SCRIPT_NAME/versions/$WORKER_VERSION_ID"
+
+      - name: Derive deployed D1 UUID from live Worker binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE' > .evidence-raw/d1.env
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('.evidence-raw/cloudflare-worker-version.json', 'utf8'));
+          if (payload?.success !== true) throw new Error('Cloudflare Worker version response failed');
+          const bindings = payload?.result?.resources?.bindings;
+          if (!Array.isArray(bindings)) throw new Error('Worker version has no resource bindings');
+          const binding = bindings.find((item) => item?.name === 'DB' && item?.type === 'd1');
+          const id = String(binding?.id ?? binding?.database_id ?? '');
+          if (!/^[0-9a-fA-F-]{36}$/.test(id)) throw new Error('deployed DB binding has no UUID');
+          process.stdout.write(`LIVE_D1_DATABASE_ID=${id.toLowerCase()}\n`);
+          NODE
+          cat .evidence-raw/d1.env >> "$GITHUB_ENV"
+
+      - name: Read Cloudflare D1 metadata and Pages production configuration
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --fail \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --output .evidence-raw/cloudflare-d1-database.json \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$LIVE_D1_DATABASE_ID"
+          curl --silent --show-error --fail \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --output .evidence-raw/cloudflare-pages-project.json \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PAGES_PROJECT_NAME"
+          curl --silent --show-error --fail \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --output .evidence-raw/cloudflare-pages-deployments.json \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PAGES_PROJECT_NAME/deployments?env=production&per_page=20"
+
+      - name: Verify and sanitize Cloudflare production evidence
+        env:
+          PUBLIC_WORKER_VERSION_JSON: .evidence-raw/public-worker-version.json
+          CLOUDFLARE_WORKER_VERSION_JSON: .evidence-raw/cloudflare-worker-version.json
+          CLOUDFLARE_PAGES_PROJECT_JSON: .evidence-raw/cloudflare-pages-project.json
+          CLOUDFLARE_PAGES_DEPLOYMENTS_JSON: .evidence-raw/cloudflare-pages-deployments.json
+          CLOUDFLARE_D1_DATABASE_JSON: .evidence-raw/cloudflare-d1-database.json
+          AUDIT_OUTPUT: production-cloudflare-evidence.json
+        run: node tools/verify_cloudflare_production_predeploy.mjs
+
+      - name: Upload sanitized Cloudflare evidence only
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: production-cloudflare-evidence-${{ github.sha }}
+          path: production-cloudflare-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Destroy raw control-plane responses
+        if: always()
+        shell: bash
+        run: rm -rf .evidence-raw
