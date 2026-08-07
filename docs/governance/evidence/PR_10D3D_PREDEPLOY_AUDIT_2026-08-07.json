@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "evidence_id": "PR-10D3D-PREDEPLOY-2026-08-07",
+  "status": "in_progress",
+  "baseline_sha": "74fe12010ee3138e07a079a3d45271fddb80b536",
+  "initial_reviewed_implementation_head": "fcd6f2e47c8aa943caad9a97f0cebbfdb26f59ba",
+  "pre_change_recovery_branch": "backup-pre-10d3d-74fe120",
+  "work_branch": "pr-10d3d-production-activation-gate",
+  "runtime_baseline": {
+    "worker_release": "4.07",
+    "api_version": "2.60",
+    "schema_version": 2
+  },
+  "runtime_or_data_deployed_by_this_evidence": false,
+  "schema_3_allowed": false,
+  "recovery_evidence_gate": {
+    "status": "blocked",
+    "max_schema_version_without_pass": 2
+  },
+  "compare": {
+    "status": "ahead",
+    "ahead_by": 20,
+    "behind_by": 0,
+    "changed_file_count": 20
+  },
+  "new_findings": [
+    "N51",
+    "N52",
+    "N53",
+    "N54",
+    "N55",
+    "N56",
+    "N57",
+    "N58",
+    "N59",
+    "N60",
+    "N61",
+    "N62"
+  ],
+  "implemented_in_d3d_a": [
+    "N51",
+    "N52",
+    "N53",
+    "N54",
+    "N55",
+    "N56",
+    "N57"
+  ],
+  "carried_forward": [
+    "N58",
+    "N59",
+    "N60",
+    "N61",
+    "N62",
+    "B01",
+    "B05",
+    "B06",
+    "B07",
+    "B08",
+    "B09",
+    "B11",
+    "B12",
+    "B14",
+    "B15"
+  ],
+  "changed_files_before_evidence_commit": [
+    ".github/workflows/deploy-worker.yml",
+    ".github/workflows/production-contract-audit.yml",
+    "config/recovery-evidence-gate.json",
+    "docs/audits/2026-08-07-production-activation-deep-audit.md",
+    "docs/governance/PR_10D3D_PRODUCTION_ACTIVATION_GATE_ACCEPTANCE.md",
+    "package.json",
+    "tests/test_production_contract_audit.mjs",
+    "tests/worker_d1_identity.test.mjs",
+    "tests/worker_deploy_workflow.test.mjs",
+    "tests/worker_deployment_readiness.test.mjs",
+    "tests/worker_manifest_export.test.mjs",
+    "tests/worker_recovery_evidence_gate.test.mjs",
+    "tools/check_worker_config.mjs",
+    "tools/export_worker_manifest.mjs",
+    "tools/render_wrangler_config.mjs",
+    "tools/verify_d1_identity.mjs",
+    "tools/verify_production_contract.mjs",
+    "tools/verify_recovery_evidence_gate.mjs",
+    "tools/verify_worker_deployment.mjs",
+    "wrangler.toml"
+  ],
+  "required_closeout": {
+    "protected_ci": "pending",
+    "dedicated_production_contract_unit_workflow": "pending",
+    "independent_diff_security_review": "pending",
+    "normal_protected_merge": "pending",
+    "post_merge_ci": "pending",
+    "post_merge_pages": "pending",
+    "production_deployment": "forbidden_in_d3d_a"
+  },
+  "notes": [
+    "N01-N50 and Browser Smoke #17 failure remain append-only history.",
+    "This batch does not modify D1 migrations or financial calculation logic.",
+    "Production frontend explicit Pages configuration remains open under N58/N61 and must be addressed before claiming full production explicit-environment closeout.",
+    "No production reviewer approval is requested during D3D-A because this batch does not deploy production."
+  ]
+}
