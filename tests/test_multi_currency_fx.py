@@ -34,7 +34,7 @@ class CurrencyAwareMarket:
                 fx_frame[currency].astype(float).values,
                 index=fx_frame.index,
             ).sort_index()
-        self.fx_rates = self.fx_rates_by_currency["USD"]
+        self.fx_rates = self.fx_rates_by_currency.get("USD", pd.Series(dtype=float))
 
     def get_fx_snapshot(self, value_date):
         target = pd.Timestamp(value_date).normalize()
@@ -46,7 +46,13 @@ class CurrencyAwareMarket:
         return snapshot
 
     def get_realtime_fx_snapshot(self, value_date=None):
-        return self.get_fx_snapshot(value_date or self.fx_rates.index[-1])
+        if value_date is not None:
+            target = value_date
+        elif not self.fx_rates.empty:
+            target = self.fx_rates.index[-1]
+        else:
+            target = max(frame.index[-1] for frame in self.market_data.values())
+        return self.get_fx_snapshot(target)
 
     def get_price(self, symbol, value_date):
         frame = self.market_data[symbol]
@@ -102,6 +108,32 @@ def base_prices(krw_day2=101000.0):
             {"Date": "2026-08-05", "Close_Adjusted": krw_day2},
         ],
     }
+
+
+def test_twd_only_portfolio_does_not_require_usd_fx_context():
+    prices = {
+        "0050.TW": [
+            {"Date": "2026-08-04", "Close_Adjusted": 50.0},
+            {"Date": "2026-08-05", "Close_Adjusted": 51.0},
+        ]
+    }
+    market = CurrencyAwareMarket(
+        prices,
+        {
+            "2026-08-04": {"TWD": 1.0},
+            "2026-08-05": {"TWD": 1.0},
+        },
+    )
+    tx = transactions([
+        {"Date": "2026-08-05", "Symbol": "0050.TW", "Type": "BUY", "Qty": 10, "Price": 51.0},
+    ])
+
+    snapshot = PortfolioCalculator(tx, market, benchmark_ticker="0050.TW").run()
+
+    assert snapshot is not None
+    assert snapshot.holdings[0].currency == "TWD"
+    assert snapshot.holdings[0].market_value_twd == 510.0
+    assert snapshot.history[-1]["_raw_fx_rates"] == {"TWD": 1.0}
 
 
 def test_krw_market_value_and_price_pnl_use_twd_per_krw():
