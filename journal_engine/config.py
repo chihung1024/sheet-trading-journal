@@ -24,6 +24,19 @@ BASE_CURRENCY = 'TWD'
 EXCHANGE_SYMBOL = 'TWD=X'  # Yahoo: TWD per 1 USD
 DEFAULT_FX_RATE = 32.0
 
+# Yahoo `CUR=X` quotes are native-currency units per 1 USD.
+# TWD is the cross base used to derive TWD per 1 native-currency unit:
+#   TWD/native = (TWD/USD) / (native/USD)
+FX_USD_QUOTE_SYMBOLS = {
+    'TWD': 'TWD=X',
+    'KRW': 'KRW=X',
+    'HKD': 'HKD=X',
+    'CNY': 'CNY=X',
+    'JPY': 'JPY=X',
+    'GBP': 'GBP=X',
+    'EUR': 'EUR=X',
+}
+
 # Benchmark dividend withholding tax rates (Scheme A / total-return benchmark)
 BENCHMARK_TAX_RATE_US = 0.30  # 30% withholding for US ETFs/stocks
 BENCHMARK_TAX_RATE_TW = 0.0   # 0% withholding for Taiwan stocks/ETFs
