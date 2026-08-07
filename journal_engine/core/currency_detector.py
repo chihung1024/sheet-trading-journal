@@ -1,7 +1,7 @@
 """
 CurrencyDetector - 標的原生計價幣別辨識器。
 
-以 Yahoo Finance 常見市場 suffix 辨識交易標的原生幣別。實際換算成
+以 Yahoo Finance 常見市場 suffix 辨識交易標的原生報價單位。實際換算成
 TWD 的歷史／即時匯率由 MarketDataClient 提供；本模組不再對未提供的
 外幣匯率靜默回傳 1.0。
 """
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class CurrencyDetector:
-    """依 Symbol suffix 辨識原生計價幣別。"""
+    """依 Symbol suffix 辨識原生報價單位。"""
 
     CURRENCY_RULES = {
         'TWD': ['.TW', '.TWO'],
@@ -22,14 +22,15 @@ class CurrencyDetector:
         'HKD': ['.HK', '.HKG'],
         'CNY': ['.SS', '.SZ'],
         'JPY': ['.T'],
-        'GBP': ['.L'],
+        # Yahoo/LSE commonly quotes equities in GBp (pence), not GBP.
+        'GBp': ['.L'],
         'EUR': ['.PA', '.DE'],
         'USD': [],
     }
 
     @classmethod
     def detect(cls, symbol: str) -> str:
-        """辨識標的原生計價幣別；無已知 suffix 時維持 USD 相容行為。"""
+        """辨識標的原生報價單位；無已知 suffix 時維持 USD 相容行為。"""
         symbol_upper = str(symbol or '').strip().upper()
 
         for currency, suffixes in cls.CURRENCY_RULES.items():
@@ -39,13 +40,13 @@ class CurrencyDetector:
 
     @classmethod
     def get_fx_multiplier(cls, symbol: str, fx_context) -> float:
-        """取得「TWD / 1 原生幣」換算乘數。
+        """取得「TWD / 1 原生報價單位」換算乘數。
 
         `fx_context` 可為：
         - 傳統單一 float：僅支援 USD/TWD 相容路徑；
-        - mapping：key 為幣別、value 為 TWD per native currency。
+        - mapping：key 為原生報價單位、value 為 TWD per native unit。
 
-        對 KRW/HKD/CNY/JPY/GBP/EUR 若沒有 currency-aware context，必須
+        對 KRW/HKD/CNY/JPY/GBp/EUR 若沒有 currency-aware context，必須
         fail closed；不得再以 1.0 代替真實匯率。
         """
         currency = cls.detect(symbol)
@@ -73,7 +74,7 @@ class CurrencyDetector:
 
     @classmethod
     def format_amount(cls, symbol: str, amount: float) -> str:
-        """以原生幣別格式化金額。"""
+        """以原生報價單位格式化金額。"""
         currency = cls.detect(symbol)
 
         if currency == 'TWD':
@@ -84,6 +85,8 @@ class CurrencyDetector:
             return f"₩{amount:,.0f}"
         if currency == 'HKD':
             return f"HK${amount:,.2f}"
+        if currency == 'GBp':
+            return f"{amount:,.2f} GBp"
         return f"{amount:,.2f} {currency}"
 
     @classmethod
