@@ -254,6 +254,53 @@ class PortfolioValidator:
         return True
 
     @classmethod
+    def validate_xirr_metadata(cls, summary: Any) -> bool:
+        """Validate additive XIRR status/provenance while accepting legacy snapshots."""
+        status = getattr(summary, "xirr_status", None)
+        if status is None:
+            return cls.validate_xirr_value(summary.xirr)
+
+        if status not in {"ok", "not_applicable", "undefined"}:
+            logger.error("XIRR status is invalid: %s", status)
+            return False
+        if not cls.validate_xirr_value(summary.xirr):
+            return False
+
+        reason = getattr(summary, "xirr_reason", None)
+        conventional = getattr(summary, "xirr_cashflow_conventional", None)
+        if conventional is not None and not isinstance(conventional, bool):
+            logger.error("XIRR cash-flow conventional flag is not boolean")
+            return False
+
+        if status == "ok":
+            if reason not in (None, ""):
+                logger.error("Successful XIRR must not carry an error reason")
+                return False
+            asof_date = getattr(summary, "xirr_asof_date", None)
+            if not asof_date:
+                logger.error("Successful XIRR is missing its valuation as-of date")
+                return False
+            try:
+                if pd.isna(pd.Timestamp(asof_date)):
+                    raise ValueError("NaT")
+            except Exception:
+                logger.error("Successful XIRR has an invalid as-of date")
+                return False
+            return True
+
+        try:
+            numeric_value = float(summary.xirr)
+        except (TypeError, ValueError):
+            numeric_value = math.nan
+        if not math.isfinite(numeric_value) or abs(numeric_value) > 1e-12:
+            logger.error("Unavailable XIRR must use the legacy numeric 0.0 sentinel")
+            return False
+        if not isinstance(reason, str) or not reason.strip():
+            logger.error("Unavailable XIRR is missing a machine-readable reason")
+            return False
+        return True
+
+    @classmethod
     def validate_snapshot_for_upload(
         cls,
         snapshot: PortfolioSnapshot,
@@ -304,8 +351,8 @@ class PortfolioValidator:
                 if not is_finite:
                     logger.error("%s summary field %s is not finite", label, field_name)
                     valid = False
-            if not cls.validate_xirr_value(summary.xirr):
-                logger.error("%s summary contains invalid XIRR", label)
+            if not cls.validate_xirr_metadata(summary):
+                logger.error("%s summary contains inconsistent XIRR metadata", label)
                 valid = False
 
         if not transactions_df.empty and not snapshot.history:
