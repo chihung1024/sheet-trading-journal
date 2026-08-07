@@ -24,16 +24,26 @@ import {
     fetchWithDeadline,
 } from '../services/fetchDeadline';
 
+const CALCULATION_JOB_POLL_DELAY_MS = 5000;
+const CALCULATION_JOB_POLL_LIMIT_MS = 20 * 60 * 1000;
+const SNAPSHOT_POLL_DELAY_MS = 5000;
+const SNAPSHOT_POLL_LIMIT_MS = 180000;
+
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
     const rawData = ref(null);
     const records = ref([]);
     const lastUpdate = ref('');
-    const connectionStatus = ref('connected');
+    const connectionStatus = ref('unknown');
+    const snapshotFreshness = ref('unknown');
     const isPolling = ref(false);
     const calculationJob = ref(null);
     let pollTimer = null;
     let calculationJobPollTimer = null;
+    let snapshotPollActive = false;
+    let calculationJobPollActive = false;
+    let snapshotPollEpoch = 0;
+    let calculationJobPollEpoch = 0;
     let triggerUpdatePromise = null;
     let didAttemptCalculationRecovery = false;
 
@@ -43,6 +53,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const getAuth = () => useAuthStore();
     const getToken = () => getAuth().token;
     const getCalculationOwner = () => getAuth().user?.email || '';
+
+    const markSnapshotStale = () => {
+        snapshotFreshness.value = 'stale';
+    };
 
     const fetchWithAuth = async (endpoint, options = {}, retryAfterRefresh = true) => {
         const auth = getAuth();
@@ -104,14 +118,19 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             const json = await fetchWithAuth('/api/portfolio');
             if (json && json.success && json.data) {
                 if (!json.data.updated_at) {
-                    if (records.value.length === 0) resetData();
+                    if (records.value.length === 0) {
+                        resetData();
+                        snapshotFreshness.value = 'loaded';
+                    }
                     return;
                 }
                 if (records.value.length === 0 && json.data.holdings && json.data.holdings.length > 0) return;
                 rawData.value = json.data;
                 lastUpdate.value = json.data.updated_at;
+                snapshotFreshness.value = 'loaded';
             } else if (records.value.length === 0) {
                 resetData();
+                snapshotFreshness.value = 'loaded';
             }
         } catch (error) {
             console.error('fetchSnapshot error:', error);
@@ -148,12 +167,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const clearPendingCalculationRequest = () => clearStoredCalculationRequest(localStorage);
 
     const updatePollingState = () => {
-        isPolling.value = Boolean(pollTimer || calculationJobPollTimer);
+        isPolling.value = snapshotPollActive || calculationJobPollActive;
     };
 
     const stopCalculationJobPolling = () => {
+        calculationJobPollEpoch += 1;
+        calculationJobPollActive = false;
         if (calculationJobPollTimer) {
-            clearInterval(calculationJobPollTimer);
+            clearTimeout(calculationJobPollTimer);
             calculationJobPollTimer = null;
         }
         updatePollingState();
@@ -170,13 +191,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    const pollCalculationJobOnce = async (jobId, addToast) => {
+    const pollCalculationJobOnce = async (jobId, addToast, epoch) => {
         try {
             const json = await fetchWithAuth(`/api/calculation-jobs/${encodeURIComponent(jobId)}`);
+            if (epoch !== calculationJobPollEpoch) return true;
             if (!json?.success || !json.job) return false;
             calculationJob.value = json.job;
             if (json.job.status === 'queued' || json.job.status === 'running') {
-                isPolling.value = true;
+                calculationJobPollActive = true;
+                updatePollingState();
                 return false;
             }
             if (json.job.status === 'succeeded' || json.job.status === 'failed') {
@@ -185,6 +208,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
             return false;
         } catch (error) {
+            if (epoch !== calculationJobPollEpoch) return true;
             if (error?.status === 404) {
                 stopCalculationJobPolling();
                 clearPendingCalculationRequest();
@@ -201,19 +225,28 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         stopCalculationJobPolling();
         const startedAt = Date.now();
         const { addToast } = useToast();
-        isPolling.value = true;
+        calculationJobPollActive = true;
+        const epoch = calculationJobPollEpoch;
+        updatePollingState();
 
-        const completedImmediately = await pollCalculationJobOnce(jobId, addToast);
-        if (completedImmediately) return;
-
-        calculationJobPollTimer = setInterval(async () => {
-            if (Date.now() - startedAt > 20 * 60 * 1000) {
+        const pollAgain = async () => {
+            calculationJobPollTimer = null;
+            if (epoch !== calculationJobPollEpoch) return;
+            if (Date.now() - startedAt > CALCULATION_JOB_POLL_LIMIT_MS) {
                 stopCalculationJobPolling();
                 addToast('計算工作仍在排隊或執行中，稍後重新整理可繼續追蹤', 'info');
                 return;
             }
-            await pollCalculationJobOnce(jobId, addToast);
-        }, 5000);
+
+            const completed = await pollCalculationJobOnce(jobId, addToast, epoch);
+            if (epoch !== calculationJobPollEpoch || completed) return;
+            calculationJobPollTimer = setTimeout(pollAgain, CALCULATION_JOB_POLL_DELAY_MS);
+            updatePollingState();
+        };
+
+        const completedImmediately = await pollCalculationJobOnce(jobId, addToast, epoch);
+        if (epoch !== calculationJobPollEpoch || completedImmediately) return;
+        calculationJobPollTimer = setTimeout(pollAgain, CALCULATION_JOB_POLL_DELAY_MS);
         updatePollingState();
     };
 
@@ -241,7 +274,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 console.warn('無法載入 benchmark 設定，使用預設值', error);
             }
             if (records.value && records.value.length > 0) await fetchSnapshot();
-            else resetData();
+            else {
+                resetData();
+                snapshotFreshness.value = 'loaded';
+            }
         } catch (error) {
             console.error('fetchAll error:', error);
             connectionStatus.value = 'error';
@@ -264,7 +300,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 body: JSON.stringify(formData)
             });
             if (json && json.success) {
-                addToast('新增成功', 'success');
+                markSnapshotStale();
+                addToast('新增成功；持倉快照待重新計算', 'success');
                 await fetchRecords();
                 if (json.auto_update) handleAutoUpdateSignal('🚀 這是您的第一筆交易，系統正自動啟動背景計算...');
                 return true;
@@ -288,7 +325,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 body: JSON.stringify(formData)
             });
             if (json && json.success) {
-                addToast('更新成功', 'success');
+                markSnapshotStale();
+                addToast('更新成功；持倉快照待重新計算', 'success');
                 await fetchRecords();
                 return true;
             }
@@ -311,7 +349,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 body: JSON.stringify({ id })
             });
             if (json && json.success) {
-                addToast('刪除成功', 'success');
+                markSnapshotStale();
+                addToast('刪除成功；持倉快照待重新計算', 'success');
                 if (json.message === 'RELOAD_UI') {
                     records.value = [];
                     handleAutoUpdateSignal('🧹 紀錄已清空，系統正重置資產數據...');
@@ -383,27 +422,36 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const stopPolling = () => {
+        snapshotPollEpoch += 1;
+        snapshotPollActive = false;
         if (pollTimer) {
-            clearInterval(pollTimer);
+            clearTimeout(pollTimer);
             pollTimer = null;
         }
         updatePollingState();
     };
 
     const startPolling = () => {
-        if (pollTimer) return;
+        if (snapshotPollActive) return;
         const startTime = Date.now();
         const initialTime = lastUpdate.value;
         const { addToast } = useToast();
-        isPolling.value = true;
+        snapshotPollEpoch += 1;
+        const epoch = snapshotPollEpoch;
+        snapshotPollActive = true;
+        updatePollingState();
 
-        pollTimer = setInterval(async () => {
-            if (Date.now() - startTime > 180000) {
+        const pollAgain = async () => {
+            pollTimer = null;
+            if (epoch !== snapshotPollEpoch) return;
+            if (Date.now() - startTime > SNAPSHOT_POLL_LIMIT_MS) {
                 stopPolling();
                 return;
             }
+
             try {
                 const json = await fetchWithAuth('/api/portfolio');
+                if (epoch !== snapshotPollEpoch) return;
                 if (json && json.success && json.data) {
                     const newTime = json.data.updated_at;
                     const isNewData = newTime && newTime !== initialTime && (json.data.holdings?.length > 0 || records.value.length === 0);
@@ -412,12 +460,20 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                         stopPolling();
                         await fetchAll();
                         addToast(isResetConfirmed ? '✅ 所有資產數據已歸零' : '✅ 數據已更新完畢！', 'success');
+                        return;
                     }
                 }
             } catch (error) {
+                if (epoch !== snapshotPollEpoch) return;
                 console.warn('SmartPolling check error:', error);
             }
-        }, 5000);
+
+            if (epoch !== snapshotPollEpoch || !snapshotPollActive) return;
+            pollTimer = setTimeout(pollAgain, SNAPSHOT_POLL_DELAY_MS);
+            updatePollingState();
+        };
+
+        pollTimer = setTimeout(pollAgain, SNAPSHOT_POLL_DELAY_MS);
         updatePollingState();
     };
 
@@ -457,6 +513,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 body: JSON.stringify({ benchmark: targetBenchmark })
             });
             if (!responseData) throw new Error('後端無回應');
+            markSnapshotStale();
 
             if (responseData.job?.id) {
                 calculationJob.value = responseData.job;
@@ -511,6 +568,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         unrealizedPnL,
         dailyPnL,
         connectionStatus,
+        snapshotFreshness,
         isPolling,
         calculationJob,
         currentGroup,
@@ -527,6 +585,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         triggerUpdate,
         resetData,
         startPolling,
+        markSnapshotStale,
         resumePendingCalculationJob,
     };
 });

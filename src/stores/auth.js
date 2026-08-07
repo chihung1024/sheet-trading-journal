@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { CONFIG } from '../config';
 import { exchangeGoogleCredential } from '../services/authApi.js';
 import {
+  TOKEN_STORAGE_KEY,
   persistAuthentication,
   readAuthenticationStorage,
 } from '../services/authStorage.js';
@@ -24,6 +25,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref('');
   const user = ref({ name: '', email: '', picture: '' });
   let refreshController = null;
+  let storageSyncStarted = false;
 
   const isTokenExpired = () => {
     if (!token.value) return true;
@@ -74,10 +76,33 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = () => getRefreshController().refresh();
   const cancelTokenRefresh = () => refreshController?.cancel();
 
-  const logout = () => {
+  const clearInMemoryAuthState = () => {
     cancelTokenRefresh();
     token.value = '';
     user.value = { name: '', email: '', picture: '' };
+  };
+
+  const handleStorageEvent = (event) => {
+    if (event.key === TOKEN_STORAGE_KEY && event.newValue === null) {
+      clearInMemoryAuthState();
+      console.log('✅ 已同步其他分頁的登出狀態');
+    }
+  };
+
+  const startStorageSync = () => {
+    if (storageSyncStarted || !globalThis.window?.addEventListener) return;
+    globalThis.window.addEventListener('storage', handleStorageEvent);
+    storageSyncStarted = true;
+  };
+
+  const stopStorageSync = () => {
+    if (!storageSyncStarted || !globalThis.window?.removeEventListener) return;
+    globalThis.window.removeEventListener('storage', handleStorageEvent);
+    storageSyncStarted = false;
+  };
+
+  const logout = () => {
+    clearInMemoryAuthState();
     try {
       clearSensitiveProjectStorage(localStorage);
     } catch (error) {
@@ -137,5 +162,7 @@ export const useAuthStore = defineStore('auth', () => {
     isTokenExpired,
     refreshToken,
     cancelTokenRefresh,
+    startStorageSync,
+    stopStorageSync,
   };
 });

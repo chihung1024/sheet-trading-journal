@@ -1,3 +1,9 @@
+import { readApiJson } from './apiResponse.js';
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithDeadline,
+} from './fetchDeadline.js';
+
 const RECORD_UPDATE_FIELDS = Object.freeze([
   'id',
   'txn_date',
@@ -71,6 +77,16 @@ export class PartialRecordTagBatchError extends Error {
   }
 }
 
+const normalizeRecordTagError = (error, recordId) => {
+  if (error instanceof RecordTagUpdateError) return error;
+  return new RecordTagUpdateError(error?.message || 'Record update request failed', {
+    recordId,
+    status: error?.status ?? null,
+    code: error?.apiCode || error?.code || 'NETWORK_ERROR',
+    cause: error,
+  });
+};
+
 export async function updateOneRecordTag({
   apiBaseUrl,
   token,
@@ -90,36 +106,31 @@ export async function updateOneRecordTag({
   }
 
   const payload = buildRecordTagUpdatePayload(record, tag);
-  let response;
+  let body;
   try {
-    response = await fetchImpl(`${apiBaseUrl.replace(/\/+$/, '')}/api/records`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    body = await fetchWithDeadline(
+      `${apiBaseUrl.replace(/\/+$/, '')}/api/records`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    });
-  } catch (cause) {
-    throw new RecordTagUpdateError('Record update request failed', {
-      recordId: payload.id,
-      code: 'NETWORK_ERROR',
-      cause,
-    });
+      {
+        timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+        fetchImpl,
+        responseHandler: (response) => readApiJson(response, { endpoint: '/api/records' }),
+      },
+    );
+  } catch (error) {
+    throw normalizeRecordTagError(error, payload.id);
   }
 
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new RecordTagUpdateError(body?.error || `Record update failed with HTTP ${response.status}`, {
-      recordId: payload.id,
-      status: response.status,
-      code: body?.error_meta?.code || 'HTTP_ERROR',
-    });
-  }
   if (!body || body.success !== true) {
     throw new RecordTagUpdateError(body?.error || 'Record update was not confirmed', {
       recordId: payload.id,
-      status: response.status,
       code: body?.error_meta?.code || 'APPLICATION_ERROR',
     });
   }
