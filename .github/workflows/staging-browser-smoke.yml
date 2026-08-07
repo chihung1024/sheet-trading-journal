@@ -24,11 +24,6 @@ jobs:
 
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
-      STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
-      STAGING_E2E_GOOGLE_CLIENT_SECRET: ${{ secrets.STAGING_E2E_GOOGLE_CLIENT_SECRET }}
-      STAGING_E2E_GOOGLE_REFRESH_TOKEN: ${{ secrets.STAGING_E2E_GOOGLE_REFRESH_TOKEN }}
-      STAGING_E2E_EXPECTED_GOOGLE_SUB: ${{ secrets.STAGING_E2E_EXPECTED_GOOGLE_SUB }}
-      STAGING_E2E_EXPECTED_GOOGLE_EMAIL: ${{ secrets.STAGING_E2E_EXPECTED_GOOGLE_EMAIL }}
       STAGING_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/staging-e2e-google-id-token
 
     steps:
@@ -72,21 +67,12 @@ jobs:
           console.log(`STAGING_E2E_API_ORIGIN=${contract.staging.api_origin}`);
           NODE
 
-      - name: Verify dedicated staging OAuth credential contract
+      - name: Verify dedicated staging OAuth client is non-production
+        env:
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
         shell: bash
         run: |
           set -euo pipefail
-          for name in \
-            STAGING_GOOGLE_CLIENT_ID \
-            STAGING_E2E_GOOGLE_CLIENT_SECRET \
-            STAGING_E2E_GOOGLE_REFRESH_TOKEN \
-            STAGING_E2E_EXPECTED_GOOGLE_SUB; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "Required staging E2E credential is missing: $name" >&2
-              exit 1
-            fi
-          done
-
           node <<'NODE'
           const contract = require('./config/deployment-environments.json');
           const stagingClient = String(process.env.STAGING_GOOGLE_CLIENT_ID || '').trim();
@@ -99,6 +85,12 @@ jobs:
           NODE
 
       - name: Mint fresh Google ID token for synthetic staging account
+        env:
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
+          STAGING_E2E_GOOGLE_CLIENT_SECRET: ${{ secrets.STAGING_E2E_GOOGLE_CLIENT_SECRET }}
+          STAGING_E2E_GOOGLE_REFRESH_TOKEN: ${{ secrets.STAGING_E2E_GOOGLE_REFRESH_TOKEN }}
+          STAGING_E2E_EXPECTED_GOOGLE_SUB: ${{ secrets.STAGING_E2E_EXPECTED_GOOGLE_SUB }}
+          STAGING_E2E_EXPECTED_GOOGLE_EMAIL: ${{ secrets.STAGING_E2E_EXPECTED_GOOGLE_EMAIL }}
         run: node tools/mint_staging_e2e_id_token.mjs
 
       - name: Install exact-pinned Playwright test runner
