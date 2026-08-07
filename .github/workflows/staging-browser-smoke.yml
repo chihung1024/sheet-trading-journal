@@ -24,7 +24,6 @@ jobs:
 
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
-      STAGING_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/staging-e2e-google-id-token
 
     steps:
       - name: Validate exact source input
@@ -134,6 +133,7 @@ jobs:
           STAGING_E2E_GOOGLE_REFRESH_TOKEN: ${{ secrets.STAGING_E2E_GOOGLE_REFRESH_TOKEN }}
           STAGING_E2E_EXPECTED_GOOGLE_SUB: ${{ secrets.STAGING_E2E_EXPECTED_GOOGLE_SUB }}
           STAGING_E2E_EXPECTED_GOOGLE_EMAIL: ${{ secrets.STAGING_E2E_EXPECTED_GOOGLE_EMAIL }}
+          STAGING_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/staging-e2e-google-id-token
         run: node tools/mint_staging_e2e_id_token.mjs
 
       - name: Install exact-pinned Playwright test runner
@@ -156,9 +156,12 @@ jobs:
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
           STAGING_E2E_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
+          STAGING_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/staging-e2e-google-id-token
         run: e2e/node_modules/.bin/playwright test e2e/staging-smoke.spec.mjs --config=e2e/playwright.config.mjs
 
       - name: Remove temporary Google ID token
         if: ${{ always() }}
+        env:
+          STAGING_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/staging-e2e-google-id-token
         shell: bash
         run: rm -f "$STAGING_E2E_ID_TOKEN_FILE"
