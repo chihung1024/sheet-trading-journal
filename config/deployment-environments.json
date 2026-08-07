@@ -17,13 +17,15 @@
     "frontend_origins": [
       "https://sheet-trading-journal.pages.dev",
       "https://chihung1024.github.io"
-    ]
+    ],
+    "d1_database_name": "trading-journal-production"
   },
   "staging": {
     "pages_branch": "staging",
     "frontend_origin": "https://staging.sheet-trading-journal.pages.dev",
     "api_origin": "https://journal-backend-staging.chired.workers.dev",
-    "deploy_environment": "staging"
+    "deploy_environment": "staging",
+    "d1_database_name": "trading-journal-staging"
   },
   "non_production": {
     "allowed_deploy_environments": [
