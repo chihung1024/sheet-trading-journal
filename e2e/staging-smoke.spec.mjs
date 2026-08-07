@@ -7,6 +7,7 @@ const contract = JSON.parse(
 
 const stagingFrontend = String(process.env.STAGING_E2E_BASE_URL || '').trim();
 const stagingApi = String(process.env.STAGING_E2E_API_ORIGIN || '').trim();
+const stagingGoogleClientId = String(process.env.STAGING_E2E_GOOGLE_CLIENT_ID || '').trim();
 const tokenFile = String(process.env.STAGING_E2E_ID_TOKEN_FILE || '').trim();
 
 if (stagingFrontend !== contract.staging.frontend_origin) {
@@ -14,6 +15,12 @@ if (stagingFrontend !== contract.staging.frontend_origin) {
 }
 if (stagingApi !== contract.staging.api_origin) {
   throw new Error('STAGING_E2E_API_ORIGIN does not match the fixed staging API');
+}
+if (!/^\d+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i.test(stagingGoogleClientId)) {
+  throw new Error('STAGING_E2E_GOOGLE_CLIENT_ID is required and must be a Google web OAuth client ID');
+}
+if (contract.production.google_client_ids.includes(stagingGoogleClientId)) {
+  throw new Error('STAGING_E2E_GOOGLE_CLIENT_ID cannot be a production OAuth client');
 }
 if (!tokenFile) throw new Error('STAGING_E2E_ID_TOKEN_FILE is required');
 
@@ -104,13 +111,14 @@ test('fixed staging login, browser-origin CRUD, cleanup, and logout', async ({ p
     await route.continue();
   });
 
-  await page.addInitScript((credential) => {
+  await page.addInitScript(({ credential, expectedClientId }) => {
     Object.defineProperty(window, 'google', {
       configurable: true,
       value: {
         accounts: {
           id: {
             initialize(options) {
+              window.__stagingE2eObservedGoogleClientId = options.client_id || null;
               window.__stagingE2eGoogleCredentialCallback = options.callback;
             },
             renderButton(container) {
@@ -118,6 +126,7 @@ test('fixed staging login, browser-origin CRUD, cleanup, and logout', async ({ p
               button.type = 'button';
               button.dataset.e2eGoogleSignin = 'true';
               button.textContent = 'Staging E2E Google Sign-In';
+              button.disabled = window.__stagingE2eObservedGoogleClientId !== expectedClientId;
               button.addEventListener('click', () => {
                 window.__stagingE2eGoogleCredentialCallback?.({ credential });
               });
@@ -127,11 +136,15 @@ test('fixed staging login, browser-origin CRUD, cleanup, and logout', async ({ p
         },
       },
     });
-  }, googleIdToken);
+  }, { credential: googleIdToken, expectedClientId: stagingGoogleClientId });
 
   try {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(
+      () => page.evaluate(() => window.__stagingE2eObservedGoogleClientId || null),
+    ).toBe(stagingGoogleClientId);
     await expect(page.locator('[data-e2e-google-signin="true"]')).toBeVisible();
+    await expect(page.locator('[data-e2e-google-signin="true"]')).toBeEnabled();
     await page.locator('[data-e2e-google-signin="true"]').click();
 
     await expect(page.locator('.login-overlay')).toHaveCount(0);
