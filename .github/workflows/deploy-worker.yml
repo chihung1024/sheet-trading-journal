@@ -62,6 +62,9 @@ jobs:
       - name: Verify runtime Recovery Evidence Gate
         run: node tools/verify_recovery_evidence_gate.mjs
 
+      - name: Verify deployable production runtime preconditions
+        run: node tools/verify_production_runtime_preconditions.mjs
+
       - name: Verify production activation authority from protected main control plane
         shell: bash
         env:
@@ -139,6 +142,9 @@ jobs:
           npm run worker:config:check
           npm run worker:schema:test
           npm run worker:recovery-gate:check
+
+      - name: Re-verify deployable production runtime preconditions
+        run: node tools/verify_production_runtime_preconditions.mjs
 
       - name: Re-verify production activation authority from latest protected main
         shell: bash
