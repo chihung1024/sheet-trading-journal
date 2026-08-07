@@ -45,6 +45,10 @@ test('staging browser workflow is manual, protected, exact-SHA, and credential f
   assert.match(workflow, /environment:\s*staging/);
   assert.match(workflow, /source_sha:/);
   assert.match(workflow, /\^\[0-9a-fA-F\]\{40\}\$/);
+  assert.match(workflow, /git merge-base --is-ancestor/);
+  assert.match(workflow, /git rev-parse origin\/staging/);
+  assert.match(workflow, /verify_staging_worker_deployment\.mjs/);
+  assert.match(workflow, /EXPECTED_SHA:\s*\$\{\{ inputs\.source_sha \}\}/);
   assert.match(workflow, /STAGING_GOOGLE_CLIENT_ID/);
   assert.match(workflow, /STAGING_E2E_GOOGLE_CLIENT_SECRET/);
   assert.match(workflow, /STAGING_E2E_GOOGLE_REFRESH_TOKEN/);
@@ -52,6 +56,7 @@ test('staging browser workflow is manual, protected, exact-SHA, and credential f
   assert.match(workflow, /mint_staging_e2e_id_token\.mjs/);
   assert.match(workflow, /playwright\s+install[^\n]*chromium/);
   assert.match(workflow, /staging-smoke\.spec\.mjs/);
+  assert.match(workflow, /STAGING_E2E_GOOGLE_CLIENT_ID:\s*\$\{\{ secrets\.STAGING_GOOGLE_CLIENT_ID \}\}/);
   assert.match(workflow, /always\(\)/);
   assert.match(workflow, /rm\s+-f/);
   assertNoProductionIdentity(workflow, 'staging-browser-smoke workflow');
@@ -89,6 +94,9 @@ test('Playwright smoke derives staging identities from environment and blocks pr
   assert.equal(pkg.devDependencies['@playwright/test'], '1.62.0');
   assert.match(config, /STAGING_E2E_BASE_URL/);
   assert.match(smoke, /STAGING_E2E_API_ORIGIN/);
+  assert.match(smoke, /STAGING_E2E_GOOGLE_CLIENT_ID/);
+  assert.match(smoke, /__stagingE2eObservedGoogleClientId/);
+  assert.match(smoke, /toBe\(stagingGoogleClientId\)/);
   assert.match(smoke, /STAGING_E2E_ID_TOKEN_FILE/);
   assert.match(smoke, /page\.addInitScript|context\.addInitScript/);
   assert.match(smoke, /google/);
