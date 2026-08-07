@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256_RE = /^[0-9a-f]{64}$/i;
 const COMMIT_RE = /^[0-9a-f]{40}$/i;
 const GOOGLE_CLIENT_ID_RE = /^\d+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i;
 const EXPECTED_SERVICE = "journal-backend";
@@ -39,22 +41,39 @@ if (!Array.isArray(production.google_client_ids) || production.google_client_ids
 }
 const expectedAllowedOrigins = production.frontend_origins.join(",");
 const expectedGoogleClientId = String(production.google_client_ids[0] || "").trim();
-const expectedProductionD1Name = String(production.d1_database_name || "").trim();
 const expectedStagingD1Name = String(staging?.d1_database_name || "").trim();
+const productionD1Status = String(production.d1_identity_status || "").trim();
 if (!GOOGLE_CLIENT_ID_RE.test(expectedGoogleClientId)) {
   throw new Error("Reviewed production Google OAuth client ID is invalid");
-}
-if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(expectedProductionD1Name)) {
-  throw new Error("Reviewed production D1 database name is missing or invalid");
 }
 if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(expectedStagingD1Name)) {
   throw new Error("Reviewed staging D1 database name is missing or invalid");
 }
-if (expectedProductionD1Name === expectedStagingD1Name) {
-  throw new Error("Production and staging D1 database names must differ");
+if (!new Set(["unverified", "verified"]).has(productionD1Status)) {
+  throw new Error("production.d1_identity_status must be unverified or verified");
 }
-if (databaseName !== expectedProductionD1Name) {
-  throw new Error(`CLOUDFLARE_D1_DATABASE_NAME must equal reviewed production D1 name ${expectedProductionD1Name}`);
+if (databaseName === expectedStagingD1Name) {
+  throw new Error("Refusing to render production config with the reviewed staging D1 database name");
+}
+
+if (productionD1Status === "verified") {
+  const expectedProductionD1Name = String(production.d1_database_name || "").trim();
+  const expectedProductionD1IdSha256 = String(production.d1_database_id_sha256 || "").trim().toLowerCase();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(expectedProductionD1Name)) {
+    throw new Error("Verified production D1 authority requires a valid database name");
+  }
+  if (!SHA256_RE.test(expectedProductionD1IdSha256)) {
+    throw new Error("Verified production D1 authority requires a SHA-256 database ID fingerprint");
+  }
+  const observedIdSha256 = createHash("sha256").update(databaseId.toLowerCase()).digest("hex");
+  if (databaseName !== expectedProductionD1Name) {
+    throw new Error("Protected production D1 database name does not match reviewed authority");
+  }
+  if (observedIdSha256 !== expectedProductionD1IdSha256) {
+    throw new Error("Protected production D1 database ID does not match reviewed authority fingerprint");
+  }
+} else if (production.d1_database_name !== null || production.d1_database_id_sha256 !== null) {
+  throw new Error("Unverified production D1 identity must not contain guessed database authority values");
 }
 
 let config = await readFile(sourcePath, "utf8");
@@ -110,6 +129,7 @@ await writeFile(outputPath, config, { encoding: "utf8", mode: 0o600 });
 console.log(`Rendered production Wrangler config: ${outputPath}`);
 console.log(`Worker source commit: ${sourceCommit.toLowerCase()}`);
 console.log(`D1 database name: ${databaseName}`);
+console.log(`Production D1 authority status: ${productionD1Status}`);
 console.log(`Production origin count: ${production.frontend_origins.length}`);
 
 function requireExact(input, needle, label) {
