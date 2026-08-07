@@ -40,10 +40,10 @@
                         股數 <span class="sort-icon">{{ getSortIcon('qty') }}</span>
                     </th>
                     <th @click="sortBy('avg_cost_usd')" class="text-right sortable sticky-th">
-                        成本(USD) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
+                        成本(原幣) <span class="sort-icon">{{ getSortIcon('avg_cost_usd') }}</span>
                     </th>
                     <th @click="sortBy('current_price_origin')" class="text-right sortable sticky-th">
-                        現價 <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
+                        現價(原幣) <span class="sort-icon">{{ getSortIcon('current_price_origin') }}</span>
                     </th>
                     <th @click="sortBy('daily_change_percent')" class="text-right sortable sticky-th">
                         漲跌幅 <span class="sort-icon">{{ getSortIcon('daily_change_percent') }}</span>
@@ -79,6 +79,7 @@
                     <td class="col-symbol">
                         <div class="symbol-wrapper">
                             <span class="symbol-text">{{ h.symbol }}</span>
+                            <span class="currency-badge">{{ h.currency || 'USD' }}</span>
                             <span class="symbol-badge" v-if="h.pnl_percent > 50">🔥</span>
                         </div>
                     </td>
@@ -127,10 +128,11 @@
             <div class="m-card-header">
                 <div class="m-symbol-group">
                     <span class="m-symbol">{{ h.symbol }}</span>
+                    <span class="currency-badge">{{ h.currency || 'USD' }}</span>
                     <span class="m-fire" v-if="h.pnl_percent > 50">🔥</span>
                 </div>
                 <div class="m-price-group">
-                    <span class="m-price">{{ formatNumber(h.current_price_origin, 2) }}</span>
+                    <span class="m-price">{{ formatNumber(h.current_price_origin, 2) }} {{ h.currency || 'USD' }}</span>
                     <span class="m-change" :class="getTrendClass(h.daily_change_usd)">
                          {{ h.daily_change_percent >= 0 ? '+' : '' }}{{ safeNum(h.daily_change_percent) }}%
                     </span>
@@ -143,8 +145,8 @@
                     <span class="m-val">{{ formatNumber(h.qty, 2) }}</span>
                 </div>
                 <div class="m-grid-item text-right">
-                    <span class="m-label">平均成本</span>
-                    <span class="m-val">{{ formatNumber(h.avg_cost_usd, 2) }}</span>
+                    <span class="m-label">平均成本（原幣）</span>
+                    <span class="m-val">{{ formatNumber(h.avg_cost_usd, 2) }} {{ h.currency || 'USD' }}</span>
                 </div>
                 <div class="m-grid-item">
                     <span class="m-label">台幣市值</span>
@@ -209,7 +211,6 @@ const totalMarketValue = computed(() => {
     return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
 });
 
-// 使用 store 計算好的數據
 const filteredHoldings = computed(() => {
     let result = store.holdings;
     
@@ -272,14 +273,12 @@ const highlightRow = (symbol) => {
 };
 
 const handleScroll = () => {
-    // 檢測桌面版表格捲動
     if (tableContainer.value) {
         const { scrollTop: top, scrollHeight, clientHeight } = tableContainer.value;
         if (scrollHeight - top - clientHeight < 100 && displayLimit.value < filteredHoldings.value.length) {
             displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
         }
     }
-    // 注意：手機版使用 Window 捲動檢測通常在 App.vue 或更高層處理，這裡簡化處理
     if (window.innerWidth < 768 && (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
          if (displayLimit.value < filteredHoldings.value.length) {
             displayLimit.value = Math.min(displayLimit.value + 20, filteredHoldings.value.length);
@@ -303,7 +302,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 共用樣式 */
 .card-header { 
     display: flex; 
     justify-content: space-between; 
@@ -337,20 +335,19 @@ h3 { margin: 0; font-size: 1.125rem; }
 
 .filter-select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-main); font-size: 0.95rem; cursor: pointer; }
 
-/* 桌面版表格 (Desktop Table) */
 .table-container { overflow-x: auto; max-height: 600px; overflow-y: auto; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
 th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: 0.85rem; font-weight: 600; background: var(--bg-card); z-index: 10; white-space: nowrap; }
-.sticky-th { position: sticky; top: 0; } /* 固定表頭 */
+.sticky-th { position: sticky; top: 0; }
 td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
 .row-item { transition: background 0.2s; cursor: pointer; }
 .row-item:hover { background-color: var(--bg-secondary); }
 
 .symbol-text { font-weight: 700; color: var(--primary); font-family: 'JetBrains Mono', monospace; }
 .symbol-badge { margin-left: 6px; font-size: 0.8rem; }
+.currency-badge { margin-left: 6px; padding: 2px 5px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: var(--bg-secondary); color: var(--text-sub); border: 1px solid var(--border-color); vertical-align: middle; }
 .price-change { font-size: 0.85rem; margin-top: 2px; }
 
-/* 數字格式 */
 .text-right { text-align: right; }
 .text-sub { color: var(--text-sub); }
 .font-num { font-family: 'JetBrains Mono', monospace; }
@@ -362,10 +359,8 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 
 .roi-badge { padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; display: inline-block; min-width: 68px; text-align: center; }
 
-/* 手機版視圖 (Mobile View) - 預設隱藏 */
 .mobile-view { display: none; }
 
-/* Mobile Card Styling */
 .mobile-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -400,10 +395,9 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .empty-state { text-align: center; padding: 40px; color: var(--text-sub); }
 .empty-icon { font-size: 2.5rem; margin-bottom: 8px; opacity: 0.5; }
 
-/* RWD Media Queries */
 @media (max-width: 768px) {
-    .desktop-view { display: none; } /* 隱藏桌面表格 */
-    .mobile-view { display: block; } /* 顯示手機卡片 */
+    .desktop-view { display: none; }
+    .mobile-view { display: block; }
     
     .card-header { flex-direction: column; align-items: stretch; gap: 12px; }
     .header-left { flex-direction: row; justify-content: space-between; align-items: center; }
