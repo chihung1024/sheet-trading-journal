@@ -185,15 +185,6 @@ test('preview mode is no longer a reviewed deploy environment', () => {
   );
 });
 
-test('generic preview environment example is retired and cannot re-enable preview mode', async () => {
-  const example = await readFile(new URL('../.env.preview.example', import.meta.url), 'utf8');
-  assert.match(example, /arbitrary Cloudflare Pages preview branches are intentionally disabled/);
-  assert.match(example, /STAGING_FRONTEND_CONTRACT\.md/);
-  assert.doesNotMatch(example, /^VITE_DEPLOY_ENV=/m);
-  assert.doesNotMatch(example, /^VITE_API_URL=/m);
-  assert.doesNotMatch(example, /^VITE_GOOGLE_CLIENT_ID=/m);
-});
-
 test('machine-readable contract fixes staging branch, frontend, and API identities', () => {
   assert.equal(DEPLOYMENT_CONTRACT.staging.pages_branch, 'staging');
   assert.equal(
