@@ -86,9 +86,9 @@ test('Playwright smoke derives staging identities from environment and blocks pr
   assert.match(smoke, /page\.addInitScript|context\.addInitScript/);
   assert.match(smoke, /google/);
   assert.match(smoke, /\/api\/records/);
-  assert.match(smoke, /method:\s*['"]POST['"]/);
-  assert.match(smoke, /method:\s*['"]PUT['"]/);
-  assert.match(smoke, /method:\s*['"]DELETE['"]/);
+  assert.match(smoke, /browserApi\(page,\s*['"]POST['"]/);
+  assert.match(smoke, /browserApi\(page,\s*['"]PUT['"]/);
+  assert.match(smoke, /browserApi\(page,\s*['"]DELETE['"]/);
   assert.match(smoke, /finally/);
   assert.match(smoke, /logout/i);
   assert.match(smoke, /request/);
