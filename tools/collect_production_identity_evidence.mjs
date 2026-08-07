@@ -105,14 +105,37 @@ export async function collectProductionIdentityEvidence({
   const frontendHtml = await frontendResponse.text();
   const headerCsp = normalizePolicy(frontendResponse.headers.get('content-security-policy'));
   const metaCsp = normalizePolicy(extractMetaCsp(frontendHtml));
+  const headerConnect = connectSources(headerCsp);
+  const metaConnect = connectSources(metaCsp);
+  const liveAllowsProductionApi = Boolean(
+    headerCsp
+      && metaCsp
+      && headerConnect.has(productionApiOrigin)
+      && metaConnect.has(productionApiOrigin),
+  );
+  const liveRejectsStagingApi = Boolean(
+    headerCsp
+      && metaCsp
+      && (
+        !stagingApiOrigin
+        || (!headerConnect.has(stagingApiOrigin) && !metaConnect.has(stagingApiOrigin))
+      ),
+  );
+
   if (frontendResponse.status !== 200) errors.push(`live production frontend returned HTTP ${frontendResponse.status}`);
   if (!headerCsp) errors.push('live Cloudflare Pages response is missing Content-Security-Policy header');
   if (!metaCsp) errors.push('live production HTML is missing meta Content-Security-Policy');
-  for (const [label, policy] of [['header', headerCsp], ['meta', metaCsp]]) {
-    if (!policy) continue;
-    const connect = connectSources(policy);
-    if (!connect.has(productionApiOrigin)) errors.push(`live ${label} CSP does not allow reviewed production API origin`);
-    if (stagingApiOrigin && connect.has(stagingApiOrigin)) errors.push(`live ${label} CSP incorrectly allows staging API origin`);
+  if (headerCsp && !headerConnect.has(productionApiOrigin)) {
+    errors.push('live header CSP does not allow reviewed production API origin');
+  }
+  if (metaCsp && !metaConnect.has(productionApiOrigin)) {
+    errors.push('live meta CSP does not allow reviewed production API origin');
+  }
+  if (stagingApiOrigin && headerConnect.has(stagingApiOrigin)) {
+    errors.push('live header CSP incorrectly allows staging API origin');
+  }
+  if (stagingApiOrigin && metaConnect.has(stagingApiOrigin)) {
+    errors.push('live meta CSP incorrectly allows staging API origin');
   }
 
   const result = {
@@ -134,8 +157,8 @@ export async function collectProductionIdentityEvidence({
       live_frontend_http_200: frontendResponse.status === 200,
       live_csp_header_present: Boolean(headerCsp),
       live_csp_meta_present: Boolean(metaCsp),
-      live_csp_allows_production_api: Boolean(headerCsp && metaCsp && connectSources(headerCsp).has(productionApiOrigin) && connectSources(metaCsp).has(productionApiOrigin)),
-      live_csp_rejects_staging_api: Boolean(headerCsp && metaCsp && (!stagingApiOrigin || (!connectSources(headerCsp).has(stagingApiOrigin) && !connectSources(metaCsp).has(stagingApiOrigin))),
+      live_csp_allows_production_api: liveAllowsProductionApi,
+      live_csp_rejects_staging_api: liveRejectsStagingApi,
     },
     production_d1: {
       database_name: observedD1Name || null,
@@ -167,7 +190,9 @@ async function getCloudflareJson(url, headers, fetchImpl, label) {
     throw new Error(`${label} API did not return JSON (HTTP ${response.status})`);
   }
   if (!response.ok || body?.success !== true || !body?.result) {
-    const codes = Array.isArray(body?.errors) ? body.errors.map((item) => item?.code).filter(Boolean).join(',') : '';
+    const codes = Array.isArray(body?.errors)
+      ? body.errors.map((item) => item?.code).filter(Boolean).join(',')
+      : '';
     throw new Error(`${label} API failed (HTTP ${response.status}${codes ? `; codes=${codes}` : ''})`);
   }
   return body;
@@ -180,8 +205,13 @@ function readPlainTextVar(envVars, name) {
 }
 
 function extractMetaCsp(html) {
-  const match = String(html || '').match(/<meta\s+http-equiv=["']Content-Security-Policy["']\s+content=["']([\s\S]*?)["']\s*\/?>/i);
-  return match?.[1] || '';
+  const tags = String(html || '').match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    if (!/http-equiv\s*=\s*["']Content-Security-Policy["']/i.test(tag)) continue;
+    const content = tag.match(/content\s*=\s*["']([\s\S]*?)["']/i);
+    if (content?.[1]) return content[1];
+  }
+  return '';
 }
 
 function normalizePolicy(value) {
@@ -239,9 +269,11 @@ export async function runCli() {
       evidenceSourceSha: String(process.env.EVIDENCE_SOURCE_SHA || '').trim(),
     });
   } catch (error) {
-    result = failedResult([
-      error instanceof Error ? error.message : 'production identity evidence collection failed',
-    ], String(process.env.EVIDENCE_SOURCE_SHA || '').trim(), new Date().toISOString());
+    result = failedResult(
+      [error instanceof Error ? error.message : 'production identity evidence collection failed'],
+      String(process.env.EVIDENCE_SOURCE_SHA || '').trim(),
+      new Date().toISOString(),
+    );
   }
 
   await mkdir(dirname(outputPath), { recursive: true });
