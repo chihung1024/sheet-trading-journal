@@ -8,7 +8,7 @@
     <div class="trade-type-switch">
         <button v-for="t in ['BUY', 'SELL', 'DIV']" :key="t"
             :class="['switch-btn', t.toLowerCase(), { active: form.txn_type === t }]"
-            @click="setTxnType(t)">
+            @click="setTxnType(t)" type="button">
             <span class="btn-icon">{{ t === 'BUY' ? '📥' : t === 'SELL' ? '📤' : '💰' }}</span>
             <span class="btn-text">{{ t === 'BUY' ? '買進' : t === 'SELL' ? '賣出' : '股息' }}</span>
         </button>
@@ -22,7 +22,7 @@
                     type="text" 
                     v-model="form.symbol" 
                     @change="checkHoldings" 
-                    placeholder="如: NVDA, TSLA" 
+                    placeholder="如: NVDA, TSLA, 2330.TW" 
                     :disabled="isEditing" 
                     class="input-lg uppercase bold-text"
                 >
@@ -50,7 +50,7 @@
                 <div class="tags-list">
                     <span v-for="(tag, idx) in tagsArray" :key="idx" class="tag-chip">
                         {{ tag }}
-                        <button class="remove-tag" @click="removeTag(idx)">×</button>
+                        <button type="button" class="remove-tag" @click="removeTag(idx)" :aria-label="`移除標籤 ${tag}`">×</button>
                     </span>
                     <input 
                         type="text" 
@@ -66,7 +66,7 @@
             </div>
             
             <div class="quick-tags" v-if="form.txn_type !== 'SELL' || holdingGroups.length === 0">
-                <span v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">+ {{ t }}</span>
+                <button type="button" v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">+ {{ t }}</button>
             </div>
         </div>
         
@@ -76,9 +76,9 @@
         </div>
         
         <div class="form-group">
-            <label>成交單價 (USD)</label>
+            <label>成交單價 ({{ transactionCurrency }})</label>
             <div class="input-with-prefix">
-                <span class="prefix">$</span>
+                <span class="prefix">{{ transactionCurrencySymbol }}</span>
                 <input 
                     type="number" 
                     v-model="form.price" 
@@ -117,11 +117,11 @@
 
     <div class="summary-box">
         <div class="summary-header">
-            <span class="summary-label">交易總金額 (USD)</span>
+            <span class="summary-label">交易總金額 ({{ transactionCurrency }})</span>
             <span class="calc-icon">🧮</span>
         </div>
         <div class="summary-input-wrapper">
-            <span class="currency-symbol">$</span>
+            <span class="currency-symbol">{{ transactionCurrencySymbol }}</span>
             <input 
                 type="number" 
                 v-model="form.total_amount" 
@@ -134,8 +134,8 @@
     </div>
     
     <div class="action-buttons">
-        <button v-if="isEditing" @click="resetForm" class="btn btn-cancel">取消</button>
-        <button class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
+        <button v-if="isEditing" type="button" @click="resetForm" class="btn btn-cancel">取消</button>
+        <button type="button" class="btn btn-submit" @click="submit" :disabled="loading" :class="form.txn_type.toLowerCase()">
             <span v-if="loading" class="spinner"></span>
             {{ loading ? '處理中...' : (isEditing ? '更新交易' : submitButtonText) }}
         </button>
@@ -173,6 +173,11 @@ const form = reactive({
     total_amount: '',
     tag: '' 
 });
+
+const normalizedSymbol = computed(() => String(form.symbol || '').trim().toUpperCase());
+const isTaiwanSymbol = computed(() => /\.(TW|TWO)$/.test(normalizedSymbol.value));
+const transactionCurrency = computed(() => isTaiwanSymbol.value ? 'TWD' : 'USD');
+const transactionCurrencySymbol = computed(() => transactionCurrency.value === 'TWD' ? 'NT$' : '$');
 
 const submitButtonText = computed(() => {
     switch(form.txn_type) {
@@ -415,7 +420,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 /* 帶前綴的輸入框 */
 .input-with-prefix { position: relative; }
 .prefix { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
-.input-with-prefix input { padding-left: 30px; }
+.input-with-prefix input { padding-left: 38px; }
 
 /* 雙欄輸入 (費用) */
 .dual-input { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -460,6 +465,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 
 .quick-tags { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-tag { 
+    font-family: inherit;
     font-size: 0.8rem; 
     color: var(--text-sub); 
     border: 1px solid var(--border-color); 

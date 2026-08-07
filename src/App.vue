@@ -20,7 +20,7 @@
                   {{ g }}
                 </option>
               </select>
-              <button class="btn-edit-group" @click="activeView = 'groups'" title="管理群組">✎</button>
+              <button type="button" class="btn-edit-group" @click="activeView = 'groups'" title="管理群組">✎</button>
             </div>
           </div>
         </div>
@@ -32,26 +32,31 @@
                :class="{ paused: marketRefresh.isPaused.value }"
                :title="marketRefresh.isPaused.value ? '已暫停自動刷新' : `下次觸發: ${marketRefresh.formattedTimeRemaining()}`">
             <span class="market-badge">{{ marketRefresh.currentMarket.value === 'TW' ? '🇹🇼' : '🇺🇸' }}</span>
-            <span class="refresh-icon" @click="marketRefresh.togglePause()">
+            <button
+              type="button"
+              class="refresh-icon"
+              @click="marketRefresh.togglePause()"
+              :aria-label="marketRefresh.isPaused.value ? '繼續盤中自動刷新' : '暫停盤中自動刷新'"
+            >
               <span v-if="marketRefresh.isPaused.value">⏸️</span>
               <span v-else>🔄</span>
-            </span>
+            </button>
             <span class="refresh-timer desktop-only" v-if="!marketRefresh.isPaused.value">
               {{ marketRefresh.formattedTimeRemaining() }}
             </span>
           </div>
 
-          <div v-if="portfolioStore.loading" class="status-indicator loading" title="更新中...">
-            <span class="dot"></span> <span class="desktop-only">更新中...</span>
-          </div>
-          <div v-else-if="portfolioStore.isPolling" class="status-indicator polling" title="計算中...">
-            <span class="dot pulse-orange"></span> <span class="desktop-only">計算中...</span>
-          </div>
-          <div v-else class="status-indicator ready" title="連線正常">
-            <span class="dot"></span> <span class="desktop-only">連線正常</span>
+          <div
+            class="status-indicator"
+            :class="statusPresentation.className"
+            :title="statusPresentation.title"
+          >
+            <span class="dot"></span>
+            <span class="desktop-only">{{ statusPresentation.label }}</span>
           </div>
 
           <button
+            type="button"
             class="action-trigger-btn"
             @click="handleTriggerUpdate"
             :disabled="portfolioStore.isPolling"
@@ -61,15 +66,15 @@
             <span class="desktop-only">觸發</span>
           </button>
 
-          <button class="theme-toggle" @click="toggleTheme">
+          <button type="button" class="theme-toggle" @click="toggleTheme" aria-label="切換明暗主題">
             <span v-if="isDark">☀️</span>
             <span v-else>🌙</span>
           </button>
 
-          <div class="user-profile" @click="handleLogout" title="登出">
+          <button type="button" class="user-profile" @click="handleLogout" title="登出" aria-label="登出">
             <img v-if="authStore.user?.picture" :src="authStore.user.picture" class="avatar-img" alt="User">
             <div v-else class="avatar">{{ userInitial }}</div>
-          </div>
+          </button>
         </div>
       </header>
 
@@ -147,7 +152,7 @@
         <aside class="side-column" :class="{ 'mobile-sheet': isMobileView, 'sheet-open': showMobileTrade }">
           <div class="mobile-sheet-header" v-if="isMobileView">
             <h3>交易管理</h3>
-            <button class="btn-close-sheet" @click="showMobileTrade = false">✕</button>
+            <button type="button" class="btn-close-sheet" @click="showMobileTrade = false">✕</button>
           </div>
 
           <div class="fixed-panel">
@@ -164,6 +169,7 @@
 
       <button
         v-if="isMobileView"
+        type="button"
         class="fab-btn"
         @click="openMobileTrade"
         title="新增交易"
@@ -309,6 +315,31 @@ const pendingDividendsCount = computed(() => portfolioStore.pending_dividends ? 
 
 const userInitial = computed(() => authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'U');
 
+const statusPresentation = computed(() => {
+  if (portfolioStore.loading) {
+    return { className: 'loading', label: '更新中...', title: '正在向後端載入資料' };
+  }
+  if (portfolioStore.isPolling) {
+    return { className: 'polling', label: '計算中...', title: '背景計算或快照同步中' };
+  }
+  if (portfolioStore.connectionStatus === 'error') {
+    return { className: 'error', label: '連線異常', title: '最近一次 API 請求失敗' };
+  }
+  if (portfolioStore.snapshotFreshness === 'stale') {
+    return { className: 'stale', label: '快照待重算', title: '交易紀錄已變更；持倉與績效快照尚未確認更新' };
+  }
+  if (
+    portfolioStore.connectionStatus === 'connected'
+    && portfolioStore.snapshotFreshness === 'loaded'
+  ) {
+    return { className: 'ready', label: '已連線・快照已載入', title: 'API 已驗證連線；目前已載入後端快照' };
+  }
+  if (portfolioStore.connectionStatus === 'connected') {
+    return { className: 'ready', label: '已連線', title: '最近一次 API 請求成功；快照新鮮度尚未確認' };
+  }
+  return { className: 'unknown', label: '尚未驗證', title: '尚未完成 API 連線驗證' };
+});
+
 // 📈 盤中自動刷新 - 台股/美股盤中每 3 分鐘觸發 triggerUpdate
 const marketRefresh = useMarketHoursRefresh();
 
@@ -375,6 +406,7 @@ onMounted(async () => {
   updateMedia();
   window.addEventListener('resize', updateMedia);
   window.addEventListener('popstate', syncFromUrl);
+  authStore.startStorageSync();
 
   const isLoggedIn = authStore.initAuth();
   if (isLoggedIn) {
@@ -394,6 +426,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', updateMedia);
   window.removeEventListener('popstate', syncFromUrl);
+  authStore.stopStorageSync();
 });
 </script>
 
@@ -478,6 +511,12 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 }
 
 .refresh-icon {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 1rem;
   cursor: pointer;
   display: flex;
@@ -487,6 +526,12 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 .refresh-icon:hover {
   transform: scale(1.1);
+}
+
+.refresh-icon:focus-visible,
+.user-profile:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .refresh-timer {
@@ -499,10 +544,12 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .status-indicator { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 500; }
 .status-indicator.ready { color: var(--success); }
 .status-indicator.loading { color: var(--primary); }
-.status-indicator.polling { color: var(--warning); }
+.status-indicator.polling,
+.status-indicator.stale { color: var(--warning); }
+.status-indicator.error { color: var(--danger); }
+.status-indicator.unknown { color: var(--text-sub); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.loading .dot { animation: pulse 1s infinite; }
-.pulse-orange { animation: pulse 1s infinite; }
+.loading .dot, .polling .dot { animation: pulse 1s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .action-trigger-btn { background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
@@ -512,7 +559,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .theme-toggle { background: transparent; border: none; padding: 6px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; transition: transform 0.2s; }
 .theme-toggle:hover { transform: scale(1.1); background: var(--bg-secondary); }
 
-.user-profile { width: 36px; height: 36px; cursor: pointer; flex-shrink: 0; }
+.user-profile { appearance: none; width: 36px; height: 36px; padding: 0; border: 0; background: transparent; cursor: pointer; flex-shrink: 0; }
 .avatar, .avatar-img { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--primary); color: white; font-weight: 700; object-fit: cover; }
 
 /* Layout Grid */
