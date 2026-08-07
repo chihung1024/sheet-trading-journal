@@ -109,28 +109,19 @@ import { usePortfolioStore } from '../stores/portfolio';
 
 const store = usePortfolioStore();
 
-// ✅ 直接從 store 獲取數據，不再重複計算
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
 
-// ✅ 總損益：從後端獲取
 const totalPnL = computed(() => stats.value.total_pnl || 0);
-
-// ✅ 已實現損益：從後端獲取
 const realizedPnL = computed(() => stats.value.realized_pnl || 0);
-
-// ✅ 未實現損益 = 總損益 - 已實現損益
 const unrealizedPnL = computed(() => totalPnL.value - realizedPnL.value);
 
-// ✅ ROI 計算
 const roi = computed(() => {
   if (!stats.value.invested_capital) return '0.00';
   return ((unrealizedPnL.value / stats.value.invested_capital) * 100).toFixed(2);
 });
 
-// ✅ 當日損益：統一使用 store.dailyPnL
 const dailyPnL = computed(() => store.dailyPnL || 0);
-
 const dailyPnlBreakdown = computed(() => stats.value.daily_pnl_breakdown || null);
 
 const formatSigned = (val) => {
@@ -139,51 +130,42 @@ const formatSigned = (val) => {
   return `${sign}${Math.round(n).toLocaleString('zh-TW')}`;
 };
 
-// ✅ [v3.18] 改用後端判斷的市場狀態，避免前後端不一致
-// 後端考慮時區、冬夏令時、週末等因素
 const isUSMarketOpen = computed(() => {
   const stage = stats.value.market_stage;
   const desc = stats.value.market_stage_desc || '';
-  // MARKET_OPEN 且描述包含 US 表示美股盤中
   return stage === 'MARKET_OPEN' && desc.includes('US');
 });
 
-// 動態標題
 const pnlLabel = computed(() => {
   return isUSMarketOpen.value ? '美股盤中損益' : '當日損益';
 });
 
-// 動態說明
 const pnlDescription = computed(() => {
   if (isUSMarketOpen.value) {
     return '盤中損益(含交易+即時價格)';
-  } else {
-    return '台股損益+美股損益+匯率因素';
   }
+  return '台股損益+海外損益+匯率因素';
 });
 
-// ✅ [v3.19] Tooltip：顯示台/美/匯率分量
+// Backward-compatible API key `us_pnl_twd` now represents all non-TWD
+// securities. User-facing copy must not mislabel KRW/HKD/JPY/etc as US PnL.
 const pnlTooltip = computed(() => {
   if (!dailyPnlBreakdown.value) return '';
   const tw = dailyPnlBreakdown.value.tw_pnl_twd ?? 0;
-  const us = dailyPnlBreakdown.value.us_pnl_twd ?? 0;
+  const foreign = dailyPnlBreakdown.value.us_pnl_twd ?? 0;
   const fx = dailyPnlBreakdown.value.fx_pnl_twd ?? 0;
   
-  // 只有匯率損益非零時才顯示
   if (Math.abs(fx) > 0.5) {
-    return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)} | 匯率: ${formatSigned(fx)}`;
+    return `台股: ${formatSigned(tw)} | 海外: ${formatSigned(foreign)} | 匯率: ${formatSigned(fx)}`;
   }
-  return `台股: ${formatSigned(tw)} | 美股: ${formatSigned(us)}`;
+  return `台股: ${formatSigned(tw)} | 海外: ${formatSigned(foreign)}`;
 });
 
-// ✅ [v3.18] 當日損益百分比：優先使用後端計算結果，避免前端索引問題
 const dailyRoi = computed(() => {
-  // 優先使用後端計算的精確值
   if (stats.value.daily_pnl_roi_percent != null) {
     return stats.value.daily_pnl_roi_percent.toFixed(2);
   }
   
-  // 後備方案：使用後端提供的基準值
   if (stats.value.daily_pnl_base_value && stats.value.daily_pnl_base_value > 0) {
     return ((dailyPnL.value / stats.value.daily_pnl_base_value) * 100).toFixed(2);
   }
@@ -191,7 +173,6 @@ const dailyRoi = computed(() => {
   return '0.00';
 });
 
-// 數字動畫
 const useAnimatedNumber = (targetVal) => {
   const current = ref(0);
   watch(targetVal, (newVal) => {
@@ -208,7 +189,6 @@ const displayDaily = useAnimatedNumber(dailyPnL);
 
 const formatNumber = (num) => Number(num||0).toLocaleString('zh-TW');
 
-// 樣式輔助函數
 const getPnlTextClass = (val) => {
     const num = Number(val) || 0;
     return num >= 0 ? 'text-green' : 'text-red';
@@ -222,10 +202,9 @@ const getPnlBgClass = (val) => {
 </script>
 
 <style scoped>
-/* 核心 Grid 佈局 */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr); /* 桌面版 3 欄 */
+    grid-template-columns: repeat(3, 1fr);
     gap: 20px;
 }
 
@@ -244,18 +223,15 @@ const getPnlBgClass = (val) => {
     overflow: hidden;
 }
 
-/* 懸停效果 */
 .stat-block:hover { 
     transform: translateY(-3px); 
     box-shadow: var(--shadow-lg); 
 }
 
-/* 特殊卡片樣式：總資產 */
 .primary-block {
     border-left: 4px solid var(--primary);
 }
 
-/* 背景微漸層 */
 .bg-gradient-green {
     background: linear-gradient(145deg, var(--bg-card) 40%, rgba(16, 185, 129, 0.05) 100%);
     border-bottom: 2px solid rgba(16, 185, 129, 0.2);
@@ -266,7 +242,6 @@ const getPnlBgClass = (val) => {
     border-bottom: 2px solid rgba(239, 68, 68, 0.2);
 }
 
-/* 頂部區域 */
 .stat-top { 
     display: flex; 
     justify-content: space-between; 
@@ -282,7 +257,6 @@ const getPnlBgClass = (val) => {
     letter-spacing: 0.02em;
 }
 
-/* Icon Box 優化 */
 .icon-box { 
     width: 38px; 
     height: 38px; 
@@ -309,7 +283,6 @@ const getPnlBgClass = (val) => {
     100% { opacity: 1; transform: scale(1); }
 }
 
-/* 主要數值區 */
 .stat-main { 
     display: flex; 
     align-items: baseline; 
@@ -337,7 +310,6 @@ const getPnlBgClass = (val) => {
     font-size: 2.2rem;
 }
 
-/* 總資產的特殊漸層效果 */
 .primary-block .stat-value.big {
     background: linear-gradient(90deg, var(--text-main), var(--text-sub));
     -webkit-background-clip: text;
@@ -359,7 +331,6 @@ const getPnlBgClass = (val) => {
     font-weight: 500; 
 }
 
-/* 底部區域 */
 .stat-footer {
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
@@ -390,7 +361,6 @@ const getPnlBgClass = (val) => {
 .text-sub { color: var(--text-sub); }
 .text-xs { font-size: 0.8rem; }
 
-/* 徽章樣式 */
 .badge { 
     padding: 2px 8px; 
     border-radius: 6px; 
@@ -410,7 +380,6 @@ const getPnlBgClass = (val) => {
     color: var(--danger);
 }
 
-/* RWD: 中尺寸螢幕 (Tablets) */
 @media (max-width: 1024px) { 
     .stats-grid { 
         grid-template-columns: repeat(2, 1fr);
@@ -419,7 +388,6 @@ const getPnlBgClass = (val) => {
     .stat-value.big { font-size: 2rem; }
 }
 
-/* RWD: 手機版優化 (Mobile) - 使用 order 重新排序 */
 @media (max-width: 768px) { 
     .stats-grid { 
         grid-template-columns: repeat(2, 1fr);
@@ -431,41 +399,33 @@ const getPnlBgClass = (val) => {
         min-height: 100px;
     }
     
-    /* ✅ 使用 CSS Grid order 重新排序，保持 DOM 結構不變 */
-    /* 1️⃣ 總資產淨值 - 第一行獨佔 */
     .stat-block:nth-child(1) {
         order: 1;
         grid-column: span 2;
     }
     
-    /* 2️⃣ 當日損益 - 第二行獨佔（提升為第二重要） */
     .stat-block.daily-pnl-block {
         order: 2;
         grid-column: span 2;
         border-left: 4px solid var(--warning);
     }
     
-    /* 3️⃣ 未實現損益 - 第三行左側 */
     .stat-block:nth-child(2) {
         order: 3;
     }
     
-    /* 4️⃣ 已實現損益 - 第三行右側 */
     .stat-block:nth-child(3) {
         order: 4;
     }
     
-    /* 5️⃣ TWR - 第四行左側 */
     .stat-block:nth-child(5) {
         order: 5;
     }
     
-    /* 6️⃣ XIRR - 第四行右側 */
     .stat-block:nth-child(6) {
         order: 6;
     }
     
-    /* 當日損益在手機版放大字體 */
     .daily-pnl-block .stat-value {
         font-size: 1.8rem;
     }
@@ -489,7 +449,6 @@ const getPnlBgClass = (val) => {
         min-height: auto;
     }
     
-    /* 手機上隱藏過長說明 */
     .footer-desc {
         white-space: nowrap;
         overflow: hidden;
