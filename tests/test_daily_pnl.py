@@ -4,6 +4,10 @@ from pathlib import Path
 import pandas as pd
 
 from journal_engine.core.calculator import PortfolioCalculator
+from journal_engine.core.dividend_policy import (
+    dividend_net_multiplier,
+    dividend_withholding_rate,
+)
 
 
 class FakeMarketDataClient:
@@ -100,7 +104,15 @@ def test_oversell_error_mode_raises():
         assert 'Oversell' in str(e)
 
 
-def test_dividend_pending_uses_original_fixed_30pct_model():
+def test_dividend_policy_is_market_aware_and_preserves_us_model():
+    assert dividend_withholding_rate('2330.TW') == 0.0
+    assert dividend_withholding_rate('0050.TWO') == 0.0
+    assert dividend_net_multiplier('2330.TW') == 1.0
+    assert dividend_withholding_rate('NVDA') == 0.30
+    assert dividend_net_multiplier('NVDA') == 0.70
+
+
+def test_dividend_pending_uses_shared_market_policy():
     market = FakeMarketDataClient({
         'SPY': [{'Date': '2026-01-01', 'Close_Adjusted': 100}, {'Date': '2026-01-02', 'Close_Adjusted': 101}],
         '2330.TW': [
@@ -116,12 +128,71 @@ def test_dividend_pending_uses_original_fixed_30pct_model():
         {'Date': '2026-01-01', 'Symbol': '2330.TW', 'Type': 'BUY', 'Qty': 10, 'Price': 500},
         {'Date': '2026-01-01', 'Symbol': 'NVDA', 'Type': 'BUY', 'Qty': 2, 'Price': 100},
     ])
-    calc = PortfolioCalculator(df, market)
-    snap = calc.run()
-    all_pending = snap.pending_dividends
-    by_symbol = {x.symbol: x for x in all_pending}
-    assert by_symbol['2330.TW'].total_net_usd == 14.0
+    snap = PortfolioCalculator(df, market).run()
+    by_symbol = {x.symbol: x for x in snap.pending_dividends}
+
+    assert by_symbol['2330.TW'].total_gross == 20.0
+    assert by_symbol['2330.TW'].tax_rate == 0.0
+    assert by_symbol['2330.TW'].total_net_usd == 20.0
+
+    assert by_symbol['NVDA'].total_gross == 2.0
+    assert by_symbol['NVDA'].tax_rate == 30.0
     assert by_symbol['NVDA'].total_net_usd == 1.4
+
+
+def test_taiwan_dividend_pending_and_confirmed_have_same_economic_value():
+    price_table = {
+        'SPY': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 100, 'Dividends': 0},
+            {'Date': '2026-01-02', 'Close_Adjusted': 100, 'Dividends': 0},
+        ],
+        '2330.TW': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 500, 'Dividends': 0},
+            {'Date': '2026-01-02', 'Close_Adjusted': 500, 'Dividends': 2},
+        ],
+    }
+    pending_df = _build_transactions([
+        {'Date': '2026-01-01', 'Symbol': '2330.TW', 'Type': 'BUY', 'Qty': 10, 'Price': 500},
+    ])
+    confirmed_df = _build_transactions([
+        {'Date': '2026-01-01', 'Symbol': '2330.TW', 'Type': 'BUY', 'Qty': 10, 'Price': 500},
+        {'Date': '2026-01-02', 'Symbol': '2330.TW', 'Type': 'DIV', 'Qty': 1, 'Price': 20},
+    ])
+
+    pending = PortfolioCalculator(FakeMarketDataClient(price_table), pending_df).run() if False else None
+    pending = PortfolioCalculator(pending_df, FakeMarketDataClient(price_table)).run()
+    confirmed = PortfolioCalculator(confirmed_df, FakeMarketDataClient(price_table)).run()
+
+    assert pending.summary.realized_pnl == confirmed.summary.realized_pnl == 20.0
+    assert pending.summary.daily_pnl_twd == confirmed.summary.daily_pnl_twd == 20.0
+    assert len(pending.pending_dividends) == 1
+    assert confirmed.pending_dividends == []
+
+
+def test_us_dividend_pending_and_confirmed_preserve_existing_30pct_value():
+    price_table = {
+        'SPY': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 100, 'Dividends': 0},
+            {'Date': '2026-01-02', 'Close_Adjusted': 100, 'Dividends': 0},
+        ],
+        'NVDA': [
+            {'Date': '2026-01-01', 'Close_Adjusted': 100, 'Dividends': 0},
+            {'Date': '2026-01-02', 'Close_Adjusted': 100, 'Dividends': 1},
+        ],
+    }
+    pending_df = _build_transactions([
+        {'Date': '2026-01-01', 'Symbol': 'NVDA', 'Type': 'BUY', 'Qty': 2, 'Price': 100},
+    ])
+    confirmed_df = _build_transactions([
+        {'Date': '2026-01-01', 'Symbol': 'NVDA', 'Type': 'BUY', 'Qty': 2, 'Price': 100},
+        {'Date': '2026-01-02', 'Symbol': 'NVDA', 'Type': 'DIV', 'Qty': 1, 'Price': 1.4},
+    ])
+
+    pending = PortfolioCalculator(pending_df, FakeMarketDataClient(price_table, fx=30.0)).run()
+    confirmed = PortfolioCalculator(confirmed_df, FakeMarketDataClient(price_table, fx=30.0)).run()
+
+    assert pending.summary.realized_pnl == confirmed.summary.realized_pnl == 42.0
+    assert pending.summary.daily_pnl_twd == confirmed.summary.daily_pnl_twd == 42.0
 
 
 def test_sequence_stabilizes_same_day_order():
