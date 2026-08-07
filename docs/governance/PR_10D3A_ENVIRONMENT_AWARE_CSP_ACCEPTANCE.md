@@ -1,146 +1,135 @@
 # PR-10D3A — Environment-Aware CSP Acceptance
 
-Status: IMPLEMENTED / FINAL REVIEW PENDING  
+Status: CLOSED / PASS  
 Baseline: `d78bb3c7aadf1c3e3d9078be304d410d70a96103`  
-Recovery branch: `backup-pre-10d3a-csp-d78bb3c`  
+Pre-change recovery branch: `backup-pre-10d3a-csp-d78bb3c`  
 Work branch: `pr-10d3a-environment-aware-csp`  
-Draft PR: `#120`
+PR: `#120`  
+Final reviewed head: `c0bfc64cd0083452272bdc8ea21364b277579b5f`  
+Merge SHA: `61839eff4eae7102b4b4be32eb606008fdd246c8`  
+Post-change recovery branch: `backup-post-10d3a-61839ef`  
+Machine-readable closeout: `docs/governance/evidence/PR_10D3A_CLOSEOUT_2026-08-07.json`
 
 ## Purpose
 
-Close audit finding N24: the frontend runtime environment can be staging while both CSP enforcement surfaces still hardcode the production Worker origin. Because the browser enforces the intersection of the HTML meta CSP and Cloudflare Pages response-header CSP, successful build/CORS checks do not prove that a staging browser can call the staging Worker.
+Close audit finding N24: the frontend runtime environment could be staging while both CSP enforcement surfaces still hardcoded the production Worker origin. Because browsers enforce the intersection of the HTML meta CSP and Pages response-header CSP, a staging bundle could be valid at build/CORS level yet fail in the browser.
 
 ## Reconfirmed baseline divergence
 
-The machine-readable deployment contract already defines distinct identities:
+The reviewed deployment contract already defined:
 
 - production API: `https://journal-backend.chired.workers.dev`;
 - staging API: `https://journal-backend-staging.chired.workers.dev`;
 - fixed staging Pages branch: `staging`;
 - arbitrary Pages preview branches: disabled.
 
-However on the baseline:
-
-- `index.html` meta CSP `connect-src` hardcoded the production API;
-- `public/_headers` CSP `connect-src` hardcoded the production API;
-- the Vite environment validator correctly accepted the reviewed staging API but did not render that validated identity into either CSP surface.
-
-Result: a staging bundle could contain `VITE_API_URL=staging` while browser CSP still authorized only the production Worker.
+On the baseline, however, `index.html` and `public/_headers` both hardcoded the production API in `connect-src` while the existing frontend environment validator correctly accepted the fixed staging API.
 
 ## Test-first chronology
 
 ### Phase A — expected red
 
-- Test-first head: `519d40a6569dadb091f2d194119a33c8a0daf928`.
-- CI run: `31145425753`.
-- Python job: PASS.
-- Worker/security/D1 job: PASS.
-- Frontend job: FAIL only at the new CSP regression guards.
-- Frontend summary: `137` tests, `134` pass, `3` fail.
+- Head: `519d40a6569dadb091f2d194119a33c8a0daf928`.
+- CI: `31145425753`.
+- Python: PASS.
+- Worker/security/D1: PASS.
+- Frontend: `134/137` PASS, three intentional CSP failures.
 
-The three expected failures were:
+Expected failures proved:
 
-1. source CSP surfaces did not contain the required `__TRADING_JOURNAL_API_ORIGIN__` token because both still hardcoded an environment identity;
-2. a real fixed-staging Vite build produced a meta CSP that did **not** authorize `https://journal-backend-staging.chired.workers.dev`, directly reproducing N24;
-3. `vite.config.js` had no `createFrontendCspPlugin` wiring.
+1. source CSP surfaces had no shared API-origin token because they still hardcoded an environment identity;
+2. a real fixed-staging Vite build produced a meta CSP that did not authorize the staging Worker, directly reproducing N24;
+3. Vite had no environment-aware CSP plugin wiring.
 
-The production-compatible build regression test already passed on the baseline, proving that the defect was specifically environment isolation rather than a generic production CSP/build failure. Existing arbitrary-preview fail-closed tests also remained green.
+The production-compatible build already passed on the baseline, isolating the defect to environment separation rather than generic production build failure.
 
 ### Phase B — authoritative root fix
 
 - Root-fix head: `917ca6a7515cdb6670963e31438eb649bdd23095`.
-- CI run: `31145761413`.
-- Frontend contracts: `137/137` PASS.
-- Production Vite build: PASS.
-- Python tests/measured coverage gate: PASS.
-- Worker security/deployment/local D1 baseline: PASS.
+- CI: `31145761413`.
+- Frontend: `137/137` PASS plus production Vite build PASS.
+- Python: PASS.
+- Worker/security/D1: PASS.
 
-The four CSP integration guards all passed on the root-fix head:
+The CSP integration tests proved:
 
-- source CSP surfaces use exactly one shared API-origin token and no hardcoded production/staging API identity;
-- production-compatible build renders the production API into both meta CSP and generated `_headers`, while excluding staging;
-- fixed staging build renders the staging API into both meta CSP and generated `_headers`, while excluding production;
-- arbitrary preview remains fail-closed through the existing environment validator and the CSP plugin remains wired into that validation path.
+- production output meta CSP + generated `_headers` authorize production and exclude staging;
+- fixed staging output meta CSP + generated `_headers` authorize staging and exclude production;
+- no token survives build output;
+- arbitrary preview remains fail-closed.
+
+### Phase C — final evidence head and independent review
+
+- Final reviewed head: `c0bfc64cd0083452272bdc8ea21364b277579b5f`.
+- Final PR CI: `31145840067`, all three protected-main required checks PASS.
+- Independent AI review id: `4879839767`.
+- Changed files: exactly seven.
+- Review threads: zero.
+- `main` was unchanged from the PR base at final review.
+
+Independent review verified:
+
+- `index.html` changed exactly one CSP `connect-src` item: production Worker URL → `__TRADING_JOURNAL_API_ORIGIN__`;
+- `public/_headers` made the same one-item substitution;
+- `unsafe-inline` and `unsafe-eval` remained intentionally unchanged for later B14 hardening;
+- no wildcard origin was introduced;
+- `config/deployment-environments.json` and `tools/frontend_environment_policy.mjs` were not modified;
+- the renderer imports the existing `DEPLOYMENT_CONTRACT` and `validateFrontendEnvironment` rather than maintaining a second environment map;
+- no Worker/CORS, D1/migration, auth-session, PWA/service-worker, market-data, ledger, dividend or financial-calculation file changed.
 
 ## Authoritative fix
 
-Both CSP source templates now contain exactly one shared token:
+Both CSP source templates now contain exactly one token:
 
 `__TRADING_JOURNAL_API_ORIGIN__`
 
-`tools/frontend_csp.mjs` is the build-time renderer. It imports `DEPLOYMENT_CONTRACT` and `validateFrontendEnvironment` from the existing `frontend_environment_policy.mjs`; it does not maintain a second production/staging API map.
+`tools/frontend_csp.mjs` resolves the token from the existing reviewed environment contract/policy. The Vite plugin:
 
-The renderer/plugin:
+1. validates environment identity through `validateFrontendEnvironment`;
+2. resolves staging to the fixed staging API and production to a reviewed production API origin;
+3. renders the HTML meta CSP;
+4. renders the generated Pages `_headers` after bundle output;
+5. requires exactly one token per source and fails closed if it is missing or survives rendering;
+6. normalizes the API target to an HTTP/HTTPS origin;
+7. leaves the existing fixed-staging/arbitrary-preview policy intact.
 
-1. validates the frontend environment using the existing policy;
-2. resolves staging to the reviewed staging API contract and production/local compatibility to the reviewed/explicit API origin;
-3. transforms the `index.html` meta CSP;
-4. transforms the copied build output `_headers` after Vite writes the bundle;
-5. requires the token exactly once per CSP source and fails closed if the token is absent or survives rendering;
-6. normalizes rendered CSP API targets to HTTP/HTTPS origins;
-7. leaves the existing fixed-staging and arbitrary-preview branch policy untouched.
+The old frontend security contract was updated at the same authority boundary: CSP source templates must use the token rather than preserve an obsolete hardcoded production endpoint.
 
-The existing `frontend_security_contracts.test.mjs` was updated at the same authority boundary: production Worker ownership is now `src/config.js` plus the machine-readable deployment contract, while CSP source templates are required to use the renderer token rather than preserve an obsolete production hardcode.
+## Merge and post-merge acceptance
 
-## Required invariants — implemented
+PR `#120` merged through the normal protected path using merge method `merge` and no bypass.
 
-- Production build output meta CSP and `_headers` both authorize the reviewed production API.
-- Production output does not authorize the staging API.
-- Staging build output meta CSP and `_headers` both authorize the fixed staging API.
-- Staging output does not authorize the production API.
-- No CSP API-origin token remains in build output.
-- The machine-readable deployment contract remains the environment identity authority.
-- Existing staging branch/API/OAuth fail-closed validation remains intact.
-- Arbitrary Pages preview branches remain disabled.
+Merge SHA:
 
-## Scope actually changed before final evidence update
+`61839eff4eae7102b4b4be32eb606008fdd246c8`
 
-The root-fix commit changed exactly five files relative to the expected-red head:
+Post-merge verification:
 
-1. `index.html` — one CSP API-origin substitution only;
-2. `public/_headers` — one CSP API-origin substitution only;
-3. `tools/frontend_csp.mjs` — new environment-aware renderer/plugin;
-4. `vite.config.js` — imports and wires the CSP plugin while retaining the existing build-time environment validator;
-5. `tests/frontend_security_contracts.test.mjs` — updates the old hardcoded-production ownership contract to the deployment-contract/token model.
+- main CI `31146068529`: Frontend PASS, Python PASS, Worker/D1 PASS;
+- production Pages build/deployment `31146067097`: PASS;
+- post-change checkpoint: `backup-post-10d3a-61839ef`.
 
-The expected-red phase had already added:
+No staging branch update or staging Worker deployment occurred before these production-main checks passed.
 
-- `tests/frontend_csp_environment.test.mjs`;
-- this acceptance/evidence document.
+## Explicit non-goals / carried-forward work
 
-A final independent PR diff must confirm the complete PR remains within these seven files and does not contain unrelated CSP/security hardening.
+PR-10D3A deliberately did **not**:
 
-## Explicit non-goals
-
-PR-10D3A deliberately does **not**:
-
-- remove or tighten `unsafe-inline` / `unsafe-eval`; that remains later B14 CSP hardening;
+- remove/tighten `unsafe-inline` or `unsafe-eval` — later B14;
 - re-enable arbitrary PR/feature Pages previews;
 - add wildcard frontend/API origins;
-- modify Worker CORS behavior;
-- modify Worker source or deploy a Worker;
-- change D1 schema/data or migrations;
-- change authentication/session architecture;
+- modify Worker CORS or Worker source;
+- modify D1 schema/data/migrations;
+- redesign authentication/session architecture;
 - modify PWA/service-worker lifecycle;
-- change financial calculations, market data, dividend semantics, or ledger architecture.
+- modify financial calculations, market data, dividend semantics or ledger architecture.
 
-Keeping `unsafe-inline` / `unsafe-eval` in this batch is intentional scope isolation, not a claim that those directives are desirable long term.
+N24 is closed at the build-contract layer. Browser-level staging OAuth/CRUD verification remains the later PR-10D3C acceptance gate after the fixed staging frontend and Worker are activated on an exact reviewed SHA.
 
-## Final acceptance before merge
+## Recovery
 
-PR-10D3A may be marked ready and merged only if:
+To roll back PR-10D3A repository behavior, revert PR `#120` or restore/compare against `backup-pre-10d3a-csp-d78bb3c`. The exact accepted post-change repository state is preserved at `backup-post-10d3a-61839ef`. No D1 or Worker rollback is required for PR-10D3A itself.
 
-1. the evidence-updated final head passes all three protected-main required checks;
-2. the 137 frontend contracts and production build remain green;
-3. the PR is up to date with current `main`;
-4. independent diff review confirms both source CSP surfaces differ only in the API-origin token substitution, the renderer derives identity from the existing deployment contract, and `unsafe-inline` / `unsafe-eval` were not removed in this batch;
-5. arbitrary preview remains disabled and no wildcard origin is introduced;
-6. no Worker/CORS/D1/financial/PWA file is changed;
-7. no blocking review thread remains;
-8. merge uses the protected normal `merge` path without bypass.
+## Closeout result
 
-After merge, post-merge main CI and Pages must be green before any staging branch update or staging Worker deployment begins.
-
-## Rollback
-
-Revert the eventual PR or restore from `backup-pre-10d3a-csp-d78bb3c`. This batch has no D1/Worker rollback because it changes frontend build-time CSP generation only.
+**PR-10D3A is CLOSED / PASS.** Expected-red reproduction, real production/staging build proof, independent review, protected merge, post-merge CI/Pages verification, and rollback checkpoints are retained. The next step is fixed-staging activation and exact-SHA staging Worker deployment; production Worker deployment remains later PR-10D4.
