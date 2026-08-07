@@ -27,6 +27,7 @@ if (!COMMIT_RE.test(sourceCommit)) {
 
 const contract = JSON.parse(await readFile(contractPath, "utf8"));
 const production = contract?.production;
+const staging = contract?.staging;
 if (!production || typeof production !== "object" || Array.isArray(production)) {
   throw new Error("Production deployment environment contract is missing");
 }
@@ -38,8 +39,22 @@ if (!Array.isArray(production.google_client_ids) || production.google_client_ids
 }
 const expectedAllowedOrigins = production.frontend_origins.join(",");
 const expectedGoogleClientId = String(production.google_client_ids[0] || "").trim();
+const expectedProductionD1Name = String(production.d1_database_name || "").trim();
+const expectedStagingD1Name = String(staging?.d1_database_name || "").trim();
 if (!GOOGLE_CLIENT_ID_RE.test(expectedGoogleClientId)) {
   throw new Error("Reviewed production Google OAuth client ID is invalid");
+}
+if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(expectedProductionD1Name)) {
+  throw new Error("Reviewed production D1 database name is missing or invalid");
+}
+if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(expectedStagingD1Name)) {
+  throw new Error("Reviewed staging D1 database name is missing or invalid");
+}
+if (expectedProductionD1Name === expectedStagingD1Name) {
+  throw new Error("Production and staging D1 database names must differ");
+}
+if (databaseName !== expectedProductionD1Name) {
+  throw new Error(`CLOUDFLARE_D1_DATABASE_NAME must equal reviewed production D1 name ${expectedProductionD1Name}`);
 }
 
 let config = await readFile(sourcePath, "utf8");
