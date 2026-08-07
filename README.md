@@ -2,7 +2,6 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.52.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10+-green.svg)
 ![Vue](https://img.shields.io/badge/vue-3.4+-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
@@ -13,7 +12,7 @@
 專為美股 / 台股 / 韓股投資者設計，採用全 Serverless 架構  
 高效能 | 低成本 | 即時數據 | PWA 支援 | 策略群組 | 多人隔離（Multi-user）
 
-[🌐 Live Demo](https://sheet-trading-journal.pages.dev/) | [📖 部署文件](https://github.com/chihung1024/sheet-trading-journal/blob/main/DEPLOYMENT_FINAL.md) | [🐛 Issues](https://github.com/chihung1024/sheet-trading-journal/issues)
+[🌐 Live Demo](https://sheet-trading-journal.pages.dev/) | [📖 部署文件](https://github.com/chihung1024/sheet-trading-journal/blob/main/docs/DEPLOYMENT.md) | [🐛 Issues](https://github.com/chihung1024/sheet-trading-journal/issues)
 
 </div>
 
@@ -140,12 +139,13 @@
 
 ### 🔄 自動刷新機制
 
-背景自動觸發投資組合計算：
-- 預設每 3 分鐘自動觸發 GitHub Actions
-- 倒數計時器顯示下次更新時間
-- 一鍵暫停/恢復自動刷新
-- 手動觸發按鈕（適合即時更新需求）
-- 狀態輪詢：自動追蹤後端計算進度
+盤中自動觸發投資組合更新：
+- 僅在台股 / 美股盤中排程自動刷新
+- 盤中預設每 3 分鐘觸發一次，每次觸發設有 60 秒逾時保護
+- 隱藏頁面、未登入、暫停或失去跨分頁 leadership 時不自動排程
+- 同一登入者僅由一個可見 leader 分頁負責自動刷新與倒數
+- 暫停意圖會在同租戶分頁間共享，並保留手動觸發能力
+- 狀態輪詢自動追蹤後端計算進度
 
 ### 🌓 深色模式 & PWA
 
@@ -177,17 +177,17 @@
 
 - **後端（API / Trigger）**
   - Cloudflare Worker（JS）
-  - 主要負責：API 轉發/驗證、觸發 GitHub Actions、讀寫快照（依你的部署方式）
+  - 主要負責：API 轉發/驗證、觸發 GitHub Actions、讀寫快照（依目前 Worker/API 實作）
 
 - **批次運算（Portfolio Engine）**
   - GitHub Actions 定期或被觸發執行
   - `main.py` 為入口，呼叫 `journal_engine/` 計算投資組合快照
-  - 市價/匯率主要來源：Yahoo Finance（或你封裝的 market client）
+  - 市價/匯率主要來源：Yahoo Finance（或封裝的 market client）
 
 - **資料儲存**
-  - Cloudflare D1（SQLite）存放各使用者快照、交易資料（依 worker/api 實作）
+  - Cloudflare D1（SQLite）存放各使用者快照、交易資料（依 Worker/API 實作）
 
-> 部署細節與「正確 Worker 位置」請以文件為準：DEPLOYMENT_FINAL.md
+> Current deployment navigation：`docs/DEPLOYMENT.md`。歷史 runbook 不應覆蓋目前 machine-readable contracts 與 workflows。
 
 ---
 
@@ -196,7 +196,7 @@
 （以 repo root 為準）
 
 - `src/`：Vue 前端
-  - `components/`：所有 Vue 元件
+  - `components/`：現行 Vue 元件
     - `StatsGrid.vue`：績效卡片
     - `PerformanceChart.vue`：績效曲線圖
     - `HoldingsTable.vue`：持倉明細表
@@ -204,20 +204,20 @@
     - `DividendManager.vue`：配息管理介面
     - `GroupManager.vue`：群組管理介面
     - `TradeForm.vue`：交易表單
-    - `PieChart.vue`：圓餅圖（資產配置）
     - `LoginOverlay.vue`：登入畫面
     - `skeletons/`：載入骨架屏
   - `stores/`：Pinia 狀態管理
-  - `composables/`：可重用邏輯（useAutoRefresh / useDarkMode / usePWA）
+  - `composables/`：可重用邏輯（例如 `useMarketHoursRefresh` / `useDarkMode` / `usePWA` / `useTokenRefresh` / `useToast`）
   - `App.vue`：主應用程式
 - `public/`：PWA / CSP headers 等靜態資源
-- `worker.js`：Cloudflare Worker 主版本
-- `cloudflare worker/`：歷史/特定版本 Worker
+- `worker-entry.js`：Cloudflare Worker 部署入口
+- `worker.js`：canonical Worker runtime source
+- `cloudflare worker/`：歷史 archive，不是現行 deploy source
 - `main.py`：GitHub Actions 批次計算入口
 - `journal_engine/`：投資組合計算引擎（Python）
 - `tests/`：測試
-- `.env.example`：環境變數範例
-- `DEPLOYMENT_FINAL.md`：部署指南
+- `.env.example`：production frontend 環境值範例；不是 staging / preview 設定檔
+- `docs/DEPLOYMENT.md`：現行部署指南
 
 ---
 
@@ -229,7 +229,7 @@
 - `Symbol`：標的代碼（美股無後綴、台股 `.TW/.TWO`、韓股 `.KS/.KQ`）
 - `Type`：`BUY` / `SELL` / `DIV`
 - `Qty`：數量
-- `Price`：成交價（DIV 時欄位語意取決於你的匯入格式）
+- `Price`：成交價（DIV 時欄位語意取決於匯入格式）
 - `Commission` / `Tax`：費用與稅（會被正規化成正值再納入計算）
 - `Tag`：策略標籤（用於群組）
 
@@ -237,7 +237,7 @@
 
 ## 📢 績效計算說明（以程式碼為準）
 
-> 這一節的目標是「把程式的實際行為講清楚」，方便你日後對帳與擴充。
+> 這一節的目標是「把程式的實際行為講清楚」，方便日後對帳與擴充。
 
 ### 1) 成本與已實現損益：FIFO
 
@@ -249,7 +249,7 @@
 ### 2) 匯率處理（有效匯率 multiplier）
 
 - 台股（`.TW/.TWO`）：effective FX = 1.0。
-- 非台股：effective FX = 匯率（或你 market client 的幣別轉換倍數）。
+- 非台股：effective FX = 匯率（或 market client 的幣別轉換倍數）。
 
 ### 3) 估值價格與 as-of 日期
 
@@ -283,8 +283,8 @@
 - `DIV` 交易會被視為「已確認股息」（避免重複計入）。
 - 系統也會從 market data 推導「應計股息」並記錄為 dividend history：
   - 若該日該標的沒有 `DIV` 交易，會視為 pending（並可能先行計入 realized / cashflow，依目前 engine 行為）。
-  - 若你新增 `DIV` 交易（confirmed），則該筆會轉為 confirmed，避免 double-count。
-- 股息淨額目前含預扣稅率假設（例如 0.7 = 30% withholding）；若你要支援不同市場稅率，建議未來把稅率規則化（per symbol / per market / per account）。
+  - 若新增 `DIV` 交易（confirmed），則該筆會轉為 confirmed，避免 double-count。
+- 股息淨額目前含預扣稅率假設（例如 0.7 = 30% withholding）；若要支援不同市場稅率，可再擴充規則層（per symbol / per market / per account）。
 
 ### 6) XIRR（Money-weighted）
 
@@ -315,7 +315,7 @@ python main.py
 
 ### 部署（Cloudflare + GitHub Actions）
 
-請參考文件：DEPLOYMENT_FINAL.md
+請參考現行文件：`docs/DEPLOYMENT.md`
 
 ---
 
