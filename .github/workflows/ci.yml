@@ -84,6 +84,9 @@ jobs:
       - name: Verify Worker deployment metadata
         run: npm run worker:config:check
 
+      - name: Enforce Recovery Evidence Gate
+        run: npm run worker:recovery-gate:check
+
       - name: Apply and verify D1 baseline locally
         run: npm run worker:schema:test
 

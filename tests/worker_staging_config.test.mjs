@@ -11,6 +11,7 @@ const D1_NAME = 'trading-journal-staging';
 const STAGING_CLIENT_ID = '123456789012-stagingclient.apps.googleusercontent.com';
 const PRODUCTION_CLIENT_ID =
   '951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com';
+const RUNTIME_SERVICE = 'trading-journal-api';
 const TEST_OUTPUT = resolve('.wrangler/pr10d2a-staging-render-test.toml');
 const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
@@ -131,6 +132,7 @@ test('staging secret inventory requires API_SECRET and forbids GITHUB_TOKEN', ()
 test('staging readiness requires canonical version health plus staging response identity', () => {
   const base = {
     version: {
+      service: RUNTIME_SERVICE,
       source_commit: EXACT_SHA,
       release_version: '4.07',
       api_version: '2.60',
@@ -144,12 +146,20 @@ test('staging readiness requires canonical version health plus staging response 
     versionHeaders: 'x-deployment-environment: staging\nx-worker-service: journal-backend-staging\n',
     healthHeaders: 'X-Deployment-Environment: staging\nX-Worker-Service: journal-backend-staging\n',
     expectedSha: EXACT_SHA,
+    expectedService: RUNTIME_SERVICE,
     expectedReleaseVersion: '4.07',
     expectedApiVersion: '2.60',
     expectedSchemaVersion: '2',
   };
 
   assert.equal(validateStagingWorkerDeployment(base).ok, true);
+  assert.equal(
+    validateStagingWorkerDeployment({
+      ...base,
+      version: { ...base.version, service: 'wrong-runtime-service' },
+    }).ok,
+    false,
+  );
   assert.equal(
     validateStagingWorkerDeployment({
       ...base,

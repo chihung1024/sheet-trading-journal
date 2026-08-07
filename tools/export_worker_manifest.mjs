@@ -18,6 +18,7 @@ if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
   throw new Error("Worker manifest must be a JSON object");
 }
 
+const runtimeService = requireIdentifier(manifest.runtimeService, "runtimeService");
 const releaseVersion = requireVersion(manifest.releaseVersion, "releaseVersion");
 const apiVersion = requireVersion(manifest.apiVersion, "apiVersion");
 const schemaVersion = requireSchemaVersion(manifest.schemaVersion);
@@ -25,6 +26,7 @@ const schemaVersion = requireSchemaVersion(manifest.schemaVersion);
 appendFileSync(
   outputPath,
   [
+    `runtime_service=${runtimeService}`,
     `release_version=${releaseVersion}`,
     `api_version=${apiVersion}`,
     `schema_version=${schemaVersion}`,
@@ -33,7 +35,14 @@ appendFileSync(
   "utf8",
 );
 
-console.log(`Validated Worker manifest: release=${releaseVersion} api=${apiVersion} schema=${schemaVersion}`);
+console.log(`Validated Worker manifest: service=${runtimeService} release=${releaseVersion} api=${apiVersion} schema=${schemaVersion}`);
+
+function requireIdentifier(value, field) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) {
+    throw new Error(`Worker manifest ${field} is invalid`);
+  }
+  return value;
+}
 
 function requireVersion(value, field) {
   if (typeof value !== "string" || !/^\d+\.\d+(?:\.\d+)?$/.test(value)) {

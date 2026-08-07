@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "authority_id": "PRODUCTION-ACTIVATION-AUTHORITY",
+  "status": "blocked",
+  "authorized_source_sha": null,
+  "approved_at": null,
+  "required_checks": {
+    "production_frontend_explicit_environment": "pending",
+    "production_frontend_live_contract": "pending",
+    "production_d1_identity": "pending"
+  },
+  "evidence": {},
+  "notes": "D3D-A deliberately leaves production activation blocked. D3D-B must replace pending checks with passed evidence from authoritative read-only production configuration/live probes before the reviewer-protected production deploy job can become eligible."
+}

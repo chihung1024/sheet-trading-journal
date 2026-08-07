@@ -79,6 +79,7 @@ jobs:
         run: |
           npm run test:worker
           npm run worker:config:check
+          npm run worker:recovery-gate:check
           npm run worker:schema:test
 
       - name: Verify protected staging configuration
@@ -165,6 +166,7 @@ jobs:
       - name: Verify exact staging deployment readiness
         env:
           EXPECTED_SHA: ${{ steps.source.outputs.sha }}
+          EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
           EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
           EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
           EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
@@ -186,6 +188,11 @@ jobs:
                 HEALTH_JSON="$(cat health.json)" \
                 VERSION_HEADERS="$(cat version.headers)" \
                 HEALTH_HEADERS="$(cat health.headers)" \
+                EXPECTED_SHA="$EXPECTED_SHA" \
+                EXPECTED_RUNTIME_SERVICE="$EXPECTED_RUNTIME_SERVICE" \
+                EXPECTED_RELEASE_VERSION="$EXPECTED_RELEASE_VERSION" \
+                EXPECTED_API_VERSION="$EXPECTED_API_VERSION" \
+                EXPECTED_SCHEMA_VERSION="$EXPECTED_SCHEMA_VERSION" \
                 node tools/verify_staging_worker_deployment.mjs; then
                 ready=1
                 break

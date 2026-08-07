@@ -5,18 +5,23 @@ export function validateWorkerDeployment({
   version,
   health,
   expectedSha,
+  expectedService,
   expectedReleaseVersion,
   expectedApiVersion,
   expectedSchemaVersion,
 }) {
   const errors = [];
   const normalizedSha = String(expectedSha || "").trim().toLowerCase();
+  const service = String(expectedService || "").trim();
   const releaseVersion = String(expectedReleaseVersion || "").trim();
   const apiVersion = String(expectedApiVersion || "").trim();
   const schemaVersion = Number(expectedSchemaVersion);
 
   if (!/^[0-9a-f]{40}$/.test(normalizedSha)) {
     errors.push("expected source SHA must be an exact 40-character Git commit SHA");
+  }
+  if (!service) {
+    errors.push("expected runtime service is required");
   }
   if (!releaseVersion) {
     errors.push("expected release version is required");
@@ -38,9 +43,19 @@ export function validateWorkerDeployment({
     const reportedSchemaVersion = Number(version.schema_version);
     const observedSchemaVersion = Number(health.observed_schema_version);
 
+    if (version.service !== service) {
+      errors.push(
+        `runtime service mismatch: ${String(version.service || "missing")} != ${service}`,
+      );
+    }
     if (version.source_commit !== normalizedSha) {
       errors.push(
         `source commit has not propagated: ${String(version.source_commit || "missing")} != ${normalizedSha}`,
+      );
+    }
+    if (health.source_commit && health.source_commit !== normalizedSha) {
+      errors.push(
+        `health source commit mismatch: ${String(health.source_commit)} != ${normalizedSha}`,
       );
     }
     if (version.release_version !== releaseVersion) {
@@ -72,9 +87,9 @@ export function validateWorkerDeployment({
       errors.push(
         `observed D1 schema is missing or invalid: ${String(health.observed_schema_version)}`,
       );
-    } else if (observedSchemaVersion < schemaVersion) {
+    } else if (observedSchemaVersion !== schemaVersion) {
       errors.push(
-        `observed D1 schema is too old: ${observedSchemaVersion} < ${schemaVersion}`,
+        `observed D1 schema mismatch: ${observedSchemaVersion} != ${schemaVersion}`,
       );
     }
   }
@@ -104,6 +119,7 @@ function runCli() {
       version: parseJsonEnv("VERSION_JSON"),
       health: parseJsonEnv("HEALTH_JSON"),
       expectedSha: process.env.EXPECTED_SHA,
+      expectedService: process.env.EXPECTED_RUNTIME_SERVICE,
       expectedReleaseVersion: process.env.EXPECTED_RELEASE_VERSION,
       expectedApiVersion: process.env.EXPECTED_API_VERSION,
       expectedSchemaVersion: process.env.EXPECTED_SCHEMA_VERSION,

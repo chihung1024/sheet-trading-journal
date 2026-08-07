@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import worker, { __test } from "../worker.js";
 
+const UNVERIFIED_PRODUCTION_D1_NAME = "journal-production";
+
 function healthyDb(schemaVersion = 2) {
   return {
     prepare(sql) {
@@ -107,38 +109,47 @@ test("build metadata sanitizes untrusted deployment variables", () => {
   assert.equal(metadata.source_commit, "development");
 });
 
-test("production config renderer rejects sentinel IDs and non-exact commit SHAs", () => {
+test("production config renderer rejects sentinel IDs, reviewed staging D1, and non-exact commit SHAs", () => {
   const validId = "11111111-1111-4111-8111-111111111111";
   const exactSha = "7b5686157975ab2295d74f9edf5ddb985978d706";
   const sentinel = runRenderer({
     CLOUDFLARE_D1_DATABASE_ID: "00000000-0000-0000-0000-000000000000",
-    CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+    CLOUDFLARE_D1_DATABASE_NAME: UNVERIFIED_PRODUCTION_D1_NAME,
     SOURCE_COMMIT: exactSha,
   });
   assert.notEqual(sentinel.status, 0);
   assert.match(sentinel.stderr, /non-sentinel D1 UUID/);
 
+  const stagingName = runRenderer({
+    CLOUDFLARE_D1_DATABASE_ID: validId,
+    CLOUDFLARE_D1_DATABASE_NAME: "trading-journal-staging",
+    SOURCE_COMMIT: exactSha,
+  });
+  assert.notEqual(stagingName.status, 0);
+  assert.match(stagingName.stderr, /reviewed staging D1 database name/);
+
   const shortSha = runRenderer({
     CLOUDFLARE_D1_DATABASE_ID: validId,
-    CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+    CLOUDFLARE_D1_DATABASE_NAME: UNVERIFIED_PRODUCTION_D1_NAME,
     SOURCE_COMMIT: exactSha.slice(0, 12),
   });
   assert.notEqual(shortSha.status, 0);
   assert.match(shortSha.stderr, /exact 40-character Git commit SHA/);
 });
 
-test("production config renderer writes only validated deployment metadata", async () => {
+test("unverified production config can dry-run but cannot be mistaken for reviewed D1 authority", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pr05-wrangler-"));
   const output = join(directory, "deploy.toml");
   const exactSha = "7b5686157975ab2295d74f9edf5ddb985978d706";
   try {
     const result = runRenderer({
       CLOUDFLARE_D1_DATABASE_ID: "11111111-1111-4111-8111-111111111111",
-      CLOUDFLARE_D1_DATABASE_NAME: "journal-production",
+      CLOUDFLARE_D1_DATABASE_NAME: UNVERIFIED_PRODUCTION_D1_NAME,
       SOURCE_COMMIT: exactSha.toUpperCase(),
       WRANGLER_OUTPUT: output,
     });
     assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Production D1 authority status: unverified/);
     const rendered = await readFile(output, "utf8");
     const mainMatch = rendered.match(/^main = "([^"]+)"$/m);
     const migrationsMatch = rendered.match(/^migrations_dir = "([^"]+)"$/m);
@@ -146,13 +157,21 @@ test("production config renderer writes only validated deployment metadata", asy
     assert.ok(migrationsMatch, "rendered config must contain exactly one migrations path");
     assert.equal(resolve(dirname(output), mainMatch[1]), resolve("worker-entry.js"));
     assert.equal(resolve(dirname(output), migrationsMatch[1]), resolve("migrations"));
-    assert.match(rendered, /database_name = "journal-production"/);
+    assert.match(rendered, new RegExp(`database_name = "${UNVERIFIED_PRODUCTION_D1_NAME}"`));
     assert.match(rendered, /database_id = "11111111-1111-4111-8111-111111111111"/);
     assert.match(rendered, new RegExp(`SOURCE_COMMIT = "${exactSha}"`));
     assert.doesNotMatch(rendered, /00000000-0000-0000-0000-000000000000/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("tracked production environment contract does not invent an unverified D1 identity", async () => {
+  const contract = JSON.parse(await readFile("config/deployment-environments.json", "utf8"));
+  assert.equal(contract.production.d1_identity_status, "unverified");
+  assert.equal(contract.production.d1_database_name, null);
+  assert.equal(contract.production.d1_database_id_sha256, null);
+  assert.equal(contract.staging.d1_database_name, "trading-journal-staging");
 });
 
 test("tracked Worker manifest distinguishes deployment entry from one canonical source", async () => {
