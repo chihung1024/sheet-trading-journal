@@ -107,6 +107,77 @@ def test_prepare_transactions_rejects_empty_api_result():
         runner.prepare_transactions([], "")
 
 
+def test_prepare_transactions_rejects_non_positive_quantity():
+    for quantity in (0, -1):
+        records = make_records()[:1]
+        records[0]["qty"] = quantity
+        with pytest.raises(runner.PortfolioUpdateError, match="Qty 必須大於 0"):
+            runner.prepare_transactions(records)
+
+
+def test_prepare_transactions_rejects_negative_price_but_preserves_zero_compatibility():
+    records = make_records()[:1]
+    records[0]["price"] = -0.01
+    with pytest.raises(runner.PortfolioUpdateError, match="Price 不得小於 0"):
+        runner.prepare_transactions(records)
+
+    records[0]["price"] = 0
+    normalized, _ = runner.prepare_transactions(records)
+    assert normalized.loc[0, "Price"] == 0
+
+
+def test_required_market_data_accepts_positive_price_series():
+    client = SimpleNamespace(
+        market_data={
+            "NVDA": pd.DataFrame(
+                {"Close_Adjusted": [100.0, 101.0], "Stock Splits": [0.0, 0.0]},
+                index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            ),
+            "SPY": pd.DataFrame(
+                {"Close_Adjusted": [200.0, 202.0], "Stock Splits": [0.0, 0.0]},
+                index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            ),
+        }
+    )
+
+    runner.validate_required_market_data(client, {"NVDA", "SPY"})
+
+
+def test_required_market_data_rejects_missing_required_ticker():
+    client = SimpleNamespace(market_data={})
+
+    with pytest.raises(runner.PortfolioUpdateError, match="缺少資料: NVDA"):
+        runner.validate_required_market_data(client, {"NVDA"})
+
+
+def test_required_market_data_rejects_zero_or_negative_price_series():
+    for price in (0.0, -1.0):
+        client = SimpleNamespace(
+            market_data={
+                "NVDA": pd.DataFrame(
+                    {"Close_Adjusted": [100.0, price]},
+                    index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+                )
+            }
+        )
+        with pytest.raises(runner.PortfolioUpdateError, match="價格資料無效: NVDA"):
+            runner.validate_required_market_data(client, {"NVDA"})
+
+
+def test_required_market_data_rejects_nan_price_series():
+    client = SimpleNamespace(
+        market_data={
+            "NVDA": pd.DataFrame(
+                {"Close_Adjusted": [100.0, float("nan")]},
+                index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            )
+        }
+    )
+
+    with pytest.raises(runner.PortfolioUpdateError, match="價格資料無效: NVDA"):
+        runner.validate_required_market_data(client, {"NVDA"})
+
+
 def test_mask_user_id_hides_local_part():
     masked = runner.mask_user_id("chired@gmail.com")
 

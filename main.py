@@ -161,6 +161,14 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
         if df[column].isna().any() or not df[column].map(math.isfinite).all():
             raise PortfolioUpdateError(f"交易紀錄欄位 {column} 包含非有限數值")
 
+    # Keep the batch runner's domain contract aligned with the Worker write boundary.
+    # Existing records with price=0 remain accepted for backward compatibility until
+    # a production-data preflight can prove that tightening the write contract is safe.
+    if (df["Qty"] <= 0).any():
+        raise PortfolioUpdateError("交易紀錄欄位 Qty 必須大於 0")
+    if (df["Price"] < 0).any():
+        raise PortfolioUpdateError("交易紀錄欄位 Price 不得小於 0")
+
     df["Symbol"] = df["Symbol"].astype(str).str.strip().str.upper()
     df["Type"] = df["Type"].astype(str).str.strip().str.upper()
     if (df["Symbol"] == "").any() or (df["Type"] == "").any():
@@ -181,6 +189,31 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
     if target_user_id and len(users) != 1:
         raise PortfolioUpdateError("目標使用者篩選後仍包含多個使用者")
     return df, users
+
+
+def validate_required_market_data(market_client, required_tickers) -> None:
+    """Fail closed unless every calculation input has usable positive price data."""
+    market_data = getattr(market_client, "market_data", None)
+    if not isinstance(market_data, dict):
+        raise PortfolioUpdateError("市場資料客戶端未提供可驗證的 market_data")
+
+    missing = []
+    invalid = []
+    for symbol in sorted({str(ticker).strip().upper() for ticker in required_tickers if ticker}):
+        frame = market_data.get(symbol)
+        if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
+            missing.append(symbol)
+            continue
+        if not PortfolioValidator.validate_price_data(symbol, frame):
+            invalid.append(symbol)
+
+    if missing or invalid:
+        details = []
+        if missing:
+            details.append(f"缺少資料: {', '.join(missing)}")
+        if invalid:
+            details.append(f"價格資料無效: {', '.join(invalid)}")
+        raise PortfolioUpdateError(f"必要市場資料驗證失敗（{'；'.join(details)}）")
 
 
 def validate_before_upload(snapshot, user_df: pd.DataFrame) -> None:
@@ -237,6 +270,7 @@ def run_update() -> None:
     logger.info("最早交易日期: %s", earliest_transaction_date.strftime("%Y-%m-%d"))
     logger.info("開始下載市場數據，標的數: %s", len(all_tickers))
     market_client.download_data(sorted(all_tickers), fetch_start_date)
+    validate_required_market_data(market_client, all_tickers)
 
     inserted_dates = ensure_transaction_dates_in_market_calendar(market_client, df)
     if inserted_dates:
