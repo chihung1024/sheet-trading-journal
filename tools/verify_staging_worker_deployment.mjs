@@ -61,6 +61,7 @@ function runCli() {
       versionHeaders: process.env.VERSION_HEADERS,
       healthHeaders: process.env.HEALTH_HEADERS,
       expectedSha: process.env.EXPECTED_SHA,
+      expectedService: process.env.EXPECTED_RUNTIME_SERVICE,
       expectedReleaseVersion: process.env.EXPECTED_RELEASE_VERSION,
       expectedApiVersion: process.env.EXPECTED_API_VERSION,
       expectedSchemaVersion: process.env.EXPECTED_SCHEMA_VERSION,
