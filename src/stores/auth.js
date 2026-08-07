@@ -3,7 +3,6 @@ import { ref } from 'vue';
 import { CONFIG } from '../config';
 import { exchangeGoogleCredential } from '../services/authApi.js';
 import {
-  TOKEN_STORAGE_KEY,
   persistAuthentication,
   readAuthenticationStorage,
 } from '../services/authStorage.js';
@@ -12,7 +11,10 @@ import {
   decodeJwtClaims,
   isJwtExpired,
 } from '../services/jwtClaims.js';
-import { clearSensitiveProjectStorage } from '../services/projectStorage.js';
+import {
+  TOKEN_STORAGE_KEY,
+  clearSensitiveProjectStorage,
+} from '../services/projectStorage.js';
 
 const readSignedEmail = (claims) => {
   if (typeof claims?.email !== 'string' || !claims.email.trim()) {
