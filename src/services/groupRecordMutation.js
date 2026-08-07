@@ -3,6 +3,10 @@ import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   fetchWithDeadline,
 } from './fetchDeadline.js';
+import {
+  ApiApplicationError,
+  ApiHttpError,
+} from './requestErrors.js';
 
 const RECORD_UPDATE_FIELDS = Object.freeze([
   'id',
@@ -77,12 +81,19 @@ export class PartialRecordTagBatchError extends Error {
   }
 }
 
+const readLegacyRecordTagCode = (error) => {
+  if (error?.apiCode) return error.apiCode;
+  if (error instanceof ApiHttpError) return 'HTTP_ERROR';
+  if (error instanceof ApiApplicationError) return 'APPLICATION_ERROR';
+  return error?.code || 'NETWORK_ERROR';
+};
+
 const normalizeRecordTagError = (error, recordId) => {
   if (error instanceof RecordTagUpdateError) return error;
   return new RecordTagUpdateError(error?.message || 'Record update request failed', {
     recordId,
     status: error?.status ?? null,
-    code: error?.apiCode || error?.code || 'NETWORK_ERROR',
+    code: readLegacyRecordTagCode(error),
     cause: error,
   });
 };
