@@ -7,10 +7,9 @@ this file is the current product-engineering navigation point.
 
 ## Baseline
 
-- Audit baseline: `a1466e6733203c4a3ec9aa00b5b90edb52a1e045`
+- Program audit baseline: `a1466e6733203c4a3ec9aa00b5b90edb52a1e045`
 - Baseline tree: `abe39d70b7789cc81cc7c770257b6a91f309b5e6`
-- Pre-P1 recovery branch: `backup-pre-product-integrity-p1-a1466e6`
-- P1 work branch: `pr-product-integrity-p1-input-market-gates`
+- Current completed product-integrity baseline before P2: `cde4c770d0c64b582083764a55d3ffbfc5e603ad`
 - Runtime identity remains Worker 4.07 / API 2.60 / D1 schema 2.
 - Production activation remains fail-closed; this program does not reopen D3D.
 
@@ -30,43 +29,47 @@ this file is the current product-engineering navigation point.
 
 ### PI-001 — Python transaction domain contract drift
 
-Status: **P1 in progress**
+Status: **P1 completed**
 
 The Worker write boundary requires `qty > 0`, finite values, and `price >= 0`. The Python
 batch runner previously checked only parseability/finite values and therefore trusted a weaker
 contract than the persistent source of record. A malformed or legacy row could reach financial
 calculation even though it violates the current write contract.
 
-P1 action: align the runner to `qty > 0` and `price >= 0`. Price zero remains temporarily
-compatible because current Worker semantics explicitly permit it; tightening to `price > 0`
-requires a production-record preflight first.
+P1 aligned the runner to `qty > 0` and `price >= 0`. Price zero remains temporarily compatible
+because current Worker semantics explicitly permit it; tightening to `price > 0` requires a
+production-record preflight first.
 
-### PI-002 — Required market price validator exists but was not wired into orchestration
+### PI-002 — Required market price validator existed but was not wired into orchestration
 
-Status: **P1 in progress**
+Status: **P1 completed**
 
 `PortfolioValidator.validate_price_data()` rejects missing `Close_Adjusted`, NaN, zero, and
-negative prices, but no caller used it. Low-level market accessors intentionally return `0.0`
-as a missing-price sentinel. Transaction-calendar validation blocks wholly missing transaction
-symbols, but does not replace a required input price-series gate and does not protect a missing
-or invalid benchmark series.
+negative prices, but had no orchestration caller. Low-level market accessors intentionally return
+`0.0` as a missing-price sentinel. P1 now validates every required transaction symbol and per-user
+benchmark after download and before transaction-calendar/calculation work. Missing, empty, NaN,
+zero, or negative required price data fails the batch before snapshot generation/upload.
 
-P1 action: after download and before transaction-calendar/calculation work, validate every
-required transaction symbol and per-user benchmark. Missing, empty, NaN, zero, or negative
-required price data fails the batch before snapshot generation/upload.
+### PI-003 — Pending dividend withholding policy was duplicated and wrong for Taiwan
 
-### PI-003 — Pending dividend withholding policy is duplicated and wrong for Taiwan
+Status: **P2 in progress**
 
-Status: **confirmed; P2 queued**
-
-Both calculator pending-dividend logic and canonical Daily P&L reconciliation hardcode a `0.7`
+Both calculator pending-dividend logic and canonical Daily P&L reconciliation hardcoded a `0.7`
 net multiplier. The frontend explicitly defaults Taiwan dividend tax to zero and confirmation
-writes the actual net amount as a DIV record. Therefore a Taiwan dividend can be valued at 70%
+writes the actual net amount as a DIV record. Therefore a Taiwan dividend could be valued at 70%
 while pending and 100% after confirmation solely because the user confirmed it.
 
-P2 action: introduce one shared dividend-withholding policy, preserve US 30% current behavior,
-set Taiwan to 0%, use the same policy in calculator/reconciler/serialized tax_rate, and add a
-pending-to-confirmed invariance regression.
+P2 root fix:
+- one shared dividend-withholding policy;
+- Taiwan 0%, US/default current model 30%;
+- calculator and canonical reconciler consume the same policy;
+- serialized pending dividend carries explicit `tax_rate` matching the policy;
+- regression tests lock Taiwan/US behavior and pending-to-confirmed economic-value invariance.
+
+P2 safety points:
+- pre-change recovery: `backup-pre-product-integrity-p2-cde4c77`
+- work branch: `pr-product-integrity-p2-dividend-policy`
+- no Worker runtime, D1/schema/data, production deployment, or multi-currency expansion is in P2.
 
 ### PI-004 — Non-USD/TWD currency valuation is dimensionally unsafe
 
@@ -120,7 +123,7 @@ protection, then remove confirmed dead modules/imports and unused dependencies a
 - Transaction calendar: missing/empty symbol data, future transaction dates, and unavailable
   prior valuation dates fail closed; synthetic dates clear corporate-action cash fields.
 - Canonical Daily P&L reconciliation: per-symbol ledger, formula reconciliation, finite checks,
-  and root/group synchronization are strong; dividend policy remains the known semantic defect.
+  and root/group synchronization are strong; P2 removes the known duplicated dividend policy.
 - Frontend request layer: timeout/abort classification, malformed-response handling, and mutation
   outcome ambiguity are already explicit; generic retries are not recommended.
 - Cross-tab market-refresh leadership: lease identity, settle confirmation, lifecycle epochs, and
@@ -131,29 +134,37 @@ protection, then remove confirmed dead modules/imports and unused dependencies a
 
 ### P1 — Source-record and required market-data integrity gates
 
-Risk class: high correctness / low compatibility impact.
+Status: **completed**
 
-Scope:
-- align Python transaction domain checks with current Worker write semantics;
-- activate required ticker/benchmark price-series validation before calculation;
-- add regression tests for invalid quantities/prices and missing/zero/negative/NaN market data.
+Scope delivered:
+- aligned Python transaction domain checks with current Worker write semantics;
+- activated required ticker/benchmark price-series validation before calculation;
+- added regression tests for invalid quantities/prices and missing/zero/negative/NaN market data.
 
-Non-scope:
-- no financial formula change;
-- no Worker runtime source change;
-- no D1/schema/data mutation;
-- no production deployment.
+Verification:
+- PR #133
+- reviewed head: `02bfa592e0150e03ddf9d078a615b4d723797fc8`
+- PR CI #322 / run `31178543829`: SUCCESS
+- merge/main SHA: `cde4c770d0c64b582083764a55d3ffbfc5e603ad`
+- post-merge CI #323 / run `31178674939`: SUCCESS
+- post-merge Pages #1422 / run `31178670006`: SUCCESS
+- pre-change recovery: `backup-pre-product-integrity-p1-a1466e6`
+- post-change recovery: `backup-post-product-integrity-p1-cde4c77`
+
+No financial formula, Worker runtime, D1/schema/data, frontend behavior, or production activation
+change was made in P1.
 
 ### P2 — Dividend semantic unification
 
+Status: **in progress**
 Risk class: high financial correctness / controlled user-visible correction.
 
 Scope:
 - shared withholding policy;
 - Taiwan 0%, US 30% under current policy;
-- calculator/reconciler/model consistency;
+- calculator/reconciler/model-output consistency;
 - pending/confirmed invariance tests;
-- audit manual DIV representation and tax/amount input constraints.
+- preserve current API/schema shape.
 
 ### P3 — Currency safety, then real multi-currency FX
 
@@ -211,9 +222,3 @@ Scope:
 - explicit model defaults/default factories;
 - currency/dividend/benchmark provenance;
 - Worker/Python/frontend contract-drift tests.
-
-## P1 verification record
-
-Work is in progress. Final PR number, reviewed head SHA, CI runs, merge SHA, post-merge CI/Pages,
-and post-change recovery branch will be recorded in the merged PR and appended here in a later
-product-integrity batch if the baseline changes materially.
