@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "evidence_id": "PR-10D3B-PREDEPLOY-READONLY-2026-08-07",
+  "status": "in_progress",
+  "baseline_main_sha": "6bf0f4002ac6ed7fead64d49084ac31c1d33fb39",
+  "pre_change_recovery": "backup-pre-10d3d-b-6bf0f40",
+  "work_branch": "pr-10d3d-b-production-readonly-evidence",
+  "runtime_baseline": {
+    "worker_release": "4.07",
+    "api_version": "2.60",
+    "schema_version": 2
+  },
+  "findings_in_scope": ["N58", "N61", "N64"],
+  "deferred": ["N62"],
+  "safety": {
+    "writes_allowed": false,
+    "production_deployment_allowed": false,
+    "staging_deployment_allowed": false,
+    "d1_migration_allowed": false,
+    "synthetic_production_write_allowed": false,
+    "oauth_mutation_allowed": false,
+    "pages_config_mutation_allowed": false,
+    "raw_control_plane_artifact_allowed": false
+  },
+  "evidence_surfaces": {
+    "public_production": {
+      "requires_secrets": false,
+      "pages_origin": "https://sheet-trading-journal.pages.dev",
+      "worker_origin": "https://journal-backend.chired.workers.dev",
+      "output": "production-public-evidence.json"
+    },
+    "cloudflare_control_plane": {
+      "requires_production_environment": true,
+      "allowed_branch": "main",
+      "read_only": true,
+      "d1_identity_source": "live Worker version DB binding -> Cloudflare D1 metadata",
+      "pages_identity_source": "Cloudflare Pages project + production deployments",
+      "output": "production-cloudflare-evidence.json"
+    }
+  },
+  "one_shot_request": "config/production-predeploy-evidence-request.json",
+  "required_pr_closeout": {
+    "protected_ci": "pending",
+    "public_live_proof": "pending",
+    "cloudflare_control_plane_job_on_pr": "must_skip",
+    "independent_diff_security_review": "pending",
+    "normal_protected_merge": "pending"
+  },
+  "post_merge_expected_state": {
+    "public_live_proof": "must_pass_before_human_gate",
+    "cloudflare_control_plane_proof": "expected_waiting_for_production_environment_approval",
+    "production_deployment": "forbidden",
+    "production_runtime_d1_identity": "remains_unverified_until_separate_reviewed_runtime_identity_change",
+    "production_activation_authority": "remains_blocked"
+  },
+  "notes": [
+    "This evidence snapshot is append-only and must not be rewritten after the actual live results are known.",
+    "A failed public or Cloudflare read-only proof is valid evidence and must be root-caused rather than bypassed.",
+    "Protected D1 ID/name secrets are not accepted as independent D1 identity authority.",
+    "Schema 3 remains blocked by the separate Recovery Evidence Gate."
+  ]
+}
