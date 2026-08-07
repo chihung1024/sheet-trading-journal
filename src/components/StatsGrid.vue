@@ -86,18 +86,21 @@
     </div>
     
     <!-- 6️⃣ 個人年化報酬率 -->
-    <div class="stat-block" :class="getPnlBgClass(stats.xirr)">
+    <div class="stat-block" :class="xirrAvailable ? getPnlBgClass(xirrValue) : ''" :title="xirrTooltip">
       <div class="stat-top">
         <span class="stat-label">個人年化報酬</span>
         <span class="icon-box">🚀</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value" :class="getPnlTextClass(stats.xirr)">
-          {{ (stats.xirr || 0) >= 0 ? '+' : '' }}{{ (stats.xirr || 0).toFixed(2) }}<span class="percent">%</span>
+        <div class="stat-value" :class="xirrAvailable ? getPnlTextClass(xirrValue) : ''">
+          <template v-if="xirrAvailable">
+            {{ xirrValue >= 0 ? '+' : '' }}{{ xirrValue.toFixed(2) }}<span class="percent">%</span>
+          </template>
+          <template v-else>--</template>
         </div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub text-xs">XIRR (資金加權)</span>
+         <span class="text-sub text-xs footer-desc">{{ xirrFooter }}</span>
       </div>
     </div>
   </div>
@@ -171,6 +174,37 @@ const dailyRoi = computed(() => {
   }
   
   return '0.00';
+});
+
+// Legacy snapshots do not have xirr_status and remain display-compatible.
+// New snapshots use explicit status so an unavailable metric is never shown as 0%.
+const xirrValue = computed(() => Number(stats.value.xirr ?? 0));
+const xirrAvailable = computed(() => {
+  const status = stats.value.xirr_status;
+  return status == null || status === 'ok';
+});
+
+const xirrFooter = computed(() => {
+  if (stats.value.xirr_status === 'not_applicable') return 'XIRR 尚不適用';
+  if (stats.value.xirr_status === 'undefined') return 'XIRR 無法計算';
+  if (stats.value.xirr_cashflow_conventional === false) {
+    return 'XIRR (非傳統現金流，可能多解)';
+  }
+  return 'XIRR (資金加權)';
+});
+
+const xirrTooltip = computed(() => {
+  const status = stats.value.xirr_status;
+  if (status == null) return '舊版快照：未提供 XIRR 計算狀態';
+  const asof = stats.value.xirr_asof_date ? `估值日 ${stats.value.xirr_asof_date}` : '';
+  if (status === 'ok') {
+    const ambiguity = stats.value.xirr_cashflow_conventional === false
+      ? '；現金流正負號多次切換，可能存在多個 IRR 解'
+      : '';
+    return `${asof}${ambiguity}`;
+  }
+  if (status === 'not_applicable') return '目前沒有足夠現金流可計算 XIRR';
+  return `XIRR 無法可靠計算${asof ? `；${asof}` : ''}`;
 });
 
 const useAnimatedNumber = (targetVal) => {
@@ -264,7 +298,7 @@ const getPnlBgClass = (val) => {
     background: var(--bg-secondary);
     display: flex; 
     align-items: center; 
-    justify-content: center; 
+    justify-content: center;
     font-size: 1.25rem;
     transition: transform 0.2s ease, background 0.2s;
 }
@@ -285,9 +319,9 @@ const getPnlBgClass = (val) => {
 
 .stat-main { 
     display: flex; 
-    align-items: baseline; 
-    gap: 6px; 
-    margin-bottom: 8px; 
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 8px;
     flex-grow: 1;
 }
 
@@ -326,9 +360,9 @@ const getPnlBgClass = (val) => {
 }
 
 .unit-text, .percent { 
-    font-size: 0.85rem; 
-    color: var(--text-sub); 
-    font-weight: 500; 
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    font-weight: 500;
 }
 
 .stat-footer {
@@ -336,22 +370,22 @@ const getPnlBgClass = (val) => {
     border-top: 1px solid var(--border-color);
     font-size: 0.85rem;
     display: flex; 
-    align-items: center; 
+    align-items: center;
     justify-content: space-between;
     min-height: 32px;
 }
 
 .footer-item { 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
+    display: flex;
+    align-items: center;
+    gap: 6px;
     width: 100%;
     justify-content: space-between;
 }
 
 .f-label { color: var(--text-sub); }
 .f-val { 
-    font-weight: 600; 
+    font-weight: 600;
     font-family: 'JetBrains Mono', monospace;
     color: var(--text-main);
 }
@@ -362,21 +396,21 @@ const getPnlBgClass = (val) => {
 .text-xs { font-size: 0.8rem; }
 
 .badge { 
-    padding: 2px 8px; 
-    border-radius: 6px; 
-    font-weight: 600; 
-    font-size: 0.8rem; 
-    display: inline-flex; 
-    align-items: center; 
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    display: inline-flex;
+    align-items: center;
 }
 
 .badge-green { 
-    background: rgba(16, 185, 129, 0.12); 
+    background: rgba(16, 185, 129, 0.12);
     color: var(--success);
 }
 
 .badge-red { 
-    background: rgba(239, 68, 68, 0.12); 
+    background: rgba(239, 68, 68, 0.12);
     color: var(--danger);
 }
 
@@ -434,8 +468,8 @@ const getPnlBgClass = (val) => {
     .stat-label { font-size: 0.75rem; }
     
     .icon-box { 
-        width: 30px; 
-        height: 30px; 
+        width: 30px;
+        height: 30px;
         font-size: 1rem;
         border-radius: 8px;
     }
@@ -445,7 +479,7 @@ const getPnlBgClass = (val) => {
     .stat-sub-value { font-size: 0.9rem; }
     
     .stat-footer { 
-        padding-top: 8px; 
+        padding-top: 8px;
         min-height: auto;
     }
     
