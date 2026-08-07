@@ -5,10 +5,10 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 
 const EXACT_SHA = "3f5f3d385bbfe0137d17b1e681ece2e963c6c0c0";
-const PRODUCTION_D1_NAME = "trading-journal-production";
+const UNVERIFIED_D1_NAME = "production-render-test";
 const TEST_OUTPUT = resolve(".wrangler/pr05-rendered-path-test.toml");
 
-test("rendered Wrangler config preserves deployment entry, migration paths, and production D1 authority", async () => {
+test("rendered Wrangler config preserves deployment entry and migration paths without inventing D1 authority", async () => {
   await rm(TEST_OUTPUT, { force: true });
   try {
     const render = spawnSync(process.execPath, ["tools/render_wrangler_config.mjs"], {
@@ -17,17 +17,18 @@ test("rendered Wrangler config preserves deployment entry, migration paths, and 
       env: {
         ...process.env,
         CLOUDFLARE_D1_DATABASE_ID: "11111111-1111-4111-8111-111111111111",
-        CLOUDFLARE_D1_DATABASE_NAME: PRODUCTION_D1_NAME,
+        CLOUDFLARE_D1_DATABASE_NAME: UNVERIFIED_D1_NAME,
         SOURCE_COMMIT: EXACT_SHA,
         WRANGLER_OUTPUT: TEST_OUTPUT,
       },
     });
     assert.equal(render.status, 0, render.stderr);
+    assert.match(render.stdout, /Production D1 authority status: unverified/);
 
     const config = await readFile(TEST_OUTPUT, "utf8");
     assert.match(config, /^main = "\.\.\/worker-entry\.js"$/m);
     assert.match(config, /^migrations_dir = "\.\.\/migrations"$/m);
-    assert.match(config, new RegExp(`^database_name = "${PRODUCTION_D1_NAME}"$`, "m"));
+    assert.match(config, new RegExp(`^database_name = "${UNVERIFIED_D1_NAME}"$`, "m"));
 
     assert.equal(
       resolve(dirname(TEST_OUTPUT), "../worker-entry.js"),
