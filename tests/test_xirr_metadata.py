@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pandas as pd
+import pytest
+from pydantic import ValidationError
 
 from journal_engine.core.validator import PortfolioValidator
 from journal_engine.models import PortfolioSummary
@@ -80,12 +84,22 @@ def test_unavailable_xirr_requires_zero_sentinel_and_reason():
 
 def test_xirr_metadata_rejects_unknown_status_and_non_boolean_conventional_flag():
     unknown = make_summary(xirr=0.0, xirr_status="mystery", xirr_reason="x")
-    invalid_flag = make_summary(
+    assert PortfolioValidator.validate_xirr_metadata(unknown) is False
+
+    with pytest.raises(ValidationError):
+        make_summary(
+            xirr=1.0,
+            xirr_status="ok",
+            xirr_asof_date=pd.Timestamp("2026-08-05").strftime("%Y-%m-%d"),
+            xirr_cashflow_conventional="yes",
+        )
+
+    # Defense in depth for callers that bypass Pydantic construction.
+    bypassed = SimpleNamespace(
         xirr=1.0,
         xirr_status="ok",
-        xirr_asof_date=pd.Timestamp("2026-08-05").strftime("%Y-%m-%d"),
+        xirr_reason=None,
+        xirr_asof_date="2026-08-05",
         xirr_cashflow_conventional="yes",
     )
-
-    assert PortfolioValidator.validate_xirr_metadata(unknown) is False
-    assert PortfolioValidator.validate_xirr_metadata(invalid_flag) is False
+    assert PortfolioValidator.validate_xirr_metadata(bypassed) is False
