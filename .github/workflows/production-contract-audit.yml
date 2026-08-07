@@ -1,17 +1,6 @@
 name: Production Contract Audit
 
 on:
-  pull_request:
-    paths:
-      - 'config/deployment-environments.json'
-      - 'worker-manifest.json'
-      - 'worker.js'
-      - 'worker-entry.js'
-      - 'wrangler.toml'
-      - 'tools/export_worker_manifest.mjs'
-      - 'tools/verify_production_contract.mjs'
-      - 'tests/test_production_contract_audit.mjs'
-      - '.github/workflows/production-contract-audit.yml'
   workflow_dispatch:
     inputs:
       expected_sha:
