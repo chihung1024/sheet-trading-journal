@@ -3,25 +3,19 @@ name: Production Contract Audit
 on:
   pull_request:
     paths:
+      - 'config/deployment-environments.json'
+      - 'worker-manifest.json'
+      - 'worker.js'
+      - 'worker-entry.js'
+      - 'wrangler.toml'
+      - 'tools/export_worker_manifest.mjs'
       - 'tools/verify_production_contract.mjs'
       - 'tests/test_production_contract_audit.mjs'
       - '.github/workflows/production-contract-audit.yml'
   workflow_dispatch:
     inputs:
       expected_sha:
-        description: Exact deployed source commit
-        required: true
-        type: string
-      expected_release:
-        description: Expected Worker release version
-        required: true
-        type: string
-      expected_api:
-        description: Expected API version
-        required: true
-        type: string
-      expected_schema:
-        description: Expected D1 schema version
+        description: Exact deployed 40-character source commit
         required: true
         type: string
 
@@ -50,30 +44,57 @@ jobs:
     timeout-minutes: 5
     environment: production
     steps:
+      - name: Validate exact SHA syntax before checkout
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "expected_sha must be an exact lowercase 40-character Git commit SHA" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
           persist-credentials: false
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '22'
-      - name: Validate requested SHA
+
+      - name: Validate requested SHA is main-reachable
         shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
           git fetch --no-tags origin main:refs/remotes/origin/main
           git merge-base --is-ancestor HEAD refs/remotes/origin/main
+
+      - name: Load canonical Worker manifest expectations
+        id: manifest
+        run: node tools/export_worker_manifest.mjs
+
+      - name: Verify Recovery Evidence Gate policy
+        run: node tools/verify_recovery_evidence_gate.mjs
+
       - name: Run sanitized production audit
         env:
           WORKER_BASE_URL: https://journal-backend.chired.workers.dev
           EXPECTED_SHA: ${{ inputs.expected_sha }}
-          EXPECTED_RELEASE_VERSION: ${{ inputs.expected_release }}
-          EXPECTED_API_VERSION: ${{ inputs.expected_api }}
-          EXPECTED_SCHEMA_VERSION: ${{ inputs.expected_schema }}
+          EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
           API_KEY: ${{ secrets.API_KEY }}
+          REQUIRE_SYSTEM_CHECKS: '1'
           AUDIT_OUTPUT: production-contract-audit.json
         run: node tools/verify_production_contract.mjs
+
       - name: Upload sanitized audit evidence
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
