@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import { createFrontendCspPlugin } from './tools/frontend_csp.mjs'
 import { validateFrontendEnvironment } from './tools/frontend_environment_policy.mjs'
 
 export default defineConfig(({ command }) => {
@@ -9,7 +10,7 @@ export default defineConfig(({ command }) => {
   }
 
   return {
-    plugins: [vue()],
+    plugins: [vue(), createFrontendCspPlugin({ source: process.env })],
     
     resolve: {
       alias: {
