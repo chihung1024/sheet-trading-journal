@@ -15,10 +15,7 @@ import {
   decodeJwtClaims,
   isJwtExpired,
 } from '../services/jwtClaims.js';
-import {
-  TOKEN_STORAGE_KEY,
-  clearSensitiveProjectStorage,
-} from '../services/projectStorage.js';
+import { clearSensitiveProjectStorage } from '../services/projectStorage.js';
 
 const readSignedEmail = (claims) => {
   if (typeof claims?.email !== 'string' || !claims.email.trim()) {
