@@ -84,7 +84,7 @@ jobs:
           API_KEY: ${{ secrets.API_KEY }}
           CUSTOM_BENCHMARK: ${{ github.event.inputs.custom_benchmark || 'SPY' }}
           TARGET_USER_ID: ${{ github.event.inputs.target_user_id || '' }}
-        run: python main.py
+        run: python tools/run_portfolio_update.py
 
       - name: Report calculation job result
         if: ${{ always() && github.event.inputs.calculation_job_id != '' }}
@@ -92,12 +92,23 @@ jobs:
           API_KEY: ${{ secrets.API_KEY }}
           JOB_ID: ${{ github.event.inputs.calculation_job_id }}
           JOB_STATUS: ${{ steps.calculation.outcome == 'success' && 'succeeded' || 'failed' }}
-          JOB_ERROR_CODE: ${{ steps.calculation.outcome == 'success' && '' || 'CALCULATION_FAILED' }}
+          JOB_ERROR_CODE: ${{ steps.calculation.outputs.error_code }}
           GITHUB_RUN_ID_VALUE: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT_VALUE: ${{ github.run_attempt }}
           WORKER_BASE_URL: https://journal-backend.chired.workers.dev
         run: |
           set -euo pipefail
+          if [[ "$JOB_STATUS" == "succeeded" ]]; then
+            JOB_ERROR_CODE=""
+          else
+            case "$JOB_ERROR_CODE" in
+              CONFIGURATION_FAILED|RECORDS_API_FAILED|SETTINGS_API_FAILED|RECORD_VALIDATION_FAILED|MARKET_DATA_FAILED|CALCULATION_FAILED|RECONCILIATION_FAILED|SNAPSHOT_VALIDATION_FAILED|SNAPSHOT_UPLOAD_FAILED|MULTIPLE_USER_FAILURES|UNKNOWN_CALCULATION_FAILED)
+                ;;
+              *)
+                JOB_ERROR_CODE="CALCULATION_FAILED"
+                ;;
+            esac
+          fi
           payload="$(jq -cn \
             --arg job_id "$JOB_ID" \
             --arg status "$JOB_STATUS" \
