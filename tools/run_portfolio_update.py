@@ -1,0 +1,150 @@
+"""Run the portfolio update while publishing a safe, typed failure code for CI.
+
+The existing calculation engine remains authoritative. This wrapper only observes
+its exception boundary and writes a fixed enum to GITHUB_OUTPUT so the Worker can
+surface a useful job failure category without receiving exception text, user IDs,
+or market symbols.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sys
+from pathlib import Path
+from typing import Iterable, Optional
+
+import main as runner
+from journal_engine.clients.api_client import CloudflareAPIError
+from journal_engine.core.daily_pnl_reconciler import DailyPnLReconciliationError
+
+
+CONFIGURATION_FAILED = "CONFIGURATION_FAILED"
+RECORDS_API_FAILED = "RECORDS_API_FAILED"
+SETTINGS_API_FAILED = "SETTINGS_API_FAILED"
+RECORD_VALIDATION_FAILED = "RECORD_VALIDATION_FAILED"
+MARKET_DATA_FAILED = "MARKET_DATA_FAILED"
+CALCULATION_FAILED = "CALCULATION_FAILED"
+RECONCILIATION_FAILED = "RECONCILIATION_FAILED"
+SNAPSHOT_VALIDATION_FAILED = "SNAPSHOT_VALIDATION_FAILED"
+SNAPSHOT_UPLOAD_FAILED = "SNAPSHOT_UPLOAD_FAILED"
+MULTIPLE_USER_FAILURES = "MULTIPLE_USER_FAILURES"
+UNKNOWN_CALCULATION_FAILED = "UNKNOWN_CALCULATION_FAILED"
+
+SAFE_FAILURE_CODES = frozenset(
+    {
+        CONFIGURATION_FAILED,
+        RECORDS_API_FAILED,
+        SETTINGS_API_FAILED,
+        RECORD_VALIDATION_FAILED,
+        MARKET_DATA_FAILED,
+        CALCULATION_FAILED,
+        RECONCILIATION_FAILED,
+        SNAPSHOT_VALIDATION_FAILED,
+        SNAPSHOT_UPLOAD_FAILED,
+        MULTIPLE_USER_FAILURES,
+        UNKNOWN_CALCULATION_FAILED,
+    }
+)
+
+
+class UserFailureCapture(logging.Handler):
+    """Capture exception objects from main's per-user failure log records."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.ERROR)
+        self.exceptions: list[BaseException] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.name != "main" or not record.exc_info:
+            return
+        message = record.getMessage()
+        if not message.startswith("使用者 ") or "處理失敗" not in message:
+            return
+        exc = record.exc_info[1]
+        if isinstance(exc, BaseException):
+            self.exceptions.append(exc)
+
+
+def classify_failure(exc: BaseException, *, per_user: bool = False) -> str:
+    """Map an exception to a fixed, non-sensitive operational category."""
+    if isinstance(exc, DailyPnLReconciliationError):
+        return RECONCILIATION_FAILED
+
+    message = str(exc)
+
+    if isinstance(exc, CloudflareAPIError):
+        if "benchmark" in message or "benchmark 設定" in message:
+            return SETTINGS_API_FAILED
+        if "投資組合" in message or "上傳" in message:
+            return SNAPSHOT_UPLOAD_FAILED
+        return RECORDS_API_FAILED
+
+    if isinstance(exc, runner.PortfolioUpdateError):
+        if "API_KEY" in message:
+            return CONFIGURATION_FAILED
+        if (
+            message.startswith("交易紀錄")
+            or "目標使用者" in message
+            or "使用者交易資料意外為空" in message
+        ):
+            return RECORD_VALIDATION_FAILED
+        if "市場資料" in message or "匯率" in message or "價格歷史覆蓋" in message:
+            return MARKET_DATA_FAILED
+        if "拆股復權交易帳本不一致" in message:
+            return RECONCILIATION_FAILED
+        if "快照驗證失敗" in message:
+            return SNAPSHOT_VALIDATION_FAILED
+        if "上傳" in message or "Worker 未明確確認上傳成功" in message:
+            return SNAPSHOT_UPLOAD_FAILED
+        if "計算器未產生快照" in message or "計算期間 validator" in message:
+            return CALCULATION_FAILED
+
+    if per_user:
+        return CALCULATION_FAILED
+    return UNKNOWN_CALCULATION_FAILED
+
+
+def collapse_user_failure_codes(exceptions: Iterable[BaseException]) -> Optional[str]:
+    codes = {classify_failure(exc, per_user=True) for exc in exceptions}
+    if not codes:
+        return None
+    if len(codes) == 1:
+        return next(iter(codes))
+    return MULTIPLE_USER_FAILURES
+
+
+def write_github_output(error_code: str, output_path: Optional[str] = None) -> None:
+    if error_code and error_code not in SAFE_FAILURE_CODES:
+        raise ValueError("unsafe calculation error code")
+    path = output_path if output_path is not None else os.environ.get("GITHUB_OUTPUT", "")
+    if not path:
+        return
+    with Path(path).open("a", encoding="utf-8") as handle:
+        handle.write(f"error_code={error_code}\n")
+
+
+def main() -> int:
+    runner.setup_logging()
+    logger = logging.getLogger("calculation_runner")
+    main_logger = logging.getLogger("main")
+    capture = UserFailureCapture()
+    main_logger.addHandler(capture)
+
+    try:
+        runner.run_update()
+    except BaseException as exc:
+        user_code = collapse_user_failure_codes(capture.exceptions)
+        error_code = user_code or classify_failure(exc)
+        write_github_output(error_code)
+        logger.error("Portfolio update failed [error_code=%s]", error_code)
+        return 1
+    finally:
+        main_logger.removeHandler(capture)
+
+    write_github_output("")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
