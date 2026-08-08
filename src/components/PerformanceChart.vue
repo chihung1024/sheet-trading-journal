@@ -81,6 +81,9 @@
     </div>
     
     <div class="chart-footer">
+        <span class="twr-reliability-warning" v-if="chartType === 'twr' && twrInvalidSince">
+            策略 TWR 自 {{ twrInvalidSince }} 起無法可靠計算；該段停止繪製
+        </span>
         <span class="info-text" v-if="displayedData.length > 0">
             統計區間: {{ displayedData[0]?.date }} ~ {{ displayedData[displayedData.length-1]?.date }} (共 {{ displayedData.length }} 筆)
         </span>
@@ -98,6 +101,11 @@ import {
   normalizeBenchmarkSymbol,
   resolveBenchmarkApplicationState,
 } from '../services/benchmarkState.js';
+import {
+  firstTwrInvalidDate,
+  lastFiniteSeriesIndex,
+  relativeTwrValue,
+} from '../services/twrState.js';
 
 const portfolioStore = usePortfolioStore();
 const { addToast } = useToast();
@@ -123,6 +131,9 @@ const benchmarkApplicationState = computed(() => resolveBenchmarkApplicationStat
   requestedBenchmark: portfolioStore.selectedBenchmark,
 }));
 const publishedBenchmarkLegend = computed(() => benchmarkLegendLabel(benchmarkApplicationState.value));
+const twrInvalidSince = computed(() => firstTwrInvalidDate(
+  [baselineData.value, ...displayedData.value].filter(Boolean),
+));
 
 const todayStr = computed(() => new Date().toISOString().split('T')[0]);
 
@@ -322,12 +333,11 @@ const drawChart = () => {
             }];
         }
     } else {
-        const baseTWR = baselineData.value.twr;
         const baseBenchmark = baselineData.value.benchmark_twr;
         datasets = [
             {
                 label: '策略 TWR',
-                data: dataWithBaseline.map(d => ((1 + d.twr/100) / (1 + baseTWR/100) - 1) * 100),
+                data: dataWithBaseline.map(d => relativeTwrValue(d, baselineData.value)),
                 borderColor: '#8b5cf6',
                 backgroundColor: 'rgba(139, 92, 246, 0.05)',
                 fill: true,
@@ -397,8 +407,11 @@ const drawChart = () => {
                 chart.data.datasets.forEach((dataset, i) => {
                     const meta = chart.getDatasetMeta(i);
                     if (!meta.hidden && dataset.data.length > 0) {
-                        const lastPoint = meta.data[meta.data.length - 1];
-                        const value = dataset.data[dataset.data.length - 1];
+                        const lastIndex = lastFiniteSeriesIndex(dataset.data);
+                        if (lastIndex < 0) return;
+                        const lastPoint = meta.data[lastIndex];
+                        const value = Number(dataset.data[lastIndex]);
+                        if (!lastPoint) return;
                         let displayValue;
                         if (chartType.value === 'twr') displayValue = (value > 0 ? '+' : '') + value.toFixed(2) + '%';
                         else {
@@ -508,7 +521,8 @@ onUnmounted(() => {
 .date-sep { font-size: 0.8rem; color: var(--text-sub); }
 .canvas-box { flex-grow: 1; position: relative; width: 100%; height: 450px; overflow: hidden; } 
 .no-data-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); color: var(--text-sub); font-size: 1rem; }
-.chart-footer { margin-top: 8px; text-align: right; border-top: 1px solid var(--border-color); padding-top: 8px; }
+.chart-footer { margin-top: 8px; text-align: right; border-top: 1px solid var(--border-color); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.twr-reliability-warning { font-size: 0.75rem; color: var(--warning); }
 .info-text { font-size: 0.75rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 @media (max-width: 768px) {
     .inner-chart-layout { padding: 16px; }

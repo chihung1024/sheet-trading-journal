@@ -251,3 +251,12 @@ def test_calculator_passes_raw_terminal_value_and_history_date_to_xirr(monkeypat
     assert group.summary.xirr == 1.23
     assert group.summary.xirr_status == "ok"
     assert group.summary.xirr_asof_date == "2026-01-02"
+
+    # P4B is provenance-only for valid periods: the existing numeric chain stays 0.40%.
+    assert group.history[-1]["twr"] == pytest.approx(0.4)
+    assert group.summary.twr == pytest.approx(0.4)
+    assert group.summary.twr_status == "ok"
+    assert group.summary.twr_reason is None
+    assert group.summary.twr_invalid_since is None
+    assert group.history[-1]["twr_period_status"] == "ok"
+    assert group.history[-1]["twr_status"] == "ok"

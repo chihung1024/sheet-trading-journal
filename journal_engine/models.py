@@ -27,7 +27,12 @@ class PortfolioSummary(BaseModel):
     total_value: float
     invested_capital: float
     total_pnl: float
+    # Legacy numeric TWR remains for snapshot/API compatibility. New snapshots use
+    # twr_status to distinguish trustworthy linked returns from compatibility values.
     twr: float
+    twr_status: Optional[str] = None
+    twr_reason: Optional[str] = None
+    twr_invalid_since: Optional[str] = None
     # Legacy numeric field retained for snapshot/API compatibility. New snapshots
     # use xirr_status to distinguish a true 0% result from an unavailable XIRR.
     xirr: float = 0.0

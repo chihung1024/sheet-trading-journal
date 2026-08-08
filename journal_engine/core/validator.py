@@ -155,7 +155,7 @@ class PortfolioValidator:
 
         Iterating only over serialized holdings misses the most dangerous failure mode:
         a newly purchased symbol can be skipped by the calculator and therefore be
-        absent from the snapshot entirely.  This validator audits the union of symbols
+        absent from the snapshot entirely. This validator audits the union of symbols
         from both sides and treats an absent snapshot holding as quantity zero.
         """
         required_columns = {"Symbol", "Type", "Qty"}
@@ -251,6 +251,66 @@ class PortfolioValidator:
             logger.error("XIRR is outside the supported safety range: %.2f%%", numeric_value)
             return False
 
+        return True
+
+    @classmethod
+    def validate_twr_metadata(cls, summary: Any) -> bool:
+        """Validate additive linked-TWR reliability while accepting legacy snapshots."""
+        status = getattr(summary, "twr_status", None)
+        if status is None:
+            try:
+                return math.isfinite(float(summary.twr))
+            except (TypeError, ValueError):
+                return False
+
+        if status not in {"ok", "not_applicable", "undefined"}:
+            logger.error("TWR status is invalid: %s", status)
+            return False
+
+        try:
+            numeric_value = float(summary.twr)
+        except (TypeError, ValueError):
+            numeric_value = math.nan
+        if not math.isfinite(numeric_value):
+            logger.error("TWR compatibility value is not finite")
+            return False
+
+        reason = getattr(summary, "twr_reason", None)
+        invalid_since = getattr(summary, "twr_invalid_since", None)
+
+        if status == "ok":
+            if reason not in (None, ""):
+                logger.error("Reliable TWR must not carry an error reason")
+                return False
+            if invalid_since not in (None, ""):
+                logger.error("Reliable TWR must not carry an invalid-since date")
+                return False
+            return True
+
+        if not isinstance(reason, str) or not reason.strip():
+            logger.error("Unavailable TWR is missing a machine-readable reason")
+            return False
+
+        if status == "not_applicable":
+            if abs(numeric_value) > 1e-12:
+                logger.error("Not-applicable TWR must use numeric 0.0 compatibility value")
+                return False
+            if invalid_since not in (None, ""):
+                logger.error("Not-applicable TWR must not carry invalid-since")
+                return False
+            return True
+
+        if not invalid_since:
+            logger.error("Undefined TWR is missing its first invalid date")
+            return False
+        try:
+            if pd.isna(pd.Timestamp(invalid_since)):
+                raise ValueError("NaT")
+        except Exception:
+            logger.error("Undefined TWR has an invalid first-invalid date")
+            return False
+        # Numeric TWR remains the pre-P4B compatibility chain when reliability is
+        # undefined; new consumers must consult status before interpreting it.
         return True
 
     @classmethod
@@ -351,6 +411,9 @@ class PortfolioValidator:
                 if not is_finite:
                     logger.error("%s summary field %s is not finite", label, field_name)
                     valid = False
+            if not cls.validate_twr_metadata(summary):
+                logger.error("%s summary contains inconsistent TWR metadata", label)
+                valid = False
             if not cls.validate_xirr_metadata(summary):
                 logger.error("%s summary contains inconsistent XIRR metadata", label)
                 valid = False
