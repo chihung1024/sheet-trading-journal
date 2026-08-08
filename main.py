@@ -345,13 +345,12 @@ def run_update() -> None:
     logger.info("最早交易日期: %s", earliest_transaction_date.strftime("%Y-%m-%d"))
     logger.info("開始下載市場數據，標的數: %s", len(all_tickers))
     market_client.download_data(sorted(all_tickers), fetch_start_date)
-    validate_required_market_data(
-        market_client,
-        all_tickers,
-        required_dates_by_ticker=required_dates_by_ticker,
-    )
 
-    inserted_dates = ensure_transaction_dates_in_market_calendar(market_client, df)
+    inserted_dates = ensure_transaction_dates_in_market_calendar(
+        market_client,
+        df,
+        allow_leading_transaction_seed=True,
+    )
     if inserted_dates:
         inserted_count = sum(len(dates) for dates in inserted_dates.values())
         logger.info(
@@ -359,6 +358,12 @@ def run_update() -> None:
             inserted_count,
             len(inserted_dates),
         )
+
+    validate_required_market_data(
+        market_client,
+        all_tickers,
+        required_dates_by_ticker=required_dates_by_ticker,
+    )
 
     failed_users: List[str] = []
     successful_users = 0
