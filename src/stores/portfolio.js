@@ -9,6 +9,10 @@ import {
     rememberPendingCalculationRequest as rememberStoredCalculationRequest,
 } from '../services/calculationJobState';
 import {
+    claimCalculationJobPoll,
+    clearCalculationJobPollClaim,
+} from '../services/calculationJobPollClaim.js';
+import {
     buildRecordsPageEndpoint,
     fetchAllRecordPages,
 } from '../services/recordPagination';
@@ -189,6 +193,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     const completeCalculationJob = async (job, addToast) => {
         stopCalculationJobPolling();
+        clearCalculationJobPollClaim(localStorage, getToken(), job.id);
         clearPendingCalculationRequest();
         if (job.status === 'succeeded') {
             try {
@@ -204,6 +209,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const pollCalculationJobOnce = async (jobId, addToast, epoch) => {
+        const claimed = await claimCalculationJobPoll({
+            storage: localStorage,
+            token: getToken(),
+            jobId,
+            minimumIntervalMs: CALCULATION_JOB_POLL_DELAY_MS,
+        });
+        if (epoch !== calculationJobPollEpoch) return true;
+        if (!claimed) return false;
+
         try {
             const json = await fetchWithAuth(`/api/calculation-jobs/${encodeURIComponent(jobId)}`);
             if (epoch !== calculationJobPollEpoch) return true;
@@ -223,6 +237,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (epoch !== calculationJobPollEpoch) return true;
             if (error?.status === 404) {
                 stopCalculationJobPolling();
+                clearCalculationJobPollClaim(localStorage, getToken(), jobId);
                 clearPendingCalculationRequest();
                 calculationJob.value = null;
                 addToast('找不到先前的計算工作，已清除本機恢復狀態', 'info');
