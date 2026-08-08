@@ -129,11 +129,8 @@ def annotate_twr_history(
     """Annotate linked TWR reliability without changing any legacy numeric TWR value.
 
     Current production uses midpoint (0.5) weights for all daily cash flows. History
-    stores raw ending value, inverse-signed net cash flow, and (for P4B snapshots)
-    gross absolute Dietz cash-flow magnitude. The gross magnitude prevents offsetting
-    same-day BUY/SELL flows from masquerading as "no cash flow" when a zero-start
-    period has no intraday timestamps.
-
+    already stores raw ending value and the inverse-signed user-facing net cash flow,
+    so each period's Modified Dietz validity can be reconstructed after calculation.
     Once one subperiod is undefined, cumulative TWR reliability stays undefined even
     if later subperiods are individually calculable.
     """
@@ -168,23 +165,11 @@ def annotate_twr_history(
                 current.get("net_cashflow_twd", 0.0),
             )
         )
-        gross_abs_cashflow = _finite_float(current.get("_raw_dietz_cashflow_abs_sum"))
-        if gross_abs_cashflow is None and "_raw_dietz_cashflow_abs_sum" not in current:
-            # Older history cannot reveal offsetting same-day flows; fall back to the
-            # absolute net amount so legacy snapshots retain their historical behavior.
-            gross_abs_cashflow = (
-                abs(published_net_cashflow)
-                if published_net_cashflow is not None
-                else None
-            )
 
         if beginning is None or ending is None:
             period_status = "undefined"
             period_reason = "invalid_valuation"
-        elif published_net_cashflow is None or gross_abs_cashflow is None:
-            period_status = "undefined"
-            period_reason = "invalid_cashflow"
-        elif gross_abs_cashflow < -epsilon:
+        elif published_net_cashflow is None:
             period_status = "undefined"
             period_reason = "invalid_cashflow"
         elif beginning < -epsilon:
@@ -194,10 +179,6 @@ def annotate_twr_history(
             # History stores user-facing net cash flow with the opposite sign from
             # the Dietz external-flow convention used by the calculator.
             dietz_cashflow = -published_net_cashflow
-            has_offsetting_zero_start_flows = (
-                beginning <= epsilon
-                and gross_abs_cashflow > abs(dietz_cashflow) + epsilon
-            )
 
             if beginning > epsilon:
                 metric = calculate_modified_dietz_metric(
@@ -208,9 +189,6 @@ def annotate_twr_history(
                 )
                 period_status = metric.status
                 period_reason = metric.reason
-            elif has_offsetting_zero_start_flows:
-                period_status = "undefined"
-                period_reason = "ambiguous_zero_start_cashflows"
             elif ending > epsilon:
                 if dietz_cashflow > epsilon:
                     bootstrap_factor = ending / dietz_cashflow
@@ -223,7 +201,7 @@ def annotate_twr_history(
                 else:
                     period_status = "undefined"
                     period_reason = "unfunded_value_from_zero"
-            elif gross_abs_cashflow <= epsilon:
+            elif abs(dietz_cashflow) <= epsilon:
                 period_status = "not_applicable"
                 period_reason = "no_capital_exposure"
             else:
