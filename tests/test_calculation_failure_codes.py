@@ -9,6 +9,9 @@ from journal_engine.core.daily_pnl_reconciler import DailyPnLReconciliationError
 from tools import run_portfolio_update as observed_runner
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 @pytest.mark.parametrize(
     ("error", "per_user", "expected"),
     [
@@ -104,3 +107,15 @@ def test_wrapper_success_publishes_empty_error_code(monkeypatch, tmp_path):
 
     assert observed_runner.main() == 0
     assert output.read_text(encoding="utf-8") == "error_code=\n"
+
+
+def test_update_workflow_runs_wrapper_and_allowlists_codes_before_worker_report():
+    source = (ROOT / ".github" / "workflows" / "update.yml").read_text(encoding="utf-8")
+
+    assert "run: python tools/run_portfolio_update.py" in source
+    assert "JOB_ERROR_CODE: ${{ steps.calculation.outputs.error_code }}" in source
+    assert 'JOB_ERROR_CODE="CALCULATION_FAILED"' in source
+    assert "run: python main.py" not in source
+
+    for code in observed_runner.SAFE_FAILURE_CODES:
+        assert code in source
