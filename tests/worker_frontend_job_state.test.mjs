@@ -13,11 +13,16 @@ import {
 
 function createStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
+  let removeCount = 0;
   return {
     getItem(key) { return values.has(key) ? values.get(key) : null; },
     setItem(key, value) { values.set(key, String(value)); },
-    removeItem(key) { values.delete(key); },
+    removeItem(key) {
+      removeCount += 1;
+      values.delete(key);
+    },
     has(key) { return values.has(key); },
+    removeCount() { return removeCount; },
   };
 }
 
@@ -49,16 +54,68 @@ test('rejects malformed, expired, future, and cross-owner state', () => {
   assert.equal(validatePendingCalculationRequest(valid, 'other@example.com', { now: NOW }), null);
 });
 
-test('read fails closed and removes invalid or cross-owner persistence', () => {
+test('read fails closed without mutating invalid or cross-owner persistence', () => {
   const storage = createStorage({
     [CALCULATION_REQUEST_STORAGE_KEY]: JSON.stringify(valid),
   });
   assert.equal(readPendingCalculationRequest(storage, 'other@example.com', { now: NOW }), null);
-  assert.equal(storage.has(CALCULATION_REQUEST_STORAGE_KEY), false);
+  assert.equal(storage.has(CALCULATION_REQUEST_STORAGE_KEY), true);
+  assert.equal(storage.removeCount(), 0);
 
   storage.setItem(CALCULATION_REQUEST_STORAGE_KEY, '{bad json');
   assert.equal(readPendingCalculationRequest(storage, valid.owner, { now: NOW }), null);
-  assert.equal(storage.has(CALCULATION_REQUEST_STORAGE_KEY), false);
+  assert.equal(storage.has(CALCULATION_REQUEST_STORAGE_KEY), true);
+  assert.equal(storage.removeCount(), 0);
+});
+
+test('read accepts a read-only Storage surface and never requires removeItem', () => {
+  const raw = JSON.stringify(valid);
+  const readOnlyStorage = {
+    getItem(key) {
+      return key === CALCULATION_REQUEST_STORAGE_KEY ? raw : null;
+    },
+  };
+
+  assert.deepEqual(
+    readPendingCalculationRequest(readOnlyStorage, valid.owner, { now: NOW }),
+    valid,
+  );
+});
+
+test('a stale read cannot destructively clear a newer sibling-tab write', () => {
+  const staleRaw = JSON.stringify({
+    ...valid,
+    createdAt: NOW - 15 * 60 * 1000,
+  });
+  const fresh = {
+    ...valid,
+    key: 'qrstuvwxyzABCDEF',
+    createdAt: NOW,
+    jobId: null,
+  };
+  let raw = staleRaw;
+  let writes = 0;
+  let removals = 0;
+
+  const storage = {
+    getItem() {
+      const observed = raw;
+      // Model another tab publishing a fresh request after this reader observed
+      // the stale value but before this read returns to its caller.
+      raw = JSON.stringify(fresh);
+      writes += 1;
+      return observed;
+    },
+    removeItem() {
+      removals += 1;
+      raw = null;
+    },
+  };
+
+  assert.equal(readPendingCalculationRequest(storage, valid.owner, { now: NOW }), null);
+  assert.equal(writes, 1);
+  assert.equal(removals, 0);
+  assert.deepEqual(JSON.parse(raw), fresh);
 });
 
 test('remember persists only normalized tenant-bound state', () => {
@@ -90,4 +147,5 @@ test('terminal statuses and cleanup are explicit', () => {
   const storage = createStorage({ [CALCULATION_REQUEST_STORAGE_KEY]: '{}' });
   clearPendingCalculationRequest(storage);
   assert.equal(storage.has(CALCULATION_REQUEST_STORAGE_KEY), false);
+  assert.equal(storage.removeCount(), 1);
 });
