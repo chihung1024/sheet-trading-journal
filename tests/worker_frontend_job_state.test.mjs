@@ -6,6 +6,7 @@ import {
   CALCULATION_REQUEST_TTL_MS,
   clearPendingCalculationRequest,
   getPendingCalculationGenerationStorageKey,
+  getPendingCalculationTombstoneStorageKey,
   isTerminalCalculationStatus,
   normalizeCalculationOwner,
   readPendingCalculationRequest,
@@ -83,7 +84,7 @@ test('legacy read remains fail-closed and non-destructive on a non-enumerable St
   assert.equal(removals, 0);
 });
 
-test('first remember creates v2 generation and legacy compatibility mirror', () => {
+test('first remember creates v2 live generation and legacy compatibility mirror', () => {
   const storage = createStorage();
   const pending = rememberPendingCalculationRequest(storage, ' User@Example.COM ', {
     key: OLD_KEY,
@@ -99,9 +100,10 @@ test('first remember creates v2 generation and legacy compatibility mirror', () 
   });
 
   const generationKey = getPendingCalculationGenerationStorageKey(pending);
-  assert.equal(generationKey.startsWith(PENDING_CALCULATION_V2_STORAGE_PREFIX), true);
+  assert.equal(generationKey.startsWith(`${PENDING_CALCULATION_V2_STORAGE_PREFIX}live.`), true);
   assert.deepEqual(JSON.parse(storage.raw(generationKey)), {
     version: 2,
+    state: 'live',
     ...pending,
     clearedAt: null,
   });
@@ -124,7 +126,7 @@ test('second remember for the same idempotency key reuses the original generatio
   assert.equal(updated.createdAt, first.createdAt);
   assert.equal(updated.jobId, OLD_JOB);
   assert.equal(
-    storage.entries().filter(([key]) => key.startsWith(PENDING_CALCULATION_V2_STORAGE_PREFIX)).length,
+    storage.entries().filter(([key]) => key.startsWith(`${PENDING_CALCULATION_V2_STORAGE_PREFIX}live.`)).length,
     1,
   );
   assert.deepEqual(JSON.parse(storage.raw(CALCULATION_REQUEST_STORAGE_KEY)), updated);
@@ -148,7 +150,7 @@ test('newer generation coexists with older generation and is selected as authori
   assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), newer);
 });
 
-test('clearing an old exact job tombstones only that generation and cannot disturb the newer generation', () => {
+test('clearing an old exact job adds an immutable tombstone and cannot disturb the newer generation', () => {
   const storage = createStorage();
   const old = rememberPendingCalculationRequest(storage, OWNER, {
     key: OLD_KEY,
@@ -162,8 +164,12 @@ test('clearing an old exact job tombstones only that generation and cannot distu
   });
 
   assert.equal(clearPendingCalculationRequest(storage, OWNER, { jobId: OLD_JOB }, { now: NOW }), 1);
-  const oldRecord = JSON.parse(storage.raw(getPendingCalculationGenerationStorageKey(old)));
-  assert.equal(oldRecord.clearedAt, NOW);
+  const oldLive = JSON.parse(storage.raw(getPendingCalculationGenerationStorageKey(old)));
+  const oldTombstone = JSON.parse(storage.raw(getPendingCalculationTombstoneStorageKey(old)));
+  assert.equal(oldLive.state, 'live');
+  assert.equal(oldLive.clearedAt, null);
+  assert.equal(oldTombstone.state, 'cleared');
+  assert.equal(oldTombstone.clearedAt, NOW);
   assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), newer);
 });
 
@@ -183,6 +189,7 @@ test('newer tombstone forms a generation watermark so older live state and legac
   assert.equal(clearPendingCalculationRequest(storage, OWNER, { key: NEW_KEY }, { now: NOW }), 1);
   assert.equal(storage.has(getPendingCalculationGenerationStorageKey(old)), true);
   assert.equal(storage.has(getPendingCalculationGenerationStorageKey(newer)), true);
+  assert.equal(storage.has(getPendingCalculationTombstoneStorageKey(newer)), true);
   assert.equal(storage.has(CALCULATION_REQUEST_STORAGE_KEY), true);
   assert.equal(readPendingCalculationRequest(storage, OWNER, { now: NOW }), null);
 });
@@ -198,19 +205,26 @@ test('legacy-only state remains readable and exact clear creates a v2 tombstone 
   assert.equal(storage.removeCount(), 0);
   assert.equal(readPendingCalculationRequest(storage, OWNER, { now: NOW }), null);
 
-  const tombstoneKey = getPendingCalculationGenerationStorageKey(valid);
+  const tombstoneKey = getPendingCalculationTombstoneStorageKey(valid);
   assert.equal(JSON.parse(storage.raw(tombstoneKey)).clearedAt, NOW);
 });
 
-test('cleared generation cannot be resurrected by a delayed remember with the same idempotency key', () => {
+test('delayed live rewrite cannot erase an independent tombstone for the same generation', () => {
   const storage = createStorage();
-  rememberPendingCalculationRequest(storage, OWNER, {
+  const pending = rememberPendingCalculationRequest(storage, OWNER, {
     key: OLD_KEY,
     createdAt: NOW - 10_000,
     jobId: OLD_JOB,
   });
   clearPendingCalculationRequest(storage, OWNER, { key: OLD_KEY }, { now: NOW - 5_000 });
 
+  const liveKey = getPendingCalculationGenerationStorageKey(pending);
+  const delayedLive = JSON.parse(storage.raw(liveKey));
+  delayedLive.jobId = OLD_JOB;
+  storage.setItem(liveKey, JSON.stringify(delayedLive));
+
+  assert.equal(storage.has(getPendingCalculationTombstoneStorageKey(pending)), true);
+  assert.equal(readPendingCalculationRequest(storage, OWNER, { now: NOW }), null);
   assert.throws(
     () => rememberPendingCalculationRequest(storage, OWNER, {
       key: OLD_KEY,
@@ -229,9 +243,10 @@ test('malformed and cross-owner v2 entries cannot override a valid same-owner ge
     jobId: OLD_JOB,
   });
 
-  storage.setItem(`${PENDING_CALCULATION_V2_STORAGE_PREFIX}${NOW - 1_000}.${NEW_KEY}`, '{bad json');
+  storage.setItem(`${PENDING_CALCULATION_V2_STORAGE_PREFIX}live.${NOW - 1_000}.${NEW_KEY}`, '{bad json');
   const other = {
     version: 2,
+    state: 'live',
     owner: 'other@example.com',
     key: NEW_KEY,
     createdAt: NOW - 500,
