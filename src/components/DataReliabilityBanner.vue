@@ -86,12 +86,12 @@ const retryLoad = async () => {
 
 .severity-error {
   border-color: rgba(220, 38, 38, 0.45);
-  background: rgba(254, 226, 226, 0.62);
+  background: rgba(220, 38, 38, 0.08);
 }
 
 .severity-warning {
   border-color: rgba(217, 119, 6, 0.42);
-  background: rgba(254, 243, 199, 0.62);
+  background: rgba(217, 119, 6, 0.08);
 }
 
 .reliability-copy {
