@@ -56,7 +56,7 @@
               
               <td class="text-center">
                 <div class="input-group">
-                  <span class="input-currency">{{ getCurrency(div.symbol) }}</span>
+                  <span class="input-currency">{{ getDividendCurrency(div) }}</span>
                   <input 
                     type="number" 
                     v-model.number="div.amount" 
@@ -108,17 +108,17 @@
       </div>
       
       <div v-else class="empty-state">
-        <div class="empty-icon">🎉</div>
-        <p class="empty-text">目前沒有待確認的配息</p>
-        <p class="empty-hint">配息資訊將自動同步顯示</p>
+        <div class="empty-icon">💤</div>
+        <p class="empty-text">目前沒有可自動估算的待確認配息</p>
+        <p class="empty-hint">需人工確認的資料會顯示在上方資料警示</p>
       </div>
     </div>
 
     <div class="mobile-cards">
       <div v-if="localDividends.length === 0" class="empty-state">
-        <div class="empty-icon">🎉</div>
-        <p class="empty-text">目前沒有待確認的配息</p>
-        <p class="empty-hint">配息資訊將自動同步顯示</p>
+        <div class="empty-icon">💤</div>
+        <p class="empty-text">目前沒有可自動估算的待確認配息</p>
+        <p class="empty-hint">需人工確認的資料會顯示在上方資料警示</p>
       </div>
 
       <div v-else class="cards-container">
@@ -142,7 +142,7 @@
             <div class="form-row">
               <label class="form-label">
                 <span class="label-icon">💵</span>
-                實發總額 ({{ getCurrency(div.symbol) }})
+                實發總額 ({{ getDividendCurrency(div) }})
               </label>
               <input 
                 type="number" 
@@ -157,7 +157,7 @@
             <div class="form-row">
               <label class="form-label">
                 <span class="label-icon">📝</span>
-                預扣稅金 ({{ getCurrency(div.symbol) }})
+                預扣稅金 ({{ getDividendCurrency(div) }})
                 <span class="tax-badge">{{ getTaxRate(div) }}%</span>
               </label>
               <input 
@@ -173,7 +173,7 @@
             <div class="net-summary">
               <span class="summary-label">實際入帳淨額</span>
               <span class="summary-value">
-                <span class="value-currency">{{ getCurrency(div.symbol) }}</span>
+                <span class="value-currency">{{ getDividendCurrency(div) }}</span>
                 {{ formatNumber((div.amount || 0) - (div.tax || 0), 2) }}
               </span>
             </div>
@@ -201,6 +201,11 @@
 import { ref, watch, computed, onMounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
+import {
+  getDividendCurrency,
+  getDividendDefaultTax,
+  getDividendNetNative,
+} from '../services/dividendPresentation.js';
 
 const store = usePortfolioStore();
 const { addToast } = useToast();
@@ -233,9 +238,6 @@ const saveConfirmedKeys = () => {
 
 onMounted(() => loadConfirmedKeys());
 
-const isTWStock = (symbol) => /^\d{4}/.test(symbol) || /\.TW(O)?$/i.test(symbol);
-const getCurrency = (symbol) => isTWStock(symbol) ? 'TWD' : 'USD';
-
 const getTaxRate = (div) => {
   const amount = Number(div.amount) || 0;
   const tax = Number(div.tax) || 0;
@@ -253,17 +255,14 @@ watch(() => [store.pending_dividends, store.records], ([newPending, newRecords])
   if (newPending && newPending.length > 0) {
     localDividends.value = newPending.map(d => {
       const gross = Number(d.total_gross) || 0;
-      const net = Number(d.total_net_usd) || 0;
-      const currency = getCurrency(d.symbol);
-      
-      let defaultTax = 0;
-      if (currency === 'USD') {
-        defaultTax = parseFloat((gross - net).toFixed(2));
-        if (defaultTax < 0) defaultTax = 0;
-      }
+      const net = getDividendNetNative(d);
+      const currency = getDividendCurrency(d);
+      const defaultTax = parseFloat(getDividendDefaultTax(d).toFixed(2));
 
       return {
         ...d,
+        currency,
+        total_net_native: net,
         amount: d.amount !== undefined ? d.amount : gross,
         tax: d.tax !== undefined ? d.tax : defaultTax
       };
@@ -336,7 +335,7 @@ const confirmDividend = async (div) => {
   const finalAmount = Number(div.amount) || 0;
   const finalTax = Number(div.tax) || 0;
   const netAmount = finalAmount - finalTax;
-  const currency = getCurrency(div.symbol);
+  const currency = getDividendCurrency(div);
   
   if (finalAmount === 0) {
     addToast('請輸入實發總額', 'error');
