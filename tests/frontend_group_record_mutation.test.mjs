@@ -12,6 +12,7 @@ import {
   updateOneRecordTag,
   updateRecordTagsSequentially,
 } from '../src/services/groupRecordMutation.js';
+import { RequestTimeoutError } from '../src/services/requestErrors.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const GROUP_MANAGER_PATH = path.join(ROOT, 'src', 'components', 'GroupManager.vue');
@@ -98,7 +99,8 @@ test('one update requires both HTTP and application success', async () => {
     }),
     error => error instanceof RecordTagUpdateError
       && error.status === 403
-      && error.code === 'FORBIDDEN',
+      && error.code === 'FORBIDDEN'
+      && error.outcomeAmbiguous === false,
   );
 
   await assert.rejects(
@@ -110,7 +112,24 @@ test('one update requires both HTTP and application success', async () => {
       fetchImpl: async () => response({ body: { success: false, error: 'Rejected' } }),
     }),
     error => error instanceof RecordTagUpdateError
-      && error.code === 'APPLICATION_ERROR',
+      && error.code === 'APPLICATION_ERROR'
+      && error.outcomeAmbiguous === false,
+  );
+});
+
+test('PUT timeout is preserved as an ambiguous mutation outcome', async () => {
+  await assert.rejects(
+    updateOneRecordTag({
+      apiBaseUrl: 'https://example.invalid',
+      token: 'token',
+      record: sourceRecord(9),
+      tag: 'New',
+      fetchImpl: async () => { throw new RequestTimeoutError(30_000); },
+    }),
+    error => error instanceof RecordTagUpdateError
+      && error.recordId === 9
+      && error.code === 'REQUEST_TIMEOUT'
+      && error.outcomeAmbiguous === true,
   );
 });
 
@@ -133,7 +152,7 @@ test('sequential batch increments success only after a verified PUT', async () =
   assert.deepEqual(result, { succeeded: 2, total: 2 });
 });
 
-test('partial batch stops at first failure and exposes committed progress', async () => {
+test('partial batch stops at first definite failure and exposes verified committed progress', async () => {
   const calls = [];
   await assert.rejects(
     updateRecordTagsSequentially({
@@ -155,12 +174,41 @@ test('partial batch stops at first failure and exposes committed progress', asyn
     error => error instanceof PartialRecordTagBatchError
       && error.succeeded === 1
       && error.total === 3
-      && error.failedRecordId === 2,
+      && error.failedRecordId === 2
+      && error.outcomeAmbiguous === false,
   );
   assert.deepEqual(calls, [1, 2]);
 });
 
-test('network and missing-token failures are reported as zero-progress partial batches', async () => {
+test('partial batch preserves ambiguity of the failed row and never continues blindly', async () => {
+  const calls = [];
+  await assert.rejects(
+    updateRecordTagsSequentially({
+      apiBaseUrl: 'https://example.invalid',
+      token: 'token',
+      updates: [
+        { record: sourceRecord(1), tag: 'A' },
+        { record: sourceRecord(2), tag: 'B' },
+        { record: sourceRecord(3), tag: 'C' },
+      ],
+      fetchImpl: async (_url, init) => {
+        const id = JSON.parse(init.body).id;
+        calls.push(id);
+        if (id === 2) throw new RequestTimeoutError(30_000);
+        return response();
+      },
+    }),
+    error => error instanceof PartialRecordTagBatchError
+      && error.succeeded === 1
+      && error.total === 3
+      && error.failedRecordId === 2
+      && error.outcomeAmbiguous === true
+      && error.cause?.outcomeAmbiguous === true,
+  );
+  assert.deepEqual(calls, [1, 2]);
+});
+
+test('network and missing-token failures preserve ambiguity truth at zero verified progress', async () => {
   await assert.rejects(
     updateRecordTagsSequentially({
       apiBaseUrl: 'https://example.invalid',
@@ -171,7 +219,8 @@ test('network and missing-token failures are reported as zero-progress partial b
     error => error instanceof PartialRecordTagBatchError
       && error.succeeded === 0
       && error.failedRecordId === 7
-      && error.cause.code === 'NETWORK_ERROR',
+      && error.cause.code === 'NETWORK_ERROR'
+      && error.outcomeAmbiguous === true,
   );
 
   await assert.rejects(
@@ -184,11 +233,12 @@ test('network and missing-token failures are reported as zero-progress partial b
     error => error instanceof PartialRecordTagBatchError
       && error.succeeded === 0
       && error.failedRecordId === 8
-      && error.cause.code === 'AUTH_TOKEN_MISSING',
+      && error.cause.code === 'AUTH_TOKEN_MISSING'
+      && error.outcomeAmbiguous === false,
   );
 });
 
-test('GroupManager delegates PUTs, refreshes failures, and prevents duplicate submissions', () => {
+test('GroupManager currently delegates sequential PUTs and serializes user submissions', () => {
   const source = fs.readFileSync(GROUP_MANAGER_PATH, 'utf8');
   assert.match(source, /updateRecordTagsSequentially/);
   assert.doesNotMatch(source, /\bfetch\s*\(/);
@@ -200,11 +250,7 @@ test('GroupManager delegates PUTs, refreshes failures, and prevents duplicate su
   assert.match(batchBlock, /await updateRecordTagsSequentially/);
   assert.match(batchBlock, /await refreshRecordsAfterMutation\(\);/);
   assert.match(batchBlock, /await triggerRecalculationAfterSuccess\(\);/);
-
-  const catchBlock = batchBlock.match(/\} catch \(error\) \{([\s\S]*?)\n\s*return false;/)?.[1] || '';
-  assert.match(catchBlock, /await refreshRecordsAfterMutation\(\);/);
-  assert.doesNotMatch(catchBlock, /triggerRecalculationAfterSuccess/);
-  assert.match(catchBlock, /error\.succeeded/);
-  assert.match(catchBlock, /error\.total/);
-  assert.match(catchBlock, /error\.failedRecordId/);
+  assert.match(batchBlock, /error\.succeeded/);
+  assert.match(batchBlock, /error\.total/);
+  assert.match(batchBlock, /error\.failedRecordId/);
 });
