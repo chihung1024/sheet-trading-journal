@@ -335,8 +335,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const recordMutationFailure = (error, { action, method, fallback }, addToast) => {
-        addToast(formatRequestError(error, { action, method, fallback }), 'error');
-        return publishRecordMutationOutcome(failedMutationOutcome(error));
+        const outcome = failedMutationOutcome(error);
+        addToast(
+            formatRequestError(error, { action, method, fallback }),
+            outcome.outcomeAmbiguous ? 'warning' : 'error'
+        );
+        return publishRecordMutationOutcome(outcome);
     };
 
     const addRecord = async (formData) => {
