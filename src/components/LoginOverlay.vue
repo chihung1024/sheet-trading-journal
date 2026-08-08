@@ -82,14 +82,20 @@ const handleCredentialResponse = async (response) => {
   console.log('🔐 收到 Google 憑證');
   try {
     await authStore.login(credential);
-
-    // token 寫入後 Overlay 會正常卸載，但已開始的成功登入仍須完成資料載入。
-    console.log('🎉 登入成功，開始載入數據...');
-    await portfolioStore.fetchAll();
   } catch (err) {
     if (!isActive) return;
-    console.error('登入流程發生錯誤:', err);
+    console.error('登入驗證失敗:', err);
     error.value = '登入驗證失敗: ' + (err?.message || '無法連接後端伺服器');
+    return;
+  }
+
+  // Authentication has already succeeded. A subsequent portfolio-load failure is
+  // a data/connectivity problem and must not be relabeled as a login failure.
+  console.log('🎉 登入成功，開始載入數據...');
+  try {
+    await portfolioStore.fetchAll();
+  } catch (err) {
+    console.error('登入成功，但初始資料載入失敗:', err);
   }
 };
 
