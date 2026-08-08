@@ -29,14 +29,11 @@ export function validatePendingCalculationRequest(value, owner, options = {}) {
 }
 
 export function readPendingCalculationRequest(storage, owner, options = {}) {
-  if (!storage || typeof storage.getItem !== 'function' || typeof storage.removeItem !== 'function') return null;
+  if (!storage || typeof storage.getItem !== 'function') return null;
   try {
     const parsed = JSON.parse(storage.getItem(CALCULATION_REQUEST_STORAGE_KEY) || 'null');
-    const validated = validatePendingCalculationRequest(parsed, owner, options);
-    if (!validated) storage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
-    return validated;
+    return validatePendingCalculationRequest(parsed, owner, options);
   } catch {
-    storage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
     return null;
   }
 }
