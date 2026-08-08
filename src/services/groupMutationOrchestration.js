@@ -2,7 +2,7 @@ export function summarizeGroupBatchFailure(error, { refreshed }) {
   const succeeded = Number.isSafeInteger(error?.succeeded) ? error.succeeded : 0;
   const total = Number.isSafeInteger(error?.total) ? error.total : 0;
   const failedRecordId = error?.failedRecordId ?? null;
-  const failedOutcomeAmbiguous = error?.failedOutcomeAmbiguous === true;
+  const failedOutcomeAmbiguous = error?.outcomeAmbiguous === true;
   const mutationMayHaveCommitted = succeeded > 0 || failedOutcomeAmbiguous;
 
   return Object.freeze({
