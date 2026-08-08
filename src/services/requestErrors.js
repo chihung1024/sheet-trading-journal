@@ -54,8 +54,15 @@ export const isMutationMethod = (method = 'GET') => !['GET', 'HEAD', 'OPTIONS'].
     normalizeRequestMethod(method),
 );
 
+const isDefiniteClientRejection = (error) => (
+    error instanceof ApiHttpError
+    && Number.isInteger(error.status)
+    && error.status >= 400
+    && error.status < 500
+);
+
 export const isExplicitServerRejection = (error) => (
-    error instanceof ApiHttpError || error instanceof ApiApplicationError
+    isDefiniteClientRejection(error) || error instanceof ApiApplicationError
 );
 
 const normalizeThrownValue = (error) => {
