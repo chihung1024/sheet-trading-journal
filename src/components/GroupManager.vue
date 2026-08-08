@@ -124,6 +124,10 @@ import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
 import {
+  formatGroupBatchFailureMessage,
+  summarizeGroupBatchFailure,
+} from '../services/groupMutationOrchestration.js';
+import {
   PartialRecordTagBatchError,
   updateRecordTagsSequentially,
 } from '../services/groupRecordMutation';
@@ -208,21 +212,25 @@ const clearAll = () => {
   }
 };
 
-const refreshRecordsAfterMutation = async () => {
+const refreshRecordsAfterMutation = async ({ warnOnFailure = true } = {}) => {
   try {
     await portfolioStore.fetchRecords();
+    return true;
   } catch (error) {
     console.error('GroupManager refresh failed:', error);
-    addToast('紀錄已變更，但畫面重新載入失敗，請重新整理頁面', 'warning');
+    if (warnOnFailure) {
+      addToast('紀錄已變更，但畫面重新載入失敗，請重新整理頁面', 'warning');
+    }
+    return false;
   }
 };
 
-const triggerRecalculationAfterSuccess = async () => {
+const triggerRecalculationAfterMutation = async () => {
   try {
     await portfolioStore.triggerUpdate();
   } catch (error) {
     console.error('GroupManager recalculation trigger failed:', error);
-    addToast('紀錄已更新，但後端重算觸發失敗，請稍後手動觸發', 'warning');
+    addToast('後端重算觸發失敗，請稍後手動觸發「更新數據」', 'warning');
   }
 };
 
@@ -238,19 +246,27 @@ const runTagUpdateBatch = async (updates, successMessage) => {
     });
     await refreshRecordsAfterMutation();
     addToast(successMessage(result.succeeded), 'success');
-    await triggerRecalculationAfterSuccess();
+    await triggerRecalculationAfterMutation();
     return true;
   } catch (error) {
-    await refreshRecordsAfterMutation();
+    const refreshed = await refreshRecordsAfterMutation({ warnOnFailure: false });
     if (error instanceof PartialRecordTagBatchError) {
-      const failedId = error.failedRecordId ? `（紀錄 #${error.failedRecordId}）` : '';
+      const summary = summarizeGroupBatchFailure(error, { refreshed });
       addToast(
-        `批次未完成：已更新 ${error.succeeded}/${error.total} 筆${failedId}，已重新載入目前狀態`,
-        'error',
+        formatGroupBatchFailureMessage(summary),
+        summary.failedOutcomeAmbiguous ? 'warning' : 'error',
       );
+      if (summary.shouldRecalculate) {
+        await triggerRecalculationAfterMutation();
+      }
     } else {
       console.error('GroupManager batch failed:', error);
-      addToast('更新失敗，已重新載入目前狀態', 'error');
+      addToast(
+        refreshed
+          ? '更新失敗，已重新載入目前狀態'
+          : '更新失敗，畫面也未能重新載入，請重新整理頁面確認目前狀態',
+        'error',
+      );
     }
     return false;
   } finally {
