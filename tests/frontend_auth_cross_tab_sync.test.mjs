@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -118,4 +119,49 @@ test('a storage event carrying the already-published token is ignored', () => {
     }),
     { kind: AUTH_STORAGE_EVENT_KIND.IGNORE },
   );
+});
+
+test('auth store integrates every cross-tab auth generation without trusting localStorage profile fields', async () => {
+  const source = await readFile(new URL('../src/stores/auth.js', import.meta.url), 'utf8');
+  const handlerStart = source.indexOf('const handleStorageEvent = (event) => {');
+  const handlerEnd = source.indexOf('\n  const startStorageSync', handlerStart);
+  assert.notEqual(handlerStart, -1);
+  assert.notEqual(handlerEnd, -1);
+  const handler = source.slice(handlerStart, handlerEnd);
+
+  assert.match(handler, /classifyCrossTabAuthEvent\(event/);
+  assert.match(handler, /expectedStorage: globalThis\.localStorage/);
+  assert.match(handler, /currentToken: token\.value/);
+  assert.match(handler, /currentEmail: user\.value\.email/);
+
+  assert.match(handler, /AUTH_STORAGE_EVENT_KIND\.SIGNED_OUT/);
+  assert.match(handler, /AUTH_STORAGE_EVENT_KIND\.INVALID/);
+  assert.match(handler, /AUTH_STORAGE_EVENT_KIND\.TOKEN_REFRESHED/);
+  assert.match(handler, /AUTH_STORAGE_EVENT_KIND\.SESSION_CHANGED/);
+
+  const refreshBranch = handler.slice(
+    handler.indexOf('AUTH_STORAGE_EVENT_KIND.TOKEN_REFRESHED'),
+    handler.indexOf('AUTH_STORAGE_EVENT_KIND.SESSION_CHANGED'),
+  );
+  assert.match(refreshBranch, /cancelTokenRefresh\(\)/);
+  assert.match(refreshBranch, /token\.value = change\.token/);
+  assert.match(refreshBranch, /email: change\.email/);
+  assert.doesNotMatch(refreshBranch, /localStorage\.getItem|readAuthenticationStorage/);
+  assert.doesNotMatch(refreshBranch, /reload/);
+
+  const sessionBranch = handler.slice(handler.indexOf('AUTH_STORAGE_EVENT_KIND.SESSION_CHANGED'));
+  const clearIndex = sessionBranch.indexOf('clearInMemoryAuthState()');
+  const reloadIndex = sessionBranch.indexOf('globalThis.location?.reload?.()');
+  assert.notEqual(clearIndex, -1);
+  assert.notEqual(reloadIndex, -1);
+  assert.equal(clearIndex < reloadIndex, true);
+
+  const invalidBranch = handler.slice(
+    handler.indexOf('AUTH_STORAGE_EVENT_KIND.INVALID'),
+    handler.indexOf('AUTH_STORAGE_EVENT_KIND.TOKEN_REFRESHED'),
+  );
+  assert.match(invalidBranch, /clearInMemoryAuthState\(\)/);
+  assert.doesNotMatch(invalidBranch, /clearSensitiveProjectStorage|removeItem|reload/);
+
+  assert.doesNotMatch(handler, /event\.newValue === null\) \{\s*clearInMemoryAuthState\(\);\s*console\.log\([^]*?\}\s*$/);
 });
