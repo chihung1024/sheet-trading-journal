@@ -161,28 +161,31 @@ P5B owns **frontend data reliability presentation**, not financial calculation o
 Confirmed pre-P5B gaps:
 - backend already publishes per-group `anomalies`, but frontend did not consume them;
 - `DIVIDEND_POLICY_REVIEW_REQUIRED` could therefore be hidden behind an apparently clean “no pending dividends” state;
-- connection failure and stale snapshot were visible only as a small header status while old/stale holdings and performance remained fully presented without a persistent explanation;
+- connection/stale state was visible only as a small header status while old/stale holdings and performance remained fully presented without a persistent explanation;
+- the global `connectionStatus` mixes GET/read and mutation/API failures, so it cannot by itself prove that the displayed portfolio load failed;
 - DividendManager still inferred every non-Taiwan pending dividend as USD instead of consuming P3 `currency / total_net_native` provenance.
 
 Current P5B implementation on PR #139:
-- `src/services/dataReliability.js` normalizes current-group anomalies and reliability issues;
-- `src/components/DataReliabilityBanner.vue` persistently surfaces read failure, stale snapshot, and structured anomalies across content tabs;
-- connection failure explicitly warns that the screen may still contain the last successful snapshot and offers a bounded `fetchAll()` retry;
+- `portfolioReadStatus` is owned only by the complete `fetchAll()` load boundary (`loading / loaded / error`) and is not written by unrelated add/update/delete mutation blocks;
+- `src/services/dataReliability.js` normalizes current-group anomalies and reliability issues from read-specific status plus snapshot freshness;
+- `src/components/DataReliabilityBanner.vue` persistently surfaces authoritative portfolio read failure, stale snapshot, and structured anomalies across content tabs;
+- a portfolio read failure explicitly warns that the screen may still contain the last successful snapshot and offers a bounded `fetchAll()` retry;
+- unrelated global API/mutation failure alone does not imply that displayed portfolio data is stale;
 - `DIVIDEND_POLICY_REVIEW_REQUIRED` explains that automatic estimation was deliberately withheld because tax policy is unreviewed;
 - unknown future anomaly codes remain visible instead of being silently discarded;
 - DividendManager consumes published currency/native-net provenance first and preserves legacy fallback only for old snapshots;
-- neutral dividend empty-state copy no longer contradicts a structured manual-review warning.
+- neutral dividend empty-state copy no longer contradicts a structured manual-review warning;
+- reliability banner severity backgrounds use low-alpha warning/error overlays so text contrast remains viable in both light and dark themes.
 
 Verification to date:
 - P5B base: `bb176870f7136457b42096341427eff47d2124a5`
 - pre recovery: `backup-pre-product-integrity-p5b-bb17687`
 - PR #139 first tested head: `5c61e001f3e0e60ae596e5b8168b0f5aeb3a2d99`
 - CI #370 / run `31241978139`: SUCCESS
-  - Frontend contracts and build: SUCCESS
-  - Python tests / coverage policy: SUCCESS
-  - Worker security / deployment / recovery gate: SUCCESS
+- late-review functional head: `8cde4c9959be47ac1629a9c79534c402140a7cc4`
+- CI #377 / run `31242264197`: SUCCESS after read-status isolation and theme-contrast fixes
 
-P5B is **not complete** until the ledger/current-truth commit itself receives final-head CI, all changed-file diffs are re-reviewed, review threads are clear, `main/head` TOCTOU is rechecked, exact-head merge succeeds, post-main CI/Pages succeed, and a post-P5B recovery ref is created.
+P5B is **not complete** until this final current-truth commit itself receives final-head CI, all changed-file diffs are re-reviewed, review threads are clear, `main/head` TOCTOU is rechecked, exact-head merge succeeds, post-main CI/Pages succeed, and a post-P5B recovery ref is created.
 
 ## Confirmed follow-up finding — P5C candidate
 
