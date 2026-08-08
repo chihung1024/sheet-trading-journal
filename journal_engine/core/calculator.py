@@ -4,7 +4,6 @@ import logging
 import pytz
 from collections import deque, defaultdict
 from datetime import datetime, timedelta
-from pyxirr import xirr
 from ..models import PortfolioSnapshot, PortfolioSummary, HoldingPosition, DividendRecord, PortfolioGroupData
 from ..config import BASE_CURRENCY, DEFAULT_FX_RATE
 from .transaction_analyzer import TransactionAnalyzer, PositionSnapshot
@@ -15,6 +14,7 @@ from .dividend_policy import (
     reviewed_dividend_net_multiplier,
     reviewed_dividend_withholding_rate,
 )
+from .performance_metrics import calculate_xirr_metric
 from .validator import PortfolioValidator
 
 logger = logging.getLogger(__name__)
@@ -152,7 +152,9 @@ class PortfolioCalculator:
             logger.warning("無交易記錄")
             empty_summary = PortfolioSummary(
                 total_value=0, invested_capital=0, total_pnl=0, 
-                twr=0, xirr=0, realized_pnl=0, benchmark_twr=0, daily_pnl_twd=0,
+                twr=0, xirr=0, xirr_status="not_applicable", xirr_reason="no_cashflows",
+                xirr_asof_date=None, xirr_cashflow_conventional=None,
+                realized_pnl=0, benchmark_twr=0, daily_pnl_twd=0,
                 daily_pnl_breakdown={"tw_pnl_twd": 0.0, "us_pnl_twd": 0.0},
                 market_stage=current_stage, market_stage_desc=stage_desc,
                 daily_pnl_asof_date=None, daily_pnl_prev_date=None
@@ -808,16 +810,30 @@ class PortfolioCalculator:
                 f"aggregate={daily_pnl_total_raw:.2f}, deviation={pnl_deviation:.2f}"
             )
         self.validator.validate_daily_balance(holdings, invested_capital, current_holdings_cost_sum)
-        
-        xirr_val = 0.0
-        if xirr_cashflows:
-            curr_val_sum = sum(h.market_value_twd for h in final_holdings)
-            xirr_cashflows_calc = xirr_cashflows.copy()
-            xirr_cashflows_calc.append({'date': datetime.now(), 'amount': curr_val_sum})
-            try:
-                xirr_res = xirr([x['date'] for x in xirr_cashflows_calc], [x['amount'] for x in xirr_cashflows_calc])
-                xirr_val = round(xirr_res * 100, 2)
-            except: pass
+
+        xirr_terminal_date = history_data[-1]['date'] if history_data else None
+        xirr_terminal_value_raw = (
+            float(history_data[-1].get('_raw_total_value', last_market_value_twd))
+            if history_data
+            else 0.0
+        )
+        xirr_metric = calculate_xirr_metric(
+            xirr_cashflows,
+            terminal_value_twd=xirr_terminal_value_raw,
+            terminal_date=xirr_terminal_date,
+        )
+        if xirr_metric.status != "ok" and xirr_metric.status != "not_applicable":
+            logger.warning(
+                "[%s] XIRR unavailable: reason=%s, asof=%s",
+                group_name,
+                xirr_metric.reason,
+                xirr_metric.asof_date,
+            )
+        elif xirr_metric.cashflow_conventional is False:
+            logger.warning(
+                "[%s] XIRR uses non-conventional cash flows; multiple roots may exist",
+                group_name,
+            )
 
         current_total_value = sum(h.market_value_twd for h in final_holdings)
         current_invested = current_holdings_cost_sum
@@ -836,7 +852,11 @@ class PortfolioCalculator:
             invested_capital=round(current_invested, 0),
             total_pnl=round(current_total_pnl, 0),
             twr=history_data[-1]['twr'] if history_data else 0,
-            xirr=xirr_val,
+            xirr=xirr_metric.value_percent,
+            xirr_status=xirr_metric.status,
+            xirr_reason=xirr_metric.reason,
+            xirr_asof_date=xirr_metric.asof_date,
+            xirr_cashflow_conventional=xirr_metric.cashflow_conventional,
             realized_pnl=round(total_realized_pnl_twd, 0),
             benchmark_twr=history_data[-1]['benchmark_twr'] if history_data else 0,
             daily_pnl_twd=round(display_daily_pnl, 0),

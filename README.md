@@ -44,7 +44,7 @@
   - 總損益（Total P&L）
   - ROI（投資報酬率）
   - TWR（時間加權報酬率；日切分 linked returns）
-  - XIRR（個人年化報酬率 / IRR）
+  - XIRR（個人年化報酬率 / IRR；含可用性與估值日 provenance）
   - 勝率 / 持倉數 / 交易筆數
 
 - **績效曲線圖（Performance Chart）**
@@ -274,14 +274,14 @@
 - 子期間報酬（Modified Dietz）：
   - `r_md = (V1 - V0 - ΣCF) / (V0 + Σ(w_i * CF_i))`
   - `period_hpr_factor = 1 + r_md`
-  - 其中 `CF_i` 正值代表外部資金流入（買入），負值代表流出（賣出/股息）
+  - 其中 `CF_i` 正值代表外部資金流入（買入），負值代表流出/回收（賣出/股息）
   - 權重 `w_i` 目前在日粒度採同日等距近似（資料無交易時間戳）
 
 - 累積：
   - `cumulative_twr_factor *= period_hpr_factor`
   - `twr_percent = (cumulative_twr_factor - 1) * 100`
 
-> 註：目前是「日切分的 Modified Dietz 連結報酬」。若後續補齊分時交易時間戳，可再升級更精細的現金流權重模型。
+> 註：目前是「日切分的 Modified Dietz 連結報酬」。負期初值、近零分母與非有限結果目前仍沿用既有 0-return fallback；這些 undefined-vs-zero 語意屬於 Product Integrity P4B，P4A 不改動 TWR 歷史公式。
 
 ### 5) 股息（DIV / pending / confirmed）
 
@@ -294,11 +294,19 @@
 
 ### 6) XIRR（Money-weighted）
 
-- XIRR 由現金流序列計算：
-  - `BUY`：負現金流
-  - `SELL` / `DIV`：正現金流
-  - 最後加上一筆「當前市值」作為期末正現金流
-- XIRR 的 raw terminal-value 精度與「solver 失敗 vs 真正 0%」語意仍列在 Product Integrity P4，尚未宣稱已修正。
+- XIRR 現金流序列：
+  - `BUY`：負現金流。
+  - `SELL` / 已確認或已審查自動股息：正現金流。
+  - 最後加上一筆「未四捨五入的 raw 最終持倉估值」作為期末正現金流。
+- 期末估值現金流的日期使用**實際最後估值日**（history 最後有效日期），而不是 batch 執行當下 `datetime.now()`；因此週末、假日或非交易日不會把同一估值錯誤延後到執行日再做年化。
+- `xirr` 數字欄位仍保留作舊 snapshot/API 相容；新 snapshot 另外提供：
+  - `xirr_status`：`ok` / `not_applicable` / `undefined`。
+  - `xirr_reason`：無法可靠計算時的 machine-readable 原因。
+  - `xirr_asof_date`：期末估值所屬日期。
+  - `xirr_cashflow_conventional`：現金流正負號是否只切換一次。
+- 真正 0% XIRR 是 `xirr=0.0, xirr_status=ok`；solver 無解、輸入不足或計算失敗會保留 legacy numeric `0.0` sentinel，但 status 不會是 `ok`，前端顯示 `--` 而不是 `+0.00%`。
+- 若現金流正負號多次切換，XIRR 仍可回傳 solver 結果，但會標示 `xirr_cashflow_conventional=false`，因非傳統現金流可能存在多個 IRR 解；畫面會顯示風險提示，不把該根視為唯一解。
+- 舊 snapshot 沒有 `xirr_status` 時仍維持既有數字顯示與 upload 相容性。
 
 ---
 
@@ -341,6 +349,8 @@ python main.py
 - 多幣別**估值/FX**能力與各市場**股息稅務政策**是兩件事：目前自動 pending 股息只明確支援 TWD 0% / USD 30%；其他市場需以實際 `DIV` 或後續審查政策處理，不會自動猜測。
 - `us_pnl_twd` 是為舊 snapshot/API 相容而保留的欄位名稱；在 currency-aware 引擎中實際代表非 TWD（海外）價格/交易分量，前端以「海外」呈現。
 - 自動盤中 refresh 的 market-stage 排程目前仍以台股 / 美股時段為主；支援外幣估值不代表已新增所有海外交易所的盤中 refresh 時段。
+- XIRR 對非傳統現金流可能存在多個數學根；目前會標示 ambiguity，但不替使用者選擇「經濟上唯一正確」的根。
+- Modified Dietz/TWR 的 undefined-vs-zero 邊界仍屬 P4B，尚未在 P4A 改變既有歷史數字語意。
 - 任意區間單一數字績效可直接以同一公式整段計算，或沿用日子期間連結結果（需在報表層定義口徑）。
 
 ---
