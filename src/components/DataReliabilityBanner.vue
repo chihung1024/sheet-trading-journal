@@ -43,7 +43,7 @@ const currentAnomalies = computed(() => getPortfolioAnomalies(
 ));
 
 const issues = computed(() => buildDataReliabilityIssues({
-  connectionStatus: store.connectionStatus,
+  portfolioReadStatus: store.portfolioReadStatus,
   snapshotFreshness: store.snapshotFreshness,
   anomalies: currentAnomalies.value,
 }));
