@@ -72,16 +72,19 @@
     </div>
     
     <!-- 5️⃣ 時間加權報酬率 -->
-    <div class="stat-block">
+    <div class="stat-block" :title="twrTooltip">
       <div class="stat-top">
         <span class="stat-label">時間加權報酬</span>
         <span class="icon-box">🎯</span>
       </div>
       <div class="stat-main">
-        <div class="stat-value">{{ stats.twr || 0 }}<span class="percent">%</span></div>
+        <div class="stat-value">
+          <template v-if="twrAvailable">{{ twrValue }}<span class="percent">%</span></template>
+          <template v-else>--</template>
+        </div>
       </div>
       <div class="stat-footer">
-         <span class="text-sub text-xs">TWR (策略表現)</span>
+         <span class="text-sub text-xs footer-desc">{{ twrFooter }}</span>
       </div>
     </div>
     
@@ -109,6 +112,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import { isTwrSummaryAvailable } from '../services/twrState.js';
 
 const store = usePortfolioStore();
 
@@ -174,6 +178,24 @@ const dailyRoi = computed(() => {
   }
   
   return '0.00';
+});
+
+// Legacy snapshots have no twr_status and retain their historical numeric display.
+// New snapshots fail closed when one linked subperiod is mathematically unreliable.
+const twrValue = computed(() => Number(stats.value.twr ?? 0));
+const twrAvailable = computed(() => isTwrSummaryAvailable(stats.value.twr_status));
+const twrFooter = computed(() => {
+  if (stats.value.twr_status === 'not_applicable') return 'TWR 尚不適用';
+  if (stats.value.twr_status === 'undefined') return 'TWR 無法可靠計算';
+  return 'TWR (策略表現)';
+});
+const twrTooltip = computed(() => {
+  const status = stats.value.twr_status;
+  if (status == null) return '舊版快照：未提供 TWR 可靠性狀態';
+  if (status === 'ok') return '所有已連結子期間皆通過 TWR 可計算性檢查';
+  if (status === 'not_applicable') return '目前沒有可計算的 TWR 報酬期間';
+  const invalidSince = stats.value.twr_invalid_since;
+  return `TWR 無法可靠計算${invalidSince ? `；自 ${invalidSince} 起的數字僅保留舊版相容` : ''}`;
 });
 
 // Legacy snapshots do not have xirr_status and remain display-compatible.
