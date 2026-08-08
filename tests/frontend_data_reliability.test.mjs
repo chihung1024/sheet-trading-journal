@@ -56,21 +56,30 @@ test('unknown structured anomaly remains visible instead of being silently dropp
   assert.equal(issue.message, 'review this calculation');
 });
 
-test('connection failure and stale snapshot are persistent reliability issues', () => {
+test('portfolio read failure and stale snapshot are persistent reliability issues', () => {
   const issues = buildDataReliabilityIssues({
-    connectionStatus: 'error',
+    portfolioReadStatus: 'error',
     snapshotFreshness: 'stale',
     anomalies: [{ code: 'DIVIDEND_POLICY_REVIEW_REQUIRED', currency: 'KRW' }],
   });
 
   assert.deepEqual(issues.map(issue => issue.source), [
-    'connection',
+    'portfolio_read',
     'snapshot',
     'snapshot_anomaly',
   ]);
   assert.equal(issues[0].retryable, true);
   assert.match(issues[0].message, /上一次成功載入的快照/);
   assert.match(issues[1].message, /交易紀錄已變更/);
+});
+
+test('global API errors alone do not imply the displayed portfolio read is stale', () => {
+  const issues = buildDataReliabilityIssues({
+    connectionStatus: 'error',
+    portfolioReadStatus: 'loaded',
+    snapshotFreshness: 'loaded',
+  });
+  assert.deepEqual(issues, []);
 });
 
 test('duplicate backend anomalies are shown once per current group', () => {
@@ -106,13 +115,35 @@ test('legacy dividends retain the reviewed TWD/USD fallback when provenance is a
   assert.equal(getDividendDefaultTax({ total_gross: 100, total_net_usd: 70 }), 30);
 });
 
-test('reliability banner consumes backend provenance and never infers anomalies from pending-count zero', async () => {
+test('portfolio read status is owned by fetchAll rather than unrelated mutation failures', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  assert.match(source, /const portfolioReadStatus = ref\('unknown'\)/);
+
+  const fetchStart = source.indexOf('const performFetchAll = async () => {');
+  const fetchEnd = source.indexOf('const fetchAll = createSingleFlight', fetchStart);
+  assert.notEqual(fetchStart, -1);
+  assert.notEqual(fetchEnd, -1);
+  const fetchBlock = source.slice(fetchStart, fetchEnd);
+  assert.match(fetchBlock, /portfolioReadStatus\.value = 'loading'/);
+  assert.match(fetchBlock, /portfolioReadStatus\.value = 'loaded'/);
+  assert.match(fetchBlock, /portfolioReadStatus\.value = 'error'/);
+
+  for (const mutationName of ['addRecord', 'updateRecord', 'deleteRecord']) {
+    const start = source.indexOf(`const ${mutationName} = async`);
+    const next = source.indexOf('\n    const ', start + 10);
+    const block = source.slice(start, next === -1 ? undefined : next);
+    assert.doesNotMatch(block, /portfolioReadStatus/);
+  }
+});
+
+test('reliability banner consumes backend provenance and read-specific status', async () => {
   const source = await readFile(new URL('../src/components/DataReliabilityBanner.vue', import.meta.url), 'utf8');
   assert.match(source, /getPortfolioAnomalies/);
   assert.match(source, /store\.rawData/);
   assert.match(source, /store\.currentGroup/);
   assert.match(source, /store\.snapshotFreshness/);
-  assert.match(source, /store\.connectionStatus/);
+  assert.match(source, /store\.portfolioReadStatus/);
+  assert.doesNotMatch(source, /store\.connectionStatus/);
   assert.match(source, /await store\.fetchAll\(\)/);
   assert.doesNotMatch(source, /pending_dividends\.length\s*===\s*0/);
 });
