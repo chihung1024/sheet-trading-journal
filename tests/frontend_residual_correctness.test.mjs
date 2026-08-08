@@ -9,6 +9,7 @@ const read = relativePath => fs.readFileSync(path.join(ROOT, relativePath), 'utf
 
 const PORTFOLIO_PATH = 'src/stores/portfolio.js';
 const AUTH_PATH = 'src/stores/auth.js';
+const AUTH_CROSS_TAB_PATH = 'src/services/authCrossTabSync.js';
 const APP_PATH = 'src/App.vue';
 const GROUP_MUTATION_PATH = 'src/services/groupRecordMutation.js';
 const TRADE_FORM_PATH = 'src/components/TradeForm.vue';
@@ -67,15 +68,20 @@ test('connection and snapshot freshness are separate fail-closed UI states', () 
   );
 });
 
-test('auth store reacts to cross-tab token removal without requiring server-session redesign', () => {
-  const source = read(AUTH_PATH);
-  assert.match(source, /TOKEN_STORAGE_KEY/);
-  assert.match(source, /addEventListener\(['"]storage['"]/);
-  assert.match(source, /removeEventListener\(['"]storage['"]/);
-  assert.match(source, /event\.key\s*===\s*TOKEN_STORAGE_KEY/);
-  assert.match(source, /event\.newValue\s*===\s*null/);
-  assert.match(source, /startStorageSync/);
-  assert.match(source, /stopStorageSync/);
+test('auth store delegates cross-tab token changes to the reviewed generation classifier', () => {
+  const auth = read(AUTH_PATH);
+  const classifier = read(AUTH_CROSS_TAB_PATH);
+
+  assert.match(auth, /classifyCrossTabAuthEvent\(event/);
+  assert.match(auth, /AUTH_STORAGE_EVENT_KIND\.SIGNED_OUT/);
+  assert.match(auth, /addEventListener\(['"]storage['"]/);
+  assert.match(auth, /removeEventListener\(['"]storage['"]/);
+  assert.match(auth, /startStorageSync/);
+  assert.match(auth, /stopStorageSync/);
+
+  assert.match(classifier, /TOKEN_STORAGE_KEY/);
+  assert.match(classifier, /event\.key\s*!==\s*TOKEN_STORAGE_KEY/);
+  assert.match(classifier, /event\.newValue\s*===\s*null/);
 });
 
 test('viewport zoom remains available and formerly clickable header/tag spans are semantic buttons', () => {
