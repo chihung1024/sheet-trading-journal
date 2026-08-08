@@ -7,8 +7,9 @@ calendar without pretending that transaction-derived marks are vendor market clo
 
 Ordinary missing dates carry forward the latest prior market row. A transaction date
 that narrowly precedes the first downloaded market row can instead be bootstrapped
-from a positive BUY/SELL execution price observed in the ledger. Every synthetic row
-is provenance-labelled and corporate-action cash/event fields are cleared.
+from a positive BUY/SELL execution price observed in the ledger when the caller
+explicitly opts in. Every synthetic row is provenance-labelled and corporate-action
+cash/event fields are cleared.
 """
 
 from __future__ import annotations
@@ -95,16 +96,19 @@ def ensure_transaction_dates_in_market_calendar(
     market_client: Any,
     transactions_df: pd.DataFrame,
     as_of_date: Optional[Any] = None,
+    *,
+    allow_leading_transaction_seed: bool = False,
 ) -> Dict[str, List[pd.Timestamp]]:
     """Insert missing transaction-processing dates into market-data calendars.
 
     Missing dates after historical coverage begins use the latest prior market row.
-    A date before the original first market row may use a transaction-observed seed
-    only when the gap is at most ``MAX_TRANSACTION_BOOTSTRAP_GAP_DAYS`` and that date
-    contains a positive BUY/SELL execution price. The seed is converted to the same
-    split-adjusted basis as ``Close_Adjusted``. This bounded exception handles genuine
-    launch/provider-lag cases while large history gaps, absent market data, missing
-    execution prices, and future-dated transactions still fail closed.
+    By default, dates before the original first market row remain fail-closed. When
+    ``allow_leading_transaction_seed`` is explicitly true, a leading date may use a
+    transaction-observed seed only when the gap is at most
+    ``MAX_TRANSACTION_BOOTSTRAP_GAP_DAYS`` and that date contains a positive BUY/SELL
+    execution price. The seed is converted to the same split-adjusted basis as
+    ``Close_Adjusted``. Large history gaps, absent market data, missing execution
+    prices, and future-dated transactions remain fatal.
     """
     if transactions_df is None or transactions_df.empty:
         return {}
@@ -171,6 +175,11 @@ def ensure_transaction_dates_in_market_calendar(
                 continue
 
             if transaction_date < original_first_market_date:
+                if not allow_leading_transaction_seed:
+                    raise TransactionCalendarError(
+                        f"{symbol} transaction date {transaction_date.date()} precedes available market data"
+                    )
+
                 gap_days = int((original_first_market_date - transaction_date).days)
                 if gap_days > MAX_TRANSACTION_BOOTSTRAP_GAP_DAYS:
                     raise TransactionCalendarError(
