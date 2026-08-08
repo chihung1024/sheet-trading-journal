@@ -623,6 +623,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   line-height: 1;
 }
 
+/* Main sections: allow horizontal content without showing bars */
 .section-holdings,
 .section-records,
 .section-dividends {
@@ -635,9 +636,11 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   display: none;
 }
 
+/* Cards & Charts */
 .card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); overflow-x: hidden; }
 .chart-wrapper.chart-full { height: 450px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 
+/* 🔒 固定面板 */
 .fixed-panel {
   position: fixed;
   top: calc(var(--header-height) + var(--space-desktop));
@@ -659,6 +662,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .fixed-panel::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
 .fixed-panel::-webkit-scrollbar-thumb:hover { background: var(--text-sub); }
 
+/* FAB Button */
 .fab-btn {
   position: fixed; bottom: 24px; right: 24px;
   width: 56px; height: 56px;
@@ -672,6 +676,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .fab-btn:active { transform: scale(0.95); }
 .fab-btn span { margin-top: -4px; }
 
+/* Mobile Sheet (Sidebar) */
 .mobile-sheet {
   position: fixed; top: 0; right: 0; bottom: 0;
   width: 100%; max-width: 400px;
@@ -698,6 +703,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 
 .mobile-sheet .fixed-panel { position: static; padding: 20px; max-height: none; width: 100%; right: auto; }
 
+/* Utilities */
 .desktop-only { display: inline-block; }
 .mobile-only { display: none; }
 .btn-edit-group { background: transparent; border: none; color: var(--text-sub); cursor: pointer; font-size: 1rem; padding: 0 4px; }
@@ -709,6 +715,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .btn-sm:disabled { opacity: 0.5; }
 .modal-footer { display: flex; justify-content: flex-end; }
 
+/* Toast */
 .toast-container { position: fixed; bottom: 32px; right: 32px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
 .toast { pointer-events: auto; background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px 16px; border-radius: 12px; box-shadow: var(--shadow-lg); display: flex; gap: 12px; min-width: 280px; align-items: center; }
 .toast-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; }
@@ -718,6 +725,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
 .toast-slide-enter-from, .toast-slide-leave-to { transform: translateX(100%); opacity: 0; }
 
+/* RWD Queries */
 @media (max-width: 1024px) {
   .content-container { grid-template-columns: 1fr; padding: 16px; gap: 16px; }
   .desktop-only { display: none; }
