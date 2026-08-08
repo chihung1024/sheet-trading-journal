@@ -66,24 +66,32 @@ test('mutation timeout remains ambiguous and must not be treated as rejected or 
   assert.equal(isMutationAmbiguous(outcome), true);
 });
 
-test('outcomes are immutable so callers cannot rewrite commit truth', () => {
-  const outcome = committedMutationOutcome();
-  assert.equal(Object.isFrozen(outcome), true);
+test('outcomes are immutable and independent so callers cannot rewrite or race commit truth', () => {
+  const first = committedMutationOutcome({ response: { id: 1 } });
+  const second = failedMutationOutcome(markRequestOutcome(new RequestTimeoutError(30_000), 'POST'));
+
+  assert.equal(Object.isFrozen(first), true);
+  assert.equal(Object.isFrozen(second), true);
+  assert.equal(first.status, MUTATION_OUTCOME_STATUS.COMMITTED);
+  assert.equal(second.status, MUTATION_OUTCOME_STATUS.AMBIGUOUS);
+  assert.notStrictEqual(first, second);
   assert.throws(() => {
-    outcome.status = MUTATION_OUTCOME_STATUS.REJECTED;
+    first.status = MUTATION_OUTCOME_STATUS.REJECTED;
   }, TypeError);
 });
 
-test('portfolio store preserves the legacy boolean mutation surface while publishing structured truth', async () => {
+test('portfolio store preserves legacy booleans while allowing call-local structured outcomes', async () => {
   const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
 
-  assert.match(source, /const lastRecordMutationOutcome = ref\(null\)/);
-  assert.match(source, /const publishRecordMutationOutcome = \(outcome\) => \{/);
-  assert.match(source, /lastRecordMutationOutcome\.value = outcome/);
-  assert.match(source, /return isMutationCommitted\(outcome\)/);
-  assert.match(source, /lastRecordMutationOutcome,/);
+  assert.match(source, /const resolveRecordMutationOutcome = \(outcome, \{ returnOutcome = false \} = \{\}\) => \(/);
+  assert.match(source, /returnOutcome \? outcome : isMutationCommitted\(outcome\)/);
+  assert.match(source, /const addRecord = async \(formData, options = \{\}\) =>/);
+  assert.match(source, /const updateRecord = async \(formData, options = \{\}\) =>/);
+  assert.match(source, /const deleteRecord = async \(id, options = \{\}\) =>/);
   assert.match(source, /failedMutationOutcome\(error\)/);
   assert.match(source, /committedMutationOutcome\(\{/);
+  assert.doesNotMatch(source, /lastRecordMutationOutcome/);
+  assert.doesNotMatch(source, /publishRecordMutationOutcome/);
 });
 
 test('verified mutation commit is separated from follow-up record refresh failure', async () => {
@@ -102,7 +110,8 @@ test('verified mutation commit is separated from follow-up record refresh failur
   const updateBlock = mutationBlock(source, 'updateRecord', 'deleteRecord = async');
   const deleteBlock = mutationBlock(source, 'deleteRecord', 'availableGroups = computed');
   for (const block of [addBlock, updateBlock, deleteBlock]) {
-    assert.match(block, /publishRecordMutationOutcome\(committedMutationOutcome/);
+    assert.match(block, /return resolveRecordMutationOutcome\(committedMutationOutcome\(\{/);
+    assert.match(block, /refreshed: refresh\.refreshed|refreshed: true/);
   }
 });
 
@@ -116,7 +125,7 @@ test('ambiguous mutation feedback is warning-level while definite rejection rema
 
   assert.match(block, /const outcome = failedMutationOutcome\(error\)/);
   assert.match(block, /outcome\.outcomeAmbiguous \? 'warning' : 'error'/);
-  assert.match(block, /return publishRecordMutationOutcome\(outcome\)/);
+  assert.match(block, /return resolveRecordMutationOutcome\(outcome, options\)/);
 });
 
 test('ambiguous record POST is one-shot and is never auto-retried by the browser store', async () => {
@@ -132,18 +141,25 @@ test('ambiguous record POST is one-shot and is never auto-retried by the browser
   assert.match(block, /recordMutationFailure\(error/);
 });
 
-test('DividendManager preserves ambiguous POST semantics instead of relabeling them as failure', async () => {
+test('DividendManager consumes its own call-local outcome and preserves ambiguous POST semantics', async () => {
   const source = await readFile(new URL('../src/components/DividendManager.vue', import.meta.url), 'utf8');
-  assert.match(source, /import \{ isMutationAmbiguous \} from '\.\.\/services\/mutationOutcome\.js'/);
-  assert.match(source, /isMutationAmbiguous\(store\.lastRecordMutationOutcome\)/);
+  assert.match(source, /isMutationAmbiguous/);
+  assert.match(source, /isMutationCommitted/);
+  assert.match(source, /store\.addRecord\(record, \{ returnOutcome: true \}\)/);
+  assert.match(source, /if \(!isMutationCommitted\(outcome\)\) \{/);
+  assert.match(source, /if \(isMutationAmbiguous\(outcome\)\) \{/);
+  assert.doesNotMatch(source, /lastRecordMutationOutcome/);
   assert.match(source, /伺服器可能已完成新增/);
   assert.match(source, /勿直接再次提交/);
 
-  const falseBranch = source.indexOf('if (!success) {');
-  const genericFailure = source.indexOf("throw new Error('無法新增記錄')", falseBranch);
-  const ambiguousReturn = source.indexOf('return;', falseBranch);
-  assert.notEqual(falseBranch, -1);
+  const committedCheck = source.indexOf('if (!isMutationCommitted(outcome)) {');
+  const ambiguousCheck = source.indexOf('if (isMutationAmbiguous(outcome)) {', committedCheck);
+  const genericFailure = source.indexOf("throw new Error('無法新增記錄')", committedCheck);
+  const ambiguousReturn = source.indexOf('return;', ambiguousCheck);
+  assert.notEqual(committedCheck, -1);
+  assert.notEqual(ambiguousCheck, -1);
   assert.notEqual(genericFailure, -1);
   assert.notEqual(ambiguousReturn, -1);
+  assert.equal(ambiguousCheck < genericFailure, true);
   assert.equal(ambiguousReturn < genericFailure, true);
 });
