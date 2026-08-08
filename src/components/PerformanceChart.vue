@@ -101,7 +101,11 @@ import {
   normalizeBenchmarkSymbol,
   resolveBenchmarkApplicationState,
 } from '../services/benchmarkState.js';
-import { firstTwrInvalidDate, relativeTwrValue } from '../services/twrState.js';
+import {
+  firstTwrInvalidDate,
+  lastFiniteSeriesIndex,
+  relativeTwrValue,
+} from '../services/twrState.js';
 
 const portfolioStore = usePortfolioStore();
 const { addToast } = useToast();
@@ -403,10 +407,7 @@ const drawChart = () => {
                 chart.data.datasets.forEach((dataset, i) => {
                     const meta = chart.getDatasetMeta(i);
                     if (!meta.hidden && dataset.data.length > 0) {
-                        let lastIndex = dataset.data.length - 1;
-                        while (lastIndex >= 0 && !Number.isFinite(Number(dataset.data[lastIndex]))) {
-                            lastIndex -= 1;
-                        }
+                        const lastIndex = lastFiniteSeriesIndex(dataset.data);
                         if (lastIndex < 0) return;
                         const lastPoint = meta.data[lastIndex];
                         const value = Number(dataset.data[lastIndex]);
