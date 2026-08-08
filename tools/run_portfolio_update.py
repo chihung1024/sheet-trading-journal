@@ -51,6 +51,8 @@ SAFE_FAILURE_CODES = frozenset(
     }
 )
 
+PER_USER_FAILURE_LOG_TEMPLATE = "使用者 %s 處理失敗: %s"
+
 
 class UserFailureCapture(logging.Handler):
     """Capture exception objects from main's per-user failure log records."""
@@ -62,8 +64,7 @@ class UserFailureCapture(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         if record.name != "main" or not record.exc_info:
             return
-        message = record.getMessage()
-        if not message.startswith("使用者 ") or "處理失敗" not in message:
+        if record.msg != PER_USER_FAILURE_LOG_TEMPLATE:
             return
         exc = record.exc_info[1]
         if isinstance(exc, Exception):
