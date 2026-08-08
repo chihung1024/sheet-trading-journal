@@ -36,6 +36,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const records = ref([]);
     const lastUpdate = ref('');
     const connectionStatus = ref('unknown');
+    const portfolioReadStatus = ref('unknown');
     const snapshotFreshness = ref('unknown');
     const isPolling = ref(false);
     const calculationJob = ref(null);
@@ -267,6 +268,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         resumePendingCalculationJob();
         clearLegacyRecordCache(localStorage);
         loading.value = true;
+        portfolioReadStatus.value = 'loading';
         try {
             await fetchRecords();
             try {
@@ -283,10 +285,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 resetData();
                 snapshotFreshness.value = 'loaded';
             }
+            portfolioReadStatus.value = 'loaded';
             return true;
         } catch (error) {
             console.error('fetchAll error:', error);
             connectionStatus.value = 'error';
+            portfolioReadStatus.value = 'error';
             throw error;
         } finally {
             loading.value = false;
@@ -583,6 +587,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         unrealizedPnL,
         dailyPnL,
         connectionStatus,
+        portfolioReadStatus,
         snapshotFreshness,
         isPolling,
         calculationJob,
