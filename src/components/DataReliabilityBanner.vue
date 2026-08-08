@@ -74,7 +74,9 @@ const retryLoad = async () => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin: 14px 0 18px;
+  width: calc(100% - 48px);
+  max-width: var(--layout-max);
+  margin: 14px auto 0;
   padding: 14px 16px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
@@ -101,7 +103,7 @@ const retryLoad = async () => {
 .reliability-issue {
   display: grid;
   gap: 3px;
-  color: var(--text-primary);
+  color: var(--text-main);
   line-height: 1.45;
 }
 
@@ -110,7 +112,7 @@ const retryLoad = async () => {
 }
 
 .reliability-issue span {
-  color: var(--text-secondary);
+  color: var(--text-sub);
   font-size: 0.86rem;
 }
 
@@ -119,7 +121,7 @@ const retryLoad = async () => {
   border: 1px solid var(--border-color);
   border-radius: 10px;
   background: var(--bg-card);
-  color: var(--text-primary);
+  color: var(--text-main);
   padding: 8px 12px;
   font-weight: 700;
   cursor: pointer;
@@ -128,6 +130,12 @@ const retryLoad = async () => {
 .retry-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 1024px) {
+  .reliability-banner {
+    width: calc(100% - 32px);
+  }
 }
 
 @media (max-width: 720px) {
