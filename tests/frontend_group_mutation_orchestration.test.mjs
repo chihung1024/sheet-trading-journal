@@ -11,7 +11,7 @@ test('verified partial commits require recalculation', () => {
     succeeded: 2,
     total: 4,
     failedRecordId: 3,
-    failedOutcomeAmbiguous: false,
+    outcomeAmbiguous: false,
   }, { refreshed: true });
 
   assert.deepEqual(summary, {
@@ -33,9 +33,10 @@ test('ambiguous failed row requires recalculation even with zero verified prefix
     succeeded: 0,
     total: 3,
     failedRecordId: 1,
-    failedOutcomeAmbiguous: true,
+    outcomeAmbiguous: true,
   }, { refreshed: false });
 
+  assert.equal(summary.failedOutcomeAmbiguous, true);
   assert.equal(summary.mutationMayHaveCommitted, true);
   assert.equal(summary.shouldRecalculate, true);
   assert.equal(summary.refreshed, false);
@@ -51,9 +52,10 @@ test('definite zero-progress rejection does not require recalculation', () => {
     succeeded: 0,
     total: 3,
     failedRecordId: 1,
-    failedOutcomeAmbiguous: false,
+    outcomeAmbiguous: false,
   }, { refreshed: true });
 
+  assert.equal(summary.failedOutcomeAmbiguous, false);
   assert.equal(summary.mutationMayHaveCommitted, false);
   assert.equal(summary.shouldRecalculate, false);
   const message = formatGroupBatchFailureMessage(summary);
