@@ -86,16 +86,16 @@ const uniqueNormalizedAnomalies = anomalies => {
 };
 
 export const buildDataReliabilityIssues = ({
-  connectionStatus = 'unknown',
+  portfolioReadStatus = 'unknown',
   snapshotFreshness = 'unknown',
   anomalies = [],
 } = {}) => {
   const issues = [];
 
-  if (connectionStatus === 'error') {
+  if (portfolioReadStatus === 'error') {
     issues.push({
-      key: 'connection-error',
-      source: 'connection',
+      key: 'portfolio-read-error',
+      source: 'portfolio_read',
       severity: 'error',
       title: '最新資料讀取失敗',
       message: '目前畫面可能仍保留上一次成功載入的快照。重新載入成功前，請勿把目前持倉、績效或配息推算視為最新結果。',
