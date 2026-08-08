@@ -117,7 +117,7 @@ Key outcomes:
 
 Evidence:
 - PR #137
-- final reviewed head: `903c0a48...` (see PR for full SHA/history)
+- final reviewed head: `903c0a4813f0bb3dc06d617510f7ecbe7cc8da93`
 - merge/main: `4ff50c40ea595b182221c5b2ffc09dbf66d2a2fe`
 - post-main CI #364: SUCCESS
 - Pages #1426: SUCCESS
