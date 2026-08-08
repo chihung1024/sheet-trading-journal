@@ -163,6 +163,14 @@ def ensure_transaction_dates_in_market_calendar(
         symbol_df.index = normalized_index.normalize()
         symbol_df = symbol_df[~symbol_df.index.duplicated(keep="last")].sort_index()
 
+        missing_transaction_dates = [
+            transaction_date
+            for transaction_date in sorted(transaction_dates)
+            if transaction_date not in symbol_df.index
+        ]
+        if not missing_transaction_dates:
+            continue
+
         original_first_market_date = symbol_df.index.min()
         if VALUATION_SOURCE_COLUMN not in symbol_df.columns:
             symbol_df[VALUATION_SOURCE_COLUMN] = "market"
@@ -170,10 +178,7 @@ def ensure_transaction_dates_in_market_calendar(
             symbol_df[VALUATION_SOURCE_DATE_COLUMN] = symbol_df.index.strftime("%Y-%m-%d")
 
         added_dates: List[pd.Timestamp] = []
-        for transaction_date in sorted(transaction_dates):
-            if transaction_date in symbol_df.index:
-                continue
-
+        for transaction_date in missing_transaction_dates:
             if transaction_date < original_first_market_date:
                 if not allow_leading_transaction_seed:
                     raise TransactionCalendarError(
