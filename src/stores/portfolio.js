@@ -43,7 +43,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const connectionStatus = ref('unknown');
     const portfolioReadStatus = ref('unknown');
     const snapshotFreshness = ref('unknown');
-    const lastRecordMutationOutcome = ref(null);
     const isPolling = ref(false);
     const calculationJob = ref(null);
     let pollTimer = null;
@@ -312,10 +311,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         startPolling();
     };
 
-    const publishRecordMutationOutcome = (outcome) => {
-        lastRecordMutationOutcome.value = outcome;
-        return isMutationCommitted(outcome);
-    };
+    const resolveRecordMutationOutcome = (outcome, { returnOutcome = false } = {}) => (
+        returnOutcome ? outcome : isMutationCommitted(outcome)
+    );
 
     const unconfirmedMutationError = (action) => {
         const error = new Error(`${action}未獲伺服器確認，請重新登入後再操作`);
@@ -334,16 +332,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    const recordMutationFailure = (error, { action, method, fallback }, addToast) => {
+    const recordMutationFailure = (error, { action, method, fallback }, addToast, options) => {
         const outcome = failedMutationOutcome(error);
         addToast(
             formatRequestError(error, { action, method, fallback }),
             outcome.outcomeAmbiguous ? 'warning' : 'error'
         );
-        return publishRecordMutationOutcome(outcome);
+        return resolveRecordMutationOutcome(outcome, options);
     };
 
-    const addRecord = async (formData) => {
+    const addRecord = async (formData, options = {}) => {
         const { addToast } = useToast();
         let json;
         try {
@@ -356,7 +354,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 action: '新增交易',
                 method: 'POST',
                 fallback: '新增失敗',
-            }, addToast);
+            }, addToast, options);
         }
 
         if (!json?.success) {
@@ -365,21 +363,21 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 action: '新增交易',
                 method: 'POST',
                 fallback: '新增失敗',
-            }, addToast);
+            }, addToast, options);
         }
 
         markSnapshotStale();
         addToast('新增成功；持倉快照待重新計算', 'success');
         const refresh = await refreshRecordsAfterCommittedMutation('新增交易', addToast);
         if (json.auto_update) handleAutoUpdateSignal('🚀 這是您的第一筆交易，系統正自動啟動背景計算...');
-        return publishRecordMutationOutcome(committedMutationOutcome({
+        return resolveRecordMutationOutcome(committedMutationOutcome({
             response: json,
             refreshed: refresh.refreshed,
             refreshError: refresh.refreshError,
-        }));
+        }), options);
     };
 
-    const updateRecord = async (formData) => {
+    const updateRecord = async (formData, options = {}) => {
         const { addToast } = useToast();
         let json;
         try {
@@ -392,7 +390,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 action: '更新交易',
                 method: 'PUT',
                 fallback: '更新失敗',
-            }, addToast);
+            }, addToast, options);
         }
 
         if (!json?.success) {
@@ -401,20 +399,20 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 action: '更新交易',
                 method: 'PUT',
                 fallback: '更新失敗',
-            }, addToast);
+            }, addToast, options);
         }
 
         markSnapshotStale();
         addToast('更新成功；持倉快照待重新計算', 'success');
         const refresh = await refreshRecordsAfterCommittedMutation('更新交易', addToast);
-        return publishRecordMutationOutcome(committedMutationOutcome({
+        return resolveRecordMutationOutcome(committedMutationOutcome({
             response: json,
             refreshed: refresh.refreshed,
             refreshError: refresh.refreshError,
-        }));
+        }), options);
     };
 
-    const deleteRecord = async (id) => {
+    const deleteRecord = async (id, options = {}) => {
         const { addToast } = useToast();
         let json;
         try {
@@ -427,7 +425,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 action: '刪除交易',
                 method: 'DELETE',
                 fallback: '刪除失敗',
-            }, addToast);
+            }, addToast, options);
         }
 
         if (!json?.success) {
@@ -436,7 +434,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 action: '刪除交易',
                 method: 'DELETE',
                 fallback: '刪除失敗',
-            }, addToast);
+            }, addToast, options);
         }
 
         markSnapshotStale();
@@ -445,18 +443,18 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         if (json.message === 'RELOAD_UI') {
             records.value = [];
             handleAutoUpdateSignal('🧹 紀錄已清空，系統正重置資產數據...');
-            return publishRecordMutationOutcome(committedMutationOutcome({
+            return resolveRecordMutationOutcome(committedMutationOutcome({
                 response: json,
                 refreshed: true,
-            }));
+            }), options);
         }
 
         const refresh = await refreshRecordsAfterCommittedMutation('刪除交易', addToast);
-        return publishRecordMutationOutcome(committedMutationOutcome({
+        return resolveRecordMutationOutcome(committedMutationOutcome({
             response: json,
             refreshed: refresh.refreshed,
             refreshError: refresh.refreshError,
-        }));
+        }), options);
     };
 
     const availableGroups = computed(() => {
@@ -664,7 +662,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         connectionStatus,
         portfolioReadStatus,
         snapshotFreshness,
-        lastRecordMutationOutcome,
         isPolling,
         calculationJob,
         currentGroup,
