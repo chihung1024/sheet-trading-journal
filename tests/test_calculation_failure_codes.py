@@ -54,15 +54,19 @@ def test_same_user_failure_category_stays_specific():
     assert code == observed_runner.CALCULATION_FAILED
 
 
-def test_user_failure_capture_reads_exception_object_not_log_text():
+def test_user_failure_capture_reads_exception_object_without_rendering_log_args():
     capture = observed_runner.UserFailureCapture()
     logger = logging.getLogger("main")
     logger.addHandler(capture)
     try:
         try:
             raise runner.PortfolioUpdateError("快照驗證失敗，共偵測到 1 項錯誤")
-        except runner.PortfolioUpdateError:
-            logger.exception("使用者 ch***@example.com 處理失敗: rendered message")
+        except runner.PortfolioUpdateError as exc:
+            logger.exception(
+                observed_runner.PER_USER_FAILURE_LOG_TEMPLATE,
+                "ch***@example.com",
+                exc,
+            )
     finally:
         logger.removeHandler(capture)
 
@@ -89,8 +93,12 @@ def test_wrapper_reports_specific_per_user_failure_without_changing_runner_contr
         logger = logging.getLogger("main")
         try:
             raise runner.PortfolioUpdateError("快照驗證失敗，共偵測到 1 項錯誤")
-        except runner.PortfolioUpdateError:
-            logger.exception("使用者 ch***@example.com 處理失敗: hidden detail")
+        except runner.PortfolioUpdateError as exc:
+            logger.exception(
+                observed_runner.PER_USER_FAILURE_LOG_TEMPLATE,
+                "ch***@example.com",
+                exc,
+            )
         raise runner.PortfolioUpdateError("本次更新有 1 位使用者失敗；成功 0 位")
 
     monkeypatch.setattr(runner, "run_update", fail_update)
