@@ -109,6 +109,29 @@ def base_rows(*, split_factor=1.0):
     }
 
 
+def bootstrap(market, transactions):
+    return ensure_transaction_dates_in_market_calendar(
+        market,
+        transactions,
+        as_of_date="2026-08-08",
+        allow_leading_transaction_seed=True,
+    )
+
+
+def test_default_contract_still_fails_closed_before_first_market_row():
+    market = BootstrapMarketClient(base_rows())
+    transactions = make_transactions(
+        [{"Date": "2026-08-06", "Symbol": "LYTE", "Type": "BUY", "Qty": 1, "Price": 25.83}]
+    )
+
+    with pytest.raises(TransactionCalendarError, match="precedes available market data"):
+        ensure_transaction_dates_in_market_calendar(
+            market,
+            transactions,
+            as_of_date="2026-08-08",
+        )
+
+
 def test_launch_day_before_first_market_row_uses_transaction_seed_with_provenance():
     market = BootstrapMarketClient(base_rows())
     transactions = make_transactions(
@@ -118,11 +141,7 @@ def test_launch_day_before_first_market_row_uses_transaction_seed_with_provenanc
         ]
     )
 
-    inserted = ensure_transaction_dates_in_market_calendar(
-        market,
-        transactions,
-        as_of_date="2026-08-08",
-    )
+    inserted = bootstrap(market, transactions)
 
     seeded = market.market_data["LYTE"].loc[pd.Timestamp("2026-08-06")]
     assert inserted == {"LYTE": [pd.Timestamp("2026-08-06")]}
@@ -141,7 +160,7 @@ def test_launch_seed_is_converted_to_split_adjusted_price_basis():
         [{"Date": "2026-08-06", "Symbol": "LYTE", "Type": "BUY", "Qty": 10, "Price": 50.0}]
     )
 
-    ensure_transaction_dates_in_market_calendar(market, transactions, as_of_date="2026-08-08")
+    bootstrap(market, transactions)
 
     seeded = market.market_data["LYTE"].loc[pd.Timestamp("2026-08-06")]
     assert seeded["Close_Raw"] == pytest.approx(50.0)
@@ -157,7 +176,7 @@ def test_launch_day_round_trip_calculates_realized_pnl_without_vendor_close():
             {"Date": "2026-08-06", "Symbol": "LYTE", "Type": "SELL", "Qty": 193, "Price": 26.10},
         ]
     )
-    ensure_transaction_dates_in_market_calendar(market, transactions, as_of_date="2026-08-08")
+    bootstrap(market, transactions)
 
     snapshot = PortfolioCalculator(
         transactions.copy(deep=True),
@@ -177,7 +196,7 @@ def test_launch_day_open_position_uses_transaction_seed_for_eod_valuation():
     transactions = make_transactions(
         [{"Date": "2026-08-06", "Symbol": "LYTE", "Type": "BUY", "Qty": 10, "Price": 25.83}]
     )
-    ensure_transaction_dates_in_market_calendar(market, transactions, as_of_date="2026-08-08")
+    bootstrap(market, transactions)
 
     snapshot = PortfolioCalculator(
         transactions.copy(deep=True),
@@ -196,7 +215,7 @@ def test_large_leading_history_gap_still_fails_closed():
     )
 
     with pytest.raises(TransactionCalendarError, match="precedes available market data by"):
-        ensure_transaction_dates_in_market_calendar(market, transactions, as_of_date="2026-08-08")
+        bootstrap(market, transactions)
 
 
 def test_leading_date_without_positive_buy_sell_seed_still_fails_closed():
@@ -206,4 +225,4 @@ def test_leading_date_without_positive_buy_sell_seed_still_fails_closed():
     )
 
     with pytest.raises(TransactionCalendarError, match="no positive BUY/SELL transaction price seed"):
-        ensure_transaction_dates_in_market_calendar(market, transactions, as_of_date="2026-08-08")
+        bootstrap(market, transactions)
