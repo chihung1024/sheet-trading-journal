@@ -5,10 +5,14 @@ import { readFile } from 'node:fs/promises';
 import {
   firstTwrInvalidDate,
   isTwrSummaryAvailable,
+  lastFiniteSeriesIndex,
   relativeTwrValue,
 } from '../src/services/twrState.js';
 
 const read = (relativePath) => readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+const approx = (actual, expected, tolerance = 1e-10) => {
+  assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected}`);
+};
 
 test('legacy and ok TWR summaries remain display-compatible while unavailable new states fail closed', () => {
   assert.equal(isTwrSummaryAvailable(undefined), true);
@@ -18,14 +22,14 @@ test('legacy and ok TWR summaries remain display-compatible while unavailable ne
   assert.equal(isTwrSummaryAvailable('undefined'), false);
 });
 
-test('relative TWR preserves legacy/ok math and returns null for unreliable strategy points', () => {
-  assert.equal(relativeTwrValue({ twr: 10 }, { twr: 0 }), 10.000000000000009);
-  assert.equal(
+test('relative TWR preserves legacy/ok math and returns null for unreliable or null points', () => {
+  approx(relativeTwrValue({ twr: 10 }, { twr: 0 }), 10);
+  approx(
     relativeTwrValue(
       { twr: 10, twr_status: 'ok' },
       { twr: 0, twr_status: 'not_applicable' },
     ),
-    10.000000000000009,
+    10,
   );
   assert.equal(
     relativeTwrValue(
@@ -41,6 +45,15 @@ test('relative TWR preserves legacy/ok math and returns null for unreliable stra
     ),
     null,
   );
+  assert.equal(relativeTwrValue({ twr: null }, { twr: 0 }), null);
+  assert.equal(relativeTwrValue({ twr: 10 }, { twr: null }), null);
+});
+
+test('last finite chart point skips null gaps instead of coercing null to numeric zero', () => {
+  assert.equal(lastFiniteSeriesIndex([1, 2, null, null]), 1);
+  assert.equal(lastFiniteSeriesIndex([1, undefined, Number.NaN]), 0);
+  assert.equal(lastFiniteSeriesIndex([null, undefined, Number.NaN]), -1);
+  assert.equal(lastFiniteSeriesIndex([1, '2.5']), 1);
 });
 
 test('first invalid TWR date follows sticky provenance rather than the displayed compatibility number', () => {
@@ -74,5 +87,6 @@ test('StatsGrid and PerformanceChart must consume the shared TWR reliability con
 
   assert.match(chart, /relativeTwrValue/);
   assert.match(chart, /firstTwrInvalidDate/);
+  assert.match(chart, /lastFiniteSeriesIndex/);
   assert.match(chart, /策略 TWR 自/);
 });
