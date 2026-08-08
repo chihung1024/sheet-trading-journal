@@ -6,6 +6,7 @@ import {
 import {
   ApiApplicationError,
   ApiHttpError,
+  markRequestOutcome,
 } from './requestErrors.js';
 
 const RECORD_UPDATE_FIELDS = Object.freeze([
@@ -66,6 +67,7 @@ export class RecordTagUpdateError extends Error {
     this.recordId = details.recordId ?? null;
     this.status = details.status ?? null;
     this.code = details.code ?? null;
+    this.outcomeAmbiguous = details.outcomeAmbiguous === true;
     this.cause = details.cause;
   }
 }
@@ -77,6 +79,7 @@ export class PartialRecordTagBatchError extends Error {
     this.succeeded = succeeded;
     this.total = total;
     this.failedRecordId = failedRecordId;
+    this.outcomeAmbiguous = cause?.outcomeAmbiguous === true;
     this.cause = cause;
   }
 }
@@ -90,11 +93,13 @@ const readLegacyRecordTagCode = (error) => {
 
 const normalizeRecordTagError = (error, recordId) => {
   if (error instanceof RecordTagUpdateError) return error;
-  return new RecordTagUpdateError(error?.message || 'Record update request failed', {
+  const contextualError = markRequestOutcome(error, 'PUT');
+  return new RecordTagUpdateError(contextualError?.message || 'Record update request failed', {
     recordId,
-    status: error?.status ?? null,
-    code: readLegacyRecordTagCode(error),
-    cause: error,
+    status: contextualError?.status ?? null,
+    code: readLegacyRecordTagCode(contextualError),
+    outcomeAmbiguous: contextualError?.outcomeAmbiguous === true,
+    cause: contextualError,
   });
 };
 
@@ -113,6 +118,7 @@ export async function updateOneRecordTag({
     throw new RecordTagUpdateError('Authentication token is unavailable', {
       recordId: record?.id ?? null,
       code: 'AUTH_TOKEN_MISSING',
+      outcomeAmbiguous: false,
     });
   }
 
@@ -143,6 +149,7 @@ export async function updateOneRecordTag({
     throw new RecordTagUpdateError(body?.error || 'Record update was not confirmed', {
       recordId: payload.id,
       code: body?.error_meta?.code || 'APPLICATION_ERROR',
+      outcomeAmbiguous: false,
     });
   }
 
