@@ -83,14 +83,16 @@ const handleCredentialResponse = async (response) => {
   try {
     await authStore.login(credential);
   } catch (err) {
-    if (!isActive) return;
     console.error('登入驗證失敗:', err);
-    error.value = '登入驗證失敗: ' + (err?.message || '無法連接後端伺服器');
+    if (isActive) {
+      error.value = '登入驗證失敗: ' + (err?.message || '無法連接後端伺服器');
+    }
     return;
   }
 
   // Authentication has already succeeded. A subsequent portfolio-load failure is
   // a data/connectivity problem and must not be relabeled as a login failure.
+  // Normal unmount after the token is set must not cancel the accepted login flow.
   console.log('🎉 登入成功，開始載入數據...');
   try {
     await portfolioStore.fetchAll();
