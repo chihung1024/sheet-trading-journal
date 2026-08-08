@@ -78,6 +78,8 @@
         </div>
       </header>
 
+      <DataReliabilityBanner />
+
       <div class="content-container">
         <!-- Middle: 主內容（依選單切換） -->
         <main class="main-column">
@@ -200,6 +202,7 @@ import { useMarketHoursRefresh } from './composables/useMarketHoursRefresh';
 import { useTokenRefresh } from './composables/useTokenRefresh';
 
 import LoginOverlay from './components/LoginOverlay.vue';
+import DataReliabilityBanner from './components/DataReliabilityBanner.vue';
 import StatsGrid from './components/StatsGrid.vue';
 import PerformanceChart from './components/PerformanceChart.vue';
 import TradeForm from './components/TradeForm.vue';
