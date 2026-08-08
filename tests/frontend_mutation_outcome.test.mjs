@@ -106,6 +106,19 @@ test('verified mutation commit is separated from follow-up record refresh failur
   }
 });
 
+test('ambiguous mutation feedback is warning-level while definite rejection remains error-level', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const start = source.indexOf('const recordMutationFailure');
+  const end = source.indexOf('const addRecord = async', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const block = source.slice(start, end);
+
+  assert.match(block, /const outcome = failedMutationOutcome\(error\)/);
+  assert.match(block, /outcome\.outcomeAmbiguous \? 'warning' : 'error'/);
+  assert.match(block, /return publishRecordMutationOutcome\(outcome\)/);
+});
+
 test('ambiguous record POST is one-shot and is never auto-retried by the browser store', async () => {
   const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
   const start = source.indexOf('const addRecord = async');
