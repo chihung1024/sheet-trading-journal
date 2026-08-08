@@ -82,14 +82,21 @@ const handleCredentialResponse = async (response) => {
   console.log('🔐 收到 Google 憑證');
   try {
     await authStore.login(credential);
+  } catch (err) {
+    console.error('登入驗證失敗:', err);
+    if (isActive) {
+      error.value = '登入驗證失敗: ' + (err?.message || '無法連接後端伺服器');
+    }
+    return;
+  }
 
-    // token 寫入後 Overlay 會正常卸載，但已開始的成功登入仍須完成資料載入。
-    console.log('🎉 登入成功，開始載入數據...');
+  // Authentication already succeeded. Normal unmount after the token is set must
+  // not cancel this accepted login flow; a later data-load failure is not auth failure.
+  console.log('🎉 登入成功，開始載入數據...');
+  try {
     await portfolioStore.fetchAll();
   } catch (err) {
-    if (!isActive) return;
-    console.error('登入流程發生錯誤:', err);
-    error.value = '登入驗證失敗: ' + (err?.message || '無法連接後端伺服器');
+    console.error('登入成功，但初始資料載入失敗:', err);
   }
 };
 
@@ -178,177 +185,29 @@ onUnmounted(() => {
   padding: 20px;
   overflow: hidden;
 }
-
-/* 動態背景光暈 */
-.bg-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  z-index: 0;
-  opacity: 0.6;
-  animation: floatOrb 10s infinite ease-in-out;
-}
-
-.orb-1 {
-  width: 300px;
-  height: 300px;
-  background: rgba(59, 130, 246, 0.2); /* Blue */
-  top: -50px;
-  left: -50px;
-  animation-delay: 0s;
-}
-
-.orb-2 {
-  width: 400px;
-  height: 400px;
-  background: rgba(139, 92, 246, 0.15); /* Purple */
-  bottom: -100px;
-  right: -100px;
-  animation-delay: -5s;
-}
-
-@keyframes floatOrb {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(20px, 30px); }
-}
-
-.login-card {
-  position: relative;
-  z-index: 10;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 24px;
-  padding: 48px 40px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  max-width: 400px;
-  width: 100%;
-  text-align: center;
-  animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-}
-
-@keyframes slideUpFade {
-  from {
-    opacity: 0;
-    transform: translateY(40px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.logo-section {
-  margin-bottom: 32px;
-}
-
-.logo-circle {
-  width: 80px;
-  height: 80px;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 20px auto;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.logo {
-  font-size: 3rem;
-  display: block;
-}
-
-.login-card h1 {
-  font-size: 1.75rem;
-  font-weight: 800;
-  color: #1e293b;
-  margin: 0 0 8px 0;
-  letter-spacing: -0.025em;
-}
-
-.subtitle {
-  color: #64748b;
-  font-size: 1rem;
-  margin: 0;
-  font-weight: 500;
-}
-
-.error-message {
-  background: #fef2f2;
-  color: #991b1b;
-  padding: 12px 16px;
-  border-radius: 12px;
-  margin-bottom: 24px;
-  text-align: left;
-  border: 1px solid #fee2e2;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  font-size: 0.9rem;
-}
-
-.error-icon {
-  font-size: 1.2rem;
-}
-
-.error-content strong {
-  display: block;
-  margin-bottom: 2px;
-}
-
-.error-content p {
-  margin: 0;
-  opacity: 0.9;
-}
-
-/* Google 按鈕容器 */
-.google-wrapper {
-  display: flex;
-  justify-content: center;
-  margin: 24px 0 32px 0;
-  min-height: 50px;
-}
-
-.footer-text {
-  color: #94a3b8;
-  font-size: 0.85rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-weight: 500;
-}
-
-.lock-icon {
-  font-size: 0.9rem;
-}
-
-/* 響應式設計 */
+.bg-orb { position: absolute; border-radius: 50%; filter: blur(80px); z-index: 0; opacity: 0.6; animation: floatOrb 10s infinite ease-in-out; }
+.orb-1 { width: 300px; height: 300px; background: rgba(59, 130, 246, 0.2); top: -50px; left: -50px; animation-delay: 0s; }
+.orb-2 { width: 400px; height: 400px; background: rgba(139, 92, 246, 0.15); bottom: -100px; right: -100px; animation-delay: -5s; }
+@keyframes floatOrb { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(20px, 30px); } }
+.login-card { position: relative; z-index: 10; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 24px; padding: 48px 40px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); max-width: 400px; width: 100%; text-align: center; animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1); border: 1px solid rgba(255, 255, 255, 0.5); }
+@keyframes slideUpFade { from { opacity: 0; transform: translateY(40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.logo-section { margin-bottom: 32px; }
+.logo-circle { width: 80px; height: 80px; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+.logo { font-size: 3rem; display: block; }
+.login-card h1 { font-size: 1.75rem; font-weight: 800; color: #1e293b; margin: 0 0 8px 0; letter-spacing: -0.025em; }
+.subtitle { color: #64748b; font-size: 1rem; margin: 0; font-weight: 500; }
+.error-message { background: #fef2f2; color: #991b1b; padding: 12px 16px; border-radius: 12px; margin-bottom: 24px; text-align: left; border: 1px solid #fee2e2; display: flex; align-items: flex-start; gap: 12px; font-size: 0.9rem; }
+.error-icon { font-size: 1.2rem; }
+.error-content strong { display: block; margin-bottom: 2px; }
+.error-content p { margin: 0; opacity: 0.9; }
+.google-wrapper { display: flex; justify-content: center; margin: 24px 0 32px 0; min-height: 50px; }
+.footer-text { color: #94a3b8; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 500; }
+.lock-icon { font-size: 0.9rem; }
 @media (max-width: 480px) {
-  .login-card {
-    padding: 32px 24px;
-    margin: 16px;
-    width: auto;
-  }
-
-  .logo-circle {
-    width: 64px;
-    height: 64px;
-    margin-bottom: 16px;
-  }
-
-  .logo {
-    font-size: 2.5rem;
-  }
-
-  .login-card h1 {
-    font-size: 1.5rem;
-  }
-
-  .subtitle {
-    font-size: 0.9rem;
-  }
+  .login-card { padding: 32px 24px; margin: 16px; width: auto; }
+  .logo-circle { width: 64px; height: 64px; margin-bottom: 16px; }
+  .logo { font-size: 2.5rem; }
+  .login-card h1 { font-size: 1.5rem; }
+  .subtitle { font-size: 0.9rem; }
 }
 </style>
