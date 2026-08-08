@@ -23,6 +23,7 @@ import {
     DEFAULT_REQUEST_TIMEOUT_MS,
     fetchWithDeadline,
 } from '../services/fetchDeadline';
+import { createSingleFlight } from '../services/singleFlight.js';
 
 const CALCULATION_JOB_POLL_DELAY_MS = 5000;
 const CALCULATION_JOB_POLL_LIMIT_MS = 20 * 60 * 1000;
@@ -184,8 +185,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         stopCalculationJobPolling();
         clearPendingCalculationRequest();
         if (job.status === 'succeeded') {
-            await fetchAll();
-            addToast('✅ 數據已更新完畢！', 'success');
+            try {
+                await fetchAll();
+                addToast('✅ 數據已更新完畢！', 'success');
+            } catch (error) {
+                console.error('計算完成但重新載入資料失敗:', error);
+                addToast('⚠️ 計算已完成，但最新資料載入失敗，請手動刷新', 'warning');
+            }
         } else {
             addToast(`後端計算失敗 (${job.error_code || 'UNKNOWN'})`, 'error');
         }
@@ -257,8 +263,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         if (pending?.jobId) void startCalculationJobPolling(pending.jobId);
     };
 
-    const fetchAll = async () => {
-        if (loading.value) return;
+    const performFetchAll = async () => {
         resumePendingCalculationJob();
         clearLegacyRecordCache(localStorage);
         loading.value = true;
@@ -278,13 +283,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 resetData();
                 snapshotFreshness.value = 'loaded';
             }
+            return true;
         } catch (error) {
             console.error('fetchAll error:', error);
             connectionStatus.value = 'error';
+            throw error;
         } finally {
             loading.value = false;
         }
     };
+
+    const fetchAll = createSingleFlight(performFetchAll);
 
     const handleAutoUpdateSignal = (message = '✨ 系統正自動同步股價與數據，請稍候...') => {
         const { addToast } = useToast();
@@ -458,8 +467,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     const isResetConfirmed = records.value.length === 0 && !newTime;
                     if (isNewData || isResetConfirmed) {
                         stopPolling();
-                        await fetchAll();
-                        addToast(isResetConfirmed ? '✅ 所有資產數據已歸零' : '✅ 數據已更新完畢！', 'success');
+                        try {
+                            await fetchAll();
+                            addToast(isResetConfirmed ? '✅ 所有資產數據已歸零' : '✅ 數據已更新完畢！', 'success');
+                        } catch (error) {
+                            console.error('新快照已產生但載入失敗:', error);
+                            addToast('⚠️ 已偵測到新快照，但載入失敗，請手動刷新', 'warning');
+                        }
                         return;
                     }
                 }
