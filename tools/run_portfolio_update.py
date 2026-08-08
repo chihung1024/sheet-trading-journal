@@ -14,6 +14,10 @@ import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import main as runner
 from journal_engine.clients.api_client import CloudflareAPIError
 from journal_engine.core.daily_pnl_reconciler import DailyPnLReconciliationError
@@ -53,7 +57,7 @@ class UserFailureCapture(logging.Handler):
 
     def __init__(self) -> None:
         super().__init__(level=logging.ERROR)
-        self.exceptions: list[BaseException] = []
+        self.exceptions: list[Exception] = []
 
     def emit(self, record: logging.LogRecord) -> None:
         if record.name != "main" or not record.exc_info:
@@ -62,11 +66,11 @@ class UserFailureCapture(logging.Handler):
         if not message.startswith("使用者 ") or "處理失敗" not in message:
             return
         exc = record.exc_info[1]
-        if isinstance(exc, BaseException):
+        if isinstance(exc, Exception):
             self.exceptions.append(exc)
 
 
-def classify_failure(exc: BaseException, *, per_user: bool = False) -> str:
+def classify_failure(exc: Exception, *, per_user: bool = False) -> str:
     """Map an exception to a fixed, non-sensitive operational category."""
     if isinstance(exc, DailyPnLReconciliationError):
         return RECONCILIATION_FAILED
@@ -105,7 +109,7 @@ def classify_failure(exc: BaseException, *, per_user: bool = False) -> str:
     return UNKNOWN_CALCULATION_FAILED
 
 
-def collapse_user_failure_codes(exceptions: Iterable[BaseException]) -> Optional[str]:
+def collapse_user_failure_codes(exceptions: Iterable[Exception]) -> Optional[str]:
     codes = {classify_failure(exc, per_user=True) for exc in exceptions}
     if not codes:
         return None
@@ -133,7 +137,7 @@ def main() -> int:
 
     try:
         runner.run_update()
-    except BaseException as exc:
+    except Exception as exc:
         user_code = collapse_user_failure_codes(capture.exceptions)
         error_code = user_code or classify_failure(exc)
         write_github_output(error_code)
