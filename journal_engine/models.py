@@ -3,20 +3,19 @@ from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 
 class TransactionRecord(BaseModel):
-    id: Optional[int] = None
-    txn_date: date = Field(alias='Date')
-    symbol: str = Field(alias='Symbol')
-    txn_type: str = Field(alias='Type')
-    qty: float = Field(alias='Qty')
-    price: float = Field(alias='Price')
-    commission: float = Field(default=0.0, alias='Commission')
-    tax: float = Field(default=0.0, alias='Tax')
-    tag: Optional[str] = Field(default='', alias='Tag')
+    id: int
+    date: date
+    symbol: str
+    type: str
+    qty: float
+    price: float
+    commission: float = 0.0
+    tax: float = 0.0
+    tag: Optional[str] = None
 
     @computed_field
     @property
-    def total_amount(self) -> float:
-        """計算總交易金額 = 股數 × 單價 + 手續費 + 稅"""
+    def amount(self) -> float:
         base_amount = abs(self.qty * self.price)
         return base_amount + self.commission + self.tax
 
@@ -27,7 +26,12 @@ class PortfolioSummary(BaseModel):
     total_value: float
     invested_capital: float
     total_pnl: float
+    # Legacy numeric TWR remains for snapshot/API compatibility. New snapshots use
+    # twr_status to distinguish trustworthy linked returns from compatibility values.
     twr: float
+    twr_status: Optional[str] = None
+    twr_reason: Optional[str] = None
+    twr_invalid_since: Optional[str] = None
     # Legacy numeric field retained for snapshot/API compatibility. New snapshots
     # use xirr_status to distinguish a true 0% result from an unavailable XIRR.
     xirr: float = 0.0
@@ -68,58 +72,42 @@ class HoldingPosition(BaseModel):
     current_price_origin: float
     # Legacy field names retained for API compatibility; values are in the
     # holding's native currency, identified by `currency`.
-    avg_cost_usd: float = 0.0
-    prev_close_price: float = 0.0
-    daily_change_usd: float = 0.0
-    daily_change_percent: float = 0.0
-    daily_pl_twd: float = 0.0
-    daily_pl_breakdown: Optional[Dict[str, float]] = None
+    avg_cost_usd: float
+    current_price_usd: float
+    invested_cost_twd: float
+    realized_pnl_twd: float
+    realized_cost_twd: float
+    daily_pnl_twd: float = 0.0
+    daily_pnl_roi_percent: float = 0.0
 
 class DividendRecord(BaseModel):
     symbol: str
     ex_date: str
-    pay_date: Optional[str] = None
     shares_held: float
     dividend_per_share_gross: float
     total_gross: float
-    tax_rate: float = 30.0
+    tax_rate: float
     currency: Optional[str] = None
     total_net_native: Optional[float] = None
-    # Legacy name retained for API compatibility. For non-USD assets this is
-    # numerically the native-currency net amount; prefer `total_net_native`.
     total_net_usd: float
     total_net_twd: float
-    # TWD per 1 native-currency unit for this dividend.
     fx_rate: float
-    status: str = "pending"
-    notes: Optional[str] = None
-    record_id: Optional[int] = None
+    status: str
 
 class PortfolioGroupData(BaseModel):
-    """單一策略群組的完整投資組合數據"""
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
-    pending_dividends: List[DividendRecord] = []
-    day_ledger: List[Dict[str, Any]] = []
-    lot_ledger: List[Dict[str, Any]] = []
-    anomalies: List[Dict[str, Any]] = []
+    pending_dividends: List[DividendRecord]
 
 class PortfolioSnapshot(BaseModel):
     updated_at: str
     base_currency: str
-    # Backward-compatible USD/TWD reference rate.
     exchange_rate: float
-
-    # Additive provenance for benchmark-derived summary/history values.
-    # Optional preserves compatibility with snapshots published before PR-10C8.
     benchmark_symbol: Optional[str] = None
-    
-    # 向下相容欄位 (代表 'all' 群組的總體數據)
     summary: PortfolioSummary
     holdings: List[HoldingPosition]
     history: List[Dict[str, Any]]
-    pending_dividends: List[DividendRecord] = []
-    
-    # ✅ 新增：多群組資料字典 {group_name: PortfolioGroupData}
-    groups: Dict[str, PortfolioGroupData] = {}
+    pending_dividends: List[DividendRecord]
+    groups: Dict[str, PortfolioGroupData]
+    anomalies: List[Dict[str, Any]] = Field(default_factory=list)
