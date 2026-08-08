@@ -14,7 +14,7 @@ from .dividend_policy import (
     reviewed_dividend_net_multiplier,
     reviewed_dividend_withholding_rate,
 )
-from .performance_metrics import calculate_xirr_metric
+from .performance_metrics import annotate_twr_history, calculate_xirr_metric
 from .validator import PortfolioValidator
 
 logger = logging.getLogger(__name__)
@@ -152,7 +152,8 @@ class PortfolioCalculator:
             logger.warning("無交易記錄")
             empty_summary = PortfolioSummary(
                 total_value=0, invested_capital=0, total_pnl=0, 
-                twr=0, xirr=0, xirr_status="not_applicable", xirr_reason="no_cashflows",
+                twr=0, twr_status="not_applicable", twr_reason="no_history", twr_invalid_since=None,
+                xirr=0, xirr_status="not_applicable", xirr_reason="no_cashflows",
                 xirr_asof_date=None, xirr_cashflow_conventional=None,
                 realized_pnl=0, benchmark_twr=0, daily_pnl_twd=0,
                 daily_pnl_breakdown={"tw_pnl_twd": 0.0, "us_pnl_twd": 0.0},
@@ -596,6 +597,15 @@ class PortfolioCalculator:
                 "daily_pnl_formula_twd": round(current_market_value_twd - prev_market_value_twd + (-daily_net_cashflow_twd), 0) if prev_market_value_twd > 1e-9 else round(current_market_value_twd + (-daily_net_cashflow_twd), 0)
             })
 
+        twr_reliability = annotate_twr_history(history_data)
+        if twr_reliability.status == "undefined":
+            logger.warning(
+                "[%s] Linked TWR reliability is undefined from %s: reason=%s",
+                group_name,
+                twr_reliability.invalid_since,
+                twr_reliability.reason,
+            )
+
         final_holdings = []
         current_holdings_cost_sum = 0.0
 
@@ -746,7 +756,8 @@ class PortfolioCalculator:
                     holding_daily_pnl += old_qty_retained * (curr_p * effective_fx - prev_p * prev_effective_fx)
                 
                 if new_qty_retained > 0:
-                    buy_txs = sym_txs[sym_txs['Type'] == 'BUY']
+                    buy_txs = sym_txs[sym_txs['Type'] == 'BUY'
+                    ]
                     buy_cost_usd_total = (buy_txs['Qty'] * buy_txs['Price'] + buy_txs['Commission'] + buy_txs['Tax']).sum() if not buy_txs.empty else 0.0
                     avg_buy_price = buy_cost_usd_total / buy_qty if buy_qty > 0 else curr_p
                     holding_daily_pnl += new_qty_retained * (curr_p - avg_buy_price) * effective_fx
@@ -852,6 +863,9 @@ class PortfolioCalculator:
             invested_capital=round(current_invested, 0),
             total_pnl=round(current_total_pnl, 0),
             twr=history_data[-1]['twr'] if history_data else 0,
+            twr_status=twr_reliability.status,
+            twr_reason=twr_reliability.reason,
+            twr_invalid_since=twr_reliability.invalid_since,
             xirr=xirr_metric.value_percent,
             xirr_status=xirr_metric.status,
             xirr_reason=xirr_metric.reason,
