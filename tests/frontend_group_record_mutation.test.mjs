@@ -167,7 +167,7 @@ test('partial batch stops at first definite failure and exposes verified committ
         const id = JSON.parse(init.body).id;
         calls.push(id);
         return id === 2
-          ? response({ ok: false, status: 500, body: { success: false } })
+          ? response({ ok: false, status: 409, body: { success: false, error: 'Conflict' } })
           : response();
       },
     }),
