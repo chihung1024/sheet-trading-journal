@@ -377,9 +377,17 @@ test('portfolio store routes all API traffic and body parsing through the bounde
     assert.match(source, /'Idempotency-Key':\s*idempotencyKey/);
     assert.match(fetchWithAuthBlock, /if \(refreshed\) return fetchWithAuth\(endpoint, options, false\)/);
     assert.match(source, /if \(isExplicitServerRejection\(contextualError\)\) clearPendingCalculationRequest\(\)/);
-    assert.match(source, /formatRequestError\(error,\s*\{\s*action:\s*'新增交易',\s*method:\s*'POST'/s);
-    assert.match(source, /formatRequestError\(error,\s*\{\s*action:\s*'更新交易',\s*method:\s*'PUT'/s);
-    assert.match(source, /formatRequestError\(error,\s*\{\s*action:\s*'刪除交易',\s*method:\s*'DELETE'/s);
+
+    const failureHandlerStart = source.indexOf('const recordMutationFailure');
+    const failureHandlerEnd = source.indexOf('const addRecord = async', failureHandlerStart);
+    assert.notEqual(failureHandlerStart, -1);
+    assert.notEqual(failureHandlerEnd, -1);
+    const failureHandler = source.slice(failureHandlerStart, failureHandlerEnd);
+    assert.match(failureHandler, /formatRequestError\(error,\s*\{\s*action,\s*method,\s*fallback\s*\}\)/s);
+
+    assert.match(source, /recordMutationFailure\(error,\s*\{\s*action:\s*'新增交易',\s*method:\s*'POST'/s);
+    assert.match(source, /recordMutationFailure\(error,\s*\{\s*action:\s*'更新交易',\s*method:\s*'PUT'/s);
+    assert.match(source, /recordMutationFailure\(error,\s*\{\s*action:\s*'刪除交易',\s*method:\s*'DELETE'/s);
     assert.doesNotMatch(fetchWithAuthBlock, /setTimeout\s*\(/);
     assert.doesNotMatch(fetchWithAuthBlock, /while\s*\(|for\s*\(/);
 });

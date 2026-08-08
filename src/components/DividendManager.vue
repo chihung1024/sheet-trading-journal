@@ -206,6 +206,10 @@ import {
   getDividendDefaultTax,
   getDividendNetNative,
 } from '../services/dividendPresentation.js';
+import {
+  isMutationAmbiguous,
+  isMutationCommitted,
+} from '../services/mutationOutcome.js';
 
 const store = usePortfolioStore();
 const { addToast } = useToast();
@@ -363,9 +367,15 @@ const confirmDividend = async (div) => {
       note: taxInfo
     };
 
-    const success = await store.addRecord(record);
+    const outcome = await store.addRecord(record, { returnOutcome: true });
     
-    if (!success) {
+    if (!isMutationCommitted(outcome)) {
+      if (isMutationAmbiguous(outcome)) {
+        confirmedKeys.value.delete(divKey);
+        saveConfirmedKeys();
+        addToast('配息入帳結果不確定；伺服器可能已完成新增。請先刷新交易紀錄確認，勿直接再次提交。', 'warning');
+        return;
+      }
       throw new Error('無法新增記錄');
     }
     
