@@ -238,19 +238,34 @@ test('network and missing-token failures preserve ambiguity truth at zero verifi
   );
 });
 
-test('GroupManager currently delegates sequential PUTs and serializes user submissions', () => {
+test('GroupManager preserves partial mutation truth, authoritative readback truth, and required recalculation', () => {
   const source = fs.readFileSync(GROUP_MANAGER_PATH, 'utf8');
   assert.match(source, /updateRecordTagsSequentially/);
+  assert.match(source, /summarizeGroupBatchFailure/);
+  assert.match(source, /formatGroupBatchFailureMessage/);
   assert.doesNotMatch(source, /\bfetch\s*\(/);
   assert.doesNotMatch(source, /JSON\.stringify\(\{\s*\.\.\.(?:r|record)/);
   assert.match(source, /const isSaving = ref\(false\);/);
   assert.match(source, /:disabled="isSaving \|\| changedCount === 0"/);
 
+  const refreshStart = source.indexOf('const refreshRecordsAfterMutation');
+  const refreshEnd = source.indexOf('const triggerRecalculationAfterMutation', refreshStart);
+  assert.notEqual(refreshStart, -1);
+  assert.notEqual(refreshEnd, -1);
+  const refreshBlock = source.slice(refreshStart, refreshEnd);
+  assert.match(refreshBlock, /warnOnFailure = true/);
+  assert.match(refreshBlock, /await portfolioStore\.fetchRecords\(\)/);
+  assert.match(refreshBlock, /return true/);
+  assert.match(refreshBlock, /return false/);
+
   const batchBlock = source.match(/const runTagUpdateBatch = async[\s\S]*?\n\};\n\nconst renameGroup/)?.[0] || '';
   assert.match(batchBlock, /await updateRecordTagsSequentially/);
   assert.match(batchBlock, /await refreshRecordsAfterMutation\(\);/);
-  assert.match(batchBlock, /await triggerRecalculationAfterSuccess\(\);/);
-  assert.match(batchBlock, /error\.succeeded/);
-  assert.match(batchBlock, /error\.total/);
-  assert.match(batchBlock, /error\.failedRecordId/);
+  assert.match(batchBlock, /await triggerRecalculationAfterMutation\(\);/);
+  assert.match(batchBlock, /refreshRecordsAfterMutation\(\{ warnOnFailure: false \}\)/);
+  assert.match(batchBlock, /summarizeGroupBatchFailure\(error, \{ refreshed \}\)/);
+  assert.match(batchBlock, /formatGroupBatchFailureMessage\(summary\)/);
+  assert.match(batchBlock, /summary\.failedOutcomeAmbiguous \? 'warning' : 'error'/);
+  assert.match(batchBlock, /if \(summary\.shouldRecalculate\)/);
+  assert.doesNotMatch(batchBlock, /批次未完成：已更新 .*已重新載入目前狀態/);
 });
