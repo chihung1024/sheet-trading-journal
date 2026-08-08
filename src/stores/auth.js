@@ -3,6 +3,10 @@ import { ref } from 'vue';
 import { CONFIG } from '../config';
 import { exchangeGoogleCredential } from '../services/authApi.js';
 import {
+  AUTH_STORAGE_EVENT_KIND,
+  classifyCrossTabAuthEvent,
+} from '../services/authCrossTabSync.js';
+import {
   persistAuthentication,
   readAuthenticationStorage,
 } from '../services/authStorage.js';
@@ -85,9 +89,42 @@ export const useAuthStore = defineStore('auth', () => {
   };
 
   const handleStorageEvent = (event) => {
-    if (event.key === TOKEN_STORAGE_KEY && event.newValue === null) {
+    const change = classifyCrossTabAuthEvent(event, {
+      expectedStorage: globalThis.localStorage,
+      currentToken: token.value,
+      currentEmail: user.value.email,
+    });
+
+    if (change.kind === AUTH_STORAGE_EVENT_KIND.IGNORE) return;
+
+    if (change.kind === AUTH_STORAGE_EVENT_KIND.SIGNED_OUT) {
       clearInMemoryAuthState();
       console.log('✅ 已同步其他分頁的登出狀態');
+      return;
+    }
+
+    if (change.kind === AUTH_STORAGE_EVENT_KIND.INVALID) {
+      clearInMemoryAuthState();
+      console.warn('⚠️ 其他分頁寫入的認證 Token 無效或即將過期，已停止使用目前工作階段');
+      return;
+    }
+
+    if (change.kind === AUTH_STORAGE_EVENT_KIND.TOKEN_REFRESHED) {
+      cancelTokenRefresh();
+      token.value = change.token;
+      user.value = {
+        name: typeof change.claims?.name === 'string' ? change.claims.name : user.value.name,
+        email: change.email,
+        picture: typeof change.claims?.picture === 'string' ? change.claims.picture : user.value.picture,
+      };
+      console.log('✅ 已同步其他分頁更新的認證 Token');
+      return;
+    }
+
+    if (change.kind === AUTH_STORAGE_EVENT_KIND.SESSION_CHANGED) {
+      clearInMemoryAuthState();
+      console.log('🔄 偵測到其他分頁切換登入工作階段，重新載入以重建租戶資料');
+      globalThis.location?.reload?.();
     }
   };
 
