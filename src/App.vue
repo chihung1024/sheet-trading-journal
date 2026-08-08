@@ -410,7 +410,12 @@ onMounted(async () => {
 
   const isLoggedIn = authStore.initAuth();
   if (isLoggedIn) {
-    await portfolioStore.fetchAll();
+    try {
+      await portfolioStore.fetchAll();
+    } catch (error) {
+      console.error('已登入，但初始資料載入失敗:', error);
+      addToast('已登入，但初始資料載入失敗，請稍後手動刷新', 'error');
+    }
   }
 
   await nextTick();
