@@ -43,7 +43,7 @@
   - 未實現損益（Unrealized P&L）
   - 總損益（Total P&L）
   - ROI（投資報酬率）
-  - TWR（時間加權報酬率；日切分 linked returns）
+  - TWR（時間加權報酬率；日切分 linked returns，含可靠性狀態）
   - XIRR（個人年化報酬率 / IRR；含可用性與估值日 provenance）
   - 勝率 / 持倉數 / 交易筆數
 
@@ -52,6 +52,7 @@
   - 自訂 Benchmark ticker（SPY / QQQ / 0050.TW / 005930.KS 等）
   - 支援多時間軸切換（全部 / 1年 / 6月 / 3月 / 1月）
   - Benchmark total-return 僅在有已審查股息預扣政策時納入自動股息；未知市場不會猜稅率
+  - 新快照若策略 TWR 自某一子期間起無法可靠計算，策略線自該點停止繪製；Benchmark 線維持獨立
 
 ### 📈 圖表頁面
 
@@ -210,6 +211,7 @@
     - `skeletons/`：載入骨架屏
   - `stores/`：Pinia 狀態管理
   - `composables/`：可重用邏輯（例如 `useMarketHoursRefresh` / `useDarkMode` / `usePWA` / `useTokenRefresh` / `useToast`）
+  - `services/`：前端資料/狀態語意（例如 benchmark / TWR reliability）
   - `App.vue`：主應用程式
 - `public/`：PWA / CSP headers 等靜態資源
 - `worker-entry.js`：Cloudflare Worker 部署入口
@@ -281,7 +283,16 @@
   - `cumulative_twr_factor *= period_hpr_factor`
   - `twr_percent = (cumulative_twr_factor - 1) * 100`
 
-> 註：目前是「日切分的 Modified Dietz 連結報酬」。負期初值、近零分母與非有限結果目前仍沿用既有 0-return fallback；這些 undefined-vs-zero 語意屬於 Product Integrity P4B，P4A 不改動 TWR 歷史公式。
+- P4B reliability 語意：
+  - 既有 `history[].twr` 與 summary `twr` 的 numeric chain 保留，避免破壞舊 snapshot/API/golden。
+  - 新 history 另外標記 `twr_period_status` / `twr_period_reason` 與 sticky 的 `twr_status` / `twr_reason` / `twr_invalid_since`。
+  - Modified Dietz 分母接近 0、非有限/無效輸入、從 0 市值無有效 funding 卻出現正市值、或 0 exposure 下發生無法在日粒度可靠定位的 cashflow，會標成 `undefined`，不再把 compatibility 0% 當成可信報酬。
+  - 一旦某個子期間 `undefined`，累積 TWR 的可靠性維持 `undefined`；後續即使單一期間可計算，也不會把已污染的 linked chain 自動恢復成可信。
+  - `not_applicable` 表示目前尚無可計算報酬期間，與真正 0% 報酬不同。
+  - 新快照的 Stats Grid 對 unavailable TWR 顯示 `--`；Performance Chart 自第一個 undefined 點起停止策略 TWR 線，Benchmark 線不受此策略狀態影響。
+  - 舊快照沒有 `twr_status` 時仍沿用既有 numeric 顯示與 upload 相容性。
+
+> 註：P4B 刻意不重寫既有 Modified Dietz 數字公式或日內權重假設；它先把「能不能相信這個 linked TWR」變成顯式契約。日粒度沒有交易時間戳，因此 `w_i=0.5` 仍是既有近似。
 
 ### 5) 股息（DIV / pending / confirmed）
 
@@ -350,7 +361,7 @@ python main.py
 - `us_pnl_twd` 是為舊 snapshot/API 相容而保留的欄位名稱；在 currency-aware 引擎中實際代表非 TWD（海外）價格/交易分量，前端以「海外」呈現。
 - 自動盤中 refresh 的 market-stage 排程目前仍以台股 / 美股時段為主；支援外幣估值不代表已新增所有海外交易所的盤中 refresh 時段。
 - XIRR 對非傳統現金流可能存在多個數學根；目前會標示 ambiguity，但不替使用者選擇「經濟上唯一正確」的根。
-- Modified Dietz/TWR 的 undefined-vs-zero 邊界仍屬 P4B，尚未在 P4A 改變既有歷史數字語意。
+- TWR 的既有 numeric chain 為 backward compatibility 保留；若新 metadata 標示 `undefined`，該日之後的 numeric TWR 不能視為可信績效，前端會 fail closed。真正的 intraday Modified Dietz 權重仍需更細的交易時間資料才能建模。
 - 任意區間單一數字績效可直接以同一公式整段計算，或沿用日子期間連結結果（需在報表層定義口徑）。
 
 ---
