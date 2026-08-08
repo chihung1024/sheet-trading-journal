@@ -142,22 +142,46 @@ Debug/verification evidence:
 
 ### PI-005B — Modified Dietz/TWR undefined-vs-zero semantics
 
-Status: **P4B active**
+Status: **P4B implementation complete on PR #137; final-head closeout pending**
 
-The current Modified Dietz helper can return `0.0` when the period is not reliably computable, including negative beginning value, denominator near zero, or non-finite result. This can make an undefined subperiod indistinguishable from a genuine 0% return and then propagate that false zero through linked TWR history.
+The legacy Modified Dietz path can return numeric `0.0` when a period is not reliably computable, most importantly when the weighted denominator is effectively zero or a period result is non-finite. The production caller can also preserve factor `1.0` when value appears from zero without a valid positive funding flow. Linking those neutral compatibility factors into cumulative TWR makes an undefined period look like genuine 0% performance.
 
-P4B objective:
-- map every current zero-return fallback to its exact mathematical precondition;
-- distinguish genuine 0% from unavailable/undefined periods without silently changing valid historical values;
-- define machine-readable period status/reason before changing serialized/UI behavior;
-- add primitive and calculator-level golden regressions around zero denominator, negative beginning value, extreme cash flow, and non-finite paths;
-- quantify impact on linked TWR before any formula semantic change;
-- do not touch XIRR semantics, Worker/D1/schema, deployment, P3 currency/dividend logic, or P5 frontend fetch contracts.
+P4B deliberately does **not** rewrite the established valid numeric TWR formula or linked history. It separates numeric compatibility from reliability:
+- `calculate_modified_dietz_metric()` classifies periods as `ok`, `not_applicable`, or `undefined` while preserving `0.0` only as a compatibility sentinel when unavailable;
+- `annotate_twr_history()` reconstructs period validity from raw beginning/ending values and raw cash flow already stored in history, without modifying any `history[].twr` number;
+- history receives `twr_period_status`, `twr_period_reason`, sticky `twr_status`, `twr_reason`, and `twr_invalid_since`;
+- once a linked period is undefined, cumulative reliability stays undefined even if later individual periods are calculable;
+- summary adds optional `twr_status`, `twr_reason`, and `twr_invalid_since`; old snapshots with no status remain accepted;
+- upload validation rejects inconsistent new metadata while allowing a finite nonzero legacy numeric TWR when status is undefined, because that number is retained only for API/backward compatibility;
+- Stats Grid displays unavailable new-snapshot TWR as `--`;
+- Performance Chart maps unreliable strategy points to gaps from the first invalid period onward while leaving Benchmark independent;
+- the chart final-value label scans backward to the last finite strategy point, preventing a secondary null/`toFixed()` crash after fail-closed gaps.
 
-Safety:
-- P4B base/main: `1a4496dec4f1cfc07f07831f2db1819bf5d333bd`
+Explicit reliability cases covered:
+- normal no-cash-flow and weighted Modified Dietz results stay numerically identical;
+- genuine 0% remains `status=ok`;
+- zero denominator is `undefined`, not real 0%;
+- invalid/non-finite inputs are machine-readable;
+- zero capital with no exposure is `not_applicable`;
+- zero-to-positive value without valid funding is `undefined`;
+- zero exposure plus nonzero same-day cash flow is `undefined` because daily data lacks reliable intraday timing;
+- valid bootstrap from zero with positive funding remains `ok`;
+- cumulative status is sticky after the first undefined period.
+
+Calculator integration additionally proves the existing valid tiny TWD case remains numeric TWR `0.40%` while summary/history receive `status=ok`.
+
+P4B debug / verification evidence:
+- PR #137
+- base/main: `1a4496dec4f1cfc07f07831f2db1819bf5d333bd`
 - pre recovery: `backup-pre-product-integrity-p4b-1a4496d`
 - work branch: `pr-product-integrity-p4b-twr-semantics`
+- during an early whole-file `models.py` update, diff review caught an actual tool-layer regression that had accidentally removed existing transaction aliases/defaults and several Holding/Dividend/ledger fields. The bad branch-only edit never reached merge or production; the original model contract was restored in full and the final intended model delta is only the three optional TWR metadata fields. This incident is retained as evidence for why whole-file diff review is mandatory.
+- calculator compare review found only the planned import, empty-summary metadata, post-history annotation, and summary metadata; the existing Modified Dietz inner-loop formula and cumulative multiplication are unchanged.
+- CI #355 / run `31238162691` on head `ecbe918822051441d28e77f3999e7a5395d08f4d`: SUCCESS across Python, frontend, and Worker jobs.
+- CI #355 Python result: `185 passed`, `18 subtests passed`, coverage `76.722282%`, covered lines `2136`, covered branches `715`, missing lines `566`, missing branches `299`; existing coverage policy passed unchanged.
+- after CI #355, a calculator-level valid-TWR integration regression and README current-truth update were added; the final head must pass CI again before merge.
+
+P4B is not complete until final-head CI, second changed-file/diff review, review-thread check, exact-head merge, post-main CI/Pages, and post-change recovery all succeed.
 
 ## Remaining confirmed findings
 
@@ -194,7 +218,7 @@ Current CI still reports Pydantic V2 class-based `Config` deprecation. P8 owns `
 - **P2 — Dividend semantic unification:** completed.
 - **P3 — Currency-aware valuation / FX dimensional integrity:** completed.
 - **P4A — XIRR validity / precision / valuation-date semantics:** completed.
-- **P4B — Modified Dietz/TWR undefined-vs-zero semantics:** active.
+- **P4B — Modified Dietz/TWR undefined-vs-zero semantics:** final-head verification active.
 - **P5 — Frontend state and mutation UX correctness:** queued.
 - **P6 — Performance, load, and race audit:** queued.
 - **P7 — Coverage architecture and dead-code removal:** queued.
