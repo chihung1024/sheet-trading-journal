@@ -6,7 +6,7 @@ export function isTwrSummaryAvailable(status) {
 }
 
 export function isTwrPointReliable(point) {
-  if (!point) return false;
+  if (!point || point.twr == null) return false;
   const status = point.twr_status;
   if (status == null) return Number.isFinite(Number(point.twr));
   return status === 'ok' && Number.isFinite(Number(point.twr));
@@ -18,11 +18,12 @@ export function relativeTwrValue(point, baseline) {
   const baselineStatus = baseline?.twr_status;
   if (baselineStatus != null && !KNOWN_TWR_STATUSES.has(baselineStatus)) return null;
   if (baselineStatus === 'undefined') return null;
+  if (baselineStatus !== 'not_applicable' && !isTwrPointReliable(baseline)) return null;
 
   const pointValue = Number(point.twr);
   const baselineValue = baselineStatus === 'not_applicable'
     ? 0
-    : Number(baseline?.twr ?? 0);
+    : Number(baseline.twr);
   if (!Number.isFinite(pointValue) || !Number.isFinite(baselineValue)) return null;
 
   const denominator = 1 + baselineValue / 100;
@@ -39,4 +40,13 @@ export function firstTwrInvalidDate(history) {
     }
   }
   return null;
+}
+
+export function lastFiniteSeriesIndex(values) {
+  for (let index = (values?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const rawValue = values[index];
+    if (rawValue == null) continue;
+    if (Number.isFinite(Number(rawValue))) return index;
+  }
+  return -1;
 }
