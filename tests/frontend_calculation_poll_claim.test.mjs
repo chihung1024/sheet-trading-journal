@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -185,4 +186,41 @@ test('terminal cleanup removes only the exact tenant/job poll claim', async () =
   assert.equal(clearCalculationJobPollClaim(storage, TOKEN, JOB_ID, { deriveScopeKey }), true);
   assert.equal(storage.has(currentKey), false);
   assert.equal(storage.has(otherKey), true);
+});
+
+test('portfolio store claims before every calculation status GET and keeps losers in the polling loop', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const start = source.indexOf('const pollCalculationJobOnce = async');
+  const end = source.indexOf('\n    const startCalculationJobPolling', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const block = source.slice(start, end);
+
+  const claimIndex = block.indexOf('await claimCalculationJobPoll({');
+  const loserIndex = block.indexOf('if (!claimed) return false;');
+  const fetchIndex = block.indexOf('fetchWithAuth(`/api/calculation-jobs/');
+  assert.notEqual(claimIndex, -1);
+  assert.notEqual(loserIndex, -1);
+  assert.notEqual(fetchIndex, -1);
+  assert.equal(claimIndex < loserIndex && loserIndex < fetchIndex, true);
+  assert.match(block, /minimumIntervalMs: CALCULATION_JOB_POLL_DELAY_MS/);
+  assert.match(block, /if \(epoch !== calculationJobPollEpoch\) return true;/);
+});
+
+test('portfolio clears only the exact job poll claim on terminal completion and 404', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+
+  const completeStart = source.indexOf('const completeCalculationJob = async');
+  const completeEnd = source.indexOf('\n    const pollCalculationJobOnce', completeStart);
+  const completeBlock = source.slice(completeStart, completeEnd);
+  assert.match(completeBlock, /clearCalculationJobPollClaim\(localStorage, getToken\(\), job\.id\)/);
+
+  const pollStart = source.indexOf('const pollCalculationJobOnce = async');
+  const pollEnd = source.indexOf('\n    const startCalculationJobPolling', pollStart);
+  const pollBlock = source.slice(pollStart, pollEnd);
+  const notFoundStart = pollBlock.indexOf('if (error?.status === 404)');
+  assert.notEqual(notFoundStart, -1);
+  const notFoundBlock = pollBlock.slice(notFoundStart);
+  assert.match(notFoundBlock, /clearCalculationJobPollClaim\(localStorage, getToken\(\), jobId\)/);
+  assert.match(notFoundBlock, /clearPendingCalculationRequest\(\)/);
 });
