@@ -24,6 +24,10 @@ import {
     fetchWithDeadline,
 } from '../services/fetchDeadline';
 import { createSingleFlight } from '../services/singleFlight.js';
+import {
+    committedMutationOutcome,
+    failedMutationOutcome,
+} from '../services/mutationOutcome.js';
 
 const CALCULATION_JOB_POLL_DELAY_MS = 5000;
 const CALCULATION_JOB_POLL_LIMIT_MS = 20 * 60 * 1000;
@@ -306,82 +310,139 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         startPolling();
     };
 
+    const unconfirmedMutationError = (action) => {
+        const error = new Error(`${action}未獲伺服器確認，請重新登入後再操作`);
+        error.outcomeAmbiguous = false;
+        return error;
+    };
+
+    const refreshRecordsAfterCommittedMutation = async (action, addToast) => {
+        try {
+            await fetchRecords();
+            return { refreshed: true, refreshError: null };
+        } catch (refreshError) {
+            console.error(`${action}已提交，但交易紀錄重新載入失敗:`, refreshError);
+            addToast(`${action}已完成，但畫面重新載入失敗；請重新整理確認最新紀錄`, 'warning');
+            return { refreshed: false, refreshError };
+        }
+    };
+
+    const recordMutationFailure = (error, { action, method, fallback }, addToast) => {
+        addToast(formatRequestError(error, { action, method, fallback }), 'error');
+        return failedMutationOutcome(error);
+    };
+
     const addRecord = async (formData) => {
         const { addToast } = useToast();
+        let json;
         try {
-            const json = await fetchWithAuth('/api/records', {
+            json = await fetchWithAuth('/api/records', {
                 method: 'POST',
                 body: JSON.stringify(formData)
             });
-            if (json && json.success) {
-                markSnapshotStale();
-                addToast('新增成功；持倉快照待重新計算', 'success');
-                await fetchRecords();
-                if (json.auto_update) handleAutoUpdateSignal('🚀 這是您的第一筆交易，系統正自動啟動背景計算...');
-                return true;
-            }
-            return false;
         } catch (error) {
-            addToast(formatRequestError(error, {
+            return recordMutationFailure(error, {
                 action: '新增交易',
                 method: 'POST',
                 fallback: '新增失敗',
-            }), 'error');
-            return false;
+            }, addToast);
         }
+
+        if (!json?.success) {
+            const error = unconfirmedMutationError('新增交易');
+            return recordMutationFailure(error, {
+                action: '新增交易',
+                method: 'POST',
+                fallback: '新增失敗',
+            }, addToast);
+        }
+
+        markSnapshotStale();
+        addToast('新增成功；持倉快照待重新計算', 'success');
+        const refresh = await refreshRecordsAfterCommittedMutation('新增交易', addToast);
+        if (json.auto_update) handleAutoUpdateSignal('🚀 這是您的第一筆交易，系統正自動啟動背景計算...');
+        return committedMutationOutcome({
+            response: json,
+            refreshed: refresh.refreshed,
+            refreshError: refresh.refreshError,
+        });
     };
 
     const updateRecord = async (formData) => {
         const { addToast } = useToast();
+        let json;
         try {
-            const json = await fetchWithAuth('/api/records', {
+            json = await fetchWithAuth('/api/records', {
                 method: 'PUT',
                 body: JSON.stringify(formData)
             });
-            if (json && json.success) {
-                markSnapshotStale();
-                addToast('更新成功；持倉快照待重新計算', 'success');
-                await fetchRecords();
-                return true;
-            }
-            return false;
         } catch (error) {
-            addToast(formatRequestError(error, {
+            return recordMutationFailure(error, {
                 action: '更新交易',
                 method: 'PUT',
                 fallback: '更新失敗',
-            }), 'error');
-            return false;
+            }, addToast);
         }
+
+        if (!json?.success) {
+            const error = unconfirmedMutationError('更新交易');
+            return recordMutationFailure(error, {
+                action: '更新交易',
+                method: 'PUT',
+                fallback: '更新失敗',
+            }, addToast);
+        }
+
+        markSnapshotStale();
+        addToast('更新成功；持倉快照待重新計算', 'success');
+        const refresh = await refreshRecordsAfterCommittedMutation('更新交易', addToast);
+        return committedMutationOutcome({
+            response: json,
+            refreshed: refresh.refreshed,
+            refreshError: refresh.refreshError,
+        });
     };
 
     const deleteRecord = async (id) => {
         const { addToast } = useToast();
+        let json;
         try {
-            const json = await fetchWithAuth('/api/records', {
+            json = await fetchWithAuth('/api/records', {
                 method: 'DELETE',
                 body: JSON.stringify({ id })
             });
-            if (json && json.success) {
-                markSnapshotStale();
-                addToast('刪除成功；持倉快照待重新計算', 'success');
-                if (json.message === 'RELOAD_UI') {
-                    records.value = [];
-                    handleAutoUpdateSignal('🧹 紀錄已清空，系統正重置資產數據...');
-                } else {
-                    await fetchRecords();
-                }
-                return true;
-            }
-            return false;
         } catch (error) {
-            addToast(formatRequestError(error, {
+            return recordMutationFailure(error, {
                 action: '刪除交易',
                 method: 'DELETE',
                 fallback: '刪除失敗',
-            }), 'error');
-            return false;
+            }, addToast);
         }
+
+        if (!json?.success) {
+            const error = unconfirmedMutationError('刪除交易');
+            return recordMutationFailure(error, {
+                action: '刪除交易',
+                method: 'DELETE',
+                fallback: '刪除失敗',
+            }, addToast);
+        }
+
+        markSnapshotStale();
+        addToast('刪除成功；持倉快照待重新計算', 'success');
+
+        if (json.message === 'RELOAD_UI') {
+            records.value = [];
+            handleAutoUpdateSignal('🧹 紀錄已清空，系統正重置資產數據...');
+            return committedMutationOutcome({ response: json, refreshed: true });
+        }
+
+        const refresh = await refreshRecordsAfterCommittedMutation('刪除交易', addToast);
+        return committedMutationOutcome({
+            response: json,
+            refreshed: refresh.refreshed,
+            refreshError: refresh.refreshError,
+        });
     };
 
     const availableGroups = computed(() => {
