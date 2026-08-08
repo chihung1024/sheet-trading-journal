@@ -16,6 +16,14 @@ import {
   markRequestOutcome,
 } from '../src/services/requestErrors.js';
 
+const mutationBlock = (source, name, nextName) => {
+  const start = source.indexOf(`const ${name} = async`);
+  const end = source.indexOf(`\n    const ${nextName}`, start);
+  assert.notEqual(start, -1, `${name} source block missing`);
+  assert.notEqual(end, -1, `${name} end boundary missing`);
+  return source.slice(start, end);
+};
+
 test('committed mutation remains committed even when the follow-up refresh fails', () => {
   const refreshError = new Error('refresh failed');
   const outcome = committedMutationOutcome({
@@ -90,10 +98,10 @@ test('verified mutation commit is separated from follow-up record refresh failur
   assert.match(helper, /已提交，但交易紀錄重新載入失敗/);
   assert.match(helper, /return \{ refreshed: false, refreshError \}/);
 
-  for (const mutationName of ['addRecord', 'updateRecord', 'deleteRecord']) {
-    const start = source.indexOf(`const ${mutationName} = async`);
-    const next = source.indexOf('\n    const ', start + 10);
-    const block = source.slice(start, next === -1 ? undefined : next);
+  const addBlock = mutationBlock(source, 'addRecord', 'updateRecord = async');
+  const updateBlock = mutationBlock(source, 'updateRecord', 'deleteRecord = async');
+  const deleteBlock = mutationBlock(source, 'deleteRecord', 'availableGroups = computed');
+  for (const block of [addBlock, updateBlock, deleteBlock]) {
     assert.match(block, /publishRecordMutationOutcome\(committedMutationOutcome/);
   }
 });
