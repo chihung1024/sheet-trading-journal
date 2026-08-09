@@ -77,6 +77,11 @@ class MarketDataClient:
         self.fx_rates_by_currency = {}
         self.realtime_fx_rates_by_currency = {}
 
+        # Narrow structured diagnostics for Gate-D provenance. They are populated
+        # only by the main thread after each ticker worker completes.
+        self.price_metadata_by_symbol = {}
+        self.realtime_overlay_symbols = set()
+
     def _download_fx_history(self, quote_symbol: str, start_date, *, usd_twd=False):
         ticker = yf.Ticker(quote_symbol)
         history = ticker.history(start=start_date - timedelta(days=5))
@@ -256,6 +261,11 @@ class MarketDataClient:
         """下載市場數據（股票價格 + currency-aware 匯率）。"""
         print(f"正在下載市場數據，起始日期: {start_date}...")
 
+        # Sidecars describe only the current download generation. Reset before any
+        # worker is scheduled so stale provenance cannot leak into a later manifest.
+        self.price_metadata_by_symbol = {}
+        self.realtime_overlay_symbols = set()
+
         required_currencies = {
             CurrencyDetector.detect(ticker)
             for ticker in tickers
@@ -272,6 +282,7 @@ class MarketDataClient:
 
                 if not hist.empty:
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
+                    realtime_overlay_applied = False
 
                     try:
                         latest_price = None
@@ -293,29 +304,35 @@ class MarketDataClient:
                             hist.at[last_date, 'Close'] = latest_price
                             if 'Adj Close' in hist.columns:
                                 hist.at[last_date, 'Adj Close'] = latest_price
+                            realtime_overlay_applied = True
                             print(f"[{t}] 即時報價覆蓋: {latest_price:.2f}")
 
                     except Exception:
                         pass
 
                     hist_adj = self._prepare_data(t, hist)
-                    return t, hist_adj
+                    metadata = dict(hist_adj.attrs.get('price_provenance') or {})
+                    return t, hist_adj, metadata, realtime_overlay_applied
 
                 print(f"[{t}] 警告: 無歷史數據")
-                return t, None
+                return t, None, None, False
 
             except Exception as e:
                 print(f"[{t}] 下載錯誤: {e}")
-                return t, None
+                return t, None, None, False
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_ticker = {executor.submit(fetch_single_ticker, t): t for t in all_tickers}
             for future in concurrent.futures.as_completed(future_to_ticker):
                 result = future.result()
                 if result:
-                    ticker, data = result
+                    ticker, data, metadata, realtime_overlay_applied = result
                     if data is not None:
                         self.market_data[ticker] = data
+                        if metadata:
+                            self.price_metadata_by_symbol[ticker] = metadata
+                        if realtime_overlay_applied:
+                            self.realtime_overlay_symbols.add(ticker)
                         print(f"[{ticker}] 下載成功")
 
         return self.market_data, self.fx_rates
@@ -332,6 +349,7 @@ class MarketDataClient:
         df['Close_Adjusted'] = selector.get_adjusted_price_series()
 
         metadata = selector.get_metadata()
+        df.attrs['price_provenance'] = dict(metadata)
         print(f"[{symbol}] 價格來源: {metadata['price_source']} - {metadata['selection_reason']}")
 
         df['Close_Raw'] = df['Close'] if 'Close' in df.columns else df.get('Close_Adjusted')
