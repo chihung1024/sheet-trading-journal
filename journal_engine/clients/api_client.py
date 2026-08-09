@@ -243,7 +243,7 @@ class CloudflareClient:
 
         payload = {
             "target_user_id": target_user_id,
-            "data": snapshot.model_dump(),
+            "data": snapshot.model_dump(mode="json"),
         }
 
         try:
