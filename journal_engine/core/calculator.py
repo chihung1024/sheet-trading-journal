@@ -54,6 +54,18 @@ class PortfolioCalculator:
             return self._calculation_now_tw
         return datetime.now(self.pnl_helper.tz_tw)
 
+    def _run_now(self):
+        """Return the run-level clock while preserving legacy production semantics.
+
+        An explicit replay clock is normalized to Taipei and reused everywhere in the
+        deterministic replay path. Without an injected clock, production keeps the
+        historical naive system-local ``datetime.now()`` behavior used for
+        ``updated_at`` and the run date-range boundary.
+        """
+        if self._calculation_now_tw is not None:
+            return self._calculation_now_tw
+        return datetime.now()
+
     @property
     def calculation_as_of(self):
         return self._now_tw().date()
@@ -164,7 +176,7 @@ class PortfolioCalculator:
 
     def run(self):
         logger.info(f"=== 開始多群組計算 (baseline: {self.benchmark_ticker}) ===")
-        run_now_tw = self._now_tw()
+        run_now_tw = self._run_now()
         
         current_fx = DEFAULT_FX_RATE
         if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
