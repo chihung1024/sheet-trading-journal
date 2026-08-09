@@ -98,6 +98,8 @@ class ProviderProvenanceDiagnostics(BaseModel):
 def _is_missing_scalar(value: Any, label: str) -> bool:
     """Return scalar missingness and reject vector-like ambiguous values."""
 
+    if not pd.api.types.is_scalar(value):
+        raise CalculationManifestError(f"{label} must be a scalar value")
     try:
         return bool(pd.isna(value))
     except (TypeError, ValueError) as exc:
