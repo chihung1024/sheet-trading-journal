@@ -32,14 +32,15 @@ Last updated: **2026-08-09**
 - Worker source contract: release `4.07` / API `2.60` / required schema `2`
 - Active Gate: **Gate C — Schema-2 transaction integrity preflight**
 - Active PR: **#150 — Draft**
+- PR title: `Gate C: add read-only transaction integrity audit infrastructure`
 - Work branch: `pr-gate-c-transaction-integrity-preflight`
 - Gate C base: `03242d00082067333cf77ffa424094b8936b406c`
 - Pre-Gate-C recovery: `backup-pre-gate-c-03242d0`
 - Post-Gate-B recovery: `backup-post-gate-b-03242d0`
 - Current sub-phase: **C5 production read-only qualification infrastructure**
-- Latest fully tested audit-infra head before this documentation commit: `f83e5721ad5ccd32db6ef5ed3712544413ac37fa`
-- CI #449 / run `31297087680`: **SUCCESS**
-- **Current hold point:** merge only read-only audit infrastructure first; do not merge blocking calculator preflight or strict `CLAMP -> ERROR` before production audit evidence.
+- Latest tested code/privacy head before this handoff commit: `2cbf2804bc34267468fbcde8d9422fa26ede04fb`
+- CI #452 / run `31297308611`: **SUCCESS**
+- **Hold point:** merge only the read-only audit infrastructure; do not merge blocking calculator preflight or strict `CLAMP -> ERROR` before real production audit evidence.
 
 ---
 
@@ -134,13 +135,12 @@ Module: `journal_engine/core/ledger_integrity.py`
 
 Contract:
 
-- requires valid positive unique record `id`
+- valid positive unique record `id`
 - stable replay `Date -> id`
 - BUY adds; SELL subtracts; DIV has no position effect
-- audits `all` + every active comma/semicolon tag scope
+- `all` + every active comma/semicolon tag scope
 - provisional tolerance `max(1e-9, cumulative_abs_buy_qty * 1e-12)`
-- deterministic non-secret violation diagnostics
-- strict wrapper raises `LedgerIntegrityError`
+- deterministic fail-closed diagnostics/input validation
 
 Tests: `tests/test_ledger_integrity.py`
 
@@ -148,21 +148,21 @@ Coverage includes exact closeout, fractional round trips, first-row SELL, partia
 
 Coverage governance:
 
-- new module registered in `docs/governance/python-coverage-baseline.json`
-- no coverage gate was lowered
-- CI #435: functional tests passed; source-inventory gate identified missing registration
-- CI #436: source inventory fixed; missing-branch gate identified insufficient branch coverage
-- fail-closed tests added; unreachable branch removed
+- module registered in `docs/governance/python-coverage-baseline.json`
+- no coverage gate lowered
+- CI #435: functional tests passed; source-inventory gate found missing registration
+- CI #436: source inventory fixed; missing-branch gate found insufficient branch coverage
+- fail-closed tests expanded; unreachable branch removed
 - CI #438 / `31296710938`: SUCCESS
 
-### Blocking runner candidate — tested then deliberately removed
+### Temporary blocking runner candidate — tested then deliberately removed
 
-A blocking pre-calculator integration was temporarily implemented and proved:
+The candidate proved:
 
 - split-adjusted validation ledger built once
-- prefix check runs before calculator
+- prefix check before calculator
 - violation blocks calculator and upload
-- validation ledger reused for parity/upload validation
+- same validation ledger reused for parity/upload validation
 
 Evidence:
 
@@ -174,10 +174,10 @@ Decision: **do not merge blocking enforcement before production read-only qualif
 
 The candidate was removed from PR #150:
 
-- `main.py` restored to protected-main blob in commit `71c086a2f54eb106f2017eae5304271d700aa51f`
-- `tests/test_runner_ledger_integrity.py` removed in commit `b666e36c7b1fba19e4e9f85e0e4d5d0371eebcb9`
+- `main.py` restored to protected-main content in `71c086a2f54eb106f2017eae5304271d700aa51f`
+- `tests/test_runner_ledger_integrity.py` removed in `b666e36c7b1fba19e4e9f85e0e4d5d0371eebcb9`
 
-Therefore PR #150 no longer changes normal portfolio calculation behavior.
+PR #150 therefore does not change normal portfolio calculation behavior.
 
 ---
 
@@ -200,21 +200,23 @@ Remaining before Gate C closeout:
 
 ## C4 — External provenance audit
 
-Current:
+Implemented audit semantics:
 
 - [x] repository runtime search confirms `import_key` is not DB/runtime-enforced identity
-- [x] read-only audit parser implemented for explicit structured tokens only
-- [x] raw note text is never emitted
-- [x] duplicate identifiers are emitted only as short SHA-256 fingerprint + record ids
-- [x] repeated `order_id` treated as evidence, not automatic violation
-- [x] duplicate `import_key` / duplicate `trade_id` block audit qualification
+- [x] parser recognizes only explicit structured tokens (`import_key`, `order_id`, `trade_id`, execution-time fields)
+- [x] free-form note text is never emitted
+- [x] duplicate identity is evaluated **within each user**, preventing cross-tenant false positives
+- [x] duplicate `import_key` / `trade_id` groups block qualification
+- [x] repeated `order_id` groups are evidence only, not automatic defects
+- [x] public machine-readable audit output exposes **counts only**
+- [x] no user id, ticker, tag name, record id, quantity, price, raw broker id, or hashed broker id is emitted in the result JSON
 
 Production evidence still required:
 
 - [ ] count structured note conventions in current production records
-- [ ] identify duplicate import-key / trade-id groups
-- [ ] count repeated order-id groups without automatically classifying them as defects
-- [ ] classify partial-fill/cross-date risks if duplicates or repeated order ids appear
+- [ ] count duplicate import-key / trade-id groups
+- [ ] count repeated order-id groups
+- [ ] classify partial-fill/cross-date risk if evidence appears
 - [ ] keep futures excluded
 
 ---
@@ -227,32 +229,31 @@ New tool: `tools/audit_transaction_integrity.py`
 
 Properties:
 
-- uses existing records read path and market data
+- existing records read path + market data only
 - never calculates a portfolio snapshot
 - never uploads a snapshot
 - never mutates records/settings/D1
-- validates split-factor coverage before allowing multiplier use, so missing market data cannot silently become factor `1.0`
+- validates split-factor coverage before multiplier use; missing market data cannot silently become factor `1.0`
 - builds independent split-adjusted ledger per user
 - audits `all` + active tags in `Date -> id` order
 - emits one machine-readable line `GATE_C_TRANSACTION_INTEGRITY_AUDIT=<json>`
-- masks user ids
-- never prints free-form notes
-- reports prefix violations and structured provenance only
+- public result is counts-only and non-sensitive
+- structured provenance duplicate grouping is user-scoped
 
 Workflow: `.github/workflows/update.yml`
 
-New explicit `workflow_dispatch` boolean input:
+New manual boolean input:
 
 `transaction_integrity_audit_only` (default `false`)
 
 Audit mode:
 
 - rejects non-empty `calculation_job_id`
-- uses existing `API_KEY` only for read access
+- uses existing `API_KEY` for read access
 - runs `python tools/audit_transaction_integrity.py`
 - skips calculation/upload
-- skips calculation-job running/result callbacks
-- shares existing `portfolio-update` concurrency group so it cannot overlap the normal update workflow
+- skips calculation-job callbacks
+- shares existing `portfolio-update` concurrency group
 
 Normal scheduled/manual calculation path is unchanged when audit mode is false.
 
@@ -261,30 +262,39 @@ Tests:
 - `tests/test_transaction_integrity_audit.py`
 - `tests/test_workflow_yaml.py`
 
-Audit infrastructure commits:
+### Audit infrastructure / privacy CI history
 
 - audit runner `e986e17b2180658bddd1bd0ebfb11dca9853c29f`
-- workflow audit-only mode `d93a058ca015a53c535d9ccdfc8532ae4c260431`
-- audit tests `0d34e7dae3332d1c50dddcc849336fb45059d919`
-- workflow contract tests / tested head `f83e5721ad5ccd32db6ef5ed3712544413ac37fa`
-- CI #449 / `31297087680`: **SUCCESS** across Python coverage, Frontend, Worker/D1
+- audit-only workflow `d93a058ca015a53c535d9ccdfc8532ae4c260431`
+- initial audit tests `0d34e7dae3332d1c50dddcc849336fb45059d919`
+- workflow contract head `f83e5721ad5ccd32db6ef5ed3712544413ac37fa`
+- CI #449 / `31297087680`: SUCCESS
+- handoff head `c795fd351b2dc5b55b101b298c61791fd6339fa4`
+- CI #450 / `31297190520`: SUCCESS
+- independent diff/privacy review found public-log details and cross-user duplicate grouping as merge blockers
+- privacy/user-scoping fix `9a598b7f4a018edd8247238592fafded964c0c22`
+- privacy regression head `2cbf2804bc34267468fbcde8d9422fa26ede04fb`
+- CI #452 / `31297308611`: **SUCCESS**
 
 ### C5 merge plan
 
-PR #150 is now **audit infrastructure only**, not blocking enforcement.
+PR #150 is **audit infrastructure only**, not blocking enforcement.
 
 Before merge:
 
-- [ ] update PR title/body to reflect read-only audit infrastructure
-- [ ] run exact-head CI after this handoff update
-- [ ] independent changed-file/diff review
-- [ ] confirm `main.py` has no diff vs protected main
-- [ ] confirm removed runner regression file is not in final diff
-- [ ] confirm 0 unresolved review threads / acceptable review state
+- [x] PR title/body reflect read-only audit infrastructure
+- [x] blocking `main.py` integration removed
+- [x] runner blocking regression removed
+- [x] privacy review completed and blockers fixed
+- [x] CI #452 green on privacy-fixed code
+- [ ] run exact-head CI after this final handoff commit
+- [ ] independent final changed-file/diff review
+- [ ] confirm final diff excludes `main.py` and `tests/test_runner_ledger_integrity.py`
+- [ ] confirm reviews/threads clear
 - [ ] confirm protected `main` has not drifted
 - [ ] exact-head merge PR #150
-- [ ] confirm post-main CI
-- [ ] create post-audit-infra recovery ref
+- [ ] post-main CI
+- [ ] create post-audit-infrastructure recovery ref
 
 After merge, run **one production read-only audit** from merged `main`:
 
@@ -292,19 +302,19 @@ After merge, run **one production read-only audit** from merged `main`:
 - `transaction_integrity_audit_only = true`
 - `target_user_id =` blank (all users)
 - `calculation_job_id =` blank
-- benchmark value is irrelevant to audit mode
+- benchmark is irrelevant in audit mode
 
-ChatGPT currently has no workflow-dispatch connector action, so this single run must be manually triggered in GitHub UI unless a new connected dispatch capability appears.
+ChatGPT currently has no workflow-dispatch connector action, so this one run must be manually triggered in GitHub UI unless a new connected dispatch capability appears.
 
 Production audit acceptance:
 
 - [ ] all users audited
 - [ ] all active tag scopes audited
 - [ ] split coverage valid
-- [ ] prefix violations counted/classified
-- [ ] duplicate structured `import_key` / `trade_id` counted/classified
-- [ ] repeated order ids counted as evidence
-- [ ] anonymized result persisted in this file and Gate C audit evidence
+- [ ] prefix violation counts recorded
+- [ ] duplicate structured `import_key` / `trade_id` group counts recorded
+- [ ] repeated order-id group counts recorded as evidence
+- [ ] counts-only production result persisted in this file + Gate C audit evidence
 - [ ] no enforcement decision until unexplained violations are resolved
 
 ---
@@ -314,7 +324,7 @@ Production audit acceptance:
 Only after production audit:
 
 - [ ] decide whether to merge blocking pre-calculator prefix gate
-- [ ] decide separately whether calculator `CLAMP` remains defense-in-depth or should switch to `ERROR`
+- [ ] decide separately whether calculator `CLAMP` stays as defense-in-depth or switches to `ERROR`
 - [ ] add strict-policy regressions before any CLAMP→ERROR change
 - [ ] ensure no authoritative secondary analyzer converts integrity failure to valid-looking zero output
 - [ ] scoped enforcement PR
@@ -368,7 +378,7 @@ Historical navigation: `docs/governance/V5_CURRENT_HANDOFF.md`.
 - P4B: net daily cash flow cannot reconstruct gross intraday Modified-Dietz timing on zero-start days.
 - Schema 2: no first-class immutable external execution id/time/sequence.
 - Same-day broker chronology: note timestamps are not calculation ordering fields.
-- Commission rebates: Commission/Tax `abs()` normalization cannot represent a net-negative commission faithfully.
+- Commission rebates: Commission/Tax `abs()` normalization cannot represent net-negative commission faithfully.
 - Futures/derivatives: no first-class asset class / multiplier; remain excluded.
 
 ---
@@ -380,7 +390,7 @@ Historical navigation: `docs/governance/V5_CURRENT_HANDOFF.md`.
 - Cloudflare production activation remains separately governed
 - Gate C audit must not mutate production D1
 - do not pretend unavailable direct Cloudflare access exists
-- production audit evidence must remain read-only and anonymized
+- production audit evidence must remain read-only and counts-only
 
 ---
 
@@ -414,34 +424,39 @@ Historical navigation: `docs/governance/V5_CURRENT_HANDOFF.md`.
 
 ### 2026-08-09 — Gate C C1
 
-- audit evidence commit `2e535982e460045fb8235d99307c9ba1e31ffa2e`
+- audit evidence `2e535982e460045fb8235d99307c9ba1e31ffa2e`
 - result: clamp/type-priority consistency cannot certify source-prefix validity
 
 ### 2026-08-09 — Gate C C2 module / coverage qualification
 
-- CI #435: functional tests pass; coverage source inventory blocked new file
-- coverage inventory updated without lowering gates
+- CI #435: tests pass; source inventory blocked unregistered source
+- inventory updated without lowering gates
 - CI #436: tests pass; missing-branch gate blocked
-- additional fail-closed tests added
+- fail-closed tests expanded
 - CI #438 / `31296710938`: SUCCESS
 
 ### 2026-08-09 — Gate C temporary blocking runner candidate
 
-- integration commit `72f96e06d4b2cf449427652e5aac55a80a0f625f`
+- integration `72f96e06d4b2cf449427652e5aac55a80a0f625f`
 - regression head `ec65aef87153c4ffc2b8e173448face00be69af6`
 - CI #441 / `31296798001`: SUCCESS
-- decision: tested candidate is technically valid but must not merge before production audit
-- enforcement removed from PR via `71c086a...` + `b666e36...`
+- decision: technically valid, but removed pending production audit
+- removal/restoration `71c086a...` + `b666e36...`
 
 ### 2026-08-09 — Gate C C5 read-only audit infrastructure
 
 - audit tool `e986e17b2180658bddd1bd0ebfb11dca9853c29f`
 - audit-only workflow `d93a058ca015a53c535d9ccdfc8532ae4c260431`
 - audit tests `0d34e7dae3332d1c50dddcc849336fb45059d919`
-- workflow contract head `f83e5721ad5ccd32db6ef5ed3712544413ac37fa`
+- workflow test head `f83e5721ad5ccd32db6ef5ed3712544413ac37fa`
 - CI #449 / `31297087680`: SUCCESS
-- decision: qualify PR #150 as read-only audit infrastructure; merge only after a new exact-head CI for this handoff update and final independent review
-- **exact next action:** requalify PR #150 final head, merge audit infrastructure, verify post-main CI/recovery, then ask user to manually run the one audit-only workflow dispatch.
+- handoff CI #450 / `31297190520`: SUCCESS
+- independent privacy review found public-log detail leakage + cross-user duplicate false-positive risk
+- privacy fix `9a598b7f4a018edd8247238592fafded964c0c22`
+- privacy regression head `2cbf2804bc34267468fbcde8d9422fa26ede04fb`
+- CI #452 / `31297308611`: SUCCESS
+- decision: final audit output is counts-only; duplicate identity is user-scoped
+- **exact next action:** require new exact-head CI for this handoff commit, finish final diff/review/main-drift qualification, merge PR #150, verify post-main CI/recovery, then request one manual audit-only workflow dispatch.
 
 ---
 
@@ -449,13 +464,13 @@ Historical navigation: `docs/governance/V5_CURRENT_HANDOFF.md`.
 
 **Do not start Gate D or enforcement.**
 
-1. Fetch PR #150 exact head after this `to_do_update_list.md` commit.
-2. Update PR #150 title/body to “Gate C read-only transaction integrity audit infrastructure”.
-3. Wait for exact-head CI and require SUCCESS.
-4. Confirm final diff does not contain `main.py` or `tests/test_runner_ledger_integrity.py`.
+1. Fetch PR #150 exact head after this handoff commit.
+2. Require exact-head CI SUCCESS.
+3. Confirm changed files are audit infrastructure/docs/tests only and exclude `main.py` plus `tests/test_runner_ledger_integrity.py`.
+4. Re-review `.github/workflows/update.yml` and `tools/audit_transaction_integrity.py` for no write path / no sensitive public output.
 5. Check review submissions, unresolved threads, and protected-main drift.
 6. Exact-head merge PR #150 if clean.
-7. Confirm post-main CI and create a post-audit-infrastructure recovery ref.
+7. Confirm post-main CI and create post-audit-infrastructure recovery ref.
 8. Have the user manually trigger **Update Portfolio Data** once with `transaction_integrity_audit_only=true`, blank target user, blank calculation job id.
 9. Fetch that run/log and parse `GATE_C_TRANSACTION_INTEGRITY_AUDIT=...`.
-10. Persist anonymized production evidence here and in Gate C audit docs before making any enforcement decision.
+10. Persist counts-only production evidence here and in Gate C audit docs before making any enforcement decision.
