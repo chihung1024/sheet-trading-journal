@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import math
@@ -17,7 +18,7 @@ import re
 from typing import Any, Literal
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 CANONICAL_JSON_VERSION = 1
@@ -63,10 +64,7 @@ class SourceRecordsIdentity(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    canonicalization_version: int = Field(
-        default=TRANSACTION_CANONICALIZATION_VERSION,
-        ge=1,
-    )
+    canonicalization_version: Literal[1] = TRANSACTION_CANONICALIZATION_VERSION
     sha256: str
     record_count: int = Field(ge=1)
     max_record_id: int = Field(ge=1)
@@ -82,10 +80,7 @@ class RuntimeConfigIdentity(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    canonicalization_version: int = Field(
-        default=RUNTIME_CONFIG_CANONICALIZATION_VERSION,
-        ge=1,
-    )
+    canonicalization_version: Literal[1] = RUNTIME_CONFIG_CANONICALIZATION_VERSION
     sha256: str
     benchmark_symbol: str
     base_currency: str
@@ -95,6 +90,27 @@ class RuntimeConfigIdentity(BaseModel):
     @classmethod
     def validate_digest(cls, value: str) -> str:
         return _validate_sha256(value, "runtime_config.sha256")
+
+    @field_validator("benchmark_symbol", "base_currency")
+    @classmethod
+    def validate_normalized_text(cls, value: str) -> str:
+        if not value or value != value.strip().upper():
+            raise ValueError("runtime config text fields must be normalized uppercase values")
+        return value
+
+    @model_validator(mode="after")
+    def validate_identity_consistency(self) -> "RuntimeConfigIdentity":
+        expected = canonical_sha256(
+            {
+                "canonicalization_version": self.canonicalization_version,
+                "benchmark_symbol": self.benchmark_symbol,
+                "base_currency": self.base_currency,
+                "oversell_policy": self.oversell_policy,
+            }
+        )
+        if self.sha256 != expected:
+            raise ValueError("runtime_config.sha256 does not match runtime config fields")
+        return self
 
 
 class DeterministicCalculationIdentity(BaseModel):
@@ -106,7 +122,7 @@ class DeterministicCalculationIdentity(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    identity_version: int = Field(default=CALCULATION_IDENTITY_VERSION, ge=1)
+    identity_version: Literal[1] = CALCULATION_IDENTITY_VERSION
     engine_source_commit: str
     source_records: SourceRecordsIdentity
     runtime_config: RuntimeConfigIdentity
@@ -124,6 +140,29 @@ class DeterministicCalculationIdentity(BaseModel):
     @classmethod
     def validate_component_digest(cls, value: str) -> str:
         return _validate_sha256(value, "calculation identity digest")
+
+    @field_validator("calculation_as_of", mode="before")
+    @classmethod
+    def reject_datetime_as_asof(cls, value: Any) -> Any:
+        if isinstance(value, datetime):
+            raise ValueError("calculation_as_of must be a date, not a datetime")
+        return value
+
+    @model_validator(mode="after")
+    def validate_combined_identity(self) -> "DeterministicCalculationIdentity":
+        expected = canonical_sha256(
+            _deterministic_identity_payload(
+                engine_source_commit=self.engine_source_commit,
+                source_records=self.source_records,
+                runtime_config=self.runtime_config,
+                market_inputs_sha256=self.market_inputs_sha256,
+                fx_inputs_sha256=self.fx_inputs_sha256,
+                calculation_as_of=self.calculation_as_of,
+            )
+        )
+        if self.combined_sha256 != expected:
+            raise ValueError("combined_sha256 does not match deterministic components")
+        return self
 
 
 def _canonicalize(value: Any) -> Any:
@@ -177,13 +216,19 @@ def canonical_sha256(value: Any) -> str:
 
 
 def _record_id(value: Any) -> int:
+    """Normalize an exact positive integer id without binary-float round trips."""
+
     if isinstance(value, bool):
         raise CalculationManifestError("record id must be a positive integer")
     try:
-        numeric = float(value)
-    except (TypeError, ValueError) as exc:
+        numeric = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
         raise CalculationManifestError("record id must be a positive integer") from exc
-    if not math.isfinite(numeric) or not numeric.is_integer() or numeric <= 0:
+    if (
+        not numeric.is_finite()
+        or numeric <= 0
+        or numeric != numeric.to_integral_value()
+    ):
         raise CalculationManifestError("record id must be a positive integer")
     return int(numeric)
 
@@ -201,6 +246,8 @@ def _record_date(value: Any) -> date:
 
 
 def _finite_float(value: Any, label: str) -> float:
+    if isinstance(value, bool):
+        raise CalculationManifestError(f"{label} must be numeric")
     try:
         numeric = float(value)
     except (TypeError, ValueError) as exc:
@@ -208,6 +255,30 @@ def _finite_float(value: Any, label: str) -> float:
     if not math.isfinite(numeric):
         raise CalculationManifestError(f"{label} must be finite")
     return numeric
+
+
+def _missing_scalar(value: Any, label: str) -> bool:
+    if value is None:
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError) as exc:
+        raise CalculationManifestError(f"{label} must be a scalar value") from exc
+
+
+def _required_text(value: Any, label: str) -> str:
+    if _missing_scalar(value, label):
+        raise CalculationManifestError(f"{label} must be non-empty")
+    text = str(value).strip().upper()
+    if not text:
+        raise CalculationManifestError(f"{label} must be non-empty")
+    return text
+
+
+def _optional_text(value: Any, label: str) -> str:
+    if _missing_scalar(value, label):
+        return ""
+    return str(value)
 
 
 def canonical_source_records_projection(records: pd.DataFrame) -> dict[str, Any]:
@@ -225,21 +296,19 @@ def canonical_source_records_projection(records: pd.DataFrame) -> dict[str, Any]
 
     rows: list[dict[str, Any]] = []
     seen_ids: set[int] = set()
-    for _, raw in records.iterrows():
+    selected = records.loc[:, list(TRANSACTION_FIELDS)]
+    for values in selected.itertuples(index=False, name=None):
+        raw = dict(zip(TRANSACTION_FIELDS, values))
         record_id = _record_id(raw["id"])
         if record_id in seen_ids:
             raise CalculationManifestError("source record ids must be unique")
         seen_ids.add(record_id)
 
         txn_date = _record_date(raw["Date"])
-        symbol = str(raw["Symbol"] or "").strip().upper()
-        txn_type = str(raw["Type"] or "").strip().upper()
-        if not symbol:
-            raise CalculationManifestError("transaction Symbol must be non-empty")
+        symbol = _required_text(raw["Symbol"], "transaction Symbol")
+        txn_type = _required_text(raw["Type"], "transaction Type")
         if txn_type not in SUPPORTED_TRANSACTION_TYPES:
-            raise CalculationManifestError(
-                f"unsupported transaction Type: {txn_type or '<empty>'}"
-            )
+            raise CalculationManifestError(f"unsupported transaction Type: {txn_type}")
 
         qty = _finite_float(raw["Qty"], "Qty")
         price = _finite_float(raw["Price"], "Price")
@@ -250,8 +319,6 @@ def canonical_source_records_projection(records: pd.DataFrame) -> dict[str, Any]
         if price < 0:
             raise CalculationManifestError("Price must be non-negative")
 
-        raw_tag = raw["Tag"]
-        tag = "" if pd.isna(raw_tag) else str(raw_tag)
         rows.append(
             {
                 "id": record_id,
@@ -262,7 +329,7 @@ def canonical_source_records_projection(records: pd.DataFrame) -> dict[str, Any]
                 "Price": price,
                 "Commission": commission,
                 "Tax": tax,
-                "Tag": tag,
+                "Tag": _optional_text(raw["Tag"], "transaction Tag"),
             }
         )
 
@@ -294,13 +361,9 @@ def canonical_runtime_config_projection(
 ) -> dict[str, Any]:
     """Project independently variable material runtime settings."""
 
-    benchmark = str(benchmark_symbol or "").strip().upper()
-    currency = str(base_currency or "").strip().upper()
-    policy = str(oversell_policy or "").strip().upper()
-    if not benchmark:
-        raise CalculationManifestError("benchmark_symbol must be non-empty")
-    if not currency:
-        raise CalculationManifestError("base_currency must be non-empty")
+    benchmark = _required_text(benchmark_symbol, "benchmark_symbol")
+    currency = _required_text(base_currency, "base_currency")
+    policy = _required_text(oversell_policy, "oversell_policy")
     if policy not in SUPPORTED_OVERSELL_POLICIES:
         raise CalculationManifestError("oversell_policy must be CLAMP or ERROR")
     return {
@@ -351,6 +414,26 @@ def resolve_engine_source_commit(
         raise CalculationManifestError(str(exc)) from exc
 
 
+def _deterministic_identity_payload(
+    *,
+    engine_source_commit: str,
+    source_records: SourceRecordsIdentity,
+    runtime_config: RuntimeConfigIdentity,
+    market_inputs_sha256: str,
+    fx_inputs_sha256: str,
+    calculation_as_of: date,
+) -> dict[str, Any]:
+    return {
+        "identity_version": CALCULATION_IDENTITY_VERSION,
+        "engine_source_commit": engine_source_commit,
+        "source_records": source_records.model_dump(),
+        "runtime_config": runtime_config.model_dump(),
+        "market_inputs_sha256": market_inputs_sha256,
+        "fx_inputs_sha256": fx_inputs_sha256,
+        "calculation_as_of": calculation_as_of,
+    }
+
+
 def build_deterministic_calculation_identity(
     *,
     engine_source_commit: str,
@@ -371,15 +454,14 @@ def build_deterministic_calculation_identity(
     if not isinstance(calculation_as_of, date) or isinstance(calculation_as_of, datetime):
         raise CalculationManifestError("calculation_as_of must be a date")
 
-    deterministic_payload = {
-        "identity_version": CALCULATION_IDENTITY_VERSION,
-        "engine_source_commit": source_commit,
-        "source_records": source_records.model_dump(),
-        "runtime_config": runtime_config.model_dump(),
-        "market_inputs_sha256": market_digest,
-        "fx_inputs_sha256": fx_digest,
-        "calculation_as_of": calculation_as_of,
-    }
+    deterministic_payload = _deterministic_identity_payload(
+        engine_source_commit=source_commit,
+        source_records=source_records,
+        runtime_config=runtime_config,
+        market_inputs_sha256=market_digest,
+        fx_inputs_sha256=fx_digest,
+        calculation_as_of=calculation_as_of,
+    )
     combined_digest = canonical_sha256(deterministic_payload)
     return DeterministicCalculationIdentity(
         engine_source_commit=source_commit,
