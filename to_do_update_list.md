@@ -46,7 +46,7 @@ Current evidence:
 # Current Stable State
 
 - Repository: `chihung1024/sheet-trading-journal`
-- Protected main: `4971dbb8f1df35c3ccd4061695ee9f460ce7e2d5`
+- Protected main: `768fdb6e290dca36c0fd8fc1209a87c3357935d6`
 - D1 schema: **2**
 - Worker source contract: release `4.07` / API `2.60` / required schema `2`
 - Gate A: **DONE**
@@ -54,16 +54,14 @@ Current evidence:
 - Gate C: **DONE / CLOSED / POST-MAIN VERIFIED**
 - Gate D / D1a: **DONE / POST-MAIN VERIFIED**
 - Gate D / D1b: **DONE / POST-MAIN VERIFIED**
+- Gate D / D1c: **DONE / POST-MAIN VERIFIED**
 - D1b PR #162 exact-head merge → `ad9b98f996fdb9e3151f0ba3b201dfbeb3b5febf`
-- D1b final-head CI #485 / `31302244853`: **SUCCESS**
-- D1b post-main CI #486 / `31302369991`: **SUCCESS**
-- D1b recovery: `backup-post-gate-d-d1b-ad9b98f`
-- D1b closeout handoff PR #163 merge → `4971dbb8f1df35c3ccd4061695ee9f460ce7e2d5`
-- D1b closeout post-main CI #488: **SUCCESS**
-- Current active Batch: **Gate D / D1c — effective market/FX/synthetic provenance**.
-- D1c PR #164 is **ACTIVE / CODE-HEAD QUALIFIED / FINAL-HEAD CI PENDING**.
-- D1c pre-change recovery: `backup-pre-gate-d-d1c-4971dbb`.
-- D1c qualified code head before this handoff update: `9f2ac5dfe7c4464ff9846573c66f2eb163ed3484`.
+- D1b closeout handoff PR #163 merge → `4971dbb8f1df35c3ccd4061695ee9f460ce7e2d5`; post-main CI #488: **SUCCESS**
+- D1c PR #164 final head `7a0b02ab3bfa1f882df69f9eb67c70d028d79551`; final-head CI #495 / `31306660733`: **SUCCESS**
+- D1c PR #164 exact-head merge → `768fdb6e290dca36c0fd8fc1209a87c3357935d6`
+- D1c post-main CI #496 / `31306794910`: **SUCCESS**
+- D1c recovery: `backup-post-gate-d-d1c-768fdb6`
+- Current active Batch after this closeout handoff merge: **Gate D / D1d — deterministic golden replay + explicit calculation-as-of/clock seam**.
 - There is still **no production manifest attachment**; D1e remains the only planned production attachment phase.
 
 ## Recovery refs
@@ -79,6 +77,7 @@ Current evidence:
 - pre-D1b: `backup-pre-gate-d-d1b-88a9701`
 - post-D1b: `backup-post-gate-d-d1b-ad9b98f`
 - pre-D1c: `backup-pre-gate-d-d1c-4971dbb`
+- post-D1c: `backup-post-gate-d-d1c-768fdb6`
 
 ---
 
@@ -91,8 +90,8 @@ Current evidence:
 | Gate C | C1–C6 | source-ledger integrity qualification/enforcement | **DONE / CLOSED** | PR #150–#158 + audit/smoke/CI/recovery |
 | Gate D | D1a | reproducibility/provenance architecture audit | **DONE / POST-MAIN VERIFIED** | PR #160/#161 + CI #477–#480 + recovery |
 | Gate D | D1b | pure deterministic manifest primitives | **DONE / POST-MAIN VERIFIED** | PR #162/#163 + CI #485/#486/#488 + recovery |
-| Gate D | D1c | effective market/FX/synthetic provenance | **ACTIVE / FINAL-HEAD CI PENDING** | PR #164; code-head CI #494 qualified |
-| Gate D | D1d | frozen deterministic golden replay | TODO | D1b + D1c + explicit clock/as-of seam |
+| Gate D | D1c | effective market/FX/synthetic provenance | **DONE / POST-MAIN VERIFIED** | PR #164 + CI #495/#496 + recovery |
+| Gate D | D1d | frozen deterministic golden replay | **ACTIVE / NEXT** | D1b + D1c + explicit clock/as-of seam |
 | Gate D | D1e | smallest compatible production integration | TODO | D1b–D1d proven first |
 | Gate D | Closeout | independent reproducibility review | TODO | exact-head CI + post-main + recovery |
 | Post-D | Architecture review | Schema 3 / canonical ledger / provider abstraction | DEFERRED | fresh review after Gate D |
@@ -234,12 +233,15 @@ Status: **DONE / POST-MAIN VERIFIED**.
 
 ---
 
-# D1c — ACTIVE / FINAL-HEAD CI PENDING
+# D1c — DONE / POST-MAIN VERIFIED
 
 PR: **#164 — Gate D D1c: effective market and FX provenance identity**  
 Base main: `4971dbb8f1df35c3ccd4061695ee9f460ce7e2d5`  
 Pre-D1c recovery: `backup-pre-gate-d-d1c-4971dbb`  
-Qualified code head before handoff update: `9f2ac5dfe7c4464ff9846573c66f2eb163ed3484`
+Qualified code head: `9f2ac5dfe7c4464ff9846573c66f2eb163ed3484`  
+Final PR head: `7a0b02ab3bfa1f882df69f9eb67c70d028d79551`  
+Merge: `768fdb6e290dca36c0fd8fc1209a87c3357935d6`  
+Post-D1c recovery: `backup-post-gate-d-d1c-768fdb6`
 
 ## Objective
 
@@ -383,126 +385,51 @@ Scope/privacy findings:
 
 Semantic review also re-read current `MarketDataClient` split/dividend fallback behavior. D1c keeps the runtime unchanged and fails closed on ambiguous reproducibility inputs rather than silently minting an identity for malformed state. This remains pure-contract work; D1e must separately prove production compatibility before attachment.
 
-Changed files at qualified code head were exactly:
+Final qualification:
 
-- `journal_engine/core/input_provenance.py`;
-- `tests/test_input_provenance.py`;
-- `tests/test_input_provenance_hardening.py`;
-- `docs/governance/python-coverage-baseline.json` — source inventory only.
+- final changed files exactly: `journal_engine/core/input_provenance.py`, `tests/test_input_provenance.py`, `tests/test_input_provenance_hardening.py`, `docs/governance/python-coverage-baseline.json`, `to_do_update_list.md`;
+- final-head CI #495 / `31306660733`: **SUCCESS across Python / Frontend / Worker-D1**;
+- reviews: 0;
+- review threads: 0;
+- comments: 0;
+- protected main remained exactly `4971dbb8f1df35c3ccd4061695ee9f460ce7e2d5` immediately before merge;
+- PR #164 exact-head merge guarded by `7a0b02ab3bfa1f882df69f9eb67c70d028d79551`;
+- merged main: `768fdb6e290dca36c0fd8fc1209a87c3357935d6`;
+- post-main CI #496 / `31306794910`: **SUCCESS**;
+- post-D1c recovery: `backup-post-gate-d-d1c-768fdb6`.
 
-This handoff update adds only `to_do_update_list.md` to that whitelist.
-
-## Original D1c scope
-
-### Effective market projection
-
-For required symbols and relevant dates, canonicalize only calculation-effective fields:
-
-- symbol;
-- date;
-- `Close_Adjusted`;
-- `Dividends`;
-- `Split_Factor`;
-- effective `Valuation_Source`;
-- `Valuation_Source_Date`.
-
-Rules:
-
-- stable symbol/date ordering;
-- use D1b canonical/hash primitives;
-- exclude irrelevant vendor OHLC/Volume data;
-- fail closed on missing/ambiguous material values;
-- preserve exact effective numeric values, including realtime-overwritten values when present.
-
-### Effective FX projection
-
-For each required native currency:
-
-- currency;
-- historical date/rate rows actually available to the calculation;
-- effective realtime FX value/state only when supplied to the extractor;
-- stable currency/date ordering;
-- use D1b canonical/hash primitives;
-- non-finite/ambiguous rates fail closed.
-
-### Synthetic valuation provenance
-
-Reuse existing transaction-calendar semantics:
-
-- `market`;
-- `asof_carry_forward`;
-- `transaction_price_seed`;
-- `Valuation_Source_Date`.
-
-Do not invent a parallel synthetic provenance vocabulary.
-
-### Provider/source diagnostics
-
-Keep provider/source metadata **separate from effective numeric input hashes**.
-
-D1c may add narrow structured provenance capture for currently lost price-selection/realtime-overlay state, but must not create broad provider abstraction.
-
-### Diagnostics
-
-Small non-sensitive diagnostics may include:
-
-- covered symbols/currencies;
-- market row count;
-- FX row count;
-- synthetic row counts by source;
-- realtime overlay presence/count/state;
-- projection/canonicalization versions.
-
-No user id/email/note/auth/raw vendor payload in provenance identity.
-
-## D1c required tests
-
-- network-free only;
-- deterministic repeatability;
-- DataFrame/dict insertion order invariance;
-- material field/value/date/source changes alter appropriate digest;
-- irrelevant OHLC/Volume changes do not alter digest;
-- synthetic provenance changes alter market digest;
-- historical FX change alters FX digest;
-- realtime FX state/value change alters FX digest when included;
-- non-finite/missing material values fail closed;
-- unknown/ambiguous synthetic source fails closed unless explicitly defined compatible policy exists;
-- provider metadata changes alone do not change effective numeric input digest;
-- diagnostics are consistent with canonical projection.
-
-## D1c explicit non-goals
-
-- no broad provider abstraction;
-- no production snapshot/runner attachment;
-- no D1/Worker/schema change;
-- no clock/as-of runtime refactor yet;
-- no network integration tests;
-- no Schema 3;
-- no execution/broker provenance redesign.
-
-## D1c remaining execution plan
-
-1. Run fresh CI on the new handoff-containing final PR head.
-2. Confirm final changed-file whitelist, reviews/threads and protected-main drift.
-3. If no BLOCKER, mark PR #164 ready and exact-head merge using that final head SHA.
-4. Verify post-main CI.
-5. Create post-D1c recovery from verified merged main.
-6. Perform docs-only closeout handoff if the persistent state needs merge/recovery synchronization.
-7. Only then activate D1d.
+Status: **DONE / POST-MAIN VERIFIED**.
 
 ---
 
-# D1d — PLANNED
+# D1d — ACTIVE / NEXT
 
-After D1c closes:
+## Objective
 
-1. introduce narrow explicit `calculation_as_of`/clock context;
-2. evolve/add a versioned mixed TW/US frozen fixture;
-3. prohibit network in replay;
-4. cover prices, FX variation, split-sensitive inputs and dividends;
-5. assert authoritative snapshot projection + Daily-P&L/TWR/XIRR + manifest hashes;
-6. prove repeated replay exact deterministic identity;
-7. distinguish source/market/FX/engine/config/synthetic causes of change.
+Prove deterministic offline replay of a known-good mixed TW/US portfolio using the D1b/D1c identity contracts, while eliminating wall-clock ambiguity through one narrow explicit calculation-as-of seam.
+
+## D1d execution plan
+
+1. Merge this D1c docs-only closeout and verify its post-main CI.
+2. Create fresh pre-D1d recovery and one scoped D1d branch from verified stable main.
+3. Re-read current calculator clock/time paths and the existing mixed TW/US golden fixture/harness on merged main.
+4. Introduce only the narrow explicit `calculation_as_of`/clock context required for deterministic replay; production default behavior must remain unchanged unless explicitly injected.
+5. Evolve/add a versioned mixed TW/US frozen replay fixture; do not replace existing focused economic tests.
+6. Prohibit network during replay.
+7. Cover prices, FX variation, split-sensitive inputs and dividends.
+8. Assert authoritative deterministic projection including source/market/FX/config/engine identities, summary, holdings, history material outputs, Daily-P&L/day ledger, TWR and XIRR reliability/provenance metadata.
+9. Prove repeated replay yields exact deterministic content identity while run-instance metadata remains outside that identity.
+10. Run focused/full CI, independent semantic/privacy/scope review, final exact-head merge, post-main CI, recovery and handoff closeout.
+11. Only then activate D1e production attachment.
+
+## D1d explicit non-goals
+
+- no D1e `PortfolioSnapshot.calculation_manifest` production attachment yet;
+- no Worker/D1/schema migration;
+- no provider abstraction;
+- no Schema 3 / broker execution redesign;
+- no lot-ledger architecture expansion;
+- no unrelated frontend/UX/refactor work.
 
 ---
 
@@ -527,7 +454,7 @@ No D1 migration or Worker API change unless compatibility tests prove opaque sna
 
 - [x] D1a evidence merged/post-main/recovery complete.
 - [x] D1b source/config/engine identity merged/post-main/recovery complete.
-- [ ] D1c effective market/FX/synthetic provenance proven.
+- [x] D1c effective market/FX/synthetic provenance proven.
 - [ ] D1d deterministic offline replay proven.
 - [ ] D1e compatible production attachment proven.
 - [ ] change cause can be distinguished among source records / effective market or provider / FX / engine / runtime config / synthetic valuation.
@@ -568,21 +495,22 @@ C6b decision: retain calculator `CLAMP` as downstream compatibility/defense-in-d
 - **D-D-04 QUALIFIED, NOT YET IMPLEMENTED:** optional snapshot manifest is preferred D1e production boundary.
 - **D-D-05 LOCKED BY D1b:** source-record identity uses exact versioned canonical UTF-8 JSON + SHA-256 over material normalized fields; exact ids do not round-trip through binary float.
 - **D-D-06 LOCKED BY D1b:** engine identity requires exact full lowercase Git SHA; branch/short SHA is not a reproducible identity.
-- **D-D-07 QUALIFIED BY D1c CODE HEAD:** provider/source diagnostics remain separate from calculation-effective numeric input digests; provider abstraction is not required for deterministic input identity.
-- **D-D-08 QUALIFIED BY D1c CODE HEAD:** ambiguous/non-scalar/non-finite market, FX or synthetic provenance input fails closed rather than receiving a deterministic identity.
+- **D-D-07 LOCKED BY D1c:** provider/source diagnostics remain separate from calculation-effective numeric input digests; provider abstraction is not required for deterministic input identity.
+- **D-D-08 LOCKED BY D1c:** ambiguous/non-scalar/non-finite market, FX or synthetic provenance input fails closed rather than receiving a deterministic identity.
+- **D-D-09 ACTIVE FOR D1d:** deterministic replay must use an explicit calculation-as-of/clock seam; run-instance `calculated_at` is not part of deterministic identity.
 
 ---
 
 # Root Cause / Risk Log
 
-- **RC-D-01 PARTIALLY FIXED:** source/config/engine deterministic identity is complete in D1b and market/FX/synthetic identity is code-head qualified in D1c; production attachment remains D1e.
+- **RC-D-01 PARTIALLY FIXED:** source/config/engine deterministic identity is complete in D1b and effective market/FX/synthetic identity is complete in D1c; production attachment remains D1e.
 - **RC-D-02 OPEN:** wall clock breaks true replay → D1d explicit as-of/clock seam.
-- **RC-D-03 CODE-HEAD FIXED / MERGE PENDING:** effective market/FX/synthetic state now has pure deterministic identity and separate provider diagnostics in PR #164.
+- **RC-D-03 CLOSED:** effective market/FX/synthetic state has pure deterministic identity and separate provider diagnostics after D1c merge/post-main verification.
 - **RC-D-04 OPEN:** existing golden regression too shallow → D1d.
 - **RC-D-05 CLOSED:** record-id canonicalization no longer risks >2^53 float precision loss.
-- **RC-D-06 FIXED IN D1c:** one-shot iterables are materialized once; provider overlay generators are not consumed during truthiness probing.
-- **RC-D-07 FIXED IN D1c:** vector-like pandas provenance values are rejected before missingness conversion; no single-element ndarray truthiness ambiguity remains.
-- **RC-D-08 FIXED IN D1c:** coverage regression was resolved by exercising fail-closed branches; coverage gates were not weakened.
+- **RC-D-06 CLOSED:** one-shot iterables are materialized once; provider overlay generators are not consumed during truthiness probing.
+- **RC-D-07 CLOSED:** vector-like pandas provenance values are rejected before missingness conversion; no single-element ndarray truthiness ambiguity remains.
+- **RC-D-08 CLOSED:** D1c coverage regression was resolved by exercising fail-closed branches; coverage gates were not weakened.
 
 ---
 
@@ -601,20 +529,17 @@ C6b decision: retain calculator `CLAMP` as downstream compatibility/defense-in-d
 
 # Immediate Next Actions
 
-## Finish D1c PR #164
+## Finish D1c closeout handoff
 
-1. Resolve the new exact final PR head after this handoff commit.
-2. Run fresh full CI on that exact head; prior CI #494 is code-head evidence only.
-3. Confirm changed files are exactly D1c pure source/tests + coverage source inventory + this handoff.
-4. Re-check reviews, unresolved threads and protected `main` drift.
-5. If no BLOCKER, mark ready and exact-head merge PR #164.
-6. Verify post-main CI.
-7. Create post-D1c recovery and persist merge/CI/recovery closeout evidence.
+1. Open this docs-only closeout PR.
+2. Verify exact-head CI, single-file whitelist, reviews/threads and protected-main drift.
+3. Exact-head merge and verify post-main CI.
 
 ## Then start D1d
 
-1. Create one scoped D1d branch from verified stable main.
-2. Introduce only the narrow explicit `calculation_as_of`/clock seam required for deterministic replay.
-3. Evolve the existing mixed TW/US frozen fixture; do not replace proven focused tests.
-4. Keep replay network-free and assert authoritative outputs + manifest digests.
-5. Do not start D1e production attachment until D1d independently passes.
+1. Create fresh pre-D1d recovery from the verified closeout main and one scoped D1d branch.
+2. Re-read calculator clock/time paths and existing golden fixture/harness before modifying.
+3. Introduce only the narrow explicit `calculation_as_of` seam required for replay; preserve production defaults.
+4. Evolve the existing mixed TW/US frozen fixture and keep replay network-free.
+5. Assert authoritative outputs + D1b/D1c manifest identities and repeated deterministic content identity.
+6. Do not start D1e production attachment until D1d independently passes.
