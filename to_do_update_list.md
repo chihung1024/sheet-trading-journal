@@ -47,7 +47,7 @@ Current evidence:
 # Current Stable State
 
 - Repository: `chihung1024/sheet-trading-journal`
-- Protected main: `1381f1780ea46b7878ce2667899fe16373eb2c28`
+- Protected main: `62b13dc7c29591a7fcff24a20b48fe06aa8177ea`
 - D1 schema: **2**
 - Worker source contract: release `4.07` / API `2.60` / required schema `2`
 - Gate A: **DONE**
@@ -56,13 +56,14 @@ Current evidence:
 - Gate D / D1a: **DONE / POST-MAIN VERIFIED**
 - Gate D / D1b: **DONE / POST-MAIN VERIFIED**
 - Gate D / D1c: **DONE / POST-MAIN VERIFIED**
-- Gate D / D1d: **ACTIVE / CODE-HEAD QUALIFIED / FINAL-HEAD CI PENDING**
-- D1d PR: **#166 — Gate D D1d: deterministic golden replay**
-- D1d base main: `1381f1780ea46b7878ce2667899fe16373eb2c28`
-- D1d pre-change recovery: `backup-pre-gate-d-d1d-1381f17`
-- D1d qualified code head before this handoff update: `f6b209fe61eb35c3894405e123eb2ccdda5b80b9`
-- D1d code-head CI #512 / `31308960934`: **SUCCESS across Python / Frontend / Worker-D1**
-- There is still **no production `calculation_manifest` attachment**; D1e remains the only planned production-attachment phase.
+- Gate D / D1d: **DONE / POST-MAIN VERIFIED**
+- D1d PR #166 final head: `71d6b4445ed8e139352f73f0ba669dffc9575ad2`
+- D1d final-head CI #513 / `31311239217`: **SUCCESS**
+- D1d exact-head merge → `62b13dc7c29591a7fcff24a20b48fe06aa8177ea`
+- D1d post-main CI #514 / `31311341049`: **SUCCESS**
+- D1d recovery: `backup-post-gate-d-d1d-62b13dc`
+- Current active Batch after this closeout handoff merge: **Gate D / D1e — smallest compatible production `calculation_manifest` integration**.
+- D1e has **not** yet modified production code in this closeout branch.
 
 ## Recovery refs
 
@@ -79,6 +80,7 @@ Current evidence:
 - pre-D1c: `backup-pre-gate-d-d1c-4971dbb`
 - post-D1c: `backup-post-gate-d-d1c-768fdb6`
 - pre-D1d: `backup-pre-gate-d-d1d-1381f17`
+- post-D1d: `backup-post-gate-d-d1d-62b13dc`
 
 ---
 
@@ -92,8 +94,8 @@ Current evidence:
 | Gate D | D1a | reproducibility/provenance architecture audit | **DONE / POST-MAIN VERIFIED** | PR #160/#161 + CI #477–#480 + recovery |
 | Gate D | D1b | pure deterministic manifest primitives | **DONE / POST-MAIN VERIFIED** | PR #162/#163 + CI #485/#486/#488 + recovery |
 | Gate D | D1c | effective market/FX/synthetic provenance | **DONE / POST-MAIN VERIFIED** | PR #164/#165 + CI #495–#498 + recovery |
-| Gate D | D1d | frozen deterministic golden replay | **ACTIVE / FINAL-HEAD CI PENDING** | PR #166; code-head CI #512 qualified |
-| Gate D | D1e | smallest compatible production integration | TODO | D1b–D1d must be merged/post-main verified first |
+| Gate D | D1d | frozen deterministic golden replay | **DONE / POST-MAIN VERIFIED** | PR #166 + CI #513/#514 + recovery |
+| Gate D | D1e | smallest compatible production integration | **ACTIVE / NEXT** | D1b–D1d proven |
 | Gate D | Closeout | independent reproducibility review | TODO | D1e + exact-head/post-main + recovery |
 | Post-D | Architecture review | Schema 3 / canonical ledger / provider abstraction | DEFERRED | fresh review after Gate D |
 
@@ -109,7 +111,7 @@ Given the same trusted transaction ledger and declared external inputs/configura
 4. separate deterministic calculation identity from volatile run-instance metadata;
 5. prove production compatibility before attaching reproducibility evidence to snapshots.
 
-Gate D operates on the qualified Schema-2 pipeline unless evidence proves a blocking dependency.
+Gate D remains on the qualified Schema-2 pipeline unless evidence proves a blocking dependency.
 
 ---
 
@@ -130,11 +132,10 @@ Locked architecture decisions:
 
 - no D1/Worker migration is required for Gate-D manifest evidence unless D1e compatibility proves otherwise;
 - preferred D1e boundary is optional additive `PortfolioSnapshot.calculation_manifest`;
-- source financial identity fields: `id, Date, Symbol, Type, Qty, Price, Commission, Tax, Tag`;
+- source financial identity fields are `id, Date, Symbol, Type, Qty, Price, Commission, Tax, Tag`;
 - exclude free-form `note`, `created_at`, ownership/auth identity from deterministic financial source hash;
 - effective market/FX numeric identity is separate from provider diagnostics;
 - deterministic replay requires an explicit calculation-as-of/clock seam;
-- existing mixed TW/US regression should be evolved, not replaced;
 - populated production `lot_ledger` is not a Gate-D prerequisite.
 
 ---
@@ -146,43 +147,28 @@ PR #162 implemented pure deterministic manifest primitives in `journal_engine/co
 Core contract:
 
 - canonical UTF-8 JSON v1;
-- exact finite-float canonical representation;
+- exact finite-float representation;
 - SHA-256 deterministic hashes;
-- exact record-id normalization including values above 2^53;
+- exact record-id normalization including >2^53 ids;
 - deterministic source projection in `Date -> id` order;
-- runtime config identity: benchmark/base currency/oversell policy;
+- runtime config identity for benchmark/base currency/oversell policy;
 - exact full lowercase 40-character Git SHA engine identity;
 - combined deterministic identity over engine/source/config/market/FX/`calculation_as_of`;
 - `calculated_at` excluded from deterministic identity;
-- frozen/extra-forbid Pydantic models with self-consistency/tamper rejection.
+- frozen/extra-forbid models with self-consistency/tamper rejection.
 
-Privacy boundary:
-
-- no user email/id;
-- no free-form note;
-- no `created_at`;
-- no auth/API data;
-- no raw broker metadata.
-
-Important hardening:
-
-- removed >2^53 record-id float precision risk;
-- explicit `pd.NA` fail-closed handling;
-- D1b-introduced pandas FutureWarnings removed;
-- combined identity sensitivity verified for every material component.
+Privacy boundary excludes user id/email, note, `created_at`, auth/API data and raw broker metadata.
 
 Evidence:
 
 - code-head CI #484 / `31302163349`: 310 passed / 18 subtests;
 - new module: **100% line/branch coverage**;
 - final-head CI #485 / `31302244853`: SUCCESS;
-- PR #162 exact-head merge → `ad9b98f996fdb9e3151f0ba3b201dfbeb3b5febf`;
+- PR #162 merge → `ad9b98f996fdb9e3151f0ba3b201dfbeb3b5febf`;
 - post-main CI #486 / `31302369991`: SUCCESS;
 - recovery `backup-post-gate-d-d1b-ad9b98f`;
 - closeout PR #163 merge → `4971dbb8f1df35c3ccd4061695ee9f460ce7e2d5`;
 - closeout post-main CI #488: SUCCESS.
-
-Status: **DONE / POST-MAIN VERIFIED**.
 
 ---
 
@@ -190,365 +176,236 @@ Status: **DONE / POST-MAIN VERIFIED**.
 
 PR #164 implemented pure/network-free effective-input provenance in `journal_engine/core/input_provenance.py`.
 
-Market identity includes only calculation-effective state:
+Market identity includes calculation-effective symbol/date, `Close_Adjusted`, effective dividends/splits, `Valuation_Source`, and `Valuation_Source_Date`.
 
-- symbol/date;
-- `Close_Adjusted`;
-- effective `Dividends`;
-- effective `Split_Factor`;
-- `Valuation_Source`;
-- `Valuation_Source_Date`.
-
-Synthetic source vocabulary remains exactly:
+Synthetic vocabulary remains exactly:
 
 - `market`;
 - `asof_carry_forward`;
 - `transaction_price_seed`.
 
-FX identity includes:
+FX identity includes required currencies, historical TWD/native rates, TWD constant 1.0 semantics, and optional realtime FX only when explicitly included.
 
-- required currencies;
-- historical TWD/native rates;
-- TWD constant 1.0 semantics;
-- optional realtime FX state/value only when explicitly included.
+Provider diagnostics remain separate/non-hashed.
 
-Provider diagnostics are separate/non-hashed:
+Hardening/debug evidence:
 
-- `price_source`;
-- `selection_reason`;
-- realtime-overlay symbol diagnostics.
-
-Hardening/debug history:
-
-- CI #489 exposed test-fixture duplicate-symbol collisions and one-shot generator consumption;
-- CI #492 exposed scalar/vector ambiguity from `pd.isna(["x"])`;
-- root fix uses explicit scalar validation before missingness conversion;
-- CI #493 had all functional tests green but coverage governance blocked residual branch debt;
-- missing branches were covered with regression tests instead of lowering policy.
+- CI #489 exposed fixture duplicate collisions + one-shot generator consumption;
+- CI #492 exposed scalar/vector ambiguity;
+- CI #493 showed functional green but coverage governance correctly blocked residual branch debt;
+- missing branches were covered rather than weakening gates.
 
 Qualification:
 
-- code-head CI #494 / `31306406517`: SUCCESS;
+- code-head CI #494: SUCCESS;
 - final-head CI #495 / `31306660733`: SUCCESS;
-- PR #164 exact-head merge → `768fdb6e290dca36c0fd8fc1209a87c3357935d6`;
-- post-main CI #496 / `31306794910`: SUCCESS;
+- PR #164 merge → `768fdb6e290dca36c0fd8fc1209a87c3357935d6`;
+- post-main CI #496: SUCCESS;
 - recovery `backup-post-gate-d-d1c-768fdb6`;
 - closeout PR #165 merge → `1381f1780ea46b7878ce2667899fe16373eb2c28`;
 - closeout post-main CI #498: SUCCESS.
+
+---
+
+# D1d — DONE / POST-MAIN VERIFIED
+
+PR: **#166 — Gate D D1d: deterministic golden replay**  
+Base main: `1381f1780ea46b7878ce2667899fe16373eb2c28`  
+Pre-D1d recovery: `backup-pre-gate-d-d1d-1381f17`  
+Final PR head: `71d6b4445ed8e139352f73f0ba669dffc9575ad2`  
+Merge: `62b13dc7c29591a7fcff24a20b48fe06aa8177ea`  
+Post-D1d recovery: `backup-post-gate-d-d1d-62b13dc`
+
+## Implemented clock/as-of seam
+
+`PortfolioCalculator` accepts optional `calculation_now`:
+
+- injected clock must be timezone-aware;
+- normalized to `Asia/Taipei`;
+- explicit `calculation_as_of` available;
+- replay uses one fixed timestamp;
+- `DailyPnLHelper` accepts optional `now_provider`;
+- invalid/naive provider values fail closed.
+
+### Production-default compatibility — independently reviewed BLOCKER resolved
+
+An early seam version could have changed normal production run-level wall-clock semantics. This was blocked before merge.
+
+Final behavior:
+
+- replay mode: fixed injected clock;
+- normal production market-stage/today logic: existing Taipei-aware wall clock;
+- normal production `updated_at`/group date-range call sites: existing naive system-local `datetime.now()` semantics preserved;
+- each original default wall-clock call site remains independently evaluated as before.
+
+No FIFO, transaction ordering, TWR, XIRR, dividend, split, FX or Daily-P&L formula changed.
+
+## Frozen network-free replay
+
+Fixture: `tests/fixtures/golden_replay_mixed_tw_us_v1.json`
+
+Covers:
+
+- SPY benchmark;
+- 2330.TW;
+- NVDA;
+- fixed `2026-01-05T15:00:00+08:00` replay clock;
+- stable source record ids;
+- split-sensitive transaction;
+- TW + US dividends;
+- variable historical USD/TWD FX;
+- realtime FX;
+- `transaction_price_seed` provenance;
+- extreme post-as-of future rows to prove cutoff isolation;
+- provider diagnostics separated from numeric identity.
+
+Replay execution path matches production calculation order:
+
+1. raw ledger;
+2. calculator with injected clock;
+3. split adjustment/calculation;
+4. canonical Daily-P&L reconciliation;
+5. D1b identities;
+6. D1c identities;
+7. deterministic snapshot projection excluding volatile `updated_at`;
+8. exact SHA-256.
+
+Network access is explicitly forbidden in replay tests.
+
+## Reviewed golden economics
+
+- invested capital: **11,433 TWD**;
+- total value: **12,250 TWD**;
+- pending/realized dividend contribution: **111 TWD**;
+- total P&L: **928 TWD**;
+- Daily-P&L: **961 TWD**;
+- breakdown: TW **120** / foreign price+dividend **741** / FX **100**;
+- linked TWR: **8.16%**, status `ok`;
+- XIRR: **1,329,427.60%**, status `ok`, as-of `2026-01-05`.
+
+The XIRR is intentionally extreme because the fixture spans only three days; it is deterministic regression evidence, not an investment benchmark.
+
+Frozen identities:
+
+- snapshot content SHA-256: `257117e2ee7516e25a37d24d52525c6e8ae08c8ff00e785a1beb268cd005a21c`;
+- combined D1b+D1c deterministic input SHA-256: `6f213201279bf7ff6a58d0cb7af237e5fdcb8db1f2006c1f368c61c0cc85fe05`.
+
+Fixture engine identity is explicitly marked `declared_test_input_not_runtime_attestation`; D1e must resolve the real runtime full Git SHA.
+
+## Change-cause isolation proven
+
+D1d can distinguish changes caused by:
+
+- source records;
+- effective market state;
+- FX state;
+- synthetic valuation provenance;
+- engine identity;
+- runtime configuration.
+
+Provider diagnostics and post-as-of future rows do not pollute deterministic numeric identity.
+
+## CI / review chronology
+
+- CI #499: intentional red test-first seam baseline;
+- CI #501: minimum clock seam green;
+- CI #503: only content-digest placeholder remained;
+- CI #505: reviewed economic assertions all passed; only combined-input placeholder remained;
+- CI #506: first no-placeholder full green;
+- CI #509: engine-attestation wording + clock hardening green;
+- independent review found production-default clock drift BLOCKER;
+- root fix restored original default wall-clock call-site semantics;
+- code-head CI #512 / `31308960934`: SUCCESS, **387 passed + 18 subtests**, 2 pre-existing warnings;
+- final-head CI #513 / `31311239217`: **SUCCESS across Python / Frontend / Worker-D1**;
+- exact-head merge guarded by `71d6b4445ed8e139352f73f0ba669dffc9575ad2`;
+- merged main: `62b13dc7c29591a7fcff24a20b48fe06aa8177ea`;
+- post-main CI #514 / `31311341049`: **SUCCESS across all three jobs**;
+- recovery: `backup-post-gate-d-d1d-62b13dc`.
+
+Code-head coverage evidence from CI #512:
+
+- covered lines: 2867;
+- missing lines: 564;
+- covered branches: 1006;
+- missing branches: 300;
+- statements: 3431;
+- branches: 1306;
+- combined coverage: **81.760607979734%**;
+- coverage policy passed without weakening any gate.
+
+Final qualification before merge:
+
+- changed files exactly: calculator clock seam, DailyPnL helper seam, versioned replay fixture, clock tests, replay tests, handoff;
+- reviews: 0;
+- review threads: 0;
+- comments: 0;
+- protected main had no drift;
+- independent semantic/privacy/scope review: PASS after BLOCKER resolution.
 
 Status: **DONE / POST-MAIN VERIFIED**.
 
 ---
 
-# D1d — ACTIVE / CODE-HEAD QUALIFIED / FINAL-HEAD CI PENDING
-
-PR: **#166 — Gate D D1d: deterministic golden replay**  
-Base main: `1381f1780ea46b7878ce2667899fe16373eb2c28`  
-Pre-D1d recovery: `backup-pre-gate-d-d1d-1381f17`  
-Qualified code head before this handoff update: `f6b209fe61eb35c3894405e123eb2ccdda5b80b9`
+# D1e — ACTIVE / NEXT
 
 ## Objective
 
-Prove deterministic, network-free replay of a known-good mixed TW/US portfolio using D1b/D1c identity contracts, while eliminating replay wall-clock ambiguity without changing normal production defaults.
+Attach the already-proven D1b/D1c/D1d reproducibility evidence at the **smallest compatible production boundary**, without redesigning Worker/D1/schema unless compatibility evidence proves necessary.
 
-## Implemented clock/as-of seam
+## Required authoritative read before modification
 
-`PortfolioCalculator` now accepts optional `calculation_now`.
+From the verified main after this docs-only closeout:
 
-Rules:
+1. `journal_engine/models.py` — current `PortfolioSnapshot` contract and additive-field behavior;
+2. `main.py` — exact authoritative boundary after calculator + canonical Daily-P&L reconciliation and before validation/upload;
+3. `journal_engine/core/calculation_manifest.py` — D1b identity models/full Git SHA resolver;
+4. `journal_engine/core/input_provenance.py` — D1c market/FX/provider contracts;
+5. D1d clock/as-of semantics and replay fixture;
+6. Worker snapshot GET/POST storage behavior and payload-size limits;
+7. frontend snapshot parsing/consumption contracts;
+8. existing snapshot compatibility/security tests.
 
-- injected clock must be timezone-aware or construction fails closed;
-- injected clock is normalized to `Asia/Taipei`;
-- `calculation_as_of` is exposed explicitly;
-- replay mode returns the same injected timestamp at every clock decision point;
-- `DailyPnLHelper` accepts an optional `now_provider` and normalizes it to Taipei;
-- provider returning a naive/non-datetime value fails closed.
+Do not implement until these are re-read on merged main.
 
-### Production-default compatibility rule
+## Planned minimal implementation
 
-This was independently reviewed and hardened as a merge blocker.
-
-Without an injected replay clock:
-
-- existing market-stage/today decisions continue to use Taipei-aware wall clock as before;
-- existing `updated_at` and group date-range boundaries continue to call naive system-local `datetime.now()` at their original call sites;
-- production does **not** inherit the deterministic replay timestamp behavior.
-
-Therefore deterministic replay is opt-in and normal production timing semantics are preserved.
-
-No FIFO, financial formula, TWR, XIRR, dividend, split, FX, Daily-P&L or transaction-ordering algorithm was changed by the seam.
-
-## Versioned frozen replay fixture
-
-New fixture:
-
-`tests/fixtures/golden_replay_mixed_tw_us_v1.json`
-
-The replay is deliberately mixed and material:
-
-- benchmark: `SPY`;
-- Taiwan security: `2330.TW`;
-- US security: `NVDA`;
-- fixed calculation time: `2026-01-05T15:00:00+08:00`;
-- stable transaction record ids;
-- split-sensitive NVDA transaction with cumulative `Split_Factor` semantics;
-- dividends on both TW and US holdings;
-- variable historical USD/TWD FX;
-- explicit realtime USD/TWD FX;
-- one `transaction_price_seed` synthetic valuation source;
-- extreme Jan-6 future market/FX rows to prove as-of cutoff isolation;
-- provider diagnostics separated from numeric input identity.
-
-The fixture's `declared_fixture_engine_source_commit` is explicitly labeled:
-
-`declared_test_input_not_runtime_attestation`
-
-It exists only to exercise deterministic identity composition. It is **not** an assertion that the fixture SHA is the real repository/production engine SHA. D1e production integration must resolve the actual full runtime Git SHA.
-
-## Replay execution path
-
-Replay remains fully offline and uses the production calculation order:
-
-1. raw transaction fixture;
-2. `PortfolioCalculator` with explicit replay clock;
-3. calculator split adjustment and portfolio calculation;
-4. canonical `reconcile_snapshot_daily_pnl(snapshot, calculator.df, calculator)`;
-5. D1b source/config/engine/as-of identities;
-6. D1c effective market/FX/synthetic identities;
-7. deterministic snapshot projection excluding volatile `updated_at`;
-8. exact content SHA-256.
-
-Tests explicitly fail if `requests` or `yfinance.download` is invoked.
-
-## Reviewed golden economics
-
-The fixture is not blessed from opaque output alone. Economic invariants were manually derived and then asserted before final hashes were locked.
-
-Expected economics:
-
-- 2330.TW cost: **5,001 TWD**;
-- NVDA split-adjusted economic cost: **201 USD × 32 = 6,432 TWD**;
-- invested capital: **11,433 TWD**;
-- Jan-5 2330.TW market value: **5,100 TWD**;
-- Jan-5 NVDA market value: **7,150 TWD**;
-- total value: **12,250 TWD**;
-- pending/realized dividend contribution: **111 TWD**;
-- total P&L: **928 TWD**;
-- canonical Jan-5 Daily-P&L: **961 TWD**;
-- Daily-P&L breakdown: TW **120** / foreign price+dividend **741** / FX **100**;
-- daily P&L base value: **11,400 TWD**;
-- daily ROI: **8.43%**;
-- linked TWR: **8.16%**, status `ok`;
-- XIRR: **1,329,427.60%**, status `ok`, as-of `2026-01-05`, conventional cash flow `true`.
-
-The extreme XIRR is a mathematical consequence of a deliberately short 3-day fixture and is used only as deterministic regression evidence, not as an investment-performance benchmark.
-
-Per-symbol canonical day ledger:
-
-- 2330.TW: **120 TWD**;
-- NVDA: **841 TWD**.
-
-Pending dividend values:
-
-- 2330.TW: **20 TWD**;
-- NVDA: **91 TWD**.
-
-## Frozen deterministic identities
-
-Reviewed snapshot-content digest:
-
-`257117e2ee7516e25a37d24d52525c6e8ae08c8ff00e785a1beb268cd005a21c`
-
-Reviewed D1b+D1c combined deterministic input digest:
-
-`6f213201279bf7ff6a58d0cb7af237e5fdcb8db1f2006c1f368c61c0cc85fe05`
-
-Repeated replay must produce identical snapshot projection, content digest, combined input identity and provider diagnostics.
-
-## Change-cause isolation proven
-
-D1d regression proves material changes can be distinguished among:
-
-- source records;
-- effective market values;
-- effective FX values/state;
-- synthetic valuation provenance;
-- engine identity;
-- runtime configuration.
-
-Additional invariants:
-
-- provider diagnostic changes alone do not alter numeric market/FX/combined identity;
-- market/FX rows strictly after `calculation_as_of` do not alter replay output or input identity;
-- synthetic provenance can alter deterministic market/combined identity even when numeric output is unchanged.
-
-## D1d test-first / debugging chronology
-
-### CI #499 — intentional red baseline
-
-First clock-seam tests failed only because `calculation_now` / `now_provider` did not yet exist. Existing suites remained otherwise healthy. This established a clean test-first baseline.
-
-### CI #501 — minimum clock seam green
-
-Initial explicit seam passed the full suite.
-
-### CI #503 — first frozen replay
-
-Only one failure remained: the intentionally unset snapshot-content digest placeholder. Replay invariance/change-cause tests were already passing.
-
-### CI #505 — economic qualification before hash lock
-
-All manually reviewed economic assertions passed. The only remaining failure was the intentionally unset combined-input digest placeholder.
-
-### CI #506 — first no-placeholder full green
-
-Clock seam + offline replay + reviewed economics + exact content/input identities all passed together.
-
-### Independent review hardening
-
-Review identified one semantic ambiguity:
-
-- fixture engine SHA could be misread as current-repository attestation.
-
-Resolution:
-
-- rename to `declared_fixture_engine_source_commit`;
-- add explicit `engine_identity_semantics=declared_test_input_not_runtime_attestation`;
-- document that D1e production must resolve the real full Git SHA.
-
-Additional clock contracts were added for:
-
-- naive provider fail-closed;
-- non-Taipei timezone normalization.
-
-CI #509 passed after this hardening.
-
-### Independent review BLOCKER — production default clock drift
-
-A genuine compatibility blocker was then found:
-
-- an earlier seam version unintentionally changed normal production run-level clock semantics from naive system-local `datetime.now()` to Taipei-aware/frozen-style clock behavior.
-
-This could change `updated_at`/group date boundaries around timezone/day transitions.
-
-Root fix:
-
-- explicit replay mode uses the fixed injected clock;
-- default production mode delegates each original run-level call site to naive system-local `datetime.now()`;
-- Taipei market-stage/today logic still uses the pre-existing Taipei-aware wall-clock semantics.
-
-No financial algorithm changes were required.
-
-## Code-head qualification — CI #512 / `31308960934`
-
-Exact PR head: `f6b209fe61eb35c3894405e123eb2ccdda5b80b9`
-
-Result: **SUCCESS across all 3 jobs**.
-
-Python:
-
-- **387 passed**;
-- **18 subtests passed**;
-- **2 pre-existing warnings** only;
-- `daily_pnl_helper.py`: **100%**;
-- `calculation_manifest.py`: **100%**;
-- coverage policy: **PASS**.
-
-Exact measured repository coverage:
-
-- covered lines: **2867**;
-- missing lines: **564**;
-- covered branches: **1006**;
-- missing branches: **300**;
-- statements: **3431**;
-- branches: **1306**;
-- combined coverage: **81.760607979734%**.
-
-Existing governance gates were not weakened:
-
-- minimum percent: 68.55;
-- minimum covered lines: 1523;
-- minimum covered branches: 439;
-- maximum missing lines: 591;
-- maximum missing branches: 309.
-
-## Independent third-party-style review — qualified code head
-
-Result: **PASS / no remaining BLOCKER**.
-
-Changed-file whitelist is exactly:
-
-- `journal_engine/core/calculator.py`;
-- `journal_engine/core/daily_pnl_helper.py`;
-- `tests/fixtures/golden_replay_mixed_tw_us_v1.json`;
-- `tests/test_calculation_clock_seam.py`;
-- `tests/test_deterministic_replay.py`.
-
-This handoff update adds only `to_do_update_list.md` to that final whitelist.
-
-Scope/security/privacy findings:
-
-- no `main.py` production runner integration yet;
-- no `PortfolioSnapshot.calculation_manifest` attachment;
-- no Worker route/code change;
-- no D1/schema migration;
-- no provider abstraction;
-- no Schema 3 / broker execution redesign;
-- no user email/id, free-form note, auth/API secret or raw vendor payload enters deterministic replay identity;
-- no network access in replay;
-- production default clock behavior preserved after BLOCKER fix;
-- no financial formulas or ordering contracts changed;
-- coverage policy unchanged.
-
-PR governance at qualified code head:
-
-- reviews: **0**;
-- review threads: **0**;
-- comments: **0**;
-- protected main remained exactly `1381f1780ea46b7878ce2667899fe16373eb2c28`;
-- no main drift before this handoff update.
-
-## D1d remaining execution plan
-
-1. Resolve the new final PR head created by this handoff commit.
-2. Run fresh full CI on that exact final head; CI #512 is code-head evidence only.
-3. Confirm final changed-file whitelist is the 5 D1d code/test files plus `to_do_update_list.md`.
-4. Re-check reviews, unresolved threads/comments and protected-main drift.
-5. If no BLOCKER, mark PR #166 ready and exact-head merge using the final head SHA.
-6. Verify post-main CI.
-7. Create post-D1d recovery from verified merged main.
-8. Persist merge/CI/recovery in a docs-only closeout handoff if needed.
-9. Only then activate D1e.
-
----
-
-# D1e — PLANNED / NOT STARTED
-
-D1e begins only after D1d is merged and post-main verified.
-
-Objective: attach the already-proven D1b/D1c/D1d reproducibility evidence at the smallest compatible production boundary.
-
-Planned scope:
+Subject to the authoritative read:
 
 1. add optional versioned `calculation_manifest` to `PortfolioSnapshot`;
-2. construct it at the authoritative runner boundary after effective market/FX/synthetic inputs are known;
-3. resolve the **real full engine Git SHA**, not a branch/short/test SHA;
-4. attach before final snapshot validation/upload;
-5. preserve legacy snapshots that do not contain the field;
-6. prove Worker opaque JSON round-trip and 1 MiB boundary compatibility;
-7. prove frontend remains unchanged by the additive field;
-8. fail closed on missing/ambiguous manifest-critical identity;
-9. run production smoke only if the runtime path materially changes.
+2. build manifest only after source ledger, effective market/FX state, calculator result and canonical Daily-P&L reconciliation are all known;
+3. resolve the real full runtime Git SHA — never use branch, short SHA or D1d declared fixture SHA;
+4. use D1b source/config/combined identity and D1c market/FX/provider diagnostics;
+5. attach before final snapshot validation/upload;
+6. keep legacy snapshots without manifest valid;
+7. prove Worker stores/returns the field opaquely without route/schema changes;
+8. prove 1 MiB payload policy remains safe;
+9. prove frontend behavior is unchanged by the additive field;
+10. fail closed on missing/ambiguous manifest-critical identity rather than uploading misleading evidence.
 
-No D1 migration or Worker API change unless compatibility tests prove opaque snapshot storage insufficient.
-
-Explicit non-goals remain:
+## D1e explicit non-goals
 
 - no Schema 3;
-- no first-class broker execution redesign;
+- no D1 migration unless compatibility evidence proves it unavoidable;
+- no Worker API redesign;
 - no provider abstraction;
+- no broker-execution redesign;
 - no canonical lot-ledger expansion;
-- no unrelated frontend/UX work.
+- no unrelated frontend/UX changes.
+
+## D1e verification requirements
+
+- model backward compatibility;
+- exact manifest version/shape validation;
+- real full-Git-SHA resolution/fail-closed tests;
+- source/market/FX/config/as-of identity composition tests;
+- provider diagnostics remain non-hashed as designed;
+- Worker opaque round-trip test;
+- Worker payload-size boundary test;
+- frontend additive-field compatibility test;
+- focused/full CI;
+- independent semantic/privacy/scope review;
+- exact-head merge → post-main CI → recovery → handoff closeout;
+- production smoke only if runtime behavior materially changes and smoke can be performed safely.
 
 ---
 
@@ -557,11 +414,11 @@ Explicit non-goals remain:
 - [x] D1a evidence merged/post-main/recovery complete.
 - [x] D1b source/config/engine identity merged/post-main/recovery complete.
 - [x] D1c effective market/FX/synthetic provenance merged/post-main/recovery complete.
-- [ ] D1d deterministic offline replay merged/post-main/recovery complete. **Code-head qualified; merge pending.**
+- [x] D1d deterministic offline replay merged/post-main/recovery complete.
 - [ ] D1e compatible production attachment proven.
-- [x] D1d proves change-cause distinction among source / market / FX / engine / runtime config / synthetic valuation at replay-contract level.
+- [x] change-cause distinction proven at replay-contract level.
 - [ ] independent final Gate-D review finds no unresolved reproducibility blocker after D1e.
-- [ ] final exact-head merge/post-main verification complete.
+- [ ] final Gate-D exact-head merge/post-main verification complete.
 - [ ] post-Gate-D recovery created.
 - [ ] handoff updated before post-Gate-D architecture review.
 
@@ -574,13 +431,13 @@ Formal evidence: `docs/engineering/GATE_C_FINAL_CLOSEOUT.md`.
 Key chain:
 
 - C5b audit #3215: CLEAR, 2 users / 168 records, zero prefix/duplicate findings;
-- C6a PR #154: blocking split-adjusted source-prefix gate before calculator/upload; CI #462/#463; prod smoke #3216 succeeded 2/0;
+- C6a PR #154: blocking split-adjusted source-prefix gate; CI #462/#463; prod smoke #3216 succeeded 2/0;
 - C3-rem PR #156: explicit `Sequence` vs unsupported `_sequence`; CI #468/#469;
 - final PR #158 merge `ef9f5a1740b3c8b7c7fc726f5f1f024bcfaad311`; post-main CI #474;
 - recovery `backup-post-gate-c-ef9f5a1`;
 - Gate-D handoff PR #159 merge `41338e598f027a502a81c7d08eaec3c2f4069a04`; CI #476.
 
-C6b decision remains locked: retain calculator `CLAMP` as downstream compatibility/defense-in-depth. Source prefix preflight remains authoritative; reopen only under documented Gate-C conditions.
+C6b decision remains locked: retain calculator `CLAMP` as downstream compatibility/defense-in-depth. Source-prefix preflight remains authoritative.
 
 ---
 
@@ -588,34 +445,35 @@ C6b decision remains locked: retain calculator `CLAMP` as downstream compatibili
 
 - **D-C-01 LOCKED:** split-adjusted `Date -> id` prefix integrity is the Schema-2 source gate.
 - **D-C-02 LOCKED:** record id is deterministic validity order, not broker chronology.
-- **D-C-06 LOCKED:** retain CLAMP under the protected Schema-2 path absent documented reopen conditions.
+- **D-C-06 LOCKED:** retain CLAMP under protected Schema-2 path absent documented reopen conditions.
 - **D-C-07 LOCKED:** free-form note is not chronology.
 - **D-C-08 LOCKED:** `Sequence`/`Timestamp` are recognized contracts; `_sequence` is not.
-- **D-D-01 SATISFIED:** D1a audited evidence/storage boundaries before migrations; no D1/Worker migration required.
-- **D-D-02 LOCKED:** deterministic identity is separate from volatile run metadata; `calculation_as_of` deterministic, `calculated_at` not.
-- **D-D-03 LOCKED:** hash effective market/FX inputs separately from provider diagnostics.
-- **D-D-04 QUALIFIED, NOT YET IMPLEMENTED:** optional snapshot manifest is the preferred D1e production boundary.
-- **D-D-05 LOCKED BY D1b:** source identity uses exact versioned canonical JSON + SHA-256; exact ids never round-trip through binary float.
-- **D-D-06 LOCKED BY D1b:** production engine identity requires exact full lowercase Git SHA; branch/short/test SHA is not production attestation.
-- **D-D-07 LOCKED BY D1c:** provider diagnostics remain separate from calculation-effective numeric digests.
-- **D-D-08 LOCKED BY D1c:** ambiguous/non-scalar/non-finite market, FX or synthetic provenance fails closed.
-- **D-D-09 QUALIFIED BY D1d CODE HEAD:** deterministic replay uses an explicit timezone-aware calculation clock/as-of seam.
-- **D-D-10 QUALIFIED BY D1d CODE HEAD:** replay clock injection must not alter default production wall-clock semantics.
-- **D-D-11 QUALIFIED BY D1d CODE HEAD:** golden replay engine SHA is a declared test input only; D1e must resolve real runtime full Git SHA.
+- **D-D-01 SATISFIED:** D1a found no Gate-D need for D1/Worker migration.
+- **D-D-02 LOCKED:** deterministic identity excludes volatile run metadata.
+- **D-D-03 LOCKED:** effective market/FX identity is separate from provider diagnostics.
+- **D-D-04 ACTIVE FOR D1e:** optional snapshot manifest remains the preferred production boundary pending compatibility proof.
+- **D-D-05 LOCKED BY D1b:** exact canonical source identity; no binary-float record-id path.
+- **D-D-06 LOCKED BY D1b:** production engine identity requires exact full lowercase Git SHA.
+- **D-D-07 LOCKED BY D1c:** provider diagnostics are separate from numeric digests.
+- **D-D-08 LOCKED BY D1c:** ambiguous market/FX/synthetic provenance fails closed.
+- **D-D-09 LOCKED BY D1d:** deterministic replay uses explicit timezone-aware calculation clock/as-of.
+- **D-D-10 LOCKED BY D1d:** replay clock injection must not change default production wall-clock semantics.
+- **D-D-11 LOCKED BY D1d:** declared fixture engine SHA is test input only, not production attestation.
 
 ---
 
 # Root Cause / Risk Log
 
-- **RC-D-01 PARTIALLY FIXED:** source/config/engine identity (D1b), effective market/FX/synthetic identity (D1c), and deterministic offline replay (D1d code head) exist; production attachment remains D1e.
-- **RC-D-02 CODE-HEAD FIXED / MERGE PENDING:** wall-clock ambiguity has a narrow explicit replay seam while production default call-site semantics remain preserved.
-- **RC-D-03 CLOSED:** effective market/FX/synthetic state has deterministic identity and separate provider diagnostics.
-- **RC-D-04 CODE-HEAD FIXED / MERGE PENDING:** previous shallow golden regression is supplemented by a versioned mixed TW/US replay with split, dividend, FX, synthetic provenance, Daily-P&L, TWR/XIRR and exact identity assertions.
-- **RC-D-05 CLOSED:** record-id canonicalization does not risk >2^53 float precision loss.
-- **RC-D-06 CLOSED:** one-shot iterables are materialized once.
-- **RC-D-07 CLOSED:** vector-like pandas provenance values are rejected before missingness conversion.
-- **RC-D-08 CLOSED:** coverage regressions are resolved by tests, not weaker gates.
-- **RC-D-09 CODE-HEAD FIXED / MERGE PENDING:** fixture engine identity is explicitly distinguished from production engine attestation.
+- **RC-D-01 PARTIALLY FIXED:** identity primitives/provenance/replay are complete; production attachment remains D1e.
+- **RC-D-02 CLOSED:** wall-clock replay ambiguity fixed with explicit seam while production defaults remain compatible.
+- **RC-D-03 CLOSED:** effective market/FX/synthetic provenance identity complete.
+- **RC-D-04 CLOSED:** mixed TW/US deterministic golden replay now covers split, dividend, FX, synthetic provenance, Daily-P&L, TWR/XIRR and exact digests.
+- **RC-D-05 CLOSED:** >2^53 record-id precision risk fixed.
+- **RC-D-06 CLOSED:** one-shot iterable consumption fixed.
+- **RC-D-07 CLOSED:** vector-like provenance missingness ambiguity fixed.
+- **RC-D-08 CLOSED:** coverage regressions resolved by tests, not weaker gates.
+- **RC-D-09 CLOSED:** fixture engine identity cannot be confused with production attestation.
+- **RC-D-10 OPEN FOR D1e:** production snapshot currently carries no reproducibility manifest; D1e must attach it compatibly or prove a different minimal boundary is necessary.
 
 ---
 
@@ -634,20 +492,16 @@ C6b decision remains locked: retain calculator `CLAMP` as downstream compatibili
 
 # Immediate Next Actions
 
-## Finish D1d PR #166
+## Finish D1d docs-only closeout
 
-1. Resolve the exact head after this handoff commit.
-2. Run fresh full CI on that exact head.
-3. Confirm final whitelist = five D1d code/test/fixture files + `to_do_update_list.md` only.
-4. Re-check reviews, unresolved threads/comments and protected-main drift.
-5. If no BLOCKER, mark PR #166 ready and exact-head merge.
-6. Verify post-main CI.
-7. Create post-D1d recovery.
-8. Persist D1d merge/CI/recovery closeout evidence.
+1. Open a docs-only PR from `pr-gate-d-d1d-closeout`.
+2. Verify single-file whitelist, exact-head CI, reviews/threads/comments and main drift.
+3. Exact-head merge and verify post-main CI.
 
 ## Then start D1e
 
-1. Create fresh pre-D1e recovery from verified stable main and one scoped D1e branch.
-2. Re-read merged main models, authoritative runner, Worker snapshot storage/size limits, frontend snapshot consumers and D1b/D1c/D1d contracts.
-3. Propose the smallest additive `calculation_manifest` attachment only after compatibility evidence is re-confirmed.
-4. Do not introduce D1/schema/Worker API changes unless actual compatibility tests prove they are required.
+1. Create fresh pre-D1e recovery from verified closeout main and one scoped D1e branch.
+2. Perform the Required Authoritative Read above on merged main.
+3. Produce the smallest additive implementation proposal based on actual model/Worker/frontend compatibility evidence.
+4. Implement in small batches with existing production behavior preserved.
+5. Do not introduce D1/schema/Worker API changes unless tests prove they are required.
