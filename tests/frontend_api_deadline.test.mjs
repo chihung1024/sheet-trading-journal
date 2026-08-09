@@ -376,7 +376,11 @@ test('portfolio store routes all API traffic and body parsing through the bounde
     assert.match(source, /fetchWithAuth\('\/api\/trigger-update',\s*\{\s*method:\s*'POST'/s);
     assert.match(source, /'Idempotency-Key':\s*idempotencyKey/);
     assert.match(fetchWithAuthBlock, /if \(refreshed\) return fetchWithAuth\(endpoint, options, false\)/);
-    assert.match(source, /if \(isExplicitServerRejection\(contextualError\)\) clearPendingCalculationRequest\(\)/);
+    assert.match(
+        source,
+        /if \(isExplicitServerRejection\(contextualError\)\) \{[\s\S]*?clearPendingCalculationRequest\(\{ key: idempotencyKey \}\);[\s\S]*?\}/,
+    );
+    assert.doesNotMatch(source, /clearPendingCalculationRequest\(\)/);
 
     const failureHandlerStart = source.indexOf('const recordMutationFailure');
     const failureHandlerEnd = source.indexOf('const addRecord = async', failureHandlerStart);
