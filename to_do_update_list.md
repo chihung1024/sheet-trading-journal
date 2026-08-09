@@ -14,14 +14,15 @@ Before changing code, a future AI or maintainer must:
 
 1. Read this file first.
 2. Read `docs/engineering/PRODUCT_INTEGRITY_EXECUTION.md` for the current product-integrity contract.
-3. Re-read current `main`, the active PR head, CI status, review threads, and relevant recovery refs instead of trusting stale chat context.
-4. Continue only the **current active gate** unless the user explicitly changes priority.
-5. Use the sequence: **pre-change recovery → scoped branch/PR → tests/CI → independent diff review → review/thread check → main-drift check → exact-head merge → post-main CI → post-change recovery**.
-6. Do not weaken validation, market/FX integrity, financial semantics, mutation ambiguity handling, recovery gates, or coverage merely to make CI pass.
-7. Do not introduce Schema 3 inside Gates A–D unless a later fresh architecture review explicitly authorizes it.
-8. Do not deploy the production Worker merely because repository source changed. Production activation remains separately governed.
-9. Do not reopen the historical D3D governance investigation during ordinary feature work unless production activation is explicitly requested.
-10. Keep this file current. A completed step without a corresponding update here is considered an incomplete handoff.
+3. Read `docs/engineering/GATE_C_TRANSACTION_INTEGRITY_AUDIT.md` while Gate C is active.
+4. Re-read current `main`, the active PR head, CI status, review threads, and relevant recovery refs instead of trusting stale chat context.
+5. Continue only the **current active gate** unless the user explicitly changes priority.
+6. Use the sequence: **pre-change recovery → scoped branch/PR → tests/CI → independent diff review → review/thread check → main-drift check → exact-head merge → post-main CI → post-change recovery**.
+7. Do not weaken validation, market/FX integrity, financial semantics, mutation ambiguity handling, recovery gates, or coverage merely to make CI pass.
+8. Do not introduce Schema 3 inside Gates A–D unless a later fresh post-Gate-D architecture review explicitly authorizes it.
+9. Do not deploy the production Worker merely because repository source changed. Production activation remains separately governed.
+10. Do not reopen the historical D3D governance investigation during ordinary feature work unless production activation is explicitly requested.
+11. Keep this file current. A completed step without a corresponding update here is considered an incomplete handoff.
 
 ---
 
@@ -38,11 +39,13 @@ Before changing code, a future AI or maintainer must:
 ## Current active work
 
 - **Active phase:** Gate C — Schema-2 transaction integrity preflight
+- Current sub-phase: **C2 — deterministic prefix-integrity module/tests; no strict-policy switch yet**
 - Work branch: `pr-gate-c-transaction-integrity-preflight`
 - Qualification base / exact Gate-B merged main: `03242d00082067333cf77ffa424094b8936b406c`
 - Pre-Gate-C recovery: `backup-pre-gate-c-03242d0`
 - Post-Gate-B recovery: `backup-post-gate-b-03242d0`
-- Gate C implementation PR: **not opened yet**; first task is audit/evidence before enforcement.
+- Gate C implementation PR: **not opened yet**; C1 evidence is now written, C2 implementation/tests come next.
+- Gate C C1 audit evidence: `docs/engineering/GATE_C_TRANSACTION_INTEGRITY_AUDIT.md`.
 
 ---
 
@@ -120,13 +123,13 @@ Legacy GitHub-managed Pages can show inconsistent/stuck states while the authori
 
 # 3. ACTIVE — Gate C / Schema-2 transaction integrity preflight
 
-Status: **🟠 ACTIVE — audit first, then enforce**
+Status: **🟠 ACTIVE — C1 completed, C2 next**
 
 ## Goal
 
 Audit real Schema-2 transaction integrity end-to-end and establish deterministic, fail-closed preflight behavior without changing the D1 schema in the initial slice.
 
-The first Gate C work is **evidence gathering**, not an immediate behavior switch.
+The first Gate C work is evidence + preflight. Do **not** switch calculator policy to strict ERROR until production data has been audited.
 
 ## Authorized scope
 
@@ -158,33 +161,50 @@ Not authorized in the first Gate C slice:
 
 - [x] Create pre-Gate-C recovery from exact Gate-B merged main.
 - [x] Create Gate C work branch.
-- [ ] Re-read `main.py` transaction normalization and stable sorting.
-- [ ] Re-read calculator lot/FIFO ordering and oversell policy.
-- [ ] Re-read transaction analyzer ordering and fee/tax treatment.
-- [ ] Re-read Daily-P&L reconciliation ordering logic.
-- [ ] Inventory every code path that can consume records for holdings / realized P&L / daily P&L / metrics.
-- [ ] Write an evidence table showing where ordering semantics agree or diverge.
+- [x] Re-read `main.py` transaction normalization and stable sorting.
+- [x] Re-read calculator lot/FIFO ordering and oversell policy.
+- [x] Re-read transaction analyzer ordering and fee/tax treatment.
+- [x] Re-read Daily-P&L reconciliation ordering logic.
+- [x] Inventory every code path that consumes records for holdings / realized P&L / daily P&L / metrics.
+- [x] Write evidence table showing where ordering semantics agree or diverge.
+- [x] Persist audit evidence in `docs/engineering/GATE_C_TRANSACTION_INTEGRITY_AUDIT.md`.
+
+#### C1 findings that future work must preserve
+
+1. `prepare_transactions()` provides deterministic Schema-2 source order `Date -> id` and does not create `Timestamp`/`Sequence` or parse `note`.
+2. Production calculator effectively processes same-day rows as `BUY -> DIV -> SELL`, stable by source id within each type, because no first-class Timestamp/Sequence is supplied.
+3. Canonical Daily-P&L uses the same effective type-priority ordering and independently clamps oversells; successful reconciliation therefore does **not** prove source-ledger validity.
+4. `validate_holdings_consistency()` checks only final aggregate `BUY - SELL`; it cannot detect a negative intermediate prefix.
+5. Prefix validation must run on the independent **split-adjusted** ledger; raw historical quantities may use different pre/post-split share units.
+6. Schema-2 `Date -> id` is acceptable as a deterministic **ledger validity order**, but must not be described as guaranteed broker execution chronology.
+7. Existing `test_sequence_stabilizes_same_day_order()` supplies `_sequence`, while calculator reads only `Timestamp` / `Sequence`; the test currently passes because of BUY-before-SELL priority, not because `_sequence` is honored.
+8. `TransactionAnalyzer` has unsafe zero-on-exception semantics but no live runtime constructor/call was found; do not broaden into a rewrite unless an authoritative consumer is discovered.
 
 ### C2 — Deterministic prefix-integrity contract
 
-- [ ] Define canonical audit order: user → symbol → transaction date → stable sequence.
-- [ ] Define tolerance for floating quantity residue.
-- [ ] Validate cumulative `BUY - SELL` never becomes negative beyond tolerance.
-- [ ] Repeat prefix validation for every active tag group.
-- [ ] Make failure diagnostics identify user/symbol/date/record id/prefix quantity without leaking secrets.
-- [ ] Add unit tests for exact-zero, fractional, round-trip, oversell, and tolerance-edge cases.
+- [x] Define canonical audit order: user/scope → symbol → `Date` → positive integer record `id` ascending.
+- [x] Define provisional tolerance formula: `max(1e-9, cumulative_abs_buy_qty * 1e-12)`; production audit must qualify it before strict enforcement.
+- [x] Define validation rule: cumulative adjusted `BUY - SELL` must never fall below negative tolerance; DIV does not change quantity.
+- [x] Define active-tag replay: same comma/semicolon parsing semantics as calculator; a multi-tag row participates independently in each named group.
+- [x] Define non-secret diagnostic contract: masked user, scope, symbol, date, record id, type, requested adjusted qty, pre/post qty, tolerance.
+- [ ] Implement standalone Schema-2 ledger-integrity module over the split-adjusted DataFrame.
+- [ ] Add unit tests for exact-zero, fractional, round-trip, first-row SELL, partial oversell, tolerance edge, split-adjusted quantities, multi-tag scopes, and deterministic id tie-breaking.
+- [ ] Integrate preflight before `PortfolioCalculator` execution without changing production oversell policy yet.
 
 ### C3 — Same-day ordering audit
 
-- [ ] Verify current behavior when `Timestamp` / `Sequence` columns are absent.
-- [ ] Verify whether BUY/DIV/SELL priority can reorder same-day broker execution sequence.
-- [ ] Add regression fixtures for buy → sell → rebuy → sell on the same date.
-- [ ] Determine whether Schema-2 `id` can be safely used as a stable fallback sequence for current records.
+- [x] Verify behavior when `Timestamp` / `Sequence` columns are absent: calculator/reconciler use BUY/DIV/SELL priority.
+- [x] Verify type priority can reorder same-day source `id` sequence across BUY and SELL rows.
+- [x] Determine Schema-2 `id` can serve as a deterministic ledger-validity fallback, but not as proof of broker chronology.
+- [ ] Add explicit regression fixtures for buy → sell → rebuy → sell on the same date.
+- [ ] Add a test showing source-prefix audit uses Date/id rather than calculator type priority.
+- [ ] Correct/supplement misleading `_sequence` test so it tests the actual supported `Sequence` contract or explicitly tests priority behavior.
 - [ ] Do **not** parse free-form `note` into financial ordering unless a separately reviewed structured contract exists.
 
 ### C4 — External provenance / duplicate audit
 
-- [ ] Inventory current `note` conventions: `import_key`, IBKR order id, trade id, timestamps.
+- [x] Repository search confirms `import_key` currently appears only in documentation/handoff, not as a runtime-enforced identity field.
+- [ ] Inventory actual production `note` conventions: `import_key`, IBKR order id, trade id, timestamps.
 - [ ] Detect structured duplicate provenance conservatively without making `note` a calculation dependency.
 - [ ] Distinguish order-level vs fill-level identity limitations.
 - [ ] Document partially-filled-order risk and cross-date fill risk.
@@ -193,29 +213,40 @@ Not authorized in the first Gate C slice:
 ### C5 — Production-data qualification
 
 - [ ] Use current production records via the existing authorized read path.
-- [ ] Audit all users for prefix violations.
+- [ ] Audit all users for prefix violations using split-adjusted Date/id order.
 - [ ] Audit all active tag groups for prefix violations.
-- [ ] Separate explained legacy floating residue from true oversell/data-integrity errors.
+- [ ] Record tolerance-residue observations separately from real negative prefixes.
+- [ ] Separate explained legacy/import ordering issues, split-unit issues, genuine unsupported short/oversell, and unknown cases.
 - [ ] Record exact counts and anonymized diagnostics.
 - [ ] Do not switch production oversell policy if unexplained violations remain.
 
 ### C6 — Enforcement proposal
 
 - [ ] If production audit is clean, propose calculator oversell policy change from compatibility `CLAMP` to fail-closed `ERROR`.
-- [ ] Ensure secondary transaction-analysis integrity failures cannot collapse into valid-looking zero snapshots.
-- [ ] Add regression/golden evidence before opening enforcement PR.
-- [ ] Open a scoped Gate-C implementation PR only after audit evidence is written.
+- [ ] Ensure secondary transaction-analysis integrity failures cannot collapse into valid-looking zero snapshots if that path is made authoritative.
+- [ ] Add regression/golden evidence before strict enforcement.
+- [ ] Open a scoped Gate-C implementation PR only after audit evidence and read-only production audit are written.
 - [ ] Exact-head CI / independent diff review / review-thread check / main-drift check.
 - [ ] Exact-head merge.
 - [ ] Post-main CI.
 - [ ] Post-Gate-C recovery.
 - [ ] Update this file and activate Gate D.
 
+## Gate C evidence matrix — current runtime
+
+| Path | Effective order | Oversell | Failure behavior | Role |
+|---|---|---|---|---|
+| `prepare_transactions` | `Date -> id` | none | raises | source normalization |
+| `PortfolioCalculator` | same-day `Timestamp? -> Sequence? -> BUY/DIV/SELL priority`; production effectively priority + stable id | CLAMP default / ERROR optional | propagates | authoritative holdings/FIFO/realized/TWR/XIRR |
+| canonical Daily-P&L | `Date -> Timestamp? -> Sequence? -> priority -> id` | clamp | raises on reconciliation failure | authoritative published Daily-P&L |
+| holdings validator | aggregate only | cannot see prefix | false + ERROR blocks upload | final quantity safeguard |
+| split ledger | preserves source rows while split-adjusting | no prefix logic | raises/fail closed | independent unit-normalized ledger |
+| `TransactionAnalyzer` | `Date -> _sequence` | clamp/warn | catches exception and returns zeros | appears legacy/non-runtime |
+
 ## Known Gate C architecture risks
 
 - Schema 2 has no first-class `executed_at`, `sequence`, `source`, or immutable external trade id.
 - Historical same-day execution timestamps stored only in `note` are not calculation ordering fields.
-- Current transaction preparation historically sorted by Date and then id if available, while calculator code can apply BUY/DIV/SELL priority when no Timestamp/Sequence is supplied.
 - IBKR `order_id` may contain multiple fills and may span sessions/dates.
 - Current calculation paths normalize Commission/Tax with `abs()`, so genuinely net-negative commission/rebate cannot be represented faithfully.
 - Futures/derivatives require multiplier/asset-class semantics and must not be silently treated as ordinary stock records.
@@ -432,23 +463,36 @@ For each material step, update the relevant phase section and record at minimum:
 - Recovery: `backup-pre-gate-c-03242d0`.
 - Work branch: `pr-gate-c-transaction-integrity-preflight`.
 - State: audit phase started; no behavior/schema change yet.
-- **Exact next action:** inspect all transaction-consumer ordering/oversell paths and produce an evidence table before implementing enforcement.
+
+### 2026-08-09 — Gate C C1 runtime audit completed
+
+- Branch: `pr-gate-c-transaction-integrity-preflight`.
+- Audit evidence added: `docs/engineering/GATE_C_TRANSACTION_INTEGRITY_AUDIT.md`.
+- Audit-evidence commit: `2e535982e460045fb8235d99307c9ba1e31ffa2e`.
+- Consumer inventory completed across runner, calculator, canonical Daily-P&L, validator, split ledger, transaction analyzer, calendar support, and downstream metrics.
+- Key finding: calculator + canonical reconciler both clamp oversells and share BUY/DIV/SELL same-day priority, so their agreement cannot certify source-prefix validity.
+- Key finding: current aggregate holdings validator does not check intermediate prefixes.
+- Key finding: prefix audit must use split-adjusted quantities and Schema-2 `Date -> id` ledger order.
+- Key finding: `_sequence` regression test does not exercise calculator sequence support.
+- Decision: C1 complete. Do not switch `CLAMP -> ERROR` yet.
+- **Exact next action:** implement standalone C2 prefix-integrity module + targeted tests, integrate it before calculator execution, then run read-only production qualification.
 
 ---
 
 # 11. Immediate next action for the next AI
 
-**Gate C is active. Do not start Gate D or Schema 3.**
+**Gate C / C2 is active. Do not start Gate D, Schema 3, or strict oversell enforcement.**
 
 Perform these steps in order:
 
-1. Read `main.py` transaction preparation and sorting.
-2. Read `journal_engine/core/calculator.py` transaction ordering, FIFO, and oversell handling.
-3. Read transaction analyzer and daily-P&L reconciler ordering/lot behavior.
-4. Search the repository for every records/transaction consumer affecting holdings, realized P&L, daily P&L, or portfolio metrics.
-5. Build a concise divergence/evidence matrix: input columns, sort keys, tie-breaker, oversell policy, commission/tax semantics, failure behavior.
-6. Define the minimal Schema-2 prefix-integrity preflight contract.
-7. Add tests only after the contract is explicit.
-8. Update this file with the audit findings before opening an implementation PR.
+1. Implement a small standalone ledger-integrity module that accepts the independent split-adjusted DataFrame.
+2. Require positive integer `id`, normalize `Date`, and replay each symbol in stable `Date -> id` order.
+3. Validate `all` plus every active tag group using the calculator's comma/semicolon tag semantics.
+4. Use provisional tolerance `max(1e-9, cumulative_abs_buy_qty * 1e-12)` and return/raise structured deterministic diagnostics on a negative prefix.
+5. Add focused tests for exact closeout, fractional quantities, first-row SELL, partial oversell, tolerance edge, split-adjusted quantity, multi-tag scope, same-day round trip, and id tie-breaking.
+6. Integrate the preflight **after split-adjusted validation ledger construction and before PortfolioCalculator runs**; retain existing post-calculation split-ledger parity.
+7. Do not change the calculator's default `CLAMP` yet.
+8. Run the full local/PR test suite after C2 implementation.
+9. Update this file with exact commit/test results before beginning C5 production audit.
 
 That sequence is the authoritative continuation unless the user explicitly changes priorities.
