@@ -1,8 +1,13 @@
+import { PENDING_CALCULATION_V2_STORAGE_PREFIX } from './projectStorage.js';
+
 export const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
 export const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
+export const CALCULATION_REQUEST_V2_VERSION = 2;
 
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._~-]{16,128}$/;
 const JOB_ID_RE = /^job_[A-Za-z0-9_-]{22}$/;
+const LIVE_STATE = 'live';
+const CLEARED_STATE = 'cleared';
 
 export function normalizeCalculationOwner(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -28,8 +33,97 @@ export function validatePendingCalculationRequest(value, owner, options = {}) {
   };
 }
 
-export function readPendingCalculationRequest(storage, owner, options = {}) {
-  if (!storage || typeof storage.getItem !== 'function') return null;
+const generationStorageKey = ({ createdAt, key }, state) => (
+  `${PENDING_CALCULATION_V2_STORAGE_PREFIX}${state}.${createdAt}.${key}`
+);
+
+function requireGenerationIdentity(pending) {
+  if (
+    !pending
+    || !Number.isFinite(pending.createdAt)
+    || pending.createdAt <= 0
+    || typeof pending.key !== 'string'
+    || !IDEMPOTENCY_KEY_RE.test(pending.key)
+  ) {
+    throw new TypeError('Pending calculation generation is invalid');
+  }
+}
+
+export function getPendingCalculationGenerationStorageKey(pending) {
+  requireGenerationIdentity(pending);
+  return generationStorageKey(pending, LIVE_STATE);
+}
+
+export function getPendingCalculationTombstoneStorageKey(pending) {
+  requireGenerationIdentity(pending);
+  return generationStorageKey(pending, CLEARED_STATE);
+}
+
+function validateGenerationRecord(value, owner, storageKey, options = {}) {
+  if (value?.version !== CALCULATION_REQUEST_V2_VERSION) return null;
+  if (value?.state !== LIVE_STATE && value?.state !== CLEARED_STATE) return null;
+
+  const base = validatePendingCalculationRequest(value, owner, options);
+  if (!base || generationStorageKey(base, value.state) !== storageKey) return null;
+
+  const now = Number.isFinite(options.now) ? options.now : Date.now();
+  if (value.state === LIVE_STATE) {
+    if (value.clearedAt !== undefined && value.clearedAt !== null) return null;
+    return {
+      version: CALCULATION_REQUEST_V2_VERSION,
+      state: LIVE_STATE,
+      ...base,
+      clearedAt: null,
+    };
+  }
+
+  if (
+    !Number.isFinite(value.clearedAt)
+    || value.clearedAt < base.createdAt
+    || value.clearedAt > now + 60_000
+  ) {
+    return null;
+  }
+  return {
+    version: CALCULATION_REQUEST_V2_VERSION,
+    state: CLEARED_STATE,
+    ...base,
+    clearedAt: value.clearedAt,
+  };
+}
+
+function listGenerationKeys(storage) {
+  if (!Number.isSafeInteger(storage?.length) || storage.length < 0 || typeof storage?.key !== 'function') {
+    return null;
+  }
+  const keys = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (typeof key === 'string' && key.startsWith(PENDING_CALCULATION_V2_STORAGE_PREFIX)) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function readGenerationRecords(storage, owner, options = {}) {
+  const keys = listGenerationKeys(storage);
+  if (keys === null) return { enumerable: false, records: [] };
+
+  const records = [];
+  for (const storageKey of keys) {
+    try {
+      const parsed = JSON.parse(storage.getItem(storageKey) || 'null');
+      const record = validateGenerationRecord(parsed, owner, storageKey, options);
+      if (record) records.push({ storageKey, record });
+    } catch {
+      // Malformed generation entries cannot override another generation.
+    }
+  }
+  return { enumerable: true, records };
+}
+
+function readLegacyPending(storage, owner, options = {}) {
   try {
     const parsed = JSON.parse(storage.getItem(CALCULATION_REQUEST_STORAGE_KEY) || 'null');
     return validatePendingCalculationRequest(parsed, owner, options);
@@ -38,23 +132,194 @@ export function readPendingCalculationRequest(storage, owner, options = {}) {
   }
 }
 
+const newestByCreatedAt = records => records.reduce(
+  (latest, item) => (!latest || item.record.createdAt > latest.record.createdAt ? item : latest),
+  null,
+);
+
+export function readPendingCalculationRequest(storage, owner, options = {}) {
+  if (!storage || typeof storage.getItem !== 'function') return null;
+
+  let generations;
+  try {
+    generations = readGenerationRecords(storage, owner, options);
+  } catch {
+    return null;
+  }
+
+  if (!generations.enumerable) {
+    return readLegacyPending(storage, owner, options);
+  }
+
+  const tombstones = generations.records.filter(item => item.record.state === CLEARED_STATE);
+  const newestTombstone = newestByCreatedAt(tombstones);
+  const watermark = newestTombstone?.record.createdAt ?? -Infinity;
+  const live = generations.records.filter(
+    item => item.record.state === LIVE_STATE && item.record.createdAt > watermark,
+  );
+  const newestLive = newestByCreatedAt(live);
+  if (newestLive) {
+    const { version: _version, state: _state, clearedAt: _clearedAt, ...pending } = newestLive.record;
+    return pending;
+  }
+
+  const legacy = readLegacyPending(storage, owner, options);
+  if (!legacy || legacy.createdAt <= watermark) return null;
+
+  const sameKeyGeneration = generations.records.find(item => item.record.key === legacy.key);
+  if (sameKeyGeneration) return null;
+  return legacy;
+}
+
+function findNewestLiveGenerationForKey(generations, key) {
+  return newestByCreatedAt(
+    generations.records.filter(item => item.record.state === LIVE_STATE && item.record.key === key),
+  );
+}
+
+function hasTombstoneForKey(generations, key) {
+  return generations.records.some(
+    item => item.record.state === CLEARED_STATE && item.record.key === key,
+  );
+}
+
+function bestEffortMirrorLegacy(storage, pending) {
+  try {
+    storage.setItem(CALCULATION_REQUEST_STORAGE_KEY, JSON.stringify(pending));
+  } catch {
+    // V2 is authoritative for the current application. The fixed key is only a
+    // compatibility mirror for already-open legacy tabs.
+  }
+}
+
 export function rememberPendingCalculationRequest(storage, owner, pending) {
-  if (!storage || typeof storage.setItem !== 'function') throw new Error('Calculation job storage is unavailable');
+  if (!storage || typeof storage.setItem !== 'function' || typeof storage.getItem !== 'function') {
+    throw new Error('Calculation job storage is unavailable');
+  }
+
   const normalizedOwner = normalizeCalculationOwner(owner);
-  const validated = validatePendingCalculationRequest(
+  if (!normalizedOwner || typeof pending?.key !== 'string' || !IDEMPOTENCY_KEY_RE.test(pending.key)) {
+    throw new Error('Pending calculation request is invalid');
+  }
+
+  const proposed = validatePendingCalculationRequest(
     { ...pending, owner: normalizedOwner },
     normalizedOwner,
     { now: pending.createdAt },
   );
-  if (!validated) throw new Error('Pending calculation request is invalid');
-  storage.setItem(CALCULATION_REQUEST_STORAGE_KEY, JSON.stringify(validated));
-  return validated;
+  if (!proposed) throw new Error('Pending calculation request is invalid');
+
+  let generations;
+  try {
+    generations = readGenerationRecords(storage, normalizedOwner, { now: proposed.createdAt });
+  } catch {
+    throw new Error('Calculation job storage is unavailable');
+  }
+
+  if (generations.enumerable && hasTombstoneForKey(generations, proposed.key)) {
+    throw new Error('Pending calculation generation is already cleared');
+  }
+
+  const existing = generations.enumerable
+    ? findNewestLiveGenerationForKey(generations, proposed.key)
+    : null;
+  const legacy = readLegacyPending(storage, normalizedOwner, { now: proposed.createdAt });
+  const stableCreatedAt = existing?.record.createdAt
+    ?? (legacy?.key === proposed.key ? legacy.createdAt : proposed.createdAt);
+  const stableJobId = proposed.jobId ?? existing?.record.jobId ?? null;
+  const stable = validatePendingCalculationRequest(
+    {
+      owner: normalizedOwner,
+      key: proposed.key,
+      createdAt: stableCreatedAt,
+      jobId: stableJobId,
+    },
+    normalizedOwner,
+    { now: proposed.createdAt },
+  );
+  if (!stable) throw new Error('Pending calculation request is invalid');
+
+  const generation = {
+    version: CALCULATION_REQUEST_V2_VERSION,
+    state: LIVE_STATE,
+    ...stable,
+    clearedAt: null,
+  };
+  storage.setItem(getPendingCalculationGenerationStorageKey(stable), JSON.stringify(generation));
+  bestEffortMirrorLegacy(storage, stable);
+  return stable;
 }
 
-export function clearPendingCalculationRequest(storage) {
-  if (storage && typeof storage.removeItem === 'function') {
-    storage.removeItem(CALCULATION_REQUEST_STORAGE_KEY);
+const selectorMatches = (record, selector) => (
+  (typeof selector?.key === 'string' && record.key === selector.key)
+  || (typeof selector?.jobId === 'string' && record.jobId === selector.jobId)
+);
+
+export function clearPendingCalculationRequest(storage, owner, selector, options = {}) {
+  if (!storage || typeof storage.getItem !== 'function' || typeof storage.setItem !== 'function') return 0;
+  const normalizedOwner = normalizeCalculationOwner(owner);
+  if (!normalizedOwner) return 0;
+
+  const hasKey = typeof selector?.key === 'string' && IDEMPOTENCY_KEY_RE.test(selector.key);
+  const hasJobId = typeof selector?.jobId === 'string' && JOB_ID_RE.test(selector.jobId);
+  if (!hasKey && !hasJobId) return 0;
+
+  const now = Number.isFinite(options.now) ? options.now : Date.now();
+  let generations;
+  try {
+    generations = readGenerationRecords(storage, normalizedOwner, { now });
+  } catch {
+    return 0;
   }
+
+  const existingTombstoneKeys = new Set(
+    generations.records
+      .filter(item => item.record.state === CLEARED_STATE)
+      .map(item => item.storageKey),
+  );
+  const matches = generations.enumerable
+    ? generations.records.filter(
+      item => item.record.state === LIVE_STATE && selectorMatches(item.record, selector),
+    )
+    : [];
+
+  if (matches.length === 0) {
+    const legacy = readLegacyPending(storage, normalizedOwner, { now });
+    if (legacy && selectorMatches(legacy, selector)) {
+      matches.push({
+        storageKey: getPendingCalculationGenerationStorageKey(legacy),
+        record: {
+          version: CALCULATION_REQUEST_V2_VERSION,
+          state: LIVE_STATE,
+          ...legacy,
+          clearedAt: null,
+        },
+      });
+    }
+  }
+
+  let cleared = 0;
+  for (const match of matches) {
+    const tombstoneKey = getPendingCalculationTombstoneStorageKey(match.record);
+    if (existingTombstoneKeys.has(tombstoneKey)) continue;
+    const tombstone = {
+      version: CALCULATION_REQUEST_V2_VERSION,
+      state: CLEARED_STATE,
+      owner: match.record.owner,
+      key: match.record.key,
+      createdAt: match.record.createdAt,
+      jobId: match.record.jobId,
+      clearedAt: Math.max(now, match.record.createdAt),
+    };
+    try {
+      storage.setItem(tombstoneKey, JSON.stringify(tombstone));
+      cleared += 1;
+    } catch {
+      // Never fall back to deleting the shared legacy pointer. An exact
+      // tombstone failure must not reintroduce cross-generation clobber.
+    }
+  }
+  return cleared;
 }
 
 export function isTerminalCalculationStatus(status) {
