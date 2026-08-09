@@ -6,13 +6,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 class DailyPnLHelper:
-    def __init__(self):
+    def __init__(self, now_provider=None):
         self.tz_tw = pytz.timezone('Asia/Taipei')
         self.tz_us = pytz.timezone('US/Eastern')
+        self._now_provider = now_provider
         self.STAGE_PRE_MARKET = 'PRE_MARKET'
         self.STAGE_MARKET_OPEN = 'MARKET_OPEN'
         self.STAGE_POST_MARKET = 'POST_MARKET'
         self.STAGE_CLOSED = 'CLOSED'
+
+    def _now_tw(self):
+        """Resolve Taipei time from the explicit replay clock or production wall clock."""
+        if self._now_provider is None:
+            return datetime.now(self.tz_tw)
+        value = self._now_provider()
+        if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("now_provider must return a timezone-aware datetime")
+        return value.astimezone(self.tz_tw)
 
     def get_market_stage(self):
         """
@@ -59,7 +69,7 @@ class DailyPnLHelper:
         - US: 09:30 ET (開盤) 前算昨日，09:30 ET 後算今日。
           (自動處理冬令 22:30 / 夏令 21:30 的開盤差異，確保邏輯一致)
         """
-        now_tw = datetime.now(self.tz_tw)
+        now_tw = self._now_tw()
         
         if is_tw:
             # 台股邏輯: 09:00 開盤前看昨天，開盤後看今天
@@ -87,7 +97,7 @@ class DailyPnLHelper:
 
     def is_market_open(self, market='US'):
         """判斷市場是否開盤 (含週末判斷)"""
-        now_tw = datetime.now(self.tz_tw)
+        now_tw = self._now_tw()
         if now_tw.weekday() >= 5: return False # 週末休市
         
         if market == 'US':
