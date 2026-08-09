@@ -25,6 +25,7 @@ Current-phase references:
 - `docs/engineering/PRODUCT_INTEGRITY_EXECUTION.md`
 - `docs/engineering/GATE_C_TRANSACTION_INTEGRITY_AUDIT.md`
 - `docs/engineering/GATE_C_C5B_PRODUCTION_AUDIT.md`
+- `docs/engineering/GATE_C_FINAL_CLOSEOUT.md`
 
 ---
 
@@ -45,7 +46,7 @@ Current-phase references:
 # Current Stable State
 
 - Repository: `chihung1024/sheet-trading-journal`
-- Current protected `main`: `5928c52074612444470cabc877098233b15984ea`
+- Current protected `main`: `f6a4c58225bd1dbc943f8a8f08d4d68d2bc05256`
 - D1: **Schema 2**
 - Worker source contract: release `4.07` / API `2.60` / required schema `2`
 - Gate A / P6C: **DONE**
@@ -56,9 +57,10 @@ Current-phase references:
 - Gate C / C5b production audit: **DONE / CLEAR**
 - Gate C / C6a blocking prefix enforcement: **DONE / PRODUCTION VERIFIED**
 - Gate C / C3-rem sequence regression correction: **DONE / POST-MAIN VERIFIED**
-- Calculator oversell policy remains **`CLAMP`**; no Gate-C work has changed it.
+- Gate C final independent review: **QUALIFIED TO CLOSE**
+- C6b decision: **RETAIN `CLAMP`; NO RUNTIME MIGRATION NOW**
 - Production Worker deployment was not part of Gate C.
-- Current active Batch: **Gate C / Final Closeout — independent architecture and C6b decision review**.
+- Current active Batch: **Gate C Final Closeout Docs — PR #158**.
 
 Current recovery refs:
 
@@ -66,18 +68,21 @@ Current recovery refs:
 - post-C6a: `backup-post-gate-c-c6a-e5df59e`
 - pre-C3-rem: `backup-pre-gate-c-c3-rem-4dd896e`
 - post-C3-rem: `backup-post-gate-c-c3-rem-5928c52`
+- final qualified baseline: `backup-gate-c-final-qualified-f6a4c58`
 
 ---
 
 # Architecture Notes
 
 - Schema 2 provides deterministic persisted-record validity order as `Date -> record id`, but no first-class broker execution timestamp/sequence/source/external execution id.
-- `prepare_transactions()` does not promote `note` metadata into financial ordering fields.
+- D1 `records` has no `Timestamp` or `Sequence`; migration 0002 adds calculation jobs only.
+- `prepare_transactions()` does not promote `note` metadata into financial ordering fields and sorts by `Date -> id`.
 - `PortfolioCalculator` recognizes optional columns named exactly `Timestamp` and `Sequence`; it does **not** recognize `_sequence`.
 - Without recognized `Timestamp` / `Sequence`, calculator same-day fallback priority is BUY → DIV → SELL using stable sort.
 - Calculator and canonical Daily-P&L use compatible same-day priority/clamp semantics; agreement between them cannot prove source-prefix validity.
 - Prefix validity is independently enforced on the split-adjusted source ledger **before** `PortfolioCalculator`.
 - The same split-adjusted validation ledger is reused for downstream adjusted-ledger parity.
+- Normal scheduled/manual production calculation enters through `.github/workflows/update.yml` → `tools/run_portfolio_update.py` → `main.run_update()`; no alternate authoritative production calculator path was found.
 - Existing Commission/Tax paths normalize with `abs()`; net-negative commission/rebate is not faithfully representable.
 - Futures/derivatives remain outside Stock-journal semantics because asset-class/multiplier fields do not exist.
 
@@ -95,125 +100,101 @@ Current recovery refs:
 | Gate C | C5b | production read-only audit | High | **DONE / CLEAR** | Update Portfolio Data #3215 |
 | Gate C | C6a | blocking pre-calculator prefix enforcement | High | **DONE / PROD VERIFIED** | PR #154 + CI #462/#463 + smoke #3216 + recovery |
 | Gate C | C3-rem | correct/supplement historical `_sequence` regression | Medium | **DONE / POST-MAIN VERIFIED** | PR #156 + CI #468/#469 + recovery |
-| Gate C | C6b | decide calculator `CLAMP` vs `ERROR` | Medium | **UNDER FINAL REVIEW** | explicit decision required before Gate-C close |
-| Gate C | Closeout | final independent Gate-C review + recovery + docs | High | **ACTIVE** | final evidence/decision PR |
-| Gate D | D1 | calculation manifest + deterministic golden replay | Next | TODO | replay/CI evidence |
+| Gate C | C6b | decide calculator `CLAMP` vs `ERROR` | Medium | **DECIDED — RETAIN CLAMP** | final independent review |
+| Gate C | Closeout | final independent review + docs/recovery | High | **QUALIFIED / PR #158 PENDING** | final closeout evidence |
+| Gate D | D1 | calculation manifest + deterministic golden replay | Next | **READY AFTER GATE-C CLOSEOUT MERGE** | replay/CI evidence |
 | Post-Gate-D | Architecture review | Schema 3 / canonical ledger / provider abstraction decision | Later | DEFERRED | fresh review only |
 
 ---
 
 # Current Phase
 
-**Gate C — Final Closeout Review**
+**Gate C — Final Closeout Documentation**
 
-Gate C distinguishes:
-
-- deterministic Schema-2 **ledger-validity order**: `Date -> record id`;
-- true broker execution chronology: **not guaranteed** by current schema.
-
-Gate C does not authorize Schema 3, broker-execution tables, futures support, broad broker-import redesign, provider abstraction, unrelated UX work, or production Worker deployment.
+Independent evidence review is complete. Gate C is qualified to close, but Current Phase does not advance to Gate D until PR #158 is exact-head merged, post-main CI passes, post-Gate-C recovery is created, and this handoff is synchronized.
 
 ---
 
 # Current Batch
 
-## Gate C Final Closeout — Independent architecture + C6b decision review
+## Gate C Final Closeout — PR #158
 
-Status: **ACTIVE**
+Status: **QUALIFIED / DOCUMENTATION MERGE PENDING**
 
-### Objective
+### Independent finding
 
-Re-review the completed Gate-C line as an independent third party and decide whether any unresolved blocker remains before Gate D. In particular, decide whether downstream calculator `CLAMP` should remain defense-in-depth or whether a separate C6b `ERROR` migration is necessary now.
+**No unresolved Critical / Data-Integrity / Security blocker requires another Gate-C runtime change.**
 
-### Required review questions
+Evidence is persisted in `docs/engineering/GATE_C_FINAL_CLOSEOUT.md`.
 
-1. Does production prefix enforcement now block impossible deterministic source-ledger prefixes before calculator/upload?
-2. Did production C5b qualification and C6a smoke prove current data passes the new source gate?
-3. Are calculator / Daily-P&L ordering semantics now accurately documented and regression-protected?
-4. Does keeping calculator `CLAMP` create a remaining reachable integrity hole after the independent preflight, or is it acceptable downstream defense-in-depth?
-5. Does any unresolved finding require runtime change before Gate D?
-6. Are remaining Schema-2 limitations explicitly deferred rather than silently treated as solved?
-7. Is rollback/recovery evidence complete?
+### C6b decision
 
-### Scope
+**Retain calculator `CLAMP`; do not open a `CLAMP -> ERROR` runtime PR now.**
 
-- evidence review;
-- architecture/decision review;
-- C6b decision;
-- Gate-C closeout documentation/recovery if qualified.
+`CLAMP` is downstream compatibility/defense-in-depth, not the authoritative source-integrity gate.
 
-### Explicitly out of scope unless a new BLOCKER is proven
+Why this is acceptable under current Schema 2:
 
-- Schema 3;
-- broker import redesign;
-- broker-execution table;
-- futures/derivatives;
-- note parsing;
-- provider abstraction;
-- unrelated runtime cleanup or UX work.
+1. split-adjusted source prefixes are validated first in deterministic `Date -> id` order;
+2. validation covers `all` plus every active tag scope;
+3. invalid SELL prefixes fail before calculator construction and before upload;
+4. current production Schema 2 does not supply recognized `Timestamp` / `Sequence`;
+5. fallback same-day BUY-before-SELL ordering cannot create a new negative prefix from an already-valid source ledger because it only moves inventory additions earlier and removals later;
+6. calculator/validation split-ledger row parity is checked before upload;
+7. the normal production workflow reaches calculator only through the preflighted runner;
+8. C5b production audit was clear and C6a normal production smoke passed for both users.
 
-### Completion criteria
+Changing only `CLAMP -> ERROR` is not justified as a current Gate-C requirement because the calculator also has a distinct empty-position SELL compatibility branch that is processed before partial-oversell policy handling. A true internal execution-invariant redesign would therefore be broader than a one-line policy switch and is unsupported by a demonstrated production defect.
 
-- [ ] independent Gate-C evidence review completed;
-- [ ] explicit C6b decision recorded;
-- [ ] no unresolved Critical/Data-Integrity/Security blocker, or blocker remediated in separate scoped Batch;
-- [ ] Gate-C final recovery created;
-- [ ] closeout evidence persisted through scoped docs PR;
-- [ ] exact-head CI / merge / post-main CI completed;
-- [ ] Current Phase advanced to Gate D only after all above are satisfied.
+### Mandatory C6b reopen conditions
+
+Reopen before production if any occurs:
+
+- first-class `Timestamp` / `Sequence` becomes part of Schema/ingestion and can reorder execution differently from `Date -> id`;
+- a production calculator entry point bypasses `main.run_update()` preflight;
+- shorting, futures, derivatives, negative positions or contract multipliers are supported;
+- evidence shows FIFO/position state can diverge from the validated ledger despite row parity;
+- canonical lot-ledger architecture is consolidated or execution identity becomes first-class;
+- an incident proves downstream CLAMP/empty-position behavior can mask a reachable error after preflight.
+
+### Closeout completion criteria
+
+- [x] independent C1/C2/C5a/C5b/C6a/C3-rem evidence review completed;
+- [x] current production reachability reviewed;
+- [x] C6b decision explicitly recorded;
+- [x] no unresolved Gate-C blocker found;
+- [x] final qualified recovery `backup-gate-c-final-qualified-f6a4c58` created;
+- [x] final evidence doc created;
+- [x] PR #158 opened;
+- [ ] PR #158 exact-head CI passes;
+- [ ] final changed-file/review-thread/main-drift qualification passes;
+- [ ] PR #158 exact-head merged;
+- [ ] post-main CI passes;
+- [ ] post-Gate-C recovery created at merged closeout main;
+- [ ] handoff synchronized to Gate D / D1;
 
 ---
 
 # Gate C / C3-rem — DONE / POST-MAIN VERIFIED
 
-## Root cause
+Historical `tests/test_daily_pnl.py::test_sequence_stabilizes_same_day_order()` was a false-positive regression because it used unsupported `_sequence` and data that also passed fallback BUY-before-SELL ordering.
 
-The historical `tests/test_daily_pnl.py::test_sequence_stabilizes_same_day_order()` was a false-positive regression:
+PR #156 added explicit test-only coverage proving:
 
-1. it supplied `_sequence`, but `PortfolioCalculator` recognizes only `Sequence` / `Timestamp`;
-2. its same-day BUY/SELL data was already compatible with fallback BUY → DIV → SELL;
-3. therefore the test passed even when `_sequence` was ignored;
-4. production `prepare_transactions()` does not create `Sequence` / `Timestamp`, so the historical test did not prove broker chronology in the live Schema-2 path.
+- recognized `Sequence` affects explicit same-day ordering;
+- unsupported `_sequence` does not;
+- current no-chronology fallback remains BUY → DIV → SELL;
+- no note parsing or runtime behavior was introduced.
 
-## Fix
+Evidence:
 
-PR #156 added `tests/test_calculator_sequence_contract.py` only, plus handoff documentation.
-
-The new contract proves:
-
-- prior day establishes 2 shares;
-- next day `Sequence=1` SELL 5 before `Sequence=2` BUY 3 triggers ERROR-mode oversell;
-- replacing `Sequence` with unsupported `_sequence` removes explicit chronology, so fallback BUY → SELL makes the same quantities legal and ends flat;
-- `_sequence` has no financial-ordering semantics;
-- no runtime/note/schema/Worker/D1/workflow behavior was changed.
-
-## CI history
-
-Initial test commit: `46e08683de48a1166ad0e3988669be7c1eb6472f`
-
-CI #466 / `31299704165`:
-
-- Frontend: SUCCESS
-- Worker/D1: SUCCESS
-- Python: FAILED only because the first fixture began from empty holdings.
-- observed existing behavior: SELL against completely empty position is logged/ignored before ERROR oversell handling.
-- classification: test-fixture defect, not runtime regression.
-
-Fixture correction commit: `c702878dc4d3a6ed874589c089fad010c59791b3`
-
-CI #467 / `31299780012`: **SUCCESS** across Python coverage, Frontend and Worker/D1.
-
-Final PR head: `2e1161f919dee6e0ab09531208aad8fc3c0282f4`
-
-- final changed files: `tests/test_calculator_sequence_contract.py`, `to_do_update_list.md`
-- reviews: 0
-- unresolved threads: 0
-- protected main had no drift immediately before merge
-- final exact-head CI #468 / `31299865954`: **SUCCESS**
-- independent scope review: **PASS**
-- PR #156 exact-head merge → `5928c52074612444470cabc877098233b15984ea`
-- post-main CI #469 / `31299939981`: **SUCCESS**
-- post-C3-rem recovery: `backup-post-gate-c-c3-rem-5928c52`
+- pre-recovery `backup-pre-gate-c-c3-rem-4dd896e`
+- initial CI #466 exposed a fixture defect: empty-position SELL is logged/ignored before partial-oversell policy handling
+- corrected fixture CI #467: SUCCESS
+- final exact-head CI #468 / `31299865954`: SUCCESS
+- PR #156 merge → `5928c52074612444470cabc877098233b15984ea`
+- post-main CI #469 / `31299939981`: SUCCESS
+- post-recovery `backup-post-gate-c-c3-rem-5928c52`
 
 Status: **DONE**.
 
@@ -221,35 +202,22 @@ Status: **DONE**.
 
 # Gate C / C6a — DONE / PRODUCTION VERIFIED
 
-## Purpose
+PR #154 promoted the qualified split-adjusted source prefix contract into the normal production runner before calculator/upload.
 
-Promote the production-qualified split-adjusted Schema-2 prefix-integrity contract into a blocking gate before `PortfolioCalculator` and before snapshot upload, while preserving downstream calculator `CLAMP` semantics.
+Evidence:
 
-## Evidence
-
-- pre-C6a recovery: `backup-pre-gate-c-c6a-aa19173`
-- PR #154 runtime commit `340f1604570e6866ce9dcc6016ff9c65b472b92d`
-- final PR head `4bf0c203266ff787fb0c47fcb9c64f08dd5bbbef`
+- pre-recovery `backup-pre-gate-c-c6a-aa19173`
 - final exact-head CI #462 / `31298599973`: SUCCESS
-- independent scope review: PASS
-- PR #154 merge → `e5df59e998d1de4e1b39e388effc4be700c778a3`
+- merge → `e5df59e998d1de4e1b39e388effc4be700c778a3`
 - post-main CI #463 / `31298685200`: SUCCESS
 - normal production Update Portfolio Data #3216 / `31299421865`: SUCCESS
 - 168 records / 2 users / final 2 succeeded, 0 failed
 - both users passed prefix integrity before calculator
 - both calculator/reconciliation/parity paths completed
-- both snapshots uploaded successfully
-- post-C6a recovery: `backup-post-gate-c-c6a-e5df59e`
+- both snapshots uploaded
+- post-recovery `backup-post-gate-c-c6a-e5df59e`
 - closeout docs PR #155 merge → `4dd896e338304c8892bf0a446b6e0c01ae53b056`
-- post-closeout CI #465 / `31299568841`: SUCCESS
-
-Behavior now enforced:
-
-- split-adjusted validation ledger is built before calculator construction;
-- `validate_transaction_prefix_integrity()` executes before calculator;
-- prefix failure blocks calculator and upload;
-- same validation ledger is reused for downstream parity;
-- calculator `CLAMP` remains unchanged.
+- post-closeout CI #465: SUCCESS
 
 Status: **DONE**.
 
@@ -257,9 +225,8 @@ Status: **DONE**.
 
 # Gate C / C5b — DONE / CLEAR
 
-- Update Portfolio Data #3215 / run `31298163263`
-- audited SHA `5942f67dddec2a6b6406221067dea210cf6104c0`
-- mode `read_only`
+Update Portfolio Data #3215 / run `31298163263`:
+
 - qualification `clear`
 - 2 users / 168 rows / 5 scopes / 89 symbol-scopes
 - all prefix violation counts: 0
@@ -268,17 +235,16 @@ Status: **DONE**.
 - repeated order-id groups/rows: 0
 - normal calculation/upload skipped
 - calculation-job callbacks skipped
-- evidence persisted in `docs/engineering/GATE_C_C5B_PRODUCTION_AUDIT.md`
-- evidence PR #153 merged.
+
+Evidence: `docs/engineering/GATE_C_C5B_PRODUCTION_AUDIT.md`.
 
 ---
 
-# Prior Completed Work
+# Earlier Completed Work
 
 ## Gate A / P6C
 
-- PR #148 final head `80d417c125797020fab1b6be401084049f2e25e3`
-- merge `f3c55f4cd322c35ca163e1330f7b1e7bc14580bf`
+- PR #148 merge `f3c55f4cd322c35ca163e1330f7b1e7bc14580bf`
 - final PR CI #429 SUCCESS
 - post-main CI #430 SUCCESS
 - production smoke #3213 / `31295494999`: SUCCESS; 2 users / 0 failed
@@ -286,8 +252,7 @@ Status: **DONE**.
 
 ## Gate B / P5C3B
 
-- PR #149 final head `439e9ed39647ccd5885a2cc02a6850712c30708a`
-- merge `03242d00082067333cf77ffa424094b8936b406c`
+- PR #149 merge `03242d00082067333cf77ffa424094b8936b406c`
 - final CI #433 SUCCESS
 - post-main CI #434 SUCCESS
 - recovery `backup-post-gate-b-03242d0`
@@ -295,49 +260,21 @@ Status: **DONE**.
 
 ## Gate C / C1
 
-Key findings:
-
-1. persisted source order is deterministic `Date -> id`;
-2. calculator fallback same-day effective order is BUY→DIV→SELL with default CLAMP when no Timestamp/Sequence;
-3. canonical Daily-P&L uses compatible priority/clamp semantics;
-4. aggregate holdings validation does not validate intermediate prefixes;
-5. split-adjusted ledger is required for source-prefix validation;
-6. record `id` is validity-order tie-breaker, not broker-time proof;
-7. historical `_sequence` regression did not prove current ingestion supplies `Sequence`;
-8. legacy TransactionAnalyzer zero-on-exception is unsafe if ever made authoritative.
+Established that final holdings plus calculator/reconciler agreement cannot certify every persisted source prefix; deterministic `Date -> id` source validity needed an independent gate.
 
 ## Gate C / C2
 
-Module: `journal_engine/core/ledger_integrity.py`
-
-Contract:
-
-- positive unique record id;
-- stable `Date -> id` replay;
-- BUY adds / SELL subtracts / DIV no quantity effect;
-- `all` + active comma/semicolon tag scopes;
-- tolerance `max(1e-9, cumulative_abs_buy_qty * 1e-12)`;
-- fail-closed input/diagnostic behavior.
-
-Qualification:
-
-- CI #438 / `31296710938`: SUCCESS
-- temporary enforcement candidate CI #441 / `31296798001`: SUCCESS
-- candidate deliberately removed until production C5b qualification.
+`journal_engine/core/ledger_integrity.py` added deterministic split-adjusted source-prefix validation for `all` + active tag scopes. CI #438 passed.
 
 ## Gate C / C5a
 
-- audit infrastructure PR #150 merged at `24fd65ca01738604a1eaa64a73673483a7fed79e`
-- final exact-head CI #455: SUCCESS
-- post-main CI #456: SUCCESS
-- recovery `backup-post-gate-c-audit-infra-24fd65c`
-- privacy review fixed public-detail leakage and cross-user duplicate false-positive risk.
+Read-only audit infrastructure PR #150 merged; privacy review fixed public-detail leakage and cross-user duplicate false positives; final CI #455 and post-main CI #456 passed; recovery `backup-post-gate-c-audit-infra-24fd65c`.
 
 ---
 
 # Decision Log
 
-## D-C-01 — Validate deterministic source ledger before calculator enforcement
+## D-C-01 — Source ledger first
 
 **Decision:** split-adjusted `Date -> id` prefix integrity is the Schema-2 source-ledger gate.  
 **Status:** LOCKED.
@@ -347,34 +284,33 @@ Qualification:
 **Decision:** `id` is a deterministic validity-order tie-breaker only.  
 **Status:** LOCKED until first-class execution identity/time exists.
 
-## D-C-03 — Production audit before blocking enforcement
+## D-C-03 — Audit before enforcement
 
-**Decision:** read-only qualification first, then separate blocking enforcement.  
+**Decision:** read-only production qualification precedes blocking enforcement.  
 **Status:** SATISFIED by C5b → C6a.
 
-## D-C-04 — Public audit output is counts-only
+## D-C-04 — Public audit output counts-only
 
-**Decision:** no user/ticker/tag/record/quantity/price/raw-or-hashed broker identifier in public machine-readable audit output.  
 **Status:** LOCKED.
 
-## D-C-05 — `AI_PROJECT_PLAYBOOK.md` is governance baseline
+## D-C-05 — `AI_PROJECT_PLAYBOOK.md` governance baseline
 
 **Status:** LOCKED while current on main.
 
-## D-C-06 — C6a does not automatically authorize `CLAMP -> ERROR`
+## D-C-06 — C6b final decision
 
-**Decision:** source-prefix enforcement and downstream oversell policy are separate decisions.  
-**Status:** LOCKED pending final C6b decision.
+**Decision:** retain calculator `CLAMP` under current Schema-2 protected production path; no C6b runtime migration now.  
+**Reason:** strict source preflight is authoritative and current production cannot supply alternative explicit chronology; a one-line policy switch would not constitute a complete internal execution-invariant redesign.  
+**Status:** LOCKED subject to listed reopen conditions.
 
 ## D-C-07 — Do not parse free-form notes as financial chronology
 
-**Reason:** optional metadata is not a stable calculation contract.  
 **Status:** LOCKED pending explicit structured schema redesign.
 
 ## D-C-08 — `Sequence` and `_sequence` are distinct contracts
 
-**Decision:** only recognized `Sequence` / `Timestamp` columns may alter explicit calculator same-day ordering; `_sequence` has no financial-ordering semantics.  
-**Status:** LOCKED for Schema 2 unless ingestion/schema contract is explicitly redesigned.
+**Decision:** only recognized `Sequence` / `Timestamp` may alter explicit calculator same-day ordering; `_sequence` has no financial-ordering semantics.  
+**Status:** LOCKED for Schema 2.
 
 ---
 
@@ -382,22 +318,19 @@ Qualification:
 
 ## RC-C-01 — Invalid source prefixes could be hidden
 
-**Failure mode:** final holdings / Daily-P&L could appear consistent even if persisted source sequence temporarily went negative because downstream calculation/reconciliation uses compatible clamp/type-priority semantics.  
-**Fix:** split-adjusted prefix validation before calculator.  
-**Status:** FIXED by C6a; production verified in #3216.
+**Fix:** split-adjusted prefix validation before calculator/upload.  
+**Status:** FIXED by C6a; production verified.
 
 ## RC-C-02 — Historical `_sequence` test was a false positive
 
-**Failure mode:** test name implied sequence ordering was protected even though supplied `_sequence` was ignored.  
-**Root cause:** unsupported private column + data whose expected result was also produced by fallback BUY-before-SELL priority.  
-**Fix:** dedicated `Sequence` versus `_sequence` regression with a non-zero prior position and order-sensitive same-day quantities.  
-**Status:** FIXED by C3-rem; post-main CI #469 passed.
+**Fix:** explicit `Sequence` versus `_sequence` regression with order-sensitive quantities.  
+**Status:** FIXED by C3-rem; post-main verified.
 
 ---
 
-# Known Issues / Technical Debt
+# Remaining Known Issues / Technical Debt
 
-These are **not** silently treated as solved by Gate C:
+These are **not** solved by Gate C and are not blockers for Gate D:
 
 - Schema 2 lacks first-class immutable external execution identity/time/sequence.
 - Net-negative commission/rebate is not faithfully representable because Commission/Tax paths normalize with `abs()`.
@@ -418,12 +351,10 @@ Candidate fields include broker/source, immutable external execution id, order i
 
 ## Immutable `broker_executions` table
 
-Would improve fill-level auditability and derivatives readiness.  
 **Revisit:** post-Gate-D review only.
 
 ## Canonical lot-ledger consolidation
 
-Would reduce duplicated semantics between calculator/analyzer/reconciler.  
 **Revisit:** post-Gate-D evidence.
 
 ## Broad provider abstraction / cleanup / typing refactor
@@ -434,18 +365,34 @@ Would reduce duplicated semantics between calculator/analyzer/reconciler.
 
 # Next Actions
 
-## Immediate — Gate C final closeout review
+## Immediate — Finish Gate C PR #158
 
-1. independently re-review C1/C2/C5a/C5b/C6a/C3-rem evidence against current `main`;
-2. classify remaining issues as BLOCKER / DEFERRED / ACCEPTED RISK;
-3. explicitly decide C6b: retain `CLAMP` defense-in-depth or open a separate `ERROR` migration Batch;
-4. if no blocker requires code, create final Gate-C recovery and a docs-only closeout PR;
-5. run exact-head CI / independent review / merge / post-main CI;
-6. update this file and advance Current Phase to Gate D.
+1. run final exact-head CI after this handoff commit;
+2. verify changed files are only `docs/engineering/GATE_C_FINAL_CLOSEOUT.md` + this handoff;
+3. verify reviews / unresolved threads;
+4. re-fetch protected `main`; stop/requalify on drift;
+5. mark PR #158 ready;
+6. exact-head merge;
+7. verify post-main CI;
+8. create post-Gate-C recovery;
+9. synchronize this handoff and activate Gate D / D1.
 
-## Gate D — only after Gate C closeout
+## Gate D / D1 — only after Gate C is fully closed
 
-- calculation manifest: engine SHA, record count/max id/input hash, config/benchmark hash, market/FX provenance, synthetic valuation source/count, calculation timestamp;
-- frozen golden replay: transactions, prices, FX, splits, dividends, holdings, realized P&L, Daily-P&L, TWR, XIRR;
+Primary objective: **calculation manifest + deterministic golden replay**.
+
+Planned scope:
+
+- calculation manifest containing engine SHA, record count/max id/input hash, config/benchmark hash, market/FX provenance, synthetic valuation source/count and calculation timestamp;
+- frozen golden replay fixtures for transactions, prices, FX, splits, dividends, holdings, realized P&L, Daily-P&L, TWR and XIRR;
 - distinguish record/vendor/FX/engine/synthetic-valuation changes;
-- scoped PR / CI / review / recovery.
+- fail closed on manifest/replay ambiguity;
+- scoped recovery → branch/PR → tests/coverage → independent review → exact-head merge → post-main verification → recovery.
+
+Explicit Gate-D non-goals unless new evidence proves a dependency:
+
+- Schema 3;
+- broker-execution table;
+- futures support;
+- broad provider abstraction;
+- unrelated UX/refactor work.
