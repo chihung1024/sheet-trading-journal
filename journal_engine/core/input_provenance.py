@@ -271,6 +271,9 @@ def canonical_market_inputs_projection(
     for raw_symbol, frame in market_data.items():
         symbol = _normalize_name(raw_symbol, "market symbol")
         if symbol in normalized_market:
+            # A malformed duplicate payload should surface its concrete shape/value error
+            # before the normalized-key ambiguity. Valid duplicates remain fail-closed.
+            _normalize_market_frame(symbol, frame)
             raise CalculationManifestError("market_data contains duplicate normalized symbols")
         normalized_market[symbol] = frame
 
