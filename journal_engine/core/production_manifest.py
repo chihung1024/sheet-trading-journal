@@ -98,6 +98,41 @@ def _window_fx_series(
     return work.loc[(work.index >= start_date) & (work.index <= end_date)].copy(deep=True)
 
 
+def _realtime_fx_currencies_used_by_calculation(
+    *,
+    user_symbols: set[str],
+    required_symbols: list[str],
+    market_window: Mapping[str, pd.DataFrame],
+    calculation_as_of: pd.Timestamp,
+) -> set[str]:
+    """Return foreign currencies whose realtime FX path can affect this run.
+
+    PortfolioCalculator only has a valuation pass for ``calculation_as_of`` when at
+    least one source-transaction symbol contributes that date to the group trading-date
+    union.  On that pass a foreign symbol uses realtime FX only when its own effective
+    market row is also dated ``calculation_as_of``; otherwise ``get_price_asof`` pads to
+    an earlier row and the calculator uses historical FX for that row instead.
+    """
+
+    has_asof_valuation = any(
+        calculation_as_of in market_window[symbol].index
+        for symbol in user_symbols
+        if symbol in market_window
+    )
+    if not has_asof_valuation:
+        return set()
+
+    currencies = set()
+    for symbol in required_symbols:
+        frame = market_window[symbol]
+        if calculation_as_of not in frame.index:
+            continue
+        currency = CurrencyDetector.detect(symbol)
+        if currency != BASE_CURRENCY:
+            currencies.add(currency)
+    return currencies
+
+
 def build_production_calculation_manifest(
     *,
     raw_user_df: pd.DataFrame,
@@ -180,13 +215,19 @@ def build_production_calculation_manifest(
             end_date=calculation_as_of,
         )
 
+    realtime_fx_currencies = _realtime_fx_currencies_used_by_calculation(
+        user_symbols=user_symbols,
+        required_symbols=required_symbols,
+        market_window=market_window,
+        calculation_as_of=calculation_as_of,
+    )
     realtime_fx = getattr(market_client, "realtime_fx_rates_by_currency", None)
     if not isinstance(realtime_fx, Mapping):
         realtime_fx = {}
     filtered_realtime_fx = {
         currency: realtime_fx[currency]
-        for currency in required_currencies
-        if currency != BASE_CURRENCY and currency in realtime_fx
+        for currency in sorted(realtime_fx_currencies)
+        if currency in realtime_fx
     }
 
     metadata_by_symbol = getattr(market_client, "price_metadata_by_symbol", None)
@@ -223,14 +264,11 @@ def build_production_calculation_manifest(
             market_window,
             required_symbols=required_symbols,
         )
-        include_realtime_fx = any(
-            currency != BASE_CURRENCY for currency in required_currencies
-        )
         fx_identity = build_fx_inputs_identity(
             fx_window,
             required_currencies=required_currencies,
             realtime_fx_rates_by_currency=filtered_realtime_fx,
-            include_realtime=include_realtime_fx,
+            include_realtime=bool(realtime_fx_currencies),
         )
         deterministic_identity = build_deterministic_calculation_identity(
             engine_source_commit=engine_source_commit,
