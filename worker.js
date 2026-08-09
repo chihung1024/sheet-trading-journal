@@ -564,16 +564,37 @@ const recordsRepository = Object.freeze({
     return affectedRows(result);
   },
 
-  async delete(db, userId, id) {
-    const result = await db.prepare("DELETE FROM records WHERE id = ? AND user_id = ?").bind(id, userId).run();
-    return affectedRows(result);
-  },
+  async deleteAtomic(db, userId, id) {
+    if (!db || typeof db.batch !== "function") throw new Error("D1BatchUnavailable");
 
-  async countForUser(db, userId) {
-    const result = await db.prepare("SELECT COUNT(*) as total FROM records WHERE user_id = ?").bind(userId).first();
-    const count = Number(result?.total);
-    if (!Number.isSafeInteger(count) || count < 0) throw new Error("InvalidRecordCount");
-    return count;
+    const results = await db.batch([
+      db.prepare(`
+        DELETE FROM portfolio_snapshots
+        WHERE user_id = ?
+          AND EXISTS (
+            SELECT 1 FROM records WHERE id = ? AND user_id = ?
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM records WHERE user_id = ? AND id <> ?
+          )
+      `).bind(userId, id, userId, userId, id),
+      db.prepare(
+        "DELETE FROM records WHERE id = ? AND user_id = ?",
+      ).bind(id, userId),
+      db.prepare(
+        "SELECT COUNT(*) AS total FROM records WHERE user_id = ?",
+      ).bind(userId),
+    ]);
+
+    if (!Array.isArray(results) || results.length !== 3) {
+      throw new Error("InvalidAtomicDeleteResult");
+    }
+
+    const changed = affectedRows(results[1]);
+    const countRow = Array.isArray(results[2]?.results) ? results[2].results[0] : null;
+    const remaining = Number(countRow?.total);
+    if (!Number.isSafeInteger(remaining) || remaining < 0) throw new Error("InvalidRecordCount");
+    return { changed, remaining };
   },
 });
 
@@ -607,18 +628,16 @@ async function handleDeleteRecord(request, env, principal, requestId) {
     rejectOwnerFields(body);
     const id = requirePositiveInteger(body.id, "id");
 
-    const changed = await recordsRepository.delete(env.DB, principal.email, id);
+    const deletion = await recordsRepository.deleteAtomic(env.DB, principal.email, id);
 
-    if (changed !== 1) {
+    if (deletion.changed === 0) {
       return apiError("NOT_FOUND", "Record not found", 404, requestId);
     }
+    if (deletion.changed !== 1) {
+      throw new Error("InvalidDeletedRecordCount");
+    }
 
-    const remaining = await recordsRepository.countForUser(env.DB, principal.email);
-
-    if (remaining === 0) {
-      await env.DB.prepare(
-        "DELETE FROM portfolio_snapshots WHERE user_id = ?",
-      ).bind(principal.email).run();
+    if (deletion.remaining === 0) {
       return jsonResponse({ success: true, message: "RELOAD_UI" });
     }
 
@@ -1518,6 +1537,7 @@ export const __test = {
   buildGitHubDispatchRequest,
   handleGetCalculationJob,
   handleCalculationJobStatus,
+  handleDeleteRecord,
   resolveIdempotencyKey,
   validateIdempotencyKey,
   hashCalculationJobIdempotency,
