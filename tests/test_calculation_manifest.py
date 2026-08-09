@@ -324,6 +324,19 @@ def test_runtime_config_model_rejects_inconsistent_digest_and_version():
         RuntimeConfigIdentity.model_validate(wrong_version)
 
 
+def test_runtime_config_model_rejects_unnormalized_text_even_with_valid_digest_shape():
+    valid = build_runtime_config_identity(
+        benchmark_symbol="SPY",
+        base_currency="TWD",
+        oversell_policy="CLAMP",
+    )
+    payload = valid.model_dump()
+    payload["benchmark_symbol"] = "spy"
+
+    with pytest.raises(ValidationError, match="normalized uppercase"):
+        RuntimeConfigIdentity.model_validate(payload)
+
+
 def test_engine_source_commit_resolution_is_exact_and_fail_closed():
     assert resolve_engine_source_commit(ENGINE_SHA) == ENGINE_SHA
     assert resolve_engine_source_commit(environ={"GITHUB_SHA": ENGINE_SHA}) == ENGINE_SHA
@@ -374,6 +387,64 @@ def test_combined_calculation_identity_is_deterministic_and_asof_sensitive():
     assert first.combined_sha256 != later.combined_sha256
     assert first.combined_sha256 != different_market.combined_sha256
     assert "calculated_at" not in first.model_dump()
+
+
+def test_combined_identity_changes_for_each_material_component():
+    source, config = _identities()
+    baseline = build_deterministic_calculation_identity(
+        engine_source_commit=ENGINE_SHA,
+        source_records=source,
+        runtime_config=config,
+        market_inputs_sha256=MARKET_SHA,
+        fx_inputs_sha256=FX_SHA,
+        calculation_as_of=date(2026, 1, 3),
+    )
+
+    changed_records = _records()
+    changed_records.loc[1, "Price"] = 1001.0
+    changed_source = build_source_records_identity(changed_records)
+    changed_config = build_runtime_config_identity(
+        benchmark_symbol="QQQ",
+        base_currency="TWD",
+        oversell_policy="CLAMP",
+    )
+
+    variants = [
+        build_deterministic_calculation_identity(
+            engine_source_commit="d" * 40,
+            source_records=source,
+            runtime_config=config,
+            market_inputs_sha256=MARKET_SHA,
+            fx_inputs_sha256=FX_SHA,
+            calculation_as_of=date(2026, 1, 3),
+        ),
+        build_deterministic_calculation_identity(
+            engine_source_commit=ENGINE_SHA,
+            source_records=changed_source,
+            runtime_config=config,
+            market_inputs_sha256=MARKET_SHA,
+            fx_inputs_sha256=FX_SHA,
+            calculation_as_of=date(2026, 1, 3),
+        ),
+        build_deterministic_calculation_identity(
+            engine_source_commit=ENGINE_SHA,
+            source_records=source,
+            runtime_config=changed_config,
+            market_inputs_sha256=MARKET_SHA,
+            fx_inputs_sha256=FX_SHA,
+            calculation_as_of=date(2026, 1, 3),
+        ),
+        build_deterministic_calculation_identity(
+            engine_source_commit=ENGINE_SHA,
+            source_records=source,
+            runtime_config=config,
+            market_inputs_sha256=MARKET_SHA,
+            fx_inputs_sha256="d" * 64,
+            calculation_as_of=date(2026, 1, 3),
+        ),
+    ]
+
+    assert all(variant.combined_sha256 != baseline.combined_sha256 for variant in variants)
 
 
 @pytest.mark.parametrize(
@@ -432,3 +503,20 @@ def test_identity_models_forbid_extra_fields_versions_and_tampered_combined_dige
     tampered["combined_sha256"] = "d" * 64
     with pytest.raises(ValidationError, match="does not match deterministic components"):
         DeterministicCalculationIdentity.model_validate(tampered)
+
+
+def test_combined_identity_model_rejects_datetime_asof_before_coercion():
+    source, config = _identities()
+    valid = build_deterministic_calculation_identity(
+        engine_source_commit=ENGINE_SHA,
+        source_records=source,
+        runtime_config=config,
+        market_inputs_sha256=MARKET_SHA,
+        fx_inputs_sha256=FX_SHA,
+        calculation_as_of=date(2026, 1, 3),
+    )
+    payload = valid.model_dump()
+    payload["calculation_as_of"] = datetime(2026, 1, 3, 12, 0)
+
+    with pytest.raises(ValidationError, match="must be a date, not a datetime"):
+        DeterministicCalculationIdentity.model_validate(payload)
