@@ -1,7 +1,8 @@
 {
   "fixture_version": 1,
   "calculation_now": "2026-01-05T15:00:00+08:00",
-  "engine_source_commit": "1111111111111111111111111111111111111111",
+  "declared_fixture_engine_source_commit": "1111111111111111111111111111111111111111",
+  "engine_identity_semantics": "declared_test_input_not_runtime_attestation",
   "benchmark_symbol": "SPY",
   "base_currency": "TWD",
   "oversell_policy": "ERROR",
