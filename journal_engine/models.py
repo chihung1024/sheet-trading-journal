@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, StrictBool, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, computed_field, field_validator, model_validator
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any, Literal
 
@@ -126,6 +126,8 @@ class PortfolioGroupData(BaseModel):
 class CalculationManifest(BaseModel):
     """Versioned production evidence attached atomically to one portfolio snapshot."""
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     manifest_version: Literal[1] = 1
     deterministic_identity: DeterministicCalculationIdentity
     market_inputs: EffectiveMarketInputsIdentity
@@ -172,8 +174,12 @@ class PortfolioSnapshot(BaseModel):
     # Optional preserves compatibility with snapshots published before PR-10C8.
     benchmark_symbol: Optional[str] = None
 
-    # Optional Gate-D reproducibility evidence. Legacy snapshots remain valid.
-    calculation_manifest: Optional[CalculationManifest] = None
+    # Optional Gate-D reproducibility evidence. Preserve the legacy serialized shape
+    # until evidence is actually attached; populated manifests remain serialized.
+    calculation_manifest: Optional[CalculationManifest] = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     
     # 向下相容欄位 (代表 'all' 群組的總體數據)
     summary: PortfolioSummary
