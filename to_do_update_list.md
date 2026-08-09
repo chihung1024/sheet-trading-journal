@@ -57,7 +57,7 @@ Current evidence:
 - Gate D / D1b: **DONE / POST-MAIN VERIFIED**
 - Gate D / D1c: **DONE / POST-MAIN VERIFIED**
 - Gate D / D1d: **DONE / POST-MAIN VERIFIED**
-- Gate D / D1e: **MERGED / POST-MAIN VERIFIED / PRODUCTION SMOKE PENDING**
+- Gate D / D1e: **DONE / POST-MAIN VERIFIED / PRODUCTION SMOKE VERIFIED**
 - D1d PR #166 final head: `71d6b4445ed8e139352f73f0ba669dffc9575ad2`
 - D1d final-head CI #513 / `31311239217`: **SUCCESS**
 - D1d exact-head merge → `62b13dc7c29591a7fcff24a20b48fe06aa8177ea`
@@ -69,9 +69,9 @@ Current evidence:
 - D1e exact-head merge → `f10a8de3ca51dd20fa72a42c96212d73fa6d6226`.
 - D1e post-main CI #538 / `31327529828`: **SUCCESS across Python / Frontend / Worker-D1**.
 - D1e independent review: **PASS after realtime-FX BLOCKER resolution**; final qualification had 0 reviews / 0 threads / 0 comments and no protected-main drift.
+- D1e production smoke: scheduled `Update Portfolio Data #3217` / run `31341740730`, exact `head_sha=f10a8de3ca51dd20fa72a42c96212d73fa6d6226`: **SUCCESS**, 168 records, 2 users, successful calculation/upload **2 / 0**.
 - Post-D1e recovery: `backup-post-gate-d-d1e-f10a8de`.
-- Current active work: **Gate D closeout — controlled production portfolio-update smoke is the only unresolved operational verification before final Gate-D closeout**.
-- Current connected GitHub action set can read/rerun existing workflow runs but does not expose creation of a new `workflow_dispatch` run. Do not bypass the connector permission model; use the next scheduled `Update Portfolio Data` run on verified main or a manually initiated workflow dispatch, then inspect its logs/results here.
+- Current active work: **Gate D closeout — production code, post-main CI, recovery and controlled production smoke are complete; PR #169 docs-only exact-head qualification/merge is the only remaining closeout step**.
 
 ## Recovery refs
 
@@ -105,8 +105,8 @@ Current evidence:
 | Gate D | D1b | pure deterministic manifest primitives | **DONE / POST-MAIN VERIFIED** | PR #162/#163 + CI #485/#486/#488 + recovery |
 | Gate D | D1c | effective market/FX/synthetic provenance | **DONE / POST-MAIN VERIFIED** | PR #164/#165 + CI #495–#498 + recovery |
 | Gate D | D1d | frozen deterministic golden replay | **DONE / POST-MAIN VERIFIED** | PR #166 + CI #513/#514 + recovery |
-| Gate D | D1e | smallest compatible production integration | **MERGED / POST-MAIN VERIFIED** | PR #168 + CI #537/#538 + recovery; prod smoke pending |
-| Gate D | Closeout | independent reproducibility review + production smoke | **ACTIVE** | D1e merged/post-main; smoke remaining |
+| Gate D | D1e | smallest compatible production integration | **DONE / POST-MAIN VERIFIED / PROD SMOKE VERIFIED** | PR #168 + CI #537/#538 + run #3217 + recovery |
+| Gate D | Closeout | independent reproducibility review + production smoke | **READY FOR FINAL DOCS MERGE** | code review PASS; smoke #3217 SUCCESS; PR #169 pending |
 | Post-D | Architecture review | Schema 3 / canonical ledger / provider abstraction | DEFERRED | fresh review only after Gate D closes |
 
 ---
@@ -356,7 +356,7 @@ Status: **DONE / POST-MAIN VERIFIED**.
 
 ---
 
-# D1e — MERGED / POST-MAIN VERIFIED / PRODUCTION SMOKE PENDING
+# D1e — DONE / POST-MAIN VERIFIED / PRODUCTION SMOKE VERIFIED
 
 PR: **#168 — Gate D D1e: production calculation manifest integration**  
 Base main: `b235d9f8861186b547a7de1a1812cbf5d40f6f1a`  
@@ -438,7 +438,7 @@ It:
 7. runs existing snapshot validation;
 8. uploads through the existing Worker snapshot route.
 
-The `PortfolioCalculator` constructor default behavior remains unchanged for callers that do not inject a clock. The production runner now **explicitly opts in** to the D1d clock seam, as authorized by D1a/D1e, so calculation-as-of/today/realtime semantics use one Taipei run clock rather than mixed implicit clocks. Because this is a production-runner semantic change in addition to the additive snapshot field, production smoke remains a mandatory closeout step.
+The `PortfolioCalculator` constructor default behavior remains unchanged for callers that do not inject a clock. The production runner now **explicitly opts in** to the D1d clock seam, as authorized by D1a/D1e, so calculation-as-of/today/realtime semantics use one Taipei run clock rather than mixed implicit clocks. Because this is a production-runner semantic change in addition to the additive snapshot field, production smoke was mandatory and is now verified below.
 
 ## Independent review BLOCKER resolved — realtime FX over-hash
 
@@ -503,23 +503,29 @@ Qualification:
 - post-main CI #538 succeeded;
 - post-D1e recovery exists: `backup-post-gate-d-d1e-f10a8de`.
 
-## Remaining production smoke
+## Controlled production smoke — VERIFIED
 
-A controlled production calculation/upload remains required because D1e changes both the uploaded snapshot shape and the production runner's explicit calculation clock context.
+Scheduled workflow execution automatically exercised the merged production path without any manual bypass:
 
-Preferred smoke:
+- workflow: `Update Portfolio Data`;
+- run number: **#3217**;
+- run id: `31341740730`;
+- exact head: `f10a8de3ca51dd20fa72a42c96212d73fa6d6226`;
+- event: normal scheduled calculation/upload, not audit-only;
+- job `run-and-upload`: **SUCCESS**;
+- record fetch: **168 records**;
+- users processed: **2**;
+- market universe downloaded: **43 symbols**;
+- user 1 prefix integrity: **60 rows / 3 scopes / 25 symbol scopes**;
+- user 2 prefix integrity: **108 rows / 2 scopes / 64 symbol scopes**;
+- canonical Daily-P&L reconciliation completed successfully for every produced group;
+- split-adjusted ledger parity verified for **53 BUY/SELL rows** and **108 BUY/SELL rows** respectively;
+- both Worker snapshot uploads succeeded;
+- final result: **success 2 / failure 0**.
 
-- workflow: `Update Portfolio Data` (`.github/workflows/update.yml`);
-- ref: verified `main` at/after `f10a8de3...`;
-- target only `chired@gmail.com` when manually dispatched;
-- normal calculation/upload mode, **not** transaction-integrity audit-only;
-- no calculation-job callback is required;
-- verify successful record fetch, market-data validation, calculation/reconciliation, manifest assembly, snapshot validation and Worker upload;
-- do not expose snapshot payloads, API keys or authentication data in the handoff.
+The log also contained non-fatal market-data warnings/diagnostics (for example `TWD=X` one-day quote unavailability and existing >30% move warnings), but they did not bypass any required gate and did not prevent successful calculation, reconciliation, manifest-bearing snapshot validation or upload.
 
-Current connector limitation: the available GitHub actions can inspect and rerun existing runs but do not expose creation of a new `workflow_dispatch`. Therefore this smoke was not fabricated or bypassed. The next scheduled workflow on verified main can satisfy the same production path; alternatively a manual dispatch can be initiated in GitHub and then inspected here.
-
-Status: **MERGED / POST-MAIN VERIFIED / PRODUCTION SMOKE PENDING**.
+Status: **DONE / POST-MAIN VERIFIED / PRODUCTION SMOKE VERIFIED**.
 
 ---
 
@@ -533,9 +539,9 @@ Status: **MERGED / POST-MAIN VERIFIED / PRODUCTION SMOKE PENDING**.
 - [x] change-cause distinction proven at replay-contract level.
 - [x] independent final Gate-D code/reproducibility review finds no unresolved code-level blocker after D1e.
 - [x] D1e final exact-head merge/post-main verification complete.
-- [ ] D1e production smoke complete.
+- [x] D1e production smoke complete — `Update Portfolio Data #3217`, 2/0 success.
 - [x] post-D1e recovery created.
-- [ ] final Gate-D handoff merged after production smoke.
+- [ ] final Gate-D handoff PR #169 exact-head merged and post-main CI verified.
 
 ---
 
@@ -577,12 +583,13 @@ C6b decision remains locked: retain calculator `CLAMP` as downstream compatibili
 - **D-D-12 LOCKED BY D1e:** production runner resolves one Taipei calculation context and exact full `GITHUB_SHA`; missing/invalid source identity fails before network/API work.
 - **D-D-13 LOCKED BY D1e:** realtime FX enters deterministic identity only when the calculation can actually execute the corresponding as-of realtime valuation path.
 - **D-D-14 LOCKED BY D1e:** Gate-D production evidence remains Schema 2 with no Worker/frontend production redesign.
+- **D-D-15 VERIFIED IN PRODUCTION:** scheduled Update Portfolio Data #3217 exercised the merged manifest-bearing calculation/upload path successfully for both production users, with all integrity/reconciliation/parity gates intact.
 
 ---
 
 # Root Cause / Risk Log
 
-- **RC-D-01 NEARLY CLOSED:** identity primitives/provenance/replay/production attachment/exact-head merge/post-main/recovery are complete; controlled production smoke remains.
+- **RC-D-01 CLOSED AT CODE/PRODUCTION BOUNDARY:** identity primitives/provenance/replay/production attachment/exact-head merge/post-main/recovery and production smoke are complete; only docs-only Gate-D closeout merge remains.
 - **RC-D-02 CLOSED:** wall-clock replay ambiguity fixed with explicit seam; D1e production runner deliberately resolves one Taipei calculation context.
 - **RC-D-03 CLOSED:** effective market/FX/synthetic provenance identity complete.
 - **RC-D-04 CLOSED:** mixed TW/US deterministic golden replay covers split, dividend, FX, synthetic provenance, Daily-P&L, TWR/XIRR and exact digests.
@@ -591,7 +598,7 @@ C6b decision remains locked: retain calculator `CLAMP` as downstream compatibili
 - **RC-D-07 CLOSED:** vector-like provenance missingness ambiguity fixed.
 - **RC-D-08 CLOSED:** coverage regressions resolved by tests, not weaker gates.
 - **RC-D-09 CLOSED:** fixture engine identity cannot be confused with production attestation.
-- **RC-D-10 CLOSED AT REPOSITORY BOUNDARY:** production snapshot has a compatible optional reproducibility manifest and is merged/post-main verified; runtime smoke remains an operational closeout criterion.
+- **RC-D-10 CLOSED:** production snapshot has a compatible optional reproducibility manifest, is merged/post-main verified, and production smoke #3217 confirmed successful runtime storage/upload compatibility.
 - **RC-D-11 CLOSED:** realtime FX over-hash on non-as-of/holiday valuation paths was caught by independent review and regression-tested before merge.
 
 ---
@@ -611,18 +618,18 @@ C6b decision remains locked: retain calculator `CLAMP` as downstream compatibili
 
 # Immediate Next Actions
 
-## Complete the one remaining production smoke
+## Finish Gate D docs-only closeout PR #169
 
-1. Use the next `Update Portfolio Data` workflow run whose `head_sha` is verified main `f10a8de3ca51dd20fa72a42c96212d73fa6d6226` or a later closeout-only main commit containing no production-code changes; scheduled execution is acceptable.
-2. Prefer a manual dispatch targeted to `chired@gmail.com` if the initiating client exposes workflow-dispatch; otherwise inspect the next scheduled normal update run.
-3. The run must be normal calculation/upload mode, not `transaction_integrity_audit_only`.
-4. Inspect the job result and logs. Required path: records → market data → transaction-calendar/coverage validation → calculator → canonical Daily-PnL reconciliation → manifest assembly → snapshot validation → Worker upload.
-5. If it fails, stop Gate-D closeout and root-cause the exact failure; do not weaken validation or remove the manifest to force success.
+1. Run fresh full CI on this smoke-updated exact head.
+2. Confirm changed-file whitelist remains exactly `to_do_update_list.md`.
+3. Confirm reviews / review threads / comments are zero and protected `main` remains `f10a8de3ca51dd20fa72a42c96212d73fa6d6226` with no drift.
+4. If no BLOCKER, mark PR #169 ready and exact-head merge.
+5. Verify post-main CI on the docs-only merge.
+6. Create a final Gate-D recovery from the verified docs-closeout main if one does not already exist.
+7. Only after those steps mark Gate D **DONE / CLOSED / POST-MAIN VERIFIED**.
 
-## Then close Gate D
+## Then perform the deferred post-D architecture review
 
-1. Update this docs-only closeout branch with the production-smoke run ID/result.
-2. Open/qualify the docs-only closeout PR; whitelist must remain `to_do_update_list.md` only.
-3. Exact-head merge and verify its post-main CI.
-4. Mark Gate D **DONE / CLOSED / POST-MAIN VERIFIED** only after the smoke and docs closeout are both complete.
-5. Only then begin the deferred post-D architecture review; do not automatically authorize Schema 3, provider abstraction, canonical ledger redesign, broker-execution redesign or unrelated refactors.
+- Re-read the now-qualified Schema-2 architecture from the new stable main.
+- Re-evaluate Schema 3 / canonical ledger / broker execution identity / provider abstraction only against demonstrated residual problems.
+- Do **not** automatically authorize those deferred expansions merely because Gate D is complete.
