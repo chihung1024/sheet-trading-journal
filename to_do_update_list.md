@@ -44,17 +44,27 @@ Current-phase references:
 # Current Stable State
 
 - Repository: `chihung1024/sheet-trading-journal`
-- Audited production/main SHA: `5942f67dddec2a6b6406221067dea210cf6104c0`
+- Current protected `main` / C6a base: `aa191738ac6f9243e9b645fb642869ad926d55a8`
 - D1: **Schema 2**
 - Worker source contract: release `4.07` / API `2.60` / required schema `2`
 - Gate A / P6C: DONE
 - Gate B / P5C3B: DONE
 - Gate C / C5a read-only audit infrastructure: DONE
 - Gate C / C5b production read-only audit: **DONE / CLEAR**
-- Blocking prefix enforcement is **not yet enabled**.
-- Calculator default oversell policy remains `CLAMP`.
-- Production Worker deployment was not part of Gate C and was not performed.
-- Current next implementation Batch: **Gate C / C6 — scoped blocking pre-calculator prefix enforcement**.
+- Gate C / C6a blocking prefix enforcement: **VERIFYING in PR #154**
+- Blocking prefix enforcement is not yet on `main` until PR #154 passes final qualification and merge.
+- Calculator default oversell policy remains `CLAMP`; C6a does not change it.
+- Production Worker deployment is outside Gate C and has not been performed.
+
+Current C6a controls:
+
+- pre-C6a recovery: `backup-pre-gate-c-c6a-aa19173`
+- branch: `pr-gate-c-c6a-prefix-enforcement`
+- PR: **#154 — Draft**
+- runtime commit: `340f1604570e6866ce9dcc6016ff9c65b472b92d`
+- tested implementation head before this documentation commit: `ac551e8faad421098bc2852128b8f25087353210`
+- fresh CI #461 / run `31298497982`: **SUCCESS** across Python coverage, Frontend and Worker/D1
+- independent scope review: **PASS**; only `main.py` + `tests/test_runner_ledger_integrity.py`, no CLAMP/schema/Worker/workflow change
 
 ---
 
@@ -63,7 +73,7 @@ Current-phase references:
 - Schema 2 provides deterministic persisted-record validity order as `Date -> record id`, but no first-class broker execution timestamp/sequence/source/external execution id.
 - `prepare_transactions()` does not promote `note` metadata into financial ordering fields.
 - Calculator and canonical Daily-P&L share compatible same-day priority/clamp semantics; their agreement cannot prove source-prefix validity.
-- Prefix validity must be evaluated independently on the split-adjusted source ledger.
+- Prefix validity is independently evaluated on the split-adjusted source ledger.
 - `note` remains metadata, not a financial-calculation dependency.
 - Existing Commission/Tax paths normalize with `abs()`; net-negative commission/rebate is not faithfully representable.
 - Futures/derivatives remain outside Stock-journal semantics because asset-class/multiplier fields do not exist.
@@ -80,9 +90,9 @@ Current-phase references:
 | Gate C | C2 | deterministic Schema-2 prefix-integrity core | High | **DONE** | C1 | tests + coverage CI |
 | Gate C | C5a | read-only production-audit infrastructure | High | **DONE** | C2 | PR #150 + post-main CI + recovery |
 | Gate C | C5b | production read-only audit | High | **DONE / CLEAR** | C5a | Update Portfolio Data #3215 |
-| Gate C | C6a | blocking pre-calculator prefix enforcement | High | **READY / NEXT** | C5b clear | scoped PR + exact-head CI + smoke |
-| Gate C | C6b | decide calculator `CLAMP` vs `ERROR` | Medium | **DEFERRED UNTIL C6a EVIDENCE** | C6a | separate decision/tests |
-| Gate C | C3-rem | correct/supplement historical `_sequence` regression | Medium | TODO before Gate C closeout | independent of C6a | targeted regression CI |
+| Gate C | C6a | blocking pre-calculator prefix enforcement | High | **VERIFYING / PR #154** | C5b clear | final-head CI + review + merge + normal smoke |
+| Gate C | C3-rem | correct/supplement historical `_sequence` regression | Medium | **NEXT before Gate-C closeout** | independent of C6a | targeted regression CI |
+| Gate C | C6b | decide calculator `CLAMP` vs `ERROR` | Medium | **DEFERRED UNTIL C6a EVIDENCE** | C6a | separate decision/tests if warranted |
 | Gate C | Closeout | final Gate-C review + recovery + docs | High | BLOCKED on C6a/C3-rem | C6a + C3-rem | post-main qualification |
 | Gate D | D1 | calculation manifest + deterministic golden replay | Next | TODO | Gate C closeout | replay/CI evidence |
 | Post-Gate-D | Architecture review | Schema 3 / canonical ledger / provider abstraction decision | Later | DEFERRED | Gate D | fresh review only |
@@ -106,35 +116,98 @@ Gate C does not authorize Schema 3, broker-execution tables, futures support, br
 
 ## C6a — Scoped blocking pre-calculator prefix enforcement
 
-Status: **READY — C5b production qualification is clear**
+Status: **VERIFYING — PR #154**
 
 ### Objective
 
-Promote the already-tested split-adjusted Schema-2 prefix check from read-only evidence into a blocking pre-calculator source-integrity gate.
+Promote the already-qualified split-adjusted Schema-2 prefix-integrity contract from read-only audit evidence into a blocking gate that executes before `PortfolioCalculator` and before any snapshot upload.
 
 ### In scope
 
-- restore the previously tested pre-calculator prefix gate using the merged `ledger_integrity.py` contract;
-- build the split-adjusted validation ledger once and reuse it for downstream holdings parity where practical;
-- any prefix violation must fail before calculator execution and before snapshot upload;
-- add/restore focused regression tests proving calculator/upload are not reached after an integrity failure;
-- preserve current public/privacy contracts;
-- update persistent docs/evidence.
+- use merged `journal_engine/core/ledger_integrity.py` contract;
+- build the split-adjusted validation ledger before calculator construction;
+- run `validate_transaction_prefix_integrity()` before calculator construction;
+- reuse the same validation ledger for downstream adjusted-ledger parity;
+- fail the affected user calculation before calculator/upload on any integrity violation;
+- regression tests proving order and failure isolation;
+- persistent execution evidence.
 
 ### Explicitly out of scope
 
-- changing calculator `CLAMP -> ERROR` in the same PR;
+- changing calculator `CLAMP -> ERROR`;
 - Schema 3;
 - parsing free-form note timestamps for financial ordering;
 - broker import redesign;
 - futures/derivatives support;
+- Worker/D1 changes or production Worker deployment;
 - market-data provider abstraction;
-- unrelated refactors or UX changes;
-- production Worker deployment.
+- unrelated refactors or UX work.
 
 ### Expansion trigger
 
 Only a Critical/Data-Integrity/Security finding that prevents safe C6a enforcement may expand this Batch. Other findings are NEXT/BACKLOG/REJECT.
+
+### Implementation evidence
+
+Safety check before restoration:
+
+- current C6a-base `main.py` blob: `2878dfa38c0da3b3da198c3f2016770d46c90a3f`;
+- prior tested candidate parent `main.py` blob: same `2878dfa...`;
+- therefore no intervening runtime changes existed in `main.py` and the previously tested patch could be reused exactly rather than re-authored.
+
+Runtime change:
+
+- commit `340f1604570e6866ce9dcc6016ff9c65b472b92d`;
+- exact prior tested patched `main.py` blob reused: `354657e373349f7b28b872f2d53e3de80ac525a7`;
+- adds `validate_transaction_prefix_integrity` import;
+- creates split-adjusted `validation_df` before `PortfolioCalculator`;
+- runs prefix integrity on that ledger;
+- logs only masked user + aggregate rows/scopes/symbol-scopes on success;
+- reuses the exact same ledger for adjusted-ledger parity instead of rebuilding it later.
+
+Regression change:
+
+- commit/head `ac551e8faad421098bc2852128b8f25087353210`;
+- exact prior tested runner regression blob reused: `b43267d918512f06324c141861ff2c53485fdfc1`;
+- proves validation ledger is built once;
+- proves prefix preflight precedes calculator initialization;
+- proves successful path reaches parity → snapshot validation → upload;
+- proves `LedgerIntegrityError` prevents calculator init/run and upload.
+
+Fresh qualification:
+
+- PR #154 created as Draft;
+- CI #461 / `31298497982`: **SUCCESS**;
+- independent compare against `main=aa191738...`: only 2 files before this docs commit:
+  - `main.py` +17/-4
+  - `tests/test_runner_ledger_integrity.py` +132
+- no Worker/D1/schema/workflow changes;
+- no calculator `CLAMP` change;
+- no unrelated refactor;
+- C3-rem `_sequence` issue classified **FOLLOW-UP**, not BLOCKER.
+
+### C6a final qualification remaining
+
+- [x] pre-change recovery exists;
+- [x] current main.py baseline matched prior candidate parent exactly;
+- [x] minimal runtime patch restored;
+- [x] focused runner regressions restored;
+- [x] fresh current-main CI #461 succeeded;
+- [x] independent initial scope/diff review passed;
+- [x] C3-rem classified FOLLOW-UP rather than scope creep;
+- [x] this persistent handoff updated with implementation/CI/review evidence;
+- [ ] exact-head CI after this documentation commit;
+- [ ] final changed-file review: expected `main.py`, `tests/test_runner_ledger_integrity.py`, `to_do_update_list.md` only;
+- [ ] review submissions / unresolved threads check;
+- [ ] re-fetch protected `main` immediately before merge;
+- [ ] if main drifts, stop and requalify;
+- [ ] mark PR #154 ready for review;
+- [ ] exact-head merge;
+- [ ] post-main CI;
+- [ ] normal production `Update Portfolio Data` smoke from merged main (audit-only **false**);
+- [ ] verify prefix-integrity success log and normal snapshot upload;
+- [ ] create post-C6a recovery;
+- [ ] update this file with merge/smoke/recovery evidence.
 
 ---
 
@@ -151,15 +224,13 @@ Workflow:
 - mode: **read_only**
 - qualification: **clear**
 
-Execution-isolation evidence:
+Execution isolation:
 
-- `Run transaction integrity read-only audit`: SUCCESS
-- `Run calculation and upload to API`: SKIPPED
-- `Mark calculation job running`: SKIPPED
-- `Report calculation job result`: SKIPPED
-- `Fail workflow when calculation failed`: SKIPPED
+- read-only audit step: SUCCESS
+- normal calculation/upload: SKIPPED
+- calculation-job running/result callbacks: SKIPPED
 
-Counts-only production result:
+Counts-only result:
 
 | Metric | Result |
 |---|---:|
@@ -183,24 +254,7 @@ Counts-only production result:
 | executed_at_utc tokens | 52 |
 | executed_at_taipei tokens | 96 |
 
-C5b acceptance result:
-
-- [x] run used the intended merged main SHA;
-- [x] audit-only path executed;
-- [x] all production users read;
-- [x] all active audit scopes processed;
-- [x] split-data dependency completed without fail-open fallback;
-- [x] counts-only machine-readable result emitted;
-- [x] zero prefix violations;
-- [x] zero duplicate import-key groups;
-- [x] zero duplicate trade-id groups;
-- [x] zero repeated order-id groups;
-- [x] normal calculation/upload skipped;
-- [x] calculation-job callbacks skipped;
-- [x] qualification = `clear`;
-- [x] evidence persisted in repository docs.
-
-**Decision:** C5b is closed. Production Schema-2 data is qualified for a separate C6a enforcement PR. This does **not** automatically authorize changing calculator `CLAMP` to `ERROR`.
+Decision: production Schema-2 data is qualified for C6a. This did **not** automatically authorize changing calculator `CLAMP` to `ERROR`.
 
 ---
 
@@ -222,7 +276,7 @@ C5b acceptance result:
 - merge `03242d00082067333cf77ffa424094b8936b406c`
 - post-main CI #434 / `31296121054`: SUCCESS
 - recovery `backup-post-gate-b-03242d0`
-- source-record delete + last-record snapshot cleanup now share one D1 `batch()`; malformed result/cardinality fail closed
+- source-record delete + last-record snapshot cleanup share one D1 `batch()`; malformed result/cardinality fail closed
 
 ## Gate C / C1 — DONE
 
@@ -230,12 +284,12 @@ Evidence: `docs/engineering/GATE_C_TRANSACTION_INTEGRITY_AUDIT.md`
 
 Key findings:
 
-1. source order is deterministic `Date -> id`;
-2. production calculator same-day effective order is BUY→DIV→SELL, default CLAMP;
+1. persisted source order is deterministic `Date -> id`;
+2. production calculator same-day effective order is BUY→DIV→SELL with default CLAMP when no Timestamp/Sequence;
 3. canonical Daily-P&L has compatible priority/clamp semantics;
-4. holdings validator does not validate intermediate prefixes;
-5. split-adjusted ledger is required for prefix validation;
-6. record `id` is a validity-order tie-breaker, not broker-time proof;
+4. aggregate holdings validation does not validate intermediate prefixes;
+5. split-adjusted ledger is required for quantity-prefix validation;
+6. record `id` is validity-order tie-breaker, not broker-time proof;
 7. historical `_sequence` regression does not exercise the actual calculator `Sequence` contract;
 8. legacy TransactionAnalyzer zero-on-exception is unsafe if ever made authoritative.
 
@@ -248,66 +302,60 @@ Module: `journal_engine/core/ledger_integrity.py`
 - BUY adds / SELL subtracts / DIV no quantity effect;
 - `all` + active comma/semicolon tag scopes;
 - tolerance `max(1e-9, cumulative_abs_buy_qty * 1e-12)`;
-- fail-closed input and diagnostic contract.
-
-Qualification:
-
-- CI #435: functional tests passed; coverage source inventory correctly blocked unregistered source;
-- inventory fixed without lowering gates;
-- CI #436: missing-branch gate correctly blocked;
-- fail-closed branches expanded;
+- fail-closed input/diagnostic contract;
 - CI #438 / `31296710938`: SUCCESS.
 
-Temporary enforcement candidate:
+Temporary C6 candidate evidence:
 
-- integration `72f96e06d4b2cf449427652e5aac55a80a0f625f`;
-- tested head `ec65aef87153c4ffc2b8e173448face00be69af6`;
+- runtime integration `72f96e06d4b2cf449427652e5aac55a80a0f625f`;
+- regression head `ec65aef87153c4ffc2b8e173448face00be69af6`;
 - CI #441 / `31296798001`: SUCCESS;
-- demonstrated preflight-before-calculator and violation-blocks-upload behavior;
-- deliberately removed pending production audit evidence.
+- deliberately removed until C5b production data qualification.
 
 ## Gate C / C5a — DONE
 
-- PR #150 read-only audit infrastructure merged at `24fd65ca01738604a1eaa64a73673483a7fed79e`;
+- PR #150 audit infrastructure merged at `24fd65ca01738604a1eaa64a73673483a7fed79e`;
 - final exact-head CI #455 / `31297580094`: SUCCESS;
 - post-main CI #456 / `31297681016`: SUCCESS;
 - recovery `backup-post-gate-c-audit-infra-24fd65c`;
 - privacy review fixed public-detail leakage and cross-user duplicate false-positive risk;
-- normal calculation behavior remained unchanged;
-- blocking enforcement remained excluded.
+- normal calculation behavior remained unchanged.
 
 ## Gate C / C5b — DONE / CLEAR
 
-- production read-only audit #3215 / `31298163263`: SUCCESS;
+- production audit #3215 / `31298163263`: SUCCESS;
 - audited SHA `5942f67dddec2a6b6406221067dea210cf6104c0`;
 - 2 users / 168 rows / 5 scopes / 89 symbol-scopes;
 - zero prefix violations;
 - zero duplicate import-key/trade-id groups;
 - zero repeated order-id groups;
 - calculation/upload and job callbacks skipped;
-- qualification `clear`.
+- qualification `clear`;
+- evidence persisted through PR #153;
+- evidence merge `aa191738ac6f9243e9b645fb642869ad926d55a8`;
+- post-main CI #460 / `31298366483`: SUCCESS.
 
 ---
 
 # Change Log
 
-### 2026-08-09 — Gate A closeout
-Production smoke succeeded on merged Gate-A main; Gate A closed.
+### 2026-08-09 — Gate A
+Generation-safe pending calculation recovery completed and production-smoked.
 
-### 2026-08-09 — Gate B closeout
-Atomic DELETE merged and post-main CI passed; recovery created.
+### 2026-08-09 — Gate B
+Atomic Worker DELETE completed, post-main verified, recovery created.
 
 ### 2026-08-09 — Gate C C1/C2
-Runtime consumer audit identified missing prefix validation; independent Schema-2 prefix-integrity core implemented and coverage-qualified.
-
-### 2026-08-09 — Gate C temporary enforcement candidate
-Blocking runner preflight was implemented/tested, then deliberately removed because production data had not yet been qualified.
+Missing source-prefix validation root cause identified; independent split-adjusted Schema-2 prefix core implemented and coverage-qualified.
 
 ### 2026-08-09 — Gate C C5a
-Read-only audit infrastructure merged after privacy review, exact-head qualification, post-main CI and recovery.
+Read-only production audit infrastructure merged after privacy review and exact-head qualification.
 
 ### 2026-08-09 — Gate C C5b
-Production audit #3215 completed from `5942f67...`; qualification `clear`; all source-prefix and duplicate-provenance defect counts were zero. C6a is now READY.
+Production audit #3215 returned `qualification=clear`; all prefix and duplicate-provenance defect counts were zero. Evidence persisted in PR #153 and post-main CI #460 passed.
+
+### 2026-08-09 — Gate C C6a started
+Pre-change recovery `backup-pre-gate-c-c6a-aa19173` created. Previously proven minimal runtime patch and focused runner regression were restored exactly because current `main.py` matched the candidate baseline blob. Draft PR #154 opened; fresh CI #461 passed; initial independent scope review passed. Calculator `CLAMP` remains unchanged.
 
 ---
 
@@ -315,7 +363,7 @@ Production audit #3215 completed from `5942f67...`; qualification `clear`; all s
 
 ## D-C-01 — Split-adjusted Date/id prefix audit is the Schema-2 source-integrity gate
 
-**Decision:** use the independent split-adjusted `Date -> id` replay as the earliest trustworthy Schema-2 source-ledger validity check.  
+**Decision:** use independent split-adjusted `Date -> id` replay as the earliest trustworthy Schema-2 persisted-ledger validity check.  
 **Status:** LOCKED.  
 **Reopen condition:** schema/order contract changes or new evidence invalidates deterministic persisted-record validity order.
 
@@ -327,25 +375,24 @@ Production audit #3215 completed from `5942f67...`; qualification `clear`; all s
 
 ## D-C-03 — Production audit precedes blocking enforcement
 
-**Decision:** completed. C5b returned `qualification=clear`; C6a may proceed.  
-**Status:** SATISFIED.
+**Decision:** SATISFIED. C5b returned `qualification=clear`; C6a may proceed.
 
 ## D-C-04 — Public audit evidence remains counts-only
 
 **Decision:** no user/ticker/tag/record/quantity/price/raw-or-hashed broker identifier in machine-readable public audit result; duplicate provenance remains user-scoped.  
 **Status:** LOCKED.
 
-## D-C-05 — `AI_PROJECT_PLAYBOOK.md` is the governance baseline
+## D-C-05 — `AI_PROJECT_PLAYBOOK.md` is governance baseline
 
 **Decision:** follow its startup, scope, recovery, review, documentation and Definition-of-Done rules.  
-**Status:** LOCKED while the Playbook remains current on main.
+**Status:** LOCKED while Playbook remains current on main.
 
 ## D-C-06 — C6a enforcement and `CLAMP -> ERROR` are separate decisions
 
-**Decision:** C6a will add the blocking pre-calculator prefix gate only. Calculator oversell policy remains `CLAMP` unless a later dedicated evidence/review step authorizes changing it.  
-**Reason:** source-integrity enforcement is already sufficient to reject impossible persisted prefixes; changing downstream defensive semantics simultaneously would enlarge regression scope without necessity.  
+**Decision:** C6a adds only the blocking pre-calculator prefix gate. Calculator oversell policy remains `CLAMP`.  
+**Reason:** source-integrity enforcement rejects impossible persisted prefixes; simultaneous downstream policy change would widen regression scope without current evidence of necessity.  
 **Status:** LOCKED for C6a.  
-**Reopen condition:** C6a tests/production evidence show CLAMP still masks a reachable integrity defect after preflight.
+**Reopen condition:** C6a evidence demonstrates reachable post-preflight risk still masked by CLAMP.
 
 ---
 
@@ -355,16 +402,16 @@ Production audit #3215 completed from `5942f67...`; qualification `clear`; all s
 
 **Symptom:** final holdings / Daily-P&L may be internally consistent even if persisted transaction order temporarily goes negative.  
 **Failure point:** no source-prefix validation before calculator; calculator/reconciler clamp oversells and apply same-day priority.  
-**Root cause:** the pipeline validates aggregate/output consistency but not every deterministic persisted source prefix.  
+**Root cause:** pipeline validated aggregate/output consistency but not every deterministic persisted source prefix.  
 **Systemic cause:** source validity order and calculation execution semantics were not separated into an explicit preflight contract.  
-**Fix:** independent split-adjusted read-only audit qualified production data; next C6a promotes that contract to a blocking pre-calculator gate.  
-**Regression protection:** `ledger_integrity.py`, dedicated tests, audit-only workflow/tests; C6a runner regression pending.
+**Fix path:** independent split-adjusted audit → C5b production qualification → C6a blocking pre-calculator gate.  
+**Regression protection:** `ledger_integrity.py`, audit-only workflow/tests, `tests/test_runner_ledger_integrity.py`.
 
 ---
 
 # Known Issues
 
-- Historical `_sequence` test remains misleading and must be corrected/supplemented before Gate C closeout.
+- Historical `_sequence` test remains misleading and must be corrected/supplemented in C3-rem before Gate C closeout.
 - Schema 2 lacks first-class immutable external execution identity/time/sequence.
 - Net-negative commission/rebate is not faithfully representable because existing paths use `abs()`.
 - Futures/derivatives lack first-class asset class / multiplier support.
@@ -377,7 +424,7 @@ Production audit #3215 completed from `5942f67...`; qualification `clear`; all s
 - Legacy TransactionAnalyzer broad zero-on-exception behavior; no authoritative live consumer currently found.
 - Execution provenance lives in optional note metadata rather than enforced schema fields.
 - Calculator/analyzer/Daily-P&L lot semantics are not consolidated into one canonical ledger engine.
-- Broad market-data provider abstraction remains intentionally deferred until reproducibility evidence exists.
+- Broad market-data provider abstraction remains deferred until reproducibility evidence exists.
 
 ---
 
@@ -416,8 +463,8 @@ Production audit #3215 completed from `5942f67...`; qualification `clear`; all s
 
 ## Change calculator `CLAMP -> ERROR` inside C6a
 
-**Why rejected for C6a:** it mixes source-ledger enforcement with downstream defensive-policy change and increases regression radius without evidence of necessity.  
-**Reopen condition:** C6a evidence demonstrates a reachable defect remains after the prefix gate.
+**Why rejected for C6a:** mixes source-ledger enforcement with downstream defensive-policy change and increases regression radius without evidence of necessity.  
+**Reopen condition:** C6a evidence demonstrates reachable defect remains after the prefix gate.
 
 ## Schema 3 during Gate C
 
@@ -428,46 +475,54 @@ Production audit #3215 completed from `5942f67...`; qualification `clear`; all s
 
 # Risks
 
-- C6a must run before PortfolioCalculator and before any snapshot upload.
+- C6a must execute before `PortfolioCalculator` and before snapshot upload.
 - Prefix validation must use split-adjusted quantities and fail closed on missing/ambiguous split coverage.
-- C6a must not start depending on free-form note timestamps.
-- Calculator `CLAMP` is intentionally unchanged during C6a; this is a bounded defense-in-depth decision, not an omission.
-- Any main drift before C6a merge requires requalification.
+- C6a must not depend on free-form note timestamps.
+- Calculator `CLAMP` intentionally remains unchanged in C6a; this is a bounded defense-in-depth decision.
+- Any main drift before C6a merge requires stop + requalification.
+- Normal production smoke after merge must use audit-only=false and prove existing calculation/upload path still succeeds.
 - Production Worker deployment remains separately governed.
 
 ---
 
 # Next Actions
 
-## Immediate — persist C5b evidence
+## Immediate — finish C6a qualification
 
-1. Merge the docs-only C5b evidence PR after CI/review/main-drift qualification.
-2. Confirm post-main CI for the docs merge.
+1. Wait for exact-head PR CI triggered by this handoff update.
+2. Confirm final PR #154 changed-file list is exactly:
+   - `main.py`
+   - `tests/test_runner_ledger_integrity.py`
+   - `to_do_update_list.md`
+3. Perform final independent review focused only on known C6a blockers.
+4. Check review submissions and unresolved threads.
+5. Re-fetch protected `main`; if it differs from `aa191738...`, stop and integrate/requalify.
+6. Mark PR #154 ready and exact-head merge only after all gates pass.
+7. Confirm post-main CI.
+8. Run one **normal** production `Update Portfolio Data` smoke from merged main with `transaction_integrity_audit_only=false`; verify prefix success log and normal upload.
+9. Create `backup-post-gate-c-c6a-<sha>` recovery.
+10. Update this file with merge/CI/smoke/recovery evidence.
 
-## C6a — next implementation Batch
+## C3-rem — next before Gate C closeout
 
-1. Re-fetch current `main`; create pre-C6a recovery.
-2. Create a fresh scoped C6a branch/PR.
-3. Restore the previously proven blocking pre-calculator prefix gate against current main, using the merged `ledger_integrity.py` contract.
-4. Add/restore runner regressions proving integrity failure blocks calculator and upload.
-5. Keep calculator default `CLAMP` unchanged.
-6. Run full CI/coverage.
-7. Perform Independent Third-Party Review; classify findings BLOCKER/FOLLOW-UP/BACKLOG/REJECT.
-8. Re-fetch main immediately before merge; requalify any drift.
-9. Exact-head merge only if all blockers resolved.
-10. Post-main CI and a normal production calculation smoke.
-11. Create post-C6a recovery and update this file.
-
-## C3-rem — before Gate C closeout
-
-- correct/supplement the historical `_sequence` regression to exercise the actual calculator `Sequence` contract or explicitly lock current type-priority behavior;
-- keep note metadata outside financial ordering.
+- correct/supplement the historical `_sequence` regression to exercise the calculator's actual `Sequence` contract or explicitly lock current type-priority behavior;
+- keep note metadata outside financial ordering;
+- use a narrow test-only/behavior-documentation PR unless evidence proves runtime change is required.
 
 ## C6b decision — after C6a evidence
 
-- decide whether calculator `CLAMP` remains defense-in-depth or changes to `ERROR`;
-- do not change it unless reachable post-preflight risk is demonstrated;
-- if a change is justified, use a separate scoped PR with strict-policy regressions.
+- assess whether any reachable risk remains that requires changing calculator `CLAMP` to `ERROR`;
+- default decision is **keep CLAMP as defense-in-depth** unless new evidence demonstrates necessity;
+- if a policy change is justified, use a separate scoped PR with strict-policy regressions.
+
+## Gate C closeout
+
+- confirm C6a production smoke and recovery;
+- complete C3-rem;
+- resolve C6b decision explicitly (keep CLAMP or separate change);
+- update current evidence/handoff;
+- create stable checkpoint/recovery;
+- close Gate C.
 
 ## Gate D — only after Gate C closeout
 

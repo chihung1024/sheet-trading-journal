@@ -13,6 +13,7 @@ from journal_engine.config import API_KEY
 from journal_engine.core.calculator import PortfolioCalculator
 from journal_engine.core.currency_detector import CurrencyDetector
 from journal_engine.core.daily_pnl_reconciler import reconcile_snapshot_daily_pnl
+from journal_engine.core.ledger_integrity import validate_transaction_prefix_integrity
 from journal_engine.core.split_ledger import (
     build_split_adjusted_validation_ledger,
     validate_adjusted_ledger_parity,
@@ -381,6 +382,22 @@ def run_update() -> None:
             if raw_user_df.empty:
                 raise PortfolioUpdateError("使用者交易資料意外為空")
 
+            validation_df = build_split_adjusted_validation_ledger(
+                raw_user_df,
+                market_client,
+            )
+            integrity_audit = validate_transaction_prefix_integrity(
+                validation_df,
+                user_label=masked_user,
+            )
+            logger.info(
+                "交易 prefix integrity 通過: user=%s rows=%s scopes=%s symbol_scopes=%s",
+                masked_user,
+                integrity_audit.row_count,
+                integrity_audit.scope_count,
+                integrity_audit.symbol_scope_count,
+            )
+
             calculator = PortfolioCalculator(
                 raw_user_df.copy(deep=True),
                 market_client,
@@ -419,10 +436,6 @@ def run_update() -> None:
                 len(legacy_mismatch_capture.messages),
             )
 
-            validation_df = build_split_adjusted_validation_ledger(
-                raw_user_df,
-                market_client,
-            )
             if not validate_adjusted_ledger_parity(calculator.df, validation_df):
                 raise PortfolioUpdateError("計算器與驗證器的拆股復權交易帳本不一致")
 
