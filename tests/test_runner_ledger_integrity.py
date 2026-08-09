@@ -44,7 +44,15 @@ def configure_runner(monkeypatch, events, *, preflight_error=None):
             events.append("market")
 
     class FakeCalculator:
-        def __init__(self, user_df, market_client, benchmark_ticker, api_client):
+        def __init__(
+            self,
+            user_df,
+            market_client,
+            benchmark_ticker,
+            api_client,
+            oversell_policy="CLAMP",
+            calculation_now=None,
+        ):
             events.append("calculator-init")
             self.df = user_df.copy(deep=True)
 
@@ -92,7 +100,13 @@ def configure_runner(monkeypatch, events, *, preflight_error=None):
         lambda *args, **kwargs: events.append("reconcile") or [],
     )
     monkeypatch.setattr(runner, "validate_adjusted_ledger_parity", fake_parity)
+    monkeypatch.setattr(
+        runner,
+        "build_production_calculation_manifest",
+        lambda **kwargs: None,
+    )
     monkeypatch.setattr(runner, "validate_before_upload", fake_validate_before_upload)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
     monkeypatch.setenv("TARGET_USER_ID", "alpha@example.com")
     monkeypatch.setenv("CUSTOM_BENCHMARK", "SPY")
 
