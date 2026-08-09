@@ -73,6 +73,7 @@
       "journal_engine/core/ledger_integrity.py",
       "journal_engine/core/market_stage_detector.py",
       "journal_engine/core/performance_metrics.py",
+      "journal_engine/core/production_manifest.py",
       "journal_engine/core/split_ledger.py",
       "journal_engine/core/transaction_analyzer.py",
       "journal_engine/core/transaction_calendar.py",
