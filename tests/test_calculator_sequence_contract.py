@@ -61,6 +61,17 @@ class SequenceContractMarketDataClient:
 def _transactions(sequence_column):
     rows = [
         {
+            "Date": "2026-01-01",
+            "Symbol": "AAA",
+            "Type": "BUY",
+            "Qty": 2.0,
+            "Price": 100.0,
+            "Commission": 0.0,
+            "Tax": 0.0,
+            "Tag": "",
+            sequence_column: 0,
+        },
+        {
             "Date": "2026-01-02",
             "Symbol": "AAA",
             "Type": "SELL",
@@ -75,7 +86,7 @@ def _transactions(sequence_column):
             "Date": "2026-01-02",
             "Symbol": "AAA",
             "Type": "BUY",
-            "Qty": 5.0,
+            "Qty": 3.0,
             "Price": 100.0,
             "Commission": 0.0,
             "Tax": 0.0,
@@ -91,9 +102,10 @@ def _transactions(sequence_column):
 def test_sequence_column_precedes_same_day_type_priority():
     """Public `Sequence` must be honored before BUY/DIV/SELL fallback priority.
 
-    Sequence explicitly orders SELL before BUY. In ERROR mode that must surface an
-    oversell. If Sequence were ignored, fallback BUY-before-SELL ordering would
-    hide the oversell and this regression would fail.
+    The prior day leaves two shares. Sequence explicitly orders a five-share SELL
+    before the same-day three-share BUY, so ERROR mode must surface an oversell.
+    If Sequence were ignored, fallback BUY-before-SELL ordering would raise the
+    position to five first and hide the oversell.
     """
 
     calculator = PortfolioCalculator(
@@ -111,7 +123,7 @@ def test_private_sequence_column_does_not_change_financial_order():
 
     With no recognized Timestamp/Sequence column, the calculator must retain its
     current stable fallback priority (BUY -> DIV -> SELL). The same rows therefore
-    complete without an oversell and end flat.
+    buy three shares before selling five and end flat without an oversell.
     """
 
     calculator = PortfolioCalculator(
