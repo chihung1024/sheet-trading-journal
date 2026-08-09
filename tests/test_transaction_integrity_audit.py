@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 import pytest
 
@@ -14,10 +16,19 @@ def normalized_rows(rows):
     return frame
 
 
-def transaction(record_id, txn_type, qty, *, note="", tag="Core", date="2026-01-02"):
+def transaction(
+    record_id,
+    txn_type,
+    qty,
+    *,
+    note="",
+    tag="Core",
+    date="2026-01-02",
+    user_id="alpha@example.com",
+):
     return {
         "id": record_id,
-        "user_id": "alpha@example.com",
+        "user_id": user_id,
         "Date": date,
         "Symbol": "AAA",
         "Type": txn_type,
@@ -45,7 +56,7 @@ class FakeMarket:
         return self.factor
 
 
-def test_structured_provenance_is_counted_without_exposing_raw_identifiers():
+def test_structured_provenance_counts_duplicates_without_exposing_identifiers():
     frame = normalized_rows([
         transaction(
             1,
@@ -68,18 +79,45 @@ def test_structured_provenance_is_counted_without_exposing_raw_identifiers():
     ])
 
     result = audit_tool.audit_structured_note_provenance(frame)
+    rendered = json.dumps(result, sort_keys=True)
 
     assert result["nonempty_notes"] == 2
     assert result["token_counts"]["import_key"] == 2
     assert result["token_counts"]["order_id"] == 2
     assert result["token_counts"]["trade_id"] == 2
-    assert len(result["duplicate_import_key_groups"]) == 1
-    assert len(result["duplicate_trade_id_groups"]) == 1
-    assert len(result["repeated_order_id_groups"]) == 1
-    duplicate = result["duplicate_import_key_groups"][0]
-    assert duplicate["record_ids"] == [1, 2]
-    assert duplicate["fingerprint"] != "IBKR-739305860"
-    assert "IBKR-739305860" not in str(result)
+    assert result["duplicate_import_key"] == {"groups": 1, "rows": 2}
+    assert result["duplicate_trade_id"] == {"groups": 1, "rows": 2}
+    assert result["repeated_order_id"] == {"groups": 1, "rows": 2}
+    assert "IBKR-739305860" not in rendered
+    assert "739305860" not in rendered
+    assert "fill-1" not in rendered
+    assert "record_ids" not in rendered
+    assert "fingerprint" not in rendered
+
+
+def test_same_identifier_in_different_users_is_not_a_duplicate_group():
+    frame = normalized_rows([
+        transaction(
+            1,
+            "BUY",
+            1,
+            note="import_key=shared-order trade_id=shared-fill order_id=shared-order",
+            user_id="alpha@example.com",
+        ),
+        transaction(
+            2,
+            "BUY",
+            1,
+            note="import_key=shared-order trade_id=shared-fill order_id=shared-order",
+            user_id="beta@example.com",
+        ),
+    ])
+
+    result = audit_tool.audit_structured_note_provenance(frame)
+
+    assert result["duplicate_import_key"] == {"groups": 0, "rows": 0}
+    assert result["duplicate_trade_id"] == {"groups": 0, "rows": 0}
+    assert result["repeated_order_id"] == {"groups": 0, "rows": 0}
 
 
 def test_build_audit_result_is_clear_for_valid_prefixes_and_unique_provenance(monkeypatch):
@@ -90,6 +128,7 @@ def test_build_audit_result_is_clear_for_valid_prefixes_and_unique_provenance(mo
     ])
 
     result = audit_tool.build_audit_result(frame, ["alpha@example.com"], FakeMarket())
+    rendered = json.dumps(result, sort_keys=True)
 
     assert result["mode"] == "read_only"
     assert result["source_commit"] == "abc123"
@@ -98,39 +137,54 @@ def test_build_audit_result_is_clear_for_valid_prefixes_and_unique_provenance(mo
     assert result["summary"]["rows"] == 2
     assert result["summary"]["prefix_violations"] == 0
     assert result["summary"]["duplicate_import_key_groups"] == 0
-    assert result["users"][0]["user"] == "al***@example.com"
+    assert "alpha@example.com" not in rendered
+    assert '"AAA"' not in rendered
+    assert "fill-1" not in rendered
+    assert "record_id" not in rendered
+    assert "requested_qty" not in rendered
 
 
-def test_build_audit_result_blocks_negative_source_prefix_without_mutation():
+def test_build_audit_result_blocks_negative_source_prefix_with_counts_only():
     frame = normalized_rows([
         transaction(1, "SELL", 1),
         transaction(2, "BUY", 1),
     ])
 
     result = audit_tool.build_audit_result(frame, ["alpha@example.com"], FakeMarket())
+    rendered = json.dumps(result, sort_keys=True)
 
     assert result["qualification"] == "blocked"
     assert result["summary"]["prefix_violations"] == 2  # all + Core
-    assert {item["record_id"] for item in result["prefix_violations"]} == {1}
-    assert {item["user"] for item in result["prefix_violations"]} == {"al***@example.com"}
+    assert result["summary"]["users_with_prefix_violations"] == 1
+    assert result["summary"]["all_scope_prefix_violations"] == 1
+    assert result["summary"]["tag_scope_prefix_violations"] == 1
+    assert "alpha@example.com" not in rendered
+    assert '"AAA"' not in rendered
+    assert "record_id" not in rendered
+    assert "qty_before" not in rendered
+    assert "qty_after" not in rendered
 
 
-def test_split_coverage_fails_closed_when_market_data_is_missing():
+def test_split_coverage_fails_closed_when_market_data_is_missing_without_symbol_in_error():
     frame = normalized_rows([transaction(1, "BUY", 1)])
     market = FakeMarket()
     market.market_data = {}
 
-    with pytest.raises(audit_tool.ProductionAuditError, match="unavailable"):
+    with pytest.raises(audit_tool.ProductionAuditError, match="unavailable") as exc_info:
         audit_tool.validate_split_multiplier_coverage(frame, market)
 
+    assert "AAA" not in str(exc_info.value)
 
-def test_split_coverage_rejects_multiplier_api_divergence():
+
+def test_split_coverage_rejects_multiplier_api_divergence_without_symbol_in_error():
     frame = normalized_rows([transaction(1, "BUY", 1)])
     market = FakeMarket(factor=2.0)
     market.get_transaction_multiplier = lambda symbol, date: 1.0
 
-    with pytest.raises(audit_tool.ProductionAuditError, match="diverges"):
+    with pytest.raises(audit_tool.ProductionAuditError, match="diverges") as exc_info:
         audit_tool.validate_split_multiplier_coverage(frame, market)
+
+    assert "AAA" not in str(exc_info.value)
 
 
 def test_notes_are_optional_and_never_required_for_calculation_audit():
@@ -141,3 +195,12 @@ def test_notes_are_optional_and_never_required_for_calculation_audit():
     assert result["rows"] == 1
     assert result["nonempty_notes"] == 0
     assert result["token_counts"] == {}
+    assert result["duplicate_import_key"] == {"groups": 0, "rows": 0}
+
+
+def test_structured_provenance_requires_user_identity_for_safe_scoping():
+    frame = normalized_rows([transaction(1, "BUY", 1, note="import_key=one")])
+    frame.loc[0, "user_id"] = ""
+
+    with pytest.raises(audit_tool.ProductionAuditError, match="no user identity"):
+        audit_tool.audit_structured_note_provenance(frame)
