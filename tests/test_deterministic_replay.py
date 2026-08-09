@@ -191,8 +191,11 @@ def _run_replay(fixture):
         realtime_fx_rates_by_currency=market.realtime_fx_rates_by_currency,
         include_realtime=True,
     )
+    # This is deliberately a declared test input used to exercise identity
+    # composition. It is not an attestation of the repository commit running
+    # this test. D1e production integration must resolve the real full Git SHA.
     combined_identity = build_deterministic_calculation_identity(
-        engine_source_commit=fixture["engine_source_commit"],
+        engine_source_commit=fixture["declared_fixture_engine_source_commit"],
         source_records=source_identity,
         runtime_config=runtime_identity,
         market_inputs_sha256=market_identity.sha256,
@@ -270,6 +273,8 @@ def test_d1d_golden_replay_is_exact_and_network_free(monkeypatch):
     _forbid_network(monkeypatch)
     fixture = _load_fixture()
 
+    assert fixture["engine_identity_semantics"] == "declared_test_input_not_runtime_attestation"
+
     first = _run_replay(copy.deepcopy(fixture))
     second = _run_replay(copy.deepcopy(fixture))
     expected = fixture["expected"]
@@ -344,7 +349,7 @@ def test_d1d_identity_components_distinguish_change_causes(monkeypatch):
     assert synthetic_replay["combined_identity"].combined_sha256 != baseline["combined_identity"].combined_sha256
 
     engine_changed = copy.deepcopy(fixture)
-    engine_changed["engine_source_commit"] = "2222222222222222222222222222222222222222"
+    engine_changed["declared_fixture_engine_source_commit"] = "2222222222222222222222222222222222222222"
     engine_replay = _run_replay(engine_changed)
     assert engine_replay["projection"] == baseline["projection"]
     assert engine_replay["combined_identity"].combined_sha256 != baseline["combined_identity"].combined_sha256
