@@ -45,7 +45,7 @@ Current-phase references:
 # Current Stable State
 
 - Repository: `chihung1024/sheet-trading-journal`
-- Current protected `main`: `e5df59e998d1de4e1b39e388effc4be700c778a3`
+- Current protected `main`: `4dd896e338304c8892bf0a446b6e0c01ae53b056`
 - D1: **Schema 2**
 - Worker source contract: release `4.07` / API `2.60` / required schema `2`
 - Gate A / P6C: **DONE**
@@ -55,14 +55,16 @@ Current-phase references:
 - Gate C / C5a: **DONE**
 - Gate C / C5b production audit: **DONE / CLEAR**
 - Gate C / C6a blocking prefix enforcement: **DONE / PRODUCTION VERIFIED**
+- Gate C / C6a closeout docs PR #155 merged; post-main CI #465 passed.
 - Calculator oversell policy remains **`CLAMP`**; C6a intentionally did not change it.
 - Production Worker deployment was not part of C6a.
-- Current active Batch: **Gate C / C3-rem — correct/supplement historical `_sequence` regression**.
+- Current active Batch: **Gate C / C3-rem — VERIFYING in PR #156**.
 
 Current recovery refs:
 
 - pre-C6a: `backup-pre-gate-c-c6a-aa19173`
 - post-C6a: `backup-post-gate-c-c6a-e5df59e`
+- pre-C3-rem: `backup-pre-gate-c-c3-rem-4dd896e`
 
 ---
 
@@ -70,6 +72,8 @@ Current recovery refs:
 
 - Schema 2 provides deterministic persisted-record validity order as `Date -> record id`, but no first-class broker execution timestamp/sequence/source/external execution id.
 - `prepare_transactions()` does not promote `note` metadata into financial ordering fields.
+- `PortfolioCalculator` recognizes optional columns named exactly `Timestamp` and `Sequence`; it does **not** recognize `_sequence`.
+- Without recognized `Timestamp` / `Sequence`, calculator same-day fallback priority is BUY → DIV → SELL using a stable sort.
 - Calculator and canonical Daily-P&L use compatible same-day priority/clamp semantics; agreement between them cannot prove source-prefix validity.
 - Prefix validity is independently enforced on the split-adjusted source ledger **before** `PortfolioCalculator`.
 - The same split-adjusted validation ledger is reused for downstream adjusted-ledger parity.
@@ -89,7 +93,7 @@ Current recovery refs:
 | Gate C | C5a | read-only production-audit infrastructure | High | **DONE** | PR #150 + post-main CI + recovery |
 | Gate C | C5b | production read-only audit | High | **DONE / CLEAR** | Update Portfolio Data #3215 |
 | Gate C | C6a | blocking pre-calculator prefix enforcement | High | **DONE / PROD VERIFIED** | PR #154 + CI #462/#463 + smoke #3216 + recovery |
-| Gate C | C3-rem | correct/supplement historical `_sequence` regression | Medium | **ACTIVE / NEXT** | targeted regression CI |
+| Gate C | C3-rem | correct/supplement historical `_sequence` regression | Medium | **VERIFYING / PR #156** | corrected regression + CI #467 |
 | Gate C | C6b | decide calculator `CLAMP` vs `ERROR` | Medium | **DEFERRED** | separate evidence-based decision only |
 | Gate C | Closeout | final Gate-C review + recovery + docs | High | BLOCKED on C3-rem | post-main qualification |
 | Gate D | D1 | calculation manifest + deterministic golden replay | Next | TODO | replay/CI evidence |
@@ -114,47 +118,115 @@ Gate C does not authorize Schema 3, broker-execution tables, futures support, br
 
 ## C3-rem — Correct/supplement historical `_sequence` regression
 
-Status: **ACTIVE / NEXT**
+Status: **VERIFYING — PR #156**
 
 ### Root issue
 
-Historical regression coverage around `_sequence` is misleading because the production ingestion path does not currently promote free-form note metadata into calculator `Timestamp` / `Sequence` columns. Normal Schema-2 records therefore use the calculator's effective same-day fallback priority rather than broker-time chronology.
+The historical `tests/test_daily_pnl.py::test_sequence_stabilizes_same_day_order()` is a false-positive regression contract:
+
+1. it supplies `_sequence`, but `PortfolioCalculator` only recognizes `Sequence` and `Timestamp`;
+2. its same-day BUY/SELL example is already compatible with fallback BUY → DIV → SELL priority;
+3. therefore the test passes even when `_sequence` is completely ignored;
+4. production `prepare_transactions()` does not create `Sequence` / `Timestamp`, so the historical test also did not prove the live ingestion path had broker chronology.
 
 ### Objective
 
-Create an accurate regression contract that proves the behavior actually used by the current Schema-2 pipeline without introducing new hidden ordering semantics.
+Supplement the misleading historical regression with an explicit executable contract that distinguishes recognized `Sequence` from unsupported `_sequence`, without changing runtime behavior or introducing hidden note-based ordering.
 
 ### In scope
 
-- locate the historical `_sequence` regression and current calculator ordering tests;
-- determine whether the test should exercise real `Sequence` support directly or explicitly lock the current fallback same-day type-priority behavior;
-- ensure tests distinguish persisted validity order from broker chronology;
+- prove real `Sequence` is applied before fallback type priority;
+- prove `_sequence` is not a supported calculator financial-ordering field;
+- preserve fallback BUY → DIV → SELL behavior when no recognized chronology columns exist;
 - keep `note` metadata outside financial ordering;
-- run focused tests + full CI/coverage;
-- independent review;
-- persistent handoff update.
+- test-only change;
+- full CI/coverage and independent review;
+- persistent execution evidence.
 
 ### Explicitly out of scope
 
+- calculator/runtime changes;
 - Schema 3;
 - broker execution tables;
 - parsing note timestamps/order ids into financial ordering;
-- changing `CLAMP -> ERROR`;
+- changing production `CLAMP -> ERROR` policy;
 - broker import redesign;
 - futures/derivatives support;
 - unrelated refactors.
 
+### Implementation evidence
+
+Recovery / branch:
+
+- pre-C3-rem recovery: `backup-pre-gate-c-c3-rem-4dd896e`
+- branch: `pr-gate-c-c3-rem-sequence-regression`
+- PR: **#156 — Draft**
+
+Test-only change:
+
+- file: `tests/test_calculator_sequence_contract.py`
+- initial commit: `46e08683de48a1166ad0e3988669be7c1eb6472f`
+- corrected fixture commit: `c702878dc4d3a6ed874589c089fad010c59791b3`
+- no runtime/source/schema/Worker/D1/workflow change.
+
+Contract now proven by the tests:
+
+1. Prior day establishes 2 shares.
+2. On the next day, `Sequence=1` orders SELL 5 before `Sequence=2` BUY 3.
+3. With recognized `Sequence`, ERROR-mode oversell must surface because only 2 shares exist when the SELL runs.
+4. Replacing `Sequence` with unsupported `_sequence` removes explicit chronology; fallback BUY-before-SELL raises holdings from 2 to 5 before selling 5, so the calculation succeeds and ends flat.
+5. This discriminates the two contracts instead of merely asserting a final quantity compatible with both.
+
+### CI evidence
+
+Initial CI #466 / run `31299704165`:
+
+- Frontend: SUCCESS
+- Worker/D1: SUCCESS
+- Python: **FAILED** — 1 failed / 255 passed
+- failure was limited to the first new regression expecting an oversell from a completely empty position.
+- captured calculator behavior: an empty-position SELL is logged/ignored (`SELL ignored due to empty position`) before the oversell-policy branch can raise.
+- classification: **test-fixture defect**, not runtime regression; runtime was not changed.
+
+Fixture correction:
+
+- establish 2 prior-day shares;
+- same-day SELL 5 then BUY 3 under `Sequence`;
+- same rows under `_sequence` rely on fallback BUY → SELL and end flat.
+
+Corrected CI #467 / run `31299780012`:
+
+- Python tests + branch coverage: **SUCCESS**
+- Frontend contracts/build: **SUCCESS**
+- Worker security/deployment + D1 baseline: **SUCCESS**
+- result confirms the new regression meaningfully distinguishes `Sequence` from `_sequence`.
+
+Independent initial scope review:
+
+- compare `main=4dd896e...` → `c702878d...` shows exactly one added file: `tests/test_calculator_sequence_contract.py` (+137);
+- no runtime changes;
+- no note parsing;
+- no CLAMP policy change;
+- no Schema/Worker/D1/workflow changes;
+- conclusion: **PASS for C3-rem scope**.
+
 ### Completion criteria
 
-- [ ] historical misleading `_sequence` regression is corrected or supplemented;
-- [ ] tests exercise the actual supported contract;
-- [ ] no note-to-financial-order coupling is introduced;
-- [ ] focused regression passes;
-- [ ] full CI/coverage passes;
-- [ ] independent review finds no blocker;
-- [ ] exact-head merge + post-main CI;
-- [ ] recovery created;
-- [ ] this file updated;
+- [x] misleading `_sequence` behavior is supplemented with an explicit contract;
+- [x] recognized `Sequence` behavior is directly exercised;
+- [x] unsupported `_sequence` behavior is directly exercised;
+- [x] no note-to-financial-order coupling introduced;
+- [x] corrected regression passes in full CI;
+- [x] full CI/coverage #467 passes;
+- [x] independent initial scope review finds no blocker;
+- [x] this handoff records #466 root cause and #467 correction evidence;
+- [ ] final exact-head CI after this handoff commit;
+- [ ] final changed-file/review-thread/main-drift qualification;
+- [ ] mark PR #156 ready;
+- [ ] exact-head merge;
+- [ ] post-main CI;
+- [ ] post-C3-rem recovery;
+- [ ] final handoff closeout;
 - [ ] then perform final Gate-C closeout review.
 
 ---
@@ -261,7 +333,8 @@ Observed XIRR/reliability and >30% market-move warnings remained warnings only a
 - post-C6a recovery: `backup-post-gate-c-c6a-e5df59e`
 - calculator oversell policy remains `CLAMP`.
 - C6a is **DONE**.
-- next Batch is **C3-rem**.
+- closeout docs PR #155 merged → `4dd896e338304c8892bf0a446b6e0c01ae53b056`.
+- post-closeout main CI #465 / `31299568841`: **SUCCESS**.
 
 ---
 
@@ -384,6 +457,12 @@ Qualification:
 **Reason:** optional metadata is not a stable calculation contract.  
 **Status:** LOCKED pending explicit structured schema redesign.
 
+## D-C-08 — `Sequence` and `_sequence` are distinct contracts
+
+**Decision:** only the calculator's recognized `Sequence` / `Timestamp` columns may alter its explicit same-day ordering; `_sequence` has no financial-ordering semantics.  
+**Reason:** current code explicitly checks `Sequence` / `Timestamp`, while production ingestion does not create them and the historical `_sequence` test was a false positive.  
+**Status:** LOCKED for Schema 2 unless the ingestion/schema contract is explicitly redesigned.
+
 ---
 
 # Root Cause Log
@@ -395,11 +474,19 @@ Qualification:
 **Fix:** split-adjusted prefix validation before calculator.  
 **Status:** FIXED by C6a; production verified in #3216.
 
+## RC-C-02 — Historical `_sequence` test was a false positive
+
+**Failure mode:** test name implied sequence ordering was protected even though supplied `_sequence` was ignored.  
+**Root cause:** test used an unsupported private column and data whose expected result was also produced by fallback BUY-before-SELL priority.  
+**Additional discovery:** an initial replacement fixture started from zero holdings; calculator intentionally ignores a SELL against a completely empty position before ERROR-mode oversell handling, so that fixture could not discriminate ordering.  
+**Fix:** dedicated regression with a non-zero prior position and order-sensitive same-day SELL/BUY quantities; test both `Sequence` and `_sequence` explicitly.  
+**Status:** FIX IMPLEMENTED / CI #467 GREEN; awaiting PR #156 final qualification.
+
 ---
 
 # Known Issues / Technical Debt
 
-- Historical `_sequence` regression remains misleading: **ACTIVE C3-rem**.
+- Historical `_sequence` regression is being explicitly supplemented by C3-rem PR #156; merge/closeout pending.
 - Schema 2 lacks first-class immutable external execution identity/time/sequence.
 - Net-negative commission/rebate is not faithfully representable because Commission/Tax paths normalize with `abs()`.
 - Futures/derivatives lack first-class asset class / multiplier support.
@@ -435,17 +522,17 @@ Would reduce duplicated semantics between calculator/analyzer/reconciler.
 
 # Next Actions
 
-## Immediate — C3-rem
+## Immediate — Finish C3-rem PR #156
 
-1. identify the historical `_sequence` regression and exact production ordering path;
-2. determine the minimum correct regression contract;
-3. implement only the required test correction/supplement;
-4. do not parse note timestamps/order ids into financial ordering;
-5. focused tests;
-6. full CI/coverage;
-7. independent review;
-8. exact-head merge + post-main CI + recovery;
-9. update this file.
+1. run final exact-head CI after this handoff commit;
+2. verify final changed files are only the sequence regression + this handoff;
+3. verify review submissions / unresolved threads;
+4. re-fetch protected `main`; if it drifted from `4dd896e...`, stop and requalify;
+5. mark PR #156 ready;
+6. exact-head merge;
+7. verify post-main CI;
+8. create post-C3-rem recovery;
+9. persist closeout evidence and then begin Gate C final closeout review.
 
 ## Then — Gate C final closeout
 
