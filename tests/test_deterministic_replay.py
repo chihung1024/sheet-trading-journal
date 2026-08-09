@@ -227,6 +227,45 @@ def _forbid_network(monkeypatch):
     monkeypatch.setattr("yfinance.download", fail)
 
 
+def _assert_golden_economics(replay, expected):
+    snapshot = replay["snapshot"]
+    summary = snapshot.summary
+    holdings = {holding.symbol: holding for holding in snapshot.holdings}
+    dividends = {record.symbol: record.total_net_twd for record in snapshot.pending_dividends}
+    day_ledger = {
+        row["symbol"]: row["total_pnl_twd"]
+        for row in snapshot.groups["all"].day_ledger
+    }
+
+    assert set(holdings) == {"2330.TW", "NVDA"}
+    assert holdings["2330.TW"].qty == 10.0
+    assert holdings["NVDA"].qty == expected["nvda_adjusted_qty"]
+    assert holdings["2330.TW"].market_value_twd == 5100.0
+    assert holdings["NVDA"].market_value_twd == 7150.0
+
+    assert summary.total_value == expected["total_value"]
+    assert summary.invested_capital == expected["invested_capital"]
+    assert summary.realized_pnl == expected["realized_pnl"]
+    assert summary.total_pnl == expected["total_pnl"]
+    assert summary.daily_pnl_twd == expected["daily_pnl_twd"]
+    assert summary.daily_pnl_breakdown == expected["daily_pnl_breakdown"]
+    assert summary.daily_pnl_base_value == expected["daily_pnl_base_value"]
+    assert summary.daily_pnl_roi_percent == expected["daily_pnl_roi_percent"]
+
+    assert summary.twr == expected["twr"]
+    assert summary.twr_status == expected["twr_status"]
+    assert summary.twr_reason is None
+    assert summary.twr_invalid_since is None
+    assert summary.xirr == expected["xirr"]
+    assert summary.xirr_status == expected["xirr_status"]
+    assert summary.xirr_reason is None
+    assert summary.xirr_asof_date == expected["xirr_asof_date"]
+    assert summary.xirr_cashflow_conventional is expected["xirr_cashflow_conventional"]
+
+    assert dividends == expected["pending_dividends_twd"]
+    assert day_ledger == expected["day_ledger_total_pnl_twd"]
+
+
 def test_d1d_golden_replay_is_exact_and_network_free(monkeypatch):
     _forbid_network(monkeypatch)
     fixture = _load_fixture()
@@ -239,10 +278,10 @@ def test_d1d_golden_replay_is_exact_and_network_free(monkeypatch):
     assert first["snapshot"].updated_at == "2026-01-05 15:00"
     assert first["snapshot"].history[-1]["date"] == expected["history_last_date"]
     assert max(row["date"] for row in first["snapshot"].history) == expected["history_last_date"]
-
-    nvda = next(holding for holding in first["snapshot"].holdings if holding.symbol == "NVDA")
-    assert nvda.qty == expected["nvda_adjusted_qty"]
     assert first["market_identity"].synthetic_row_counts == expected["synthetic_row_counts"]
+
+    _assert_golden_economics(first, expected)
+    _assert_golden_economics(second, expected)
 
     assert first["projection"] == second["projection"]
     assert first["content_sha256"] == second["content_sha256"]
@@ -251,12 +290,6 @@ def test_d1d_golden_replay_is_exact_and_network_free(monkeypatch):
 
     assert first["content_sha256"] == expected["content_sha256"]
     assert first["combined_identity"].combined_sha256 == expected["combined_input_sha256"]
-
-    summary = first["snapshot"].summary
-    assert summary.twr_status in {"ok", "undefined", "not_applicable"}
-    assert summary.xirr_status in {"ok", "unavailable", "not_applicable"}
-    assert summary.xirr_asof_date == expected["calculation_as_of"]
-    assert first["snapshot"].groups["all"].day_ledger
 
 
 def test_d1d_future_rows_and_provider_diagnostics_do_not_pollute_numeric_identity(monkeypatch):
