@@ -136,6 +136,32 @@ def test_calculator_normalizes_explicit_clock_to_taipei():
     assert snapshot.summary.market_stage == "CLOSED"
 
 
+def test_calculator_default_run_clock_preserves_legacy_system_local_semantics(monkeypatch):
+    real_datetime = datetime
+
+    class FakeDateTime:
+        calls = []
+
+        @classmethod
+        def now(cls, tz=None):
+            cls.calls.append(tz)
+            if tz is None:
+                return real_datetime(2026, 1, 1, 23, 55)
+            return tz.localize(real_datetime(2026, 1, 2, 7, 55))
+
+    monkeypatch.setattr("journal_engine.core.calculator.datetime", FakeDateTime)
+    calculator = PortfolioCalculator(_transactions(), ClockFixtureMarket())
+
+    run_now = calculator._run_now()
+    tw_now = calculator._now_tw()
+
+    assert run_now == real_datetime(2026, 1, 1, 23, 55)
+    assert run_now.tzinfo is None
+    assert tw_now == _taipei_datetime(2026, 1, 2, 7, 55)
+    assert FakeDateTime.calls[0] is None
+    assert FakeDateTime.calls[1] is calculator.pnl_helper.tz_tw
+
+
 def test_calculator_rejects_naive_explicit_clock():
     with pytest.raises(ValueError, match="calculation_now must be timezone-aware"):
         PortfolioCalculator(
