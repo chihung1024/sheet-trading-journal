@@ -115,6 +115,8 @@ def test_build_production_manifest_is_user_scoped_and_asof_bounded():
 
     assert manifest.market_inputs.symbol_count == 3
     assert manifest.fx_inputs.currency_count == 2
+    assert manifest.fx_inputs.includes_realtime is True
+    assert manifest.fx_inputs.realtime_currency_count > 0
     assert manifest.provider_diagnostics.price_sources == {
         "2330.TW": "Close",
         "NVDA": "Close",
@@ -152,6 +154,44 @@ def test_manifest_identity_ignores_other_users_future_rows_and_unrelated_currenc
     )
 
     assert changed.market_inputs == baseline.market_inputs
+    assert changed.fx_inputs == baseline.fx_inputs
+    assert changed.deterministic_identity == baseline.deterministic_identity
+
+
+def test_manifest_excludes_realtime_fx_when_calculation_has_no_asof_market_row():
+    baseline_client = _market_client()
+    for symbol in ("SPY", "NVDA", "2330.TW"):
+        baseline_client.market_data[symbol] = baseline_client.market_data[symbol].drop(
+            index=pd.Timestamp("2026-01-05")
+        )
+
+    baseline = build_production_calculation_manifest(
+        raw_user_df=_raw_user_df(),
+        market_client=baseline_client,
+        benchmark="SPY",
+        calculation_now=_fixed_now(),
+        engine_source_commit="a" * 40,
+        oversell_policy="CLAMP",
+    )
+
+    changed_client = _market_client()
+    for symbol in ("SPY", "NVDA", "2330.TW"):
+        changed_client.market_data[symbol] = changed_client.market_data[symbol].drop(
+            index=pd.Timestamp("2026-01-05")
+        )
+    changed_client.realtime_fx_rates_by_currency["USD"] = 999.0
+
+    changed = build_production_calculation_manifest(
+        raw_user_df=_raw_user_df(),
+        market_client=changed_client,
+        benchmark="SPY",
+        calculation_now=_fixed_now(),
+        engine_source_commit="a" * 40,
+        oversell_policy="CLAMP",
+    )
+
+    assert baseline.fx_inputs.includes_realtime is False
+    assert baseline.fx_inputs.realtime_currency_count == 0
     assert changed.fx_inputs == baseline.fx_inputs
     assert changed.deterministic_identity == baseline.deterministic_identity
 
