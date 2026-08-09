@@ -175,7 +175,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         pending,
     );
 
-    const clearPendingCalculationRequest = () => clearStoredCalculationRequest(localStorage);
+    const clearPendingCalculationRequest = (selector) => clearStoredCalculationRequest(
+        localStorage,
+        getCalculationOwner(),
+        selector,
+    );
 
     const updatePollingState = () => {
         isPolling.value = snapshotPollActive || calculationJobPollActive;
@@ -194,7 +198,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const completeCalculationJob = async (job, addToast) => {
         stopCalculationJobPolling();
         clearCalculationJobPollClaim(localStorage, getToken(), job.id);
-        clearPendingCalculationRequest();
+        clearPendingCalculationRequest({ jobId: job.id });
         if (job.status === 'succeeded') {
             try {
                 await fetchAllFresh();
@@ -238,7 +242,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             if (error?.status === 404) {
                 stopCalculationJobPolling();
                 clearCalculationJobPollClaim(localStorage, getToken(), jobId);
-                clearPendingCalculationRequest();
+                clearPendingCalculationRequest({ jobId });
                 calculationJob.value = null;
                 addToast('找不到先前的計算工作，已清除本機恢復狀態', 'info');
                 return true;
@@ -638,13 +642,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 );
                 await startCalculationJobPolling(responseData.job.id);
             } else {
-                clearPendingCalculationRequest();
+                clearPendingCalculationRequest({ key: idempotencyKey });
                 handleAutoUpdateSignal('🔄 已手動觸發數據重算，正在同步中...');
             }
             return true;
         } catch (error) {
             const contextualError = markRequestOutcome(error, 'POST');
-            if (isExplicitServerRejection(contextualError)) clearPendingCalculationRequest();
+            if (isExplicitServerRejection(contextualError)) {
+                clearPendingCalculationRequest({ key: idempotencyKey });
+            }
             contextualError.message = formatRequestError(contextualError, {
                 action: '觸發重算',
                 method: 'POST',
