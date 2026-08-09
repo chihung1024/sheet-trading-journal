@@ -1,8 +1,8 @@
 # TO-DO / UPDATE LIST — Product Integrity Execution Handoff
 
-> **FIRST-READ EXECUTION STATE.** This file is the persistent Master Plan / Progress Tracker / Decision Log / Handoff required by `AI_PROJECT_PLAYBOOK.md`. It must remain sufficient for a new AI session to continue without the previous chat.
+> **FIRST-READ EXECUTION STATE.** Persistent Master Plan / Progress Tracker / Decision Log / Handoff required by `AI_PROJECT_PLAYBOOK.md`. A new AI session must be able to continue from this file without the previous chat.
 >
-> **Mandatory update rule:** after every material implementation, test/CI result, PR review, merge, production smoke/audit, recovery ref, blocker, scope decision, or externally introduced main drift, update this file in the same working branch/PR whenever practical.
+> **Mandatory update rule:** after every material implementation, CI result, PR review, merge, production smoke/audit, recovery ref, blocker, scope decision, or main drift, update this file in the same scoped branch/PR whenever practical.
 
 Last updated: **2026-08-09**
 
@@ -10,445 +10,430 @@ Last updated: **2026-08-09**
 
 # Session Startup
 
-Every new AI/developer session must:
+1. Read `AI_PROJECT_PLAYBOOK.md`.
+2. Read `README.md`.
+3. Read this file.
+4. Inspect protected `main`, active branch/PR, recent commits/PRs/Actions.
+5. Identify Current Phase, Current Batch, Next Action, locked decisions and recovery refs.
+6. Read current-phase evidence docs.
+7. Only then begin work.
 
-1. read `AI_PROJECT_PLAYBOOK.md`;
-2. read `README.md`;
-3. read this file;
-4. inspect current `main`, active branch/PR, recent commits/PRs/workflow runs;
-5. identify Current Phase, Current Batch, Next Action, locked decisions and recovery refs;
-6. read current-phase evidence docs;
-7. only then begin work.
-
-Current-phase references:
+Current evidence:
 
 - `docs/engineering/PRODUCT_INTEGRITY_EXECUTION.md`
 - `docs/engineering/GATE_C_TRANSACTION_INTEGRITY_AUDIT.md`
 - `docs/engineering/GATE_C_C5B_PRODUCTION_AUDIT.md`
 - `docs/engineering/GATE_C_FINAL_CLOSEOUT.md`
+- `docs/engineering/GATE_D_REPRODUCIBILITY_AUDIT.md`
 
 ---
 
 # Locked Engineering Rules
 
 - Evidence before conclusion; root cause before symptom fix.
-- Broad investigation is allowed; implementation must converge to one Current Batch.
-- Important changes require recovery → scoped PR → tests/CI → independent review → exact-head merge → post-main verification → recovery → handoff update.
+- Investigation may be broad; implementation must converge to one Current Batch.
+- Important changes: recovery → scoped branch/PR → tests/CI → independent review → exact-head merge → post-main verification → recovery → handoff update.
 - Never lower validation, coverage, financial-integrity or recovery gates merely to pass CI.
 - Gates A–D do **not** authorize Schema 3.
-- Repository merge does **not** authorize production Worker deployment unless explicitly required by the scoped Batch.
+- Repository merge does not authorize Worker deployment unless the scoped Batch explicitly requires it.
 - Unknown/user-authored changes must not be overwritten.
-- A Batch is not complete if this file is stale.
 - `note` metadata must not become an implicit financial-ordering contract.
-- Gate D must improve reproducibility/evidence before introducing architecture expansion.
+- Gate D must establish reproducibility/evidence before architecture expansion.
+- A Batch is not complete if this file is stale.
 
 ---
 
 # Current Stable State
 
 - Repository: `chihung1024/sheet-trading-journal`
-- Current protected `main`: `ef9f5a1740b3c8b7c7fc726f5f1f024bcfaad311`
-- D1: **Schema 2**
+- Protected main reviewed for D1a: `41338e598f027a502a81c7d08eaec3c2f4069a04`
+- D1 schema: **2**
 - Worker source contract: release `4.07` / API `2.60` / required schema `2`
-- Gate A / P6C: **DONE**
-- Gate B / P5C3B: **DONE**
+- Gate A: **DONE**
+- Gate B: **DONE**
 - Gate C: **DONE / CLOSED / POST-MAIN VERIFIED**
-- Gate C final PR #158 merged at `ef9f5a1740b3c8b7c7fc726f5f1f024bcfaad311`.
-- Gate C post-main CI #474 / `31300456919`: **SUCCESS**.
-- Gate C final C6b decision: **RETAIN calculator `CLAMP`; NO runtime migration now**.
-- Post-Gate-C recovery: `backup-post-gate-c-ef9f5a1`.
-- Production Worker deployment was not part of Gate C.
-- Current Phase: **Gate D — deterministic reproducibility**.
-- Current active Batch: **Gate D / D1a — existing reproducibility/provenance architecture audit**.
+- Gate D / D1a architecture audit: **DONE / QUALIFIED FOR D1b**
+- Current working branch: `pr-gate-d-d1a-reproducibility-audit`
+- D1a evidence commit: `3147a8dfa4af4d35c6c3a5184de977d9301ea2fb`
+- Current active Batch: **D1a documentation qualification/merge**; after merge, start **D1b pure deterministic manifest primitives** from a fresh recovery.
 
-Current recovery refs:
+## Recovery refs
 
 - Gate A: `backup-post-product-integrity-p6c-f3c55f4`
 - Gate B: `backup-post-gate-b-03242d0`
-- Gate C audit infrastructure: `backup-post-gate-c-audit-infra-24fd65c`
+- Gate C audit infra: `backup-post-gate-c-audit-infra-24fd65c`
 - pre-C6a: `backup-pre-gate-c-c6a-aa19173`
 - post-C6a: `backup-post-gate-c-c6a-e5df59e`
 - pre-C3-rem: `backup-pre-gate-c-c3-rem-4dd896e`
 - post-C3-rem: `backup-post-gate-c-c3-rem-5928c52`
 - Gate C final qualified baseline: `backup-gate-c-final-qualified-f6a4c58`
 - Gate C final merged state: `backup-post-gate-c-ef9f5a1`
-
----
-
-# Architecture Notes
-
-## Current Schema-2 transaction contract
-
-- Schema 2 provides deterministic persisted-record validity order as `Date -> record id`, but no first-class broker execution timestamp/sequence/source/external execution id.
-- D1 `records` has no `Timestamp` or `Sequence`; migration 0002 adds calculation jobs only.
-- `prepare_transactions()` does not promote `note` metadata into financial ordering fields and sorts by `Date -> id`.
-- `PortfolioCalculator` recognizes optional columns named exactly `Timestamp` and `Sequence`; it does **not** recognize `_sequence`.
-- Without recognized `Timestamp` / `Sequence`, calculator same-day fallback priority is BUY → DIV → SELL using stable sort.
-- Prefix validity is independently enforced on the split-adjusted source ledger before `PortfolioCalculator`.
-- The same split-adjusted validation ledger is reused for downstream adjusted-ledger parity.
-- Normal scheduled/manual production calculation enters through `.github/workflows/update.yml` → `tools/run_portfolio_update.py` → `main.run_update()`; no alternate authoritative production calculator path was found.
-
-## Known representation limits carried into Gate D
-
-- Existing Commission/Tax paths normalize with `abs()`; net-negative commission/rebate is not faithfully representable.
-- Futures/derivatives remain outside Stock-journal semantics because asset-class/multiplier fields do not exist.
-- Record `id` remains deterministic ledger-validity ordering, not broker chronology.
-- Execution provenance remains optional free-form metadata and must not be promoted implicitly during Gate D.
+- Gate D start: `backup-gate-d-start-41338e5`
 
 ---
 
 # Master Plan
 
-| Phase | Batch | Objective | Priority | Status | Verification |
-|---|---|---|---|---|---|
-| Gate A | P6C | generation-safe pending calculation recovery | High | **DONE** | PR #148 + CI + production smoke |
-| Gate B | P5C3B | atomic Worker record deletion | High | **DONE** | PR #149 + post-main CI + recovery |
-| Gate C | C1/C2/C5/C6 | source-ledger integrity qualification + enforcement | High | **DONE / CLOSED** | PR #150–#158 + audit/smoke/CI/recovery |
-| Gate D | D1a | existing reproducibility/provenance architecture audit | High | **ACTIVE / NEXT** | evidence doc + scoped proposal |
-| Gate D | D1b | deterministic calculation-manifest contract | High | TODO after D1a | pure contract tests + hashing determinism |
-| Gate D | D1c | market/FX/synthetic valuation provenance contract | High | TODO after D1a | fixture/provider provenance tests |
-| Gate D | D1d | frozen deterministic golden replay | High | TODO after D1b/c | offline replay + exact expected outputs |
-| Gate D | D1e | production runner integration / artifact boundary | High | TODO after D1b–d | fail-closed runner tests + CI/smoke if needed |
-| Gate D | Closeout | independent reproducibility review + recovery | High | TODO | exact-head CI + post-main verification |
-| Post-Gate-D | Architecture review | Schema 3 / canonical ledger / provider abstraction decision | Later | DEFERRED | fresh review only |
+| Phase | Batch | Objective | Status | Verification / dependency |
+|---|---|---|---|---|
+| Gate A | P6C | generation-safe pending calculation recovery | **DONE** | PR #148 + CI + prod smoke |
+| Gate B | P5C3B | atomic Worker record deletion | **DONE** | PR #149 + CI + recovery |
+| Gate C | C1–C6 | source-ledger integrity qualification/enforcement | **DONE / CLOSED** | PR #150–#158 + audit/smoke/CI/recovery |
+| Gate D | D1a | reproducibility/provenance architecture audit | **DONE / QUALIFIED** | `GATE_D_REPRODUCIBILITY_AUDIT.md`; docs merge pending |
+| Gate D | D1b | pure deterministic manifest primitives | **READY AFTER D1a MERGE** | canonical/hash/model tests |
+| Gate D | D1c | effective market/FX/synthetic provenance | TODO | D1b contract |
+| Gate D | D1d | frozen deterministic golden replay | TODO | D1b + D1c; explicit clock/as-of seam |
+| Gate D | D1e | smallest compatible production integration | TODO | D1b–D1d proven first |
+| Gate D | Closeout | independent reproducibility review | TODO | exact-head CI + post-main + recovery |
+| Post-D | Architecture review | Schema 3 / canonical ledger / provider abstraction | DEFERRED | fresh review after Gate D |
 
 ---
 
-# Current Phase
+# Current Phase — Gate D
 
-**Gate D — Deterministic Reproducibility and Calculation Evidence**
+**Goal:** given the same trusted transaction ledger and the same declared external inputs/configuration, future reviewers must be able to identify exactly what was calculated, distinguish why an output changed, and reproduce a known-good result offline.
 
-Gate D answers a different question from Gate C:
-
-> Given the same trusted transaction ledger and the same declared external inputs/configuration, can a future reviewer determine exactly what calculation inputs were used, distinguish why an output changed, and reproduce a known-good result offline?
-
-Gate D must not conflate reproducibility with broker-execution redesign. It operates on the current qualified Schema-2 pipeline unless D1a proves a blocking dependency.
+Gate D operates on the qualified Schema-2 pipeline unless evidence proves a blocking dependency.
 
 ---
 
-# Current Batch
+# D1a — DONE / QUALIFIED FOR D1b
 
-## D1a — Existing reproducibility/provenance architecture audit
+Formal evidence: `docs/engineering/GATE_D_REPRODUCIBILITY_AUDIT.md`.
 
-Status: **ACTIVE / NEXT**
+## D1a key findings
 
-### Objective
+### A. Snapshot/storage boundary already supports additive evidence
 
-Before implementing any manifest or replay mechanism, inventory existing calculation inputs, serialization boundaries, provenance metadata and deterministic-test infrastructure so Gate D reuses what already exists rather than introducing a parallel model.
+- Python uploads `PortfolioSnapshot.model_dump()` via `/api/portfolio`.
+- Worker stores snapshot `data` as opaque JSON in `portfolio_snapshots.json_data`, max 1 MiB, last ten snapshots retained.
+- No nested fixed Worker snapshot schema or extra D1 columns are required merely to carry additive evidence.
+- Existing optional `benchmark_symbol` proves an additive provenance compatibility pattern.
 
-### Required investigation
+**Decision:** preferred D1e boundary is an optional versioned `PortfolioSnapshot.calculation_manifest`; do not create a new D1 table/Worker route unless later tests prove necessary.
 
-1. **Snapshot/output model**
-   - locate portfolio snapshot data classes/models;
-   - identify JSON serialization and Worker upload boundary;
-   - identify which calculated outputs are authoritative versus display/diagnostic-only;
-   - identify whether private/raw fields are serialized or stripped.
+### B. Canonical source transaction identity does not yet exist
 
-2. **Transaction input identity**
-   - identify exact DataFrame consumed by calculator after preparation/split handling;
-   - identify stable fields that can form a canonical record/input hash;
-   - determine whether record count + max id alone is insufficient and where a canonical content hash belongs.
+Production normalization is `prepare_transactions()` with stable `Date -> id` ordering.
 
-3. **Engine/config identity**
-   - identify reliable Git SHA/build identity available in GitHub Actions and local tests;
-   - inventory benchmark/configuration values that materially change outputs;
-   - identify runtime defaults that must enter manifest identity.
+Material source-hash fields:
 
-4. **Market-data provenance**
-   - inventory `MarketDataClient` sources and stored attributes for prices, realtime overlays, splits, dividends and FX;
-   - identify fallback/synthetic valuation behavior;
-   - determine which source/date/value metadata already exists and which is currently lost;
-   - do not introduce broad provider abstraction during this audit.
+- `id`
+- `Date`
+- `Symbol`
+- `Type`
+- `Qty`
+- `Price`
+- `Commission`
+- `Tax`
+- `Tag`
 
-5. **Golden/replay infrastructure**
-   - inventory existing deterministic fixtures, fake market clients, snapshot tests and golden-style expected values;
-   - identify the smallest realistic fixture capable of covering transactions, prices, FX, splits, dividends, holdings, realized P&L, Daily-P&L, TWR and XIRR without network access.
+Exclude from financial content identity:
 
-6. **Artifact/storage boundary**
-   - determine whether a manifest should be embedded in snapshot JSON, emitted as a separate calculation artifact, logged, or another existing boundary;
-   - no schema/Worker contract change is authorized until evidence demonstrates it is necessary.
+- free-form `note`
+- `created_at`
+- user email/ownership identity
 
-### D1a deliverable
+Count/max-id are diagnostics only; they cannot replace a content hash.
 
-A scoped evidence/proposal document that defines:
+### C. Python engine SHA is not in snapshots, but an existing pattern is available
 
-- authoritative calculation input set;
-- deterministic canonicalization rules;
-- manifest schema proposal;
-- provenance fields that are already available versus missing;
-- golden replay fixture boundary;
-- proposed implementation batches D1b–D1e;
-- risks, compatibility constraints and explicit non-goals.
+- Gate-C audit already uses `GITHUB_SHA` as `source_commit`.
+- Normal Actions runner inherits GitHub build environment.
+- `requirements.txt` pins Python runtime dependencies.
 
-### D1a completion criteria
+**Decision:** D1b introduces a validated engine-source resolver and fail-closes on missing/ambiguous production source identity.
 
-- [ ] snapshot model/serialization/upload path audited;
-- [ ] transaction canonicalization candidates audited;
-- [ ] engine/config identity audited;
-- [ ] market/FX/split/dividend/synthetic provenance audited;
-- [ ] existing fixture/replay tests audited;
-- [ ] manifest storage boundary decision proposed but not prematurely implemented;
-- [ ] evidence distinguishes facts from proposed changes;
-- [ ] no unnecessary Schema/Worker/provider redesign introduced;
-- [ ] persistent handoff updated with results;
-- [ ] only then start D1b implementation.
+### D. Effective market inputs exist, but provenance is incomplete
+
+Calculation-effective state already lives in `MarketDataClient`:
+
+- per-symbol `market_data`
+- historical/realtime FX by currency
+- `Close_Adjusted`
+- `Dividends`
+- `Split_Factor`
+
+Existing useful provenance:
+
+- `AutoPriceSelector`: `price_source`, `selection_reason` — currently not retained structurally after logging.
+- `transaction_calendar.py`: `Valuation_Source` / `Valuation_Source_Date` with `market`, `asof_carry_forward`, `transaction_price_seed` semantics.
+
+Gap:
+
+- realtime price overrides and ordinary source-selection metadata are not fully persisted as structured evidence.
+
+**Decision:** D1c hashes only effective calculation inputs, not irrelevant vendor OHLC/Volume payload; provider metadata remains separate from numeric input identity. No broad provider abstraction.
+
+### E. Wall clock currently breaks true replay determinism
+
+Calculator uses current time/date for:
+
+- `updated_at`
+- current/end date
+- market-stage metadata
+- today/realtime price/FX selection
+
+**Decision:** D1d requires one explicit calculation-as-of/clock seam. `calculation_as_of` is a material deterministic input; `calculated_at` is run-instance metadata and excluded from the deterministic input hash.
+
+### F. Existing golden infrastructure should be evolved, not replaced
+
+Existing fixture:
+
+- `tests/fixtures/golden_case_mixed_tw_us.json`
+
+Existing offline harness:
+
+- `tests/test_daily_pnl.py::FakeMarketDataClient`
+- `test_golden_snapshot_regression_matrix()`
+- network-free `tests/test_market_data_pure_invariants.py`
+- explicit TWR/XIRR contracts in `tests/test_performance_metrics.py`
+
+Current golden only asserts three rounded values: total value, realized P&L, Daily P&L.
+
+**Decision:** D1d evolves this into a versioned offline replay with fixed clock, market/FX/split/dividend inputs, authoritative output projection and manifest hashes.
+
+### G. Authoritative golden outputs
+
+Include:
+
+- normalized transaction projection/hash
+- summary value/capital/P&L/realized P&L
+- TWR numeric + reliability metadata
+- XIRR numeric + status/reason/as-of/conventional flag
+- benchmark identity/return where applicable
+- holdings
+- pending dividends
+- materially published/consumed history
+- canonical Daily-P&L total/breakdown
+- populated `day_ledger`
+- manifest digests
+
+Do **not** require populated `lot_ledger`: current production does not populate it; doing so would expand into canonical-lot architecture.
 
 ---
 
-# Gate D Planned Contracts
+# D1b — NEXT: Pure Deterministic Manifest Primitives
 
-## D1b — Deterministic calculation manifest
+**Status: READY after D1a docs PR exact-head merge/post-main/recovery.**
 
-Target contract, subject to D1a refinement:
+## Scope
 
-- manifest format/version;
-- engine/build Git SHA or equivalent immutable code identity;
-- canonical transaction input hash;
-- record count and max record id as diagnostics, not substitutes for content hash;
-- user-scoped benchmark/config hash or canonical config identity;
-- declared market-data/FX/split/dividend provenance identity;
-- synthetic/fallback valuation source/count where applicable;
-- calculation timestamp kept separate from deterministic input identity;
-- deterministic canonical JSON encoding / hash rules;
-- fail-closed validation for missing/ambiguous required provenance.
+1. Add a pure, versioned canonical serialization/hash module.
+2. Add normalized source transaction projection + SHA-256.
+3. Add runtime config projection/hash.
+4. Add validated engine-source commit resolver.
+5. Add versioned manifest Pydantic/data contract sufficient for deterministic component identities.
+6. Add pure tests for determinism, material sensitivity, ignored volatility, fail-closed invalid inputs.
 
-The deterministic hash must not include volatile fields such as calculation time unless explicitly defined as a separate run-instance identity.
+## Canonicalization proposal to implement/test
 
-## D1c — Market / FX / valuation provenance
+- explicit schema/version constants;
+- fixed field order;
+- source rows already in stable `Date -> id` order;
+- dates `YYYY-MM-DD`;
+- ids integers;
+- finite floats encoded with a versioned exact representation such as `float.hex()` before canonical JSON;
+- canonical UTF-8 JSON with fixed separators/order;
+- SHA-256 digest.
 
-Target questions:
+Tests must prove:
 
-- Which price series/date/source was used for each asset?
-- Which FX source/date/rate path was used?
-- Which split/dividend inputs materially affected normalization/calculation?
-- Was a realtime overlay or synthetic/fallback valuation used?
-- Can provider/input changes be distinguished from transaction or engine changes?
+- repeated calls are byte/digest identical;
+- irrelevant DataFrame column order does not change digest;
+- note/created_at changes do not change digest;
+- every material financial field/id/order change changes digest;
+- NaN/Inf/missing required values fail closed;
+- deterministic identity excludes volatile run timestamp.
 
-This Batch must capture evidence without initiating broad provider abstraction.
+## D1b explicit non-goals
 
-## D1d — Frozen deterministic golden replay
+- no production runner attachment;
+- no `PortfolioSnapshot` field yet;
+- no D1/Worker change;
+- no market-data provenance extractor yet;
+- no clock refactor yet;
+- no provider abstraction;
+- no Schema 3.
 
-Golden replay must run offline with frozen inputs and assert materially authoritative outputs, including as applicable:
+---
 
-- normalized transactions;
-- market prices;
-- FX;
-- splits;
-- dividends;
-- holdings and cost basis;
-- realized P&L;
-- canonical Daily-P&L;
-- TWR;
-- XIRR;
-- relevant benchmark outputs;
-- manifest/input hashes.
+# D1c — Effective Market / FX / Synthetic Provenance
 
-The replay must make vendor/network/time drift impossible inside the fixture.
+After D1b:
 
-## D1e — Production integration
+1. Canonical effective market projection per symbol/date:
+   - date
+   - `Close_Adjusted`
+   - `Dividends`
+   - `Split_Factor`
+   - effective `Valuation_Source`
+   - `Valuation_Source_Date`
+2. Canonical historical FX projection per required currency/date.
+3. Realtime effective FX/input state when calculation context can use it.
+4. Reuse synthetic valuation provenance from `transaction_calendar.py`.
+5. Retain/structure price-selection and realtime-overlay metadata only where currently lost.
+6. Add diagnostics: symbols/currencies, row counts, synthetic counts by source, realtime overlay state.
+7. Network-free tests using existing market invariant infrastructure.
 
-Only after D1b–d contracts are proven:
+No broad provider abstraction.
 
-- integrate the manifest/reproducibility boundary into the authoritative runner at the smallest compatible boundary;
-- do not add D1 database fields or Worker API changes unless D1a evidence establishes they are required;
-- preserve current snapshot compatibility unless a separately reviewed contract migration is unavoidable;
-- add fail-closed runner regressions for missing/ambiguous manifest-critical inputs;
-- verify normal production calculation behavior if runtime integration changes the execution path.
+---
+
+# D1d — Frozen Deterministic Golden Replay
+
+After D1b/c:
+
+1. Introduce narrow explicit calculation-as-of/clock context.
+2. Evolve/add a versioned mixed TW/US frozen fixture.
+3. Network must be forbidden in replay.
+4. Fixture must cover a reviewable mix of:
+   - transaction ordering
+   - prices
+   - FX variation
+   - split-sensitive inputs
+   - dividends
+5. Assert authoritative outputs listed above.
+6. Assert component/combined manifest hashes.
+7. Prove repeated replay gives exact deterministic projection/content identity.
+8. Keep edge-case economic tests separate rather than turning one golden fixture into an unreviewable mega-case.
+
+---
+
+# D1e — Smallest Compatible Production Integration
+
+Only after D1b–D1d are independently proven:
+
+1. Add optional versioned `calculation_manifest` to `PortfolioSnapshot`.
+2. Build manifest at the authoritative runner boundary after effective inputs are known.
+3. Attach it before snapshot validation/upload.
+4. Preserve legacy snapshots without the field.
+5. Explicitly test Worker opaque JSON round-trip/size boundary.
+6. Explicitly test frontend remains unchanged with unknown/additive manifest field.
+7. Add fail-closed runner regressions for missing/ambiguous manifest-critical input identity.
+8. Run production smoke only if runtime execution path materially changes.
+
+No D1 migration or Worker API change unless a D1e test proves the opaque snapshot boundary insufficient.
+
+---
+
+# Gate D Closeout Criteria
+
+- [ ] D1a evidence merged and post-main verified.
+- [ ] D1b canonical source/config/engine identity proven.
+- [ ] D1c effective market/FX/synthetic provenance proven.
+- [ ] D1d deterministic offline replay proven.
+- [ ] D1e compatible production attachment proven.
+- [ ] repeated deterministic replay can identify record/vendor-or-effective-market/FX/engine/config causes of change.
+- [ ] independent review finds no unresolved reproducibility blocker.
+- [ ] exact-head CI/merge/post-main verification complete.
+- [ ] post-Gate-D recovery created.
+- [ ] handoff updated before any post-Gate-D architecture review.
 
 ---
 
 # Gate C Final Closeout — DONE
 
-Formal evidence: `docs/engineering/GATE_C_FINAL_CLOSEOUT.md`
+Formal evidence: `docs/engineering/GATE_C_FINAL_CLOSEOUT.md`.
 
-Final evidence chain:
+Key evidence:
 
-- C5b read-only production audit #3215 / `31298163263`: **CLEAR**, 2 users / 168 records, zero prefix or duplicate-provenance findings;
-- C6a PR #154: blocking split-adjusted prefix gate before calculator/upload;
-- C6a final CI #462, post-main CI #463: SUCCESS;
-- normal production smoke #3216 / `31299421865`: SUCCESS, 2 users / 0 failed;
-- C3-rem PR #156: explicit `Sequence` versus unsupported `_sequence` regression;
-- C3-rem final CI #468, post-main CI #469: SUCCESS;
-- final independent closeout PR #158 final head `6a1e91b73e499d915091c9f44a50ad8c3a283805`;
-- PR #158 final CI #473 / `31300367340`: SUCCESS;
-- PR #158 exact-head merge → `ef9f5a1740b3c8b7c7fc726f5f1f024bcfaad311`;
-- post-main CI #474 / `31300456919`: SUCCESS;
+- C5b audit #3215 / `31298163263`: CLEAR, 2 users / 168 records, zero source-prefix/duplicate-provenance findings.
+- C6a PR #154: blocking split-adjusted source-prefix gate before calculator/upload.
+- C6a CI #462/#463 and production smoke #3216: SUCCESS, 2 users / 0 failed.
+- C3-rem PR #156: explicit `Sequence` vs unsupported `_sequence` regression; CI #468/#469 SUCCESS.
+- final independent PR #158 CI #473; merge `ef9f5a1740b3c8b7c7fc726f5f1f024bcfaad311`; post-main CI #474 SUCCESS.
 - post-Gate-C recovery `backup-post-gate-c-ef9f5a1`.
+- Gate-D handoff PR #159 merged → `41338e598f027a502a81c7d08eaec3c2f4069a04`; post-main CI #476 SUCCESS.
 
-Final C6b decision:
-
-- retain calculator `CLAMP` as downstream compatibility/defense-in-depth;
-- authoritative source integrity is the independent pre-calculator prefix gate;
-- no C6b runtime migration is justified under current Schema 2;
-- mandatory reopen conditions remain recorded in `docs/engineering/GATE_C_FINAL_CLOSEOUT.md` and Decision D-C-06 below.
-
-Gate C status: **DONE / CLOSED**.
-
----
-
-# Earlier Completed Work
-
-## Gate A / P6C
-
-- PR #148 merge `f3c55f4cd322c35ca163e1330f7b1e7bc14580bf`
-- final PR CI #429 SUCCESS
-- post-main CI #430 SUCCESS
-- production smoke #3213 / `31295494999`: SUCCESS; 2 users / 0 failed
-- recovery `backup-post-product-integrity-p6c-f3c55f4`
-
-## Gate B / P5C3B
-
-- PR #149 merge `03242d00082067333cf77ffa424094b8936b406c`
-- final CI #433 SUCCESS
-- post-main CI #434 SUCCESS
-- recovery `backup-post-gate-b-03242d0`
-- source-record delete + last-record snapshot cleanup share one D1 `batch()`; malformed result/cardinality fail closed.
-
-## Gate C / C1–C6
-
-- C1 established that final holdings and downstream agreement cannot certify every persisted source prefix.
-- C2 introduced deterministic split-adjusted prefix validation.
-- C5a/C5b safely qualified production data before enforcement.
-- C6a made the source gate blocking before calculator/upload and production-verified it.
-- C3-rem corrected false-positive Sequence regression coverage.
-- final independent review found no unresolved Gate-C blocker and closed C6b without unnecessary runtime expansion.
+Final C6b decision: retain calculator `CLAMP` as downstream compatibility/defense-in-depth; source prefix preflight is authoritative. Reopen only under conditions documented in Gate-C final closeout.
 
 ---
 
 # Decision Log
 
 ## D-C-01 — Source ledger first
-
-**Decision:** split-adjusted `Date -> id` prefix integrity is the Schema-2 source-ledger gate.  
-**Status:** LOCKED.
+Split-adjusted `Date -> id` prefix integrity is the Schema-2 source gate. **LOCKED.**
 
 ## D-C-02 — Record id is not broker chronology
+`id` is a deterministic validity-order tie-breaker only. **LOCKED.**
 
-**Decision:** `id` is a deterministic validity-order tie-breaker only.  
-**Status:** LOCKED until first-class execution identity/time exists.
+## D-C-06 — Retain CLAMP under protected Schema-2 path
+No C6b runtime migration absent reopen conditions. **LOCKED.**
 
-## D-C-03 — Audit before enforcement
+## D-C-07 — Free-form note is not chronology
+Do not parse note into financial ordering. **LOCKED.**
 
-**Decision:** read-only production qualification precedes blocking enforcement.  
-**Status:** SATISFIED by C5b → C6a.
+## D-C-08 — `Sequence` != `_sequence`
+Only recognized `Sequence`/`Timestamp` may alter explicit calculator same-day order. **LOCKED.**
 
-## D-C-04 — Public audit output counts-only
+## D-D-01 — Evidence contract before persistence/schema changes
+D1a audit existing boundaries before any storage migration. **SATISFIED; no D1/Worker migration currently required.**
 
-**Status:** LOCKED.
+## D-D-02 — Separate deterministic identity from run metadata
+`calculation_as_of` may affect deterministic result; `calculated_at` must not contaminate deterministic input identity. **LOCKED FOR D1b/D1d DESIGN.**
 
-## D-C-05 — `AI_PROJECT_PLAYBOOK.md` governance baseline
+## D-D-03 — Effective inputs before provider architecture
+Hash calculation-effective market/FX state separately from provider provenance. **LOCKED FOR D1c.**
 
-**Status:** LOCKED while current on main.
-
-## D-C-06 — C6b final decision
-
-**Decision:** retain calculator `CLAMP` under current Schema-2 protected production path; no C6b runtime migration now.  
-**Reason:** strict source preflight is authoritative and current production cannot supply alternative explicit chronology; a one-line policy switch would not constitute a complete internal execution-invariant redesign.  
-**Reopen if:** first-class chronology is introduced, a production runner bypasses preflight, negative-position/derivative semantics are added, validated-ledger/FIFO divergence is proven, canonical execution identity is introduced, or an incident proves downstream compatibility behavior masks a reachable post-preflight error.  
-**Status:** LOCKED subject to reopen conditions.
-
-## D-C-07 — Do not parse free-form notes as financial chronology
-
-**Status:** LOCKED pending explicit structured schema redesign.
-
-## D-C-08 — `Sequence` and `_sequence` are distinct contracts
-
-**Decision:** only recognized `Sequence` / `Timestamp` may alter explicit calculator same-day ordering; `_sequence` has no financial-ordering semantics.  
-**Status:** LOCKED for Schema 2.
-
-## D-D-01 — Evidence contract before storage/schema changes
-
-**Decision:** D1a must audit existing serialization/provenance boundaries before choosing where the calculation manifest lives.  
-**Reason:** adding D1/Worker fields prematurely would couple reproducibility to persistence design without evidence.  
-**Status:** ACTIVE.
-
-## D-D-02 — Deterministic identity excludes run-time volatility
-
-**Decision:** calculation timestamp may identify a run instance but must not contaminate the deterministic canonical input hash unless a separate versioned contract explicitly requires it.  
-**Status:** PROVISIONAL pending D1a evidence.
+## D-D-04 — Snapshot additive manifest is preferred production boundary
+Use optional `PortfolioSnapshot.calculation_manifest` in D1e if compatibility tests pass. **PROPOSED/QUALIFIED BY D1a; not implemented yet.**
 
 ---
 
-# Root Cause Log
+# Root Cause / Risk Log
 
 ## RC-C-01 — Invalid source prefixes could be hidden
+Fixed by Gate C C6a preflight. **CLOSED.**
 
-**Fix:** split-adjusted prefix validation before calculator/upload.  
-**Status:** FIXED by C6a; production verified.
+## RC-C-02 — Historical `_sequence` test false positive
+Fixed by C3-rem explicit regression. **CLOSED.**
 
-## RC-C-02 — Historical `_sequence` test was a false positive
+## RC-D-01 — Snapshot cannot currently prove exact calculation inputs
+No canonical transaction/config/market/FX/engine identity is attached. **OPEN; D1b–D1e.**
 
-**Fix:** explicit `Sequence` versus `_sequence` regression with order-sensitive quantities.  
-**Status:** FIXED by C3-rem; post-main verified.
+## RC-D-02 — Wall clock prevents true offline replay
+Current date/market-stage/realtime branches depend on current time. **OPEN; D1d explicit as-of/clock seam.**
 
----
+## RC-D-03 — Effective market values and source provenance are partially decoupled
+Numeric state is present, but price-selection/realtime provenance is partly lost after logs. **OPEN; D1c.**
 
-# Remaining Known Issues / Technical Debt
-
-These are **not** solved by Gate C and are not automatically in Gate D scope:
-
-- Schema 2 lacks first-class immutable external execution identity/time/sequence.
-- Net-negative commission/rebate is not faithfully representable because Commission/Tax paths normalize with `abs()`.
-- Futures/derivatives lack first-class asset class / multiplier support.
-- Legacy TransactionAnalyzer broad zero-on-exception behavior remains technical debt; no authoritative live consumer currently identified.
-- Execution provenance remains optional free-form note metadata rather than enforced schema fields.
-- Calculator/analyzer/Daily-P&L lot semantics are not consolidated into one canonical ledger engine.
-- P4B net daily cash flow cannot reconstruct gross intraday Modified-Dietz timing on zero-start days.
+## RC-D-04 — Existing golden regression is too shallow
+Only three rounded summary values are asserted. **OPEN; D1d.**
 
 ---
 
-# Deferred Architecture Candidates
+# Deferred / Not Gate-D Scope Unless Proven Blocking
 
-## Schema-3 execution identity
-
-Candidate fields include broker/source, immutable external execution id, order id, executed_at, currency, asset class and multiplier.  
-**Revisit:** after Gate D closeout + fresh architecture review.
-
-## Immutable `broker_executions` table
-
-**Revisit:** post-Gate-D review only.
-
-## Canonical lot-ledger consolidation
-
-**Revisit:** post-Gate-D evidence.
-
-## Broad provider abstraction / cleanup / typing refactor
-
-**Revisit:** only after higher-value correctness phases converge.
+- Schema 3 / first-class execution identity.
+- Immutable `broker_executions` table.
+- Futures/derivatives/contract multipliers.
+- Net-negative commission/rebate redesign.
+- Broad provider abstraction.
+- Canonical calculator/analyzer/Daily-P&L lot-ledger consolidation.
+- Populating production `lot_ledger`.
+- Legacy TransactionAnalyzer zero-on-exception cleanup.
+- Unrelated frontend/UX/refactor work.
 
 ---
 
-# Next Actions
+# Immediate Next Actions
 
-## Immediate — Finish Gate D handoff docs
+## Finish D1a
 
-1. merge this handoff-only update through a scoped PR;
-2. run exact-head CI and verify changed-file/review-thread/main-drift qualification;
-3. verify post-main CI;
-4. create a Gate-D-start recovery from the merged handoff main;
-5. start D1a from a fresh scoped branch.
+1. Open D1a docs-only PR containing:
+   - `docs/engineering/GATE_D_REPRODUCIBILITY_AUDIT.md`
+   - this handoff update.
+2. Run full exact-head CI.
+3. Independently verify changed-file whitelist, reviews/threads and main drift.
+4. Exact-head merge.
+5. Verify post-main CI.
+6. Create `backup-post-gate-d-d1a-<sha>` recovery.
+7. Synchronize handoff if merge SHA/CI/recovery are not yet recorded.
 
-## D1a — architecture audit immediately after handoff
+## Then start D1b
 
-Search/audit existing implementation before adding code:
-
-- snapshot models and JSON serialization;
-- Worker upload payload contract;
-- any existing manifest/provenance/input-hash/source metadata;
-- market-data/FX/split/dividend/realtime/synthetic valuation state;
-- calculation timestamps/build SHA availability;
-- benchmark/config identity;
-- frozen/fake market clients and golden-style tests;
-- deterministic snapshot/P&L/TWR/XIRR fixtures;
-- any existing artifact or diagnostics boundary suitable for manifest output.
-
-Then persist a narrow D1a evidence/proposal and only proceed to D1b after review.
-
-## Gate D non-goals unless D1a proves a dependency
-
-- Schema 3;
-- `broker_executions` table;
-- futures/derivatives support;
-- broad provider abstraction;
-- note-derived chronology;
-- unrelated UX/refactor work.
+1. Create fresh pre-D1b recovery/branch from merged stable main.
+2. Implement **pure deterministic manifest primitives only**.
+3. No production runner/storage/market changes in D1b.
+4. Tests/coverage → independent review → exact-head merge → post-main CI → recovery → handoff.
