@@ -46,18 +46,17 @@ Current evidence:
 # Current Stable State
 
 - Repository: `chihung1024/sheet-trading-journal`
-- Protected main: `0d9ad8ea15599bcc7ebdc53bb6b1af98887966e7`
+- Protected D1b base main: `88a9701a7c16f05a7f47fc02d298391f2f516746`
 - D1 schema: **2**
 - Worker source contract: release `4.07` / API `2.60` / required schema `2`
 - Gate A: **DONE**
 - Gate B: **DONE**
 - Gate C: **DONE / CLOSED / POST-MAIN VERIFIED**
 - Gate D / D1a: **DONE / POST-MAIN VERIFIED**
-- D1a PR #160 exact-head merge → `0d9ad8ea15599bcc7ebdc53bb6b1af98887966e7`
-- D1a PR CI #477 / `31301386915`: **SUCCESS**
-- D1a post-main CI #478 / `31301449682`: **SUCCESS**
-- D1a recovery: `backup-post-gate-d-d1a-0d9ad8e`
-- Current active Batch after this handoff merge: **Gate D / D1b — pure deterministic manifest primitives**.
+- Gate D / D1b: **IMPLEMENTED / VERIFYING in PR #162**
+- Current D1b code+test head before this handoff commit: `ea9dbaf6826cd66ff9c0e3bd7306a5dc4a4e6a9d`
+- Current branch: `pr-gate-d-d1b-manifest-primitives`
+- D1b remains pure-contract only; there is **no production integration** yet.
 
 ## Recovery refs
 
@@ -69,6 +68,7 @@ Current evidence:
 - Gate C final: `backup-post-gate-c-ef9f5a1`
 - Gate D start: `backup-gate-d-start-41338e5`
 - post-D1a: `backup-post-gate-d-d1a-0d9ad8e`
+- pre-D1b: `backup-pre-gate-d-d1b-88a9701`
 
 ---
 
@@ -79,9 +79,9 @@ Current evidence:
 | Gate A | P6C | generation-safe pending calculation recovery | **DONE** | PR #148 + CI + prod smoke |
 | Gate B | P5C3B | atomic Worker record deletion | **DONE** | PR #149 + CI + recovery |
 | Gate C | C1–C6 | source-ledger integrity qualification/enforcement | **DONE / CLOSED** | PR #150–#158 + audit/smoke/CI/recovery |
-| Gate D | D1a | reproducibility/provenance architecture audit | **DONE / POST-MAIN VERIFIED** | PR #160 + CI #477/#478 + recovery |
-| Gate D | D1b | pure deterministic manifest primitives | **ACTIVE / NEXT** | canonical/hash/model tests |
-| Gate D | D1c | effective market/FX/synthetic provenance | TODO | D1b contract |
+| Gate D | D1a | reproducibility/provenance architecture audit | **DONE / POST-MAIN VERIFIED** | PR #160/#161 + CI #477–#480 + recovery |
+| Gate D | D1b | pure deterministic manifest primitives | **IMPLEMENTED / FINAL QUALIFICATION PENDING** | PR #162 + CI #481/#483/#484 |
+| Gate D | D1c | effective market/FX/synthetic provenance | TODO | D1b merged/closed first |
 | Gate D | D1d | frozen deterministic golden replay | TODO | D1b + D1c + explicit clock/as-of seam |
 | Gate D | D1e | smallest compatible production integration | TODO | D1b–D1d proven first |
 | Gate D | Closeout | independent reproducibility review | TODO | exact-head CI + post-main + recovery |
@@ -97,219 +97,284 @@ Gate D operates on the qualified Schema-2 pipeline unless evidence proves a bloc
 
 ---
 
-# D1a — DONE
+# D1a — DONE / POST-MAIN VERIFIED
 
 Formal evidence: `docs/engineering/GATE_D_REPRODUCIBILITY_AUDIT.md`.
 
-## Qualified findings
+Closeout chain:
 
-### Snapshot/storage
+- D1a PR #160 merge → `0d9ad8ea15599bcc7ebdc53bb6b1af98887966e7`
+- PR CI #477 / `31301386915`: SUCCESS
+- post-main CI #478 / `31301449682`: SUCCESS
+- recovery `backup-post-gate-d-d1a-0d9ad8e`
+- handoff PR #161 merge → `88a9701a7c16f05a7f47fc02d298391f2f516746`
+- post-main CI #480: SUCCESS
 
-- Python uploads `PortfolioSnapshot.model_dump()`.
-- Worker stores opaque snapshot JSON in `portfolio_snapshots.json_data`, max 1 MiB, latest ten retained.
-- Existing optional `benchmark_symbol` is an additive provenance compatibility precedent.
-- Preferred D1e boundary: optional versioned `PortfolioSnapshot.calculation_manifest` if later compatibility tests pass.
-- No D1/Worker storage migration is currently required.
+Qualified architecture decisions:
 
-### Source transaction identity
-
-Canonical material fields:
-
-- `id`
-- `Date`
-- `Symbol`
-- `Type`
-- `Qty`
-- `Price`
-- `Commission`
-- `Tax`
-- `Tag`
-
-Exclude free-form `note`, `created_at`, and ownership identity from financial content hash. Count/max-id remain diagnostics only.
-
-### Engine/config identity
-
-- Python snapshots currently lack engine source SHA.
-- Gate-C audit already proves `GITHUB_SHA` can identify the running repository commit.
-- Runtime config identity should contain only independently variable material settings such as resolved benchmark, base currency, oversell policy and later calculation-as-of.
-
-### Effective market/FX provenance
-
-Material current state exists in `MarketDataClient`:
-
-- `Close_Adjusted`
-- `Dividends`
-- `Split_Factor`
-- historical/realtime FX by currency
-
-Reuse existing synthetic provenance:
-
-- `Valuation_Source`
-- `Valuation_Source_Date`
-- `market`
-- `asof_carry_forward`
-- `transaction_price_seed`
-
-Price-selection/realtime source metadata is partly lost after logging; D1c addresses that without broad provider abstraction.
-
-### Replay nondeterminism
-
-Current wall clock influences:
-
-- `updated_at`
-- calculation current/end date
-- market-stage metadata
-- today/realtime price/FX path
-
-D1d therefore requires an explicit calculation-as-of/clock seam. `calculation_as_of` is a deterministic input; `calculated_at` is volatile run metadata excluded from deterministic identity.
-
-### Existing golden infrastructure
-
-Reuse/evolve:
-
-- `tests/fixtures/golden_case_mixed_tw_us.json`
-- offline `FakeMarketDataClient` in `tests/test_daily_pnl.py`
-- `tests/test_market_data_pure_invariants.py`
-- TWR/XIRR reliability tests in `tests/test_performance_metrics.py`
-
-Current golden only fixes three rounded values and is insufficient as a full replay contract.
-
-### Authoritative golden outputs
-
-Target:
-
-- normalized transaction projection/hash
-- summary value/capital/P&L/realized P&L
-- TWR numeric + reliability metadata
-- XIRR numeric + status/reason/as-of/conventional flag
-- benchmark identity/return where applicable
-- holdings
-- pending dividends
-- material history
-- canonical Daily-P&L total/breakdown and populated `day_ledger`
-- manifest digests
-
-Do not require populated `lot_ledger`; production currently does not populate it.
+- no D1/Worker migration is currently needed for manifest storage;
+- preferred later D1e boundary is optional additive `PortfolioSnapshot.calculation_manifest` if compatibility tests pass;
+- source record identity fields: `id, Date, Symbol, Type, Qty, Price, Commission, Tax, Tag`;
+- exclude free-form `note`, `created_at`, user ownership identity from financial source hash;
+- effective market/FX numeric identity must be separated from provider provenance;
+- D1d requires one explicit `calculation_as_of`/clock seam;
+- existing mixed TW/US golden fixture should be evolved, not replaced;
+- populated production `lot_ledger` is not a Gate-D requirement.
 
 ---
 
-# D1b — ACTIVE / NEXT
+# D1b — IMPLEMENTED / FINAL QUALIFICATION PENDING
 
-## Objective
+PR: **#162 — Gate D D1b: deterministic manifest identity primitives**
 
-Implement **pure deterministic manifest primitives only**, with no production attachment.
+Base main: `88a9701a7c16f05a7f47fc02d298391f2f516746`  
+Pre-D1b recovery: `backup-pre-gate-d-d1b-88a9701`
 
-## Scope
+## D1b scope actually implemented
 
-1. Versioned canonical serialization/hash utility.
-2. Normalized source transaction projection + SHA-256.
-3. Runtime config projection/hash.
-4. Validated engine-source commit resolver.
-5. Versioned manifest data/Pydantic contracts and deterministic combined input identity.
-6. Pure unit/contract tests.
+### `journal_engine/core/calculation_manifest.py`
 
-## Canonicalization contract to implement and verify
+Pure module only; no runner/storage/market integration.
 
-- explicit schema/canonicalization version constants;
-- fixed field order;
-- transactions stable `Date -> id`;
-- date `YYYY-MM-DD`;
-- ids integers;
-- finite floats represented exactly using a versioned representation such as `float.hex()` before canonical JSON;
-- canonical UTF-8 JSON with fixed separators/order;
-- SHA-256 digest;
-- non-finite/ambiguous inputs fail closed.
+Contracts:
 
-## Required D1b tests
+- `CANONICAL_JSON_VERSION = 1`
+- `TRANSACTION_CANONICALIZATION_VERSION = 1`
+- `RUNTIME_CONFIG_CANONICALIZATION_VERSION = 1`
+- `CALCULATION_IDENTITY_VERSION = 1`
+- canonical UTF-8 JSON envelope with sorted keys/fixed separators;
+- finite floats encoded exactly with `float.hex()` tagged representation;
+- datetime rejected from generic deterministic canonicalization; date encoded explicitly;
+- SHA-256 canonical digest;
+- exact positive integer record-id normalization using Decimal/string conversion, avoiding binary-float loss for ids beyond 2^53;
+- normalized source record projection in deterministic `Date -> id` order;
+- source record identity + count/max-id diagnostics;
+- normalized runtime config identity for benchmark/base currency/oversell policy;
+- exact lowercase 40-character Git SHA engine identity resolver, explicit value or `GITHUB_SHA`, no branch/short-SHA fallback;
+- deterministic combined calculation identity seed containing engine/source/config plus placeholder market/FX digests and `calculation_as_of`;
+- run-instance `calculated_at` deliberately excluded;
+- Pydantic contracts use `extra=forbid`, frozen models, exact version literals and digest-consistency validators.
 
-- repeated calls yield identical bytes/digests;
-- irrelevant DataFrame column order does not change transaction digest;
-- `note`/`created_at` changes do not change transaction digest;
-- any material field/id/order change changes digest where order is semantically material;
-- non-finite/missing required inputs fail closed;
-- config key insertion order does not change config digest;
-- material benchmark/base-currency/policy changes change config digest;
-- engine SHA validator accepts full Git SHA and rejects blank/ambiguous production values;
-- combined deterministic identity excludes `calculated_at` or other run-instance volatility.
+### Privacy / scope boundary
 
-## Explicit D1b non-goals
+Deterministic source identity does **not** include:
 
-- no production runner integration;
-- no `PortfolioSnapshot.calculation_manifest` field yet;
-- no D1/Worker API/schema change;
-- no market/FX provenance extractor yet;
-- no clock refactor yet;
+- user email/id;
+- free-form notes;
+- `created_at`;
+- API/auth data;
+- raw broker metadata.
+
+D1b does **not** attach anything to production snapshot or upload paths.
+
+### `tests/test_calculation_manifest.py`
+
+Contract coverage includes:
+
+- exact canonical bytes including UTF-8 non-ASCII text;
+- mapping-order determinism;
+- sequence sensitivity and type separation;
+- reject NaN/Inf/datetime/unsupported types;
+- source row/column reorder invariance under semantic `Date -> id` order;
+- note/created-at exclusion;
+- exact preservation of integer ids above 2^53;
+- digest sensitivity to every material source field;
+- missing/empty/duplicate/bad-id/date/text/numeric/tag fail-closed paths;
+- `pd.NA` text handling;
+- bool numeric rejection;
+- runtime-config normalization and sensitivity;
+- runtime-config digest/version/self-consistency validation;
+- exact engine SHA resolution/fail-closed behavior;
+- combined identity deterministic repeatability;
+- combined identity sensitivity to engine/source/config/market/FX/as-of components;
+- combined digest tamper rejection;
+- direct model-level datetime-as-of rejection;
+- extra field/version rejection.
+
+### Coverage governance
+
+`docs/governance/python-coverage-baseline.json` adds only:
+
+- `journal_engine/core/calculation_manifest.py`
+
+to exact source inventory.
+
+Existing coverage gates are unchanged:
+
+- minimum percent: 68.55
+- minimum covered lines: 1523
+- minimum covered branches: 439
+- maximum missing lines: 591
+- maximum missing branches: 309
+
+No observed/gate floor was weakened.
+
+## D1b CI / hardening evidence
+
+### CI #481 / run `31301845162`
+
+Initial implementation: **SUCCESS** across Python, Frontend, Worker/D1.
+
+Python evidence:
+
+- 300 passed / 18 subtests;
+- new module initially 100% statement coverage under first implementation;
+- overall coverage ~79.62%;
+- coverage policy passed.
+
+Independent review then identified three quality issues inside D1b scope:
+
+1. record ids were initially normalized through binary float and could lose precision above 2^53;
+2. `pd.NA` required text could escape as pandas ambiguous-bool instead of `CalculationManifestError`;
+3. invalid-value tests introduced pandas FutureWarnings due incompatible dtype assignment.
+
+### Hardening commits
+
+- `36405e1e2fe5b80a5ff0e43186aa8420b2c64bec` — exact id/text/model hardening
+- `c49d65e004b23790fcc9584a981f49ccf57ebdc4` — test hardening/warning cleanup
+- `ea9dbaf6826cd66ff9c0e3bd7306a5dc4a4e6a9d` — final component-sensitivity and direct-validator regressions
+
+### CI #483 / run `31302023107`
+
+Correct hardening head evidence for `c49d65e...`: **SUCCESS**.
+
+- 307 passed / 18 subtests;
+- new pandas FutureWarnings removed;
+- only 2 pre-existing repository warnings remained;
+- module 99% with only two direct-validator lines unexecuted;
+- overall coverage ~79.78%;
+- coverage policy passed.
+
+### CI #484 / run `31302163349`
+
+Final D1b code/test head `ea9dbaf...`: **SUCCESS** across all three CI jobs.
+
+Python evidence:
+
+- **310 passed, 2 existing warnings, 18 subtests passed**;
+- `journal_engine/core/calculation_manifest.py`: **234 statements, 0 missing, 70 branches, 0 partial, 100%**;
+- overall:
+  - statements 3142
+  - covered lines 2577
+  - missing lines 565
+  - branches 1166
+  - covered branches 864
+  - missing branches 302
+  - coverage **79.87465181058496%**
+- coverage policy: **PASS**.
+
+The two remaining warnings are pre-existing and unrelated to D1b:
+
+- legacy class-based Pydantic config in `journal_engine/models.py`;
+- existing invalid escape sequence warning in `tests/test_python_coverage_policy.py`.
+
+## Independent D1b review conclusion
+
+**PASS for current D1b scope.**
+
+Verified:
+
+- no production runner changes;
+- no `PortfolioSnapshot` schema/field change;
+- no Worker/D1/API change;
+- no market/FX extraction yet;
+- no clock refactor;
 - no provider abstraction;
-- no Schema 3.
+- no user/note/private provenance leakage into deterministic identity;
+- canonical versions are explicit;
+- all deterministic component digests are material-sensitive;
+- malformed/tampered identity models fail closed;
+- coverage governance strengthened by source registration only, never weakened.
 
-## D1b execution plan
+### Remaining D1b completion steps
 
-1. Create pre-D1b recovery from merged stable main.
-2. Create one scoped D1b branch.
-3. Add pure module/models/tests only.
-4. Run focused tests, then full CI/coverage.
-5. Independent review of canonicalization semantics and privacy.
-6. Update this handoff in the same PR.
-7. Final exact-head CI, main-drift check, merge, post-main CI, recovery.
-8. Only then activate D1c.
-
----
-
-# D1c — Planned
-
-After D1b:
-
-- canonical effective market projection per symbol/date: date, `Close_Adjusted`, `Dividends`, `Split_Factor`, effective valuation provenance;
-- canonical historical/realtime FX projection per required currency;
-- reuse transaction-calendar synthetic valuation provenance;
-- structure price-selection/realtime-overlay provenance where currently lost;
-- diagnostics: symbols/currencies/row counts/synthetic counts/realtime state;
-- network-free tests based on existing market invariants;
-- provider metadata separate from effective numeric input digest.
-
-No broad provider abstraction.
+- [x] pure module implemented;
+- [x] contract tests implemented;
+- [x] exact large-id / pd.NA / non-finite robustness hardened;
+- [x] warnings introduced by D1b removed;
+- [x] module reaches 100% line/branch coverage;
+- [x] full code-head CI #484 passes;
+- [x] independent semantic/privacy/scope review passes;
+- [x] this handoff updated with implementation evidence;
+- [ ] final exact-head CI after handoff commit;
+- [ ] final changed-file / reviews / threads / main-drift qualification;
+- [ ] mark PR #162 ready;
+- [ ] exact-head merge;
+- [ ] post-main CI;
+- [ ] post-D1b recovery;
+- [ ] D1b closeout handoff;
+- [ ] only then activate D1c.
 
 ---
 
-# D1d — Planned
+# D1c — PLANNED / BLOCKED ON D1b CLOSEOUT
+
+Objective: deterministic identity and provenance for effective market, FX and synthetic valuation inputs.
+
+Planned scope:
+
+1. effective market projection per symbol/date:
+   - date
+   - `Close_Adjusted`
+   - `Dividends`
+   - `Split_Factor`
+   - effective `Valuation_Source`
+   - `Valuation_Source_Date`
+2. historical FX projection per required currency/date;
+3. realtime FX/effective state only when calculation context can use it;
+4. reuse transaction-calendar synthetic provenance;
+5. retain/structure price-selection/realtime-overlay provenance where currently lost;
+6. diagnostics: symbols/currencies/row counts/synthetic counts/realtime state;
+7. network-free tests using existing market invariant infrastructure.
+
+Constraints:
+
+- hash effective inputs, not irrelevant vendor OHLC/Volume payload;
+- provider/source metadata separate from effective numeric digest;
+- no broad provider abstraction;
+- no production attachment yet.
+
+---
+
+# D1d — PLANNED
 
 After D1b/c:
 
-1. Add narrow explicit calculation-as-of/clock context.
-2. Evolve/add a versioned mixed TW/US frozen fixture.
-3. Forbid network in replay.
-4. Cover prices, FX variation, split-sensitive inputs and dividends.
-5. Assert authoritative snapshot projection + Daily-P&L/TWR/XIRR + manifest hashes.
-6. Prove repeated replay exact deterministic identity.
+1. introduce narrow explicit `calculation_as_of`/clock context;
+2. evolve/add versioned mixed TW/US frozen fixture;
+3. forbid network in replay;
+4. cover prices, FX variation, split-sensitive inputs, dividends;
+5. assert authoritative snapshot projection + Daily-P&L/TWR/XIRR + manifest hashes;
+6. prove repeated replay exact deterministic identity.
 
 ---
 
-# D1e — Planned
+# D1e — PLANNED
 
 Only after D1b–D1d are independently proven:
 
-1. Add optional versioned `calculation_manifest` to `PortfolioSnapshot`.
-2. Build manifest at authoritative runner boundary after effective inputs are known.
-3. Attach before validation/upload.
-4. Preserve legacy snapshots without field.
-5. Test Worker opaque JSON round-trip and 1 MiB boundary.
-6. Test frontend unchanged by additive manifest field.
-7. Fail closed on missing/ambiguous manifest-critical input identity.
-8. Production smoke only if runtime path materially changes.
+1. add optional versioned `calculation_manifest` to `PortfolioSnapshot`;
+2. construct at authoritative runner boundary after effective inputs are known;
+3. attach before snapshot validation/upload;
+4. preserve legacy snapshots without field;
+5. test Worker opaque JSON round-trip and 1 MiB boundary;
+6. test frontend unchanged by additive manifest field;
+7. fail closed on missing/ambiguous manifest-critical identity;
+8. run production smoke only if runtime path materially changes.
 
-No D1 migration or Worker API change unless tests prove existing opaque snapshot boundary insufficient.
+No D1 migration or Worker API change unless compatibility tests prove opaque snapshot storage insufficient.
 
 ---
 
 # Gate D Closeout Criteria
 
-- [x] D1a evidence merged and post-main verified.
-- [ ] D1b source/config/engine identity proven.
+- [x] D1a evidence merged/post-main/recovery complete.
+- [ ] D1b source/config/engine identity merged/post-main/recovery complete.
 - [ ] D1c effective market/FX/synthetic provenance proven.
 - [ ] D1d deterministic offline replay proven.
 - [ ] D1e compatible production attachment proven.
 - [ ] change cause can be distinguished among source records / effective market or provider / FX / engine / runtime config / synthetic valuation.
-- [ ] independent review finds no unresolved reproducibility blocker.
+- [ ] independent Gate-D review finds no unresolved reproducibility blocker.
 - [ ] exact-head merge/post-main verification complete.
 - [ ] post-Gate-D recovery created.
 - [ ] handoff updated before post-Gate-D architecture review.
@@ -340,19 +405,22 @@ C6b decision: retain calculator `CLAMP` as downstream compatibility/defense-in-d
 - **D-C-06 LOCKED:** retain CLAMP under current protected Schema-2 path absent reopen conditions.
 - **D-C-07 LOCKED:** free-form note is not chronology.
 - **D-C-08 LOCKED:** `Sequence`/`Timestamp` are recognized contracts; `_sequence` is not.
-- **D-D-01 SATISFIED:** audit evidence/storage boundaries before migrations; D1a found no D1/Worker migration need.
-- **D-D-02 LOCKED:** deterministic identity separated from volatile run metadata.
+- **D-D-01 SATISFIED:** D1a audited existing evidence/storage boundaries before migrations; no D1/Worker migration currently required.
+- **D-D-02 LOCKED:** deterministic identity separated from volatile run metadata; `calculation_as_of` deterministic, `calculated_at` not.
 - **D-D-03 LOCKED:** hash effective market/FX inputs separately from provider provenance.
 - **D-D-04 QUALIFIED, NOT YET IMPLEMENTED:** optional snapshot manifest is preferred D1e production boundary.
+- **D-D-05 LOCKED BY D1b:** source-record identity uses exact versioned canonical UTF-8 JSON + SHA-256 over only material normalized fields; exact record ids must not round-trip through binary float.
+- **D-D-06 LOCKED BY D1b:** engine identity requires exact full lowercase Git SHA; branch names/abbreviations are not reproducible identities.
 
 ---
 
 # Root Cause / Risk Log
 
-- **RC-D-01 OPEN:** snapshot cannot currently prove exact source/config/market/FX/engine input identity → D1b–D1e.
+- **RC-D-01 PARTIALLY FIXED:** source/config/engine deterministic identity primitives now exist in D1b; production attachment and market/FX identities remain D1c–D1e.
 - **RC-D-02 OPEN:** wall clock breaks true replay → D1d explicit as-of/clock seam.
 - **RC-D-03 OPEN:** effective market state and source provenance partly decoupled → D1c.
 - **RC-D-04 OPEN:** existing golden regression too shallow → D1d.
+- **RC-D-05 FIXED IN D1b CODE:** record-id canonicalization no longer risks >2^53 float precision loss.
 
 ---
 
@@ -371,7 +439,19 @@ C6b decision: retain calculator `CLAMP` as downstream compatibility/defense-in-d
 
 # Immediate Next Actions
 
-1. Merge this D1a closeout handoff through docs-only PR and verify CI/post-main.
-2. Create fresh pre-D1b recovery and D1b branch from merged main.
-3. Implement only D1b pure deterministic primitives/tests.
-4. Do not attach manifest to production snapshot until D1e.
+## Finish D1b PR #162
+
+1. Run final exact-head CI after this handoff commit.
+2. Verify final changed files are exactly:
+   - `journal_engine/core/calculation_manifest.py`
+   - `tests/test_calculation_manifest.py`
+   - `docs/governance/python-coverage-baseline.json`
+   - `to_do_update_list.md`
+3. Verify reviews/unresolved threads.
+4. Re-fetch protected main; stop/requalify on drift from D1b base.
+5. Update PR body with final evidence and mark ready.
+6. Exact-head merge.
+7. Verify post-main CI.
+8. Create `backup-post-gate-d-d1b-<sha>`.
+9. Persist D1b closeout evidence in handoff.
+10. Only then start D1c from a fresh recovery/branch.
