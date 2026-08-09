@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from journal_engine.core.calculation_manifest import (
     CalculationManifestError,
     DeterministicCalculationIdentity,
+    RuntimeConfigIdentity,
     SourceRecordsIdentity,
     build_deterministic_calculation_identity,
     build_runtime_config_identity,
@@ -124,6 +125,19 @@ def test_source_projection_is_stable_and_excludes_irrelevant_columns():
     assert identity.max_record_id == 2
 
 
+def test_source_projection_preserves_large_integer_ids_exactly():
+    records = _records()
+    records["id"] = records["id"].astype(object)
+    exact_large_id = 9_007_199_254_740_993
+    records.loc[0, "id"] = exact_large_id
+
+    projection = canonical_source_records_projection(records)
+    identity = build_source_records_identity(records)
+
+    assert projection["rows"][-1]["id"] == exact_large_id
+    assert identity.max_record_id == exact_large_id
+
+
 @pytest.mark.parametrize(
     ("column", "value"),
     [
@@ -141,6 +155,7 @@ def test_source_projection_is_stable_and_excludes_irrelevant_columns():
 def test_source_digest_changes_for_material_fields(column, value):
     baseline = build_source_records_identity(_records()).sha256
     changed = _records()
+    changed[column] = changed[column].astype(object)
     changed.loc[1, column] = value
 
     assert build_source_records_identity(changed).sha256 != baseline
@@ -163,6 +178,7 @@ def test_source_identity_rejects_missing_empty_and_duplicate_inputs():
 @pytest.mark.parametrize("bad_id", [True, 0, -1, 1.5, "x", float("inf")])
 def test_source_identity_rejects_invalid_record_ids(bad_id):
     records = _records()
+    records["id"] = records["id"].astype(object)
     records.loc[0, "id"] = bad_id
     with pytest.raises(CalculationManifestError, match="record id must be a positive integer"):
         canonical_source_records_projection(records)
@@ -174,8 +190,25 @@ def test_source_identity_rejects_invalid_record_ids(bad_id):
 )
 def test_source_identity_rejects_ambiguous_dates(bad_date):
     records = _records()
+    records["Date"] = records["Date"].astype(object)
     records.loc[0, "Date"] = bad_date
     with pytest.raises(CalculationManifestError, match="transaction Date"):
+        canonical_source_records_projection(records)
+
+
+@pytest.mark.parametrize(
+    ("column", "message"),
+    [
+        ("Symbol", "transaction Symbol must be non-empty"),
+        ("Type", "transaction Type must be non-empty"),
+    ],
+)
+def test_source_identity_rejects_missing_required_text(column, message):
+    records = _records()
+    records[column] = records[column].astype(object)
+    records.loc[0, column] = pd.NA
+
+    with pytest.raises(CalculationManifestError, match=message):
         canonical_source_records_projection(records)
 
 
@@ -187,14 +220,25 @@ def test_source_identity_rejects_ambiguous_dates(bad_date):
         ("Qty", 0.0, "Qty must be positive"),
         ("Price", -0.01, "Price must be non-negative"),
         ("Qty", "not-number", "Qty must be numeric"),
+        ("Qty", True, "Qty must be numeric"),
         ("Commission", float("nan"), "Commission must be finite"),
         ("Tax", float("inf"), "Tax must be finite"),
     ],
 )
 def test_source_identity_fails_closed_on_invalid_financial_fields(column, value, message):
     records = _records()
+    records[column] = records[column].astype(object)
     records.loc[0, column] = value
     with pytest.raises(CalculationManifestError, match=message):
+        canonical_source_records_projection(records)
+
+
+def test_source_identity_rejects_non_scalar_tag():
+    records = _records()
+    records["Tag"] = records["Tag"].astype(object)
+    records.at[0, "Tag"] = ["Core", "Other"]
+
+    with pytest.raises(CalculationManifestError, match="transaction Tag must be a scalar"):
         canonical_source_records_projection(records)
 
 
@@ -244,6 +288,10 @@ def test_runtime_config_is_normalized_deterministic_and_material():
             "benchmark_symbol must be non-empty",
         ),
         (
+            {"benchmark_symbol": pd.NA, "base_currency": "TWD", "oversell_policy": "CLAMP"},
+            "benchmark_symbol must be non-empty",
+        ),
+        (
             {"benchmark_symbol": "SPY", "base_currency": "", "oversell_policy": "CLAMP"},
             "base_currency must be non-empty",
         ),
@@ -256,6 +304,24 @@ def test_runtime_config_is_normalized_deterministic_and_material():
 def test_runtime_config_rejects_ambiguous_values(kwargs, message):
     with pytest.raises(CalculationManifestError, match=message):
         build_runtime_config_identity(**kwargs)
+
+
+def test_runtime_config_model_rejects_inconsistent_digest_and_version():
+    valid = build_runtime_config_identity(
+        benchmark_symbol="SPY",
+        base_currency="TWD",
+        oversell_policy="CLAMP",
+    )
+
+    inconsistent = valid.model_dump()
+    inconsistent["benchmark_symbol"] = "QQQ"
+    with pytest.raises(ValidationError, match="does not match runtime config fields"):
+        RuntimeConfigIdentity.model_validate(inconsistent)
+
+    wrong_version = valid.model_dump()
+    wrong_version["canonicalization_version"] = 2
+    with pytest.raises(ValidationError):
+        RuntimeConfigIdentity.model_validate(wrong_version)
 
 
 def test_engine_source_commit_resolution_is_exact_and_fail_closed():
@@ -334,7 +400,7 @@ def test_combined_identity_builder_rejects_invalid_components(field, value, mess
         build_deterministic_calculation_identity(**kwargs)
 
 
-def test_identity_models_forbid_extra_fields_and_bad_digests():
+def test_identity_models_forbid_extra_fields_versions_and_tampered_combined_digest():
     with pytest.raises(ValidationError):
         SourceRecordsIdentity(
             sha256="x" * 64,
@@ -351,7 +417,18 @@ def test_identity_models_forbid_extra_fields_and_bad_digests():
         fx_inputs_sha256=FX_SHA,
         calculation_as_of=date(2026, 1, 3),
     )
-    payload = valid.model_dump()
-    payload["unexpected"] = "forbidden"
+
+    extra = valid.model_dump()
+    extra["unexpected"] = "forbidden"
     with pytest.raises(ValidationError):
-        DeterministicCalculationIdentity.model_validate(payload)
+        DeterministicCalculationIdentity.model_validate(extra)
+
+    wrong_version = valid.model_dump()
+    wrong_version["identity_version"] = 2
+    with pytest.raises(ValidationError):
+        DeterministicCalculationIdentity.model_validate(wrong_version)
+
+    tampered = valid.model_dump()
+    tampered["combined_sha256"] = "d" * 64
+    with pytest.raises(ValidationError, match="does not match deterministic components"):
+        DeterministicCalculationIdentity.model_validate(tampered)
