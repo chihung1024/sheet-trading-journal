@@ -372,7 +372,15 @@ def test_run_update_only_touches_requested_user(monkeypatch):
             return 1.0
 
     class FakeCalculator:
-        def __init__(self, user_df, market_client, benchmark_ticker, api_client):
+        def __init__(
+            self,
+            user_df,
+            market_client,
+            benchmark_ticker,
+            api_client,
+            oversell_policy="CLAMP",
+            calculation_now=None,
+        ):
             self.df = user_df.copy(deep=True)
             observed["calculator_users"].extend(user_df["user_id"].unique().tolist())
 
@@ -383,7 +391,13 @@ def test_run_update_only_touches_requested_user(monkeypatch):
     monkeypatch.setattr(runner, "CloudflareClient", FakeAPIClient)
     monkeypatch.setattr(runner, "MarketDataClient", FakeMarketClient)
     monkeypatch.setattr(runner, "PortfolioCalculator", FakeCalculator)
+    monkeypatch.setattr(
+        runner,
+        "build_production_calculation_manifest",
+        lambda **kwargs: None,
+    )
     monkeypatch.setattr(runner, "validate_before_upload", lambda snapshot, user_df: None)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
     monkeypatch.setenv("TARGET_USER_ID", "beta@example.com")
     monkeypatch.setenv("CUSTOM_BENCHMARK", "SPY")
 
