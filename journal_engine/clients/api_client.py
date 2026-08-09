@@ -241,9 +241,17 @@ class CloudflareClient:
         masked_user = _mask_user_id(target_user_id)
         self.logger.info("正在上傳 %s 的投資組合快照", masked_user)
 
+        # Production snapshots are Pydantic models and must use JSON mode so nested
+        # dates in reproducibility evidence are serialized safely. The duck-typed
+        # fallback preserves existing isolated test doubles only.
+        snapshot_data = (
+            snapshot.model_dump(mode="json")
+            if isinstance(snapshot, PortfolioSnapshot)
+            else snapshot.model_dump()
+        )
         payload = {
             "target_user_id": target_user_id,
-            "data": snapshot.model_dump(mode="json"),
+            "data": snapshot_data,
         }
 
         try:
