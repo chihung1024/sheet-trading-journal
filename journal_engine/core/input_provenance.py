@@ -95,18 +95,31 @@ class ProviderProvenanceDiagnostics(BaseModel):
     realtime_overlay_symbols: tuple[str, ...] = ()
 
 
-def _normalize_name(value: Any, label: str) -> str:
-    if value is None:
-        raise CalculationManifestError(f"{label} must be non-empty")
+def _is_missing_scalar(value: Any, label: str) -> bool:
+    """Return scalar missingness and reject vector-like ambiguous values."""
+
     try:
-        if bool(pd.isna(value)):
-            raise CalculationManifestError(f"{label} must be non-empty")
+        return bool(pd.isna(value))
     except (TypeError, ValueError) as exc:
         raise CalculationManifestError(f"{label} must be a scalar value") from exc
+
+
+def _normalize_name(value: Any, label: str) -> str:
+    if value is None or _is_missing_scalar(value, label):
+        raise CalculationManifestError(f"{label} must be non-empty")
     text = str(value).strip().upper()
     if not text:
         raise CalculationManifestError(f"{label} must be non-empty")
     return text
+
+
+def _normalize_optional_text(value: Any, label: str) -> str | None:
+    """Normalize optional diagnostic text while rejecting non-scalar values."""
+
+    if value is None or _is_missing_scalar(value, label):
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _normalize_date(value: Any, label: str) -> date:
@@ -192,7 +205,10 @@ def _normalize_market_frame(symbol: str, frame: pd.DataFrame) -> list[dict[str, 
         )
 
         if VALUATION_SOURCE_COLUMN in work.columns:
-            source = str(raw[VALUATION_SOURCE_COLUMN]).strip().lower()
+            raw_source = raw[VALUATION_SOURCE_COLUMN]
+            source_label = f"{symbol} {row_date} valuation source"
+            source_text = _normalize_optional_text(raw_source, source_label)
+            source = source_text.lower() if source_text is not None else ""
             if source not in ALLOWED_VALUATION_SOURCES:
                 raise CalculationManifestError(
                     f"{symbol} {row_date} has unsupported valuation source: {source or '<empty>'}"
@@ -202,7 +218,8 @@ def _normalize_market_frame(symbol: str, frame: pd.DataFrame) -> list[dict[str, 
 
         if VALUATION_SOURCE_DATE_COLUMN in work.columns:
             raw_source_date = raw[VALUATION_SOURCE_DATE_COLUMN]
-            if pd.isna(raw_source_date):
+            source_date_label = f"{symbol} {row_date} valuation source date"
+            if _is_missing_scalar(raw_source_date, source_date_label):
                 if source == "market":
                     source_date = row_date
                 else:
@@ -210,10 +227,7 @@ def _normalize_market_frame(symbol: str, frame: pd.DataFrame) -> list[dict[str, 
                         f"{symbol} {row_date} synthetic valuation source date is missing"
                     )
             else:
-                source_date = _normalize_date(
-                    raw_source_date,
-                    f"{symbol} {row_date} valuation source date",
-                )
+                source_date = _normalize_date(raw_source_date, source_date_label)
         else:
             if source != "market":
                 raise CalculationManifestError(
@@ -252,10 +266,6 @@ def canonical_market_inputs_projection(
 
     if not isinstance(market_data, Mapping):
         raise CalculationManifestError("market_data must be a mapping")
-    if required_symbols is None:
-        symbols = _normalize_required_names(market_data.keys(), "market symbol")
-    else:
-        symbols = _normalize_required_names(required_symbols, "market symbol")
 
     normalized_market: dict[str, pd.DataFrame] = {}
     for raw_symbol, frame in market_data.items():
@@ -263,6 +273,13 @@ def canonical_market_inputs_projection(
         if symbol in normalized_market:
             raise CalculationManifestError("market_data contains duplicate normalized symbols")
         normalized_market[symbol] = frame
+
+    if required_symbols is None:
+        if not normalized_market:
+            raise CalculationManifestError("market symbol set must not be empty")
+        symbols = sorted(normalized_market)
+    else:
+        symbols = _normalize_required_names(required_symbols, "market symbol")
 
     missing = [symbol for symbol in symbols if symbol not in normalized_market]
     if missing:
@@ -457,16 +474,27 @@ def build_provider_provenance_diagnostics(
                 )
             if not isinstance(metadata, Mapping):
                 raise CalculationManifestError(f"{symbol} provider metadata must be a mapping")
-            source = str(metadata.get("price_source", "")).strip()
-            reason = str(metadata.get("selection_reason", "")).strip()
-            if not source or not reason:
+            source = _normalize_optional_text(
+                metadata.get("price_source"),
+                f"{symbol} provider metadata price_source",
+            )
+            reason = _normalize_optional_text(
+                metadata.get("selection_reason"),
+                f"{symbol} provider metadata selection_reason",
+            )
+            if source is None or reason is None:
                 raise CalculationManifestError(
                     f"{symbol} provider metadata requires price_source and selection_reason"
                 )
             price_sources[symbol] = source
             selection_reasons[symbol] = reason
 
-    overlays = _normalize_required_names(realtime_overlay_symbols, "realtime overlay symbol") if tuple(realtime_overlay_symbols) else []
+    overlay_values = tuple(realtime_overlay_symbols)
+    overlays = (
+        _normalize_required_names(overlay_values, "realtime overlay symbol")
+        if overlay_values
+        else []
+    )
     return ProviderProvenanceDiagnostics(
         price_sources=dict(sorted(price_sources.items())),
         selection_reasons=dict(sorted(selection_reasons.items())),
