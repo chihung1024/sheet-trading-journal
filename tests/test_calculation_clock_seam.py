@@ -93,6 +93,13 @@ def test_daily_pnl_helper_accepts_explicit_clock_provider():
     assert helper.get_effective_display_date(True) == date(2026, 1, 2)
 
 
+def test_daily_pnl_helper_rejects_naive_clock_provider():
+    helper = DailyPnLHelper(now_provider=lambda: datetime(2026, 1, 2, 10, 0))
+
+    with pytest.raises(ValueError, match="now_provider must return a timezone-aware datetime"):
+        helper.get_market_stage()
+
+
 def test_calculator_fixed_clock_controls_asof_updated_at_and_end_date():
     fixed = _taipei_datetime(2026, 1, 2, 15, 0)
     calculator = PortfolioCalculator(
@@ -110,6 +117,23 @@ def test_calculator_fixed_clock_controls_asof_updated_at_and_end_date():
     assert snapshot.summary.market_stage == "CLOSED"
     assert snapshot.history[-1]["date"] == "2026-01-02"
     assert all(row["date"] <= "2026-01-02" for row in snapshot.history)
+
+
+def test_calculator_normalizes_explicit_clock_to_taipei():
+    utc_fixed = pytz.UTC.localize(datetime(2026, 1, 2, 7, 0))
+    calculator = PortfolioCalculator(
+        _transactions(),
+        ClockFixtureMarket(),
+        benchmark_ticker="0050.TW",
+        oversell_policy="ERROR",
+        calculation_now=utc_fixed,
+    )
+
+    snapshot = calculator.run()
+
+    assert calculator.calculation_as_of == date(2026, 1, 2)
+    assert snapshot.updated_at == "2026-01-02 15:00"
+    assert snapshot.summary.market_stage == "CLOSED"
 
 
 def test_calculator_rejects_naive_explicit_clock():
