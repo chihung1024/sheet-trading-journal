@@ -1,6 +1,14 @@
-from pydantic import BaseModel, Field, StrictBool, computed_field
+from pydantic import BaseModel, Field, StrictBool, computed_field, field_validator, model_validator
 from datetime import date, datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
+
+from .core.calculation_manifest import DeterministicCalculationIdentity
+from .core.input_provenance import (
+    EffectiveFxInputsIdentity,
+    EffectiveMarketInputsIdentity,
+    ProviderProvenanceDiagnostics,
+)
+
 
 class TransactionRecord(BaseModel):
     id: Optional[int] = None
@@ -22,6 +30,7 @@ class TransactionRecord(BaseModel):
 
     class Config:
         populate_by_name = True
+
 
 class PortfolioSummary(BaseModel):
     total_value: float
@@ -62,6 +71,7 @@ class PortfolioSummary(BaseModel):
     daily_pnl_roi_percent: Optional[float] = None  # 精確計算的當日報酬率百分比
     daily_pnl_base_value: Optional[float] = None   # 計算基準值（前日總資產淨值）
 
+
 class HoldingPosition(BaseModel):
     symbol: str
     tag: str
@@ -79,6 +89,7 @@ class HoldingPosition(BaseModel):
     daily_change_percent: float = 0.0
     daily_pl_twd: float = 0.0
     daily_pl_breakdown: Optional[Dict[str, float]] = None
+
 
 class DividendRecord(BaseModel):
     symbol: str
@@ -100,6 +111,7 @@ class DividendRecord(BaseModel):
     notes: Optional[str] = None
     record_id: Optional[int] = None
 
+
 class PortfolioGroupData(BaseModel):
     """單一策略群組的完整投資組合數據"""
     summary: PortfolioSummary
@@ -110,6 +122,46 @@ class PortfolioGroupData(BaseModel):
     lot_ledger: List[Dict[str, Any]] = []
     anomalies: List[Dict[str, Any]] = []
 
+
+class CalculationManifest(BaseModel):
+    """Versioned production evidence attached atomically to one portfolio snapshot."""
+
+    manifest_version: Literal[1] = 1
+    deterministic_identity: DeterministicCalculationIdentity
+    market_inputs: EffectiveMarketInputsIdentity
+    fx_inputs: EffectiveFxInputsIdentity
+    provider_diagnostics: ProviderProvenanceDiagnostics
+    calculated_at: str
+
+    @field_validator("calculated_at")
+    @classmethod
+    def validate_calculated_at(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("calculated_at must be a timezone-aware ISO-8601 datetime")
+        text = value.strip()
+        candidate = text[:-1] + "+00:00" if text.endswith("Z") else text
+        try:
+            parsed = datetime.fromisoformat(candidate)
+        except ValueError as exc:
+            raise ValueError("calculated_at must be a timezone-aware ISO-8601 datetime") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("calculated_at must be timezone-aware")
+        return parsed.isoformat()
+
+    @model_validator(mode="after")
+    def validate_component_consistency(self) -> "CalculationManifest":
+        identity = self.deterministic_identity
+        if self.market_inputs.sha256 != identity.market_inputs_sha256:
+            raise ValueError(
+                "market_inputs.sha256 does not match deterministic identity"
+            )
+        if self.fx_inputs.sha256 != identity.fx_inputs_sha256:
+            raise ValueError(
+                "fx_inputs.sha256 does not match deterministic identity"
+            )
+        return self
+
+
 class PortfolioSnapshot(BaseModel):
     updated_at: str
     base_currency: str
@@ -119,6 +171,9 @@ class PortfolioSnapshot(BaseModel):
     # Additive provenance for benchmark-derived summary/history values.
     # Optional preserves compatibility with snapshots published before PR-10C8.
     benchmark_symbol: Optional[str] = None
+
+    # Optional Gate-D reproducibility evidence. Legacy snapshots remain valid.
+    calculation_manifest: Optional[CalculationManifest] = None
     
     # 向下相容欄位 (代表 'all' 群組的總體數據)
     summary: PortfolioSummary
