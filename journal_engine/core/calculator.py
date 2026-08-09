@@ -20,17 +20,43 @@ from .validator import PortfolioValidator
 logger = logging.getLogger(__name__)
 
 class PortfolioCalculator:
-    def __init__(self, transactions_df, market_client, benchmark_ticker="SPY", api_client=None, oversell_policy="CLAMP"):
+    def __init__(self, transactions_df, market_client, benchmark_ticker="SPY", api_client=None, oversell_policy="CLAMP", calculation_now=None):
         self.df = transactions_df
         self.market = market_client
         self.benchmark_ticker = benchmark_ticker
         self.api_client = api_client
-        self.pnl_helper = DailyPnLHelper()
+        self._calculation_now_tw = self._normalize_calculation_now(calculation_now)
+        self.pnl_helper = DailyPnLHelper(
+            now_provider=(lambda: self._calculation_now_tw)
+            if self._calculation_now_tw is not None
+            else None
+        )
         self.currency_detector = CurrencyDetector()
         self.validator = PortfolioValidator()
         self.oversell_policy = str(oversell_policy or "CLAMP").upper()
         if self.oversell_policy not in {"CLAMP", "ERROR"}:
             raise ValueError(f"Invalid oversell_policy={oversell_policy}. Use 'CLAMP' or 'ERROR'.")
+
+    @staticmethod
+    def _normalize_calculation_now(calculation_now):
+        if calculation_now is None:
+            return None
+        if (
+            not isinstance(calculation_now, datetime)
+            or calculation_now.tzinfo is None
+            or calculation_now.utcoffset() is None
+        ):
+            raise ValueError("calculation_now must be timezone-aware")
+        return calculation_now.astimezone(pytz.timezone('Asia/Taipei'))
+
+    def _now_tw(self):
+        if self._calculation_now_tw is not None:
+            return self._calculation_now_tw
+        return datetime.now(self.pnl_helper.tz_tw)
+
+    @property
+    def calculation_as_of(self):
+        return self._now_tw().date()
 
     def _is_taiwan_stock(self, symbol):
         return self.currency_detector.is_base_currency(symbol)
@@ -97,7 +123,7 @@ class PortfolioCalculator:
             price = self.market.get_price(symbol, pd.Timestamp(target_date))
             return price, 1.0
 
-        tw_now = datetime.now(self.pnl_helper.tz_tw)
+        tw_now = self._now_tw()
         today = tw_now.date()
 
         used_ts = pd.Timestamp(target_date)
@@ -138,6 +164,7 @@ class PortfolioCalculator:
 
     def run(self):
         logger.info(f"=== 開始多群組計算 (baseline: {self.benchmark_ticker}) ===")
+        run_now_tw = self._now_tw()
         
         current_fx = DEFAULT_FX_RATE
         if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
@@ -161,7 +188,7 @@ class PortfolioCalculator:
                 daily_pnl_asof_date=None, daily_pnl_prev_date=None
             )
             return PortfolioSnapshot(
-                updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                updated_at=run_now_tw.strftime("%Y-%m-%d %H:%M"),
                 base_currency=BASE_CURRENCY, exchange_rate=round(current_fx, 2),
                 summary=empty_summary, holdings=[], history=[], pending_dividends=[],
                 groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
@@ -189,7 +216,7 @@ class PortfolioCalculator:
             if group_df.empty: continue
 
             group_start_date = group_df['Date'].min()
-            group_end_date = datetime.now()
+            group_end_date = run_now_tw.replace(tzinfo=None)
             group_date_range = self._get_trading_date_range(group_df, group_start_date, group_end_date)
 
             group_result = self._calculate_single_portfolio(
@@ -204,7 +231,7 @@ class PortfolioCalculator:
             return None
         
         return PortfolioSnapshot(
-            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            updated_at=run_now_tw.strftime("%Y-%m-%d %H:%M"),
             base_currency=BASE_CURRENCY, exchange_rate=round(current_fx, 2),
             summary=all_data.summary, holdings=all_data.holdings,
             history=all_data.history, pending_dividends=all_data.pending_dividends,
@@ -609,7 +636,7 @@ class PortfolioCalculator:
         final_holdings = []
         current_holdings_cost_sum = 0.0
 
-        tw_now = datetime.now(self.pnl_helper.tz_tw)
+        tw_now = self._now_tw()
         today = tw_now.date()
         pnl_base_date = today
         pnl_prev_date = None
