@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Any, Iterable, Tuple
+from typing import Any, Tuple
 
 import pandas as pd
 
@@ -122,9 +122,6 @@ def audit_transaction_prefix_integrity(
         scoped = normalized if scope == ALL_SCOPE else normalized[
             normalized["Tag"].map(lambda value: scope in parse_transaction_tags(value))
         ]
-        if scoped.empty:
-            continue
-
         for symbol, symbol_df in scoped.groupby("Symbol", sort=True):
             symbol_scope_count += 1
             violation = _first_symbol_prefix_violation(
