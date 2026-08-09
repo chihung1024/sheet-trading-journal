@@ -62,6 +62,7 @@
       "journal_engine/clients/market_data.py",
       "journal_engine/config.py",
       "journal_engine/core/__init__.py",
+      "journal_engine/core/calculation_manifest.py",
       "journal_engine/core/calculator.py",
       "journal_engine/core/currency_detector.py",
       "journal_engine/core/daily_pnl_engine.py",
