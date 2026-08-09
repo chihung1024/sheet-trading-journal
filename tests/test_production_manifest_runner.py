@@ -5,7 +5,11 @@ import pandas as pd
 import pytest
 import pytz
 
-import main as runner
+from journal_engine.core.production_manifest import (
+    ProductionManifestError,
+    build_production_calculation_manifest,
+    resolve_calculation_context,
+)
 
 
 def _frame(dates, prices):
@@ -92,7 +96,7 @@ def _fixed_now():
 def test_build_production_manifest_is_user_scoped_and_asof_bounded():
     client = _market_client()
 
-    manifest = runner.build_production_calculation_manifest(
+    manifest = build_production_calculation_manifest(
         raw_user_df=_raw_user_df(),
         market_client=client,
         benchmark="SPY",
@@ -121,7 +125,7 @@ def test_build_production_manifest_is_user_scoped_and_asof_bounded():
 
 def test_manifest_identity_ignores_other_users_future_rows_and_unrelated_currency():
     baseline_client = _market_client()
-    baseline = runner.build_production_calculation_manifest(
+    baseline = build_production_calculation_manifest(
         raw_user_df=_raw_user_df(),
         market_client=baseline_client,
         benchmark="SPY",
@@ -138,7 +142,7 @@ def test_manifest_identity_ignores_other_users_future_rows_and_unrelated_currenc
         changed_client.market_data[symbol].loc[pd.Timestamp("2026-01-06"), "Close_Adjusted"] = 777777.0
     changed_client.fx_rates_by_currency["USD"].loc[pd.Timestamp("2026-01-06")] = 444.0
 
-    changed = runner.build_production_calculation_manifest(
+    changed = build_production_calculation_manifest(
         raw_user_df=_raw_user_df(),
         market_client=changed_client,
         benchmark="SPY",
@@ -156,8 +160,8 @@ def test_manifest_builder_fails_closed_when_required_provider_metadata_is_missin
     client = _market_client()
     del client.price_metadata_by_symbol["NVDA"]
 
-    with pytest.raises(runner.PortfolioUpdateError, match="provider provenance.*NVDA"):
-        runner.build_production_calculation_manifest(
+    with pytest.raises(ProductionManifestError, match="provider provenance.*NVDA"):
+        build_production_calculation_manifest(
             raw_user_df=_raw_user_df(),
             market_client=client,
             benchmark="SPY",
@@ -168,7 +172,7 @@ def test_manifest_builder_fails_closed_when_required_provider_metadata_is_missin
 
 
 def test_calculation_context_is_timezone_aware_taipei_time():
-    calculation_now = runner.resolve_calculation_context()
+    calculation_now = resolve_calculation_context()
 
     assert calculation_now.tzinfo is not None
     assert calculation_now.utcoffset() is not None
