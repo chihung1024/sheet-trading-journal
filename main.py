@@ -10,10 +10,19 @@ import pandas as pd
 from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.market_data import MarketDataClient
 from journal_engine.config import API_KEY
+from journal_engine.core.calculation_manifest import (
+    CalculationManifestError,
+    resolve_engine_source_commit,
+)
 from journal_engine.core.calculator import PortfolioCalculator
 from journal_engine.core.currency_detector import CurrencyDetector
 from journal_engine.core.daily_pnl_reconciler import reconcile_snapshot_daily_pnl
 from journal_engine.core.ledger_integrity import validate_transaction_prefix_integrity
+from journal_engine.core.production_manifest import (
+    ProductionManifestError,
+    build_production_calculation_manifest,
+    resolve_calculation_context,
+)
 from journal_engine.core.split_ledger import (
     build_split_adjusted_validation_ledger,
     validate_adjusted_ledger_parity,
@@ -24,6 +33,7 @@ from journal_engine.core.validator import PortfolioValidator
 
 SUPPORTED_TRANSACTION_TYPES = {"BUY", "SELL", "DIV"}
 LEGACY_DAILY_PNL_MISMATCH_PREFIX = "Daily PnL formula/aggregation mismatch:"
+PRODUCTION_OVERSELL_POLICY = "CLAMP"
 
 
 class PortfolioUpdateError(RuntimeError):
@@ -304,6 +314,14 @@ def run_update() -> None:
     if not API_KEY:
         raise PortfolioUpdateError("環境變數中找不到 API_KEY")
 
+    try:
+        calculation_now = resolve_calculation_context()
+        engine_source_commit = resolve_engine_source_commit(environ=os.environ)
+    except (CalculationManifestError, ProductionManifestError) as exc:
+        raise PortfolioUpdateError(
+            f"source commit / calculation context configuration failed: {exc}"
+        ) from exc
+
     fallback_benchmark, target_user_id = get_benchmark_from_env()
     logger.info(
         "觸發參數: Fallback Benchmark=%s, TargetUser=%s",
@@ -351,6 +369,7 @@ def run_update() -> None:
         market_client,
         df,
         allow_leading_transaction_seed=True,
+        as_of_date=calculation_now,
     )
     if inserted_dates:
         inserted_count = sum(len(dates) for dates in inserted_dates.values())
@@ -403,6 +422,8 @@ def run_update() -> None:
                 market_client,
                 benchmark_ticker=benchmark,
                 api_client=api_client,
+                oversell_policy=PRODUCTION_OVERSELL_POLICY,
+                calculation_now=calculation_now,
             )
             calculator_logger = logging.getLogger("journal_engine.core.calculator")
             legacy_mismatch_capture = LegacyDailyPnLMismatchCapture()
@@ -438,6 +459,20 @@ def run_update() -> None:
 
             if not validate_adjusted_ledger_parity(calculator.df, validation_df):
                 raise PortfolioUpdateError("計算器與驗證器的拆股復權交易帳本不一致")
+
+            try:
+                snapshot.calculation_manifest = build_production_calculation_manifest(
+                    raw_user_df=raw_user_df,
+                    market_client=market_client,
+                    benchmark=benchmark,
+                    calculation_now=calculation_now,
+                    engine_source_commit=engine_source_commit,
+                    oversell_policy=PRODUCTION_OVERSELL_POLICY,
+                )
+            except ProductionManifestError as exc:
+                raise PortfolioUpdateError(
+                    f"calculation manifest assembly failed: {exc}"
+                ) from exc
 
             validate_before_upload(snapshot, validation_df)
             if api_client.upload_portfolio(snapshot, target_user_id=user_id) is not True:
