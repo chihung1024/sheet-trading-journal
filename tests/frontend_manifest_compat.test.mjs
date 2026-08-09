@@ -16,7 +16,7 @@ test("portfolio store preserves additive calculation_manifest on snapshot root",
   assert.notEqual(fetchEnd, -1);
 
   const fetchBlock = source.slice(fetchStart, fetchEnd);
-  assert.match(fetchBlock, /const json = await response\.json\(\)/);
+  assert.match(fetchBlock, /const json\s*=\s*await fetchWithAuth\(['"]\/api\/portfolio['"]\)/);
   assert.match(fetchBlock, /rawData\.value\s*=\s*json\.data/);
   assert.doesNotMatch(fetchBlock, /\{\s*summary\s*,\s*holdings\s*,\s*history\s*\}\s*=\s*json\.data/);
 });
