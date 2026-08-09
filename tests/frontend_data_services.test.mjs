@@ -8,6 +8,7 @@ import {
 import {
   clearLegacyRecordCache,
   clearSensitiveProjectStorage,
+  PENDING_CALCULATION_V2_STORAGE_PREFIX,
   SENSITIVE_PROJECT_STORAGE_KEYS,
 } from '../src/services/projectStorage.js';
 
@@ -31,8 +32,13 @@ function record(id) {
 function storageWith(entries) {
   const values = new Map(Object.entries(entries));
   return {
+    get length() { return values.size; },
+    key(index) { return [...values.keys()][index] ?? null; },
     getItem(key) {
       return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
     },
     removeItem(key) {
       values.delete(key);
@@ -166,6 +172,28 @@ test('scoped logout cleanup preserves UI preferences and unrelated origin data',
   assert.deepEqual(storage.snapshot(), {
     theme: 'dark',
     'sheet_trading_journal.activeView': 'records',
+    unrelated_application_key: 'preserve-me',
+  });
+});
+
+test('logout cleanup removes every dynamic pending-calculation generation but preserves neighboring keys', () => {
+  const generationA = `${PENDING_CALCULATION_V2_STORAGE_PREFIX}live.1800000000000.abcdefghijklmnop`;
+  const generationB = `${PENDING_CALCULATION_V2_STORAGE_PREFIX}cleared.1800000000100.qrstuvwxyzABCDEF`;
+  const storage = storageWith({
+    token: 'secret',
+    [generationA]: '{"version":2}',
+    [generationB]: '{"version":2}',
+    [`${PENDING_CALCULATION_V2_STORAGE_PREFIX.slice(0, -1)}-other`]: 'preserve-prefix-neighbor',
+    theme: 'dark',
+    unrelated_application_key: 'preserve-me',
+  });
+
+  const removed = clearSensitiveProjectStorage(storage);
+  assert.equal(removed.includes(generationA), true);
+  assert.equal(removed.includes(generationB), true);
+  assert.deepEqual(storage.snapshot(), {
+    [`${PENDING_CALCULATION_V2_STORAGE_PREFIX.slice(0, -1)}-other`]: 'preserve-prefix-neighbor',
+    theme: 'dark',
     unrelated_application_key: 'preserve-me',
   });
 });
