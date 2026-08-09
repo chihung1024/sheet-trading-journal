@@ -87,8 +87,6 @@ test('settle confirmation permits at most one winner when two tabs observed an a
   let staleReadsRemaining = 2;
   const storage = {
     getItem(key) {
-      // Model separate browsing contexts that both observed the pre-claim state
-      // before either write became visible to the other context.
       if (staleReadsRemaining > 0) {
         staleReadsRemaining -= 1;
         return null;
@@ -207,13 +205,14 @@ test('portfolio store claims before every calculation status GET and keeps loser
   assert.match(block, /if \(epoch !== calculationJobPollEpoch\) return true;/);
 });
 
-test('portfolio clears only the exact job poll claim on terminal completion and 404', async () => {
+test('portfolio clears only exact job-scoped poll and pending generations on terminal completion and 404', async () => {
   const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
 
   const completeStart = source.indexOf('const completeCalculationJob = async');
   const completeEnd = source.indexOf('\n    const pollCalculationJobOnce', completeStart);
   const completeBlock = source.slice(completeStart, completeEnd);
   assert.match(completeBlock, /clearCalculationJobPollClaim\(localStorage, getToken\(\), job\.id\)/);
+  assert.match(completeBlock, /clearPendingCalculationRequest\(\{ jobId: job\.id \}\)/);
 
   const pollStart = source.indexOf('const pollCalculationJobOnce = async');
   const pollEnd = source.indexOf('\n    const startCalculationJobPolling', pollStart);
@@ -222,5 +221,6 @@ test('portfolio clears only the exact job poll claim on terminal completion and 
   assert.notEqual(notFoundStart, -1);
   const notFoundBlock = pollBlock.slice(notFoundStart);
   assert.match(notFoundBlock, /clearCalculationJobPollClaim\(localStorage, getToken\(\), jobId\)/);
-  assert.match(notFoundBlock, /clearPendingCalculationRequest\(\)/);
+  assert.match(notFoundBlock, /clearPendingCalculationRequest\(\{ jobId \}\)/);
+  assert.doesNotMatch(notFoundBlock, /clearPendingCalculationRequest\(\)/);
 });
