@@ -24,11 +24,16 @@ on:
         required: false
         default: ''
         type: string
+      transaction_integrity_audit_only:
+        description: 'Gate C 唯讀交易完整性稽核（不計算、不上傳快照）'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
-# 同一 repository 只允許一個 portfolio update 執行，避免重疊上傳。
+# 同一 repository 只允許一個 portfolio update / read-only audit 執行，避免與上傳流程重疊。
 # cancel-in-progress=false 讓既有執行完成，新觸發排隊而不是中斷。
 concurrency:
   group: portfolio-update
@@ -45,8 +50,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Reject audit mode calculation callbacks
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only == 'true' && github.event.inputs.calculation_job_id != '' }}
+        run: |
+          echo 'Gate C audit mode cannot be attached to a calculation job.' >&2
+          exit 1
+
       - name: Mark calculation job running
-        if: ${{ github.event.inputs.calculation_job_id != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only != 'true' && github.event.inputs.calculation_job_id != '' }}
         env:
           API_KEY: ${{ secrets.API_KEY }}
           JOB_ID: ${{ github.event.inputs.calculation_job_id }}
@@ -77,8 +88,16 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
+      - name: Run transaction integrity read-only audit
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only == 'true' }}
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          TARGET_USER_ID: ${{ github.event.inputs.target_user_id || '' }}
+        run: python tools/audit_transaction_integrity.py
+
       - name: Run calculation and upload to API
         id: calculation
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.transaction_integrity_audit_only != 'true' }}
         continue-on-error: true
         env:
           API_KEY: ${{ secrets.API_KEY }}
@@ -87,7 +106,7 @@ jobs:
         run: python tools/run_portfolio_update.py
 
       - name: Report calculation job result
-        if: ${{ always() && github.event.inputs.calculation_job_id != '' }}
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only != 'true' && github.event.inputs.calculation_job_id != '' }}
         env:
           API_KEY: ${{ secrets.API_KEY }}
           JOB_ID: ${{ github.event.inputs.calculation_job_id }}
@@ -123,5 +142,5 @@ jobs:
             --data "$payload" >/dev/null
 
       - name: Fail workflow when calculation failed
-        if: ${{ always() && steps.calculation.outcome != 'success' }}
+        if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.transaction_integrity_audit_only != 'true') && steps.calculation.outcome != 'success' }}
         run: exit 1

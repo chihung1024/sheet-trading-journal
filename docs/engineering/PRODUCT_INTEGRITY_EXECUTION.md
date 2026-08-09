@@ -1,24 +1,25 @@
 # Product Integrity Audit & Execution Ledger
 
-This is the **current operational ledger** for the post-D3D product-correctness program. It records current truth, protected boundaries, known residuals, and the next execution gates. Detailed historical rationale remains recoverable from the referenced PRs, commits, CI runs, recovery branches, and Git history.
+This is the **current operational ledger** for the post-D3D product-correctness program. It records current truth, protected boundaries, known residuals, and the next execution gates. Detailed historical rationale remains recoverable from the referenced PRs, commits, CI runs, recovery branches, Git history, and root-level `to_do_update_list.md`.
 
 ## Current authoritative state
 
 - Program audit baseline: `a1466e6733203c4a3ec9aa00b5b90edb52a1e045`.
-- Current merged `main`: `f3c55f4cd322c35ca163e1330f7b1e7bc14580bf` — PR #148 / Gate A P6C generation-safe pending calculation recovery.
-- Gate A final PR head: `80d417c125797020fab1b6be401084049f2e25e3`.
-- Gate A exact-head CI #429 succeeded; post-main CI #430 succeeded.
-- Current-main production calculation smoke: `Update Portfolio Data` #3213 / run `31295494999` succeeded on exact SHA `f3c55f4cd322c35ca163e1330f7b1e7bc14580bf`; 2 users succeeded, 0 failed, and portfolio snapshots uploaded successfully.
-- Gate A post-change recovery: `backup-post-product-integrity-p6c-f3c55f4`.
-- Active work: **Gate B / P5C3B — Worker record DELETE atomicity**.
-- Gate B work branch: `pr-gate-b-atomic-record-delete`.
-- Gate B pre-change recovery: `backup-pre-gate-b-atomic-delete-f3c55f4`.
-- D1 remains on the current Schema-2 line. Gate B does not authorize Schema 3.
-- Production Worker activation remains separately governed and fail-closed; ordinary product-integrity source changes do not imply a production Worker deployment.
+- Current merged `main`: `03242d00082067333cf77ffa424094b8936b406c` — PR #149 / Gate B P5C3B atomic record deletion.
+- Gate B final PR head: `439e9ed39647ccd5885a2cc02a6850712c30708a`.
+- Gate B exact-head CI #433 / run `31296056184`: SUCCESS.
+- Gate B post-main CI #434 / run `31296121054`: SUCCESS.
+- Gate B post-change recovery: `backup-post-gate-b-03242d0`.
+- Gate C pre-change recovery: `backup-pre-gate-c-03242d0`.
+- Active work: **Gate C — Schema-2 transaction integrity preflight**.
+- Gate C branch: `pr-gate-c-transaction-integrity-preflight`.
+- Root continuation source: `to_do_update_list.md` — must be updated after every material execution result.
+- D1 remains on the current Schema-2 line. Gate C initial audit does not authorize Schema 3.
+- Production Worker activation remains separately governed and fail-closed; repository merges do not imply production deployment.
 
 ### Legacy GitHub Pages closeout note
 
-GitHub-managed legacy Pages run #1437 for `f3c55f4...` entered an inconsistent external state: the dynamic workflow reported failure while the Pages build API remained `building` with no error and no executed build steps. The repository's current production frontend is Cloudflare Pages (`sheet-trading-journal.pages.dev`); GitHub Pages is a legacy approved origin, not the authoritative production deployment chain. No application change is authorized merely to make that external legacy status turn green.
+GitHub-managed legacy Pages can enter inconsistent external states while the authoritative production frontend remains Cloudflare Pages (`sheet-trading-journal.pages.dev`). No application change is authorized merely to make the legacy Pages status green.
 
 ## Non-negotiable engineering rules
 
@@ -31,7 +32,7 @@ GitHub-managed legacy Pages run #1437 for `f3c55f4...` entered an inconsistent e
 7. Do not deploy a production Worker merely because repository source changed.
 8. Treat monetary values as dimensioned quantities; numeric finiteness alone is insufficient when currency/quote scale is wrong.
 9. Distinguish unavailable/undefined metrics from genuine numeric zero.
-10. Keep this ledger concise; preserve detailed rationale in PR/Git/recovery evidence rather than duplicating it here.
+10. Keep this ledger concise; preserve detailed chronological continuation in `to_do_update_list.md`.
 11. Do not open a new broad optimization phase while the current gate has unresolved acceptance criteria.
 
 ## Completed product-integrity line
@@ -54,12 +55,15 @@ GitHub-managed legacy Pages run #1437 for `f3c55f4...` entered an inconsistent e
 | P6D — tenant/job-scoped cross-tab poll claims | completed | PR #146 |
 | Launch-day market bootstrap | completed | PR #147 |
 | Gate A / P6C — generation-safe calculation recovery | completed | PR #148 / merge `f3c55f4...` / smoke #3213 |
+| Gate B / P5C3B — atomic record deletion | completed | PR #149 / merge `03242d0...` |
 
 ### Current confirmed residuals
 
-- **P5C3B / Gate B active:** pre-Gate-B Worker `DELETE /api/records` deletes the source record before the remaining-record count / last-record snapshot cleanup completes. Browser ambiguity semantics are already correct; Gate B closes only the internal partial-server-state window.
-- **P4B residual remains:** history persists net daily cash flow, so a zero-start day with offsetting intraday flows cannot be reconstructed as gross/order-aware Modified Dietz timing from published history alone.
-- Schema 2 does not provide first-class external execution identity (`source`, `external_order_id`, `executed_at`, `import_key`); current external-import provenance therefore remains metadata rather than a calculation-field contract.
+- **P4B residual:** history persists net daily cash flow, so a zero-start day with offsetting intraday flows cannot be reconstructed as gross/order-aware Modified Dietz timing from published history alone.
+- **Execution identity residual:** Schema 2 does not provide first-class `source`, immutable external execution id, `executed_at`, or stable execution sequence fields.
+- **Same-day ordering residual:** current preparation/calculator paths may not preserve true broker execution order when multiple BUY/SELL events share one transaction date.
+- **Commission rebate residual:** current calculation paths normalize commission/tax with `abs()`, so genuinely net-negative commission cannot be represented faithfully.
+- **Derivatives residual:** current Stock journal has no first-class asset class / contract multiplier; futures remain excluded.
 
 ## Gate A — P6C generation-safe calculation recovery
 
@@ -74,72 +78,62 @@ Evidence:
 - production calculation smoke #3213 / run `31295494999`: SUCCESS on exact merged SHA.
 - recovery: `backup-post-product-integrity-p6c-f3c55f4`.
 
-Gate A closed the old-generation/new-generation browser recovery race using generation-specific live records and independent tombstones. Exact cleanup is scoped by `{ jobId }` or `{ key }`; unscoped cleanup is a no-op; legacy fixed storage remains compatibility-only; logout removes dynamic V2 sensitive state.
-
 ## Gate B — P5C3B Worker DELETE atomicity
 
-Status: **active**.
+Status: **completed**.
 
-Scope is deliberately narrow: source-record deletion and last-record snapshot cleanup must share one verified D1 atomic boundary while preserving existing API semantics.
+Result:
 
-### Design contract
+- one D1 `batch()` transaction now contains guarded final-snapshot cleanup, exact record deletion, and post-delete remaining-record count;
+- missing record stays definite 404 without snapshot cleanup;
+- non-last record preserves snapshots;
+- last record removes snapshots and record within the same D1 batch;
+- malformed result / impossible row cardinality fails closed;
+- frontend transport ambiguity semantics remain unchanged.
 
-Use one D1 `batch()` transaction containing, in order:
+Evidence:
 
-1. guarded snapshot cleanup that runs only when the target record exists and no sibling record exists for the same user;
-2. target record deletion scoped by `id + user_id`;
-3. post-delete remaining-record count used only to select the response contract.
+- PR #149 final exact head `439e9ed39647ccd5885a2cc02a6850712c30708a`;
+- exact-head CI #433 / `31296056184`: SUCCESS;
+- merge `03242d00082067333cf77ffa424094b8936b406c`;
+- post-main CI #434 / `31296121054`: SUCCESS;
+- recovery `backup-post-gate-b-03242d0`.
 
-The guarded pre-delete snapshot statement prevents a missing record from deleting snapshots, while D1 batch atomicity prevents statement failure from leaving record/snapshot state partially committed.
-
-### Required evidence
-
-- missing record → definite 404 and zero logical mutation;
-- non-last record → source record removed, snapshots preserved;
-- last record → source record and snapshots removed together;
-- injected batch/statement failure cannot leave a half-committed state;
-- malformed/invalid batch result fails closed;
-- changed-row cardinality other than 0 or 1 fails closed;
-- transport failure after a successful commit may remain client-ambiguous; existing frontend `outcomeAmbiguous` semantics must not be removed;
-- no POST idempotency, Schema 3, financial calculation, auth, workflow, frontend, or deployment redesign is mixed into Gate B.
-
-### Gate B qualification
-
-1. pre-change recovery exists from exact Gate A main;
-2. Worker implementation and dedicated atomic-delete regression tests are the only product-code scope;
-3. execution ledger current truth is synchronized in the same PR;
-4. full PR CI succeeds on the final exact head;
-5. unified diff is re-reviewed after any large-file write;
-6. review submissions and inline threads are clear;
-7. `main` has not drifted from the reviewed qualification base immediately before merge;
-8. exact-head merge succeeds;
-9. post-main CI succeeds;
-10. create a post-Gate-B recovery ref.
-
-A production Worker deployment is **not** part of Gate B closeout unless separately authorized through the existing production activation governance.
+Production Worker deployment was not part of Gate B.
 
 ## Gate C — Schema-2 transaction integrity preflight
 
-Status: **queued; conditional on Gate B closeout**.
+Status: **active — audit first, then enforce**.
 
-First audit, then enforce. Do not change the D1 schema in the initial slice.
+### Initial scope
 
-Planned scope:
+- audit every transaction-consumer path affecting holdings, realized P&L, daily P&L, and metrics;
+- define deterministic ledger order by user → symbol → date → stable sequence;
+- validate running `BUY - SELL` quantity never becomes negative beyond a documented tolerance;
+- repeat prefix validation for every active tag group;
+- audit same-day execution ordering differences across preparation/calculator/analyzer/Daily-P&L code;
+- audit duplicate structured external `import_key` / order provenance conservatively without making `note` a financial dependency;
+- audit current production data before any compatibility `CLAMP` → fail-closed `ERROR` oversell switch;
+- ensure secondary transaction-analysis integrity exceptions cannot become apparently valid all-zero snapshots.
 
-- deterministic ledger preflight by user → symbol → date → stable sequence;
-- running `BUY - SELL` quantity must not become negative beyond tolerance;
-- repeat the same prefix-integrity check for each active tag group;
-- audit duplicate external `import_key` / order provenance for structured external imports without making `note` a financial-calculation dependency;
-- verify current production data has zero unexplained prefix violations before switching production calculator oversell policy from compatibility `CLAMP` to fail-closed `ERROR`;
-- integrity/data exceptions in secondary transaction analysis must not be converted into apparently valid all-zero snapshots.
+### Gate C acceptance path
 
-Schema 3 is not authorized by Gate C. It requires a fresh post-Gate-D review showing that Schema 2 cannot meet the verified execution-identity requirement safely.
+1. complete code-path/evidence matrix;
+2. define prefix-integrity contract and tolerance;
+3. add targeted regressions for same-day round trips and oversells;
+4. audit current production records and active tag groups;
+5. record explained vs unexplained violations;
+6. only if evidence supports it, propose strict oversell enforcement;
+7. open scoped implementation PR;
+8. exact-head CI + independent diff review + review/thread + main-drift checks;
+9. exact-head merge + post-main CI + post-Gate-C recovery;
+10. update `to_do_update_list.md` and activate Gate D.
+
+Schema 3 is not authorized by Gate C. A fresh post-Gate-D architecture review is required before any execution-identity migration.
 
 ## Gate D — Calculation reproducibility evidence
 
 Status: **queued; conditional on Gate C closeout**.
-
-Do not begin with a broad market-provider abstraction. First make one successful calculation explainable and replayable.
 
 Minimum manifest candidates:
 
@@ -165,9 +159,8 @@ Do not open these as parallel PRs merely because they appeared in earlier roadma
 
 ## Current execution order
 
-1. **Gate B — P5C3B server-side atomic DELETE.**
-2. **Gate C — Schema-2 transaction integrity preflight and strict oversell qualification.**
-3. **Gate D — calculation manifest and deterministic golden replay.**
-4. **Fresh architecture review before any Schema 3, canonical-ledger, provider-abstraction, or broad cleanup phase.**
+1. **Gate C — Schema-2 transaction integrity preflight and strict oversell qualification.**
+2. **Gate D — calculation manifest and deterministic golden replay.**
+3. **Fresh architecture review before any Schema 3, canonical-ledger, provider-abstraction, or broad cleanup phase.**
 
-Do not reopen D3D or Schema 3 as part of Gates B–D.
+Do not reopen D3D or Schema 3 as part of Gates C–D.
