@@ -55,12 +55,11 @@ class PortfolioCalculator:
         return datetime.now(self.pnl_helper.tz_tw)
 
     def _run_now(self):
-        """Return the run-level clock while preserving legacy production semantics.
+        """Return a run-level clock value without changing production defaults.
 
-        An explicit replay clock is normalized to Taipei and reused everywhere in the
-        deterministic replay path. Without an injected clock, production keeps the
-        historical naive system-local ``datetime.now()`` behavior used for
-        ``updated_at`` and the run date-range boundary.
+        In replay mode every call returns the same injected Taipei timestamp. In normal
+        production mode each call delegates to the same naive system-local
+        ``datetime.now()`` used by the legacy ``updated_at`` and date-range call sites.
         """
         if self._calculation_now_tw is not None:
             return self._calculation_now_tw
@@ -176,7 +175,6 @@ class PortfolioCalculator:
 
     def run(self):
         logger.info(f"=== 開始多群組計算 (baseline: {self.benchmark_ticker}) ===")
-        run_now_tw = self._run_now()
         
         current_fx = DEFAULT_FX_RATE
         if hasattr(self.market, 'realtime_fx_rate') and self.market.realtime_fx_rate:
@@ -200,7 +198,7 @@ class PortfolioCalculator:
                 daily_pnl_asof_date=None, daily_pnl_prev_date=None
             )
             return PortfolioSnapshot(
-                updated_at=run_now_tw.strftime("%Y-%m-%d %H:%M"),
+                updated_at=self._run_now().strftime("%Y-%m-%d %H:%M"),
                 base_currency=BASE_CURRENCY, exchange_rate=round(current_fx, 2),
                 summary=empty_summary, holdings=[], history=[], pending_dividends=[],
                 groups={"all": PortfolioGroupData(summary=empty_summary, holdings=[], history=[], pending_dividends=[])}
@@ -228,7 +226,7 @@ class PortfolioCalculator:
             if group_df.empty: continue
 
             group_start_date = group_df['Date'].min()
-            group_end_date = run_now_tw.replace(tzinfo=None)
+            group_end_date = self._run_now().replace(tzinfo=None)
             group_date_range = self._get_trading_date_range(group_df, group_start_date, group_end_date)
 
             group_result = self._calculate_single_portfolio(
@@ -243,7 +241,7 @@ class PortfolioCalculator:
             return None
         
         return PortfolioSnapshot(
-            updated_at=run_now_tw.strftime("%Y-%m-%d %H:%M"),
+            updated_at=self._run_now().strftime("%Y-%m-%d %H:%M"),
             base_currency=BASE_CURRENCY, exchange_rate=round(current_fx, 2),
             summary=all_data.summary, holdings=all_data.holdings,
             history=all_data.history, pending_dividends=all_data.pending_dividends,
