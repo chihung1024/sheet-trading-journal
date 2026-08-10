@@ -78,17 +78,46 @@ class UserFailureCapture(logging.Handler):
             self.exceptions.append(exc)
 
 
+def _legacy_masked_user_variant(user_id: str) -> str:
+    """Mirror current main/api-client masked-email observability for exact removal."""
+    value = str(user_id or "").strip()
+    if not value:
+        return ""
+    if "@" not in value:
+        return f"{value[:2]}***" if len(value) > 2 else "***"
+    local, domain = value.split("@", 1)
+    visible = local[:2] if len(local) >= 2 else local[:1]
+    return f"{visible}***@{domain}"
+
+
 class VerifiedJobPrivacyFilter(logging.Filter):
     """Remove tenant-email material from logs after opaque context verification."""
 
-    @staticmethod
-    def _redact(value: object) -> str:
-        return EMAIL_SHAPED_LOG_TOKEN_RE.sub(TENANT_LOG_LABEL, str(value))
+    def __init__(self, target_user_id: str) -> None:
+        super().__init__()
+        target = str(target_user_id or "").strip()
+        if not target:
+            raise ValueError("verified job privacy filter requires a tenant owner")
+        variants = {
+            target,
+            _legacy_masked_user_variant(target),
+        }
+        variants.discard("")
+        pattern = "|".join(
+            re.escape(value)
+            for value in sorted(variants, key=len, reverse=True)
+        )
+        self._tenant_variant_re = re.compile(pattern, re.IGNORECASE)
+
+    def _redact(self, value: object) -> str:
+        text = self._tenant_variant_re.sub(TENANT_LOG_LABEL, str(value))
+        return EMAIL_SHAPED_LOG_TOKEN_RE.sub(TENANT_LOG_LABEL, text)
 
     def filter(self, record: logging.LogRecord) -> bool:
         # This filter is installed only after the current opaque job owner and
-        # durable benchmark have been resolved and equality-checked. Rebuild the
-        # formatted message so both real and already-masked emails are removed.
+        # durable benchmark have been resolved and equality-checked. Exact owner
+        # and known masked variants are removed first; the generic matcher is a
+        # second defense for any additional email-shaped observability.
         message = self._redact(record.getMessage())
         record.msg = message
         record.args = ()
@@ -107,7 +136,12 @@ def install_verified_job_privacy_filter() -> Optional[VerifiedJobPrivacyFilter]:
     """Install tenant-log redaction only for a verified opaque-job run."""
     if os.environ.get(VERIFIED_JOB_CONTEXT_ENV, "").strip() != "1":
         return None
-    privacy_filter = VerifiedJobPrivacyFilter()
+    target_user_id = os.environ.get("TARGET_USER_ID", "").strip()
+    if not target_user_id:
+        raise CloudflareAPIError(
+            "verified calculation job context owner is missing for log privacy"
+        )
+    privacy_filter = VerifiedJobPrivacyFilter(target_user_id)
     for handler in logging.getLogger().handlers:
         handler.addFilter(privacy_filter)
     return privacy_filter
