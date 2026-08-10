@@ -1,14 +1,14 @@
 # Gate E / E1a-A7 Closeout — Production Activation and Compatibility Evidence
 
-Status: **A7 IN PROGRESS — A1–A6 VERIFIED; LEGACY USER-PATH PROOF PENDING**  
+Status: **A7 CLOSEOUT CANDIDATE — A1–A6 + LEGACY USER PATH VERIFIED; FINAL PR/POST-MAIN GATES PENDING**  
 Date: **2026-08-10**  
 Repository: `chihung1024/sheet-trading-journal`
 
 ## 1. Closeout rule
 
-E1a-A is not CLOSED until all A1–A6 evidence is durable **and** the legacy pre-cutover authenticated user calculation path has been proven usable after the A5 Worker activation.
+E1a-A may close only when all A1–A6 evidence is durable, the legacy pre-cutover authenticated user calculation path is proven usable after A5, and this closeout candidate passes exact-head review/CI plus protected-main merge/post-main verification.
 
-Do not activate E1a-B from this document while the remaining legacy-path condition is pending.
+The functional/production evidence conditions are now satisfied. PR #185 is the transition batch that records the closeout and activates E1a-B after protected-main merge.
 
 ## 2. Immutable runtime / control-plane identities
 
@@ -16,7 +16,7 @@ Do not activate E1a-B from this document while the remaining legacy-path conditi
 - Runtime contract: Worker `4.07` / API `2.60` / D1 Schema `2`
 - Production Worker version observed after deploy/audit: `245eb37c-0d52-4344-9cc3-f82866434f28`
 - Activation authority `A`: `0d4896d3161eebfea3dd9bec16b57b6e061cbf04`
-- Current protected-main baseline at A7 start: `210e004528b725ed7847ed17fd1aad4a7390df0d`
+- Protected-main baseline at A7 start: `210e004528b725ed7847ed17fd1aad4a7390df0d`
 
 `R` and `A` are intentionally different SHAs. Runtime deployment remains pinned to `R`; later protected-main commits are control-plane/evidence changes and do not imply a Worker redeploy.
 
@@ -156,25 +156,42 @@ GitHub artifact:
 
 A6 compatibility / production-contract status: **PASS**.
 
-## 9. Remaining A7 blocker — legacy authenticated user calculation path
+## 9. A7 legacy authenticated user calculation-path smoke
 
-Required evidence:
+A real authenticated production user used the normal production frontend after A5 and triggered the ordinary pre-E1a-B portfolio update path.
 
-> A real authenticated production user uses the existing pre-E1a-B calculation/update path after A5 activation, and the resulting durable calculation job / GitHub `update.yml` run completes successfully without evidence of regression caused by E1a-A.
+Resulting GitHub workflow evidence:
 
-Current remote evidence at A7 start:
+- `Update Portfolio Data` run #3222 / `31386988867`
+- created: `2026-08-10T12:13:06Z`
+- completed: `2026-08-10T12:13:37Z`
+- source: `210e004528b725ed7847ed17fd1aad4a7390df0d`
+- event: `workflow_dispatch`
+- conclusion: **SUCCESS**
+- calculation job id: present, intentionally not copied into durable repository evidence
+- audit-only mode: false
+- `Mark calculation job running`: PASS
+- `Run calculation and upload to API`: PASS
+- `Report calculation job result`: PASS
+- terminal job status: `succeeded`
+- snapshot upload: PASS
+- transaction prefix integrity: PASS
+- canonical Daily PnL reconciliation: PASS
+- split-adjusted ledger parity: PASS
 
-- A5 deployment started at `2026-08-10T08:00:02Z`;
-- latest `update.yml` workflow run visible before A7 preparation is run #3221 / `31365227747`, created at `2026-08-10T07:16:55Z`;
-- therefore no post-A5 user-path run exists yet to satisfy this closeout condition.
+The smoke occurred more than four hours after the A5 production deployment began (`2026-08-10T08:00:02Z`) and therefore directly proves the legacy user path remained usable with runtime `R` live.
 
-Status: **PENDING — HUMAN AUTHENTICATED PRODUCTION SMOKE REQUIRED**.
+Durable sanitized evidence:
 
-Do not substitute a manual GitHub dispatch, scheduled run, unit test, or system-only API check for this user-path evidence.
+`docs/governance/evidence/GATE_E_E1A_A7_LEGACY_USER_SMOKE_2026-08-10.json`
+
+No API key, tenant identifier, calculation job id, or raw transaction data is copied into that evidence file.
+
+Legacy-path status: **PASS**.
 
 ## 10. A7 completion checklist
 
-Already satisfied:
+Functional/production evidence satisfied:
 
 - [x] repository/CI evidence
 - [x] runtime `R`
@@ -184,22 +201,27 @@ Already satisfied:
 - [x] deployed source/version/health/schema identity
 - [x] generic production contract proof
 - [x] compatibility-specific 404-vs-403 proof
+- [x] post-A5 authenticated legacy user calculation path smoke
+- [x] resulting `update.yml` run and lifecycle inspected
 - [x] pre/post A5/A6 recovery references
-- [x] sanitized A6 evidence retained in repository
+- [x] sanitized A6 and A7 evidence retained in repository
 
-Still required:
+Final repository transition gates for PR #185:
 
-- [ ] post-A5 authenticated legacy user calculation path smoke
-- [ ] inspect resulting `update.yml` run and job lifecycle evidence
-- [ ] update `to_do_update_list.md` to close E1a-A and activate E1a-B
-- [ ] final A7 Independent Review / exact-head CI
-- [ ] expected-head merge / post-main CI
+- [ ] current authorities updated to the same state
+- [ ] exact-head CI PASS
+- [ ] final R2 Independent Review PASS / BLOCKER=0
+- [ ] expected-head merge
+- [ ] post-main CI/Pages PASS
 - [ ] post-A7 recovery
 
-## 11. Next exact action
+## 11. Transition after this closeout
 
-A maintainer must use the normal production frontend as a real authenticated user and trigger one ordinary portfolio update/calculation through the existing UI.
+On protected-main merge of the completed A7 closeout candidate:
 
-After that action, do not manually dispatch `update.yml`. The resulting GitHub workflow run must come from the normal application path so it can serve as legacy-path usability evidence.
+- E1a-A becomes **CLOSED / PRODUCTION VERIFIED**;
+- E1a-B becomes the single **ACTIVE** Gate-E batch;
+- production runtime remains `R` until E1a-B intentionally produces and deploys a new reviewed runtime;
+- do not redeploy `R` merely because protected `main` is newer.
 
-Once the post-A5 user-path run is verified, update this same A7 closeout batch, close E1a-A, and only then activate E1a-B.
+E1a-B must preserve the benchmark integrity invariant: durable job benchmark is authoritative, or any dispatched benchmark must equality-check fail closed.
