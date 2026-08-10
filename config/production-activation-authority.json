@@ -2,8 +2,8 @@
   "schema_version": 1,
   "authority_id": "PRODUCTION-ACTIVATION-AUTHORITY",
   "status": "ready",
-  "authorized_source_sha": "2d1fc1cd7190651c64b764c58f58d67826d408e8",
-  "approved_at": "2026-08-10T07:39:58.000Z",
+  "authorized_source_sha": "0e2ea514bfa1f0640f620db35490d2a1f728ec7e",
+  "approved_at": "2026-08-10T17:22:00.000Z",
   "required_checks": {
     "production_frontend_explicit_environment": "passed",
     "production_frontend_live_contract": "passed",
@@ -14,5 +14,5 @@
     "production_frontend_live_contract": "docs/governance/evidence/production-activation/production_frontend_live_contract.json",
     "production_d1_identity": "docs/governance/evidence/production-activation/production_d1_identity.json"
   },
-  "notes": "Gate E E1a-A4 activation authority derived from reviewer-protected GET-only A3 Production Identity Evidence run 31366644577 (#12), artifact 9054402428, for exact runtime source 2d1fc1cd7190651c64b764c58f58d67826d408e8. Deploy Worker remains subject to protected-main authority re-fetches, production reviewer approval, runtime preconditions, migrations, and post-deploy verification."
+  "notes": "Gate E E1a-B production activation authority derived from reviewer-protected GET-only Production Identity Evidence run 31413549090 (#13), artifact 9072520233, for exact runtime source 0e2ea514bfa1f0640f620db35490d2a1f728ec7e. Deploy Worker remains separately subject to protected-main authority re-fetches, production reviewer approval, runtime preconditions, migrations, stable full-contract propagation, and post-deploy verification."
 }
