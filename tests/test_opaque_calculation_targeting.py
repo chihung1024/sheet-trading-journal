@@ -1,7 +1,9 @@
+import os
+
 import pytest
 
-import main as runner
 from journal_engine.clients.api_client import CloudflareAPIError, CloudflareClient
+import tools.run_portfolio_update as job_runner
 
 
 JOB_ID = "job_ABCDEFGHIJKLMNOPQRSTUV"
@@ -69,13 +71,13 @@ def test_system_client_job_target_lookup_fails_closed(monkeypatch, status_code, 
         client.resolve_calculation_job_target(JOB_ID)
 
 
-def test_runner_opaque_job_target_overrides_legacy_target():
+def test_entrypoint_opaque_job_target_overrides_legacy_target():
     class FakeClient:
         def resolve_calculation_job_target(self, job_id):
             assert job_id == JOB_ID
             return TARGET_USER
 
-    target = runner.resolve_target_user(
+    target = job_runner.resolve_target_user(
         FakeClient(),
         calculation_job_id=JOB_ID,
         legacy_target_user_id="attacker@example.com",
@@ -84,55 +86,66 @@ def test_runner_opaque_job_target_overrides_legacy_target():
     assert target == TARGET_USER
 
 
-def test_runner_without_job_preserves_scheduled_all_user_path():
+def test_entrypoint_without_job_preserves_scheduled_all_user_path():
     class FakeClient:
         def resolve_calculation_job_target(self, _job_id):
             raise AssertionError("scheduled run must not resolve a calculation job")
 
-    assert runner.resolve_target_user(
+    assert job_runner.resolve_target_user(
         FakeClient(),
         calculation_job_id="",
         legacy_target_user_id="",
     ) == ""
 
 
-def test_runner_legacy_target_remains_available_outside_normal_workflow():
+def test_entrypoint_legacy_target_remains_available_outside_normal_workflow():
     class FakeClient:
         def resolve_calculation_job_target(self, _job_id):
             raise AssertionError("legacy path must not resolve a calculation job")
 
-    assert runner.resolve_target_user(
+    assert job_runner.resolve_target_user(
         FakeClient(),
         calculation_job_id="",
         legacy_target_user_id="legacy@example.com",
     ) == "legacy@example.com"
 
 
-def test_run_update_reads_opaque_job_id_instead_of_public_target_env(monkeypatch):
+def test_entrypoint_resolves_job_before_financial_runner(monkeypatch):
     observed = {}
 
     class FakeClient:
-        def __init__(self):
-            pass
-
         def resolve_calculation_job_target(self, job_id):
             observed["job_id"] = job_id
             return TARGET_USER
 
-        def fetch_records(self, target_user_id=None):
-            observed["target_user_id"] = target_user_id
-            raise RuntimeError("stop-after-target-resolution")
+    def fake_run_update():
+        observed["target_user_id"] = os.environ.get("TARGET_USER_ID")
 
-    monkeypatch.setattr(runner, "API_KEY", "test-system-key")
-    monkeypatch.setattr(runner, "CloudflareClient", FakeClient)
-    monkeypatch.setattr(runner, "resolve_calculation_context", lambda: object())
-    monkeypatch.setattr(runner, "resolve_engine_source_commit", lambda environ=None: "1" * 40)
-    monkeypatch.setattr(runner, "MarketDataClient", lambda: object())
+    monkeypatch.setattr(job_runner, "CloudflareClient", FakeClient)
+    monkeypatch.setattr(job_runner.runner, "setup_logging", lambda: None)
+    monkeypatch.setattr(job_runner.runner, "run_update", fake_run_update)
     monkeypatch.setenv("CALCULATION_JOB_ID", JOB_ID)
     monkeypatch.setenv("TARGET_USER_ID", "attacker@example.com")
-    monkeypatch.setenv("CUSTOM_BENCHMARK", "SPY")
 
-    with pytest.raises(RuntimeError, match="stop-after-target-resolution"):
-        runner.run_update()
-
+    assert job_runner.main() == 0
     assert observed == {"job_id": JOB_ID, "target_user_id": TARGET_USER}
+
+
+def test_entrypoint_scheduled_run_clears_stale_target_env(monkeypatch):
+    observed = {}
+
+    def fake_run_update():
+        observed["target_user_id"] = os.environ.get("TARGET_USER_ID", "<missing>")
+
+    class FakeClient:
+        def resolve_calculation_job_target(self, _job_id):
+            raise AssertionError("scheduled run must not resolve a job")
+
+    monkeypatch.setattr(job_runner, "CloudflareClient", FakeClient)
+    monkeypatch.setattr(job_runner.runner, "setup_logging", lambda: None)
+    monkeypatch.setattr(job_runner.runner, "run_update", fake_run_update)
+    monkeypatch.delenv("CALCULATION_JOB_ID", raising=False)
+    monkeypatch.setenv("TARGET_USER_ID", "stale@example.com")
+
+    assert job_runner.main() == 0
+    assert observed["target_user_id"] == ""
