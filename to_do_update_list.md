@@ -15,31 +15,64 @@ Last updated: **2026-08-10**
 3. Read this file.
 4. Inspect protected `main`, active branch/PR, Worker deployment state and latest Actions.
 5. Verify Current Phase / Current Batch / Next Action below against GitHub.
-6. Read the current-phase evidence document.
-7. Only then change code.
+6. Read the current-phase operational authority.
+7. Only then change code/config/workflows.
 
-## Current authoritative evidence
+## Current authoritative documents
 
-- `docs/engineering/PRODUCT_INTEGRITY_EXECUTION.md`
-- `docs/engineering/GATE_C_FINAL_CLOSEOUT.md`
-- `docs/engineering/GATE_D_REPRODUCIBILITY_AUDIT.md`
-- `docs/engineering/POST_GATE_D_ARCHITECTURE_REVIEW.md` — current Gate-E roadmap authority
-- `docs/governance/risk-register.json` — historical 2026-08-06 baseline; do not copy priorities forward without revalidation
+- `docs/engineering/POST_GATE_D_ARCHITECTURE_REVIEW.md` — Gate-E architecture priority authority.
+- `docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md` — **current E1a operational sequencing authority**.
+- `docs/DEPLOYMENT.md` — current deployment navigation/runbook.
+- `docs/governance/PR_10D3D_PRODUCTION_ACTIVATION_GATE_ACCEPTANCE.md` — production activation control-plane design/history.
+- `docs/governance/PR_10D3D_B_PRODUCTION_IDENTITY_EVIDENCE_ACCEPTANCE.md` — production identity evidence collector acceptance/history.
+- `docs/engineering/GATE_D_REPRODUCIBILITY_AUDIT.md` — Gate-D reproducibility authority.
+- `docs/engineering/GATE_C_FINAL_CLOSEOUT.md` — Gate-C closeout authority.
+- `docs/governance/risk-register.json` — historical 2026-08-06 baseline; never copy priorities forward without revalidation.
+
+`docs/governance/V5_CURRENT_HANDOFF.md` is retained for the D3D closeout history/navigation but is **not** the primary current execution handoff while Gate E is active.
 
 ---
 
-# 2. Locked Engineering Rules
+# 2. Primary Goal / Current Batch
 
-- Evidence before conclusion; root cause before symptom fix.
-- Investigation may expand; implementation must converge to one Current Batch.
-- New findings do not automatically enter implementation scope.
-- Important changes follow: recovery → scoped branch/PR → test-first where practical → fresh CI → independent review → handoff → final-head CI → exact-head merge → post-main CI → deployment if scoped → deployment verification → recovery → production smoke when runtime behavior changes.
-- Never lower validation, coverage, financial-integrity, privacy, reproducibility or recovery gates merely to pass CI.
-- Do not overwrite unknown/user-authored changes.
-- `note` is never an implicit financial ordering or identity field.
-- Repository merge does **not** imply Worker deployment. `deploy-worker.yml` is manual and exact-main-SHA gated.
-- Every batch and rollout phase must leave the product usable.
-- A batch is not DONE while this file is stale.
+## Primary Goal
+
+> **Safely activate the already-merged E1a-A opaque-target compatibility capability in production, prove that compatibility boundary is live, then execute E1a-B so normal public GitHub calculation dispatch no longer carries tenant email.**
+
+## Current Phase
+
+**Gate E / E1a — staged zero-downtime privacy rollout**
+
+## Current Active Batch
+
+**E1a-A0 — production-activation documentation/state re-baseline**
+
+Working branch:
+
+`pr-gate-e-e1a-activation-docs-rebaseline`
+
+Pre-batch recovery:
+
+`backup-pre-gate-e-e1a-activation-docs-c312408`
+
+### A0 In Scope
+
+- correct stale E1a-A repository/CI state;
+- document the D3D production-activation dependency now reopened by a real deployment need;
+- correct deployment input semantics (`source_sha`);
+- establish the runtime-SHA vs activation-authority-SHA model;
+- align current-facing handoff/deployment/governance docs;
+- preserve historical append-only evidence unchanged.
+
+### A0 Out of Scope
+
+- no production workflow dispatch;
+- no Cloudflare mutation;
+- no Worker/runtime code change;
+- no D1/config activation change;
+- no E1a-B implementation;
+- no E1b/E1c/E1d implementation;
+- no Schema 3.
 
 ---
 
@@ -47,43 +80,448 @@ Last updated: **2026-08-10**
 
 Repository: `chihung1024/sheet-trading-journal`
 
-Verified protected main before E1a compatibility rollout:
+Verified protected-main baseline before this documentation branch:
 
-`87b5949a588bb6f655387ded554cb0a69d8a6f95`
+`c312408fec7a27a7b713ad5da79bf93bce62481f`
 
-Runtime contracts:
+This is PR #173 — Gate E E1a-A merge commit.
 
-- D1 schema: **2**
-- Worker release: **4.07**
-- Worker API: **2.60**
-- required schema: **2**
+Runtime contracts at that baseline:
 
-Program state:
+- Worker deployment entry: `worker-entry.js`;
+- canonical Worker source: `worker.js`;
+- Worker release: **4.07**;
+- Worker API: **2.60**;
+- D1 schema: **2**;
+- canonical D1 binding: `DB`.
 
-- Gate A: **DONE**
-- Gate B: **DONE**
-- Gate C: **DONE / CLOSED / POST-MAIN VERIFIED**
-- Gate D D1a–D1e: **DONE / CLOSED / POST-MAIN VERIFIED**
-- Gate E E0 Post-D Architecture Review: **DONE / POST-MAIN VERIFIED**
-- Gate E E1a Opaque GitHub Calculation Targeting: **ACTIVE — staged zero-downtime rollout**
-- E1a-A pre-cutover Worker compatibility: **ACTIVE / FINAL-HEAD CI PENDING after handoff update**
-- E1a-B privacy cutover: **BLOCKED until E1a-A is merged, post-main verified and deployed to production Worker**
-- E1b/E1c/E1d: planned, not active
-- Schema 3: **NOT IMPLEMENTED**; conditionally authorized later only for the narrow ledger-revision protocol after E1 + E2-pre audit.
+## Program state
 
-## E0 terminal evidence
-
-- PR #170 final head `4d342a340f2448006a1c8e6f13e05f1da7d70911`
-- CI #542 success
-- merge `32f272c973459158a18e71c89a63337bbdfd4dfa`
-- post-main CI #543 success
-- recovery `backup-post-gate-e-e0-32f272c`
-- closeout PR #171 merge `87b5949a588bb6f655387ded554cb0a69d8a6f95`
-- closeout post-main CI #545 success
+| Gate / Batch | State |
+|---|---|
+| Gate A | **DONE** |
+| Gate B | **DONE** |
+| Gate C | **DONE / CLOSED / POST-MAIN VERIFIED** |
+| Gate D D1a–D1e | **DONE / CLOSED / POST-MAIN VERIFIED** |
+| Gate E / E0 | **DONE / POST-MAIN VERIFIED** |
+| Gate E / E1a | **ACTIVE — staged zero-downtime rollout** |
+| E1a-A repository implementation | **DONE — merged / post-main CI / recovery complete** |
+| E1a-A production activation/deploy | **ACTIVE DEPENDENCY — not yet deployable** |
+| E1a-B privacy cutover | **BLOCKED until A deploy + compatibility proof** |
+| E1b | **PLANNED** |
+| E1c | **PLANNED** |
+| E1d | **PLANNED** |
+| E2-pre | **CONDITIONAL after E1** |
+| Schema 3 / E2 implementation | **NOT IMPLEMENTED / CONDITIONALLY AUTHORIZED ONLY** |
 
 ---
 
-# 4. Recovery Index
+# 4. E1a-A Repository Completion Evidence
+
+PR:
+
+**#173 — Gate E E1a-A: pre-cutover Worker opaque-target compatibility**
+
+Base before A:
+
+`87b5949a588bb6f655387ded554cb0a69d8a6f95`
+
+Test-first head:
+
+`a155eafce20938a5cfb5707e767e9696193e890a`
+
+Implementation commit:
+
+`7e4423e7033a6cacb9f2f84298f743d3537e8d9e`
+
+Final PR head:
+
+`ca3fa1f86d21fe660226588063ada98d749d01b6`
+
+Merge:
+
+`c312408fec7a27a7b713ad5da79bf93bce62481f`
+
+Verification:
+
+- CI #557: intentional test-first Worker failure only;
+- CI #558 / run `31344979114`: PASS;
+- independent implementation review: PASS / no code-level BLOCKER;
+- final-head CI #559 / run `31345137509`: PASS across Python / Frontend / Worker-D1;
+- exact-head merge completed;
+- post-main CI #560 / run `31345293209`: PASS across Python / Frontend / Worker-D1;
+- changed files: `worker-entry.js`, `tests/worker_opaque_target_compat.test.mjs`, `to_do_update_list.md`;
+- recovery: `backup-post-gate-e-e1a-a-c312408` -> exact merge `c312408...`.
+
+## A compatibility implementation
+
+Temporary `worker-entry.js` shim:
+
+- matches only `GET /api/calculation-jobs/job_<opaque-id>`;
+- only handles requests with constant-time-valid `X-API-KEY` against `env.API_SECRET`;
+- queries by opaque `public_id`, never caller-supplied tenant;
+- system response is narrow: `id`, `target_user_id`, `benchmark`, `status`;
+- invalid/malformed DB state fails closed;
+- explicit configured origin policy is checked before compatibility lookup;
+- owner value is not logged;
+- existing normal email dispatch/workflow/runner remains intentionally unchanged during A;
+- no D1 migration, financial logic, CRUD or canonical Worker route redesign occurred in A.
+
+The shim is temporary and must be removed in E1a-B after canonical `worker.js` owns the system route.
+
+---
+
+# 5. Production Activation State — Current BLOCKER
+
+The previous handoff stated that the next action was to dispatch `Deploy Worker`. Deeper revalidation found that this is incomplete.
+
+## Verified current deployment state
+
+- `.github/workflows/deploy-worker.yml`: **0 workflow runs** at re-baseline.
+- `.github/workflows/production-identity-evidence.yml`: **0 `workflow_dispatch` runs** at re-baseline.
+- E1a-A is therefore merged but not activated through the canonical production Worker workflow.
+
+## Runtime precondition gate
+
+`config/deployment-environments.json` currently has:
+
+- production D1 identity status: **`unverified`**;
+- production D1 database name: **`null`**;
+- production D1 UUID SHA-256 fingerprint: **`null`**.
+
+`tools/verify_production_runtime_preconditions.mjs` requires all three to be reviewed/verified before deployment can proceed.
+
+## Activation authority gate
+
+`config/production-activation-authority.json` currently has:
+
+- status: **`blocked`**;
+- authorized source SHA: **`null`**;
+- `production_frontend_explicit_environment`: pending;
+- `production_frontend_live_contract`: pending;
+- `production_d1_identity`: pending.
+
+`tools/verify_production_activation_authority.mjs` requires `ready`, exact authorized runtime SHA, passed checks and controlled evidence.
+
+### Conclusion
+
+**Do not dispatch `Deploy Worker` yet.**
+
+The workflow is correctly designed to reject the current state before production reviewer approval.
+
+This is not a newly introduced E1a defect. D3D deliberately left activation fail-closed until a real production deployment was required. E1a-A now satisfies that historical reopen condition.
+
+Classification:
+
+**Level 3 High Impact / NOW dependency** — narrow production-activation completion required to finish the current Gate-E batch.
+
+---
+
+# 6. Important Deployment Semantics
+
+## Actual input name
+
+Current `.github/workflows/deploy-worker.yml` input:
+
+`source_sha`
+
+Do not use the stale name `expected_main_sha`.
+
+## Runtime source does not have to equal latest main after authority merge
+
+Deployment requires:
+
+- requested runtime source = exact 40-character SHA;
+- runtime source remains reachable from `main`;
+- runtime source itself passes production runtime prerequisites;
+- **latest protected-main control plane** explicitly authorizes that requested runtime SHA.
+
+Define:
+
+- `R` = immutable deployable runtime source;
+- `A` = later protected-main activation-authority commit.
+
+Expected final relation:
+
+`A` is newer than `R`, while `Deploy Worker` runs with `source_sha = R`.
+
+This separation is intentional and must not be simplified back into “deploy current main”.
+
+---
+
+# 7. Gate-E Master Plan — Revised and Converged
+
+| Batch | Objective | Status | Schema impact |
+|---|---|---|---|
+| E0 | Post-D architecture re-baseline | DONE | none |
+| E1a-A repo | Compatibility shim + tests + merge/post-main/recovery | DONE | none |
+| **E1a-A0** | Current docs/state re-baseline | **ACTIVE** | none |
+| **E1a-A1** | Fresh GET-only production identity evidence | NEXT | none |
+| **E1a-A2** | Evidence-backed production D1 runtime identity pinning; produce runtime SHA `R` | BLOCKED on A1 PASS | none |
+| **E1a-A3** | Exact-runtime production identity re-audit on `R` | BLOCKED on A2 | none |
+| **E1a-A4** | Protected-main activation evidence + authority authorizing `R`; produce authority SHA `A` | BLOCKED on A3 PASS | none |
+| **E1a-A5** | Canonical `Deploy Worker` with `source_sha = R` | BLOCKED on A4 | Schema stays 2 |
+| **E1a-A6** | Deployment + compatibility-specific production verification | BLOCKED on A5 | none |
+| **E1a-A7** | E1a-A deployment closeout + recovery/handoff | BLOCKED on A6 | none |
+| **E1a-B** | Remove tenant email from normal public calculation dispatch | BLOCKED until A7 | none |
+| E1b | Immutable EOD + explicit realtime valuation | PLANNED after E1a | none |
+| E1c | Active-job idempotency/recovery lifetime alignment | PLANNED | none unless evidence proves unavoidable |
+| E1d | Separate cursor-signing secret from system API auth | PLANNED | none |
+| E2-pre | D1 atomicity / Schema-3 pre-migration audit | CONDITIONAL after E1 | audit only |
+| E2a–E2f | Narrow ledger-revision protocol | CONDITIONAL | additive Schema 3 only |
+
+Formal operational detail:
+
+`docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md`
+
+---
+
+# 8. E1a-A Activation Execution Contract
+
+## A1 — Production Identity Evidence
+
+Use:
+
+`.github/workflows/production-identity-evidence.yml`
+
+Input:
+
+`source_sha = <exact current protected-main HEAD>`
+
+This is GET-only and reviewer-protected. It must obtain authoritative Cloudflare D1/Worker/Pages/live-CSP evidence without production mutation.
+
+## A2 — Runtime D1 identity pinning
+
+Only after A1 PASS:
+
+- update `config/deployment-environments.json` from the sanitized authoritative evidence;
+- set production identity to `verified`;
+- pin exact observed D1 database name and UUID SHA-256 fingerprint;
+- never commit raw D1 UUID/account/token/secret;
+- protected merge/post-main/recovery;
+- resulting merge = runtime source `R`.
+
+## A3 — Exact-runtime evidence
+
+After Pages for `R` propagates, rerun Production Identity Evidence with:
+
+`source_sha = R`
+
+A1 discovers/pins identity; A3 binds activation evidence to the exact runtime source.
+
+## A4 — Activation authority
+
+Create controlled evidence under:
+
+`docs/governance/evidence/production-activation/`
+
+Required check names:
+
+- `production_frontend_explicit_environment`;
+- `production_frontend_live_contract`;
+- `production_d1_identity`.
+
+Then update `config/production-activation-authority.json` to `ready`, authorize exact `R`, reference those evidence files, and protected-merge. The resulting latest main is activation control-plane SHA `A`.
+
+## A5 — Deploy
+
+Run:
+
+`Deploy Worker`
+
+with:
+
+`source_sha = R`
+
+The workflow must pass runtime preconditions from `R` and activation authority from latest protected main `A` before production mutation.
+
+## A6 — Verify E1a-A capability itself
+
+Generic `/api/version`, `/api/health`, auth and CORS checks are necessary but do not directly prove the new E1a-A system lookup boundary.
+
+Before E1a-B, require a read-only compatibility proof using a valid-format nonexistent opaque job id under trusted system authentication:
+
+- new E1a-A Worker expected: **404 NOT_FOUND**;
+- old canonical Worker system principal expected: **403 FORBIDDEN**;
+- no tenant identity in response;
+- no calculation-job mutation.
+
+Also verify the existing pre-cutover calculation path remains usable.
+
+If no automated verifier exists at execution time, add a narrow reviewer-protected audit step rather than relying on inference from health alone.
+
+---
+
+# 9. E1a-B — Privacy Objective and Cutover Contract
+
+Normal user-triggered public GitHub calculation execution must not contain tenant email in workflow dispatch inputs.
+
+PR #172 remains **CLOSED / NOT MERGED / PROTOTYPE EVIDENCE ONLY**.
+
+Final prototype head:
+
+`25b43ed852124799b50cf8a7b27d272334c5ccd0`
+
+Prototype evidence included:
+
+- intentional red test-first run;
+- progressive hosted-boundary fixes;
+- Python functional suite passing before coverage restoration;
+- final full green CI #555/#556;
+- user/system privacy regressions;
+- no Schema 3 or financial-engine redesign.
+
+The prototype was correctly abandoned as a merge candidate after rollout review found the Worker-deployment ordering outage window.
+
+### Required B implementation from deployed A stable baseline
+
+- canonical `worker.js` authorizes system GET `/api/calculation-jobs/:id` while preserving tenant user GET;
+- system projection returns narrow owner target; user projection remains owner-free;
+- Worker dispatch sends benchmark + opaque job id, no tenant email;
+- normal GitHub-hosted calculation uses `CALCULATION_JOB_ID`, never `TARGET_USER_ID`;
+- thin runner resolves owner via system Worker lookup before unchanged financial `main.run_update()`;
+- hosted run with no job is explicitly all-user and cannot inherit stale target state;
+- local non-GitHub legacy targeting may remain temporarily compatible if still required;
+- temporary A shim removed after canonical Worker takes over;
+- Gate-C audit-only email path remains isolated and cannot be attached to a calculation job;
+- no schema migration.
+
+### Additional integrity hardening for B
+
+The calculation job already stores `benchmark`, while dispatch also carries calculation benchmark configuration. B must prevent silent divergence between stored job benchmark and dispatched benchmark.
+
+Accept either:
+
+- trusted job metadata becomes authoritative for benchmark; or
+- runner explicitly validates equality and fails closed.
+
+Do not silently calculate one benchmark while the durable job says another.
+
+### B verification
+
+- test-first contracts recreated from #172, not branch-merged;
+- fresh full CI;
+- independent privacy/security review including Actions log surfaces;
+- exact-head merge/post-main/recovery;
+- deploy through current production activation authority model;
+- controlled user-triggered production calculation processes exactly one tenant;
+- normal public dispatch inputs/log evidence contain no tenant email;
+- scheduled all-user run semantics preserved;
+- only then mark E1a DONE and activate E1b.
+
+---
+
+# 10. Remaining Gate-E Risk Delta
+
+## P0-A — public GitHub calculation dispatch carries tenant email
+
+**ACTIVE remediation: E1a.**
+
+A = compatibility prerequisite; B = actual privacy cutover.
+
+## P0-B — realtime quote can overwrite last historical EOD row
+
+**OPEN — E1b after E1a closes.**
+
+Current `MarketDataClient.download_data()` can overwrite `hist.index[-1]` with a realtime quote without first proving quote date equals that historical row date. Provenance does not undo the economic contamination.
+
+Required root-level direction: immutable historical EOD + explicit realtime valuation state.
+
+## P0-C — active job idempotency/recovery lifetime shorter than supported workflow duration
+
+**OPEN — E1c.**
+
+Do not fix only by changing 15 minutes to another magic number. Active queued/running dedupe/recovery lifetime should derive from lifecycle state and supported execution/queue semantics.
+
+## P0-D — record mutations lack mutation idempotency / optimistic row revision
+
+**OPEN / STRUCTURAL — conditional E2.**
+
+## P0-E — pagination not bound to one ledger revision
+
+**OPEN / STRUCTURAL — conditional E2.**
+
+## P0-F — calculation jobs do not bind source ledger revision
+
+**OPEN / STRUCTURAL — conditional E2.**
+
+## P0-G — stale calculation can become latest published snapshot
+
+**OPEN / STRUCTURAL — conditional E2 compare-and-publish.**
+
+## P1 — separate later programs
+
+- browser credential persistence / CSP / HttpOnly session migration;
+- persistent tenant email identity -> internal durable identity;
+- authoritative exchange calendars;
+- broader scoped service credentials.
+
+---
+
+# 11. Gate C / Gate D Decisions Still Locked
+
+## Gate C
+
+- Schema-2 source validity order remains deterministic `Date -> record id`.
+- Record id is persistence tie-breaker, not broker-time proof.
+- Source prefix integrity remains authoritative.
+- Calculator `CLAMP` remains downstream defense-in-depth.
+- public `Timestamp` / `Sequence` are recognized contracts; `_sequence` is not.
+- broker chronology remains deferred until documented reopen condition.
+
+## Gate D
+
+- deterministic identity excludes volatile run metadata;
+- source identity excludes user email/id, free-form note and `created_at`;
+- effective market/FX numeric identity is separate from provider diagnostics;
+- engine identity requires exact full Git SHA;
+- ambiguous/non-finite provenance fails closed;
+- deterministic replay uses explicit timezone-aware calculation clock/as-of;
+- production manifest remains additive across Worker/D1/frontend boundaries.
+
+---
+
+# 12. Decision Log — Gate E
+
+- **E-D-01 LOCKED:** Gate D CLOSED; final recovery `backup-post-gate-d-2332116`.
+- **E-D-02 LOCKED:** old risk register is historical evidence, not current roadmap.
+- **E-D-03 LOCKED:** broad immediate Schema-3/provider/broker/cash redesign rejected.
+- **E-D-04 LOCKED:** Gate E Safety & State Integrity remains the active program.
+- **E-D-05 LOCKED:** E1a uses compatibility-first A/B rollout because repository merge and production Worker activation are separate.
+- **E-D-06 LOCKED:** E1a-A repository implementation does not remove email dispatch; it only prepares the trusted compatibility boundary.
+- **E-D-07 LOCKED:** PR #172 is superseded prototype evidence and must never be merged directly.
+- **E-D-08 REVISED:** E1a-A cannot proceed directly from repository merge to Worker deployment; the historical D3D production-activation prerequisites are now a NOW dependency because a real activation is being prepared.
+- **E-D-09 LOCKED:** `Deploy Worker` input is `source_sha`; deployable runtime `R` may be older than latest authority main `A` if `A` explicitly authorizes `R`.
+- **E-D-10 LOCKED:** production D1 identity must come from external read-only evidence, never guesses or copied staging values.
+- **E-D-11 LOCKED:** activation evidence must be bound to exact runtime `R` before authority becomes `ready`.
+- **E-D-12 NEXT:** E1a-B starts only after A deployment + compatibility proof.
+- **E-D-13 PLANNED:** E1b immutable EOD vs explicit realtime valuation.
+- **E-D-14 PLANNED:** E1c lifecycle-derived active-job dedupe/recovery semantics.
+- **E-D-15 PLANNED:** E1d cursor-signing secret separation.
+- **E-D-16 CONDITIONAL:** Schema 3 only for narrow ledger revision after E1 + E2-pre.
+
+---
+
+# 13. Root-Cause Log
+
+- **RC-E-01 ACTIVE:** normal public GitHub dispatch exposes tenant email -> E1a-B; A is zero-downtime prerequisite.
+- **RC-E-01A CONTROLLED:** all-at-once cutover can fail between repository merge and Worker deployment -> compatibility-first A/B rollout.
+- **RC-E-01B ACTIVE DEPENDENCY:** D3D intentionally left production activation fail-closed; E1a-A is now a real activation and therefore must complete the deferred evidence/runtime-authority chain before deploy.
+- **RC-E-01C DOCUMENTATION ROOT CAUSE:** previous current handoff connected E1a to manual deployment but omitted the older activation preconditions, creating an incorrect “dispatch Deploy Worker next” instruction.
+- **RC-E-01D VERIFICATION GAP:** generic production health/source/CORS audit does not directly prove the E1a-A system opaque-job lookup boundary; add/read-only compatibility proof before B.
+- **RC-E-02 OPEN:** realtime quote can mutate prior EOD row -> E1b.
+- **RC-E-03 OPEN:** active job TTL can expire before supported execution/recovery horizon -> E1c.
+- **RC-E-04 OPEN:** API auth secret and cursor signing share one trust key -> E1d.
+- **RC-E-05 OPEN:** record mutations lack mutation identity/row revision -> E2.
+- **RC-E-06 OPEN:** pagination not bound to ledger revision -> E2.
+- **RC-E-07 OPEN:** job not bound to requested ledger revision -> E2.
+- **RC-E-08 OPEN:** stale calculation can publish latest snapshot -> E2.
+- **RC-E-09 CONTROLLED:** broker chronology absent but not immediate migration driver under current Gate-C contract.
+- **RC-E-10 DEFERRED:** browser credential/CSP and tenant email persistence require separate security/identity programs.
+
+---
+
+# 14. Recovery Index
 
 Do not delete during normal cleanup.
 
@@ -91,411 +529,145 @@ Do not delete during normal cleanup.
 - Gate B: `backup-post-gate-b-03242d0`
 - Gate C final: `backup-post-gate-c-ef9f5a1`
 - Gate D final: `backup-post-gate-d-2332116`
-- Gate-E E0: `backup-post-gate-e-e0-32f272c`
+- Gate E E0: `backup-post-gate-e-e0-32f272c`
 - pre-E1a: `backup-pre-gate-e-e1a-87b5949`
+- post-E1a-A repository merge: `backup-post-gate-e-e1a-a-c312408`
+- pre-E1a activation-doc re-baseline: `backup-pre-gate-e-e1a-activation-docs-c312408`
 
-Full intermediate Gate-D recovery refs remain in Git history and prior handoff revisions.
-
----
-
-# 5. Completed Gate Index
-
-| Gate / Batch | Status | Terminal authority |
-|---|---|---|
-| Gate A | DONE | generation-safe pending calculation recovery |
-| Gate B | DONE | atomic record deletion |
-| Gate C | CLOSED | `docs/engineering/GATE_C_FINAL_CLOSEOUT.md` |
-| Gate D D1a | DONE | reproducibility architecture audit |
-| Gate D D1b | DONE | source/config/engine deterministic identities |
-| Gate D D1c | DONE | market/FX/synthetic provenance identities |
-| Gate D D1d | DONE | deterministic offline replay + explicit clock seam |
-| Gate D D1e | DONE | production manifest attachment + production smoke |
-| Gate D closeout | CLOSED | main `2332116...`, CI #541, final recovery |
-| Gate E E0 | DONE | Post-D review, PR #170/#171, CI #542/#543/#544/#545 |
-
-## Gate-C decisions still active
-
-- Schema-2 source validity order is deterministic `Date -> record id`.
-- Record id is a persistence tie-breaker, not broker-time proof.
-- Source prefix integrity is authoritative; calculator `CLAMP` remains downstream compatibility/defense-in-depth.
-- Public `Timestamp` / `Sequence` are recognized calculator contracts; `_sequence` is not.
-- Broker chronology is deferred until a documented Gate-C reopen condition occurs.
-
-## Gate-D decisions still active
-
-- Deterministic identity excludes volatile run metadata.
-- Source identity excludes user email/id, free-form note and created_at.
-- Effective market/FX numeric identity is separate from provider diagnostics.
-- Engine identity requires exact full Git SHA.
-- Ambiguous/non-finite provenance fails closed.
-- Deterministic replay uses explicit timezone-aware calculation clock/as-of.
-- Production manifest is additive and compatible with existing Worker/D1/frontend boundaries.
+Full intermediate Gate-D and historical D3D recovery refs remain in Git history/evidence documents.
 
 ---
 
-# 6. Gate E — Safety & State Integrity
+# 15. Change Log — Current Program
 
-Formal authority:
+## Gate D terminal
 
-`docs/engineering/POST_GATE_D_ARCHITECTURE_REVIEW.md`
+- PR #168: D1e production calculation manifest;
+- scheduled production `Update Portfolio Data #3217`: 2 success / 0 failure with reconciliation and upload checks;
+- PR #169: Gate-D docs closeout;
+- Gate D = DONE / CLOSED / POST-MAIN VERIFIED;
+- final recovery `backup-post-gate-d-2332116`.
 
-Gate E fixes remaining current-production safety/state-integrity problems without a broad rewrite.
+## Gate E E0
 
-Rejected as the immediate next step:
+- PR #170: independent Post-Gate-D architecture re-baseline;
+- merge `32f272c973459158a18e71c89a63337bbdfd4dfa`;
+- post-main CI #543 success;
+- recovery `backup-post-gate-e-e0-32f272c`;
+- PR #171 closeout merge `87b5949a588bb6f655387ded554cb0a69d8a6f95`;
+- E1a activated as the single next batch.
 
-- generic Schema-3 redesign;
-- broker-execution table;
-- cash/account ledger;
-- broad provider abstraction;
-- tenant UUID migration;
-- Decimal migration;
-- derivatives support;
-- GitHub Actions replacement.
+## E1a prototype
 
----
+- PR #172 implemented most email-free cutover contracts and reached green CI;
+- independent rollout review found `new workflow -> old production Worker -> 403` deployment-order BLOCKER;
+- PR #172 CLOSED / NOT MERGED;
+- retained only as B test-first implementation evidence.
 
-# 7. Current Post-D Risk Delta
+## E1a-A repository stage
 
-## P0-A — public GitHub calculation dispatch carries tenant email
+- PR #173 compatibility-first Worker entry shim;
+- final head `ca3fa1f...`;
+- final CI #559 PASS;
+- merge `c312408...`;
+- post-main CI #560 PASS;
+- recovery `backup-post-gate-e-e1a-a-c312408`;
+- canonical Worker deployment remains pending.
 
-**ACTIVE remediation: E1a.**
+## E1a-A0 re-baseline
 
-## P0-B — realtime quote can overwrite last historical EOD row
-
-**OPEN. E1b only after E1a closes.**
-
-## P0-C — active job idempotency/recovery lifetime shorter than supported workflow duration
-
-**OPEN. E1c.**
-
-## P0-D — record mutations lack mutation idempotency / optimistic row revision
-
-**OPEN / structural. Conditional Schema-3 E2.**
-
-## P0-E — pagination not bound to one ledger revision
-
-**OPEN / structural. E2.**
-
-## P0-F — calculation jobs do not bind source ledger revision
-
-**OPEN / structural. E2.**
-
-## P0-G — stale calculation can become latest published snapshot
-
-**OPEN / structural. E2 compare-and-publish.**
-
-P1 security/session, tenant identity and market-calendar work remain separate later programs.
+- deeper deployment review found runtime D1 identity still `unverified` and activation authority still `blocked`;
+- Production Identity Evidence live dispatch count remains 0;
+- Deploy Worker run count remains 0;
+- operational plan created to reconnect Gate E with D3D fail-closed activation prerequisites;
+- current documentation branch is docs-only and performs no production action.
 
 ---
 
-# 8. Gate-E Master Plan
+# 16. Known Issues / Technical Debt / Deferred
 
-| Batch | Objective | Status | Schema impact |
-|---|---|---|---|
-| E0 | Post-D architecture re-baseline | DONE | none |
-| E1a-A | Pre-cutover Worker opaque-target compatibility + production deploy | **ACTIVE** | none |
-| E1a-B | Remove tenant email from normal public GitHub calculation dispatch | **NEXT after A deployment** | none |
-| E1b | Immutable EOD history + explicit realtime valuation | PLANNED | none |
-| E1c | Active-job idempotency/recovery lifetime alignment | PLANNED | none unless proven unavoidable |
-| E1d | Separate cursor-signing secret from system API auth | PLANNED | none |
-| E2-pre | D1 atomicity / Schema-3 pre-migration audit | CONDITIONAL | audit only |
-| E2a–E2f | Narrow ledger-revision protocol / rollout | CONDITIONAL after E1 | additive Schema 3 |
+## Known Issues — current production relevance
 
----
+- normal GitHub calculation dispatch still exposes tenant email until E1a-B;
+- realtime quote may overwrite prior EOD date/value until E1b;
+- job dedupe/browser recovery lifetime mismatch until E1c;
+- system API auth and record cursor signing share secret until E1d;
+- structural ledger revision/publication concurrency issues remain conditional E2 drivers.
 
-# 9. E1a — Privacy Objective
+## Technical Debt / BACKLOG
 
-Normal user-triggered public GitHub calculation execution must not contain the tenant email in workflow dispatch inputs. The durable Worker calculation job's opaque `public_id` is the public handle; the owner is resolved only on a trusted system boundary.
+- production Environment currently allows self-review semantics / admin break-glass; harden separately if desired without blocking the current product unless policy changes;
+- dedicated least-privilege Cloudflare read-only audit credential;
+- longer-lived external evidence archival beyond finite Actions artifacts;
+- stale historical governance docs should be clearly labeled rather than silently treated as current.
 
-Gate-C audit-only targeting remains separately scoped and may retain explicit operator email input until that audit path receives its own privacy redesign.
+## Deferred Programs
 
-No D1 migration is permitted in E1a.
-
----
-
-# 10. E1a Rollout BLOCKER and staged decision
-
-## BLOCKER discovered during independent review of prototype PR #172
-
-Worker production deployment is **manual**, not automatic on repository merge:
-
-`.github/workflows/deploy-worker.yml`
-
-requires workflow dispatch with an exact full `main` SHA and deploys only after verifying that SHA is current protected main.
-
-The original all-at-once E1a prototype would have changed GitHub workflow/runner to require system opaque-job lookup at repository merge time, while production Worker could still be the old user-only job-GET implementation until a later manual deployment.
-
-Failure window:
-
-`new workflow/wrapper -> system GET /api/calculation-jobs/:id -> old production Worker -> 403`
-
-User-triggered calculations would fail during that interval.
-
-### Decision
-
-**Do not merge the all-at-once prototype. Use compatibility-first A/B rollout.**
-
-This is a reliability requirement, not scope expansion.
-
----
-
-# 11. E1a prototype evidence — PR #172, CLOSED / NOT MERGED
-
-PR #172 is retained only as test-first/cutover evidence:
-
-`[SUPERSEDED PROTOTYPE] Gate E E1a-B opaque targeting cutover`
-
-Final prototype head:
-
-`25b43ed852124799b50cf8a7b27d272334c5ccd0`
-
-Important evidence:
-
-- CI #546: intentional test-first red; only missing E1a interfaces + one test precondition.
-- CI #552: Worker/Frontend green; Python reduced to two hosted/test-precondition boundaries.
-- CI #554: **415 functional tests green**, only unchanged coverage governance blocked new branch debt.
-- Added fail-closed API-client branch tests; coverage gate itself unchanged.
-- CI #555: full green, Python **418 passed + 18 subtests**, missing branches restored to stable-main **308**, exact combined coverage **82.77302566142829%**.
-- Added route-level user/system privacy regressions.
-- CI #556: full green.
-- independent review confirmed main user logs mask user ids; no new full-email logging introduced.
-- no `main.py`, migration, Schema 3, E1b/E1c/E2 changes.
-
-PR #172 was explicitly closed without merge after the deployment-order BLOCKER was identified.
-
-Its implementation ideas must be **reapplied from the deployed E1a-A stable main**, not merged directly.
-
----
-
-# 12. Current Batch — E1a-A Pre-cutover Worker Compatibility
-
-Branch:
-
-`pr-gate-e-e1a-a-worker-compat`
-
-PR:
-
-**#173 — Gate E E1a-A: pre-cutover Worker opaque-target compatibility**
-
-Base main:
-
-`87b5949a588bb6f655387ded554cb0a69d8a6f95`
-
-Pre-E1a recovery:
-
-`backup-pre-gate-e-e1a-87b5949`
-
-## A objective
-
-Deploy one backward-compatible system-only opaque-job owner lookup **before** the workflow privacy cutover.
-
-The existing production dispatch/workflow/runner remains unchanged during A.
-
-## Implementation
-
-Only active `worker-entry.js` is changed.
-
-Temporary compatibility shim:
-
-- only matches `GET /api/calculation-jobs/job_<opaque-id>`;
-- only intercepts when `X-API-KEY` constant-time matches `env.API_SECRET`;
-- user/no-key/invalid-key requests continue to canonical `worker.js` behavior;
-- system response is narrow:
-  - `id`
-  - `target_user_id`
-  - `benchmark`
-  - `status`
-- direct query is by opaque `public_id` only;
-- invalid/malformed DB state fails closed;
-- explicit origin policy is checked before the shim;
-- no owner value is logged;
-- no schema/dispatch/workflow/runner/CRUD change.
-
-This shim is temporary and must be removed in E1a-B after canonical `worker.js` takes over the same system route.
-
-## A test / CI chronology
-
-- test-first PR head `a155eafce20938a5cfb5707e767e9696193e890a`;
-- CI #557: Frontend/Python green; Worker had exactly one expected failure — valid system lookup still received canonical 403;
-- implementation commit `7e4423e7033a6cacb9f2f84298f743d3537e8d9e`;
-- changed files before this handoff update exactly:
-  - `worker-entry.js`
-  - `tests/worker_opaque_target_compat.test.mjs`
-- CI #558 / run `31344979114`: **SUCCESS across Python / Frontend / Worker-D1**;
-- independent review: **PASS / no code-level BLOCKER**;
-- protected main remained `87b5949a588bb6f655387ded554cb0a69d8a6f95`; no drift;
-- reviews: 0;
-- review threads: 0;
-- comments: 0.
-
-## A remaining execution sequence
-
-1. This handoff update creates the new final PR head.
-2. Run fresh full CI on that exact head.
-3. Confirm changed-file whitelist is exactly shim + test + handoff.
-4. Re-check reviews/threads/comments/main drift.
-5. Mark PR #173 ready and exact-head merge.
-6. Verify post-main CI.
-7. Create post-E1a-A recovery.
-8. **Manually dispatch `Deploy Worker` with the exact verified protected-main SHA.**
-9. Verify deployment workflow success, source-commit metadata and health endpoint.
-10. Confirm old normal user-triggered dispatch/workflow remains functional; no privacy cutover has happened yet.
-11. Only then create fresh E1a-B branch from the deployed stable main.
-
-No production calculation smoke beyond Worker deployment/health is required for A because the calculation dispatch path itself is unchanged. The B cutover requires targeted production smoke.
-
----
-
-# 13. E1a-B — Next after A is deployed
-
-## Required cutover contract
-
-Recreate from deployed A stable main; do not merge superseded PR #172.
-
-- canonical `worker.js` authorizes system GET `/api/calculation-jobs/:id` while preserving tenant user GET.
-- system projection returns narrow owner target; user projection remains owner-free.
-- Worker dispatch sends only benchmark + opaque job id, no tenant email.
-- normal calculation workflow uses `CALCULATION_JOB_ID`, never `TARGET_USER_ID`.
-- thin `tools/run_portfolio_update.py` resolves owner by system Worker lookup before unchanged financial `main.run_update()`.
-- hosted GitHub run with no job is all-user and clears stale target state.
-- local non-GitHub legacy targeting may remain temporarily compatible.
-- temporary `worker-entry.js` A shim is removed because canonical Worker now owns the route.
-- Gate-C audit-only target email remains isolated; calculation-job + audit mode remains explicitly rejected.
-- no schema migration.
-
-## Required B verification
-
-- reuse/recreate prototype test-first contracts from PR #172;
-- fresh full CI;
-- independent privacy/security review including Actions log scan;
-- handoff + final-head CI;
-- exact-head merge/post-main;
-- post-B recovery;
-- manually deploy exact merged Worker SHA;
-- verify Worker deployment metadata/health;
-- controlled **user-triggered targeted production calculation smoke** demonstrating opaque targeting end-to-end and no email in normal dispatch inputs/log evidence;
-- only then mark E1a DONE and activate E1b.
-
----
-
-# 14. E1b — Planned: Immutable EOD + Explicit Realtime Valuation
-
-- historical EOD data never mutated by live quote;
-- live value/time/source explicit;
-- live value affects only eligible current/as-of valuation;
-- prior EOD date never relabeled with live quote;
-- historical TWR/chart/benchmark invariant to later live quote;
-- Gate-D manifest hashes actual effective numeric input;
-- no provider abstraction, no D1 migration.
-
-Independent financial review + production smoke required.
-
----
-
-# 15. E1c — Planned: Active Job Lifetime Alignment
-
-- queued/running job idempotency cannot expire merely by age;
-- browser recovery lifetime covers supported workflow runtime + queue/retry margin;
-- terminal retry window explicit;
-- generation-safe current/tombstone behavior retained;
-- prefer no schema change; stop and move to E2-pre if lease state is actually required.
-
----
-
-# 16. E1d — Planned: Cursor Secret Separation
-
-- cursor HMAC secret separated from system API auth secret;
-- controlled compatibility/rotation window;
-- cursor scope/tenant binding unchanged;
-- no schema migration.
-
----
-
-# 17. Conditional Schema 3 — Ledger Revision Protocol ONLY
-
-Schema 3 is not open for implementation until E1 closes and E2-pre audits current Cloudflare D1 atomicity semantics from primary documentation.
-
-Authorized conceptual objective only:
-
-`record mutation -> paginated read -> calculation job -> Gate-D source identity -> snapshot publication`
-
-must bind to one monotonic tenant ledger generation.
-
-Phases:
-
-- E2a monotonic tenant ledger revision;
-- E2b mutation idempotency + optimistic record revision;
-- E2c revision-bound pagination;
-- E2d jobs bind requested revision;
-- E2e compare-and-publish snapshot/latest pointer;
-- E2f additive rollout/cutover/audit/recovery.
-
-Explicit exclusions: broker execution fields/table, tenant UUID, cash/account tables, derivative multipliers, Decimal/fixed-point columns, provider tables.
-
----
-
-# 18. Deferred Programs
-
-Separate later reviews are required for:
-
-- HttpOnly/SameSite session + removal of browser credential persistence + CSP tightening;
-- internal tenant UUID / Google `sub` ownership and scoped service credentials;
-- authoritative exchange calendars / benchmark calendar policy;
-- first-class broker chronology under Gate-C reopen conditions;
+- HttpOnly/SameSite session + browser credential removal + CSP tightening;
+- internal tenant UUID / Google `sub` persistence migration;
+- authoritative exchange-calendar service and benchmark-calendar policy;
+- first-class broker execution chronology under Gate-C reopen conditions;
 - cash/account NAV;
 - provider abstraction;
 - Decimal/fixed point;
 - derivatives.
 
----
+## REJECT for current Gate-E execution
 
-# 19. Decision Log — Gate E
-
-- **E-D-01 LOCKED:** Gate D CLOSED; final recovery `backup-post-gate-d-2332116`.
-- **E-D-02 LOCKED:** old risk register is evidence, not current roadmap.
-- **E-D-03 LOCKED:** broad immediate Schema-3/provider/broker/cash redesign rejected.
-- **E-D-04 LOCKED:** Gate E Safety & State Integrity is active.
-- **E-D-05 REFINED:** E1a requires compatibility-first A/B rollout because Worker deployment is manual and exact-main-SHA gated.
-- **E-D-06 LOCKED:** E1a-A changes only the Worker system compatibility boundary; existing email dispatch remains until B.
-- **E-D-07 LOCKED:** superseded PR #172 must never be merged; it is B prototype evidence only.
-- **E-D-08 NEXT AFTER A DEPLOYMENT:** E1a-B performs the actual privacy cutover from a deployed compatible baseline.
-- **E-D-09 PLANNED:** E1b immutable EOD vs realtime valuation.
-- **E-D-10 PLANNED:** E1c active job lifetime alignment.
-- **E-D-11 PLANNED:** E1d cursor-secret separation.
-- **E-D-12 CONDITIONAL:** Schema 3 only for ledger revision after E1 + E2-pre.
+- broad Schema-3 redesign now;
+- tenant UUID bundled into E1a;
+- provider/broker/cash/Decimal redesign in E1;
+- GitHub Actions replacement;
+- reopening PR #172 or PR #130 as merge candidates;
+- weakening validation/coverage/recovery/activation gates merely to deploy.
 
 ---
 
-# 20. Root-Cause / Risk Log
+# 17. Current Batch Verification Checklist — E1a-A0
 
-- **RC-E-01 ACTIVE:** normal public GitHub dispatch exposes tenant email → E1a-B; A is the zero-downtime prerequisite.
-- **RC-E-01A CONTROLLED:** all-at-once cutover would fail between repo merge and manual Worker deploy → compatibility-first A/B rollout.
-- **RC-E-02 OPEN:** realtime quote can mutate prior EOD row → E1b.
-- **RC-E-03 OPEN:** active job TTL can expire before supported execution window → E1c.
-- **RC-E-04 OPEN:** API secret and cursor signing share one trust key → E1d.
-- **RC-E-05 OPEN:** record mutations lack mutation identity/row revision → E2.
-- **RC-E-06 OPEN:** pagination not bound to ledger revision → E2.
-- **RC-E-07 OPEN:** job not bound to requested ledger revision → E2.
-- **RC-E-08 OPEN:** stale calculation can publish latest snapshot → E2.
-- **RC-E-09 CONTROLLED:** broker chronology absent but not immediate migration driver under current Gate-C contract.
-- **RC-E-10 DEFERRED:** browser credential/CSP and email tenant key require separate security/identity program.
+Before A0 can be marked DONE:
+
+- [x] current protected-main baseline revalidated before branch creation;
+- [x] no pre-existing open PR competing for active implementation;
+- [x] recovery branch created from exact baseline;
+- [x] docs-only work branch created from exact baseline;
+- [x] deployment workflow/control-plane blockers revalidated against current source;
+- [x] new E1a operational authority added;
+- [ ] all current-facing related docs aligned;
+- [ ] changed-file whitelist reviewed;
+- [ ] PR opened;
+- [ ] full required CI green on exact head;
+- [ ] independent review completed or explicitly pending;
+- [ ] no runtime/config/workflow/schema changes in A0;
+- [ ] merge only through normal protected-main process if review gate is satisfied;
+- [ ] post-main CI/recovery/handoff update after merge.
 
 ---
 
-# 21. Immediate Next Actions
+# 18. Immediate Next Actions
 
-## Finish E1a-A PR #173
+## NOW — finish E1a-A0 docs re-baseline
 
-1. Run fresh full CI on the handoff-containing exact head.
-2. Confirm whitelist: `worker-entry.js`, `tests/worker_opaque_target_compat.test.mjs`, `to_do_update_list.md` only.
-3. Re-check reviews/threads/comments and protected-main drift.
-4. Exact-head merge.
-5. Verify post-main CI.
-6. Create post-E1a-A recovery.
-7. Manually dispatch `Deploy Worker` using the exact verified protected-main SHA.
-8. Verify deploy workflow, health/source metadata and no schema drift.
-9. Do not claim privacy fixed yet; old dispatch intentionally remains during A.
+1. Align `docs/DEPLOYMENT.md` with the runtime `R` / authority `A` model and current blockers.
+2. Reclassify `docs/governance/V5_CURRENT_HANDOFF.md` as historical D3D handoff with the production-activation reopen condition now met by E1a-A.
+3. Close stale status in `docs/governance/PR_10D3D_B_PRODUCTION_IDENTITY_EVIDENCE_ACCEPTANCE.md` while preserving historical evidence.
+4. Add current execution pointers to `README.md`.
+5. Review exact docs-only diff, run CI, open/qualify PR.
 
-## Then E1a-B only
+## NEXT — E1a-A1 only
 
-Create a fresh branch from the **deployed A stable main**, reapply the cutover contracts from superseded PR #172, remove temporary shim, qualify/merge/deploy, and perform targeted production smoke. Only after that activate E1b.
+After A0 is safely merged/current:
+
+1. re-read exact current protected main;
+2. manually dispatch `Production Identity Evidence` using that exact current-main `source_sha`;
+3. approve the reviewer-protected GET-only production evidence job;
+4. inspect sanitized artifact;
+5. if PASS, start a new A2 runtime-identity pinning branch;
+6. if FAIL, stop and RCA the failed evidence — do not bypass or guess values.
+
+## Do not do yet
+
+- do not dispatch `Deploy Worker`;
+- do not start E1a-B;
+- do not modify Schema 3;
+- do not weaken the production activation gates.
