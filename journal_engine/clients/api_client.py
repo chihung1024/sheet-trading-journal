@@ -254,6 +254,7 @@ class CloudflareClient:
         if not record_ids:
             return {"success": 0, "failed": 0, "failed_ids": []}
 
+        self.logger.info("正在批量刪除 %s 筆記錄", len(record_ids))
         failed_ids = [record_id for record_id in record_ids if not self.delete_record(record_id)]
         result = {
             "success": len(record_ids) - len(failed_ids),
@@ -319,6 +320,9 @@ class CloudflareClient:
         masked_user = _mask_user_id(target_user_id)
         self.logger.info("正在上傳 %s 的投資組合快照", masked_user)
 
+        # Production snapshots are Pydantic models and must use JSON mode so nested
+        # dates in reproducibility evidence are serialized safely. The duck-typed
+        # fallback preserves existing isolated test doubles only.
         snapshot_data = (
             snapshot.model_dump(mode="json")
             if isinstance(snapshot, PortfolioSnapshot)
