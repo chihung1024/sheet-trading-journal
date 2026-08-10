@@ -33,6 +33,7 @@ SNAPSHOT_VALIDATION_FAILED = "SNAPSHOT_VALIDATION_FAILED"
 SNAPSHOT_UPLOAD_FAILED = "SNAPSHOT_UPLOAD_FAILED"
 MULTIPLE_USER_FAILURES = "MULTIPLE_USER_FAILURES"
 UNKNOWN_CALCULATION_FAILED = "UNKNOWN_CALCULATION_FAILED"
+VERIFIED_JOB_CONTEXT_ENV = "CALCULATION_JOB_CONTEXT_VERIFIED"
 
 SAFE_FAILURE_CODES = frozenset(
     {
@@ -100,6 +101,11 @@ def configure_target_context_from_environment() -> Tuple[str, str]:
         if is_github_actions
         else os.environ.get("TARGET_USER_ID", "").strip()
     )
+
+    # Never inherit a stale provenance marker. It is set only after the current
+    # opaque job has been resolved and its dispatch benchmark equality-checked.
+    os.environ.pop(VERIFIED_JOB_CONTEXT_ENV, None)
+
     client = CloudflareClient() if calculation_job_id else None
     target_user_id, benchmark = resolve_target_context(
         client,
@@ -114,6 +120,8 @@ def configure_target_context_from_environment() -> Tuple[str, str]:
     os.environ["TARGET_USER_ID"] = target_user_id
     if benchmark:
         os.environ["CUSTOM_BENCHMARK"] = benchmark
+    if calculation_job_id:
+        os.environ[VERIFIED_JOB_CONTEXT_ENV] = "1"
     return target_user_id, benchmark
 
 
