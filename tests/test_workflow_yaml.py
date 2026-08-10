@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 
 
-def test_update_workflow_is_valid_yaml_and_has_job_callbacks():
+def test_update_workflow_is_valid_yaml_and_has_opaque_job_callbacks():
     workflow_path = Path(".github/workflows/update.yml")
     workflow = yaml.load(workflow_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
@@ -15,6 +15,7 @@ def test_update_workflow_is_valid_yaml_and_has_job_callbacks():
     assert "transaction_integrity_audit_only" in inputs
     assert inputs["transaction_integrity_audit_only"]["default"] == "false"
     assert inputs["transaction_integrity_audit_only"]["type"] == "boolean"
+    assert "audit-only" in inputs["target_user_id"]["description"]
 
     job = workflow["jobs"]["run-and-upload"]
     steps = {step["name"]: step for step in job["steps"]}
@@ -22,6 +23,11 @@ def test_update_workflow_is_valid_yaml_and_has_job_callbacks():
     callback_guard = steps["Reject audit mode calculation callbacks"]
     assert "transaction_integrity_audit_only == 'true'" in callback_guard["if"]
     assert "calculation_job_id != ''" in callback_guard["if"]
+
+    legacy_guard = steps["Reject legacy normal calculation targeting"]
+    assert "transaction_integrity_audit_only != 'true'" in legacy_guard["if"]
+    assert "target_user_id != ''" in legacy_guard["if"]
+    assert "calculation_job_id == ''" in legacy_guard["if"]
 
     running = steps["Mark calculation job running"]
     assert set(running["env"]) >= {
@@ -45,6 +51,9 @@ def test_update_workflow_is_valid_yaml_and_has_job_callbacks():
     assert calculation["continue-on-error"] == "true"
     assert "transaction_integrity_audit_only != 'true'" in calculation["if"]
     assert calculation["run"] == "python tools/run_portfolio_update.py"
+    assert set(calculation["env"]) == {"API_KEY", "CUSTOM_BENCHMARK", "CALCULATION_JOB_ID"}
+    assert "TARGET_USER_ID" not in calculation["env"]
+    assert "github.event.inputs.target_user_id" not in str(calculation)
 
     result = steps["Report calculation job result"]
     assert "always()" in result["if"]
@@ -54,6 +63,29 @@ def test_update_workflow_is_valid_yaml_and_has_job_callbacks():
     final_failure = steps["Fail workflow when calculation failed"]
     assert "transaction_integrity_audit_only != 'true'" in final_failure["if"]
     assert "steps.calculation.outcome" in final_failure["if"]
+
+
+def test_normal_calculation_path_preserves_zero_downtime_transition_without_email_runner_input():
+    workflow = yaml.load(
+        Path(".github/workflows/update.yml").read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,
+    )
+    steps = {step["name"]: step for step in workflow["jobs"]["run-and-upload"]["steps"]}
+
+    calculation = steps["Run calculation and upload to API"]
+    assert "CALCULATION_JOB_ID" in calculation["env"]
+    assert "TARGET_USER_ID" not in calculation["env"]
+
+    # During merge->Worker-deploy transition, old runtime R can still dispatch both
+    # target_user_id + calculation_job_id. The legacy guard must reject only email-only
+    # normal targeting so the opaque job path remains zero-downtime compatible.
+    legacy_guard = steps["Reject legacy normal calculation targeting"]
+    assert "target_user_id != ''" in legacy_guard["if"]
+    assert "calculation_job_id == ''" in legacy_guard["if"]
+
+    # Gate-C audit-only targeting remains separately scoped and may still receive email.
+    audit = steps["Run transaction integrity read-only audit"]
+    assert "TARGET_USER_ID" in audit["env"]
 
 
 def test_production_identity_workflow_preserves_failed_collector_evidence():
