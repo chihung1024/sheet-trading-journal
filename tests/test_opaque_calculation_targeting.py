@@ -39,6 +39,7 @@ def test_system_client_resolves_calculation_job_target_without_caller_tenant(mon
             },
         )
 
+    monkeypatch.setattr("journal_engine.clients.api_client.API_KEY", "test-system-key")
     monkeypatch.setattr("journal_engine.clients.api_client.requests.get", fake_get)
     client = CloudflareClient()
 
@@ -46,7 +47,7 @@ def test_system_client_resolves_calculation_job_target_without_caller_tenant(mon
 
     assert target == TARGET_USER
     assert captured["url"].endswith(f"/api/calculation-jobs/{JOB_ID}")
-    assert captured["headers"].get("X-API-KEY")
+    assert captured["headers"].get("X-API-KEY") == "test-system-key"
     assert "X-Target-User" not in captured["headers"]
 
 
@@ -61,6 +62,7 @@ def test_system_client_resolves_calculation_job_target_without_caller_tenant(mon
     ],
 )
 def test_system_client_job_target_lookup_fails_closed(monkeypatch, status_code, payload):
+    monkeypatch.setattr("journal_engine.clients.api_client.API_KEY", "test-system-key")
     monkeypatch.setattr(
         "journal_engine.clients.api_client.requests.get",
         lambda *_args, **_kwargs: FakeResponse(status_code, payload),
@@ -126,6 +128,7 @@ def test_entrypoint_resolves_job_before_financial_runner(monkeypatch):
     monkeypatch.setattr(job_runner.runner, "run_update", fake_run_update)
     monkeypatch.setenv("CALCULATION_JOB_ID", JOB_ID)
     monkeypatch.setenv("TARGET_USER_ID", "attacker@example.com")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
 
     assert job_runner.main() == 0
     assert observed == {"job_id": JOB_ID, "target_user_id": TARGET_USER}
@@ -146,6 +149,23 @@ def test_entrypoint_scheduled_run_clears_stale_target_env(monkeypatch):
     monkeypatch.setattr(job_runner.runner, "run_update", fake_run_update)
     monkeypatch.delenv("CALCULATION_JOB_ID", raising=False)
     monkeypatch.setenv("TARGET_USER_ID", "stale@example.com")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
 
     assert job_runner.main() == 0
     assert observed["target_user_id"] == ""
+
+
+def test_entrypoint_local_legacy_target_is_preserved(monkeypatch):
+    observed = {}
+
+    def fake_run_update():
+        observed["target_user_id"] = os.environ.get("TARGET_USER_ID")
+
+    monkeypatch.setattr(job_runner.runner, "setup_logging", lambda: None)
+    monkeypatch.setattr(job_runner.runner, "run_update", fake_run_update)
+    monkeypatch.delenv("CALCULATION_JOB_ID", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setenv("TARGET_USER_ID", "legacy@example.com")
+
+    assert job_runner.main() == 0
+    assert observed["target_user_id"] == "legacy@example.com"
