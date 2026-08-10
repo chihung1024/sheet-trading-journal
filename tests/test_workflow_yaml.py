@@ -54,3 +54,20 @@ def test_update_workflow_is_valid_yaml_and_has_job_callbacks():
     final_failure = steps["Fail workflow when calculation failed"]
     assert "transaction_integrity_audit_only != 'true'" in final_failure["if"]
     assert "steps.calculation.outcome" in final_failure["if"]
+
+
+def test_production_identity_workflow_preserves_failed_collector_evidence():
+    workflow_path = Path(".github/workflows/production-identity-evidence.yml")
+    workflow = yaml.load(workflow_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    assert isinstance(workflow, dict)
+    job = workflow["jobs"]["production-readonly"]
+    steps = {step.get("name"): step for step in job["steps"] if step.get("name")}
+
+    collect = steps["Collect sanitized Cloudflare and live frontend evidence"]
+    assert collect["id"] == "collect"
+
+    upload = steps["Upload sanitized read-only evidence"]
+    assert "always()" in upload["if"]
+    assert "steps.collect.outcome != 'skipped'" in upload["if"]
+    assert upload["with"]["if-no-files-found"] == "error"
