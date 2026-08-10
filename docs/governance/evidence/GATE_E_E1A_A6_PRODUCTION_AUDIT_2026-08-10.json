@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "gate": "Gate E / E1a-A6",
+  "status": "passed",
+  "recorded_at": "2026-08-10T12:02:54Z",
+  "runtime": {
+    "source_sha": "2d1fc1cd7190651c64b764c58f58d67826d408e8",
+    "runtime_service": "trading-journal-api",
+    "worker_version_id": "245eb37c-0d52-4344-9cc3-f82866434f28",
+    "release_version": "4.07",
+    "api_version": "2.60",
+    "schema_version": 2
+  },
+  "production_contract_audit": {
+    "workflow_run_id": 31386148724,
+    "workflow_run_number": 40,
+    "workflow_head_sha": "210e004528b725ed7847ed17fd1aad4a7390df0d",
+    "conclusion": "success",
+    "audited_at": "2026-08-10T12:02:50.979Z",
+    "version_status": 200,
+    "health_status": 200,
+    "anonymous_records_status": 401,
+    "cors": {
+      "allowed": [
+        { "origin": "https://sheet-trading-journal.pages.dev", "status": 204 },
+        { "origin": "https://chihung1024.github.io", "status": 204 }
+      ],
+      "rejected": [
+        { "origin": "https://staging.sheet-trading-journal.pages.dev", "status": 403 },
+        { "origin": "http://localhost:5173", "status": 403 },
+        { "origin": "http://127.0.0.1:5173", "status": 403 }
+      ]
+    },
+    "system_checks": "executed",
+    "system_records_status": 200,
+    "system_settings_without_tenant_status": 400
+  },
+  "compatibility_proof": {
+    "check_name": "e1a_opaque_job_system_compatibility",
+    "status": "passed",
+    "observed_at": "2026-08-10T12:02:51.550Z",
+    "http_status": 404,
+    "error_code": "NOT_FOUND",
+    "tenant_identity_returned": false,
+    "probe_id_recorded": false
+  },
+  "artifact": {
+    "id": 9061787899,
+    "name": "production-contract-audit-2d1fc1cd7190651c64b764c58f58d67826d408e8",
+    "size_in_bytes": 1109,
+    "sha256": "0528665d800c660eb1d2e075b1911c9be51135fef8a6c699a9b733394bbc7156",
+    "expires_at": "2026-09-09T12:02:51Z",
+    "files": [
+      "production-contract-audit.json",
+      "production-e1a-compatibility-proof.json"
+    ]
+  },
+  "interpretation": {
+    "generic_production_contract": "passed",
+    "e1a_capability_specific_404_vs_403_discrimination": "passed",
+    "production_mutation_performed_by_audit": false,
+    "a6_status": "passed",
+    "a7_remaining_condition": "post-A5 legacy pre-cutover authenticated user calculation path usability proof"
+  }
+}
