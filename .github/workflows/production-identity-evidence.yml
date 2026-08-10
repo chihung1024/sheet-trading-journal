@@ -70,6 +70,7 @@ jobs:
           node-version: '22'
 
       - name: Collect sanitized Cloudflare and live frontend evidence
+        id: collect
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -79,6 +80,7 @@ jobs:
         run: node tools/collect_production_identity_evidence.mjs
 
       - name: Upload sanitized read-only evidence
+        if: always() && steps.collect.outcome != 'skipped'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: production-identity-evidence-${{ inputs.source_sha }}
