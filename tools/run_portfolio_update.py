@@ -84,17 +84,22 @@ def resolve_target_user(
 
 
 def configure_target_user_from_environment() -> str:
-    """Set the engine's existing private target env from the opaque workflow job id."""
+    """Resolve hosted opaque targeting while preserving local legacy tooling only."""
     calculation_job_id = os.environ.get("CALCULATION_JOB_ID", "").strip()
-    legacy_target_user_id = os.environ.get("TARGET_USER_ID", "").strip()
+    is_github_actions = os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true"
+    legacy_target_user_id = (
+        ""
+        if is_github_actions
+        else os.environ.get("TARGET_USER_ID", "").strip()
+    )
     client = CloudflareClient() if calculation_job_id else None
     target_user_id = resolve_target_user(
         client,
         calculation_job_id=calculation_job_id,
         legacy_target_user_id=legacy_target_user_id,
     )
-    # Keep main.py unchanged: its existing target contract is now populated only inside
-    # this trusted process. Scheduled runs explicitly clear stale target state.
+    # Keep main.py unchanged. Hosted runs are either resolved by opaque job id or
+    # explicitly all-user; only non-hosted local tooling may retain legacy targeting.
     os.environ["TARGET_USER_ID"] = target_user_id
     return target_user_id
 
