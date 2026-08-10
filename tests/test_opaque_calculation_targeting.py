@@ -10,6 +10,7 @@ import tools.run_portfolio_update as job_runner
 JOB_ID = "job_ABCDEFGHIJKLMNOPQRSTUV"
 TARGET_USER = "secret@example.com"
 BENCHMARK = "0050.TW"
+VERIFIED_CONTEXT = "CALCULATION_JOB_CONTEXT_VERIFIED"
 
 
 class FakeResponse:
@@ -99,6 +100,54 @@ def test_system_client_job_context_transport_failure_fails_closed(monkeypatch):
         CloudflareClient().resolve_calculation_job_context(JOB_ID)
 
 
+def test_verified_job_benchmark_bypasses_live_user_settings(monkeypatch):
+    monkeypatch.setenv(VERIFIED_CONTEXT, "1")
+    monkeypatch.setenv("TARGET_USER_ID", TARGET_USER)
+    monkeypatch.setenv("CUSTOM_BENCHMARK", BENCHMARK)
+
+    def unexpected_get(*_args, **_kwargs):
+        raise AssertionError("verified durable benchmark must not re-read user settings")
+
+    monkeypatch.setattr("journal_engine.clients.api_client.requests.get", unexpected_get)
+
+    assert CloudflareClient().get_user_benchmark(TARGET_USER) == BENCHMARK
+
+
+def test_verified_job_benchmark_rejects_owner_mismatch(monkeypatch):
+    monkeypatch.setenv(VERIFIED_CONTEXT, "1")
+    monkeypatch.setenv("TARGET_USER_ID", TARGET_USER)
+    monkeypatch.setenv("CUSTOM_BENCHMARK", BENCHMARK)
+
+    with pytest.raises(CloudflareAPIError, match="user mismatch"):
+        CloudflareClient().get_user_benchmark("other@example.com")
+
+
+def test_verified_job_benchmark_rejects_invalid_context_benchmark(monkeypatch):
+    monkeypatch.setenv(VERIFIED_CONTEXT, "1")
+    monkeypatch.setenv("TARGET_USER_ID", TARGET_USER)
+    monkeypatch.setenv("CUSTOM_BENCHMARK", "bad benchmark")
+
+    with pytest.raises(CloudflareAPIError, match="benchmark is invalid"):
+        CloudflareClient().get_user_benchmark(TARGET_USER)
+
+
+def test_unverified_user_benchmark_preserves_live_settings_lookup(monkeypatch):
+    captured = {}
+    monkeypatch.delenv(VERIFIED_CONTEXT, raising=False)
+
+    def fake_get(url, *, headers, timeout):
+        captured["url"] = url
+        captured["headers"] = headers
+        return FakeResponse(200, {"success": True, "benchmark": "QQQ"})
+
+    monkeypatch.setattr("journal_engine.clients.api_client.API_KEY", "test-system-key")
+    monkeypatch.setattr("journal_engine.clients.api_client.requests.get", fake_get)
+
+    assert CloudflareClient().get_user_benchmark(TARGET_USER) == "QQQ"
+    assert captured["url"].endswith("/api/user-settings")
+    assert captured["headers"]["X-Target-User"] == TARGET_USER
+
+
 def test_runner_uses_durable_owner_and_benchmark_when_job_context_matches_dispatch():
     class FakeClient:
         def resolve_calculation_job_context(self, job_id):
@@ -130,11 +179,12 @@ def test_runner_fails_closed_when_dispatch_benchmark_diverges_from_durable_job()
         )
 
 
-def test_runner_scheduled_hosted_path_remains_all_user(monkeypatch):
+def test_runner_scheduled_hosted_path_remains_all_user_and_clears_stale_provenance(monkeypatch):
     monkeypatch.delenv("CALCULATION_JOB_ID", raising=False)
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("TARGET_USER_ID", "stale@example.com")
     monkeypatch.setenv("CUSTOM_BENCHMARK", "SPY")
+    monkeypatch.setenv(VERIFIED_CONTEXT, "1")
 
     target, benchmark = job_runner.configure_target_context_from_environment()
 
@@ -142,6 +192,7 @@ def test_runner_scheduled_hosted_path_remains_all_user(monkeypatch):
     assert benchmark == "SPY"
     assert os.environ["TARGET_USER_ID"] == ""
     assert os.environ["CUSTOM_BENCHMARK"] == "SPY"
+    assert VERIFIED_CONTEXT not in os.environ
 
 
 def test_runner_local_legacy_target_is_preserved(monkeypatch):
@@ -149,11 +200,13 @@ def test_runner_local_legacy_target_is_preserved(monkeypatch):
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setenv("TARGET_USER_ID", "legacy@example.com")
     monkeypatch.setenv("CUSTOM_BENCHMARK", "QQQ")
+    monkeypatch.delenv(VERIFIED_CONTEXT, raising=False)
 
     target, benchmark = job_runner.configure_target_context_from_environment()
 
     assert target == "legacy@example.com"
     assert benchmark == "QQQ"
+    assert VERIFIED_CONTEXT not in os.environ
 
 
 def test_entrypoint_resolves_context_before_financial_runner(monkeypatch):
@@ -167,6 +220,7 @@ def test_entrypoint_resolves_context_before_financial_runner(monkeypatch):
     def fake_run_update():
         observed["target_user_id"] = os.environ.get("TARGET_USER_ID")
         observed["benchmark"] = os.environ.get("CUSTOM_BENCHMARK")
+        observed["verified_context"] = os.environ.get(VERIFIED_CONTEXT)
 
     monkeypatch.setattr(job_runner, "CloudflareClient", FakeClient)
     monkeypatch.setattr(job_runner.runner, "setup_logging", lambda: None)
@@ -181,4 +235,5 @@ def test_entrypoint_resolves_context_before_financial_runner(monkeypatch):
         "job_id": JOB_ID,
         "target_user_id": TARGET_USER,
         "benchmark": BENCHMARK,
+        "verified_context": "1",
     }
