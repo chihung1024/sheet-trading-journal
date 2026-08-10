@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { __test } from "../worker.js";
 
-test("dispatch request uses canonical repository metadata without runtime owner variables", () => {
+const JOB_ID = "job_ABCDEFGHIJKLMNOPQRSTUV";
+
+test("dispatch request exposes only opaque calculation targeting", () => {
   const request = __test.buildGitHubDispatchRequest({
     token: "secret-token",
     benchmark: "0050.TW",
-    userEmail: "user@example.com",
+    jobId: JOB_ID,
   });
   assert.equal(
     request.url,
@@ -14,28 +16,46 @@ test("dispatch request uses canonical repository metadata without runtime owner 
   );
   assert.equal(request.init.method, "POST");
   assert.equal(request.init.headers.Authorization, "Bearer secret-token");
-  assert.deepEqual(JSON.parse(request.init.body), {
+  const body = JSON.parse(request.init.body);
+  assert.deepEqual(body, {
     ref: "main",
-    inputs: { custom_benchmark: "0050.TW", target_user_id: "user@example.com" },
+    inputs: { custom_benchmark: "0050.TW", calculation_job_id: JOB_ID },
   });
+  assert.equal("target_user_id" in body.inputs, false);
+  assert.equal(request.init.body.includes("@"), false);
 });
 
-test("dispatch accepts GitHub 204 and records request id without reading response body", async () => {
+test("dispatch accepts GitHub 204 without tenant identity", async () => {
   let bodyRead = false;
+  let dispatchedBody = null;
   const result = await __test.dispatchGitHubWorkflow({
     token: "secret-token",
     benchmark: "SPY",
-    userEmail: "user@example.com",
-    fetchImpl: async () => ({
-      ok: true,
-      status: 204,
-      headers: new Headers({ "X-GitHub-Request-Id": "ABC1:DEF2" }),
-      text: async () => { bodyRead = true; },
-    }),
+    jobId: JOB_ID,
+    fetchImpl: async (_url, init) => {
+      dispatchedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        status: 204,
+        headers: new Headers({ "X-GitHub-Request-Id": "ABC1:DEF2" }),
+        text: async () => { bodyRead = true; },
+      };
+    },
   });
   assert.equal(result.ok, true);
   assert.equal(result.githubRequestId, "ABC1:DEF2");
   assert.equal(bodyRead, false);
+  assert.deepEqual(dispatchedBody.inputs, {
+    custom_benchmark: "SPY",
+    calculation_job_id: JOB_ID,
+  });
+});
+
+test("dispatch rejects missing opaque job target", () => {
+  assert.throws(
+    () => __test.buildGitHubDispatchRequest({ token: "secret-token", benchmark: "SPY" }),
+    /calculation job ID|invalid/i,
+  );
 });
 
 test("dispatch classifies GitHub failures", () => {
@@ -49,23 +69,9 @@ test("dispatch classifies GitHub failures", () => {
   }
 });
 
-test("dispatch requires only the token secret", () => {
+test("dispatch requires the GitHub token secret", () => {
   assert.throws(
-    () => __test.buildGitHubDispatchRequest({ token: "", benchmark: "SPY", userEmail: "u@example.com" }),
+    () => __test.buildGitHubDispatchRequest({ token: "", benchmark: "SPY", jobId: JOB_ID }),
     /token is required/,
-  );
-});
-
-
-test("dispatch includes an opaque calculation job ID when provided", () => {
-  const request = __test.buildGitHubDispatchRequest({
-    token: "secret-token",
-    benchmark: "SPY",
-    userEmail: "user@example.com",
-    jobId: "job_ABCDEFGHIJKLMNOPQRSTUV",
-  });
-  assert.equal(
-    JSON.parse(request.init.body).inputs.calculation_job_id,
-    "job_ABCDEFGHIJKLMNOPQRSTUV",
   );
 });
