@@ -66,7 +66,7 @@ const FORBIDDEN_OWNER_FIELDS = new Set([
 
 const ROUTE_PERMISSIONS = Object.freeze({
   "POST /api/trigger-update": new Set(["user"]),
-  "GET /api/calculation-jobs/:id": new Set(["user"]),
+  "GET /api/calculation-jobs/:id": new Set(["user", "system"]),
   "POST /api/calculation-jobs/status": new Set(["system"]),
   "GET /api/portfolio": new Set(["user"]),
   "POST /api/portfolio": new Set(["system"]),
@@ -735,7 +735,6 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
     const result = await dispatchGitHubWorkflow({
       token: env.GITHUB_TOKEN,
       benchmark,
-      userEmail: principal.email,
       jobId: created.job.public_id,
     });
     if (!result.ok) {
@@ -784,9 +783,16 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
 async function handleGetCalculationJob(jobId, env, principal, requestId) {
   try {
     const normalizedJobId = validateCalculationJobId(jobId);
-    const job = await calculationJobsRepository.findForUser(env.DB, normalizedJobId, principal.email);
+    const job = principal.kind === "system"
+      ? await calculationJobsRepository.findById(env.DB, normalizedJobId)
+      : await calculationJobsRepository.findForUser(env.DB, normalizedJobId, principal.email);
     if (!job) return apiError("NOT_FOUND", "Calculation job not found", 404, requestId);
-    return jsonResponse({ success: true, job: publicCalculationJob(job, false) });
+    return jsonResponse({
+      success: true,
+      job: principal.kind === "system"
+        ? systemCalculationJobTarget(job)
+        : publicCalculationJob(job, false),
+    });
   } catch (error) {
     if (error instanceof RequestValidationError) {
       return apiError("NOT_FOUND", "Calculation job not found", 404, requestId);
@@ -914,6 +920,16 @@ function publicCalculationJob(row, deduplicated) {
   };
 }
 
+function systemCalculationJobTarget(row) {
+  const job = normalizeCalculationJobRow(row);
+  return {
+    id: job.public_id,
+    target_user_id: job.user_id,
+    benchmark: job.benchmark,
+    status: job.status,
+  };
+}
+
 function normalizeCalculationJobRow(row) {
   if (!isPlainObject(row)) throw new Error("InvalidCalculationJobRow");
   if (!CALCULATION_JOB_STATUSES.has(row.status)) {
@@ -1038,15 +1054,17 @@ const calculationJobsRepository = Object.freeze({
   },
 });
 
-function buildGitHubDispatchRequest({ token, benchmark, userEmail, jobId = "" }) {
+function buildGitHubDispatchRequest({ token, benchmark, jobId }) {
   if (typeof token !== "string" || !token.trim()) {
     throw new RequestValidationError("GitHub dispatch token is required");
   }
+  if (!jobId) {
+    throw new RequestValidationError("calculation job ID is required");
+  }
   const inputs = {
     custom_benchmark: benchmark,
-    target_user_id: userEmail,
+    calculation_job_id: validateCalculationJobId(jobId),
   };
-  if (jobId) inputs.calculation_job_id = validateCalculationJobId(jobId);
   const owner = encodeURIComponent(GITHUB_DISPATCH.owner);
   const repository = encodeURIComponent(GITHUB_DISPATCH.repository);
   const workflow = encodeURIComponent(GITHUB_DISPATCH.workflow);
@@ -1067,8 +1085,8 @@ function buildGitHubDispatchRequest({ token, benchmark, userEmail, jobId = "" })
   };
 }
 
-async function dispatchGitHubWorkflow({ token, benchmark, userEmail, jobId = "", fetchImpl = fetch }) {
-  const request = buildGitHubDispatchRequest({ token, benchmark, userEmail, jobId });
+async function dispatchGitHubWorkflow({ token, benchmark, jobId, fetchImpl = fetch }) {
+  const request = buildGitHubDispatchRequest({ token, benchmark, jobId });
   const response = await fetchImpl(request.url, request.init);
   const githubRequestId = sanitizeHeaderValue(response.headers?.get?.("X-GitHub-Request-Id"));
   if (response.ok) return { ok: true, status: response.status, githubRequestId };
@@ -1545,6 +1563,7 @@ export const __test = {
   validateCalculationJobId,
   canTransitionCalculationJob,
   publicCalculationJob,
+  systemCalculationJobTarget,
   calculationJobsRepository,
   classifyGitHubDispatchFailure,
   dispatchGitHubWorkflow,

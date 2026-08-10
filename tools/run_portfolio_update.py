@@ -1,9 +1,8 @@
 """Run the portfolio update while publishing a safe, typed failure code for CI.
 
-The existing calculation engine remains authoritative. This wrapper only observes
-its exception boundary and writes a fixed enum to GITHUB_OUTPUT so the Worker can
-surface a useful job failure category without receiving exception text, user IDs,
-or market symbols.
+The calculation engine remains authoritative. This wrapper resolves an optional opaque
+calculation-job context through the trusted Worker boundary, then observes the engine's
+exception boundary and writes only a fixed enum to GITHUB_OUTPUT.
 """
 
 from __future__ import annotations
@@ -12,14 +11,14 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import main as runner
-from journal_engine.clients.api_client import CloudflareAPIError
+from journal_engine.clients.api_client import CloudflareAPIError, CloudflareClient
 from journal_engine.core.daily_pnl_reconciler import DailyPnLReconciliationError
 
 
@@ -34,6 +33,7 @@ SNAPSHOT_VALIDATION_FAILED = "SNAPSHOT_VALIDATION_FAILED"
 SNAPSHOT_UPLOAD_FAILED = "SNAPSHOT_UPLOAD_FAILED"
 MULTIPLE_USER_FAILURES = "MULTIPLE_USER_FAILURES"
 UNKNOWN_CALCULATION_FAILED = "UNKNOWN_CALCULATION_FAILED"
+VERIFIED_JOB_CONTEXT_ENV = "CALCULATION_JOB_CONTEXT_VERIFIED"
 
 SAFE_FAILURE_CODES = frozenset(
     {
@@ -69,6 +69,60 @@ class UserFailureCapture(logging.Handler):
         exc = record.exc_info[1]
         if isinstance(exc, Exception):
             self.exceptions.append(exc)
+
+
+def resolve_target_context(
+    api_client: Optional[CloudflareClient],
+    *,
+    calculation_job_id: str = "",
+    legacy_target_user_id: str = "",
+    requested_benchmark: str = "",
+) -> Tuple[str, str]:
+    """Resolve trusted job owner+benchmark; opaque job context wins over legacy inputs."""
+    job_id = str(calculation_job_id or "").strip()
+    requested = str(requested_benchmark or "").strip().upper()
+    if job_id:
+        if api_client is None:
+            raise CloudflareAPIError("calculation job context client is unavailable")
+        target_user_id, durable_benchmark = api_client.resolve_calculation_job_context(job_id)
+        if requested and requested != durable_benchmark:
+            raise CloudflareAPIError("calculation job benchmark mismatch")
+        return target_user_id, durable_benchmark
+    return str(legacy_target_user_id or "").strip(), requested
+
+
+def configure_target_context_from_environment() -> Tuple[str, str]:
+    """Resolve hosted opaque context while preserving only non-hosted legacy tooling."""
+    calculation_job_id = os.environ.get("CALCULATION_JOB_ID", "").strip()
+    requested_benchmark = os.environ.get("CUSTOM_BENCHMARK", "").strip()
+    is_github_actions = os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true"
+    legacy_target_user_id = (
+        ""
+        if is_github_actions
+        else os.environ.get("TARGET_USER_ID", "").strip()
+    )
+
+    # Never inherit a stale provenance marker. It is set only after the current
+    # opaque job has been resolved and its dispatch benchmark equality-checked.
+    os.environ.pop(VERIFIED_JOB_CONTEXT_ENV, None)
+
+    client = CloudflareClient() if calculation_job_id else None
+    target_user_id, benchmark = resolve_target_context(
+        client,
+        calculation_job_id=calculation_job_id,
+        legacy_target_user_id=legacy_target_user_id,
+        requested_benchmark=requested_benchmark,
+    )
+
+    # Keep main.py unchanged. Hosted user-triggered runs derive both tenant and
+    # benchmark from the durable calculation job. Scheduled hosted runs remain
+    # explicit all-user runs; only non-hosted local tooling may retain legacy targeting.
+    os.environ["TARGET_USER_ID"] = target_user_id
+    if benchmark:
+        os.environ["CUSTOM_BENCHMARK"] = benchmark
+    if calculation_job_id:
+        os.environ[VERIFIED_JOB_CONTEXT_ENV] = "1"
+    return target_user_id, benchmark
 
 
 def classify_failure(exc: Exception, *, per_user: bool = False) -> str:
@@ -137,6 +191,7 @@ def main() -> int:
     main_logger.addHandler(capture)
 
     try:
+        configure_target_context_from_environment()
         runner.run_update()
     except Exception as exc:
         user_code = collapse_user_failure_codes(capture.exceptions)

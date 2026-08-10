@@ -1,4 +1,6 @@
 import logging
+import os
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -16,6 +18,8 @@ REQUEST_TIMEOUT: Tuple[float, float] = (5.0, 30.0)
 RECORD_PAGE_LIMIT = 1_000
 MAX_RECORD_PAGES = 2_000
 MAX_RECORD_COUNT = 1_000_000
+JOB_BENCHMARK_RE = re.compile(r"^[A-Z0-9.^=\-]{1,24}$")
+VERIFIED_JOB_CONTEXT_ENV = "CALCULATION_JOB_CONTEXT_VERIFIED"
 
 
 class CloudflareAPIError(RuntimeError):
@@ -31,6 +35,21 @@ def _mask_user_id(user_id: Optional[str]) -> str:
     local, domain = value.split("@", 1)
     visible = local[:2] if len(local) >= 2 else local[:1]
     return f"{visible}***@{domain}"
+
+
+def _verified_job_benchmark_for_user(user_email: str) -> Optional[str]:
+    """Return the trusted durable-job benchmark when this process verified its context."""
+    if os.environ.get(VERIFIED_JOB_CONTEXT_ENV, "").strip() != "1":
+        return None
+
+    target_user_id = os.environ.get("TARGET_USER_ID", "").strip().casefold()
+    benchmark = os.environ.get("CUSTOM_BENCHMARK", "").strip().upper()
+    requested_user = str(user_email or "").strip().casefold()
+    if not target_user_id or not requested_user or target_user_id != requested_user:
+        raise CloudflareAPIError("verified calculation job context user mismatch")
+    if not JOB_BENCHMARK_RE.fullmatch(benchmark):
+        raise CloudflareAPIError("verified calculation job context benchmark is invalid")
+    return benchmark
 
 
 class CloudflareClient:
@@ -146,6 +165,57 @@ class CloudflareClient:
 
         raise CloudflareAPIError("交易紀錄 API 分頁數超過安全上限")
 
+    def resolve_calculation_job_context(self, calculation_job_id: str) -> Tuple[str, str]:
+        """Resolve the owner and durable benchmark for one running opaque job."""
+        job_id = str(calculation_job_id or "").strip()
+        if not job_id:
+            raise CloudflareAPIError("calculation job context lookup requires a job id")
+
+        try:
+            response = requests.get(
+                f"{self.api_base_url}/api/calculation-jobs/{job_id}",
+                headers={"X-API-KEY": API_KEY},
+                timeout=REQUEST_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            raise CloudflareAPIError("calculation job context lookup failed") from exc
+
+        if response.status_code != 200:
+            raise CloudflareAPIError(
+                f"calculation job context lookup failed [status={response.status_code}]"
+            )
+
+        payload = self._decode_json(response, "calculation job context API")
+        if payload.get("success") is not True:
+            raise CloudflareAPIError("calculation job context API did not return success=true")
+
+        job = payload.get("job")
+        if not isinstance(job, dict):
+            raise CloudflareAPIError("calculation job context API returned an invalid job")
+        if str(job.get("id") or "").strip() != job_id:
+            raise CloudflareAPIError("calculation job context API returned a mismatched job")
+
+        target_user_id = str(job.get("target_user_id") or "").strip().lower()
+        if not target_user_id or "@" not in target_user_id:
+            raise CloudflareAPIError("calculation job context API omitted a valid owner")
+
+        benchmark = str(job.get("benchmark") or "").strip().upper()
+        if not JOB_BENCHMARK_RE.fullmatch(benchmark):
+            raise CloudflareAPIError("calculation job context API returned an invalid benchmark")
+
+        status = str(job.get("status") or "").strip().lower()
+        if status != "running":
+            raise CloudflareAPIError(
+                f"calculation job context is not runnable [status={status or 'missing'}]"
+            )
+
+        return target_user_id, benchmark
+
+    def resolve_calculation_job_target(self, calculation_job_id: str) -> str:
+        """Backward-compatible owner-only wrapper for isolated callers/tests."""
+        target_user_id, _benchmark = self.resolve_calculation_job_context(calculation_job_id)
+        return target_user_id
+
     def delete_record(self, record_id: int) -> bool:
         """Delete one transaction record; retain bool semantics for existing callers."""
         self.logger.info("正在刪除記錄 ID: %s", record_id)
@@ -199,8 +269,17 @@ class CloudflareClient:
         return result
 
     def get_user_benchmark(self, user_email: str) -> str:
-        """Fetch one user's benchmark; transport/server failures are fatal."""
+        """Fetch benchmark, unless a verified opaque job made its durable value authoritative."""
         masked_user = _mask_user_id(user_email)
+        verified_benchmark = _verified_job_benchmark_for_user(user_email)
+        if verified_benchmark is not None:
+            self.logger.info(
+                "用戶 %s 使用已驗證 calculation job benchmark: %s",
+                masked_user,
+                verified_benchmark,
+            )
+            return verified_benchmark
+
         try:
             response = requests.get(
                 f"{self.api_base_url}/api/user-settings",
