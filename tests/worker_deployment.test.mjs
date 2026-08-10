@@ -137,7 +137,8 @@ test("production config renderer rejects sentinel IDs, reviewed staging D1, and 
   assert.match(shortSha.stderr, /exact 40-character Git commit SHA/);
 });
 
-test("unverified production config can dry-run but cannot be mistaken for reviewed D1 authority", async () => {
+test("production config renderer follows the tracked D1 authority state", async () => {
+  const contract = JSON.parse(await readFile("config/deployment-environments.json", "utf8"));
   const directory = await mkdtemp(join(tmpdir(), "pr05-wrangler-"));
   const output = join(directory, "deploy.toml");
   const exactSha = "7b5686157975ab2295d74f9edf5ddb985978d706";
@@ -148,6 +149,14 @@ test("unverified production config can dry-run but cannot be mistaken for review
       SOURCE_COMMIT: exactSha.toUpperCase(),
       WRANGLER_OUTPUT: output,
     });
+
+    if (contract.production.d1_identity_status === "verified") {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /does not match reviewed authority/);
+      return;
+    }
+
+    assert.equal(contract.production.d1_identity_status, "unverified");
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Production D1 authority status: unverified/);
     const rendered = await readFile(output, "utf8");
@@ -166,12 +175,23 @@ test("unverified production config can dry-run but cannot be mistaken for review
   }
 });
 
-test("tracked production environment contract does not invent an unverified D1 identity", async () => {
+test("tracked production environment contract is internally consistent across the identity transition", async () => {
   const contract = JSON.parse(await readFile("config/deployment-environments.json", "utf8"));
-  assert.equal(contract.production.d1_identity_status, "unverified");
-  assert.equal(contract.production.d1_database_name, null);
-  assert.equal(contract.production.d1_database_id_sha256, null);
-  assert.equal(contract.staging.d1_database_name, "trading-journal-staging");
+  const production = contract.production;
+  const stagingName = contract.staging.d1_database_name;
+
+  assert.ok(["unverified", "verified"].includes(production.d1_identity_status));
+  assert.equal(stagingName, "trading-journal-staging");
+
+  if (production.d1_identity_status === "unverified") {
+    assert.equal(production.d1_database_name, null);
+    assert.equal(production.d1_database_id_sha256, null);
+    return;
+  }
+
+  assert.match(production.d1_database_name, /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/);
+  assert.match(production.d1_database_id_sha256, /^[0-9a-f]{64}$/i);
+  assert.notEqual(production.d1_database_name, stagingName);
 });
 
 test("tracked Worker manifest distinguishes deployment entry from one canonical source", async () => {
