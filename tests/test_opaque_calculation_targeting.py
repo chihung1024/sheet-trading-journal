@@ -151,7 +151,7 @@ def test_unverified_user_benchmark_preserves_live_settings_lookup(monkeypatch):
 
 
 def test_verified_job_privacy_filter_redacts_real_masked_and_exception_email():
-    privacy_filter = job_runner.VerifiedJobPrivacyFilter()
+    privacy_filter = job_runner.VerifiedJobPrivacyFilter(TARGET_USER)
     try:
         raise RuntimeError(f"failure for {TARGET_USER}")
     except RuntimeError:
@@ -179,11 +179,31 @@ def test_verified_job_privacy_filter_redacts_real_masked_and_exception_email():
     assert job_runner.TENANT_LOG_LABEL in record.exc_text
 
 
+def test_verified_job_privacy_filter_exact_owner_does_not_depend_on_generic_email_shape():
+    unusual_owner = "tenant name@example.com"
+    privacy_filter = job_runner.VerifiedJobPrivacyFilter(unusual_owner)
+    record = logging.LogRecord(
+        name="privacy-test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="owner=%s masked=%s",
+        args=(unusual_owner, "te***@example.com"),
+        exc_info=None,
+    )
+
+    assert privacy_filter.filter(record) is True
+    assert record.getMessage() == "owner=opaque-job-user masked=opaque-job-user"
+    assert "tenant name" not in record.getMessage()
+    assert "example.com" not in record.getMessage()
+
+
 def test_privacy_filter_is_installed_only_for_verified_job_context(monkeypatch):
     monkeypatch.delenv(VERIFIED_CONTEXT, raising=False)
     assert job_runner.install_verified_job_privacy_filter() is None
 
     monkeypatch.setenv(VERIFIED_CONTEXT, "1")
+    monkeypatch.setenv("TARGET_USER_ID", TARGET_USER)
     privacy_filter = job_runner.install_verified_job_privacy_filter()
     try:
         assert isinstance(privacy_filter, job_runner.VerifiedJobPrivacyFilter)
@@ -193,6 +213,14 @@ def test_privacy_filter_is_installed_only_for_verified_job_context(monkeypatch):
         )
     finally:
         job_runner.remove_verified_job_privacy_filter(privacy_filter)
+
+
+def test_verified_context_without_owner_fails_closed_for_log_privacy(monkeypatch):
+    monkeypatch.setenv(VERIFIED_CONTEXT, "1")
+    monkeypatch.delenv("TARGET_USER_ID", raising=False)
+
+    with pytest.raises(CloudflareAPIError, match="owner is missing for log privacy"):
+        job_runner.install_verified_job_privacy_filter()
 
 
 def test_runner_uses_durable_owner_and_benchmark_when_job_context_matches_dispatch():
