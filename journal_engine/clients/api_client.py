@@ -146,6 +146,41 @@ class CloudflareClient:
 
         raise CloudflareAPIError("交易紀錄 API 分頁數超過安全上限")
 
+    def resolve_calculation_job_target(self, calculation_job_id: str) -> str:
+        """Resolve an opaque calculation job to its owner through the system-only API."""
+        job_id = str(calculation_job_id or "").strip()
+        if not job_id:
+            raise CloudflareAPIError("calculation job target lookup requires a job id")
+
+        try:
+            response = requests.get(
+                f"{self.api_base_url}/api/calculation-jobs/{job_id}",
+                headers={"X-API-KEY": API_KEY},
+                timeout=REQUEST_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            raise CloudflareAPIError("calculation job target lookup failed") from exc
+
+        if response.status_code != 200:
+            raise CloudflareAPIError(
+                f"calculation job target lookup failed [status={response.status_code}]"
+            )
+
+        payload = self._decode_json(response, "calculation job target API")
+        if payload.get("success") is not True:
+            raise CloudflareAPIError("calculation job target API did not return success=true")
+
+        job = payload.get("job")
+        if not isinstance(job, dict):
+            raise CloudflareAPIError("calculation job target API returned an invalid job")
+        if str(job.get("id") or "").strip() != job_id:
+            raise CloudflareAPIError("calculation job target API returned a mismatched job")
+
+        target_user_id = str(job.get("target_user_id") or "").strip()
+        if not target_user_id:
+            raise CloudflareAPIError("calculation job target API omitted the owner")
+        return target_user_id
+
     def delete_record(self, record_id: int) -> bool:
         """Delete one transaction record; retain bool semantics for existing callers."""
         self.logger.info("正在刪除記錄 ID: %s", record_id)
