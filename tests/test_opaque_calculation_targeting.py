@@ -1,6 +1,7 @@
 import os
 
 import pytest
+import requests
 
 from journal_engine.clients.api_client import CloudflareAPIError, CloudflareClient
 import tools.run_portfolio_update as job_runner
@@ -70,6 +71,46 @@ def test_system_client_job_target_lookup_fails_closed(monkeypatch, status_code, 
     client = CloudflareClient()
 
     with pytest.raises(CloudflareAPIError):
+        client.resolve_calculation_job_target(JOB_ID)
+
+
+def test_system_client_job_target_rejects_blank_job_id():
+    client = CloudflareClient()
+
+    with pytest.raises(CloudflareAPIError, match="requires a job id"):
+        client.resolve_calculation_job_target("   ")
+
+
+def test_system_client_job_target_transport_failure_fails_closed(monkeypatch):
+    def fail_get(*_args, **_kwargs):
+        raise requests.RequestException("transport failure")
+
+    monkeypatch.setattr("journal_engine.clients.api_client.API_KEY", "test-system-key")
+    monkeypatch.setattr("journal_engine.clients.api_client.requests.get", fail_get)
+    client = CloudflareClient()
+
+    with pytest.raises(CloudflareAPIError, match="lookup failed"):
+        client.resolve_calculation_job_target(JOB_ID)
+
+
+def test_system_client_job_target_rejects_mismatched_job_id(monkeypatch):
+    monkeypatch.setattr("journal_engine.clients.api_client.API_KEY", "test-system-key")
+    monkeypatch.setattr(
+        "journal_engine.clients.api_client.requests.get",
+        lambda *_args, **_kwargs: FakeResponse(
+            200,
+            {
+                "success": True,
+                "job": {
+                    "id": "job_1234567890123456789012",
+                    "target_user_id": TARGET_USER,
+                },
+            },
+        ),
+    )
+    client = CloudflareClient()
+
+    with pytest.raises(CloudflareAPIError, match="mismatched job"):
         client.resolve_calculation_job_target(JOB_ID)
 
 
