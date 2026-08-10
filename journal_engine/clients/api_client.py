@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,6 +19,7 @@ RECORD_PAGE_LIMIT = 1_000
 MAX_RECORD_PAGES = 2_000
 MAX_RECORD_COUNT = 1_000_000
 JOB_BENCHMARK_RE = re.compile(r"^[A-Z0-9.^=\-]{1,24}$")
+VERIFIED_JOB_CONTEXT_ENV = "CALCULATION_JOB_CONTEXT_VERIFIED"
 
 
 class CloudflareAPIError(RuntimeError):
@@ -33,6 +35,21 @@ def _mask_user_id(user_id: Optional[str]) -> str:
     local, domain = value.split("@", 1)
     visible = local[:2] if len(local) >= 2 else local[:1]
     return f"{visible}***@{domain}"
+
+
+def _verified_job_benchmark_for_user(user_email: str) -> Optional[str]:
+    """Return the trusted durable-job benchmark when this process verified its context."""
+    if os.environ.get(VERIFIED_JOB_CONTEXT_ENV, "").strip() != "1":
+        return None
+
+    target_user_id = os.environ.get("TARGET_USER_ID", "").strip().casefold()
+    benchmark = os.environ.get("CUSTOM_BENCHMARK", "").strip().upper()
+    requested_user = str(user_email or "").strip().casefold()
+    if not target_user_id or not requested_user or target_user_id != requested_user:
+        raise CloudflareAPIError("verified calculation job context user mismatch")
+    if not JOB_BENCHMARK_RE.fullmatch(benchmark):
+        raise CloudflareAPIError("verified calculation job context benchmark is invalid")
+    return benchmark
 
 
 class CloudflareClient:
@@ -237,7 +254,6 @@ class CloudflareClient:
         if not record_ids:
             return {"success": 0, "failed": 0, "failed_ids": []}
 
-        self.logger.info("正在批量刪除 %s 筆記錄", len(record_ids))
         failed_ids = [record_id for record_id in record_ids if not self.delete_record(record_id)]
         result = {
             "success": len(record_ids) - len(failed_ids),
@@ -252,8 +268,17 @@ class CloudflareClient:
         return result
 
     def get_user_benchmark(self, user_email: str) -> str:
-        """Fetch one user's benchmark; transport/server failures are fatal."""
+        """Fetch benchmark, unless a verified opaque job made its durable value authoritative."""
         masked_user = _mask_user_id(user_email)
+        verified_benchmark = _verified_job_benchmark_for_user(user_email)
+        if verified_benchmark is not None:
+            self.logger.info(
+                "用戶 %s 使用已驗證 calculation job benchmark: %s",
+                masked_user,
+                verified_benchmark,
+            )
+            return verified_benchmark
+
         try:
             response = requests.get(
                 f"{self.api_base_url}/api/user-settings",
@@ -294,9 +319,6 @@ class CloudflareClient:
         masked_user = _mask_user_id(target_user_id)
         self.logger.info("正在上傳 %s 的投資組合快照", masked_user)
 
-        # Production snapshots are Pydantic models and must use JSON mode so nested
-        # dates in reproducibility evidence are serialized safely. The duck-typed
-        # fallback preserves existing isolated test doubles only.
         snapshot_data = (
             snapshot.model_dump(mode="json")
             if isinstance(snapshot, PortfolioSnapshot)
