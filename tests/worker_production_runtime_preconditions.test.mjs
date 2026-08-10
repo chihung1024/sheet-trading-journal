@@ -15,11 +15,18 @@ const verified = {
   },
 };
 
-test("current D3D-A production runtime remains intentionally non-deployable", async () => {
+test("tracked production runtime preconditions follow the declared D1 authority state", async () => {
   const contract = JSON.parse(await readFile("config/deployment-environments.json", "utf8"));
   const result = validateProductionRuntimePreconditions(contract);
-  assert.equal(result.ok, false);
-  assert.match(result.errors.join("\n"), /D1 identity is not verified/);
+
+  if (contract.production.d1_identity_status === "unverified") {
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join("\n"), /D1 identity is not verified/);
+    return;
+  }
+
+  assert.equal(contract.production.d1_identity_status, "verified");
+  assert.equal(result.ok, true, result.errors.join("\n"));
 });
 
 test("runtime source becomes deployable only with reviewed D1 name and UUID fingerprint", () => {
