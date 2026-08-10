@@ -110,6 +110,7 @@
 ### 🏷️ 群組管理頁面
 
 策略群組設定與績效隔離：
+
 - **群組列表**
   - 檢視所有策略群組（Tag）
   - 各群組獨立績效指標
@@ -243,20 +244,19 @@
 
 > 這一節的目標是「把程式的實際行為講清楚」，方便日後對帳與擴充。
 
-### 1) 成本與已實現損益：FIFO
+### 1) 成本與已實現損益（FIFO）
 
-- 每個 `Symbol` 維護 FIFO lots。
-- `BUY`：增加持倉 qty、增加成本（含 commission/tax）。
-- `SELL`：用 FIFO 扣減 lots，計算賣出成本；賣出收入會扣除 commission/tax。
-- 已實現損益：`proceeds_twd - cost_sold_twd`（並累加已確認股息等現金流）。
+- 依交易順序進行 FIFO lot matching。
+- BUY 建立 lot；SELL 從最舊 lot 開始扣除。
+- 已實現損益使用實際成交價、手續費/稅與交易日 FX context。
+- 賣出量超過可用 long-only prefix 時，來源資料會在計算前 fail closed；calculator 內部的 CLAMP 僅保留作相容/defense-in-depth，不代表允許超賣帳本。
 
-### 2) 匯率處理（TWD per native quote unit）
+### 2) 多幣別與 FX
 
-- TWD 標的（`.TW/.TWO`）：effective FX = 1.0。
-- USD、KRW、HKD、CNY、JPY、GBp、EUR 標的：計算器使用「每 1 原生報價單位可換多少 TWD」的日期化 FX context。
-- 外幣 cross-rate 由 Yahoo USD quote 建立：`TWD/native-major = (TWD/USD) ÷ (native/USD)`。
-- 倫敦 `.L` 明確視為 Yahoo/LSE 常見的 **GBp（pence）** 報價，因此 GBP cross-rate 之後再乘 `0.01`；不可把 GBp 當 GBP，否則會造成 100 倍量綱錯誤。
-- 對已知外幣若缺少所需 FX，系統不會以 `1.0` 或預設匯率冒充真實值；必要價格或 FX 在實際計算起點之前沒有可用 as-of 資料時，批次會在計算前 fail closed。
+- TWD 標的不需 FX 轉換。
+- USD / KRW / HKD / CNY / JPY / GBp / EUR 等已建模報價單位會透過 currency-aware FX context 換算為 TWD。
+- production runner 會驗證所需歷史 FX coverage；缺失或非有限值不會默默以 1.0 代替。
+- 今日即時估值可使用 realtime FX overlay；Gate-D calculation manifest 只把**實際被計算使用**的 realtime FX 納入 deterministic numeric identity。
 
 ### 3) 估值價格與 as-of 日期
 
@@ -341,7 +341,15 @@ python main.py
 
 ### 部署（Cloudflare + GitHub Actions）
 
-請參考現行文件：`docs/DEPLOYMENT.md`
+現行部署導航：`docs/DEPLOYMENT.md`。
+
+目前工程執行狀態與下一步請先讀：
+
+1. `to_do_update_list.md` — current-state-first 的 Gate / Batch / recovery / next-action handoff；
+2. `docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md` — Gate E / E1a production activation 與零停機 privacy cutover 的現行 operational authority；
+3. `docs/DEPLOYMENT.md` — canonical production/staging deployment runbook。
+
+> **Repository merge 不等於 production Worker deployment。** Production Worker 使用獨立的 fail-closed activation control plane；在 current handoff 明確標示 deployable/authorized 前，不應因 `main` 已合併 runtime code 就直接手動部署，也不應從歷史 runbook 推定 production 已同步。
 
 ---
 
