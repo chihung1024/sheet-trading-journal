@@ -240,59 +240,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run worker:deploy
 
-      - name: Verify expected production deployment has propagated
+      - name: Wait for stable post-deploy production contract
         shell: bash
-        env:
-          EXPECTED_SHA: ${{ steps.source.outputs.sha }}
-          EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
-          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
-          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
-          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
-          WORKER_BASE_URL: https://journal-backend.chired.workers.dev
-        run: |
-          set -euo pipefail
-
-          wait_for_expected_deployment() {
-            local version_body
-            local health_body
-            local version_status=""
-            local health_status=""
-            version_body="$(mktemp)"
-            health_body="$(mktemp)"
-
-            for attempt in $(seq 1 20); do
-              version_status="$(curl --silent --show-error --output "$version_body" --write-out '%{http_code}' "$WORKER_BASE_URL/api/version" || true)"
-              health_status="$(curl --silent --show-error --output "$health_body" --write-out '%{http_code}' "$WORKER_BASE_URL/api/health" || true)"
-
-              if [[ "$version_status" == "200" && "$health_status" == "200" ]]; then
-                if VERSION_JSON="$(cat "$version_body")" \
-                  HEALTH_JSON="$(cat "$health_body")" \
-                  EXPECTED_SHA="$EXPECTED_SHA" \
-                  EXPECTED_RUNTIME_SERVICE="$EXPECTED_RUNTIME_SERVICE" \
-                  EXPECTED_RELEASE_VERSION="$EXPECTED_RELEASE_VERSION" \
-                  EXPECTED_API_VERSION="$EXPECTED_API_VERSION" \
-                  EXPECTED_SCHEMA_VERSION="$EXPECTED_SCHEMA_VERSION" \
-                  node tools/verify_worker_deployment.mjs; then
-                  echo "Expected deployment became ready on attempt $attempt"
-                  return 0
-                fi
-              else
-                echo "Operational endpoints not ready on attempt $attempt: version=$version_status health=$health_status"
-              fi
-
-              sleep 3
-            done
-
-            echo "Expected deployment did not propagate within the readiness window" >&2
-            echo "Final endpoint status: version=$version_status health=$health_status" >&2
-            cat "$version_body" >&2 || true
-            cat "$health_body" >&2 || true
-            return 1
-          }
-
-          wait_for_expected_deployment
-
-      - name: Verify post-deploy public auth and CORS contract
         env:
           WORKER_BASE_URL: https://journal-backend.chired.workers.dev
           EXPECTED_SHA: ${{ steps.source.outputs.sha }}
@@ -301,7 +250,36 @@ jobs:
           EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
           EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
           AUDIT_OUTPUT: production-post-deploy-public-audit.json
-        run: node tools/verify_production_contract.mjs
+        run: |
+          set -euo pipefail
+          required_consecutive_passes=3
+          max_attempts=20
+          consecutive_passes=0
+          rm -f "$AUDIT_OUTPUT"
+
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "Production stability audit attempt $attempt/$max_attempts; consecutive passes=$consecutive_passes/$required_consecutive_passes"
+            if node tools/verify_production_contract.mjs; then
+              consecutive_passes=$((consecutive_passes + 1))
+              echo "Production contract pass $consecutive_passes/$required_consecutive_passes"
+              if (( consecutive_passes >= required_consecutive_passes )); then
+                echo "Stable production contract verified after $attempt attempts"
+                exit 0
+              fi
+            else
+              echo "Production contract not stable on attempt $attempt; resetting consecutive-pass counter" >&2
+              consecutive_passes=0
+              rm -f "$AUDIT_OUTPUT"
+            fi
+
+            if (( attempt < max_attempts )); then
+              sleep 3
+            fi
+          done
+
+          echo "Production contract did not reach $required_consecutive_passes consecutive passes within $max_attempts attempts" >&2
+          rm -f "$AUDIT_OUTPUT"
+          exit 1
 
       - name: Upload sanitized post-deploy evidence
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
