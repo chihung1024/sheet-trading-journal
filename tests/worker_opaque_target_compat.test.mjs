@@ -32,6 +32,27 @@ function compatDb() {
   };
 }
 
+function missingCompatDb() {
+  return {
+    prepare(sql) {
+      const normalized = sql.replace(/\s+/g, ' ').trim();
+      assert.match(normalized, /FROM calculation_jobs/);
+      assert.match(normalized, /WHERE public_id = \?/);
+      assert.doesNotMatch(normalized, /user_id = \?/);
+      return {
+        bind(publicId) {
+          assert.equal(publicId, JOB_ID);
+          return {
+            async first() {
+              return null;
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 const ctx = { waitUntil() {} };
 
 test('pre-cutover entrypoint resolves opaque job owner for trusted system only', async () => {
@@ -53,6 +74,24 @@ test('pre-cutover entrypoint resolves opaque job owner for trusted system only',
       status: 'queued',
     },
   });
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+});
+
+test('trusted-system lookup of a valid nonexistent opaque job returns 404 without tenant identity', async () => {
+  const response = await worker.fetch(
+    new Request(`https://worker.invalid/api/calculation-jobs/${JOB_ID}`, {
+      headers: { 'X-API-KEY': API_SECRET },
+    }),
+    { API_SECRET, DB: missingCompatDb() },
+    ctx,
+  );
+
+  assert.equal(response.status, 404);
+  const payload = await response.json();
+  assert.equal(payload.success, false);
+  assert.equal(payload.error_meta.code, 'NOT_FOUND');
+  assert.equal(JSON.stringify(payload).includes(OWNER), false);
+  assert.doesNotMatch(JSON.stringify(payload), /target_user_id|user_id|email|owner/i);
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
 });
 
