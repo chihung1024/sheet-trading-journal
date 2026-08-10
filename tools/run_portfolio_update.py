@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
+import traceback
 from pathlib import Path
 from typing import Iterable, Optional, Tuple
 
@@ -34,6 +36,11 @@ SNAPSHOT_UPLOAD_FAILED = "SNAPSHOT_UPLOAD_FAILED"
 MULTIPLE_USER_FAILURES = "MULTIPLE_USER_FAILURES"
 UNKNOWN_CALCULATION_FAILED = "UNKNOWN_CALCULATION_FAILED"
 VERIFIED_JOB_CONTEXT_ENV = "CALCULATION_JOB_CONTEXT_VERIFIED"
+TENANT_LOG_LABEL = "opaque-job-user"
+EMAIL_SHAPED_LOG_TOKEN_RE = re.compile(
+    r"[A-Za-z0-9._%+*\-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+    re.IGNORECASE,
+)
 
 SAFE_FAILURE_CODES = frozenset(
     {
@@ -69,6 +76,50 @@ class UserFailureCapture(logging.Handler):
         exc = record.exc_info[1]
         if isinstance(exc, Exception):
             self.exceptions.append(exc)
+
+
+class VerifiedJobPrivacyFilter(logging.Filter):
+    """Remove tenant-email material from logs after opaque context verification."""
+
+    @staticmethod
+    def _redact(value: object) -> str:
+        return EMAIL_SHAPED_LOG_TOKEN_RE.sub(TENANT_LOG_LABEL, str(value))
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # This filter is installed only after the current opaque job owner and
+        # durable benchmark have been resolved and equality-checked. Rebuild the
+        # formatted message so both real and already-masked emails are removed.
+        message = self._redact(record.getMessage())
+        record.msg = message
+        record.args = ()
+
+        if record.exc_info:
+            exc_text = record.exc_text or "".join(
+                traceback.format_exception(*record.exc_info)
+            )
+            record.exc_text = self._redact(exc_text)
+        if record.stack_info:
+            record.stack_info = self._redact(record.stack_info)
+        return True
+
+
+def install_verified_job_privacy_filter() -> Optional[VerifiedJobPrivacyFilter]:
+    """Install tenant-log redaction only for a verified opaque-job run."""
+    if os.environ.get(VERIFIED_JOB_CONTEXT_ENV, "").strip() != "1":
+        return None
+    privacy_filter = VerifiedJobPrivacyFilter()
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(privacy_filter)
+    return privacy_filter
+
+
+def remove_verified_job_privacy_filter(
+    privacy_filter: Optional[VerifiedJobPrivacyFilter],
+) -> None:
+    if privacy_filter is None:
+        return
+    for handler in logging.getLogger().handlers:
+        handler.removeFilter(privacy_filter)
 
 
 def resolve_target_context(
@@ -189,9 +240,11 @@ def main() -> int:
     main_logger = logging.getLogger("main")
     capture = UserFailureCapture()
     main_logger.addHandler(capture)
+    privacy_filter: Optional[VerifiedJobPrivacyFilter] = None
 
     try:
         configure_target_context_from_environment()
+        privacy_filter = install_verified_job_privacy_filter()
         runner.run_update()
     except Exception as exc:
         user_code = collapse_user_failure_codes(capture.exceptions)
@@ -200,6 +253,7 @@ def main() -> int:
         logger.error("Portfolio update failed [error_code=%s]", error_code)
         return 1
     finally:
+        remove_verified_job_privacy_filter(privacy_filter)
         main_logger.removeHandler(capture)
 
     write_github_output("")
