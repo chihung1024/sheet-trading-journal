@@ -1,7 +1,7 @@
 """Run the portfolio update while publishing a safe, typed failure code for CI.
 
 The calculation engine remains authoritative. This wrapper resolves an optional opaque
-calculation-job target through the trusted Worker boundary, then observes the engine's
+calculation-job context through the trusted Worker boundary, then observes the engine's
 exception boundary and writes only a fixed enum to GITHUB_OUTPUT.
 """
 
@@ -11,7 +11,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -70,22 +70,30 @@ class UserFailureCapture(logging.Handler):
             self.exceptions.append(exc)
 
 
-def resolve_target_user(
-    api_client: CloudflareClient,
+def resolve_target_context(
+    api_client: Optional[CloudflareClient],
     *,
     calculation_job_id: str = "",
     legacy_target_user_id: str = "",
-) -> str:
-    """Resolve an opaque job target; job identity always wins over legacy targeting."""
+    requested_benchmark: str = "",
+) -> Tuple[str, str]:
+    """Resolve trusted job owner+benchmark; opaque job context wins over legacy inputs."""
     job_id = str(calculation_job_id or "").strip()
+    requested = str(requested_benchmark or "").strip().upper()
     if job_id:
-        return api_client.resolve_calculation_job_target(job_id)
-    return str(legacy_target_user_id or "").strip()
+        if api_client is None:
+            raise CloudflareAPIError("calculation job context client is unavailable")
+        target_user_id, durable_benchmark = api_client.resolve_calculation_job_context(job_id)
+        if requested and requested != durable_benchmark:
+            raise CloudflareAPIError("calculation job benchmark mismatch")
+        return target_user_id, durable_benchmark
+    return str(legacy_target_user_id or "").strip(), requested
 
 
-def configure_target_user_from_environment() -> str:
-    """Resolve hosted opaque targeting while preserving local legacy tooling only."""
+def configure_target_context_from_environment() -> Tuple[str, str]:
+    """Resolve hosted opaque context while preserving only non-hosted legacy tooling."""
     calculation_job_id = os.environ.get("CALCULATION_JOB_ID", "").strip()
+    requested_benchmark = os.environ.get("CUSTOM_BENCHMARK", "").strip()
     is_github_actions = os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true"
     legacy_target_user_id = (
         ""
@@ -93,15 +101,20 @@ def configure_target_user_from_environment() -> str:
         else os.environ.get("TARGET_USER_ID", "").strip()
     )
     client = CloudflareClient() if calculation_job_id else None
-    target_user_id = resolve_target_user(
+    target_user_id, benchmark = resolve_target_context(
         client,
         calculation_job_id=calculation_job_id,
         legacy_target_user_id=legacy_target_user_id,
+        requested_benchmark=requested_benchmark,
     )
-    # Keep main.py unchanged. Hosted runs are either resolved by opaque job id or
-    # explicitly all-user; only non-hosted local tooling may retain legacy targeting.
+
+    # Keep main.py unchanged. Hosted user-triggered runs derive both tenant and
+    # benchmark from the durable calculation job. Scheduled hosted runs remain
+    # explicit all-user runs; only non-hosted local tooling may retain legacy targeting.
     os.environ["TARGET_USER_ID"] = target_user_id
-    return target_user_id
+    if benchmark:
+        os.environ["CUSTOM_BENCHMARK"] = benchmark
+    return target_user_id, benchmark
 
 
 def classify_failure(exc: Exception, *, per_user: bool = False) -> str:
@@ -170,7 +183,7 @@ def main() -> int:
     main_logger.addHandler(capture)
 
     try:
-        configure_target_user_from_environment()
+        configure_target_context_from_environment()
         runner.run_update()
     except Exception as exc:
         user_code = collapse_user_failure_codes(capture.exceptions)
