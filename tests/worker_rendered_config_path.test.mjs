@@ -8,9 +8,10 @@ const EXACT_SHA = "3f5f3d385bbfe0137d17b1e681ece2e963c6c0c0";
 const UNVERIFIED_D1_NAME = "production-render-test";
 const TEST_OUTPUT = resolve(".wrangler/pr05-rendered-path-test.toml");
 
-test("rendered Wrangler config preserves deployment entry and migration paths without inventing D1 authority", async () => {
+test("rendered Wrangler path checks respect the tracked production D1 authority state", async () => {
   await rm(TEST_OUTPUT, { force: true });
   try {
+    const contract = JSON.parse(await readFile("config/deployment-environments.json", "utf8"));
     const render = spawnSync(process.execPath, ["tools/render_wrangler_config.mjs"], {
       cwd: process.cwd(),
       encoding: "utf8",
@@ -22,6 +23,18 @@ test("rendered Wrangler config preserves deployment entry and migration paths wi
         WRANGLER_OUTPUT: TEST_OUTPUT,
       },
     });
+
+    if (contract.production.d1_identity_status === "verified") {
+      assert.notEqual(render.status, 0);
+      assert.match(render.stderr, /does not match reviewed authority/);
+
+      const template = await readFile("wrangler.toml", "utf8");
+      assert.match(template, /^main = "worker-entry\.js"$/m);
+      assert.match(template, /^migrations_dir = "migrations"$/m);
+      return;
+    }
+
+    assert.equal(contract.production.d1_identity_status, "unverified");
     assert.equal(render.status, 0, render.stderr);
     assert.match(render.stdout, /Production D1 authority status: unverified/);
 
