@@ -6,18 +6,23 @@ Last updated: **2026-08-10**
 
 ---
 
-## 1. Current Remote Baseline
+## 1. Current Stable Repository State
 
 Repository: `chihung1024/sheet-trading-journal`
 
-Protected `main` at start of the current hygiene batch:
+Latest fully verified Gate-E A0 implementation merge:
 
-`ca7c8649664b12c9bd4dda530c3b072354767ce8`
+`b03fed2d0d26807d7d617d51e6ed9f0aab3767a9`
 
-That SHA is PR #175's merge and has:
+Evidence:
 
-- CI #566 / run `31360140807`: PASS;
-- Pages deployment on the same SHA: PASS.
+- PR #176 — repository governance/docs/actions hygiene: **MERGED**;
+- exact reviewed PR head: `df99da95d6a80f099d33e5cfcf2a7d340bad785b`;
+- exact-head CI #567 / run `31361469797`: **PASS**;
+- V3 Same-AI Independent Review: **PASS — NO BLOCKER**;
+- exact-head merge: `b03fed2d0d26807d7d617d51e6ed9f0aab3767a9`;
+- post-main CI #568 / run `31361899913`: **PASS**;
+- post-hygiene recovery: `backup-post-docs-actions-hygiene-b03fed2`.
 
 Runtime contract remains:
 
@@ -25,140 +30,88 @@ Runtime contract remains:
 - API `2.60`;
 - D1 Schema `2`.
 
-Important distinction:
+Important:
 
-> repository/main state is not production Worker deployment state.
+> Repository merge state is not production Worker deployment state.
 
-Canonical `Deploy Worker` still has no runs. E1a-A compatibility is therefore **not yet production-activated through the canonical workflow**.
+Canonical `Deploy Worker` has still never run. E1a-A compatibility is therefore **not yet production-activated/verified**.
 
 ---
 
-## 2. Current Phase / Batch
+## 2. Current Phase
 
 ### Gate E
 
 - E0 architecture re-baseline: `CLOSED`.
 - E1a privacy remediation: `ACTIVE`.
-- E1a-A compatibility code: `MERGED`, production activation still pending.
-- E1a-B email-free cutover: `BLOCKED` until E1a-A production activation/verification closes.
+- E1a-A0 repository/docs/actions stabilization: `CLOSED / POST-MAIN VERIFIED`.
+- **E1a-A1 Production Identity Evidence: ACTIVE — CURRENT PRIMARY BATCH.**
+- E1a-A2 production D1 identity pinning: `PLANNED`, blocked on A1 PASS artifact.
+- E1a-A3 exact-runtime evidence: `PLANNED`, blocked on A2 runtime SHA `R` and Pages propagation.
+- E1a-A4 activation evidence/authority: `PLANNED`, blocked on A3.
+- E1a-A5 canonical Worker deploy: `BLOCKED`, requires A2/A3/A4.
+- E1a-A6 compatibility/live verification: `BLOCKED`, requires A5.
+- E1a-A7 closeout: `BLOCKED`, requires A6.
+- E1a-B email-free privacy cutover: `BLOCKED`, requires A7.
 - E1b/E1c/E1d: `PLANNED`.
 - Schema 3 / E2: `DEFERRED` until E1 + E2-pre conditions.
 
-### Primary Active Batch
+Operational authority:
 
-**Repository Governance / Docs / Actions Hygiene — R2**
+`docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md`
 
-Objective:
+Canonical deployment runbook:
 
-1. restore the complete V3 governance constitution after PR #175 accidentally replaced it with only the Final Patch;
-2. make current-facing docs agree with remote/machine truth;
-3. remove only proven obsolete/no-value root documents;
-4. keep historical audit/evidence that still has forensic or contract value;
-5. verify the repository's actual Actions inventory is minimal and machine-enforced;
-6. close/supersede duplicate documentation PR #174 after equivalent current content is present;
-7. return immediately to Gate E / E1a-A1.
-
-Working branch:
-
-`chore-repo-docs-actions-hygiene`
-
-Pre-batch recovery:
-
-`backup-pre-docs-actions-hygiene-ca7c864`
+`docs/DEPLOYMENT.md`
 
 ---
 
-## 3. Root Cause — PR #175 Governance Replacement Incident
+## 3. Governance Baseline
 
-### Symptom
+`AI_PROJECT_PLAYBOOK.md` V3.0 is restored as the complete locked governance constitution.
 
-`AI_PROJECT_PLAYBOOK.md` on protected main contained only the V3 Final Hardening patch instead of the complete V3 constitution.
+Status:
 
-### Failure point
+```text
+GOVERNANCE BASELINE LOCKED
+Governance Architecture: FROZEN
+```
 
-PR #175 replaced the whole file rather than integrating the Final Patch into the complete V3 document.
+The PR #175 whole-file replacement incident is closed. `tests/test_repository_governance.py` now guards against replacing the full V3 constitution with a small amendment-only document and also protects current documentation authority/deletion hygiene.
 
-### Evidence
-
-PR #175 changed only `AI_PROJECT_PLAYBOOK.md` but with approximately `+160 / -2563`, reducing the file to a small amendment-only document.
-
-### Root cause
-
-A long governance document was edited as a complete-file replacement without a structural completeness regression guard.
-
-### Impact
-
-- production runtime/data were not changed;
-- CI remained green because existing tests did not validate governance-document completeness;
-- future AI sessions could lose core governance rules and make incorrect review/risk decisions.
-
-### Corrective action
-
-- restore complete V3 + all approved Final Hardening rules;
-- add `tests/test_repository_governance.py` to assert durable V3 semantic anchors and minimum completeness;
-- use exact diff/structural review for future long-file governance changes.
+Do not reopen governance architecture without a documented V3 Reopen Condition plus evidence.
 
 ---
 
-## 4. Current Hygiene Decisions
+## 4. Documentation / Actions Hygiene Closeout
 
-### NOW
+Completed through PR #176:
 
-- restore complete `AI_PROJECT_PLAYBOOK.md` V3.0 governance baseline;
-- add governance completeness regression test;
-- add `docs/README.md` source-of-truth map;
-- make `docs/DEPLOYMENT.md` current and fail closed;
-- add `docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md` as E1a operational authority;
-- reclassify `docs/governance/V5_CURRENT_HANDOFF.md` as historical D3D closeout, not current handoff;
-- correct stale B1 acceptance status without inventing live production evidence;
-- remove root `AUDIT_TRADING_CALC_REVIEW.md` and `TRADING_CALC_OPTIMIZATION_PLAN.md` because later Gate-C/Gate-D/Post-D records supersede them and no current repository reference depends on them;
-- keep current workflow files unchanged.
+- added `docs/README.md` source-of-truth map;
+- made `docs/DEPLOYMENT.md` current/fail-closed;
+- added current Gate-E E1a activation plan;
+- made `V5_CURRENT_HANDOFF.md` explicitly historical D3D rationale;
+- corrected D3D-B1 acceptance: collector merged/verified, live activation evidence still pending;
+- removed obsolete root `AUDIT_TRADING_CALC_REVIEW.md`;
+- removed obsolete root `TRADING_CALC_OPTIMIZATION_PLAN.md`;
+- retained audit/evidence/acceptance records with unique forensic value;
+- retained `DEPLOYMENT_FINAL.md` as an explicit tombstone warning against obsolete manual deployment;
+- retained legacy Worker archive because current manifest/tests distinguish it from the canonical path;
+- closed superseded PR #174 without merge.
 
-### KEEP
+Current repository workflow inventory remains exactly seven tracked workflows and is fail-closed by `docs/governance/github-actions-pins.json` + `tests/test_workflow_supply_chain.py`.
 
-- `DEPLOYMENT_FINAL.md`: explicit tombstone warning against obsolete manual Worker deployment; retained because its warning and historical references still prevent misuse.
-- `docs/audits/**`: independent audit archive.
-- `docs/governance/evidence/**`: machine/append-only evidence.
-- Gate-C/Gate-D engineering audits/closeouts: still explain financial-integrity/reproducibility contracts.
-- historical acceptance documents with unique traceability.
-- `cloudflare worker/`: legacy source archive explicitly distinguished from the canonical deployment source by manifest/tests.
+Historical deleted-workflow registrations may still appear in the GitHub Actions UI. They are not current repository workflow files. Do not recreate them merely for UI cleanup.
 
-### REJECT
+Detailed closeout:
 
-- deleting audit/evidence merely to reduce file count;
-- recreating deleted one-off Actions workflows to make the Actions UI look cleaner;
-- deleting any of the current seven tracked workflows;
-- unrelated runtime/financial/frontend refactors inside this hygiene batch.
+`docs/engineering/REPOSITORY_DOCS_ACTIONS_HYGIENE_2026-08-10.md`
 
 ---
 
-## 5. GitHub Actions Hygiene
+## 5. E1a-A Repository Evidence
 
-Current repository workflow inventory is already intentionally minimal and fail-closed.
-
-Tracked workflows:
-
-1. `.github/workflows/ci.yml`
-2. `.github/workflows/deploy-worker-staging.yml`
-3. `.github/workflows/deploy-worker.yml`
-4. `.github/workflows/production-contract-audit.yml`
-5. `.github/workflows/production-identity-evidence.yml`
-6. `.github/workflows/staging-browser-smoke.yml`
-7. `.github/workflows/update.yml`
-
-`docs/governance/github-actions-pins.json` enumerates exactly these workflows and `tests/test_workflow_supply_chain.py` fails if tracked inventory drifts or action pins/permissions weaken.
-
-GitHub Actions API still exposes historical workflow registrations for many deleted one-off PR/release workflows. Their source files are absent from current `main`, so they are not current repository workflows. The available GitHub connector does not expose a disable/delete-workflow mutation; do not pretend those UI registrations were removed.
-
----
-
-## 6. E1a-A Repository Evidence
-
-Compatibility-first PR:
-
-`#173 — Gate E E1a-A: pre-cutover Worker opaque-target compatibility`
-
-Evidence:
+Compatibility-first PR #173:
 
 - final head `ca3fa1f86d21fe660226588063ada98d749d01b6`;
 - final-head CI #559: PASS;
@@ -166,112 +119,110 @@ Evidence:
 - post-main CI #560: PASS;
 - recovery `backup-post-gate-e-e1a-a-c312408`;
 - temporary system-only opaque-job compatibility exists in `worker-entry.js`;
-- old normal email-bearing dispatch/workflow remains intentionally unchanged until E1a-B.
+- normal email-bearing dispatch/workflow remains intentionally unchanged until E1a-B.
 
-Production state:
+Current production activation blockers are deliberate:
 
-- canonical Worker deployment for E1a-A: `NOT DEPLOYED / NOT VERIFIED`;
-- production D1 identity: `unverified`;
-- activation authority: `blocked`;
-- therefore direct Worker deploy remains prohibited.
+- `config/deployment-environments.json`: production D1 identity `unverified`, name/fingerprint null;
+- `config/production-activation-authority.json`: `blocked`, no authorized runtime SHA;
+- canonical Deploy Worker: no run.
+
+Therefore direct Worker deploy remains prohibited.
 
 ---
 
-## 7. E1a Production Activation Sequence
+## 6. Current Primary Batch — E1a-A1 Production Identity Evidence
 
-Operational authority:
+### Objective
 
-`docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md`
+Obtain fresh authoritative, reviewer-protected, GET-only production identity/config/live evidence against the **exact current protected-main HEAD** before any production identity pinning or Worker deployment.
+
+### Workflow
+
+`.github/workflows/production-identity-evidence.yml`
+
+Required input:
+
+`source_sha = <exact current protected-main HEAD at dispatch>`
+
+The workflow itself fails closed unless that SHA still equals current protected-main HEAD.
+
+### Required PASS observations
+
+- authoritative production D1 database name;
+- SHA-256 fingerprint of production D1 UUID, never raw UUID in artifact;
+- all traffic-bearing Worker versions bind canonical `DB` to the same authoritative D1;
+- explicit Pages production branch/environment/API/OAuth values;
+- canonical Pages deployment equals the audited source SHA and is successful;
+- live production frontend HTTP 200;
+- response-header and meta CSP allow production API and reject staging API.
+
+### A1 failure classification
+
+- canonical Pages deployment has not yet propagated to exact source SHA → readiness/propagation issue; wait for successful current-main Pages deployment, then rerun;
+- explicit Pages env or CSP mismatch → narrow production configuration RCA/remediation; no deployment;
+- production D1 / active Worker binding mismatch → **CRITICAL STOP**; do not pin identity or deploy;
+- credential/permission failure → control-plane credential RCA; do not weaken evidence;
+- malformed/missing artifact → evidence-pipeline RCA;
+- never guess production D1 identity from staging, repository names, secret names, or old evidence.
+
+A1 is GET-only, so a failed evidence run requires no production rollback. Preserve the failed run/artifact as RCA evidence.
+
+---
+
+## 7. Remaining E1a Sequence
 
 Required order:
 
-1. **A0** — current repository docs/governance/actions stabilization;
-2. **A1** — fresh reviewer-protected GET-only Production Identity Evidence on exact current protected-main HEAD;
-3. **A2** — evidence-backed production D1 identity pinning; produce runtime SHA `R`;
-4. **A3** — exact-runtime evidence rerun on `R` after Pages propagation;
-5. **A4** — controlled activation evidence + latest-main authority explicitly authorizing `R`; produce authority SHA `A`;
-6. **A5** — canonical `Deploy Worker` with `source_sha = R`;
-7. **A6** — generic deployment evidence + read-only E1a-A 404-vs-403 compatibility proof + legacy path usability;
-8. **A7** — closeout/recovery/handoff;
-9. only then **E1a-B** email-free privacy cutover.
+1. **A1** — fresh Production Identity Evidence on exact current main;
+2. **A2** — evidence-backed production D1 identity pinning; produce immutable runtime SHA `R`;
+3. **A3** — exact-runtime Production Identity Evidence on `R` after Pages propagation;
+4. **A4** — controlled activation evidence + latest-main authority explicitly authorizing `R`; produce authority SHA `A`;
+5. **A5** — canonical `Deploy Worker` with `source_sha = R`;
+6. **A6** — generic deployment verification + read-only 404-vs-403 E1a-A capability proof + legacy user path usability;
+7. **A7** — recovery/handoff closeout;
+8. only then **E1a-B** email-free privacy cutover.
 
-Two-SHA model:
+Two-SHA contract:
 
-- `R` = immutable runtime source;
-- `A` = later protected-main control-plane authority authorizing `R`;
+- `R` = immutable runtime source with verified runtime prerequisites;
+- `A` = later protected-main control-plane authority explicitly authorizing `R`;
 - `A` may be newer than `R`.
 
 ---
 
-## 8. Locked Technical Findings for Later Batches
+## 8. Locked Later Findings
 
 ### E1a-B
 
-Durable calculation-job benchmark must be authoritative, or dispatch benchmark must equality-check fail closed. Do not allow durable job metadata and dispatch inputs to silently disagree.
+Durable job benchmark must be authoritative, or dispatch benchmark must equality-check fail closed. No silent durable-job/dispatch benchmark divergence.
 
 ### E1b
 
-Current market-data logic can overwrite the last historical EOD row with a realtime quote without proving the quote date equals that row. Planned fix remains immutable EOD history plus explicit separate realtime valuation/provenance.
+Do not overwrite an immutable historical EOD row with a realtime quote without date equivalence. Planned direction: immutable EOD history + separate explicit realtime valuation/provenance.
 
 ### E1c
 
-Current server idempotency/frontend pending semantics use a fixed age window while supported workflow duration/queueing can exceed it. Planned fix is lifecycle-based queued/running active semantics, not merely increasing a TTL.
+Do not solve active-job lifecycle correctness by merely increasing a fixed TTL. Planned direction: queued/running lifecycle semantics remain active independently of age, with explicit terminal/recovery behavior.
 
 ### E1d
 
-Record cursor signing currently shares `API_SECRET` with system API authentication. Later batch should split the secret/rotation boundary.
+Separate cursor-signing secret from system API authentication secret/rotation boundary.
 
 ---
 
-## 9. Current Governance
+## 9. Next Exact Action
 
-`AI_PROJECT_PLAYBOOK.md` V3.0 is the intended locked governance baseline after this batch.
+Before any production action, re-read current protected-main SHA and confirm its Pages deployment has propagated successfully.
 
-Key active rules:
+Then manually dispatch:
 
-- risk-proportional R0/R1/R2/R3 governance;
-- docs risk follows the decision/behavior the document controls;
-- R2 requires exact-head CI, recovery, independent review, and handoff;
-- independent review means fresh evidence + competent independent reasoning, not a different GitHub identity;
-- same-AI review requires role separation, fresh evidence reconstruction, adversarial pass, and exact-head discipline;
-- governance is frozen unless a documented reopen condition with evidence exists.
+> **Actions → Production Identity Evidence → Run workflow**
 
-This hygiene batch is R2 because it changes governance/current operational authority even though it does not change production runtime.
+with:
 
----
+`source_sha = <that exact protected-main SHA>`
 
-## 10. Verification Plan for Current Batch
+Approve the `production` Environment reviewer gate when prompted.
 
-Before merge:
-
-- compare exact final branch to the current protected-main base;
-- confirm no runtime/config/workflow/schema files changed;
-- confirm only intended docs/test deletions/additions/updates;
-- run required CI on exact PR head;
-- verify governance completeness test passes;
-- verify existing workflow-supply-chain inventory test passes;
-- perform explicit Same-AI Independent Review Mode from fresh primary evidence unless another competent reviewer is available;
-- findings only: `BLOCKER / FOLLOW-UP / BACKLOG / REJECT`;
-- material review fix => new exact head + re-validation/re-review;
-- exact-head merge only after `BLOCKER = 0`.
-
-After merge:
-
-- verify post-main CI;
-- create post-hygiene recovery;
-- ensure current handoff remains accurate;
-- begin A1.
-
-No production smoke is applicable to this docs/governance hygiene batch.
-
----
-
-## 11. Next Exact Action
-
-After the current hygiene batch is `CLOSED`:
-
-> Manually dispatch **Production Identity Evidence** with `source_sha = <exact then-current protected-main HEAD>`.
-
-This is A1 and is GET-only/reviewer-protected.
-
-Do **not** dispatch `Deploy Worker` before A2/A3/A4 complete.
+Do **not** run `Deploy Worker` yet.
