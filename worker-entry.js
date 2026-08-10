@@ -1,10 +1,6 @@
 import canonicalWorker, { __test as canonicalTest } from './worker.js';
 
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
-const COMPAT_JOB_PATH_RE = /^\/api\/calculation-jobs\/(job_[A-Za-z0-9_-]{22})$/;
-const COMPAT_JOB_STATUSES = new Set(['queued', 'running', 'succeeded', 'failed']);
-const COMPAT_SYMBOL_RE = /^[A-Z0-9.^=\-]{1,24}$/;
-const COMPAT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default {
   async fetch(request, env = {}, ctx) {
@@ -15,9 +11,6 @@ export default {
         return originForbiddenResponse();
       }
     }
-
-    const compatibilityResponse = await handleOpaqueTargetCompatibility(request, env);
-    if (compatibilityResponse) return compatibilityResponse;
 
     return canonicalWorker.fetch(request, env, ctx);
   },
@@ -38,92 +31,7 @@ export const __test = Object.freeze({
   },
   getExplicitOriginPolicy,
   parseConfiguredOrigin,
-  handleOpaqueTargetCompatibility,
 });
-
-async function handleOpaqueTargetCompatibility(request, env) {
-  if (request.method !== 'GET') return null;
-
-  const match = new URL(request.url).pathname.match(COMPAT_JOB_PATH_RE);
-  if (!match) return null;
-
-  const suppliedKey = request.headers.get('X-API-KEY');
-  if (
-    suppliedKey === null
-    || typeof env.API_SECRET !== 'string'
-    || !env.API_SECRET
-    || !canonicalTest.constantTimeEqual(suppliedKey, env.API_SECRET)
-  ) {
-    return null;
-  }
-
-  try {
-    if (!env.DB || typeof env.DB.prepare !== 'function') {
-      throw new Error('D1BindingUnavailable');
-    }
-
-    const publicId = canonicalTest.validateCalculationJobId(match[1]);
-    const row = await env.DB.prepare(`
-      SELECT public_id, user_id, status, benchmark
-      FROM calculation_jobs
-      WHERE public_id = ?
-      LIMIT 1
-    `).bind(publicId).first();
-
-    if (!row) {
-      return compatibilityJsonResponse({
-        success: false,
-        error: 'Calculation job not found',
-        error_meta: { code: 'NOT_FOUND' },
-      }, 404);
-    }
-
-    const owner = String(row.user_id || '').trim().toLowerCase();
-    const status = String(row.status || '').trim();
-    const benchmark = String(row.benchmark || '').trim().toUpperCase();
-    if (
-      row.public_id !== publicId
-      || !COMPAT_EMAIL_RE.test(owner)
-      || !COMPAT_JOB_STATUSES.has(status)
-      || !COMPAT_SYMBOL_RE.test(benchmark)
-    ) {
-      throw new Error('InvalidCalculationJobRow');
-    }
-
-    return compatibilityJsonResponse({
-      success: true,
-      job: {
-        id: publicId,
-        target_user_id: owner,
-        benchmark,
-        status,
-      },
-    });
-  } catch (error) {
-    console.error('Opaque calculation target compatibility lookup failed', safeCompatibilityErrorName(error));
-    return compatibilityJsonResponse({
-      success: false,
-      error: 'Calculation job is unavailable',
-      error_meta: { code: 'DATABASE_ERROR' },
-    }, 500);
-  }
-}
-
-function compatibilityJsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'no-referrer',
-    },
-  });
-}
-
-function safeCompatibilityErrorName(error) {
-  return error instanceof Error ? error.name : 'UnknownError';
-}
 
 function getExplicitOriginPolicy(env) {
   if (!hasExplicitAllowedOrigins(env)) {
