@@ -1,119 +1,294 @@
 # Deployment
 
-This document is the current deployment navigation point for the repository.
-Historical runbooks and acceptance records are retained only for forensic context and
-must not override current machine-readable contracts or current workflows.
+This is the repository's **canonical deployment navigation and production-activation runbook**.
 
-## Runtime identity
+Historical release notes, acceptance records, audit files, and `DEPLOYMENT_FINAL.md` are context only. They must not override current protected-main code, machine-readable contracts, current workflows, tests, or `to_do_update_list.md`.
 
-The canonical runtime identity is defined by `worker-manifest.json`:
+Current Gate-E rollout authority:
 
-- deployment entry: `worker-entry.js`
-- canonical Worker source: `worker.js`
-- Worker release: `4.07`
-- API version: `2.60`
-- D1 schema version: `2`
+- `to_do_update_list.md`
+- `docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md`
 
-If these values change, follow the current manifest and code rather than copying version
-numbers from old audit, acceptance, or recovery documents.
+---
 
-## Production state
+## 1. Runtime identity
 
-Production activation is intentionally fail-closed. The current operational handoff is:
+Use `worker-manifest.json` and current source as authority. Current contract remains:
 
-`docs/governance/V5_CURRENT_HANDOFF.md`
+- service: `journal-backend`;
+- runtime service metadata: `trading-journal-api`;
+- deployment entry: `worker-entry.js`;
+- canonical Worker source: `worker.js`;
+- Worker release: `4.07`;
+- API version: `2.60`;
+- D1 schema: `2`;
+- D1 binding: `DB`.
 
-Do not deploy production merely to clear a deferred governance status. Before any future
-production activation, re-read the current protected `main`, the current deployment
-contracts, GitHub Environment controls, and fresh Cloudflare identity evidence.
+Do not copy version or identity values from old audit/release documents when current code differs.
 
-Schema 3 and later remain blocked until the machine Recovery Evidence Gate has genuine
-structured recovery/export/restore evidence and explicitly passes.
+---
 
-## Production Worker deployment
+## 2. Current production-activation state
 
-Use the GitHub Actions workflow:
+E1a-A compatibility code entered protected `main` at:
+
+`c312408fec7a27a7b713ad5da79bf93bce62481f`
+
+with final-head CI #559, post-main CI #560, and recovery:
+
+`backup-post-gate-e-e1a-a-c312408`
+
+Later documentation/governance descendants may move protected `main`; that does **not** mean the Worker was deployed.
+
+Current control-plane facts must be rechecked before execution. At the 2026-08-10 re-baseline:
+
+- canonical `Deploy Worker` has never run;
+- no reviewer-protected live `workflow_dispatch` Production Identity Evidence run has been performed for the current activation exercise;
+- `config/deployment-environments.json` still has production D1 identity `unverified` with null reviewed name/fingerprint;
+- `config/production-activation-authority.json` remains `blocked` with no authorized runtime SHA.
+
+Therefore:
+
+> **Do not dispatch `Deploy Worker` yet.**
+
+The fail-closed state is intentional and is not an application outage.
+
+---
+
+## 3. Source-of-truth hierarchy
+
+For production deployment use, in order:
+
+1. current GitHub remote state and protected-main SHA;
+2. `worker-manifest.json`, current runtime source, `wrangler.toml`, and `config/*.json` machine contracts;
+3. current `.github/workflows/*.yml`, verifier tools, and tests;
+4. `to_do_update_list.md`;
+5. `docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md`;
+6. this runbook;
+7. D3D acceptance/audit/evidence for historical rationale;
+8. archived/tombstoned material for forensic comparison only.
+
+See `docs/README.md` for repository-wide document authority.
+
+---
+
+## 4. Two-SHA production activation model
+
+Production activation intentionally separates immutable runtime source from the latest protected-main control plane.
+
+- **R — runtime source SHA:** exact deployable commit containing E1a-A compatibility and verified production runtime prerequisites.
+- **A — activation-authority SHA:** later protected-main commit containing reviewed evidence and explicitly authorizing `R`.
+
+Expected final shape:
+
+```text
+protected main -> A
+                 |
+                 +-- activation authority authorizes R
+
+R (ancestor/reachable from main)
+|
++-- runtime prerequisites pass
++-- Deploy Worker input source_sha = R
+```
+
+`A` may be newer than `R`. Do not collapse this into “deploy current HEAD”.
+
+---
+
+## 5. Canonical production Worker workflow
+
+Workflow:
 
 `.github/workflows/deploy-worker.yml`
 
-The workflow accepts an exact lowercase 40-character source SHA reachable from `main`.
-Its current sequence includes:
+Input:
 
-1. preflight Recovery Evidence Gate and production-runtime prerequisite checks;
-2. production activation-authority verification against protected `main`;
-3. the reviewer-protected `production` Environment;
-4. re-verification after approval;
-5. protected Wrangler configuration rendering;
-6. exact production D1 control-plane identity verification;
-7. allowed D1 migration execution;
-8. strict Wrangler deployment through `worker-entry.js`;
-9. propagated source/service/release/API/schema verification;
-10. post-deploy public auth/CORS contract verification.
+`source_sha`
 
-Routine Cloudflare dashboard Quick Edit or source copy/paste is not a supported production
-deployment path.
+It must be an exact lowercase 40-character Git SHA. The stale input name `expected_main_sha` must not be used.
 
-Production credentials, API secrets, and authoritative D1 identifiers must remain in the
-protected control plane; do not commit them into documentation.
+The requested runtime source must:
 
-## Production read-only evidence
+- exist and be exact;
+- remain reachable from protected `main`;
+- pass Recovery Evidence Gate policy;
+- contain verified production D1 runtime identity;
+- be explicitly authorized by the latest protected-main activation authority.
 
-When preparing for a future production activation, use these manual workflows as needed:
+The workflow performs non-secret preflight **before** the reviewer-protected production Environment, then rechecks authority/source near mutation boundaries, renders reviewed Wrangler configuration, verifies live D1 identity, applies only allowed migration state, deploys `worker-entry.js`, and verifies propagated source/version/health/auth/CORS evidence.
 
-- `.github/workflows/production-identity-evidence.yml`
-- `.github/workflows/production-contract-audit.yml`
+Do not use routine Cloudflare dashboard Quick Edit or source copy/paste for production.
 
-They are manual production operations. Their unit-level implementations are also covered by
-the repository's normal `test:worker` CI suite, so they do not run a duplicate unit workflow
-for every pull request.
+---
 
-## Staging
+## 6. Gate E / E1a-A activation sequence
 
-Use:
+### A1 — Authoritative read-only production identity evidence
 
-- `.github/workflows/deploy-worker-staging.yml`
-- `docs/STAGING_WORKER_CONTRACT.md`
-- `docs/STAGING_FRONTEND_CONTRACT.md`
+Run:
 
-Current fixed staging identities are defined in `config/deployment-environments.json`:
+`.github/workflows/production-identity-evidence.yml`
 
-- Pages branch: `staging`
-- frontend origin: `https://staging.sheet-trading-journal.pages.dev`
-- API origin: `https://journal-backend-staging.chired.workers.dev`
-- D1 database name: `trading-journal-staging`
+with:
 
-Arbitrary Cloudflare Pages preview branches are intentionally disabled. There is no generic
-`.env.preview.example`; non-production deployment must use the fixed staging contract.
+`source_sha = <exact protected-main HEAD at dispatch time>`
 
-## Local frontend verification
+The workflow requires exact-current-main, is protected by the `production` Environment, performs GET-only Cloudflare control-plane/live frontend observations, and produces sanitized evidence.
 
-`.env.example` is a production-value example, not a staging or preview file. Ordinary local
-and CI builds may run without deployment variables according to the current frontend
-environment policy.
+Required observations include:
 
-Typical verification commands:
+- authoritative production D1 database name;
+- SHA-256 fingerprint of its UUID, not the raw UUID in the artifact;
+- every traffic-bearing Worker version binds canonical `DB` to that D1;
+- Pages production branch and explicit production environment values;
+- canonical Pages deployment equals the audited source SHA and is successful;
+- live production frontend is HTTP 200;
+- header/meta CSP allow the production API and reject the staging API.
 
-```bash
-npm ci --no-audit --no-fund
-npm run check
-```
+If any check fails, stop and perform RCA. Never guess production D1 identity from staging, repository names, or secret names.
 
-For interactive local frontend development:
+### A2 — Pin production runtime D1 identity
 
-```bash
-npm run dev
-```
+Only from a successful reviewed A1 artifact, create a protected PR updating the production identity fields in:
 
-## Source-of-truth order
+`config/deployment-environments.json`
 
-When documents disagree, use current sources in this order:
+Required result:
 
-1. current protected `main`;
-2. `worker-manifest.json`, `config/deployment-environments.json`, `wrangler.toml`, and the
-   current runtime source;
-3. current deployment workflows, policy tools, and tests;
-4. `docs/governance/V5_CURRENT_HANDOFF.md` for intentional activation blockers;
-5. historical acceptance, audit, recovery, and tombstone documents only for forensic context.
+- `d1_identity_status = "verified"`;
+- authoritative production database name;
+- SHA-256 fingerprint of authoritative D1 UUID.
 
-The root `DEPLOYMENT_FINAL.md` is an archived tombstone and is not a current deployment
-runbook.
+Never commit raw D1 UUID/account/token/API secret.
+
+The verified protected merge becomes candidate runtime source **R**.
+
+### A3 — Re-audit exact runtime R
+
+After the Pages production deployment for `R` is successful and propagated, run Production Identity Evidence again with:
+
+`source_sha = R`
+
+This binds activation evidence to the exact runtime source that may be deployed.
+
+### A4 — Authorize R from latest protected main
+
+Create controlled machine-readable evidence under:
+
+`docs/governance/evidence/production-activation/`
+
+Required checks:
+
+- `production_frontend_explicit_environment`;
+- `production_frontend_live_contract`;
+- `production_d1_identity`.
+
+Each file must be bound to `source_sha = R`, be passed, and reference the reviewed sanitized A3 artifact/run in the schema required by `tools/verify_production_activation_authority.mjs`.
+
+Then update:
+
+`config/production-activation-authority.json`
+
+so latest protected main:
+
+- has `status = "ready"`;
+- explicitly authorizes `R`;
+- marks all required checks passed;
+- references only controlled evidence;
+- has a reviewed approval timestamp consistent with evidence observation.
+
+The resulting protected-main authority commit is **A**.
+
+### A5 — Deploy R
+
+Only after A2/A3/A4 pass, run:
+
+`Deploy Worker`
+
+with:
+
+`source_sha = R`
+
+The workflow must consume runtime prerequisites from `R` and activation authority from latest protected main `A`.
+
+### A6 — Prove E1a-A compatibility is actually live
+
+Generic health/version success is necessary but insufficient.
+
+Before E1a-B, perform a reviewer-protected **read-only** trusted-system GET to a syntactically valid but intentionally nonexistent opaque `job_...` id.
+
+Expected discriminator:
+
+- E1a-A compatibility Worker: **404 NOT_FOUND**;
+- pre-E1a-A canonical system-principal behavior: **403 FORBIDDEN**.
+
+The request must not create/update/delete a production job and the response must not reveal tenant identity.
+
+Also confirm the legacy pre-cutover user calculation path remains usable; E1a-A intentionally did not change the normal email-bearing dispatch/workflow/runner path.
+
+### A7 — Closeout
+
+E1a-A is `CLOSED` only after repository evidence, post-main CI, `R`, activation evidence, authority `A`, successful deployment, exact deployed source/health/schema identity, compatibility-specific proof, legacy-path usability, recovery, and handoff are recorded.
+
+Only then activate E1a-B.
+
+---
+
+## 7. E1a-B cutover guard
+
+E1a-B must remain blocked until A7 closes.
+
+Its privacy objective is to remove tenant email from the normal public GitHub calculation dispatch and resolve ownership only through the trusted opaque-job boundary.
+
+The durable job's benchmark must be authoritative, or dispatched benchmark must be equality-validated fail closed. Never allow job metadata and dispatched benchmark to diverge silently.
+
+Do not merge the superseded prototype PR #172.
+
+---
+
+## 8. Current read-only/audit workflows
+
+### Production Identity Evidence
+
+`.github/workflows/production-identity-evidence.yml`
+
+Purpose: authoritative external identity/config discovery before activation. GET-only; no deploy or data mutation.
+
+### Production Contract Audit
+
+`.github/workflows/production-contract-audit.yml`
+
+Purpose: verify an exact deployed/main-reachable Worker source and production API contract. This does not replace the A1/A3 identity evidence requirement.
+
+### Staging Browser Smoke
+
+`.github/workflows/staging-browser-smoke.yml`
+
+Purpose: staging browser contract verification. Staging evidence is never production D1 authority.
+
+---
+
+## 9. Actions hygiene
+
+Current tracked workflow inventory is intentionally machine-enforced by:
+
+- `docs/governance/github-actions-pins.json`;
+- `tests/test_workflow_supply_chain.py`.
+
+GitHub may still show historical registrations for deleted one-off PR/release workflows. Their presence in the Actions UI does not make them current repository workflows. Do not recreate them. The repository's tracked workflow files are the authority.
+
+---
+
+## 10. Recovery / failure rule
+
+On production activation failure:
+
+1. stop further mutation;
+2. preserve logs/artifacts;
+3. classify failure and perform RCA;
+4. rollback/restore first for material production regression;
+5. create a new exact candidate when a material fix is required;
+6. re-run the applicable evidence/review gates.
+
+Never weaken runtime, identity, authority, schema, security, or recovery checks to make a deployment pass.
