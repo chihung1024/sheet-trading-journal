@@ -45,11 +45,15 @@ Last updated: **2026-08-10**
 
 ## Current Active Batch
 
-**E1a-A0 — production-activation documentation/state re-baseline**
+**E1a-A0 — production-activation documentation/state re-baseline — PR OPEN / FINAL-HEAD CI PENDING AFTER HANDOFF UPDATE**
 
 Working branch:
 
 `pr-gate-e-e1a-activation-docs-rebaseline`
+
+PR:
+
+**#174 — Gate E E1a-A0: rebaseline production activation docs**
 
 Pre-batch recovery:
 
@@ -255,7 +259,7 @@ This separation is intentional and must not be simplified back into “deploy cu
 |---|---|---|---|
 | E0 | Post-D architecture re-baseline | DONE | none |
 | E1a-A repo | Compatibility shim + tests + merge/post-main/recovery | DONE | none |
-| **E1a-A0** | Current docs/state re-baseline | **ACTIVE** | none |
+| **E1a-A0** | Current docs/state re-baseline | **ACTIVE — PR #174 / final-head CI pending** | none |
 | **E1a-A1** | Fresh GET-only production identity evidence | NEXT | none |
 | **E1a-A2** | Evidence-backed production D1 runtime identity pinning; produce runtime SHA `R` | BLOCKED on A1 PASS | none |
 | **E1a-A3** | Exact-runtime production identity re-audit on `R` | BLOCKED on A2 | none |
@@ -290,6 +294,18 @@ Input:
 
 This is GET-only and reviewer-protected. It must obtain authoritative Cloudflare D1/Worker/Pages/live-CSP evidence without production mutation.
 
+Before dispatch, ensure the Pages production deployment for that exact current-main SHA has propagated; otherwise the collector is expected to fail its exact canonical-deployment check and the result must not be mistaken for a D1 identity defect.
+
+If A1 fails, stop and classify before changing anything:
+
+- Pages source SHA not yet current -> deployment-propagation condition; revalidate after the existing Pages deployment reaches the exact audited SHA;
+- missing/incorrect explicit production Pages variables or live CSP -> separate narrowly scoped production-configuration remediation with fresh evidence afterward;
+- D1/active-Worker binding mismatch -> High Impact/Critical investigation; do not pin identity or deploy;
+- credential/permission failure -> control-plane credential RCA; do not weaken evidence requirements;
+- malformed/missing artifact -> evidence-pipeline RCA.
+
+No failed A1 may be converted into A2 by guessing production values.
+
 ## A2 — Runtime D1 identity pinning
 
 Only after A1 PASS:
@@ -322,6 +338,8 @@ Required check names:
 - `production_d1_identity`.
 
 Then update `config/production-activation-authority.json` to `ready`, authorize exact `R`, reference those evidence files, and protected-merge. The resulting latest main is activation control-plane SHA `A`.
+
+The A4 reviewer must compare the controlled evidence summaries back to the reviewed sanitized A3 artifact/run; satisfying the JSON schema alone is not sufficient evidence provenance.
 
 ## A5 — Deploy
 
@@ -579,8 +597,14 @@ Full intermediate Gate-D and historical D3D recovery refs remain in Git history/
 - deeper deployment review found runtime D1 identity still `unverified` and activation authority still `blocked`;
 - Production Identity Evidence live dispatch count remains 0;
 - Deploy Worker run count remains 0;
+- official Cloudflare API contracts were revalidated for D1 Get Database, Workers active deployments/version bindings and Pages project/canonical-deployment surfaces; no architecture correction was required;
 - operational plan created to reconnect Gate E with D3D fail-closed activation prerequisites;
-- current documentation branch is docs-only and performs no production action.
+- current documentation branch remains docs-only and performs no production action;
+- PR #174 opened from exact baseline with exactly six expected documentation files;
+- initial PR head `091f3eda243c02c8d204f4a3e18d1f84d3e986bf`;
+- CI #561 / run `31348700558`: **SUCCESS** across Python / Frontend / Worker-D1;
+- initial changed-file whitelist: **PASS — exactly six documentation files, no runtime/config/workflow/schema files**;
+- this handoff evidence update creates a new final PR head and therefore requires fresh final-head CI before merge review.
 
 ---
 
@@ -632,38 +656,42 @@ Before A0 can be marked DONE:
 - [x] recovery branch created from exact baseline;
 - [x] docs-only work branch created from exact baseline;
 - [x] deployment workflow/control-plane blockers revalidated against current source;
+- [x] Cloudflare external API assumptions revalidated against current official documentation;
 - [x] new E1a operational authority added;
-- [ ] all current-facing related docs aligned;
-- [ ] changed-file whitelist reviewed;
-- [ ] PR opened;
-- [ ] full required CI green on exact head;
-- [ ] independent review completed or explicitly pending;
-- [ ] no runtime/config/workflow/schema changes in A0;
-- [ ] merge only through normal protected-main process if review gate is satisfied;
+- [x] current-facing related docs aligned;
+- [x] initial changed-file whitelist reviewed — six documentation files only;
+- [x] PR #174 opened;
+- [x] initial full required CI #561 green on head `091f3eda...`;
+- [ ] fresh full CI green on the final head created by this handoff evidence update;
+- [ ] final changed-file whitelist/main-drift/review-thread review;
+- [ ] independent third-party review completed;
+- [x] no runtime/config/workflow/schema changes in A0;
+- [ ] merge only through normal protected-main process after all blockers above are satisfied;
 - [ ] post-main CI/recovery/handoff update after merge.
 
 ---
 
 # 18. Immediate Next Actions
 
-## NOW — finish E1a-A0 docs re-baseline
+## NOW — finish E1a-A0 review gates
 
-1. Align `docs/DEPLOYMENT.md` with the runtime `R` / authority `A` model and current blockers.
-2. Reclassify `docs/governance/V5_CURRENT_HANDOFF.md` as historical D3D handoff with the production-activation reopen condition now met by E1a-A.
-3. Close stale status in `docs/governance/PR_10D3D_B_PRODUCTION_IDENTITY_EVIDENCE_ACCEPTANCE.md` while preserving historical evidence.
-4. Add current execution pointers to `README.md`.
-5. Review exact docs-only diff, run CI, open/qualify PR.
+1. Wait only on machine state already triggered by this final handoff commit: fresh required CI on the exact new PR head.
+2. Re-check exact six-file whitelist and protected-main drift.
+3. Check PR reviews, review threads and comments.
+4. Obtain independent third-party review; classify findings BLOCKER / FOLLOW-UP / BACKLOG / REJECT.
+5. Merge only if CI + independent review + scope checks are satisfied.
+6. Verify post-main CI, create post-A0 recovery, then update current handoff.
 
 ## NEXT — E1a-A1 only
 
 After A0 is safely merged/current:
 
-1. re-read exact current protected main;
+1. re-read exact current protected main and ensure its Pages production deployment has propagated to that same SHA;
 2. manually dispatch `Production Identity Evidence` using that exact current-main `source_sha`;
 3. approve the reviewer-protected GET-only production evidence job;
 4. inspect sanitized artifact;
 5. if PASS, start a new A2 runtime-identity pinning branch;
-6. if FAIL, stop and RCA the failed evidence — do not bypass or guess values.
+6. if FAIL, classify/RCA the failed evidence before any remediation — do not bypass or guess values.
 
 ## Do not do yet
 
