@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { verifyProductionContract } from '../tools/verify_production_contract.mjs';
 
 const EXPECTED_SHA = '1234567890abcdef1234567890abcdef12345678';
@@ -148,4 +149,27 @@ test('fails closed when an allowed production origin is not authorized', async (
       /allowed CORS origin .* status=403/,
     );
   });
+});
+
+test('reviewer-protected production audit includes read-only E1a-A 404-vs-403 compatibility proof', async () => {
+  const workflow = await readFile('.github/workflows/production-contract-audit.yml', 'utf8');
+  const start = workflow.indexOf('      - name: Verify E1a-A opaque-job compatibility proof');
+  const end = workflow.indexOf('      - name: Upload sanitized audit evidence');
+  assert.ok(start >= 0 && end > start, 'compatibility proof must run before evidence upload');
+
+  const compatibility = workflow.slice(start, end);
+  assert.match(workflow, /environment: production/);
+  assert.match(compatibility, /API_KEY: \$\{\{ secrets\.API_KEY \}\}/);
+  assert.match(compatibility, /\/api\/calculation-jobs\/\$job_id/);
+  assert.match(compatibility, /X-API-KEY: \$API_KEY/);
+  assert.match(compatibility, /\[\[ "\$status" != "404" \]\]/);
+  assert.match(compatibility, /NOT_FOUND/);
+  assert.match(compatibility, /tenant_identity_returned: false/);
+  assert.match(compatibility, /probe_id_recorded: false/);
+  assert.match(compatibility, /production-e1a-compatibility-proof\.json/);
+  assert.doesNotMatch(compatibility, /--request|-X\s|\bPOST\b|\bPUT\b|\bDELETE\b/);
+
+  const upload = workflow.slice(end);
+  assert.match(upload, /production-contract-audit\.json/);
+  assert.match(upload, /production-e1a-compatibility-proof\.json/);
 });
