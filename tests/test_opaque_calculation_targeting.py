@@ -1,4 +1,6 @@
+import logging
 import os
+import sys
 
 import pytest
 import requests
@@ -148,6 +150,51 @@ def test_unverified_user_benchmark_preserves_live_settings_lookup(monkeypatch):
     assert captured["headers"]["X-Target-User"] == TARGET_USER
 
 
+def test_verified_job_privacy_filter_redacts_real_masked_and_exception_email():
+    privacy_filter = job_runner.VerifiedJobPrivacyFilter()
+    try:
+        raise RuntimeError(f"failure for {TARGET_USER}")
+    except RuntimeError:
+        exc_info = sys.exc_info()
+
+    record = logging.LogRecord(
+        name="privacy-test",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="owner=%s masked=%s",
+        args=(TARGET_USER, "se***@example.com"),
+        exc_info=exc_info,
+    )
+
+    assert privacy_filter.filter(record) is True
+    message = record.getMessage()
+    assert TARGET_USER not in message
+    assert "example.com" not in message
+    assert "@" not in message
+    assert message == "owner=opaque-job-user masked=opaque-job-user"
+    assert record.exc_text is not None
+    assert TARGET_USER not in record.exc_text
+    assert "example.com" not in record.exc_text
+    assert job_runner.TENANT_LOG_LABEL in record.exc_text
+
+
+def test_privacy_filter_is_installed_only_for_verified_job_context(monkeypatch):
+    monkeypatch.delenv(VERIFIED_CONTEXT, raising=False)
+    assert job_runner.install_verified_job_privacy_filter() is None
+
+    monkeypatch.setenv(VERIFIED_CONTEXT, "1")
+    privacy_filter = job_runner.install_verified_job_privacy_filter()
+    try:
+        assert isinstance(privacy_filter, job_runner.VerifiedJobPrivacyFilter)
+        assert all(
+            privacy_filter in handler.filters
+            for handler in logging.getLogger().handlers
+        )
+    finally:
+        job_runner.remove_verified_job_privacy_filter(privacy_filter)
+
+
 def test_runner_uses_durable_owner_and_benchmark_when_job_context_matches_dispatch():
     class FakeClient:
         def resolve_calculation_job_context(self, job_id):
@@ -237,3 +284,32 @@ def test_entrypoint_resolves_context_before_financial_runner(monkeypatch):
         "benchmark": BENCHMARK,
         "verified_context": "1",
     }
+
+
+def test_entrypoint_verified_job_logs_no_tenant_email(monkeypatch, caplog):
+    class FakeClient:
+        def resolve_calculation_job_context(self, job_id):
+            assert job_id == JOB_ID
+            return TARGET_USER, BENCHMARK
+
+    def fake_run_update():
+        logging.getLogger("main").info(
+            "TargetUser=%s masked=%s",
+            os.environ["TARGET_USER_ID"],
+            "se***@example.com",
+        )
+
+    monkeypatch.setattr(job_runner, "CloudflareClient", FakeClient)
+    monkeypatch.setattr(job_runner.runner, "setup_logging", lambda: None)
+    monkeypatch.setattr(job_runner.runner, "run_update", fake_run_update)
+    monkeypatch.setenv("CALCULATION_JOB_ID", JOB_ID)
+    monkeypatch.setenv("CUSTOM_BENCHMARK", BENCHMARK)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+
+    with caplog.at_level(logging.INFO):
+        assert job_runner.main() == 0
+
+    assert TARGET_USER not in caplog.text
+    assert "example.com" not in caplog.text
+    assert "@" not in caplog.text
+    assert "TargetUser=opaque-job-user masked=opaque-job-user" in caplog.text
