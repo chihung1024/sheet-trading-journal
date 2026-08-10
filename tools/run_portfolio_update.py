@@ -1,9 +1,8 @@
 """Run the portfolio update while publishing a safe, typed failure code for CI.
 
-The existing calculation engine remains authoritative. This wrapper only observes
-its exception boundary and writes a fixed enum to GITHUB_OUTPUT so the Worker can
-surface a useful job failure category without receiving exception text, user IDs,
-or market symbols.
+The calculation engine remains authoritative. This wrapper resolves an optional opaque
+calculation-job target through the trusted Worker boundary, then observes the engine's
+exception boundary and writes only a fixed enum to GITHUB_OUTPUT.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import main as runner
-from journal_engine.clients.api_client import CloudflareAPIError
+from journal_engine.clients.api_client import CloudflareAPIError, CloudflareClient
 from journal_engine.core.daily_pnl_reconciler import DailyPnLReconciliationError
 
 
@@ -69,6 +68,35 @@ class UserFailureCapture(logging.Handler):
         exc = record.exc_info[1]
         if isinstance(exc, Exception):
             self.exceptions.append(exc)
+
+
+def resolve_target_user(
+    api_client: CloudflareClient,
+    *,
+    calculation_job_id: str = "",
+    legacy_target_user_id: str = "",
+) -> str:
+    """Resolve an opaque job target; job identity always wins over legacy targeting."""
+    job_id = str(calculation_job_id or "").strip()
+    if job_id:
+        return api_client.resolve_calculation_job_target(job_id)
+    return str(legacy_target_user_id or "").strip()
+
+
+def configure_target_user_from_environment() -> str:
+    """Set the engine's existing private target env from the opaque workflow job id."""
+    calculation_job_id = os.environ.get("CALCULATION_JOB_ID", "").strip()
+    legacy_target_user_id = os.environ.get("TARGET_USER_ID", "").strip()
+    client = CloudflareClient() if calculation_job_id else None
+    target_user_id = resolve_target_user(
+        client,
+        calculation_job_id=calculation_job_id,
+        legacy_target_user_id=legacy_target_user_id,
+    )
+    # Keep main.py unchanged: its existing target contract is now populated only inside
+    # this trusted process. Scheduled runs explicitly clear stale target state.
+    os.environ["TARGET_USER_ID"] = target_user_id
+    return target_user_id
 
 
 def classify_failure(exc: Exception, *, per_user: bool = False) -> str:
@@ -137,6 +165,7 @@ def main() -> int:
     main_logger.addHandler(capture)
 
     try:
+        configure_target_user_from_environment()
         runner.run_update()
     except Exception as exc:
         user_code = collapse_user_failure_codes(capture.exceptions)
