@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { __test } from "../worker.js";
 
 const JOB_ID = "job_ABCDEFGHIJKLMNOPQRSTUV";
@@ -65,6 +66,17 @@ test("system target projection is explicit while public projection remains owner
     benchmark: "SPY",
     status: "queued",
   });
+});
+
+test("system target projection validates stored owner and benchmark", () => {
+  assert.throws(
+    () => __test.systemCalculationJobTarget(jobRow({ user_id: "invalid-owner" })),
+    /email|invalid/i,
+  );
+  assert.throws(
+    () => __test.systemCalculationJobTarget(jobRow({ benchmark: "bad benchmark" })),
+    /symbol|benchmark|invalid/i,
+  );
 });
 
 test("system repository lookup resolves opaque job without caller-supplied tenant", async () => {
@@ -135,4 +147,11 @@ test("tenant cannot resolve another user's opaque job", async () => {
   assert.equal(payload.success, false);
   assert.equal(payload.error_meta.code, "NOT_FOUND");
   assert.equal(JSON.stringify(payload).includes(OWNER), false);
+});
+
+test("temporary worker-entry compatibility shim is retired after canonical ownership", async () => {
+  const entry = await readFile("worker-entry.js", "utf8");
+  assert.doesNotMatch(entry, /handleOpaqueTargetCompatibility/);
+  assert.doesNotMatch(entry, /COMPAT_JOB_PATH_RE/);
+  assert.match(entry, /return canonicalWorker\.fetch\(request, env, ctx\)/);
 });
