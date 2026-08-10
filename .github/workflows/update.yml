@@ -15,7 +15,7 @@ on:
         default: 'SPY'
         type: string
       target_user_id:
-        description: '目標使用者 email (留空表示全部使用者)'
+        description: 'Gate C audit-only target email; normal calculations must not use this input'
         required: false
         default: ''
         type: string
@@ -102,7 +102,7 @@ jobs:
         env:
           API_KEY: ${{ secrets.API_KEY }}
           CUSTOM_BENCHMARK: ${{ github.event.inputs.custom_benchmark || 'SPY' }}
-          TARGET_USER_ID: ${{ github.event.inputs.target_user_id || '' }}
+          CALCULATION_JOB_ID: ${{ github.event.inputs.calculation_job_id || '' }}
         run: python tools/run_portfolio_update.py
 
       - name: Report calculation job result
