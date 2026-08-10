@@ -56,6 +56,12 @@ jobs:
           echo 'Gate C audit mode cannot be attached to a calculation job.' >&2
           exit 1
 
+      - name: Reject legacy normal calculation targeting
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only != 'true' && github.event.inputs.target_user_id != '' && github.event.inputs.calculation_job_id == '' }}
+        run: |
+          echo 'Normal hosted calculations cannot target a tenant by email. Use a Worker-issued calculation_job_id.' >&2
+          exit 1
+
       - name: Mark calculation job running
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only != 'true' && github.event.inputs.calculation_job_id != '' }}
         env:
