@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 import main as runner
@@ -125,6 +123,7 @@ def test_run_update_reads_opaque_job_id_instead_of_public_target_env(monkeypatch
             observed["target_user_id"] = target_user_id
             raise RuntimeError("stop-after-target-resolution")
 
+    monkeypatch.setattr(runner, "API_KEY", "test-system-key")
     monkeypatch.setattr(runner, "CloudflareClient", FakeClient)
     monkeypatch.setattr(runner, "resolve_calculation_context", lambda: object())
     monkeypatch.setattr(runner, "resolve_engine_source_commit", lambda environ=None: "1" * 40)
