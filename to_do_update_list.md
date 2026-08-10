@@ -45,7 +45,7 @@ Last updated: **2026-08-10**
 
 ## Current Active Batch
 
-**E1a-A0 — production-activation documentation/state re-baseline — PR OPEN / FINAL-HEAD CI PENDING AFTER HANDOFF UPDATE**
+**E1a-A0 — production-activation documentation/state re-baseline — PR OPEN / README SCOPE FIX APPLIED / FINAL-HEAD CI PENDING**
 
 Working branch:
 
@@ -527,6 +527,7 @@ Do not fix only by changing 15 minutes to another magic number. Active queued/ru
 - **RC-E-01B ACTIVE DEPENDENCY:** D3D intentionally left production activation fail-closed; E1a-A is now a real activation and therefore must complete the deferred evidence/runtime-authority chain before deploy.
 - **RC-E-01C DOCUMENTATION ROOT CAUSE:** previous current handoff connected E1a to manual deployment but omitted the older activation preconditions, creating an incorrect “dispatch Deploy Worker next” instruction.
 - **RC-E-01D VERIFICATION GAP:** generic production health/source/CORS audit does not directly prove the E1a-A system opaque-job lookup boundary; add/read-only compatibility proof before B.
+- **RC-E-01E A0 DOC-EDIT ROOT CAUSE / FIXED:** first README update rebuilt a long file from incomplete/reconstructed context and unintentionally changed unrelated FIFO/FX text. Exact PR patch review caught the scope pollution before merge. Fix `6db8bbfc69aabd664dce5fad361961785ffe1eb6` restored README from exact baseline and retained only deployment navigation. Prevention: long-file edits require exact-baseline patch review; any non-target diff is a BLOCKER and must be removed before final-head CI.
 - **RC-E-02 OPEN:** realtime quote can mutate prior EOD row -> E1b.
 - **RC-E-03 OPEN:** active job TTL can expire before supported execution/recovery horizon -> E1c.
 - **RC-E-04 OPEN:** API auth secret and cursor signing share one trust key -> E1d.
@@ -604,7 +605,10 @@ Full intermediate Gate-D and historical D3D recovery refs remain in Git history/
 - initial PR head `091f3eda243c02c8d204f4a3e18d1f84d3e986bf`;
 - CI #561 / run `31348700558`: **SUCCESS** across Python / Frontend / Worker-D1;
 - initial changed-file whitelist: **PASS — exactly six documentation files, no runtime/config/workflow/schema files**;
-- this handoff evidence update creates a new final PR head and therefore requires fresh final-head CI before merge review.
+- exact patch review then found unintended README FIFO/FX changes caused by long-file reconstruction; this was classified BLOCKER rather than accepted as cleanup;
+- commit `6db8bbfc69aabd664dce5fad361961785ffe1eb6` restored exact baseline README content outside the intended deployment-navigation block;
+- README patch after correction is limited to the intended deployment navigation plus an EOF formatting marker;
+- this final handoff update records the correction and creates the head that must receive fresh final-head CI before merge review.
 
 ---
 
@@ -662,6 +666,7 @@ Before A0 can be marked DONE:
 - [x] initial changed-file whitelist reviewed — six documentation files only;
 - [x] PR #174 opened;
 - [x] initial full required CI #561 green on head `091f3eda...`;
+- [x] unintended README scope pollution found by exact patch review and corrected before merge;
 - [ ] fresh full CI green on the final head created by this handoff evidence update;
 - [ ] final changed-file whitelist/main-drift/review-thread review;
 - [ ] independent third-party review completed;
@@ -675,8 +680,8 @@ Before A0 can be marked DONE:
 
 ## NOW — finish E1a-A0 review gates
 
-1. Wait only on machine state already triggered by this final handoff commit: fresh required CI on the exact new PR head.
-2. Re-check exact six-file whitelist and protected-main drift.
+1. Verify fresh required CI on the exact final PR head created by this handoff update.
+2. Re-check exact six-file whitelist, README target-only patch and protected-main drift.
 3. Check PR reviews, review threads and comments.
 4. Obtain independent third-party review; classify findings BLOCKER / FOLLOW-UP / BACKLOG / REJECT.
 5. Merge only if CI + independent review + scope checks are satisfied.
