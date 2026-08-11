@@ -16,6 +16,11 @@ from ..core.currency_detector import CurrencyDetector
 from .auto_price_selector import AutoPriceSelector
 
 
+VALUATION_SOURCE_COLUMN = "Valuation_Source"
+VALUATION_SOURCE_DATE_COLUMN = "Valuation_Source_Date"
+REALTIME_VALUATION_SOURCE = "realtime_quote"
+
+
 class MarketDataClient:
     @staticmethod
     def _coerce_twd_per_usd(rate):
@@ -130,6 +135,132 @@ class MarketDataClient:
         except Exception:
             pass
         return None
+
+    @staticmethod
+    def _get_intraday_quote_with_date(ticker):
+        """Return a dated stock quote only with complete no-action evidence.
+
+        Stock realtime valuation must carry both date evidence and corporate-action
+        safety evidence. The intraday frame provides an exchange-local timestamp and,
+        with ``actions=True``, Yahoo/yfinance action columns. A synthetic valuation is
+        disabled when required action columns are missing/malformed or when any
+        quote-date split/dividend/capital-gain event is present.
+        """
+        try:
+            intraday = ticker.history(
+                period='1d',
+                interval='1m',
+                auto_adjust=False,
+                prepost=False,
+                actions=True,
+            )
+            if intraday.empty or 'Close' not in intraday.columns:
+                return None
+
+            closes = pd.to_numeric(intraday['Close'], errors='coerce').astype(float)
+            valid = closes[
+                closes.map(
+                    lambda value: math.isfinite(float(value)) and float(value) > 0
+                )
+            ]
+            if valid.empty:
+                return None
+
+            quote_timestamp = pd.Timestamp(valid.index[-1])
+            if pd.isna(quote_timestamp):
+                return None
+            if quote_timestamp.tzinfo is not None:
+                quote_timestamp = quote_timestamp.tz_localize(None)
+            quote_date = quote_timestamp.normalize()
+
+            intraday_index = pd.to_datetime(intraday.index, errors='coerce')
+            if intraday_index.isna().any():
+                return None
+            if intraday_index.tz is not None:
+                intraday_index = intraday_index.tz_localize(None)
+            quote_date_rows = intraday.loc[intraday_index.normalize() == quote_date]
+            if quote_date_rows.empty:
+                return None
+
+            # Required action columns must be explicitly present. Assuming zero when
+            # action evidence is missing can combine a post-split quote with pre-split
+            # holdings/Split_Factor semantics.
+            for column in ('Dividends', 'Stock Splits'):
+                if column not in quote_date_rows.columns:
+                    return None
+                values = pd.to_numeric(quote_date_rows[column], errors='coerce')
+                if values.isna().any() or (values != 0).any():
+                    return None
+
+            if 'Capital Gains' in quote_date_rows.columns:
+                capital_gains = pd.to_numeric(
+                    quote_date_rows['Capital Gains'],
+                    errors='coerce',
+                )
+                if capital_gains.isna().any() or (capital_gains != 0).any():
+                    return None
+
+            return float(valid.iloc[-1]), quote_timestamp
+        except Exception:
+            return None
+
+    @staticmethod
+    def _append_realtime_valuation_row(hist, quote_price, quote_timestamp):
+        """Append a dated no-action realtime valuation without mutating EOD bars.
+
+        The quote has already passed quote-date corporate-action validation. It is
+        eligible only when its provider timestamp proves a date strictly later than
+        the last downloaded daily row. Same-date or older quotes never overwrite
+        ``Close``/``Adj Close``. The synthetic row is explicitly labelled so
+        deterministic market-input provenance distinguishes it from a vendor daily row.
+        """
+        if hist is None or hist.empty:
+            return hist, False
+
+        try:
+            price = float(quote_price)
+            if not math.isfinite(price) or price <= 0:
+                return hist, False
+
+            quote_date = pd.Timestamp(quote_timestamp)
+            if pd.isna(quote_date):
+                return hist, False
+            if quote_date.tzinfo is not None:
+                quote_date = quote_date.tz_localize(None)
+            quote_date = quote_date.normalize()
+
+            last_date = pd.Timestamp(hist.index[-1])
+            if last_date.tzinfo is not None:
+                last_date = last_date.tz_localize(None)
+            last_date = last_date.normalize()
+            if quote_date <= last_date:
+                return hist, False
+
+            work = hist.copy(deep=True)
+            if VALUATION_SOURCE_COLUMN not in work.columns:
+                work[VALUATION_SOURCE_COLUMN] = 'market'
+            if VALUATION_SOURCE_DATE_COLUMN not in work.columns:
+                work[VALUATION_SOURCE_DATE_COLUMN] = [
+                    pd.Timestamp(index).normalize().strftime('%Y-%m-%d')
+                    for index in work.index
+                ]
+
+            synthetic_row = work.iloc[-1].copy()
+            for column in ('Close', 'Adj Close', 'Open', 'High', 'Low'):
+                if column in synthetic_row.index:
+                    synthetic_row[column] = price
+            if 'Volume' in synthetic_row.index:
+                synthetic_row['Volume'] = 0.0
+            for column in ('Dividends', 'Stock Splits', 'Capital Gains'):
+                if column in synthetic_row.index:
+                    synthetic_row[column] = 0.0
+
+            synthetic_row[VALUATION_SOURCE_COLUMN] = REALTIME_VALUATION_SOURCE
+            synthetic_row[VALUATION_SOURCE_DATE_COLUMN] = quote_date.strftime('%Y-%m-%d')
+            work.loc[quote_date] = synthetic_row
+            return work.sort_index(), True
+        except Exception:
+            return hist, False
 
     def _download_currency_fx(self, required_currencies, start_date):
         self.fx_rates = pd.Series(dtype=float)
@@ -284,31 +415,22 @@ class MarketDataClient:
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
                     realtime_overlay_applied = False
 
-                    try:
-                        latest_price = None
-
-                        try:
-                            raw_price = ticker_obj.fast_info.get('last_price') or ticker_obj.fast_info.get('regular_market_price')
-                            if raw_price:
-                                latest_price = float(raw_price)
-                        except Exception:
-                            pass
-
-                        if latest_price is None:
-                            intraday = ticker_obj.history(period="1d", interval="1m")
-                            if not intraday.empty:
-                                latest_price = float(intraday['Close'].iloc[-1])
-
-                        if latest_price is not None:
-                            last_date = hist.index[-1]
-                            hist.at[last_date, 'Close'] = latest_price
-                            if 'Adj Close' in hist.columns:
-                                hist.at[last_date, 'Adj Close'] = latest_price
-                            realtime_overlay_applied = True
-                            print(f"[{t}] 即時報價覆蓋: {latest_price:.2f}")
-
-                    except Exception:
-                        pass
+                    intraday_quote = self._get_intraday_quote_with_date(ticker_obj)
+                    if intraday_quote is not None:
+                        latest_price, quote_timestamp = intraday_quote
+                        hist, realtime_overlay_applied = self._append_realtime_valuation_row(
+                            hist,
+                            latest_price,
+                            quote_timestamp,
+                        )
+                        if realtime_overlay_applied:
+                            quote_date = pd.Timestamp(quote_timestamp)
+                            if quote_date.tzinfo is not None:
+                                quote_date = quote_date.tz_localize(None)
+                            print(
+                                f"[{t}] 即時估值新增: {quote_date.strftime('%Y-%m-%d')} "
+                                f"@ {latest_price:.2f}"
+                            )
 
                     hist_adj = self._prepare_data(t, hist)
                     metadata = dict(hist_adj.attrs.get('price_provenance') or {})
