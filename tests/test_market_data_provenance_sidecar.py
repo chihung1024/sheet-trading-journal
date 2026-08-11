@@ -18,7 +18,16 @@ def _history(close_values=(10.0, 11.0)):
 
 
 class FakeTicker:
-    def __init__(self, symbol, *, realtime_price=None, intraday_timestamp=None):
+    def __init__(
+        self,
+        symbol,
+        *,
+        realtime_price=None,
+        intraday_timestamp=None,
+        dividend=0.0,
+        split=0.0,
+        capital_gain=None,
+    ):
         self.symbol = symbol
         self.fast_info = {
             "last_price": realtime_price,
@@ -26,13 +35,23 @@ class FakeTicker:
         }
         self.realtime_price = realtime_price
         self.intraday_timestamp = intraday_timestamp
+        self.dividend = dividend
+        self.split = split
+        self.capital_gain = capital_gain
 
     def history(self, **kwargs):
         if kwargs.get("period") == "1d":
             if self.realtime_price is None or self.intraday_timestamp is None:
                 return pd.DataFrame()
+            data = {
+                "Close": [self.realtime_price],
+                "Dividends": [self.dividend],
+                "Stock Splits": [self.split],
+            }
+            if self.capital_gain is not None:
+                data["Capital Gains"] = [self.capital_gain]
             return pd.DataFrame(
-                {"Close": [self.realtime_price]},
+                data,
                 index=pd.DatetimeIndex([pd.Timestamp(self.intraday_timestamp)]),
             )
         return _history().copy(deep=True)
@@ -41,9 +60,24 @@ class FakeTicker:
 class IntradayFrameTicker:
     def __init__(self, frame):
         self.frame = frame
+        self.last_kwargs = None
 
     def history(self, **kwargs):
+        self.last_kwargs = dict(kwargs)
         return self.frame.copy(deep=True)
+
+
+def _safe_intraday_frame(prices=(12.0, 12.5)):
+    return pd.DataFrame(
+        {
+            "Close": list(prices),
+            "Dividends": [0.0] * len(prices),
+            "Stock Splits": [0.0] * len(prices),
+        },
+        index=pd.to_datetime(
+            ["2026-01-06 10:30:00", "2026-01-06 10:31:00"][: len(prices)]
+        ),
+    )
 
 
 def test_prepare_data_keeps_selector_metadata_on_returned_frame():
@@ -57,7 +91,7 @@ def test_prepare_data_keeps_selector_metadata_on_returned_frame():
     }
 
 
-def test_intraday_quote_requires_close_timestamp_and_positive_price():
+def test_intraday_quote_requires_close_timestamp_positive_price_and_actions():
     no_close = IntradayFrameTicker(
         pd.DataFrame(
             {"Open": [12.0]},
@@ -66,7 +100,11 @@ def test_intraday_quote_requires_close_timestamp_and_positive_price():
     )
     invalid_prices = IntradayFrameTicker(
         pd.DataFrame(
-            {"Close": [float("nan"), 0.0, -1.0]},
+            {
+                "Close": [float("nan"), 0.0, -1.0],
+                "Dividends": [0.0, 0.0, 0.0],
+                "Stock Splits": [0.0, 0.0, 0.0],
+            },
             index=pd.to_datetime(
                 [
                     "2026-01-06 10:30:00",
@@ -78,25 +116,71 @@ def test_intraday_quote_requires_close_timestamp_and_positive_price():
     )
     missing_timestamp = IntradayFrameTicker(
         pd.DataFrame(
-            {"Close": [12.0]},
+            {
+                "Close": [12.0],
+                "Dividends": [0.0],
+                "Stock Splits": [0.0],
+            },
             index=pd.DatetimeIndex([pd.NaT]),
         )
     )
-    valid_naive = IntradayFrameTicker(
+    missing_actions = IntradayFrameTicker(
         pd.DataFrame(
-            {"Close": [12.0, 12.5]},
-            index=pd.to_datetime(
-                ["2026-01-06 10:30:00", "2026-01-06 10:31:00"]
-            ),
+            {"Close": [12.5]},
+            index=pd.to_datetime(["2026-01-06 10:31:00"]),
         )
     )
+    malformed_actions = IntradayFrameTicker(
+        pd.DataFrame(
+            {
+                "Close": [12.5],
+                "Dividends": [float("nan")],
+                "Stock Splits": [0.0],
+            },
+            index=pd.to_datetime(["2026-01-06 10:31:00"]),
+        )
+    )
+    valid_naive = IntradayFrameTicker(_safe_intraday_frame())
 
     assert MarketDataClient._get_intraday_quote_with_date(no_close) is None
     assert MarketDataClient._get_intraday_quote_with_date(invalid_prices) is None
     assert MarketDataClient._get_intraday_quote_with_date(missing_timestamp) is None
+    assert MarketDataClient._get_intraday_quote_with_date(missing_actions) is None
+    assert MarketDataClient._get_intraday_quote_with_date(malformed_actions) is None
+
     price, timestamp = MarketDataClient._get_intraday_quote_with_date(valid_naive)
     assert price == 12.5
     assert timestamp == pd.Timestamp("2026-01-06 10:31:00")
+    assert valid_naive.last_kwargs["actions"] is True
+    assert valid_naive.last_kwargs["auto_adjust"] is False
+    assert valid_naive.last_kwargs["prepost"] is False
+
+
+def test_intraday_quote_fails_closed_on_quote_date_corporate_actions():
+    split = _safe_intraday_frame()
+    split.loc[split.index[0], "Stock Splits"] = 2.0
+
+    dividend = _safe_intraday_frame()
+    dividend.loc[dividend.index[0], "Dividends"] = 0.5
+
+    capital_gain = _safe_intraday_frame()
+    capital_gain["Capital Gains"] = [0.0, 1.25]
+
+    malformed_capital_gain = _safe_intraday_frame()
+    malformed_capital_gain["Capital Gains"] = [0.0, float("nan")]
+
+    assert MarketDataClient._get_intraday_quote_with_date(
+        IntradayFrameTicker(split)
+    ) is None
+    assert MarketDataClient._get_intraday_quote_with_date(
+        IntradayFrameTicker(dividend)
+    ) is None
+    assert MarketDataClient._get_intraday_quote_with_date(
+        IntradayFrameTicker(capital_gain)
+    ) is None
+    assert MarketDataClient._get_intraday_quote_with_date(
+        IntradayFrameTicker(malformed_capital_gain)
+    ) is None
 
 
 def test_realtime_row_helper_fails_closed_for_missing_or_invalid_evidence():
@@ -211,6 +295,31 @@ def test_download_data_appends_only_newer_dated_realtime_valuation_row():
     assert aaa.loc[pd.Timestamp("2026-01-06"), "Dividends"] == 0.0
     assert aaa.loc[pd.Timestamp("2026-01-06"), "Stock Splits"] == 0.0
     assert client.realtime_overlay_symbols == {"AAA"}
+
+
+def test_download_data_action_date_does_not_create_synthetic_valuation():
+    client = MarketDataClient()
+    tickers = {
+        "AAA": FakeTicker(
+            "AAA",
+            realtime_price=6.25,
+            intraday_timestamp="2026-01-06 10:31:00-05:00",
+            split=2.0,
+        ),
+        "SPY": FakeTicker("SPY"),
+    }
+
+    with patch.object(client, "_download_currency_fx", return_value=None), patch(
+        "journal_engine.clients.market_data.yf.Ticker",
+        side_effect=lambda symbol: tickers[symbol],
+    ):
+        market_data, _ = client.download_data(["AAA"], pd.Timestamp("2026-01-02"))
+
+    aaa = market_data["AAA"]
+    assert list(aaa.index) == list(pd.to_datetime(["2026-01-02", "2026-01-05"]))
+    assert aaa.loc[pd.Timestamp("2026-01-05"), "Close_Adjusted"] == 11.0
+    assert aaa["Stock Splits"].tolist() == [0.0, 0.0]
+    assert client.realtime_overlay_symbols == set()
 
 
 def test_download_data_same_date_intraday_never_overwrites_daily_row():
