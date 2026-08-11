@@ -1,7 +1,7 @@
 # Gate E / E1c-A.1 — Dispatch Binding and Legacy Orphan Reconciliation
 
-Status: **DEPLOYED / LEGACY RECONCILIATION ACTIVE**  
-Document revision: **3**  
+Status: **DEPLOYED / RECONCILIATION WORKFLOW WAITING FOR PRODUCTION APPROVAL**  
+Document revision: **4**  
 Date: **2026-08-11**
 
 ## 1. Production blocker and root cause
@@ -77,7 +77,7 @@ AND created_at < reviewed E1c-A.1 deployment cutover
 
 The cutoff is only a rollout-cohort boundary. It is not liveness authority.
 
-Before the D1 mutation, the protected workflow must additionally prove:
+Before the D1 mutation, the protected workflow must prove:
 
 - exact runtime `R_C1` is live;
 - live Worker version matches reviewed Deploy #4 evidence;
@@ -85,7 +85,8 @@ Before the D1 mutation, the protected workflow must additionally prove:
 - production D1 identity matches reviewed authority;
 - every GitHub nonterminal status for `Update Portfolio Data` is empty: `queued`, `in_progress`, `waiting`, `pending`, `requested`;
 - zero-nonterminal state is observed three consecutive times and again immediately before mutation;
-- candidate row count does not exceed the reviewed `max_rows`.
+- reviewed request values and reviewed operation-code/workflow blobs still match latest protected main;
+- candidate row count does not exceed reviewed `max_rows`.
 
 The mutation only transitions matching legacy jobs to:
 
@@ -105,44 +106,88 @@ The first exact candidate (`ebc27b3d23c19d03be5ad7002845f603400cf4dd`) passed CI
 Three safety defects were identified and fixed rather than waived:
 
 1. **Operation-code source mismatch.** Production checks out exact runtime `R_C1`, which predates the new reconciliation tool. The fixed workflow materializes the immutable reviewed workflow-event control-plane commit separately and executes the reconciliation tool from that reviewed commit while the workspace remains the exact runtime checkout for Worker/D1 verification.
-2. **Incomplete active-run proof.** First-page `per_page=100` inference was replaced by status-scoped GitHub API queries for every supported nonterminal workflow status. Each status query uses `per_page=1` and authoritative `total_count`, so the proof does not depend on recency ordering or pagination position.
-3. **Late control-plane drift window.** Immediately before D1 mutation, the workflow now re-fetches latest protected main, revalidates the request values, activation authority, and exact blob identity of both the reviewed workflow and mutation tool. Any request/code drift cancels the old operation.
+2. **Incomplete active-run proof.** First-page `per_page=100` inference was replaced by status-scoped GitHub API queries for every supported nonterminal workflow status. Each status query uses authoritative `total_count`, so the proof does not depend on recency ordering or pagination position.
+3. **Late control-plane drift window.** Immediately before D1 mutation, the workflow re-fetches latest protected main, revalidates request values, activation authority, and exact blob identity of both the reviewed workflow and mutation tool. Any request/code drift cancels the old operation.
 
 The reviewed operation tool also records actual mutation cardinality via SQLite `changes()` and requires it to equal the reviewed pre-mutation target count.
 
 No safety gate was weakened to obtain CI success.
 
-## 6. Current production-control batch
+## 6. Final merged reconciliation control plane
 
-Request:
+Authoritative PR: **#197**.
 
-`config/production-legacy-job-reconciliation-request.json`
+Final candidate:
 
-Workflow:
+`dca0ae34495da8cf8b52d4bf6d27411e38ac166a`
 
-`.github/workflows/production-legacy-job-reconciliation.yml`
+Verification chain:
 
-Recovery before this control-plane batch:
+- exact-head CI #637: **SUCCESS**;
+- fresh R3 Same-AI Independent Review: **PASS / NO BLOCKER**;
+- expected-head merge: `8f9f942cc22b70e5bbec0f05438b0a74fefb8057`;
+- post-main CI #638: **SUCCESS**.
+
+Recovery before the control-plane batch:
 
 `backup-pre-e1c-a1-legacy-reconciliation-67b8735`
 
 Risk remains **R3 — production lifecycle/data-control operation**.
 
-The workflow is event-driven from a reviewed protected-main request. It does not require the operator to find an Action, choose a SHA, or press Run workflow. The GitHub `production` Environment Required Reviewer remains the only independent human mutation gate.
+### Superseded PR #198
 
-## 7. Required closeout sequence
+PR #198 was created from stale base after #197 had already merged. Relative to the new protected main it would have replaced #197's stronger workflow/tool controls with a weaker candidate. It was therefore closed as:
+
+`SUPERSEDED / NO MERGE AUTHORITY`
+
+The branch may remain forensic evidence of earlier pre-PR findings, but it must not be reopened or merged.
+
+## 7. Live production workflow state
+
+PR #197's request-path merge automatically started:
+
+`Production Legacy Job Reconciliation #1`
+
+Run ID:
+
+`31479868929`
+
+Control-plane head:
+
+`8f9f942cc22b70e5bbec0f05438b0a74fefb8057`
+
+Current verified state:
+
+- preflight job `Verify reconciliation request before reviewer gate`: **SUCCESS**;
+- exact protected-main request validation: PASS;
+- activation authority before reviewer gate: PASS;
+- zero nonterminal `Update Portfolio Data` proof before reviewer gate: PASS;
+- production job `Reconcile legacy unbound queued jobs and audit production`: **WAITING** for GitHub `production` Environment Required Reviewer.
+
+No additional Action start, SHA entry, rerun, or manual D1 operation is required.
+
+## 8. Remaining closeout sequence
 
 ```text
-review + merge reconciliation request/control plane
--> event-driven reconciliation workflow
--> production environment approval
--> legacy cohort reconciliation
+production Environment approval for run 31479868929
+-> revalidate latest request / reviewed operation code / authority
+-> verify live Worker source + reviewed Worker version
+-> verify production D1 identity
+-> repeated + final zero-nonterminal-run proof
+-> bounded legacy cohort reconciliation
 -> post-mutation system contract audit
--> confirm stuck frontend generation reaches terminal/clears
+-> verify sanitized artifact and digest
+-> confirm stuck frontend generation reaches terminal / clears
 -> one normal authenticated frontend update
--> prove new dispatch has durable GitHub run binding and terminal callback
--> E1c-A.1 CLOSED / PRODUCTION VERIFIED
+-> prove new dispatch has durable workflow_run_id + running/terminal callbacks
+-> E1c-A.1 closeout evidence/docs
 -> E1c-B ACTIVE
 ```
 
 E1c-B remains responsible for frontend pending-age removal and `update.yml` queue semantics. E1d and Schema 3 remain out of scope.
+
+## 9. Documentation / continuation contract
+
+This engineering record owns root cause, safety invariants, rejected alternatives, review findings, and production-control evidence for E1c-A.1. Current execution status belongs in `to_do_update_list.md`; production results belong in sanitized evidence JSON.
+
+When reconciliation run #1 completes, update this document to a final closeout revision instead of appending duplicate narrative. Remove stale "waiting" language, record the exact reconciliation result/artifact/digest, then advance the handoff to E1c-B only after the final authenticated dispatch-binding smoke passes.
