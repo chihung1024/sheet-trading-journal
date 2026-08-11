@@ -6,5 +6,7 @@
   "target_production_job_id": 93742148875,
   "expected_head_sha": "8f9f942cc22b70e5bbec0f05438b0a74fefb8057",
   "expected_workflow_path": ".github/workflows/production-legacy-job-reconciliation.yml",
-  "reason": "Cancel only E1c-A.1 reconciliation run 31479868929 after production approval because its production job remains queued without a runner or execution steps; preserve all reviewed D1 mutation boundaries for the automatically triggered replacement run."
+  "successor_run_id": 31516843313,
+  "successor_head_sha": "66a9c8cccfc3e912d5d65a25c0ad4bdab8796890",
+  "reason": "Cancel only the exact scheduler-stuck E1c-A.1 run 31479868929 while preserving the already-created exact pending successor run 31516843313. The target must remain approved, runnerless, and step-less; the successor must remain pending, unstarted, and the only other member of the reconciliation concurrency group."
 }
