@@ -23,7 +23,7 @@ GitHub REST API version `2026-03-10` returns HTTP 200 with `workflow_run_id` for
 2. A dispatch is accepted only when GitHub returns HTTP 200 and a valid positive `workflow_run_id`.
 3. Legacy HTTP 204 or malformed/missing run identity is treated as an invalid upstream response and fails closed.
 4. The returned run ID is durably bound into the calculation job before the Worker returns HTTP 202 to the browser.
-5. Binding is idempotent for the same run ID and conflicts if the durable row already carries a different run ID.
+5. Binding is idempotent for the same run ID and conflicts if the durable row already carries a different run ID. Later workflow callbacks must match an already-bound run ID; a conflicting callback cannot overwrite dispatch identity, including same-status replay.
 6. Exact idempotency-key replay remains first-class and active exact-key jobs never expire by elapsed age.
 7. E1c-A's active same-tenant/same-benchmark cross-key guard remains lifecycle-based for `queued/running`; this hotfix does **not** reintroduce an age heuristic to decide whether a legacy active row is dead.
 8. Different benchmark remains a distinct calculation intent.
@@ -90,6 +90,7 @@ Required before merge:
 - successful dispatch requires HTTP 200 + valid `workflow_run_id`;
 - invalid/missing run identity fails closed;
 - run binding same-ID idempotency and conflicting-ID rejection;
+- workflow callbacks cannot overwrite an already-bound GitHub run ID, including same-status replay;
 - existing exact-key and cross-key active lifecycle protections remain intact without age expiry;
 - dispatch timeout/running race regression remains PASS;
 - fresh R3 Same-AI Independent Review;
