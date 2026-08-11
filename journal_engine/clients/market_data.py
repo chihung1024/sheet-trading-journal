@@ -138,12 +138,13 @@ class MarketDataClient:
 
     @staticmethod
     def _get_intraday_quote_with_date(ticker):
-        """Return a positive intraday quote with its provider timestamp.
+        """Return a dated stock quote only with complete no-action evidence.
 
-        Stock realtime valuation must carry date evidence. Unlike the legacy
-        ``fast_info`` scalar, the intraday frame provides an exchange-local timestamp
-        that can prove whether a new valuation date exists. Missing or invalid
-        timestamp/price evidence simply disables the realtime synthetic row.
+        Stock realtime valuation must carry both date evidence and corporate-action
+        safety evidence. The intraday frame provides an exchange-local timestamp and,
+        with ``actions=True``, Yahoo/yfinance action columns. A synthetic valuation is
+        disabled when required action columns are missing/malformed or when any
+        quote-date split/dividend/capital-gain event is present.
         """
         try:
             intraday = ticker.history(
@@ -151,6 +152,7 @@ class MarketDataClient:
                 interval='1m',
                 auto_adjust=False,
                 prepost=False,
+                actions=True,
             )
             if intraday.empty or 'Close' not in intraday.columns:
                 return None
@@ -169,19 +171,48 @@ class MarketDataClient:
                 return None
             if quote_timestamp.tzinfo is not None:
                 quote_timestamp = quote_timestamp.tz_localize(None)
+            quote_date = quote_timestamp.normalize()
+
+            intraday_index = pd.to_datetime(intraday.index, errors='coerce')
+            if intraday_index.isna().any():
+                return None
+            if intraday_index.tz is not None:
+                intraday_index = intraday_index.tz_localize(None)
+            quote_date_rows = intraday.loc[intraday_index.normalize() == quote_date]
+            if quote_date_rows.empty:
+                return None
+
+            # Required action columns must be explicitly present. Assuming zero when
+            # action evidence is missing can combine a post-split quote with pre-split
+            # holdings/Split_Factor semantics.
+            for column in ('Dividends', 'Stock Splits'):
+                if column not in quote_date_rows.columns:
+                    return None
+                values = pd.to_numeric(quote_date_rows[column], errors='coerce')
+                if values.isna().any() or (values != 0).any():
+                    return None
+
+            if 'Capital Gains' in quote_date_rows.columns:
+                capital_gains = pd.to_numeric(
+                    quote_date_rows['Capital Gains'],
+                    errors='coerce',
+                )
+                if capital_gains.isna().any() or (capital_gains != 0).any():
+                    return None
+
             return float(valid.iloc[-1]), quote_timestamp
         except Exception:
             return None
 
     @staticmethod
     def _append_realtime_valuation_row(hist, quote_price, quote_timestamp):
-        """Append a dated realtime valuation row without mutating historical bars.
+        """Append a dated no-action realtime valuation without mutating EOD bars.
 
-        A realtime quote is eligible only when its provider timestamp proves a date
-        strictly later than the last downloaded daily row. Same-date or older quotes
-        never overwrite ``Close``/``Adj Close``. The synthetic row is explicitly
-        labelled so deterministic market-input provenance can distinguish it from a
-        vendor daily market row.
+        The quote has already passed quote-date corporate-action validation. It is
+        eligible only when its provider timestamp proves a date strictly later than
+        the last downloaded daily row. Same-date or older quotes never overwrite
+        ``Close``/``Adj Close``. The synthetic row is explicitly labelled so
+        deterministic market-input provenance distinguishes it from a vendor daily row.
         """
         if hist is None or hist.empty:
             return hist, False
