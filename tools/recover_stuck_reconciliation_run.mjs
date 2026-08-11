@@ -8,6 +8,8 @@ const API_VERSION = "2026-03-10";
 const TARGET_RUN_ID = 31479868929;
 const TARGET_PRODUCTION_JOB_ID = 93742148875;
 const EXPECTED_HEAD_SHA = "8f9f942cc22b70e5bbec0f05438b0a74fefb8057";
+const SUCCESSOR_RUN_ID = 31516843313;
+const SUCCESSOR_HEAD_SHA = "66a9c8cccfc3e912d5d65a25c0ad4bdab8796890";
 
 export function validateRequest(request) {
   if (request?.schema_version !== 1) throw new Error("scheduler recovery schema_version must equal 1");
@@ -25,6 +27,12 @@ export function validateRequest(request) {
   if (request?.expected_workflow_path !== WORKFLOW_PATH) {
     throw new Error("expected_workflow_path is not authorized");
   }
+  if (request?.successor_run_id !== SUCCESSOR_RUN_ID) {
+    throw new Error("successor_run_id is not the exact reviewed pending successor");
+  }
+  if (request?.successor_head_sha !== SUCCESSOR_HEAD_SHA) {
+    throw new Error("successor_head_sha is not the exact reviewed pending successor source");
+  }
   if (typeof request?.reason !== "string" || request.reason.trim().length < 30) {
     throw new Error("scheduler recovery reason is required");
   }
@@ -33,6 +41,8 @@ export function validateRequest(request) {
     target_production_job_id: TARGET_PRODUCTION_JOB_ID,
     expected_head_sha: EXPECTED_HEAD_SHA,
     expected_workflow_path: WORKFLOW_PATH,
+    successor_run_id: SUCCESSOR_RUN_ID,
+    successor_head_sha: SUCCESSOR_HEAD_SHA,
   };
 }
 
@@ -109,8 +119,8 @@ export async function inspectTarget({ token, repository, request, fetchImpl = fe
   if (production.runner_id !== null || production.runner_name !== null) {
     throw new Error("production job already has a runner; refusing scheduler cancellation");
   }
-  if (Array.isArray(production.steps) && production.steps.length !== 0) {
-    throw new Error("production job already has execution steps; refusing scheduler cancellation");
+  if (!Array.isArray(production.steps) || production.steps.length !== 0) {
+    throw new Error("production job execution-step state is not exactly empty");
   }
 
   const groupResult = await githubJson({
@@ -123,11 +133,48 @@ export async function inspectTarget({ token, repository, request, fetchImpl = fe
     throw new Error(`concurrency group lookup failed: HTTP ${groupResult.response.status}`);
   }
   const members = Array.isArray(groupResult.body?.group_members) ? groupResult.body.group_members : [];
-  if (groupResult.body?.total_count !== 1 || members.length !== 1) {
-    throw new Error("scheduler recovery requires the target to be the only concurrency-group member");
+  if (groupResult.body?.total_count !== 2 || members.length !== 2) {
+    throw new Error("scheduler recovery requires exactly the target and reviewed pending successor");
   }
-  if (members[0]?.run_id !== validated.target_run_id) {
-    throw new Error("another run owns the reconciliation concurrency group");
+  const targetMember = members.find((member) => member?.run_id === validated.target_run_id);
+  const successorMember = members.find((member) => member?.run_id === validated.successor_run_id);
+  if (!targetMember || targetMember.status !== "in_progress") {
+    throw new Error("target is not the active owner of the reconciliation concurrency group");
+  }
+  if (!successorMember || successorMember.status !== "pending") {
+    throw new Error("reviewed successor is not the sole pending reconciliation group member");
+  }
+
+  const successorResult = await githubJson({
+    token,
+    repository,
+    path: `/actions/runs/${validated.successor_run_id}`,
+    fetchImpl,
+  });
+  if (!successorResult.response.ok) {
+    throw new Error(`successor run lookup failed: HTTP ${successorResult.response.status}`);
+  }
+  const successor = successorResult.body;
+  if (successor?.status !== "pending" || successor?.conclusion !== null) {
+    throw new Error("reviewed successor is no longer pending without a conclusion");
+  }
+  if (successor?.head_sha !== validated.successor_head_sha) throw new Error("successor head SHA changed");
+  if (successor?.path !== validated.expected_workflow_path) throw new Error("successor workflow path changed");
+  if (successor?.run_attempt !== 1) throw new Error("successor run attempt is not the reviewed first attempt");
+  if (successor?.event !== "push") throw new Error("successor event is not the reviewed push event");
+
+  const successorJobsResult = await githubJson({
+    token,
+    repository,
+    path: `/actions/runs/${validated.successor_run_id}/jobs?filter=latest&per_page=100`,
+    fetchImpl,
+  });
+  if (!successorJobsResult.response.ok) {
+    throw new Error(`successor job lookup failed: HTTP ${successorJobsResult.response.status}`);
+  }
+  const successorJobs = successorJobsResult.body?.jobs;
+  if (!Array.isArray(successorJobs) || successorJobs.length !== 0) {
+    throw new Error("reviewed successor has already materialized execution jobs");
   }
 
   return {
@@ -140,7 +187,11 @@ export async function inspectTarget({ token, repository, request, fetchImpl = fe
     runner_assigned: false,
     execution_steps_started: false,
     pending_deployments: 0,
-    concurrency_group_member_count: 1,
+    concurrency_group_member_count: 2,
+    successor_run_id: validated.successor_run_id,
+    successor_head_sha: validated.successor_head_sha,
+    successor_status: successor.status,
+    successor_jobs_started: false,
   };
 }
 
@@ -149,7 +200,7 @@ export async function executeRecovery({ token, repository, request, fetchImpl = 
   await sleepImpl(1000);
   const final = await inspectTarget({ token, repository, request, fetchImpl });
   if (JSON.stringify(first) !== JSON.stringify(final)) {
-    throw new Error("scheduler target changed between recovery observations");
+    throw new Error("scheduler target or successor changed between recovery observations");
   }
 
   const cancelResult = await githubJson({
@@ -218,7 +269,7 @@ async function main() {
   if (command === "verify-request") {
     const result = validateRequest(request);
     writeOutputs(result);
-    console.log(`Validated scheduler recovery request for run=${result.target_run_id}`);
+    console.log(`Validated scheduler recovery request for run=${result.target_run_id} successor=${result.successor_run_id}`);
     return;
   }
   if (command === "execute") {
@@ -238,7 +289,7 @@ async function main() {
     };
     const output = process.env.AUDIT_OUTPUT || "production-e1c-a1-scheduler-recovery.json";
     writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-    console.log(`Scheduler recovery passed: cancelled run=${result.target_run_id}`);
+    console.log(`Scheduler recovery passed: cancelled run=${result.target_run_id}; preserved successor=${result.successor_run_id}`);
     return;
   }
   throw new Error("Usage: recover_stuck_reconciliation_run.mjs <verify-request PATH|execute PATH>");
