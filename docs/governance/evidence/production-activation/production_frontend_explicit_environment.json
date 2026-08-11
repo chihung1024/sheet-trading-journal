@@ -2,11 +2,11 @@
   "schema_version": 1,
   "check_name": "production_frontend_explicit_environment",
   "status": "passed",
-  "observed_at": "2026-08-11T04:57:01.614Z",
-  "source_sha": "94215c9dfec54a9da80ceac9782a6aca16bee8ad",
+  "observed_at": "2026-08-11T08:29:17.262Z",
+  "source_sha": "fe5f091fdb2c92970dff74c1a7c99052084adb95",
   "proof": {
     "result": "pass",
-    "summary": "E1c-A reviewer-protected GET-only Production Identity Evidence #14 proved the Pages production project is explicitly configured for branch main and that production environment, API URL, and Google OAuth client checks all passed for exact runtime source 94215c9dfec54a9da80ceac9782a6aca16bee8ad.",
-    "artifact_reference": "Production Identity Evidence run 31460047093 (#14); artifact 9089458738; sha256:9215ebc8c9f5ce5ccd53c56afe2f26085b0a724c59302f5c15f46d979a4fc48a"
+    "summary": "E1c-A.1 reviewer-protected GET-only Production Identity Evidence #15 proved the Pages production project is explicitly configured for branch main and that production environment, API URL, and Google OAuth client checks all passed for exact runtime source fe5f091fdb2c92970dff74c1a7c99052084adb95.",
+    "artifact_reference": "Production Identity Evidence run 31473362171 (#15); artifact 9094236997; sha256:ab98b13b6c12c5e0ae6fe4233b2cf57427f585234c6e30064d240ac8e7ebcd70"
   }
 }
