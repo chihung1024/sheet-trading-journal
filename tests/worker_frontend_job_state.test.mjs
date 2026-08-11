@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  CALCULATION_REQUEST_FUTURE_SKEW_MS,
   CALCULATION_REQUEST_STORAGE_KEY,
-  CALCULATION_REQUEST_TTL_MS,
   clearPendingCalculationRequest,
   getPendingCalculationGenerationStorageKey,
   getPendingCalculationTombstoneStorageKey,
@@ -59,12 +59,29 @@ test('accepts valid same-owner pending state', () => {
   );
 });
 
-test('rejects malformed, expired, future, and cross-owner state', () => {
+test('rejects malformed, future, and cross-owner state without age-expiring valid lifecycle state', () => {
   assert.equal(validatePendingCalculationRequest({ ...valid, key: 'short' }, OWNER, { now: NOW }), null);
   assert.equal(validatePendingCalculationRequest({ ...valid, jobId: 'job_invalid' }, OWNER, { now: NOW }), null);
-  assert.equal(validatePendingCalculationRequest({ ...valid, createdAt: NOW - CALCULATION_REQUEST_TTL_MS }, OWNER, { now: NOW }), null);
-  assert.equal(validatePendingCalculationRequest({ ...valid, createdAt: NOW + 60_001 }, OWNER, { now: NOW }), null);
+  assert.equal(
+    validatePendingCalculationRequest(
+      { ...valid, createdAt: NOW + CALCULATION_REQUEST_FUTURE_SKEW_MS + 1 },
+      OWNER,
+      { now: NOW },
+    ),
+    null,
+  );
   assert.equal(validatePendingCalculationRequest(valid, 'other@example.com', { now: NOW }), null);
+
+  const oldKnownJob = { ...valid, createdAt: NOW - (7 * 24 * 60 * 60 * 1000) };
+  const oldAmbiguousRequest = { ...oldKnownJob, jobId: null };
+  assert.deepEqual(
+    validatePendingCalculationRequest(oldKnownJob, OWNER, { now: NOW }),
+    oldKnownJob,
+  );
+  assert.deepEqual(
+    validatePendingCalculationRequest(oldAmbiguousRequest, OWNER, { now: NOW }),
+    oldAmbiguousRequest,
+  );
 });
 
 test('legacy read remains fail-closed and non-destructive on a non-enumerable Storage surface', () => {
@@ -258,13 +275,16 @@ test('malformed and cross-owner v2 entries cannot override a valid same-owner ge
   assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), expected);
 });
 
-test('expired v2 generation and its legacy mirror are ignored', () => {
+test('old live generations remain recoverable until an exact terminal or not-found clear', () => {
   const storage = createStorage();
-  rememberPendingCalculationRequest(storage, OWNER, {
+  const oldKnown = rememberPendingCalculationRequest(storage, OWNER, {
     key: OLD_KEY,
-    createdAt: NOW - CALCULATION_REQUEST_TTL_MS,
+    createdAt: NOW - (30 * 24 * 60 * 60 * 1000),
     jobId: OLD_JOB,
   });
+  assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), oldKnown);
+
+  assert.equal(clearPendingCalculationRequest(storage, OWNER, { jobId: OLD_JOB }, { now: NOW }), 1);
   assert.equal(readPendingCalculationRequest(storage, OWNER, { now: NOW }), null);
 });
 
