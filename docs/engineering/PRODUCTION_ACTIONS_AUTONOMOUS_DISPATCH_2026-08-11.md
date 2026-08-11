@@ -43,6 +43,18 @@ The canonical Deploy Worker retains `environment: production` and all existing p
 
 Therefore this batch does **not** bypass GitHub environment protection or weaken production mutation checks.
 
+### 3.1 Supply-chain write-scope exception
+
+The first exact-head CI correctly blocked the new broker because the existing workflow supply-chain policy both required every tracked workflow to be inventoried and prohibited every workflow write scope globally.
+
+That failure is treated as a security-policy finding, not as a test to disable. The correction is an explicit fail-closed allowlist in `docs/governance/github-actions-pins.json`:
+
+```text
+production-deployment-dispatch.yml -> actions: write
+```
+
+The supply-chain test now requires the observed write scopes to equal the evidence allowlist exactly. It also hard-locks the current exception to the broker workflow and the `actions` scope only. Every other workflow remains zero-write, `write-all` remains prohibited, and `contents: read` remains mandatory.
+
 ## 4. Platform capability
 
 GitHub's current REST API version `2026-03-10` returns HTTP 200 with `workflow_run_id` for a successful workflow dispatch. GitHub also documents `workflow_dispatch` and `repository_dispatch` as exceptions that can create workflow runs when initiated with the repository `GITHUB_TOKEN`.
@@ -68,24 +80,38 @@ The initial request authorizes transport of the already-authorized E1c-A.1 runti
 
 The protected-main activation authority was established by PR #195 after Production Identity Evidence #15.
 
-## 7. Risk and recovery
+## 7. Exact candidate scope
+
+Final candidate scope is six files:
+
+- `.github/workflows/production-deployment-dispatch.yml`
+- `config/production-deployment-request.json`
+- `tests/worker_production_deployment_dispatch.test.mjs`
+- `docs/engineering/PRODUCTION_ACTIONS_AUTONOMOUS_DISPATCH_2026-08-11.md`
+- `docs/governance/github-actions-pins.json`
+- `tests/test_workflow_supply_chain.py`
+
+The last two files are the explicit supply-chain policy/evidence correction required by the first CI failure. No runtime, frontend, D1 schema, financial calculation, Cloudflare secret, or canonical deployment mutation step is changed.
+
+## 8. Risk and recovery
 
 **Risk: R3 — production deployment dispatch control plane.**
 
-A defect could dispatch the wrong runtime or create an unintended production deployment request. Safeguards are exact-main freshness, exact 40-character SHA validation, main reachability, existing activation-authority equality, least-privilege token permissions, canonical deploy workflow reuse, and reviewer-protected production mutation.
+A defect could dispatch the wrong runtime or create an unintended production deployment request. Safeguards are exact-main freshness, exact 40-character SHA validation, main reachability, existing activation-authority equality, least-privilege token permissions, canonical deploy workflow reuse, explicit single-workflow write-scope allowlisting, and reviewer-protected production mutation.
 
 Recovery: `backup-pre-actions-autonomous-dispatch-baa07ba`.
 
 Required before merge:
 
-- exact candidate scope only;
+- exact six-file candidate scope only;
 - full exact-head CI;
 - broker contract tests;
+- supply-chain policy proves only the broker may request `actions: write`;
 - no Cloudflare/production secrets in broker;
 - no direct deployment commands in broker;
 - fresh R3 Same-AI Independent Review;
 - expected-head merge only.
 
-## 8. Follow-up
+## 9. Follow-up
 
 The same principle will be applied to production identity evidence: GitHub Action start/parameter selection should be event-driven rather than delegated to the operator. The exact runtime-change trigger set must be locked separately so authority-only or documentation-only main commits do not generate unnecessary production-review prompts.
