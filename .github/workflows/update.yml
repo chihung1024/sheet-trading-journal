@@ -34,11 +34,10 @@ permissions:
   contents: read
 
 # 同一 repository 只允許一個 portfolio update / read-only audit 執行，避免與上傳流程重疊。
-# queue=max 保留等待中的 runs；cancel-in-progress=false 讓既有執行完成而不是被新觸發取代。
+# cancel-in-progress=false 讓既有執行完成，新觸發排隊而不是中斷。
 concurrency:
   group: portfolio-update
   cancel-in-progress: false
-  queue: max
 
 jobs:
   run-and-upload:
