@@ -37,7 +37,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate request and exact activation authority
+      - name: Validate exact protected-main reconciliation request
         id: request
         shell: bash
         run: |
@@ -51,7 +51,11 @@ jobs:
           fi
           node tools/reconcile_legacy_calculation_jobs.mjs verify-request \
             config/production-legacy-job-reconciliation-request.json
-          EXPECTED_SHA="${{ steps.request.outputs.source_sha }}" node tools/verify_production_activation_authority.mjs
+
+      - name: Verify exact activation authority before reviewer gate
+        env:
+          EXPECTED_SHA: ${{ steps.request.outputs.source_sha }}
+        run: node tools/verify_production_activation_authority.mjs
 
       - name: Verify no active Update Portfolio Data workflow before reviewer gate
         shell: bash
@@ -119,12 +123,16 @@ jobs:
             : > "$GITHUB_OUTPUT"
             node tools/reconcile_legacy_calculation_jobs.mjs verify-request \
               config/production-legacy-job-reconciliation-request.json
-            source "$GITHUB_OUTPUT"
-            test "$source_sha" = "$EXPECTED_SOURCE_SHA"
-            test "$cutoff_utc" = "$EXPECTED_CUTOFF_UTC"
-            test "$max_rows" = "$EXPECTED_MAX_ROWS"
-            test "$deployment_run_id" = "$EXPECTED_DEPLOYMENT_RUN_ID"
-            test "$worker_version_id" = "$EXPECTED_WORKER_VERSION_ID"
+            latest_source_sha="$(grep '^source_sha=' "$GITHUB_OUTPUT" | cut -d= -f2-)"
+            latest_cutoff_utc="$(grep '^cutoff_utc=' "$GITHUB_OUTPUT" | cut -d= -f2-)"
+            latest_max_rows="$(grep '^max_rows=' "$GITHUB_OUTPUT" | cut -d= -f2-)"
+            latest_deployment_run_id="$(grep '^deployment_run_id=' "$GITHUB_OUTPUT" | cut -d= -f2-)"
+            latest_worker_version_id="$(grep '^worker_version_id=' "$GITHUB_OUTPUT" | cut -d= -f2-)"
+            test "$latest_source_sha" = "$EXPECTED_SOURCE_SHA"
+            test "$latest_cutoff_utc" = "$EXPECTED_CUTOFF_UTC"
+            test "$latest_max_rows" = "$EXPECTED_MAX_ROWS"
+            test "$latest_deployment_run_id" = "$EXPECTED_DEPLOYMENT_RUN_ID"
+            test "$latest_worker_version_id" = "$EXPECTED_WORKER_VERSION_ID"
             EXPECTED_SHA="$EXPECTED_SOURCE_SHA" node tools/verify_production_activation_authority.mjs
           )
 
