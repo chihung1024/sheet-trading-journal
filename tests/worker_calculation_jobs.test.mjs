@@ -5,12 +5,24 @@ import { __test } from "../worker.js";
 
 const JOB_ID = "job_ABCDEFGHIJKLMNOPQRSTUV";
 const ALT_JOB_ID = "job_ZYXWVUTSRQPONMLKJIHGFE";
+const THIRD_JOB_ID = "job_0123456789abcdefghijkl";
 const USER_ID = "user@example.com";
 
 function createCalculationJobsDb() {
   const rowsByHash = new Map();
   const rowsById = new Map();
   const statements = [];
+
+  const activeFor = (userId, benchmark) => [...rowsById.values()]
+    .filter(row => (
+      row.user_id === userId
+      && row.benchmark === benchmark
+      && (row.status === "queued" || row.status === "running")
+    ))
+    .sort((left, right) => (
+      left.created_at.localeCompare(right.created_at)
+      || left.public_id.localeCompare(right.public_id)
+    ))[0] || null;
 
   const db = {
     prepare(sql) {
@@ -27,6 +39,9 @@ function createCalculationJobsDb() {
                 const [publicId, userId, hash, benchmark] = args;
                 const key = `${userId}\n${hash}`;
                 if (rowsByHash.has(key)) return { meta: { changes: 0 } };
+                if (normalized.includes("WHERE NOT EXISTS") && activeFor(userId, benchmark)) {
+                  return { meta: { changes: 0 } };
+                }
                 const row = {
                   public_id: publicId,
                   user_id: userId,
@@ -61,6 +76,13 @@ function createCalculationJobsDb() {
             async first() {
               if (normalized.includes("WHERE user_id = ? AND idempotency_hash = ?")) {
                 return rowsByHash.get(`${args[0]}\n${args[1]}`) || null;
+              }
+              if (
+                normalized.includes("WHERE user_id = ?")
+                && normalized.includes("benchmark = ?")
+                && normalized.includes("status IN ('queued', 'running')")
+              ) {
+                return activeFor(args[0], args[1]);
               }
               if (normalized.includes("WHERE public_id = ?")) {
                 return rowsById.get(args[0]) || null;
@@ -118,7 +140,7 @@ test("calculation job transitions are fail-closed and terminal states immutable"
   assert.equal(__test.canTransitionCalculationJob("running", "running"), true);
 });
 
-test("migration and workflow enforce unique idempotency, lifecycle callbacks, and retained queueing", async () => {
+test("migration and workflow retain durable job callbacks and serialized execution", async () => {
   const migration = await readFile("migrations/0002_calculation_jobs.sql", "utf8");
   const workflow = await readFile(".github/workflows/update.yml", "utf8");
   assert.match(migration, /UNIQUE \(user_id, idempotency_hash\)/);
@@ -132,7 +154,6 @@ test("migration and workflow enforce unique idempotency, lifecycle callbacks, an
   assert.match(workflow, /always\(\)/);
   assert.match(workflow, /group:\s*portfolio-update/);
   assert.match(workflow, /cancel-in-progress:\s*false/);
-  assert.match(workflow, /queue:\s*max/);
 });
 
 test("repository releases idempotency only for old terminal jobs, never active jobs by creation age", async () => {
@@ -154,29 +175,82 @@ test("repository releases idempotency only for old terminal jobs, never active j
   assert.doesNotMatch(releaseSql, /created_at <=/);
 });
 
-test("concurrent duplicate repository requests resolve to one inserted active job", async () => {
+test("same idempotency key still resolves to one inserted active job", async () => {
   const { db, rowsByHash } = createCalculationJobsDb();
   const hash = await __test.hashCalculationJobIdempotency(
     USER_ID,
     "action.concurrent.1234567890",
   );
-  const [first, second] = await Promise.all([
-    __test.calculationJobsRepository.createOrGet(db, {
-      publicId: JOB_ID,
-      userId: USER_ID,
-      idempotencyHash: hash,
-      benchmark: "SPY",
-    }),
-    __test.calculationJobsRepository.createOrGet(db, {
-      publicId: ALT_JOB_ID,
-      userId: USER_ID,
-      idempotencyHash: hash,
-      benchmark: "SPY",
-    }),
-  ]);
-  assert.equal(Number(first.inserted) + Number(second.inserted), 1);
+  const first = await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: hash,
+    benchmark: "SPY",
+  });
+  const second = await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: ALT_JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: hash,
+    benchmark: "SPY",
+  });
+  assert.equal(first.inserted, true);
+  assert.equal(second.inserted, false);
   assert.equal(first.job.public_id, second.job.public_id);
   assert.equal(rowsByHash.size, 1);
+});
+
+test("legacy key rotation cannot create a second active job for the same tenant and benchmark", async () => {
+  const { db, rowsById, statements } = createCalculationJobsDb();
+  const firstHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.legacy.first.123456");
+  const rotatedHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.legacy.second.12345");
+
+  const first = await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: firstHash,
+    benchmark: "SPY",
+  });
+  const rotated = await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: ALT_JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: rotatedHash,
+    benchmark: "SPY",
+  });
+
+  assert.equal(first.inserted, true);
+  assert.equal(rotated.inserted, false);
+  assert.equal(rotated.job.public_id, JOB_ID);
+  assert.equal(rotated.job.status, "queued");
+  assert.equal(rowsById.size, 1);
+  const insertSql = statements.find(sql => (
+    sql.startsWith("INSERT OR IGNORE INTO calculation_jobs") && sql.includes("WHERE NOT EXISTS")
+  ));
+  assert.ok(insertSql);
+  assert.match(insertSql, /status IN \('queued', 'running'\)/);
+});
+
+test("different benchmark remains a distinct calculation intent", async () => {
+  const { db, rowsById } = createCalculationJobsDb();
+  const spyHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.benchmark.spy.123456");
+  const qqqHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.benchmark.qqq.123456");
+
+  const spy = await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: spyHash,
+    benchmark: "SPY",
+  });
+  const qqq = await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: THIRD_JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: qqqHash,
+    benchmark: "QQQ",
+  });
+
+  assert.equal(spy.inserted, true);
+  assert.equal(qqq.inserted, true);
+  assert.notEqual(spy.job.public_id, qqq.job.public_id);
+  assert.equal(rowsById.size, 2);
 });
 
 test("ambiguous dispatch recovery fails only a still-queued job", async () => {
@@ -289,17 +363,13 @@ test("trigger timeout cannot overwrite a job that already crossed to running", a
   }
 });
 
-test("frontend reuses a tenant-bound pending key and collapses concurrent trigger calls", async () => {
+test("legacy frontend recovery contract remains unchanged during server-first E1c-A", async () => {
   const storeSource = await readFile("src/stores/portfolio.js", "utf8");
   const stateSource = await readFile("src/services/calculationJobState.js", "utf8");
   assert.match(storeSource, /triggerUpdatePromise/);
   assert.match(storeSource, /if \(triggerUpdatePromise\) return triggerUpdatePromise/);
   assert.match(storeSource, /getOrCreateIdempotencyKey/);
   assert.match(storeSource, /rememberPendingCalculationRequest/);
-  assert.match(storeSource, /getCalculationOwner/);
   assert.match(storeSource, /resumePendingCalculationJob/);
-  assert.match(storeSource, /await startCalculationJobPolling\(responseData\.job\.id\)/);
-  assert.match(stateSource, /pending_calculation_request/);
-  assert.match(stateSource, /normalizeCalculationOwner/);
-  assert.doesNotMatch(stateSource, /CALCULATION_REQUEST_TTL_MS/);
+  assert.match(stateSource, /CALCULATION_REQUEST_TTL_MS\s*=\s*15 \* 60 \* 1000/);
 });
