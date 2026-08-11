@@ -1,8 +1,9 @@
 # Gate E / E1b — Historical EOD vs Realtime Valuation Integrity
 
-Status: **IMPLEMENTATION CANDIDATE — R3 BLOCKER REMEDIATED, REVALIDATION REQUIRED**  
+Status: **CLOSED / PRODUCTION VERIFIED**  
 Date: **2026-08-11**  
-Baseline protected main: `82c004c75fb23e2141b9b1bfd1b5abb6eab1fd87`
+Baseline protected main before E1b: `82c004c75fb23e2141b9b1bfd1b5abb6eab1fd87`  
+Merged E1b main: `419ef87604bd35485c1df6dfce963016cb7aa0cb`
 
 ## 1. Problem
 
@@ -101,7 +102,13 @@ First exact-head candidate `f47900901d93dc59f7f1c985c4382b408ea2c523` passed CI 
 
 R3 Same-AI Independent Review found one BLOCKER: the candidate copied the prior daily row into a newer synthetic row and zeroed action fields without first proving the quote date had no corporate action. On a split day this could combine a post-split quote with pre-split holdings / `Split_Factor` semantics.
 
-The candidate was frozen during review. After recording the BLOCKER, reviewer mode ended and implementation resumed. The remediation is the fail-closed action-evidence gate above. The prior CI/review does not authorize the new candidate; a new exact-head CI and fresh focused R3 review are mandatory.
+The candidate was frozen during review. After recording the BLOCKER, reviewer mode ended and implementation resumed. The remediation was the fail-closed action-evidence gate above. A new exact candidate was created and independently re-reviewed; the old CI/review was not reused as merge authority.
+
+Fresh final reviewed candidate:
+
+`1e0f40b2491dfdcdc5e6fa150d86b760f270d66f`
+
+Fresh R3 review result: **PASS — previous blocker remediated, no BLOCKER**.
 
 ## 6. Scope Lock
 
@@ -124,11 +131,15 @@ Out of scope:
 - cash ledger / Decimal / derivatives / tenant UUID work;
 - E1c/E1d/E2.
 
+The merged implementation retained this scope exactly.
+
 ## 7. Risk
 
 **R3 — critical financial-correctness / effective-market-input boundary.**
 
-The code diff is narrow, but it changes which price/date pair may enter production valuation and performance calculations. Risk is consequence-based, not diff-size-based.
+The code diff was narrow, but it changed which price/date pair may enter production valuation and performance calculations. Risk was consequence-based, not diff-size-based.
+
+The later evidence/handoff closeout is R2 because it changes decision state but does not change runtime behavior.
 
 ## 8. Recovery
 
@@ -136,24 +147,84 @@ Pre-change recovery:
 
 `backup-pre-e1b-market-data-integrity-82c004c`
 
-Rollback is a protected revert to the exact pre-E1b baseline. No D1 migration or production Worker mutation is part of this batch.
+Post-merge recovery:
 
-## 9. Required Validation
+`backup-post-e1b-market-data-integrity-419ef87`
 
-Before merge:
+Rollback remains a protected revert to the exact pre-E1b baseline if a new evidence-backed correctness regression is discovered. No D1 migration or production Worker mutation was part of E1b.
 
-- exact changed-file whitelist;
-- Python compile/tests and full repository CI;
-- regression proof for undated/same-date/newer-date/stale-date cases;
-- split/dividend/capital-gain/missing-action fail-closed regression proof;
-- provenance identity proof for `realtime_quote`;
-- verify no calculator/financial formula, Worker, D1, workflow, or schema change;
-- fresh R3 Same-AI Independent Review with financial-correctness/data-provenance competence;
-- expected-head merge only.
+## 9. Pre-Merge and Post-Merge Validation
 
-After merge:
+Final exact-head CI:
 
-- post-main CI + Pages;
-- post-E1b recovery reference;
-- one normal `Update Portfolio Data` production smoke when available through GitHub Actions tooling, inspecting calculation/reconciliation/manifest behavior without repeating unrelated E1a production gates;
-- only after production evidence closes E1b may the master handoff transition to E1c.
+- CI #612 / run `31449796567`;
+- exact candidate `1e0f40b2491dfdcdc5e6fa150d86b760f270d66f`;
+- Python PASS: 444 tests + 18 subtests;
+- coverage raw-count policy PASS; `missing_branches=309`, policy maximum 309;
+- Worker security/deployment PASS;
+- Frontend contracts/build PASS;
+- no coverage-policy weakening.
+
+Expected-head merge:
+
+`419ef87604bd35485c1df6dfce963016cb7aa0cb`
+
+Post-main verification on the exact merge SHA:
+
+- CI #613 / run `31450139272`: SUCCESS;
+- Pages #1476 / run `31450139000`: SUCCESS.
+
+No Worker deployment was required because E1b changes the GitHub calculation engine / market-data processing path, not the deployed Worker runtime.
+
+## 10. Production Smoke
+
+Authoritative sanitized evidence:
+
+`docs/governance/evidence/GATE_E_E1B_PRODUCTION_SMOKE_2026-08-11.json`
+
+Production smoke:
+
+- workflow: `Update Portfolio Data`;
+- run #3230 / `31453892608`;
+- event: `workflow_dispatch`;
+- exact source: `419ef87604bd35485c1df6dfce963016cb7aa0cb`;
+- normal opaque calculation-job path;
+- conclusion: **SUCCESS**.
+
+Observed production evidence:
+
+- 108 transaction records fetched;
+- 33 requested market symbols processed;
+- no legacy `即時報價覆蓋` application log was emitted;
+- no realtime synthetic row was required under the observed market state, which is valid for same-date / fail-closed behavior;
+- transaction-prefix integrity PASS;
+- canonical Daily PnL reconciliation PASS for 2 groups;
+- Daily PnL formula and components both `-24975.10` with 15 symbols;
+- legacy Daily PnL diagnostics: 0;
+- split-adjusted ledger parity PASS for 108 BUY/SELL rows;
+- snapshot upload SUCCESS;
+- final processing: successful users 1, failed users 0;
+- durable calculation-job terminal callback: `succeeded`.
+
+The production smoke did not happen to require a newer-date realtime synthetic row. That branch is covered by exact-head regression tests; production evidence here proves the merged source runs normally, does not re-enter the historical-overwrite path under the observed market state, preserves reconciliation/ledger integrity, and uploads a valid snapshot successfully.
+
+Large-price-move validator warnings and non-conventional XIRR warnings were diagnostic and did not represent E1b failures; all correctness gates above completed successfully.
+
+## 11. Closeout Decision
+
+E1b acceptance criteria are satisfied:
+
+```text
+IMPLEMENTED
+-> VALIDATED
+-> READY TO MERGE
+-> MERGED
+-> PRODUCTION VERIFIED
+-> CLOSED
+```
+
+There is no remaining E1b blocker and no reason to repeat E1a deployment/audit loops or E1b smoke solely for conversational continuity.
+
+**Next Gate E batch: E1c active-job lifecycle / idempotency.**
+
+E1c must address lifecycle semantics rather than merely increasing a fixed TTL. Queued/running jobs must remain active independently of age, with explicit terminal/recovery semantics and fail-closed duplicate-dispatch behavior.
