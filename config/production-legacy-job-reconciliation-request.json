@@ -7,5 +7,5 @@
   "worker_version_id": "68f32cee-c609-4624-aaff-eaa55ef0c77d",
   "legacy_created_before_utc": "2026-08-11 09:16:03",
   "max_rows": 10,
-  "reason": "Reconcile only pre-E1c-A.1 queued calculation jobs that lack durable GitHub run identity after exact-source deployment and repeated proof that Update Portfolio Data has no active GitHub runs."
+  "reason": "Re-run the identical reviewed E1c-A.1 bounded legacy reconciliation after fail-closed cancellation of scheduler-stuck run 31479868929; runtime source, deployment identity, Worker version, cutoff, max_rows, and D1 mutation contract remain unchanged."
 }
