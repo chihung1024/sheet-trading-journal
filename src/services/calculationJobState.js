@@ -1,7 +1,7 @@
 import { PENDING_CALCULATION_V2_STORAGE_PREFIX } from './projectStorage.js';
 
 export const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
-export const CALCULATION_REQUEST_FUTURE_SKEW_MS = 60 * 1000;
+export const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
 export const CALCULATION_REQUEST_V2_VERSION = 2;
 
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._~-]{16,128}$/;
@@ -15,16 +15,14 @@ export function normalizeCalculationOwner(value) {
 
 export function validatePendingCalculationRequest(value, owner, options = {}) {
   const now = Number.isFinite(options.now) ? options.now : Date.now();
+  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : CALCULATION_REQUEST_TTL_MS;
   const expectedOwner = normalizeCalculationOwner(owner);
 
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (!expectedOwner || normalizeCalculationOwner(value.owner) !== expectedOwner) return null;
   if (typeof value.key !== 'string' || !IDEMPOTENCY_KEY_RE.test(value.key)) return null;
-  if (
-    !Number.isFinite(value.createdAt)
-    || value.createdAt <= 0
-    || value.createdAt > now + CALCULATION_REQUEST_FUTURE_SKEW_MS
-  ) return null;
+  if (!Number.isFinite(value.createdAt) || value.createdAt <= 0 || value.createdAt > now + 60_000) return null;
+  if (now - value.createdAt >= ttlMs) return null;
   if (value.jobId !== null && (typeof value.jobId !== 'string' || !JOB_ID_RE.test(value.jobId))) return null;
 
   return {
@@ -82,7 +80,7 @@ function validateGenerationRecord(value, owner, storageKey, options = {}) {
   if (
     !Number.isFinite(value.clearedAt)
     || value.clearedAt < base.createdAt
-    || value.clearedAt > now + CALCULATION_REQUEST_FUTURE_SKEW_MS
+    || value.clearedAt > now + 60_000
   ) {
     return null;
   }
