@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "status": "ready",
+  "operation": "e1c_a1_cancel_stuck_scheduler_run",
+  "target_run_id": 31479868929,
+  "target_production_job_id": 93742148875,
+  "expected_head_sha": "8f9f942cc22b70e5bbec0f05438b0a74fefb8057",
+  "expected_workflow_path": ".github/workflows/production-legacy-job-reconciliation.yml",
+  "reason": "Cancel only E1c-A.1 reconciliation run 31479868929 after production approval because its production job remains queued without a runner or execution steps; preserve all reviewed D1 mutation boundaries for the automatically triggered replacement run."
+}

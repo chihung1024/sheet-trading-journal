@@ -5,8 +5,8 @@
   "baseline_main_sha": "1e8e29ae132e70474d91d388fe775ad9976ee11a",
   "baseline_tree_sha": "37f53ac8bfbd3a0806c0ac0405412f2dffa45ad6",
   "captured_at_utc": "2026-08-06T12:47:00Z",
-  "last_updated_batch": "E1C-A1-LEGACY-RECONCILIATION",
-  "last_updated_at_utc": "2026-08-11T09:16:10Z",
+  "last_updated_batch": "E1C-A1-SCHEDULER-RECOVERY-G2",
+  "last_updated_at_utc": "2026-08-11T17:12:00Z",
   "policy": {
     "external_actions_must_use_full_commit_sha": true,
     "checkout_persist_credentials": false,
@@ -15,6 +15,9 @@
     },
     "workflow_write_permission_allowlist": {
       ".github/workflows/production-deployment-dispatch.yml": [
+        "actions"
+      ],
+      ".github/workflows/production-legacy-reconciliation-scheduler-recovery.yml": [
         "actions"
       ]
     },
@@ -29,6 +32,7 @@
     ".github/workflows/production-deployment-dispatch.yml",
     ".github/workflows/production-identity-evidence.yml",
     ".github/workflows/production-legacy-job-reconciliation.yml",
+    ".github/workflows/production-legacy-reconciliation-scheduler-recovery.yml",
     ".github/workflows/staging-browser-smoke.yml",
     ".github/workflows/update.yml"
   ],
