@@ -14,7 +14,6 @@ const GITHUB_DISPATCH = Object.freeze({
 });
 const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;
 const GITHUB_API_VERSION = "2026-03-10";
-const CALCULATION_JOB_DISPATCH_BINDING_GRACE_SECONDS = 60;
 const REQUIRED_SCHEMA_VERSION = 2;
 const SOURCE_COMMIT_FALLBACK = "development";
 const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings", "calculation_jobs"];
@@ -837,10 +836,7 @@ async function handleCalculationJobStatus(request, env, requestId) {
     }
     const githubRunId = body.github_run_id === undefined || body.github_run_id === null
       ? null
-      : requireString(String(body.github_run_id), "github_run_id", 1, 32);
-    if (githubRunId !== null && !/^\d+$/.test(githubRunId)) {
-      throw new RequestValidationError("github_run_id is invalid");
-    }
+      : validateGitHubRunId(body.github_run_id);
     const githubRunAttempt = body.github_run_attempt === undefined
       ? 0
       : requireNonNegativeInteger(body.github_run_attempt, "github_run_attempt");
@@ -985,7 +981,6 @@ const calculationJobsRepository = Object.freeze({
     }
     const benchmark = validateSymbol(job.benchmark, "benchmark");
     const replayModifier = `-${CALCULATION_JOB_TERMINAL_REPLAY_SECONDS} seconds`;
-    const dispatchBindingModifier = `-${CALCULATION_JOB_DISPATCH_BINDING_GRACE_SECONDS} seconds`;
 
     await db.prepare(`
       UPDATE calculation_jobs
@@ -1017,11 +1012,6 @@ const calculationJobsRepository = Object.freeze({
         WHERE user_id = ?
           AND benchmark = ?
           AND status IN ('queued', 'running')
-          AND (
-            status = 'running'
-            OR github_run_id IS NOT NULL
-            OR created_at > datetime('now', ?)
-          )
       )
     `).bind(
       publicId,
@@ -1030,7 +1020,6 @@ const calculationJobsRepository = Object.freeze({
       benchmark,
       userId,
       benchmark,
-      dispatchBindingModifier,
     ).run();
 
     if (affectedRows(insert) === 1) {
@@ -1061,14 +1050,9 @@ const calculationJobsRepository = Object.freeze({
       WHERE user_id = ?
         AND benchmark = ?
         AND status IN ('queued', 'running')
-        AND (
-          status = 'running'
-          OR github_run_id IS NOT NULL
-          OR created_at > datetime('now', ?)
-        )
       ORDER BY created_at ASC, public_id ASC
       LIMIT 1
-    `).bind(userId, benchmark, dispatchBindingModifier).first();
+    `).bind(userId, benchmark).first();
     if (!active) throw new Error("CalculationJobInsertLost");
     return { inserted: false, job: normalizeCalculationJobRow(active) };
   },
@@ -1136,11 +1120,16 @@ const calculationJobsRepository = Object.freeze({
   async transition(db, transition) {
     const current = await this.findById(db, transition.publicId);
     if (!current) return { kind: "not-found", job: null };
+    const runId = transition.githubRunId === undefined || transition.githubRunId === null
+      ? null
+      : validateGitHubRunId(transition.githubRunId);
+    if (current.github_run_id !== null && runId !== null && current.github_run_id !== runId) {
+      return { kind: "conflict", job: current };
+    }
     if (current.status === transition.nextStatus) return { kind: "idempotent", job: current };
     if (!canTransitionCalculationJob(current.status, transition.nextStatus)) {
       return { kind: "invalid-transition", job: current };
     }
-    const runId = transition.githubRunId || null;
     const runAttempt = Number.isSafeInteger(transition.githubRunAttempt)
       ? transition.githubRunAttempt
       : 0;
