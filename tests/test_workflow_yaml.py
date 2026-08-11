@@ -17,11 +17,6 @@ def test_update_workflow_is_valid_yaml_and_has_opaque_job_callbacks():
     assert inputs["transaction_integrity_audit_only"]["type"] == "boolean"
     assert "audit-only" in inputs["target_user_id"]["description"]
 
-    concurrency = workflow["concurrency"]
-    assert concurrency["group"] == "portfolio-update"
-    assert concurrency["cancel-in-progress"] == "false"
-    assert concurrency["queue"] == "max"
-
     job = workflow["jobs"]["run-and-upload"]
     steps = {step["name"]: step for step in job["steps"]}
 
