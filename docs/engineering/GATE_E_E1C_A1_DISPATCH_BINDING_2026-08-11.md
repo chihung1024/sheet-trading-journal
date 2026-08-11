@@ -1,106 +1,148 @@
 # Gate E / E1c-A.1 — Dispatch Binding and Legacy Orphan Reconciliation
 
-Status: **IMPLEMENTATION CANDIDATE**  
+Status: **DEPLOYED / LEGACY RECONCILIATION ACTIVE**  
+Document revision: **3**  
 Date: **2026-08-11**
 
-## 1. Production blocker
+## 1. Production blocker and root cause
 
-After E1c-A Worker runtime `94215c9dfec54a9da80ceac9782a6aca16bee8ad` was deployed and reached stable production contract, a normal authenticated frontend trigger remained at `計算中...`. Repeated GitHub remote-truth checks showed no new `Update Portfolio Data` run. The latest existing run (#3235 / `31455526265`) had completed successfully with a terminal `succeeded` callback before the E1c-A deployment.
+After E1c-A Worker runtime `94215c9dfec54a9da80ceac9782a6aca16bee8ad` was deployed, a normal authenticated frontend trigger remained at `計算中...` while repeated GitHub remote-truth checks showed no new `Update Portfolio Data` run. The last prior normal run (#3235 / `31455526265`) had already completed with terminal `succeeded`.
 
-The frontend had therefore received and was polling an existing durable active job, while GitHub had no corresponding newly created workflow. E1c-A's server-first cross-key guard prevented duplicate work as designed, but production exposed a rollout residue: a legacy durable `queued` row without a durable GitHub run identity can remain indistinguishable from a legitimately pending pre-binding job.
+E1c-A's same-tenant/same-benchmark active guard correctly prevented duplicate dispatch, but production exposed a rollout residue: a legacy `queued` durable row without `github_run_id` is indistinguishable from a legitimate pre-binding queued job unless an external durable run identity exists.
 
-## 2. Root cause
+Before E1c-A.1, Worker dispatch used GitHub API version `2022-11-28`; `github_run_id` was populated only when the workflow later reached the system `running` callback. That created a blind interval and allowed historical `queued + github_run_id IS NULL` residue when a workflow never reached the callback.
 
-Before this hotfix, the Worker dispatched `update.yml` using GitHub REST API version `2022-11-28` and treated any HTTP success as sufficient. The Worker recorded only the GitHub request ID. `calculation_jobs.github_run_id` was populated later, when the workflow itself reached the system-only `running` callback.
+## 2. E1c-A.1 forward runtime correction
 
-That leaves a blind interval for every queued job and leaves historical `queued + github_run_id IS NULL` residue with no positive dispatch identity if the workflow never reaches its first callback.
+Merged runtime source:
 
-GitHub REST API version `2026-03-10` returns HTTP 200 with `workflow_run_id` for a successful workflow dispatch. Schema 2 already contains the `github_run_id` column, so the forward fix needs no D1 schema migration.
+`R_C1 = fe5f091fdb2c92970dff74c1a7c99052084adb95`
 
-## 3. Locked E1c-A.1 runtime correction — future dispatch binding
+The correction:
 
-1. Worker workflow dispatch uses GitHub API version `2026-03-10`.
-2. A dispatch is accepted only when GitHub returns HTTP 200 and a valid positive `workflow_run_id`.
-3. Legacy HTTP 204 or malformed/missing run identity is treated as an invalid upstream response and fails closed.
-4. The returned run ID is durably bound into the calculation job before the Worker returns HTTP 202 to the browser.
-5. Binding is idempotent for the same run ID and conflicts if the durable row already carries a different run ID. Later workflow callbacks must match an already-bound run ID; a conflicting callback cannot overwrite dispatch identity, including same-status replay.
-6. Exact idempotency-key replay remains first-class and active exact-key jobs never expire by elapsed age.
-7. E1c-A's active same-tenant/same-benchmark cross-key guard remains lifecycle-based for `queued/running`; this hotfix does **not** reintroduce an age heuristic to decide whether a legacy active row is dead.
-8. Different benchmark remains a distinct calculation intent.
-9. Public job projection remains unchanged; GitHub run identity is not exposed to the tenant-facing response.
+1. uses GitHub REST API `2026-03-10`;
+2. requires HTTP 200 plus a positive `workflow_run_id`;
+3. fails closed on legacy 204 or malformed/missing dispatch identity;
+4. durably binds the returned run ID before browser HTTP 202 acknowledgement;
+5. makes same-run binding idempotent and conflicting run identity fail closed;
+6. prevents workflow callbacks from overwriting an already-bound different run ID;
+7. preserves lifecycle-based exact-key and same-tenant/same-benchmark active protection;
+8. preserves different benchmark as a distinct calculation intent;
+9. changes no tenant/public job projection and no financial calculation path.
 
-## 4. Explicitly rejected candidate
+The rejected 60-second orphan heuristic remains **BLOCKED / SUPERSEDED**. Age is not liveness authority.
 
-An earlier E1c-A.1 prototype considered ignoring `queued + github_run_id IS NULL` rows after a 60-second grace. Targeted tests passed, but rollout review rejected that design before PR creation.
+## 3. Production activation evidence
 
-Reason: a legitimately accepted workflow can remain pending for longer than 60 seconds. Treating an unbound queued row as dead by elapsed time would recreate the same class of lifecycle bug E1c is intended to remove.
+Production Identity Evidence #15 / run `31473362171` passed for exact `R_C1`.
 
-The 60-second prototype is **BLOCKED / SUPERSEDED** and has no merge authority.
+Activation authority was merged in PR #195:
 
-## 5. Legacy production residue — controlled reconciliation, not runtime guessing
+`A_C1 = baa07bafe4d3438abf488bcca703aa4848975083`
 
-The currently observed legacy orphan must be reconciled separately from the forward runtime fix.
+Autonomous deployment transport PR #196 then merged on protected main:
 
-The safe order is:
+`67b873529ab4cd063ec9d0b7d5c1d30bbb4b8ffc`
+
+The deployment request broker automatically created Deploy Worker #4 / run `31475347673`; the operator did not manually select the workflow or paste the runtime SHA.
+
+Deploy #4 production evidence:
+
+- exact runtime checkout: `R_C1`;
+- Worker tests: 162 PASS / 0 FAIL;
+- production D1 identity: PASS;
+- remote D1 migrations: none;
+- schema remains 2;
+- Worker version: `68f32cee-c609-4624-aaff-eaa55ef0c77d`;
+- stable production contract: 3 consecutive PASS;
+- post-deploy artifact ID `9095595916`;
+- artifact ZIP SHA-256 `665cb83a56a6dc36f49df7759c09df978b9b5a44b73757441d2fac94d4aa3497`, independently recomputed and matched;
+- deploy artifact is public-contract evidence only (`system_checks=skipped`).
+
+Sanitized durable deployment evidence:
+
+`docs/governance/evidence/GATE_E_E1C_A1_DEPLOY_2026-08-11.json`
+
+## 4. Legacy production residue — controlled reconciliation
+
+The forward fix intentionally does **not** guess that a legacy row is dead because it is old.
+
+The reconciliation cohort is narrowly defined as:
 
 ```text
-merge + production-deploy forward dispatch binding
--> prove new Worker stable
--> controlled production reconciliation of legacy queued/unbound rows
-   only under explicit exact-source authority and live GitHub-run checks
--> normal frontend retry/smoke
--> E1c-A.1 production verification
--> E1c-B
+status = queued
+AND github_run_id IS NULL
+AND created_at < reviewed E1c-A.1 deployment cutover
 ```
 
-The reconciliation must not infer liveness from age alone. Before mutating legacy rows it must prove there is no corresponding live `Update Portfolio Data` workflow that could still legitimately advance the row. The reconciliation is a production-control operation and requires the same reviewer-protected mutation discipline as Worker deployment.
+The cutoff is only a rollout-cohort boundary. It is not liveness authority.
 
-## 6. Scope
+Before the D1 mutation, the protected workflow must additionally prove:
 
-Runtime implementation scope:
+- exact runtime `R_C1` is live;
+- live Worker version matches reviewed Deploy #4 evidence;
+- current production activation authority still authorizes `R_C1`;
+- production D1 identity matches reviewed authority;
+- every GitHub nonterminal status for `Update Portfolio Data` is empty: `queued`, `in_progress`, `waiting`, `pending`, `requested`;
+- zero-nonterminal state is observed three consecutive times and again immediately before mutation;
+- candidate row count does not exceed the reviewed `max_rows`.
 
-- `worker.js`
-- `tests/worker_dispatch.test.mjs`
-- `tests/worker_calculation_jobs.test.mjs`
-- this engineering record
+The mutation only transitions matching legacy jobs to:
 
-Explicitly unchanged in the runtime hotfix:
+```text
+status = failed
+error_code = LEGACY_DISPATCH_UNBOUND_RECONCILED
+```
 
-- frontend pending TTL / generation semantics
-- `.github/workflows/update.yml` concurrency
-- D1 schema / migrations
-- financial calculation code
-- E1d cursor-signing secret
-- tenant/public job projection
+It does not delete rows, clear source transactions, mutate snapshots, or record tenant/job identity in evidence. SQLite `changes()` must exactly equal the pre-mutation target count; a cardinality mismatch fails closed instead of inferring mutations from before/after counts. The operation is idempotent: once reconciled, the target query returns zero rows.
 
-A later activation/control-plane batch may add the narrowly authorized one-time legacy reconciliation after the exact runtime SHA is known. That control-plane work is not runtime merge authority for this candidate.
+The same reviewer-protected production job then runs `verify_production_contract.mjs` with `REQUIRE_SYSTEM_CHECKS=1`, so reconciliation and post-mutation system contract proof share one production approval instead of creating another manual gate.
 
-## 7. Risk and recovery
+## 5. R3 review hardening of the reconciliation control plane
 
-**R3 — production lifecycle / dispatch identity / duplicate-execution correctness.**
+The first exact candidate (`ebc27b3d23c19d03be5ad7002845f603400cf4dd`) passed CI #636 but fresh R3 review correctly rejected it before merge.
 
-A defect can duplicate work, suppress a legitimate active calculation, or report dispatch success without a durable run identity.
+Three safety defects were identified and fixed rather than waived:
 
-Recovery: `backup-pre-e1c-a1-dispatch-binding-6e4e464`.
+1. **Operation-code source mismatch.** Production checks out exact runtime `R_C1`, which predates the new reconciliation tool. The fixed workflow materializes the immutable reviewed workflow-event control-plane commit separately and executes the reconciliation tool from that reviewed commit while the workspace remains the exact runtime checkout for Worker/D1 verification.
+2. **Incomplete active-run proof.** First-page `per_page=100` inference was replaced by status-scoped GitHub API queries for every supported nonterminal workflow status. Each status query uses `per_page=1` and authoritative `total_count`, so the proof does not depend on recency ordering or pagination position.
+3. **Late control-plane drift window.** Immediately before D1 mutation, the workflow now re-fetches latest protected main, revalidates the request values, activation authority, and exact blob identity of both the reviewed workflow and mutation tool. Any request/code drift cancels the old operation.
 
-Required before merge:
+The reviewed operation tool also records actual mutation cardinality via SQLite `changes()` and requires it to equal the reviewed pre-mutation target count.
 
-- exact 4-file runtime/doc scope;
-- full repository exact-head CI;
-- successful dispatch requires HTTP 200 + valid `workflow_run_id`;
-- invalid/missing run identity fails closed;
-- run binding same-ID idempotency and conflicting-ID rejection;
-- workflow callbacks cannot overwrite an already-bound GitHub run ID, including same-status replay;
-- existing exact-key and cross-key active lifecycle protections remain intact without age expiry;
-- dispatch timeout/running race regression remains PASS;
-- fresh R3 Same-AI Independent Review;
-- expected-head merge only.
+No safety gate was weakened to obtain CI success.
 
-Required after merge:
+## 6. Current production-control batch
 
-- fresh exact-source production identity and activation authority;
-- exact-source Worker deployment;
-- controlled legacy orphan reconciliation under explicit production authority;
-- normal frontend terminal smoke proving a new workflow is durably bound and reaches terminal state.
+Request:
 
-E1c-B remains deferred until E1c-A.1 is production verified.
+`config/production-legacy-job-reconciliation-request.json`
+
+Workflow:
+
+`.github/workflows/production-legacy-job-reconciliation.yml`
+
+Recovery before this control-plane batch:
+
+`backup-pre-e1c-a1-legacy-reconciliation-67b8735`
+
+Risk remains **R3 — production lifecycle/data-control operation**.
+
+The workflow is event-driven from a reviewed protected-main request. It does not require the operator to find an Action, choose a SHA, or press Run workflow. The GitHub `production` Environment Required Reviewer remains the only independent human mutation gate.
+
+## 7. Required closeout sequence
+
+```text
+review + merge reconciliation request/control plane
+-> event-driven reconciliation workflow
+-> production environment approval
+-> legacy cohort reconciliation
+-> post-mutation system contract audit
+-> confirm stuck frontend generation reaches terminal/clears
+-> one normal authenticated frontend update
+-> prove new dispatch has durable GitHub run binding and terminal callback
+-> E1c-A.1 CLOSED / PRODUCTION VERIFIED
+-> E1c-B ACTIVE
+```
+
+E1c-B remains responsible for frontend pending-age removal and `update.yml` queue semantics. E1d and Schema 3 remain out of scope.

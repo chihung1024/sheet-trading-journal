@@ -1,0 +1,291 @@
+name: Production Legacy Job Reconciliation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - config/production-legacy-job-reconciliation-request.json
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-legacy-job-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify reconciliation request before reviewer gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      source_sha: ${{ steps.request.outputs.source_sha }}
+      cutoff_utc: ${{ steps.request.outputs.cutoff_utc }}
+      max_rows: ${{ steps.request.outputs.max_rows }}
+      deployment_run_id: ${{ steps.request.outputs.deployment_run_id }}
+      worker_version_id: ${{ steps.request.outputs.worker_version_id }}
+    steps:
+      - name: Checkout exact reconciliation request control plane
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+
+      - name: Validate exact protected-main reconciliation request
+        id: request
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          event_sha="$(git rev-parse HEAD)"
+          latest_main="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "$event_sha" != "$latest_main" ]]; then
+            echo "Refusing stale reconciliation request: event SHA is no longer protected-main HEAD" >&2
+            exit 1
+          fi
+          node tools/reconcile_legacy_calculation_jobs.mjs verify-request \
+            config/production-legacy-job-reconciliation-request.json
+
+      - name: Verify exact activation authority before reviewer gate
+        env:
+          EXPECTED_SHA: ${{ steps.request.outputs.source_sha }}
+        run: node tools/verify_production_activation_authority.mjs
+
+      - name: Verify zero nonterminal Update Portfolio Data runs before reviewer gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UPDATE_WORKFLOW: update.yml
+        run: node tools/reconcile_legacy_calculation_jobs.mjs check-github-active-runs
+
+  production:
+    name: Reconcile legacy unbound queued jobs and audit production
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout exact authorized runtime source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Materialize immutable reviewed reconciliation control plane
+        shell: bash
+        env:
+          REVIEWED_CONTROL_PLANE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$REVIEWED_CONTROL_PLANE_SHA"
+          reviewed="$RUNNER_TEMP/e1c-a1-reviewed-control-plane"
+          rm -rf "$reviewed"
+          git worktree add --detach "$reviewed" "$REVIEWED_CONTROL_PLANE_SHA"
+          test "$(git -C "$reviewed" rev-parse HEAD)" = "$REVIEWED_CONTROL_PLANE_SHA"
+          node "$reviewed/tools/reconcile_legacy_calculation_jobs.mjs" verify-request \
+            "$reviewed/config/production-legacy-job-reconciliation-request.json"
+
+      - name: Re-verify exact request, reviewed operation code, and authority from latest protected main
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          EXPECTED_CUTOFF_UTC: ${{ needs.preflight.outputs.cutoff_utc }}
+          EXPECTED_MAX_ROWS: ${{ needs.preflight.outputs.max_rows }}
+          EXPECTED_DEPLOYMENT_RUN_ID: ${{ needs.preflight.outputs.deployment_run_id }}
+          EXPECTED_WORKER_VERSION_ID: ${{ needs.preflight.outputs.worker_version_id }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" refs/remotes/origin/main
+
+          reviewed="$RUNNER_TEMP/e1c-a1-reviewed-control-plane"
+          latest="$RUNNER_TEMP/e1c-a1-reconciliation-latest-main"
+          rm -rf "$latest"
+          git worktree add --detach "$latest" refs/remotes/origin/main
+
+          reviewed_tool_sha="$(git -C "$reviewed" rev-parse HEAD:tools/reconcile_legacy_calculation_jobs.mjs)"
+          latest_tool_sha="$(git -C "$latest" rev-parse HEAD:tools/reconcile_legacy_calculation_jobs.mjs)"
+          test "$reviewed_tool_sha" = "$latest_tool_sha"
+          reviewed_workflow_sha="$(git -C "$reviewed" rev-parse HEAD:.github/workflows/production-legacy-job-reconciliation.yml)"
+          latest_workflow_sha="$(git -C "$latest" rev-parse HEAD:.github/workflows/production-legacy-job-reconciliation.yml)"
+          test "$reviewed_workflow_sha" = "$latest_workflow_sha"
+
+          outputs="$RUNNER_TEMP/latest-reconciliation-request-outputs"
+          : > "$outputs"
+          GITHUB_OUTPUT="$outputs" node "$reviewed/tools/reconcile_legacy_calculation_jobs.mjs" verify-request \
+            "$latest/config/production-legacy-job-reconciliation-request.json"
+          latest_source_sha="$(grep '^source_sha=' "$outputs" | cut -d= -f2-)"
+          latest_cutoff_utc="$(grep '^cutoff_utc=' "$outputs" | cut -d= -f2-)"
+          latest_max_rows="$(grep '^max_rows=' "$outputs" | cut -d= -f2-)"
+          latest_deployment_run_id="$(grep '^deployment_run_id=' "$outputs" | cut -d= -f2-)"
+          latest_worker_version_id="$(grep '^worker_version_id=' "$outputs" | cut -d= -f2-)"
+          test "$latest_source_sha" = "$EXPECTED_SOURCE_SHA"
+          test "$latest_cutoff_utc" = "$EXPECTED_CUTOFF_UTC"
+          test "$latest_max_rows" = "$EXPECTED_MAX_ROWS"
+          test "$latest_deployment_run_id" = "$EXPECTED_DEPLOYMENT_RUN_ID"
+          test "$latest_worker_version_id" = "$EXPECTED_WORKER_VERSION_ID"
+          (
+            cd "$latest"
+            EXPECTED_SHA="$EXPECTED_SOURCE_SHA" node tools/verify_production_activation_authority.mjs
+          )
+
+      - name: Load canonical Worker manifest expectations
+        id: manifest
+        run: node tools/export_worker_manifest.mjs
+
+      - name: Verify live Worker exact-source contract before reconciliation
+        env:
+          WORKER_BASE_URL: https://journal-backend.chired.workers.dev
+          EXPECTED_SHA: ${{ needs.preflight.outputs.source_sha }}
+          EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
+          REQUIRE_SYSTEM_CHECKS: '0'
+          AUDIT_OUTPUT: production-pre-reconciliation-contract.json
+        run: node tools/verify_production_contract.mjs
+
+      - name: Verify live Worker version matches reviewed deployment evidence
+        shell: bash
+        env:
+          EXPECTED_WORKER_VERSION_ID: ${{ needs.preflight.outputs.worker_version_id }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const evidence = JSON.parse(readFileSync('production-pre-reconciliation-contract.json', 'utf8'));
+          if (evidence.worker_version_id !== process.env.EXPECTED_WORKER_VERSION_ID) {
+            throw new Error('live Worker version does not match reviewed E1c-A.1 deployment evidence');
+          }
+          console.log('Live Worker version matches reviewed deployment evidence');
+          NODE
+
+      - name: Render production Wrangler config
+        env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+          SOURCE_COMMIT: ${{ needs.preflight.outputs.source_sha }}
+        run: npm run worker:config:render
+
+      - name: Verify exact production D1 identity
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          EXPECTED_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+        run: |
+          set -euo pipefail
+          D1_INFO_JSON="$(npx wrangler d1 info "$EXPECTED_D1_DATABASE_NAME" --json --config .wrangler/deploy.toml)"
+          export D1_INFO_JSON
+          node tools/verify_d1_identity.mjs
+
+      - name: Require three consecutive zero-nonterminal-run observations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UPDATE_WORKFLOW: update.yml
+        run: |
+          set -euo pipefail
+          reviewed="$RUNNER_TEMP/e1c-a1-reviewed-control-plane"
+          for attempt in $(seq 1 3); do
+            node "$reviewed/tools/reconcile_legacy_calculation_jobs.mjs" check-github-active-runs
+            echo "Zero-nonterminal-run observation $attempt/3 passed"
+            if [[ "$attempt" != "3" ]]; then sleep 3; fi
+          done
+
+      - name: Final request, operation-code, authority, and active-run check before production D1 mutation
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          EXPECTED_CUTOFF_UTC: ${{ needs.preflight.outputs.cutoff_utc }}
+          EXPECTED_MAX_ROWS: ${{ needs.preflight.outputs.max_rows }}
+          EXPECTED_DEPLOYMENT_RUN_ID: ${{ needs.preflight.outputs.deployment_run_id }}
+          EXPECTED_WORKER_VERSION_ID: ${{ needs.preflight.outputs.worker_version_id }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UPDATE_WORKFLOW: update.yml
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          reviewed="$RUNNER_TEMP/e1c-a1-reviewed-control-plane"
+          latest="$RUNNER_TEMP/e1c-a1-reconciliation-final-main"
+          rm -rf "$latest"
+          git worktree add --detach "$latest" refs/remotes/origin/main
+
+          reviewed_tool_sha="$(git -C "$reviewed" rev-parse HEAD:tools/reconcile_legacy_calculation_jobs.mjs)"
+          latest_tool_sha="$(git -C "$latest" rev-parse HEAD:tools/reconcile_legacy_calculation_jobs.mjs)"
+          test "$reviewed_tool_sha" = "$latest_tool_sha"
+          reviewed_workflow_sha="$(git -C "$reviewed" rev-parse HEAD:.github/workflows/production-legacy-job-reconciliation.yml)"
+          latest_workflow_sha="$(git -C "$latest" rev-parse HEAD:.github/workflows/production-legacy-job-reconciliation.yml)"
+          test "$reviewed_workflow_sha" = "$latest_workflow_sha"
+
+          outputs="$RUNNER_TEMP/final-reconciliation-request-outputs"
+          : > "$outputs"
+          GITHUB_OUTPUT="$outputs" node "$reviewed/tools/reconcile_legacy_calculation_jobs.mjs" verify-request \
+            "$latest/config/production-legacy-job-reconciliation-request.json"
+          test "$(grep '^source_sha=' "$outputs" | cut -d= -f2-)" = "$EXPECTED_SOURCE_SHA"
+          test "$(grep '^cutoff_utc=' "$outputs" | cut -d= -f2-)" = "$EXPECTED_CUTOFF_UTC"
+          test "$(grep '^max_rows=' "$outputs" | cut -d= -f2-)" = "$EXPECTED_MAX_ROWS"
+          test "$(grep '^deployment_run_id=' "$outputs" | cut -d= -f2-)" = "$EXPECTED_DEPLOYMENT_RUN_ID"
+          test "$(grep '^worker_version_id=' "$outputs" | cut -d= -f2-)" = "$EXPECTED_WORKER_VERSION_ID"
+          (
+            cd "$latest"
+            EXPECTED_SHA="$EXPECTED_SOURCE_SHA" node tools/verify_production_activation_authority.mjs
+          )
+          node "$reviewed/tools/reconcile_legacy_calculation_jobs.mjs" check-github-active-runs
+          echo 'Final request/code/authority/active-run gate passed immediately before D1 mutation'
+
+      - name: Reconcile only legacy queued jobs without durable dispatch identity
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.source_sha }}
+          RECONCILIATION_CUTOFF_UTC: ${{ needs.preflight.outputs.cutoff_utc }}
+          RECONCILIATION_MAX_ROWS: ${{ needs.preflight.outputs.max_rows }}
+          DEPLOYMENT_RUN_ID: ${{ needs.preflight.outputs.deployment_run_id }}
+          WORKER_VERSION_ID: ${{ needs.preflight.outputs.worker_version_id }}
+          AUDIT_OUTPUT: production-e1c-a1-legacy-reconciliation.json
+        run: node "$RUNNER_TEMP/e1c-a1-reviewed-control-plane/tools/reconcile_legacy_calculation_jobs.mjs" execute
+
+      - name: Run sanitized production contract audit after reconciliation
+        env:
+          WORKER_BASE_URL: https://journal-backend.chired.workers.dev
+          EXPECTED_SHA: ${{ needs.preflight.outputs.source_sha }}
+          EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
+          API_KEY: ${{ secrets.API_KEY }}
+          REQUIRE_SYSTEM_CHECKS: '1'
+          AUDIT_OUTPUT: production-contract-audit.json
+        run: node tools/verify_production_contract.mjs
+
+      - name: Upload sanitized reconciliation evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: production-e1c-a1-legacy-reconciliation-${{ needs.preflight.outputs.source_sha }}
+          path: |
+            production-pre-reconciliation-contract.json
+            production-e1c-a1-legacy-reconciliation.json
+            production-contract-audit.json
+          if-no-files-found: error
+          retention-days: 30
