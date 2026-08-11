@@ -2,11 +2,11 @@
   "schema_version": 1,
   "check_name": "production_d1_identity",
   "status": "passed",
-  "observed_at": "2026-08-10T17:21:15.301Z",
-  "source_sha": "0e2ea514bfa1f0640f620db35490d2a1f728ec7e",
+  "observed_at": "2026-08-11T04:57:01.614Z",
+  "source_sha": "94215c9dfec54a9da80ceac9782a6aca16bee8ad",
   "proof": {
     "result": "pass",
-    "summary": "E1a-B authoritative Cloudflare GET evidence proved production D1 name journal-db with UUID SHA-256 dd4bbbbedc4fc1329eec01ae5dff9677df9fc4e703ef6e9ebecb9da04cb390c3, and the single traffic-bearing journal-backend version bound canonical DB to that protected production D1.",
-    "artifact_reference": "Production Identity Evidence run 31413549090 (#13); artifact 9072520233; sha256:b6608c66a5ed9026fbcce65ccce09105f5399faf43c8fb1e150ac717c19093e8"
+    "summary": "E1c-A authoritative reviewer-protected GET-only Cloudflare evidence proved production D1 name journal-db with UUID SHA-256 dd4bbbbedc4fc1329eec01ae5dff9677df9fc4e703ef6e9ebecb9da04cb390c3, and the single traffic-bearing journal-backend version bound canonical DB to that protected production D1.",
+    "artifact_reference": "Production Identity Evidence run 31460047093 (#14); artifact 9089458738; sha256:9215ebc8c9f5ce5ccd53c56afe2f26085b0a724c59302f5c15f46d979a4fc48a"
   }
 }
