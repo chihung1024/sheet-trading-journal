@@ -61,6 +61,14 @@ function createCalculationJobsDb() {
                 rowsById.set(publicId, row);
                 return { meta: { changes: 1 } };
               }
+              if (normalized.startsWith("UPDATE calculation_jobs SET github_run_id = ?")) {
+                const [runId, publicId] = args;
+                const row = rowsById.get(publicId);
+                if (!row || row.github_run_id !== null) return { meta: { changes: 0 } };
+                row.github_run_id = runId;
+                row.updated_at = "2026-08-11 05:30:01";
+                return { meta: { changes: 1 } };
+              }
               if (normalized.startsWith("UPDATE calculation_jobs SET status = 'failed'")) {
                 const [errorCode, publicId] = args;
                 const row = rowsById.get(publicId);
@@ -227,6 +235,99 @@ test("legacy key rotation cannot create a second active job for the same tenant 
   ));
   assert.ok(insertSql);
   assert.match(insertSql, /status IN \('queued', 'running'\)/);
+});
+
+test("legacy old queued row without dispatch evidence remains active until controlled recovery", async () => {
+  const { db, rowsById } = createCalculationJobsDb();
+  const firstHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.orphan.first.123456");
+  const rotatedHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.orphan.second.12345");
+
+  const first = await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: firstHash,
+    benchmark: "SPY",
+  });
+  rowsById.get(JOB_ID).created_at = "2026-08-01 00:00:00";
+  assert.equal(rowsById.get(JOB_ID).github_run_id, null);
+
+  const rotated = await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: ALT_JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: rotatedHash,
+    benchmark: "SPY",
+  });
+  assert.equal(first.inserted, true);
+  assert.equal(rotated.inserted, false);
+  assert.equal(rotated.job.public_id, JOB_ID);
+  assert.equal(rowsById.size, 1);
+});
+
+test("dispatch-bound queued row continues to protect legacy cross-key retries", async () => {
+  const { db, rowsById } = createCalculationJobsDb();
+  const firstHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.bound.first.1234567");
+  const rotatedHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.bound.second.123456");
+  await __test.calculationJobsRepository.createOrGet(db, { publicId: JOB_ID, userId: USER_ID, idempotencyHash: firstHash, benchmark: "SPY" });
+  rowsById.get(JOB_ID).created_at = "2026-08-06 00:00:00";
+  const bound = await __test.calculationJobsRepository.bindDispatchRun(db, JOB_ID, "31460959779");
+  assert.equal(bound.kind, "bound");
+  const rotated = await __test.calculationJobsRepository.createOrGet(db, { publicId: ALT_JOB_ID, userId: USER_ID, idempotencyHash: rotatedHash, benchmark: "SPY" });
+  assert.equal(rotated.inserted, false);
+  assert.equal(rotated.job.public_id, JOB_ID);
+  assert.equal(rowsById.size, 1);
+});
+
+test("dispatch run binding is idempotent and refuses conflicting run identity", async () => {
+  const { db } = createCalculationJobsDb();
+  const hash = await __test.hashCalculationJobIdempotency(USER_ID, "action.bind.run.123456789");
+  await __test.calculationJobsRepository.createOrGet(db, { publicId: JOB_ID, userId: USER_ID, idempotencyHash: hash, benchmark: "SPY" });
+  const first = await __test.calculationJobsRepository.bindDispatchRun(db, JOB_ID, 31460959779);
+  assert.equal(first.kind, "bound");
+  assert.equal((await __test.calculationJobsRepository.bindDispatchRun(db, JOB_ID, "31460959779")).kind, "idempotent");
+  const conflict = await __test.calculationJobsRepository.bindDispatchRun(db, JOB_ID, "31460959780");
+  assert.equal(conflict.kind, "conflict");
+  assert.equal(conflict.job.github_run_id, "31460959779");
+});
+
+test("workflow callbacks cannot overwrite a durably bound GitHub run identity", async () => {
+  const { db, rowsById } = createCalculationJobsDb();
+  const hash = await __test.hashCalculationJobIdempotency(USER_ID, "action.callback.run.12345678");
+  await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: hash,
+    benchmark: "SPY",
+  });
+  await __test.calculationJobsRepository.bindDispatchRun(db, JOB_ID, "31460959779");
+
+  const wrongFirstCallback = await __test.calculationJobsRepository.transition(db, {
+    publicId: JOB_ID,
+    nextStatus: "running",
+    githubRunId: "31460959780",
+    githubRunAttempt: 1,
+  });
+  assert.equal(wrongFirstCallback.kind, "conflict");
+  assert.equal(wrongFirstCallback.job.status, "queued");
+  assert.equal(wrongFirstCallback.job.github_run_id, "31460959779");
+
+  rowsById.get(JOB_ID).status = "running";
+  const wrongIdempotentCallback = await __test.calculationJobsRepository.transition(db, {
+    publicId: JOB_ID,
+    nextStatus: "running",
+    githubRunId: "31460959780",
+    githubRunAttempt: 1,
+  });
+  assert.equal(wrongIdempotentCallback.kind, "conflict");
+  assert.equal(wrongIdempotentCallback.job.github_run_id, "31460959779");
+
+  const sameRunReplay = await __test.calculationJobsRepository.transition(db, {
+    publicId: JOB_ID,
+    nextStatus: "running",
+    githubRunId: "31460959779",
+    githubRunAttempt: 1,
+  });
+  assert.equal(sameRunReplay.kind, "idempotent");
+  assert.equal(sameRunReplay.job.github_run_id, "31460959779");
 });
 
 test("different benchmark remains a distinct calculation intent", async () => {

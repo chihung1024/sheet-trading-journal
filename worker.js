@@ -13,6 +13,7 @@ const GITHUB_DISPATCH = Object.freeze({
   ref: "main",
 });
 const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;
+const GITHUB_API_VERSION = "2026-03-10";
 const REQUIRED_SCHEMA_VERSION = 2;
 const SOURCE_COMMIT_FALLBACK = "development";
 const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings", "calculation_jobs"];
@@ -755,14 +756,24 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
       return response;
     }
 
+    const bound = await calculationJobsRepository.bindDispatchRun(
+      env.DB,
+      created.job.public_id,
+      result.workflowRunId,
+    );
+    if (!bound.job || (bound.kind !== "bound" && bound.kind !== "idempotent")) {
+      throw new Error("CalculationJobDispatchBindingFailed");
+    }
+
     console.info(
       `[request_id=${requestId}] GitHub dispatch accepted ` +
       `[job_id=${created.job.public_id}] ` +
+      `[github_run_id=${result.workflowRunId}] ` +
       `[github_request_id=${result.githubRequestId || "unavailable"}]`,
     );
     return jsonResponse({
       success: true,
-      job: publicCalculationJob(created.job, false),
+      job: publicCalculationJob(bound.job, false),
     }, 202);
   } catch (error) {
     if (error instanceof RequestValidationError) {
@@ -825,10 +836,7 @@ async function handleCalculationJobStatus(request, env, requestId) {
     }
     const githubRunId = body.github_run_id === undefined || body.github_run_id === null
       ? null
-      : requireString(String(body.github_run_id), "github_run_id", 1, 32);
-    if (githubRunId !== null && !/^\d+$/.test(githubRunId)) {
-      throw new RequestValidationError("github_run_id is invalid");
-    }
+      : validateGitHubRunId(body.github_run_id);
     const githubRunAttempt = body.github_run_attempt === undefined
       ? 0
       : requireNonNegativeInteger(body.github_run_attempt, "github_run_attempt");
@@ -1071,6 +1079,27 @@ const calculationJobsRepository = Object.freeze({
     return row ? normalizeCalculationJobRow(row) : null;
   },
 
+  async bindDispatchRun(db, publicId, githubRunId) {
+    const normalizedPublicId = validateCalculationJobId(publicId);
+    const normalizedRunId = validateGitHubRunId(githubRunId);
+    const current = await this.findById(db, normalizedPublicId);
+    if (!current) return { kind: "not-found", job: null };
+    if (current.github_run_id === normalizedRunId) return { kind: "idempotent", job: current };
+    if (current.github_run_id !== null) return { kind: "conflict", job: current };
+
+    const result = await db.prepare(`
+      UPDATE calculation_jobs
+      SET github_run_id = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE public_id = ? AND github_run_id IS NULL
+    `).bind(normalizedRunId, normalizedPublicId).run();
+    if (affectedRows(result) !== 1) {
+      const observed = await this.findById(db, normalizedPublicId);
+      if (observed?.github_run_id === normalizedRunId) return { kind: "idempotent", job: observed };
+      return { kind: observed ? "conflict" : "not-found", job: observed || null };
+    }
+    return { kind: "bound", job: await this.findById(db, normalizedPublicId) };
+  },
+
   async failQueuedDispatch(db, publicId, errorCode) {
     const normalizedPublicId = validateCalculationJobId(publicId);
     const normalizedErrorCode = validateCalculationJobErrorCode(errorCode);
@@ -1091,11 +1120,16 @@ const calculationJobsRepository = Object.freeze({
   async transition(db, transition) {
     const current = await this.findById(db, transition.publicId);
     if (!current) return { kind: "not-found", job: null };
+    const runId = transition.githubRunId === undefined || transition.githubRunId === null
+      ? null
+      : validateGitHubRunId(transition.githubRunId);
+    if (current.github_run_id !== null && runId !== null && current.github_run_id !== runId) {
+      return { kind: "conflict", job: current };
+    }
     if (current.status === transition.nextStatus) return { kind: "idempotent", job: current };
     if (!canTransitionCalculationJob(current.status, transition.nextStatus)) {
       return { kind: "invalid-transition", job: current };
     }
-    const runId = transition.githubRunId || null;
     const runAttempt = Number.isSafeInteger(transition.githubRunAttempt)
       ? transition.githubRunAttempt
       : 0;
@@ -1130,6 +1164,18 @@ const calculationJobsRepository = Object.freeze({
   },
 });
 
+
+function validateGitHubRunId(value) {
+  if (typeof value === "number" && (!Number.isSafeInteger(value) || value <= 0)) {
+    throw new RequestValidationError("GitHub workflow run ID is invalid");
+  }
+  const normalized = String(value ?? "").trim();
+  if (!/^\d{1,32}$/.test(normalized) || /^0+$/.test(normalized)) {
+    throw new RequestValidationError("GitHub workflow run ID is invalid");
+  }
+  return normalized;
+}
+
 function buildGitHubDispatchRequest({ token, benchmark, jobId }) {
   if (typeof token !== "string" || !token.trim()) {
     throw new RequestValidationError("GitHub dispatch token is required");
@@ -1151,7 +1197,7 @@ function buildGitHubDispatchRequest({ token, benchmark, jobId }) {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
+        "X-GitHub-Api-Version": GITHUB_API_VERSION,
         "User-Agent": "sheet-trading-journal-worker",
         "Content-Type": "application/json",
       },
@@ -1165,11 +1211,38 @@ async function dispatchGitHubWorkflow({ token, benchmark, jobId, fetchImpl = fet
   const request = buildGitHubDispatchRequest({ token, benchmark, jobId });
   const response = await fetchImpl(request.url, request.init);
   const githubRequestId = sanitizeHeaderValue(response.headers?.get?.("X-GitHub-Request-Id"));
-  if (response.ok) return { ok: true, status: response.status, githubRequestId };
+  if (response.ok) {
+    if (response.status !== 200 || typeof response.json !== "function") {
+      return invalidGitHubDispatchResponse(response.status, githubRequestId);
+    }
+    try {
+      const payload = await response.json();
+      return {
+        ok: true,
+        status: response.status,
+        githubRequestId,
+        workflowRunId: validateGitHubRunId(payload?.workflow_run_id),
+      };
+    } catch {
+      return invalidGitHubDispatchResponse(response.status, githubRequestId);
+    }
+  }
   return classifyGitHubDispatchFailure(response.status, {
     githubRequestId,
     retryAfter: sanitizeHeaderValue(response.headers?.get?.("Retry-After")),
   });
+}
+
+function invalidGitHubDispatchResponse(status, githubRequestId) {
+  return {
+    ok: false,
+    status,
+    code: "GITHUB_DISPATCH_INVALID_RESPONSE",
+    message: "Update service returned an invalid dispatch response",
+    httpStatus: 502,
+    githubRequestId: githubRequestId || "",
+    retryAfter: "",
+  };
 }
 
 function classifyGitHubDispatchFailure(status, metadata = {}) {
@@ -1638,6 +1711,7 @@ export const __test = {
   hashCalculationJobIdempotency,
   createCalculationJobId,
   validateCalculationJobId,
+  validateGitHubRunId,
   canTransitionCalculationJob,
   publicCalculationJob,
   systemCalculationJobTarget,
