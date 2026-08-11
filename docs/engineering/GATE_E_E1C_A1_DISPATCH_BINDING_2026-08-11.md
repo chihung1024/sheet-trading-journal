@@ -1,7 +1,7 @@
 # Gate E / E1c-A.1 — Dispatch Binding and Legacy Orphan Reconciliation
 
 Status: **DEPLOYED / LEGACY RECONCILIATION ACTIVE**  
-Document revision: **2**  
+Document revision: **3**  
 Date: **2026-08-11**
 
 ## 1. Production blocker and root cause
@@ -80,10 +80,11 @@ The cutoff is only a rollout-cohort boundary. It is not liveness authority.
 Before the D1 mutation, the protected workflow must additionally prove:
 
 - exact runtime `R_C1` is live;
+- live Worker version matches reviewed Deploy #4 evidence;
 - current production activation authority still authorizes `R_C1`;
 - production D1 identity matches reviewed authority;
-- `Update Portfolio Data` has zero active runs;
-- zero-active state is observed three consecutive times and again immediately before mutation;
+- every GitHub nonterminal status for `Update Portfolio Data` is empty: `queued`, `in_progress`, `waiting`, `pending`, `requested`;
+- zero-nonterminal state is observed three consecutive times and again immediately before mutation;
 - candidate row count does not exceed the reviewed `max_rows`.
 
 The mutation only transitions matching legacy jobs to:
@@ -93,11 +94,25 @@ status = failed
 error_code = LEGACY_DISPATCH_UNBOUND_RECONCILED
 ```
 
-It does not delete rows, clear source transactions, mutate snapshots, or record tenant/job identity in evidence. The operation is idempotent: once reconciled, the target query returns zero rows.
+It does not delete rows, clear source transactions, mutate snapshots, or record tenant/job identity in evidence. SQLite `changes()` must exactly equal the pre-mutation target count; a cardinality mismatch fails closed instead of inferring mutations from before/after counts. The operation is idempotent: once reconciled, the target query returns zero rows.
 
 The same reviewer-protected production job then runs `verify_production_contract.mjs` with `REQUIRE_SYSTEM_CHECKS=1`, so reconciliation and post-mutation system contract proof share one production approval instead of creating another manual gate.
 
-## 5. Current production-control batch
+## 5. R3 review hardening of the reconciliation control plane
+
+The first exact candidate (`ebc27b3d23c19d03be5ad7002845f603400cf4dd`) passed CI #636 but fresh R3 review correctly rejected it before merge.
+
+Three safety defects were identified and fixed rather than waived:
+
+1. **Operation-code source mismatch.** Production checks out exact runtime `R_C1`, which predates the new reconciliation tool. The fixed workflow materializes the immutable reviewed workflow-event control-plane commit separately and executes the reconciliation tool from that reviewed commit while the workspace remains the exact runtime checkout for Worker/D1 verification.
+2. **Incomplete active-run proof.** First-page `per_page=100` inference was replaced by status-scoped GitHub API queries for every supported nonterminal workflow status. Each status query uses `per_page=1` and authoritative `total_count`, so the proof does not depend on recency ordering or pagination position.
+3. **Late control-plane drift window.** Immediately before D1 mutation, the workflow now re-fetches latest protected main, revalidates the request values, activation authority, and exact blob identity of both the reviewed workflow and mutation tool. Any request/code drift cancels the old operation.
+
+The reviewed operation tool also records actual mutation cardinality via SQLite `changes()` and requires it to equal the reviewed pre-mutation target count.
+
+No safety gate was weakened to obtain CI success.
+
+## 6. Current production-control batch
 
 Request:
 
@@ -115,7 +130,7 @@ Risk remains **R3 — production lifecycle/data-control operation**.
 
 The workflow is event-driven from a reviewed protected-main request. It does not require the operator to find an Action, choose a SHA, or press Run workflow. The GitHub `production` Environment Required Reviewer remains the only independent human mutation gate.
 
-## 6. Required closeout sequence
+## 7. Required closeout sequence
 
 ```text
 review + merge reconciliation request/control plane
