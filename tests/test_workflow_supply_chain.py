@@ -17,6 +17,11 @@ USES_RE = re.compile(
     r"@(?P<sha>[0-9a-f]{40})\s+#\s+(?P<tag>v[0-9]+)\s*$"
 )
 ANY_USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<ref>\S+)")
+WRITE_PERMISSION_RE = re.compile(
+    r"(?m)^\s{2}(?P<scope>[A-Za-z0-9_-]+):\s+write\s*$"
+)
+AUTONOMOUS_DISPATCH_WORKFLOW = ROOT / ".github" / "workflows" / "production-deployment-dispatch.yml"
+PERMITTED_WRITE_SCOPES = {"actions"}
 
 
 class WorkflowSupplyChainPolicyTests(unittest.TestCase):
@@ -31,11 +36,25 @@ class WorkflowSupplyChainPolicyTests(unittest.TestCase):
         cls.declared_paths = {
             ROOT / relative_path for relative_path in cls.evidence["workflows"]
         }
+        cls.write_allowlist = {
+            ROOT / relative_path: set(scopes)
+            for relative_path, scopes in cls.evidence["policy"]
+            .get("workflow_write_permission_allowlist", {})
+            .items()
+        }
 
     def test_evidence_inventory_matches_tracked_workflows(self) -> None:
         self.assertEqual(set(self.workflow_paths), self.declared_paths)
         self.assertEqual(self.evidence["policy"]["cost_model"], "free-only")
         self.assertEqual(self.evidence["policy"]["runtime_change"], "none")
+        self.assertEqual(set(self.write_allowlist), {AUTONOMOUS_DISPATCH_WORKFLOW})
+        self.assertTrue(set(self.write_allowlist).issubset(self.declared_paths))
+        for path, scopes in self.write_allowlist.items():
+            self.assertTrue(scopes, f"{path} write allowlist must not be empty")
+            self.assertTrue(
+                scopes.issubset(PERMITTED_WRITE_SCOPES),
+                f"{path} requests an unsupported write scope in governance evidence",
+            )
 
     def test_every_action_is_allowlisted_and_pinned_to_exact_sha(self) -> None:
         observed: set[str] = set()
@@ -76,13 +95,19 @@ class WorkflowSupplyChainPolicyTests(unittest.TestCase):
                     f"{path}:{index + 1} checkout must set persist-credentials: false",
                 )
 
-    def test_workflow_permissions_remain_read_only(self) -> None:
-        forbidden = re.compile(r"(?m)^\s+[A-Za-z0-9_-]+:\s+write\s*$")
-
+    def test_workflow_permissions_follow_explicit_write_allowlist(self) -> None:
         for path in self.workflow_paths:
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("write-all", text, f"{path} must not request write-all")
-            self.assertIsNone(forbidden.search(text), f"{path} must not request write scope")
+            observed_write_scopes = {
+                match.group("scope") for match in WRITE_PERMISSION_RE.finditer(text)
+            }
+            expected_write_scopes = self.write_allowlist.get(path, set())
+            self.assertEqual(
+                observed_write_scopes,
+                expected_write_scopes,
+                f"{path} write permissions must exactly match governance evidence",
+            )
             self.assertRegex(
                 text,
                 r"(?m)^permissions:\s*\n\s{2}contents:\s+read\s*$",
