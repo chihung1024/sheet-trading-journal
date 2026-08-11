@@ -984,25 +984,69 @@ const calculationJobsRepository = Object.freeze({
         AND completed_at <= datetime('now', ?)
     `).bind(userId, idempotencyHash, replayModifier).run();
 
-    const insert = await db.prepare(`
-      INSERT OR IGNORE INTO calculation_jobs
-        (public_id, user_id, idempotency_hash, status, benchmark)
-      VALUES (?, ?, ?, 'queued', ?)
-    `).bind(
-      validateCalculationJobId(job.publicId),
-      userId,
-      idempotencyHash,
-      benchmark,
-    ).run();
-    const row = await db.prepare(`
+    const exact = await db.prepare(`
       SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
-   attempt_count, error_code, created_at, started_at, completed_at, updated_at
+        attempt_count, error_code, created_at, started_at, completed_at, updated_at
       FROM calculation_jobs
       WHERE user_id = ? AND idempotency_hash = ?
       LIMIT 1
     `).bind(userId, idempotencyHash).first();
-    if (!row) throw new Error("CalculationJobInsertLost");
-    return { inserted: affectedRows(insert) === 1, job: normalizeCalculationJobRow(row) };
+    if (exact) return { inserted: false, job: normalizeCalculationJobRow(exact) };
+
+    const publicId = validateCalculationJobId(job.publicId);
+    const insert = await db.prepare(`
+      INSERT OR IGNORE INTO calculation_jobs
+        (public_id, user_id, idempotency_hash, status, benchmark)
+      SELECT ?, ?, ?, 'queued', ?
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM calculation_jobs
+        WHERE user_id = ?
+          AND benchmark = ?
+          AND status IN ('queued', 'running')
+      )
+    `).bind(
+      publicId,
+      userId,
+      idempotencyHash,
+      benchmark,
+      userId,
+      benchmark,
+    ).run();
+
+    if (affectedRows(insert) === 1) {
+      const inserted = await db.prepare(`
+        SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
+          attempt_count, error_code, created_at, started_at, completed_at, updated_at
+        FROM calculation_jobs
+        WHERE user_id = ? AND idempotency_hash = ?
+        LIMIT 1
+      `).bind(userId, idempotencyHash).first();
+      if (!inserted) throw new Error("CalculationJobInsertLost");
+      return { inserted: true, job: normalizeCalculationJobRow(inserted) };
+    }
+
+    const racedExact = await db.prepare(`
+      SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
+        attempt_count, error_code, created_at, started_at, completed_at, updated_at
+      FROM calculation_jobs
+      WHERE user_id = ? AND idempotency_hash = ?
+      LIMIT 1
+    `).bind(userId, idempotencyHash).first();
+    if (racedExact) return { inserted: false, job: normalizeCalculationJobRow(racedExact) };
+
+    const active = await db.prepare(`
+      SELECT public_id, user_id, status, benchmark, github_run_id, github_run_attempt,
+        attempt_count, error_code, created_at, started_at, completed_at, updated_at
+      FROM calculation_jobs
+      WHERE user_id = ?
+        AND benchmark = ?
+        AND status IN ('queued', 'running')
+      ORDER BY created_at ASC, public_id ASC
+      LIMIT 1
+    `).bind(userId, benchmark).first();
+    if (!active) throw new Error("CalculationJobInsertLost");
+    return { inserted: false, job: normalizeCalculationJobRow(active) };
   },
 
   async findForUser(db, publicId, userId) {
