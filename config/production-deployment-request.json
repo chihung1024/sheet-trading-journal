@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "request_id": "e1c-a1-fe5f091-20260811t0837z",
+  "source_sha": "fe5f091fdb2c92970dff74c1a7c99052084adb95",
+  "requested_at": "2026-08-11T08:37:25.000Z",
+  "reason": "Gate E E1c-A.1 exact-source production deployment after Production Identity Evidence #15 and activation authority PR #195."
+}
