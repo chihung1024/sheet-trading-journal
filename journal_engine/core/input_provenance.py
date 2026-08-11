@@ -32,6 +32,7 @@ ALLOWED_VALUATION_SOURCES = {
     "market",
     "asof_carry_forward",
     "transaction_price_seed",
+    "realtime_quote",
 }
 
 
@@ -241,7 +242,7 @@ def _normalize_market_frame(symbol: str, frame: pd.DataFrame) -> list[dict[str, 
             raise CalculationManifestError(
                 f"{symbol} {row_date} valuation source date cannot be in the future"
             )
-        if source in {"market", "transaction_price_seed"} and source_date != row_date:
+        if source in {"market", "transaction_price_seed", "realtime_quote"} and source_date != row_date:
             raise CalculationManifestError(
                 f"{symbol} {row_date} {source} valuation source date must equal row date"
             )
