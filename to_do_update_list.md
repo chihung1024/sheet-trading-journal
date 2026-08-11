@@ -10,9 +10,9 @@ Last updated: **2026-08-11**
 
 Repository: `chihung1024/sheet-trading-journal`
 
-Protected-main baseline immediately before this E1a-B closeout batch:
+Current protected-main baseline after E1b implementation merge:
 
-`f6cf1769955dc18a093733a2e29b129b2443ddf0`
+`419ef87604bd35485c1df6dfce963016cb7aa0cb`
 
 Current production Worker runtime remains intentionally pinned to the E1a-B runtime source:
 
@@ -36,9 +36,9 @@ Runtime contract remains Worker `4.07` / API `2.60` / D1 Schema `2` unless a lat
 
 - E0 architecture re-baseline: `CLOSED`.
 - E1a-A compatibility activation: `CLOSED / PRODUCTION VERIFIED`.
-- E1a-B email-free privacy cutover: **`CLOSED / PRODUCTION VERIFIED`**.
-- **E1b market-data historical/realtime separation: `ACTIVE / NEXT IMPLEMENTATION BATCH`.**
-- E1c active-job lifecycle/idempotency: `PLANNED`.
+- E1a-B email-free privacy cutover: `CLOSED / PRODUCTION VERIFIED`.
+- E1b market-data historical/realtime separation: **`CLOSED / PRODUCTION VERIFIED`**.
+- **E1c active-job lifecycle/idempotency: `ACTIVE / NEXT IMPLEMENTATION BATCH`.**
 - E1d cursor-signing secret separation: `PLANNED`.
 - Schema 3 / E2: `DEFERRED` until E1 + E2-pre conditions.
 
@@ -46,9 +46,17 @@ E1a closeout authority:
 
 `docs/engineering/GATE_E_E1A_B_CLOSEOUT_2026-08-10.md`
 
-Final sanitized privacy-smoke evidence:
+Final sanitized E1a privacy-smoke evidence:
 
 `docs/governance/evidence/GATE_E_E1A_B_FINAL_PRIVACY_SMOKE_2026-08-10.json`
+
+E1b closeout authority:
+
+`docs/engineering/GATE_E_E1B_MARKET_DATA_INTEGRITY_2026-08-11.md`
+
+Final sanitized E1b production-smoke evidence:
+
+`docs/governance/evidence/GATE_E_E1B_PRODUCTION_SMOKE_2026-08-11.json`
 
 ---
 
@@ -61,7 +69,7 @@ GOVERNANCE BASELINE LOCKED
 Governance Architecture: FROZEN
 ```
 
-Use risk-proportional governance. Do not reopen completed E1a activation/audit loops merely to restate already-proven production state. Reopen only for a new evidence-backed regression, production/runtime identity change affecting the contract, security/privacy incident, or explicit requirement change.
+Use risk-proportional governance. Do not reopen completed E1a/E1b loops merely to restate already-proven production state. Reopen only for a new evidence-backed regression, production/runtime identity change affecting the contract, security/privacy/data-integrity incident, or explicit requirement change.
 
 ### Execution-convergence rule
 
@@ -105,8 +113,8 @@ Production activation chain:
 - Production Identity Evidence #13 / `31413549090`: PASS against exact `R_B`;
 - PR #187 authorized exact `R_B`;
 - authority `A_B = fddbf65b18ae11b8b166c1f82346bc44431d057a`;
-- Deploy Worker #2 / `31415404201`: **SUCCESS**;
-- Production Contract Audit #41 / `31415865919`: **SUCCESS** against exact `R_B`, including trusted-system opaque-job `404 NOT_FOUND` proof with no tenant identity.
+- Deploy Worker #2 / `31415404201`: SUCCESS;
+- Production Contract Audit #41 / `31415865919`: SUCCESS against exact `R_B`, including trusted-system opaque-job `404 NOT_FOUND` proof with no tenant identity.
 
 Initial post-deploy smoke #3226 / `31416468298` was functionally successful but exposed masked tenant email material in application logs. That was correctly treated as a privacy blocker.
 
@@ -120,7 +128,7 @@ Post-main:
 - Pages #1474 / `31417821783`: SUCCESS;
 - recovery `backup-post-e1a-b-log-privacy-f6cf176`.
 
-Final post-hotfix normal production smoke already existed:
+Final post-hotfix normal production smoke:
 
 - Update Portfolio Data #3228 / `31433418502`;
 - exact source `f6cf1769955dc18a093733a2e29b129b2443ddf0`;
@@ -128,57 +136,101 @@ Final post-hotfix normal production smoke already existed:
 - no tenant email dispatch input;
 - application tenant label only `opaque-job-user`;
 - running -> durable context -> calculation/upload -> reconciliation -> snapshot upload -> succeeded callback;
-- conclusion: **SUCCESS**.
-
-Therefore no additional manual smoke is required for E1a-B closeout.
+- conclusion: SUCCESS.
 
 ---
 
-## 5. Current Primary Batch — E1b
+## 5. E1b Production Evidence Summary
+
+### Root cause closed
+
+Legacy market-data ingestion could overwrite the final downloaded historical EOD row with an undated/current stock quote without proving date equivalence.
+
+E1b now enforces:
+
+- downloaded historical daily rows are immutable with respect to realtime stock quotes;
+- undated stock scalar quotes cannot mutate historical EOD;
+- newer-date synthetic `realtime_quote` rows require provider timestamp/date proof;
+- quote-date corporate-action evidence must be complete and zero-action, otherwise fail closed;
+- same-date/older/stale evidence never overwrites or appends;
+- synthetic realtime valuation carries explicit provenance and enters deterministic market-input identity.
+
+### R3 implementation / review / merge
+
+- first candidate `f47900901d93dc59f7f1c985c4382b408ea2c523` passed CI #609 but R3 review found a corporate-action-date BLOCKER;
+- blocker was fixed by requiring complete zero-action intraday evidence;
+- final candidate `1e0f40b2491dfdcdc5e6fa150d86b760f270d66f`;
+- CI #612 / `31449796567`: PASS, including 444 Python tests + 18 subtests and unchanged raw-count coverage policy;
+- fresh R3 Same-AI Independent Review: PASS / no BLOCKER;
+- PR #190 expected-head merge: `419ef87604bd35485c1df6dfce963016cb7aa0cb`;
+- post-main CI #613 / `31450139272`: SUCCESS;
+- Pages #1476 / `31450139000`: SUCCESS;
+- post-merge recovery `backup-post-e1b-market-data-integrity-419ef87`.
+
+### Production smoke
+
+Update Portfolio Data #3230 / `31453892608`:
+
+- exact source `419ef87604bd35485c1df6dfce963016cb7aa0cb`;
+- normal workflow-dispatch opaque calculation-job path;
+- 108 transaction records;
+- 33 requested market symbols;
+- no legacy realtime historical-overwrite application log;
+- no unnecessary realtime synthetic row under the observed market state;
+- transaction-prefix integrity PASS;
+- canonical Daily PnL reconciliation PASS for 2 groups, formula = components = `-24975.10`;
+- legacy Daily PnL diagnostics 0;
+- split-adjusted ledger parity PASS for 108 BUY/SELL rows;
+- snapshot upload SUCCESS;
+- successful users 1 / failed users 0;
+- durable job terminal status `succeeded`;
+- workflow conclusion SUCCESS.
+
+E1b is therefore **CLOSED / PRODUCTION VERIFIED**. Do not repeat the smoke unless a new E1b-specific regression is evidenced.
+
+---
+
+## 6. Current Primary Batch — E1c
 
 ### Problem
 
-Current market-data handling can overwrite the latest historical EOD `Close` / adjusted close observation with a realtime quote without proving that the realtime quote belongs to the same trading date.
+Current calculation-job duplicate/idempotency semantics use a fixed pending-age window while the real workflow can remain legitimately queued/running longer than that window.
 
-This risks mixing two different semantic data products:
-
-- immutable historical EOD series;
-- current/realtime valuation.
+That creates a correctness risk: an old-enough but still active queued/running job may be treated as no longer active, allowing a duplicate calculation dispatch or inconsistent frontend/job state.
 
 ### Locked direction
 
-Implement the narrow correction:
+Do **not** solve E1c by merely increasing a TTL.
 
-1. keep historical EOD observations immutable;
-2. store/use realtime/current valuation separately;
-3. carry explicit source/provenance/as-of semantics;
-4. only substitute/merge values when date equivalence is explicitly proven;
-5. preserve existing financial behavior where semantics are already correct;
-6. do not expand into broad provider abstraction, cash ledger, Decimal migration, tenant UUID migration, derivatives, or Schema 3.
+Required semantic direction:
 
-### Required E1b execution order
+1. queued/running lifecycle state is authoritative for active-job status independently of age;
+2. terminal states are explicitly distinguished from active states;
+3. retry/recovery behavior must be explicit and fail closed where job ownership/state is ambiguous;
+4. duplicate dispatch prevention must align Worker, frontend pending semantics, GitHub workflow callbacks, and durable D1 state;
+5. preserve existing E1a opaque-job privacy/authorization boundaries;
+6. do not expand into E1d cursor-secret work, Schema 3, broad ledger/provider redesign, Decimal migration, tenant UUID migration, or derivatives.
+
+### Required E1c execution order
 
 ```text
 remote-truth re-baseline
--> map current market-data mutation path and consumers
--> root-cause/specify historical-vs-realtime contract
+-> map job creation / duplicate detection / status transitions / timeout-age checks
+-> identify Worker + frontend + workflow + D1 lifecycle consumers
+-> define active / terminal / recovery invariants
 -> narrow implementation + regression tests
 -> risk-proportional exact-head CI/review
 -> expected-head merge
--> post-main verification
+-> required deployment/production verification based on actual runtime boundary
 -> update this handoff
--> E1c ACTIVE
+-> E1d ACTIVE
 ```
 
-No production Worker deployment should be added merely because E1b code merges. Deployment need must be determined from the actual changed runtime boundary.
+Do not assume a Worker production deployment is or is not required before the exact E1c changed-runtime boundary is known.
 
 ---
 
-## 6. Later Locked Findings
-
-### E1c
-
-Do not solve active-job correctness by merely increasing a fixed TTL. Queued/running lifecycle must remain active independently of age, with explicit terminal/recovery semantics.
+## 7. Later Locked Findings
 
 ### E1d
 
@@ -190,7 +242,7 @@ Remain deferred. Do not reopen broad ledger/provider/tenant migration work until
 
 ---
 
-## 7. Recovery / Evidence References
+## 8. Recovery / Evidence References
 
 Preserve at minimum:
 
@@ -207,19 +259,25 @@ Preserve at minimum:
 - privacy-blocking smoke #3226 / `31416468298`;
 - `backup-pre-e1a-b-log-privacy-hotfix-fddbf65`;
 - `backup-post-e1a-b-log-privacy-f6cf176`;
-- final privacy smoke #3228 / `31433418502`;
-- `backup-pre-e1a-b-closeout-f6cf176`.
+- final E1a-B privacy smoke #3228 / `31433418502`;
+- `backup-pre-e1a-b-closeout-f6cf176`;
+- `backup-pre-e1b-market-data-integrity-82c004c`;
+- E1b PR #190 and final candidate `1e0f40b2491dfdcdc5e6fa150d86b760f270d66f`;
+- E1b merge `419ef87604bd35485c1df6dfce963016cb7aa0cb`;
+- `backup-post-e1b-market-data-integrity-419ef87`;
+- E1b production smoke #3230 / `31453892608`;
+- `docs/governance/evidence/GATE_E_E1B_PRODUCTION_SMOKE_2026-08-11.json`.
 
-Failed runs remain forensic evidence; do not erase or reframe them as if they never occurred.
+Failed runs and superseded blocker candidates remain forensic evidence; do not erase or reframe them as if they never occurred.
 
 ---
 
-## 8. Next Exact Action
+## 9. Next Exact Action
 
-**Do not run another E1a smoke/audit/deploy.**
+**Do not run another E1a or E1b smoke/audit/deploy.**
 
-Start E1b from current protected-main remote truth after this closeout batch merges and post-main verifies.
+Start E1c only after this E1b closeout/handoff PR merges and post-main verifies.
 
-First E1b task:
+First E1c task:
 
-> map exactly where realtime quotes can overwrite historical EOD `Close` / adjusted values, identify all downstream consumers, and define the smallest provenance-preserving contract before implementation.
+> map exactly where calculation jobs are created, how duplicate/active jobs are detected, where pending-age/TTL logic is applied, every queued/running/terminal status transition, frontend pending semantics, workflow callbacks, and D1 lifecycle fields; then define the smallest lifecycle-based idempotency contract before implementation.
