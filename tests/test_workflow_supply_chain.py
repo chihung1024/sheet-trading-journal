@@ -20,7 +20,13 @@ ANY_USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<ref>\S+)")
 WRITE_PERMISSION_RE = re.compile(
     r"(?m)^\s{2}(?P<scope>[A-Za-z0-9_-]+):\s+write\s*$"
 )
-AUTONOMOUS_DISPATCH_WORKFLOW = ROOT / ".github" / "workflows" / "production-deployment-dispatch.yml"
+AUTONOMOUS_WRITE_WORKFLOWS = {
+    ROOT / ".github" / "workflows" / "production-deployment-dispatch.yml",
+    ROOT
+    / ".github"
+    / "workflows"
+    / "production-legacy-reconciliation-scheduler-recovery.yml",
+}
 PERMITTED_WRITE_SCOPES = {"actions"}
 
 
@@ -47,7 +53,7 @@ class WorkflowSupplyChainPolicyTests(unittest.TestCase):
         self.assertEqual(set(self.workflow_paths), self.declared_paths)
         self.assertEqual(self.evidence["policy"]["cost_model"], "free-only")
         self.assertEqual(self.evidence["policy"]["runtime_change"], "none")
-        self.assertEqual(set(self.write_allowlist), {AUTONOMOUS_DISPATCH_WORKFLOW})
+        self.assertEqual(set(self.write_allowlist), AUTONOMOUS_WRITE_WORKFLOWS)
         self.assertTrue(set(self.write_allowlist).issubset(self.declared_paths))
         for path, scopes in self.write_allowlist.items():
             self.assertTrue(scopes, f"{path} write allowlist must not be empty")
