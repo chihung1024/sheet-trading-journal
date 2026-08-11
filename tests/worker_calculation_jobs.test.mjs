@@ -289,6 +289,47 @@ test("dispatch run binding is idempotent and refuses conflicting run identity", 
   assert.equal(conflict.job.github_run_id, "31460959779");
 });
 
+test("workflow callbacks cannot overwrite a durably bound GitHub run identity", async () => {
+  const { db, rowsById } = createCalculationJobsDb();
+  const hash = await __test.hashCalculationJobIdempotency(USER_ID, "action.callback.run.12345678");
+  await __test.calculationJobsRepository.createOrGet(db, {
+    publicId: JOB_ID,
+    userId: USER_ID,
+    idempotencyHash: hash,
+    benchmark: "SPY",
+  });
+  await __test.calculationJobsRepository.bindDispatchRun(db, JOB_ID, "31460959779");
+
+  const wrongFirstCallback = await __test.calculationJobsRepository.transition(db, {
+    publicId: JOB_ID,
+    nextStatus: "running",
+    githubRunId: "31460959780",
+    githubRunAttempt: 1,
+  });
+  assert.equal(wrongFirstCallback.kind, "conflict");
+  assert.equal(wrongFirstCallback.job.status, "queued");
+  assert.equal(wrongFirstCallback.job.github_run_id, "31460959779");
+
+  rowsById.get(JOB_ID).status = "running";
+  const wrongIdempotentCallback = await __test.calculationJobsRepository.transition(db, {
+    publicId: JOB_ID,
+    nextStatus: "running",
+    githubRunId: "31460959780",
+    githubRunAttempt: 1,
+  });
+  assert.equal(wrongIdempotentCallback.kind, "conflict");
+  assert.equal(wrongIdempotentCallback.job.github_run_id, "31460959779");
+
+  const sameRunReplay = await __test.calculationJobsRepository.transition(db, {
+    publicId: JOB_ID,
+    nextStatus: "running",
+    githubRunId: "31460959779",
+    githubRunAttempt: 1,
+  });
+  assert.equal(sameRunReplay.kind, "idempotent");
+  assert.equal(sameRunReplay.job.github_run_id, "31460959779");
+});
+
 test("different benchmark remains a distinct calculation intent", async () => {
   const { db, rowsById } = createCalculationJobsDb();
   const spyHash = await __test.hashCalculationJobIdempotency(USER_ID, "action.benchmark.spy.123456");
