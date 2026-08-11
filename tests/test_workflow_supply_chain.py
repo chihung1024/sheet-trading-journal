@@ -22,10 +22,6 @@ WRITE_PERMISSION_RE = re.compile(
 )
 AUTONOMOUS_WRITE_WORKFLOWS = {
     ROOT / ".github" / "workflows" / "production-deployment-dispatch.yml",
-    ROOT
-    / ".github"
-    / "workflows"
-    / "production-legacy-reconciliation-scheduler-recovery.yml",
 }
 PERMITTED_WRITE_SCOPES = {"actions"}
 
