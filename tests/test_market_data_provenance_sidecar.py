@@ -128,6 +128,9 @@ def test_realtime_row_helper_fails_closed_for_missing_or_invalid_evidence():
 
 
 def test_realtime_row_helper_preserves_existing_provenance_and_clears_optional_fields():
+    # Production download_data normalizes daily history to a timezone-naive date
+    # index before calling the helper. Keep that invariant here while proving that
+    # an exchange-timezone quote timestamp is normalized safely.
     history = _history().assign(
         Open=[9.5, 10.5],
         High=[10.5, 11.5],
@@ -139,7 +142,6 @@ def test_realtime_row_helper_preserves_existing_provenance_and_clears_optional_f
             "Valuation_Source_Date": ["2026-01-02", "2026-01-05"],
         },
     )
-    history.index = history.index.tz_localize("America/New_York")
 
     result, applied = MarketDataClient._append_realtime_valuation_row(
         history,
