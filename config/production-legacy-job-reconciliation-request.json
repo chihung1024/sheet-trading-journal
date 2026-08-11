@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "status": "ready",
+  "operation": "e1c_a1_legacy_unbound_queued_reconciliation",
+  "expected_runtime_source": "fe5f091fdb2c92970dff74c1a7c99052084adb95",
+  "deployment_run_id": 31475347673,
+  "worker_version_id": "68f32cee-c609-4624-aaff-eaa55ef0c77d",
+  "legacy_created_before_utc": "2026-08-11 09:16:03",
+  "max_rows": 10,
+  "reason": "Reconcile only pre-E1c-A.1 queued calculation jobs that lack durable GitHub run identity after exact-source deployment and repeated proof that Update Portfolio Data has no active GitHub runs."
+}

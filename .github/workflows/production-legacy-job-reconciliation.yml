@@ -1,0 +1,252 @@
+name: Production Legacy Job Reconciliation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - config/production-legacy-job-reconciliation-request.json
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-legacy-job-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify reconciliation request before reviewer gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      source_sha: ${{ steps.request.outputs.source_sha }}
+      cutoff_utc: ${{ steps.request.outputs.cutoff_utc }}
+      max_rows: ${{ steps.request.outputs.max_rows }}
+      deployment_run_id: ${{ steps.request.outputs.deployment_run_id }}
+      worker_version_id: ${{ steps.request.outputs.worker_version_id }}
+    steps:
+      - name: Checkout exact reconciliation request control plane
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+
+      - name: Validate request and exact activation authority
+        id: request
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          event_sha="$(git rev-parse HEAD)"
+          latest_main="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "$event_sha" != "$latest_main" ]]; then
+            echo "Refusing stale reconciliation request: event SHA is no longer protected-main HEAD" >&2
+            exit 1
+          fi
+          node tools/reconcile_legacy_calculation_jobs.mjs verify-request \
+            config/production-legacy-job-reconciliation-request.json
+          EXPECTED_SHA="${{ steps.request.outputs.source_sha }}" node tools/verify_production_activation_authority.mjs
+
+      - name: Verify no active Update Portfolio Data workflow before reviewer gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --fail \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2026-03-10' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/update.yml/runs?per_page=100")"
+          RUNS_JSON="$response" node --input-type=module <<'NODE'
+          const body = JSON.parse(process.env.RUNS_JSON || '{}');
+          const active = (body.workflow_runs || []).filter((run) => run.status !== 'completed');
+          if (active.length !== 0) {
+            const summary = active.map((run) => run.status).sort();
+            throw new Error(`Update Portfolio Data still has ${active.length} active run(s): ${summary.join(',')}`);
+          }
+          console.log('Pre-reviewer active-run check passed: 0 active Update Portfolio Data runs');
+          NODE
+
+  production:
+    name: Reconcile legacy unbound queued jobs and audit production
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout exact authorized runtime source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Re-verify exact request and authority from latest protected main
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          EXPECTED_CUTOFF_UTC: ${{ needs.preflight.outputs.cutoff_utc }}
+          EXPECTED_MAX_ROWS: ${{ needs.preflight.outputs.max_rows }}
+          EXPECTED_DEPLOYMENT_RUN_ID: ${{ needs.preflight.outputs.deployment_run_id }}
+          EXPECTED_WORKER_VERSION_ID: ${{ needs.preflight.outputs.worker_version_id }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" refs/remotes/origin/main
+
+          control_plane="$RUNNER_TEMP/e1c-a1-reconciliation-control-plane"
+          rm -rf "$control_plane"
+          git worktree add --detach "$control_plane" refs/remotes/origin/main
+          (
+            cd "$control_plane"
+            export GITHUB_OUTPUT="$RUNNER_TEMP/latest-reconciliation-request-outputs"
+            : > "$GITHUB_OUTPUT"
+            node tools/reconcile_legacy_calculation_jobs.mjs verify-request \
+              config/production-legacy-job-reconciliation-request.json
+            source "$GITHUB_OUTPUT"
+            test "$source_sha" = "$EXPECTED_SOURCE_SHA"
+            test "$cutoff_utc" = "$EXPECTED_CUTOFF_UTC"
+            test "$max_rows" = "$EXPECTED_MAX_ROWS"
+            test "$deployment_run_id" = "$EXPECTED_DEPLOYMENT_RUN_ID"
+            test "$worker_version_id" = "$EXPECTED_WORKER_VERSION_ID"
+            EXPECTED_SHA="$EXPECTED_SOURCE_SHA" node tools/verify_production_activation_authority.mjs
+          )
+
+      - name: Load canonical Worker manifest expectations
+        id: manifest
+        run: node tools/export_worker_manifest.mjs
+
+      - name: Verify live Worker exact-source contract before reconciliation
+        env:
+          WORKER_BASE_URL: https://journal-backend.chired.workers.dev
+          EXPECTED_SHA: ${{ needs.preflight.outputs.source_sha }}
+          EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
+          REQUIRE_SYSTEM_CHECKS: '0'
+        run: node tools/verify_production_contract.mjs
+
+      - name: Render production Wrangler config
+        env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+          SOURCE_COMMIT: ${{ needs.preflight.outputs.source_sha }}
+        run: npm run worker:config:render
+
+      - name: Verify exact production D1 identity
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          EXPECTED_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+        run: |
+          set -euo pipefail
+          D1_INFO_JSON="$(npx wrangler d1 info "$EXPECTED_D1_DATABASE_NAME" --json --config .wrangler/deploy.toml)"
+          export D1_INFO_JSON
+          node tools/verify_d1_identity.mjs
+
+      - name: Require three consecutive no-active-run observations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 3); do
+            response="$(curl --silent --show-error --fail \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'X-GitHub-Api-Version: 2026-03-10' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/update.yml/runs?per_page=100")"
+            RUNS_JSON="$response" node --input-type=module <<'NODE'
+            const body = JSON.parse(process.env.RUNS_JSON || '{}');
+            const active = (body.workflow_runs || []).filter((run) => run.status !== 'completed');
+            if (active.length !== 0) {
+              const summary = active.map((run) => run.status).sort();
+              throw new Error(`Update Portfolio Data still has ${active.length} active run(s): ${summary.join(',')}`);
+            }
+            NODE
+            echo "No-active-run observation $attempt/3 passed"
+            if [[ "$attempt" != "3" ]]; then sleep 3; fi
+          done
+
+      - name: Final authority and active-run check before production D1 mutation
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          control_plane="$RUNNER_TEMP/e1c-a1-reconciliation-final-authority"
+          rm -rf "$control_plane"
+          git worktree add --detach "$control_plane" refs/remotes/origin/main
+          (
+            cd "$control_plane"
+            EXPECTED_SHA="$EXPECTED_SOURCE_SHA" node tools/verify_production_activation_authority.mjs
+          )
+
+          response="$(curl --silent --show-error --fail \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2026-03-10' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/update.yml/runs?per_page=100")"
+          RUNS_JSON="$response" node --input-type=module <<'NODE'
+          const body = JSON.parse(process.env.RUNS_JSON || '{}');
+          const active = (body.workflow_runs || []).filter((run) => run.status !== 'completed');
+          if (active.length !== 0) throw new Error(`Refusing D1 reconciliation while ${active.length} update run(s) are active`);
+          console.log('Final active-run check passed immediately before D1 mutation');
+          NODE
+
+      - name: Reconcile only legacy queued jobs without durable dispatch identity
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.source_sha }}
+          RECONCILIATION_CUTOFF_UTC: ${{ needs.preflight.outputs.cutoff_utc }}
+          RECONCILIATION_MAX_ROWS: ${{ needs.preflight.outputs.max_rows }}
+          DEPLOYMENT_RUN_ID: ${{ needs.preflight.outputs.deployment_run_id }}
+          WORKER_VERSION_ID: ${{ needs.preflight.outputs.worker_version_id }}
+          AUDIT_OUTPUT: production-e1c-a1-legacy-reconciliation.json
+        run: node tools/reconcile_legacy_calculation_jobs.mjs execute
+
+      - name: Run sanitized production contract audit after reconciliation
+        env:
+          WORKER_BASE_URL: https://journal-backend.chired.workers.dev
+          EXPECTED_SHA: ${{ needs.preflight.outputs.source_sha }}
+          EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
+          API_KEY: ${{ secrets.API_KEY }}
+          REQUIRE_SYSTEM_CHECKS: '1'
+          AUDIT_OUTPUT: production-contract-audit.json
+        run: node tools/verify_production_contract.mjs
+
+      - name: Upload sanitized reconciliation evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: production-e1c-a1-legacy-reconciliation-${{ needs.preflight.outputs.source_sha }}
+          path: |
+            production-e1c-a1-legacy-reconciliation.json
+            production-contract-audit.json
+          if-no-files-found: error
+          retention-days: 30
