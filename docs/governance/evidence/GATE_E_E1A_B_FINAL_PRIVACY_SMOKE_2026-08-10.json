@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "evidence_type": "gate_e_e1a_b_final_privacy_smoke",
+  "observed_at_utc": "2026-08-10T21:21:25Z",
+  "repository": "chihung1024/sheet-trading-journal",
+  "source_sha": "f6cf1769955dc18a093733a2e29b129b2443ddf0",
+  "workflow": {
+    "name": "Update Portfolio Data",
+    "run_number": 3228,
+    "run_id": 31433418502,
+    "event": "workflow_dispatch",
+    "conclusion": "success"
+  },
+  "privacy_contract": {
+    "opaque_calculation_job_id_present": true,
+    "normal_target_user_email_input_present": false,
+    "verified_job_log_label": "opaque-job-user",
+    "tenant_email_material_observed_in_application_logs": false,
+    "legacy_email_only_targeting_path_used": false
+  },
+  "functional_contract": {
+    "running_callback": "passed",
+    "durable_owner_resolution": "passed",
+    "durable_benchmark_resolution": "passed",
+    "calculation_and_upload": "passed",
+    "canonical_daily_pnl_reconciliation": "passed",
+    "split_adjusted_ledger_parity": "passed",
+    "snapshot_upload": "passed",
+    "terminal_callback": "succeeded"
+  },
+  "sanitization": {
+    "tenant_identifier_included": false,
+    "calculation_job_id_included": false,
+    "api_key_included": false,
+    "raw_transactions_included": false,
+    "user_specific_benchmark_value_included": false
+  },
+  "decision": "PASS",
+  "gate_effect": "E1a-B production privacy verification satisfied; eligible for closeout and transition to E1b"
+}
