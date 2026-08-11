@@ -41,7 +41,7 @@ const TRIGGER_COOLDOWN_SECONDS = 60;
 const RECORD_PAGE_DEFAULT_LIMIT = 1_000;
 const RECORD_PAGE_MAX_LIMIT = 1_000;
 const RECORD_CURSOR_VERSION = 1;
-const CALCULATION_JOB_WINDOW_SECONDS = 15 * 60;
+const CALCULATION_JOB_TERMINAL_REPLAY_SECONDS = 24 * 60 * 60;
 const CALCULATION_JOB_ID_RE = /^job_[A-Za-z0-9_-]{22}$/;
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._~-]{16,128}$/;
 const CALCULATION_JOB_ERROR_RE = /^[A-Z0-9_]{1,64}$/;
@@ -687,6 +687,7 @@ async function handleUpdateUserSettings(request, env, principal, requestId) {
 }
 
 async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
+  let insertedJobId = null;
   try {
     if (!env.GITHUB_TOKEN) {
       console.error(`[request_id=${requestId}] GitHub dispatch token is unavailable`);
@@ -714,6 +715,7 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
         job: publicCalculationJob(created.job, true),
       });
     }
+    insertedJobId = created.job.public_id;
 
     const rateLimit = await claimTriggerSlot(principal.email, env, ctx);
     if (!rateLimit.allowed) {
@@ -767,12 +769,23 @@ async function handleGitHubTrigger(request, env, ctx, principal, requestId) {
       return apiError("INVALID_REQUEST", error.message, 400, requestId);
     }
     const isTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
+    const errorCode = isTimeout ? "GITHUB_DISPATCH_TIMEOUT" : "GITHUB_DISPATCH_FAILED";
+    if (insertedJobId) {
+      try {
+        await calculationJobsRepository.failQueuedDispatch(env.DB, insertedJobId, errorCode);
+      } catch (recoveryError) {
+        console.error(
+          `[request_id=${requestId}] Failed to close ambiguous queued dispatch ` +
+          `[job_id=${insertedJobId}] [error=${safeErrorName(recoveryError)}]`,
+        );
+      }
+    }
     console.error(
       `[request_id=${requestId}] Trigger update failed ` +
       `[error=${isTimeout ? "timeout" : safeErrorName(error)}]`,
     );
     return apiError(
-      isTimeout ? "GITHUB_DISPATCH_TIMEOUT" : "GITHUB_DISPATCH_FAILED",
+      errorCode,
       isTimeout ? "Update service timed out" : "Failed to trigger update",
       502,
       requestId,
@@ -959,15 +972,17 @@ const calculationJobsRepository = Object.freeze({
       throw new RequestValidationError("idempotency hash is invalid");
     }
     const benchmark = validateSymbol(job.benchmark, "benchmark");
-    const expiryModifier = `-${CALCULATION_JOB_WINDOW_SECONDS} seconds`;
+    const replayModifier = `-${CALCULATION_JOB_TERMINAL_REPLAY_SECONDS} seconds`;
 
     await db.prepare(`
       UPDATE calculation_jobs
       SET idempotency_hash = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE user_id = ?
         AND idempotency_hash = ?
-        AND created_at <= datetime('now', ?)
-    `).bind(userId, idempotencyHash, expiryModifier).run();
+        AND status IN ('succeeded', 'failed')
+        AND completed_at IS NOT NULL
+        AND completed_at <= datetime('now', ?)
+    `).bind(userId, idempotencyHash, replayModifier).run();
 
     const insert = await db.prepare(`
       INSERT OR IGNORE INTO calculation_jobs
@@ -1010,6 +1025,23 @@ const calculationJobsRepository = Object.freeze({
       LIMIT 1
     `).bind(validateCalculationJobId(publicId)).first();
     return row ? normalizeCalculationJobRow(row) : null;
+  },
+
+  async failQueuedDispatch(db, publicId, errorCode) {
+    const normalizedPublicId = validateCalculationJobId(publicId);
+    const normalizedErrorCode = validateCalculationJobErrorCode(errorCode);
+    const result = await db.prepare(`
+      UPDATE calculation_jobs SET
+        status = 'failed',
+        error_code = ?,
+        completed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE public_id = ? AND status = 'queued'
+    `).bind(normalizedErrorCode, normalizedPublicId).run();
+    return {
+      kind: affectedRows(result) === 1 ? "failed-queued" : "unchanged",
+      job: await this.findById(db, normalizedPublicId),
+    };
   },
 
   async transition(db, transition) {
@@ -1553,6 +1585,7 @@ export const __test = {
   getBuildMetadata,
   handleHealth,
   buildGitHubDispatchRequest,
+  handleGitHubTrigger,
   handleGetCalculationJob,
   handleCalculationJobStatus,
   handleDeleteRecord,
