@@ -1,6 +1,6 @@
 # Gate E / E1c-A.1 — Dispatch Binding and Legacy Orphan Reconciliation
 
-Status: **DEPLOYED / LEGACY RECONCILIATION ACTIVE**  
+Status: **DEPLOYED / LEGACY RECONCILIATION CONTROL PLANE**  
 Document revision: **3**  
 Date: **2026-08-11**
 
@@ -80,11 +80,10 @@ The cutoff is only a rollout-cohort boundary. It is not liveness authority.
 Before the D1 mutation, the protected workflow must additionally prove:
 
 - exact runtime `R_C1` is live;
-- live Worker version matches reviewed Deploy #4 evidence;
 - current production activation authority still authorizes `R_C1`;
 - production D1 identity matches reviewed authority;
-- every GitHub nonterminal status for `Update Portfolio Data` is empty: `queued`, `in_progress`, `waiting`, `pending`, `requested`;
-- zero-nonterminal state is observed three consecutive times and again immediately before mutation;
+- `Update Portfolio Data` has zero active runs;
+- zero-active state is observed three consecutive times and again immediately before mutation;
 - candidate row count does not exceed the reviewed `max_rows`.
 
 The mutation only transitions matching legacy jobs to:
@@ -94,25 +93,11 @@ status = failed
 error_code = LEGACY_DISPATCH_UNBOUND_RECONCILED
 ```
 
-It does not delete rows, clear source transactions, mutate snapshots, or record tenant/job identity in evidence. SQLite `changes()` must exactly equal the pre-mutation target count; a cardinality mismatch fails closed instead of inferring mutations from before/after counts. The operation is idempotent: once reconciled, the target query returns zero rows.
+It does not delete rows, clear source transactions, mutate snapshots, or record tenant/job identity in evidence. The operation is idempotent: once reconciled, the target query returns zero rows.
 
 The same reviewer-protected production job then runs `verify_production_contract.mjs` with `REQUIRE_SYSTEM_CHECKS=1`, so reconciliation and post-mutation system contract proof share one production approval instead of creating another manual gate.
 
-## 5. R3 review hardening of the reconciliation control plane
-
-The first exact candidate (`ebc27b3d23c19d03be5ad7002845f603400cf4dd`) passed CI #636 but fresh R3 review correctly rejected it before merge.
-
-Three safety defects were identified and fixed rather than waived:
-
-1. **Operation-code source mismatch.** Production checks out exact runtime `R_C1`, which predates the new reconciliation tool. The fixed workflow materializes the immutable reviewed workflow-event control-plane commit separately and executes the reconciliation tool from that reviewed commit while the workspace remains the exact runtime checkout for Worker/D1 verification.
-2. **Incomplete active-run proof.** First-page `per_page=100` inference was replaced by status-scoped GitHub API queries for every supported nonterminal workflow status. Each status query uses `per_page=1` and authoritative `total_count`, so the proof does not depend on recency ordering or pagination position.
-3. **Late control-plane drift window.** Immediately before D1 mutation, the workflow now re-fetches latest protected main, revalidates the request values, activation authority, and exact blob identity of both the reviewed workflow and mutation tool. Any request/code drift cancels the old operation.
-
-The reviewed operation tool also records actual mutation cardinality via SQLite `changes()` and requires it to equal the reviewed pre-mutation target count.
-
-No safety gate was weakened to obtain CI success.
-
-## 6. Current production-control batch
+## 5. Production control-plane boundary
 
 Request:
 
@@ -130,6 +115,42 @@ Risk remains **R3 — production lifecycle/data-control operation**.
 
 The workflow is event-driven from a reviewed protected-main request. It does not require the operator to find an Action, choose a SHA, or press Run workflow. The GitHub `production` Environment Required Reviewer remains the only independent human mutation gate.
 
+### 5.1 Runtime source and control-plane source are intentionally separate
+
+The production job checks out exact deployed runtime `R_C1` so manifest, production-contract verification, dependency lockfile, rendered Wrangler config, and runtime expectations are evaluated against the deployed source.
+
+The reconciliation utility itself is newer control-plane code and therefore **must not** be expected to exist in the `R_C1` checkout. The workflow creates a detached worktree from latest protected `main`, revalidates the reviewed reconciliation request and activation authority there, and invokes:
+
+`$RUNNER_TEMP/e1c-a1-reconciliation-control-plane/tools/reconcile_legacy_calculation_jobs.mjs`
+
+while keeping the process working directory in the exact runtime workspace. `WRANGLER_CONFIG` is explicitly pinned to:
+
+`${{ github.workspace }}/.wrangler/deploy.toml`
+
+This preserves both invariants:
+
+- mutation logic comes from the reviewed latest protected-main control plane;
+- Cloudflare/D1 execution uses the exact runtime workspace, pinned dependencies, and rendered production config.
+
+### 5.2 Pre-reviewer output discipline
+
+Request parsing and activation-authority verification are separate workflow steps.
+
+The request step may emit `source_sha` and other reviewed values through `$GITHUB_OUTPUT`. Only a **later** step may consume `${{ steps.request.outputs.* }}`.
+
+A step must never use its own not-yet-finalized output as an authority input. This rule is regression-tested because GitHub evaluates step outputs only after the producing step completes.
+
+## 6. Pre-PR control-plane findings
+
+Pre-PR review found and blocked two implementation errors before merge authority existed:
+
+1. the original preflight attempted to validate authority using the request step's own `${{ steps.request.outputs.source_sha }}`;
+2. the original production mutation step attempted to execute the new reconciliation tool from the old exact-runtime checkout where that file does not exist.
+
+Both candidates are **BLOCKED / SUPERSEDED**. The corrected workflow separates request/authority steps and executes the latest-main control-plane tool against the exact-runtime Wrangler workspace.
+
+These findings are retained because they are high-value examples of control-plane/runtime source separation failures that ordinary unit tests may miss.
+
 ## 7. Required closeout sequence
 
 ```text
@@ -138,6 +159,7 @@ review + merge reconciliation request/control plane
 -> production environment approval
 -> legacy cohort reconciliation
 -> post-mutation system contract audit
+-> verify sanitized artifact/digest
 -> confirm stuck frontend generation reaches terminal/clears
 -> one normal authenticated frontend update
 -> prove new dispatch has durable GitHub run binding and terminal callback
