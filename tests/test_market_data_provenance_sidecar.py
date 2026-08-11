@@ -38,6 +38,14 @@ class FakeTicker:
         return _history().copy(deep=True)
 
 
+class IntradayFrameTicker:
+    def __init__(self, frame):
+        self.frame = frame
+
+    def history(self, **kwargs):
+        return self.frame.copy(deep=True)
+
+
 def test_prepare_data_keeps_selector_metadata_on_returned_frame():
     client = MarketDataClient()
 
@@ -47,6 +55,111 @@ def test_prepare_data_keeps_selector_metadata_on_returned_frame():
         "price_source": "Close",
         "selection_reason": "Scheme A: price-return valuation uses Close (split-adjusted)",
     }
+
+
+def test_intraday_quote_requires_close_timestamp_and_positive_price():
+    no_close = IntradayFrameTicker(
+        pd.DataFrame(
+            {"Open": [12.0]},
+            index=pd.to_datetime(["2026-01-06 10:30:00"]),
+        )
+    )
+    invalid_prices = IntradayFrameTicker(
+        pd.DataFrame(
+            {"Close": [float("nan"), 0.0, -1.0]},
+            index=pd.to_datetime(
+                [
+                    "2026-01-06 10:30:00",
+                    "2026-01-06 10:31:00",
+                    "2026-01-06 10:32:00",
+                ]
+            ),
+        )
+    )
+    missing_timestamp = IntradayFrameTicker(
+        pd.DataFrame(
+            {"Close": [12.0]},
+            index=pd.DatetimeIndex([pd.NaT]),
+        )
+    )
+    valid_naive = IntradayFrameTicker(
+        pd.DataFrame(
+            {"Close": [12.0, 12.5]},
+            index=pd.to_datetime(
+                ["2026-01-06 10:30:00", "2026-01-06 10:31:00"]
+            ),
+        )
+    )
+
+    assert MarketDataClient._get_intraday_quote_with_date(no_close) is None
+    assert MarketDataClient._get_intraday_quote_with_date(invalid_prices) is None
+    assert MarketDataClient._get_intraday_quote_with_date(missing_timestamp) is None
+    price, timestamp = MarketDataClient._get_intraday_quote_with_date(valid_naive)
+    assert price == 12.5
+    assert timestamp == pd.Timestamp("2026-01-06 10:31:00")
+
+
+def test_realtime_row_helper_fails_closed_for_missing_or_invalid_evidence():
+    history = _history()
+
+    unchanged, applied = MarketDataClient._append_realtime_valuation_row(
+        pd.DataFrame(), 12.5, pd.Timestamp("2026-01-06")
+    )
+    assert unchanged.empty
+    assert applied is False
+
+    unchanged, applied = MarketDataClient._append_realtime_valuation_row(
+        history, 0.0, pd.Timestamp("2026-01-06")
+    )
+    assert unchanged.equals(history)
+    assert applied is False
+
+    unchanged, applied = MarketDataClient._append_realtime_valuation_row(
+        history, 12.5, pd.NaT
+    )
+    assert unchanged.equals(history)
+    assert applied is False
+
+    unchanged, applied = MarketDataClient._append_realtime_valuation_row(
+        history, 12.5, pd.Timestamp("2026-01-04")
+    )
+    assert unchanged.equals(history)
+    assert applied is False
+
+
+def test_realtime_row_helper_preserves_existing_provenance_and_clears_optional_fields():
+    history = _history().assign(
+        Open=[9.5, 10.5],
+        High=[10.5, 11.5],
+        Low=[9.0, 10.0],
+        Volume=[100.0, 200.0],
+        **{
+            "Capital Gains": [0.0, 0.2],
+            "Valuation_Source": ["market", "market"],
+            "Valuation_Source_Date": ["2026-01-02", "2026-01-05"],
+        },
+    )
+    history.index = history.index.tz_localize("America/New_York")
+
+    result, applied = MarketDataClient._append_realtime_valuation_row(
+        history,
+        12.5,
+        pd.Timestamp("2026-01-06 10:31:00", tz="America/New_York"),
+    )
+
+    assert applied is True
+    synthetic = result.loc[pd.Timestamp("2026-01-06")]
+    assert synthetic["Close"] == 12.5
+    assert synthetic["Adj Close"] == 12.5
+    assert synthetic["Open"] == 12.5
+    assert synthetic["High"] == 12.5
+    assert synthetic["Low"] == 12.5
+    assert synthetic["Volume"] == 0.0
+    assert synthetic["Dividends"] == 0.0
+    assert synthetic["Stock Splits"] == 0.0
+    assert synthetic["Capital Gains"] == 0.0
+    assert synthetic["Valuation_Source"] == "realtime_quote"
+    assert synthetic["Valuation_Source_Date"] == "2026-01-06"
 
 
 def test_download_data_ignores_undated_fast_info_for_historical_rows():
