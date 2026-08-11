@@ -1,24 +1,26 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const SHA_RE = /^[0-9a-f]{40}$/;
 const WORKFLOW_PATH = ".github/workflows/production-legacy-job-reconciliation.yml";
 const CONCURRENCY_GROUP = "production-legacy-job-reconciliation";
 const OPERATION = "e1c_a1_cancel_stuck_scheduler_run";
 const API_VERSION = "2026-03-10";
+const TARGET_RUN_ID = 31479868929;
+const TARGET_PRODUCTION_JOB_ID = 93742148875;
+const EXPECTED_HEAD_SHA = "8f9f942cc22b70e5bbec0f05438b0a74fefb8057";
 
 export function validateRequest(request) {
   if (request?.schema_version !== 1) throw new Error("scheduler recovery schema_version must equal 1");
   if (request?.status !== "ready") throw new Error("scheduler recovery status must equal ready");
   if (request?.operation !== OPERATION) throw new Error("scheduler recovery operation is not authorized");
-  if (!Number.isInteger(request?.target_run_id) || request.target_run_id <= 0) {
-    throw new Error("target_run_id must be a positive integer");
+  if (request?.target_run_id !== TARGET_RUN_ID) {
+    throw new Error("target_run_id is not the exact reviewed one-shot recovery target");
   }
-  if (!Number.isInteger(request?.target_production_job_id) || request.target_production_job_id <= 0) {
-    throw new Error("target_production_job_id must be a positive integer");
+  if (request?.target_production_job_id !== TARGET_PRODUCTION_JOB_ID) {
+    throw new Error("target_production_job_id is not the exact reviewed one-shot recovery target");
   }
-  if (!SHA_RE.test(request?.expected_head_sha || "")) {
-    throw new Error("expected_head_sha must be an exact lowercase 40-character SHA");
+  if (request?.expected_head_sha !== EXPECTED_HEAD_SHA) {
+    throw new Error("expected_head_sha is not the exact reviewed one-shot recovery source");
   }
   if (request?.expected_workflow_path !== WORKFLOW_PATH) {
     throw new Error("expected_workflow_path is not authorized");
@@ -27,10 +29,10 @@ export function validateRequest(request) {
     throw new Error("scheduler recovery reason is required");
   }
   return {
-    target_run_id: request.target_run_id,
-    target_production_job_id: request.target_production_job_id,
-    expected_head_sha: request.expected_head_sha,
-    expected_workflow_path: request.expected_workflow_path,
+    target_run_id: TARGET_RUN_ID,
+    target_production_job_id: TARGET_PRODUCTION_JOB_ID,
+    expected_head_sha: EXPECTED_HEAD_SHA,
+    expected_workflow_path: WORKFLOW_PATH,
   };
 }
 
@@ -144,6 +146,7 @@ export async function inspectTarget({ token, repository, request, fetchImpl = fe
 
 export async function executeRecovery({ token, repository, request, fetchImpl = fetch, sleepImpl = sleep }) {
   const first = await inspectTarget({ token, repository, request, fetchImpl });
+  await sleepImpl(1000);
   const final = await inspectTarget({ token, repository, request, fetchImpl });
   if (JSON.stringify(first) !== JSON.stringify(final)) {
     throw new Error("scheduler target changed between recovery observations");
@@ -161,7 +164,7 @@ export async function executeRecovery({ token, repository, request, fetchImpl = 
   }
 
   let terminal = null;
-  for (let attempt = 1; attempt <= 12; attempt += 1) {
+  for (let attempt = 1; attempt <= 24; attempt += 1) {
     const runResult = await githubJson({
       token,
       repository,
