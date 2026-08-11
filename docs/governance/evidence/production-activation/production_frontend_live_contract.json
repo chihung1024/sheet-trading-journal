@@ -2,11 +2,11 @@
   "schema_version": 1,
   "check_name": "production_frontend_live_contract",
   "status": "passed",
-  "observed_at": "2026-08-10T17:21:15.301Z",
-  "source_sha": "0e2ea514bfa1f0640f620db35490d2a1f728ec7e",
+  "observed_at": "2026-08-11T04:57:01.614Z",
+  "source_sha": "94215c9dfec54a9da80ceac9782a6aca16bee8ad",
   "proof": {
     "result": "pass",
-    "summary": "E1a-B reviewer-protected GET-only Production Identity Evidence #13 proved the canonical production Pages deployment succeeded at exact runtime source 0e2ea514bfa1f0640f620db35490d2a1f728ec7e, the live frontend returned HTTP 200, CSP header and meta were present, production API access was allowed, and the staging API was rejected.",
-    "artifact_reference": "Production Identity Evidence run 31413549090 (#13); artifact 9072520233; sha256:b6608c66a5ed9026fbcce65ccce09105f5399faf43c8fb1e150ac717c19093e8"
+    "summary": "E1c-A reviewer-protected GET-only Production Identity Evidence #14 proved the canonical production Pages deployment succeeded at exact runtime source 94215c9dfec54a9da80ceac9782a6aca16bee8ad, the live frontend returned HTTP 200, CSP header and meta were present, production API access was allowed, and the staging API was rejected.",
+    "artifact_reference": "Production Identity Evidence run 31460047093 (#14); artifact 9089458738; sha256:9215ebc8c9f5ce5ccd53c56afe2f26085b0a724c59302f5c15f46d979a4fc48a"
   }
 }
