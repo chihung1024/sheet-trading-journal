@@ -1,5 +1,6 @@
 import concurrent.futures
 import math
+import time
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -19,6 +20,8 @@ from .auto_price_selector import AutoPriceSelector
 VALUATION_SOURCE_COLUMN = "Valuation_Source"
 VALUATION_SOURCE_DATE_COLUMN = "Valuation_Source_Date"
 REALTIME_VALUATION_SOURCE = "realtime_quote"
+SELECTED_PRICE_REFETCH_ATTEMPTS = 2
+SELECTED_PRICE_REFETCH_DELAY_SECONDS = 1.0
 
 
 class MarketDataClient:
@@ -68,7 +71,7 @@ class MarketDataClient:
         combined_index = twd_per_usd.index.union(native_per_usd.index).sort_values()
         usd_twd = twd_per_usd.reindex(combined_index).ffill()
         native_usd = native_per_usd.reindex(combined_index).ffill()
-        derived = usd_twd / native_usd
+        derived = twd_per_usd.reindex(combined_index).ffill() / native_usd
         return cls._clean_positive_series(derived)
 
     def __init__(self):
@@ -388,6 +391,14 @@ class MarketDataClient:
         snapshot['TWD'] = 1.0
         return snapshot
 
+    @staticmethod
+    def _selected_price_contains_nan(frame):
+        """Return True only when the prepared provider-selected price still has NaN."""
+        if frame is None or frame.empty or 'Close_Adjusted' not in frame.columns:
+            return False
+        selected = pd.to_numeric(frame['Close_Adjusted'], errors='coerce')
+        return selected.isna().any()
+
     def download_data(self, tickers: list, start_date):
         """下載市場數據（股票價格 + currency-aware 匯率）。"""
         print(f"正在下載市場數據，起始日期: {start_date}...")
@@ -408,10 +419,22 @@ class MarketDataClient:
 
         def fetch_single_ticker(t):
             try:
-                ticker_obj = yf.Ticker(t)
-                hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
+                last_result = None
+                for attempt in range(1, SELECTED_PRICE_REFETCH_ATTEMPTS + 1):
+                    # Construct a fresh Ticker on each attempt. The retry requests the
+                    # same provider, date range, adjustment mode, and action fields;
+                    # it never fills, drops, substitutes, or repairs a provider row.
+                    ticker_obj = yf.Ticker(t)
+                    hist = ticker_obj.history(
+                        start=start_date,
+                        auto_adjust=False,
+                        actions=True,
+                    )
 
-                if not hist.empty:
+                    if hist.empty:
+                        print(f"[{t}] 警告: 無歷史數據")
+                        return t, None, None, False
+
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
                     realtime_overlay_applied = False
 
@@ -434,10 +457,22 @@ class MarketDataClient:
 
                     hist_adj = self._prepare_data(t, hist)
                     metadata = dict(hist_adj.attrs.get('price_provenance') or {})
-                    return t, hist_adj, metadata, realtime_overlay_applied
+                    last_result = (t, hist_adj, metadata, realtime_overlay_applied)
 
-                print(f"[{t}] 警告: 無歷史數據")
-                return t, None, None, False
+                    if not self._selected_price_contains_nan(hist_adj):
+                        return last_result
+
+                    if attempt < SELECTED_PRICE_REFETCH_ATTEMPTS:
+                        print(
+                            f"[{t}] selected price 含 NaN；將以相同 provider/參數 "
+                            f"fresh re-fetch ({attempt + 1}/{SELECTED_PRICE_REFETCH_ATTEMPTS})"
+                        )
+                        time.sleep(SELECTED_PRICE_REFETCH_DELAY_SECONDS)
+
+                # Persistent invalid data remains unchanged and is rejected by the
+                # existing downstream validator. Never make the workflow green by
+                # mutating financial semantics here.
+                return last_result
 
             except Exception as e:
                 print(f"[{t}] 下載錯誤: {e}")
