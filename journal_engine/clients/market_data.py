@@ -1,5 +1,6 @@
 import concurrent.futures
 import math
+import time
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -19,6 +20,8 @@ from .auto_price_selector import AutoPriceSelector
 VALUATION_SOURCE_COLUMN = "Valuation_Source"
 VALUATION_SOURCE_DATE_COLUMN = "Valuation_Source_Date"
 REALTIME_VALUATION_SOURCE = "realtime_quote"
+SELECTED_PRICE_REFETCH_ATTEMPTS = 2
+SELECTED_PRICE_REFETCH_DELAY_SECONDS = 1.0
 
 
 class MarketDataClient:
@@ -388,6 +391,25 @@ class MarketDataClient:
         snapshot['TWD'] = 1.0
         return snapshot
 
+    @staticmethod
+    def _selected_price_contains_nan(frame):
+        """Return True only when the prepared provider-selected price still has NaN."""
+        if frame is None or frame.empty or 'Close_Adjusted' not in frame.columns:
+            return False
+        selected = pd.to_numeric(frame['Close_Adjusted'], errors='coerce')
+        return selected.isna().any()
+
+    @staticmethod
+    def _daily_action_evidence_complete(frame):
+        """Require the yfinance actions=True daily contract before accepting a retry."""
+        for column in ('Dividends', 'Stock Splits'):
+            if column not in frame.columns:
+                return False
+            values = pd.to_numeric(frame[column], errors='coerce')
+            if values.isna().any():
+                return False
+        return True
+
     def download_data(self, tickers: list, start_date):
         """下載市場數據（股票價格 + currency-aware 匯率）。"""
         print(f"正在下載市場數據，起始日期: {start_date}...")
@@ -407,12 +429,56 @@ class MarketDataClient:
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
 
         def fetch_single_ticker(t):
-            try:
-                ticker_obj = yf.Ticker(t)
-                hist = ticker_obj.history(start=start_date, auto_adjust=False, actions=True)
+            first_invalid_result = None
+            first_invalid_price_source = None
+            first_invalid_provider_index = None
+            last_result = None
 
-                if not hist.empty:
+            for attempt in range(1, SELECTED_PRICE_REFETCH_ATTEMPTS + 1):
+                try:
+                    # Construct a fresh Ticker on each attempt. The retry requests the
+                    # same provider, date range, adjustment mode, and action fields;
+                    # it never fills, drops, substitutes, or repairs a provider row.
+                    ticker_obj = yf.Ticker(t)
+                    hist = ticker_obj.history(
+                        start=start_date,
+                        auto_adjust=False,
+                        actions=True,
+                    )
+
+                    if hist.empty:
+                        if first_invalid_result is not None:
+                            print(
+                                f"[{t}] fresh re-fetch 回傳空資料；保留前次 invalid "
+                                "provider response 交由 validator fail closed"
+                            )
+                            return first_invalid_result
+                        print(f"[{t}] 警告: 無歷史數據")
+                        return t, None, None, False
+
+                    if (
+                        first_invalid_result is not None
+                        and not self._daily_action_evidence_complete(hist)
+                    ):
+                        print(
+                            f"[{t}] fresh re-fetch 缺少或含 malformed corporate-action "
+                            "evidence；保留前次 invalid provider response fail closed"
+                        )
+                        return first_invalid_result
+
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
+                    provider_daily_index = hist.index.copy()
+
+                    if (
+                        first_invalid_provider_index is not None
+                        and not first_invalid_provider_index.isin(provider_daily_index).all()
+                    ):
+                        print(
+                            f"[{t}] fresh re-fetch 遺失前次 provider daily row；"
+                            "拒絕以 row omission 繞過 NaN 並維持 fail closed"
+                        )
+                        return first_invalid_result
+
                     realtime_overlay_applied = False
 
                     intraday_quote = self._get_intraday_quote_with_date(ticker_obj)
@@ -434,14 +500,53 @@ class MarketDataClient:
 
                     hist_adj = self._prepare_data(t, hist)
                     metadata = dict(hist_adj.attrs.get('price_provenance') or {})
-                    return t, hist_adj, metadata, realtime_overlay_applied
+                    last_result = (t, hist_adj, metadata, realtime_overlay_applied)
 
-                print(f"[{t}] 警告: 無歷史數據")
-                return t, None, None, False
+                    if (
+                        first_invalid_result is not None
+                        and metadata.get('price_source') != first_invalid_price_source
+                    ):
+                        print(
+                            f"[{t}] fresh re-fetch selected price source 改變；"
+                            "拒絕隱性 price substitution 並保留前次 invalid response"
+                        )
+                        return first_invalid_result
 
-            except Exception as e:
-                print(f"[{t}] 下載錯誤: {e}")
-                return t, None, None, False
+                    if not self._selected_price_contains_nan(hist_adj):
+                        return last_result
+
+                    if first_invalid_result is None:
+                        first_invalid_result = last_result
+                        first_invalid_price_source = metadata.get('price_source')
+                        first_invalid_provider_index = provider_daily_index
+                        if not self._daily_action_evidence_complete(hist):
+                            print(
+                                f"[{t}] invalid selected-price row 缺少或含 malformed "
+                                "corporate-action evidence；不重試且維持 fail closed"
+                            )
+                            return first_invalid_result
+
+                    if attempt < SELECTED_PRICE_REFETCH_ATTEMPTS:
+                        print(
+                            f"[{t}] selected price 含 NaN；將以相同 provider/參數 "
+                            f"fresh re-fetch ({attempt + 1}/{SELECTED_PRICE_REFETCH_ATTEMPTS})"
+                        )
+                        time.sleep(SELECTED_PRICE_REFETCH_DELAY_SECONDS)
+
+                except Exception as exc:
+                    if first_invalid_result is not None:
+                        print(
+                            f"[{t}] fresh re-fetch 失敗: {exc}; 保留前次 invalid "
+                            "provider response 交由 validator fail closed"
+                        )
+                        return first_invalid_result
+                    print(f"[{t}] 下載錯誤: {exc}")
+                    return t, None, None, False
+
+            # Persistent invalid data remains unchanged and is rejected by the
+            # existing downstream validator. Never make the workflow green by
+            # mutating financial semantics here.
+            return last_result
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_ticker = {executor.submit(fetch_single_ticker, t): t for t in all_tickers}
