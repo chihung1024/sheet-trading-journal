@@ -8,7 +8,9 @@ import {
   getPendingCalculationGenerationStorageKey,
   getPendingCalculationTombstoneStorageKey,
   isTerminalCalculationStatus,
+  normalizeCalculationBenchmark,
   normalizeCalculationOwner,
+  pendingCalculationMatchesBenchmark,
   readPendingCalculationRequest,
   rememberPendingCalculationRequest,
   validatePendingCalculationRequest,
@@ -47,9 +49,19 @@ const valid = {
   jobId: OLD_JOB,
 };
 
-test('normalizes owner identity without touching opaque job values', () => {
+test('normalizes owner and benchmark identity without touching opaque job values', () => {
   assert.equal(normalizeCalculationOwner('  User@Example.COM '), OWNER);
   assert.equal(normalizeCalculationOwner(null), '');
+  assert.equal(normalizeCalculationBenchmark(' 0050.tw '), '0050.TW');
+  assert.equal(normalizeCalculationBenchmark(null), '');
+});
+
+test('benchmark matching preserves legacy compatibility but separates new explicit intents', () => {
+  assert.equal(pendingCalculationMatchesBenchmark({ ...valid, benchmark: 'SPY' }, ' spy '), true);
+  assert.equal(pendingCalculationMatchesBenchmark({ ...valid, benchmark: 'SPY' }, 'QQQ'), false);
+  assert.equal(pendingCalculationMatchesBenchmark(valid, 'QQQ'), true);
+  assert.equal(pendingCalculationMatchesBenchmark(null, 'SPY'), false);
+  assert.equal(pendingCalculationMatchesBenchmark(valid, ''), false);
 });
 
 test('accepts valid same-owner pending state', () => {
@@ -57,12 +69,17 @@ test('accepts valid same-owner pending state', () => {
     validatePendingCalculationRequest(valid, ' USER@example.com ', { now: NOW }),
     valid,
   );
+  assert.deepEqual(
+    validatePendingCalculationRequest({ ...valid, benchmark: ' 0050.tw ' }, OWNER, { now: NOW }),
+    { ...valid, benchmark: '0050.TW' },
+  );
 });
 
 test('rejects malformed, future, and cross-owner state without using age as liveness authority', () => {
   assert.equal(validatePendingCalculationRequest({ ...valid, key: 'short' }, OWNER, { now: NOW }), null);
   assert.equal(validatePendingCalculationRequest({ ...valid, jobId: 'job_invalid' }, OWNER, { now: NOW }), null);
   assert.equal(validatePendingCalculationRequest({ ...valid, createdAt: NOW + 60_001 }, OWNER, { now: NOW }), null);
+  assert.equal(validatePendingCalculationRequest({ ...valid, benchmark: '   ' }, OWNER, { now: NOW }), null);
   assert.equal(validatePendingCalculationRequest(valid, 'other@example.com', { now: NOW }), null);
 });
 
@@ -73,8 +90,8 @@ test('age alone does not expire known-job or ambiguous pre-job recovery identity
     valid,
   );
   assert.deepEqual(
-    validatePendingCalculationRequest({ ...valid, jobId: null }, OWNER, { now: muchLater }),
-    { ...valid, jobId: null },
+    validatePendingCalculationRequest({ ...valid, jobId: null, benchmark: 'SPY' }, OWNER, { now: muchLater }),
+    { ...valid, jobId: null, benchmark: 'SPY' },
   );
 });
 
@@ -101,6 +118,7 @@ test('first remember creates v2 live generation and legacy compatibility mirror'
     key: OLD_KEY,
     createdAt: NOW - 10_000,
     jobId: null,
+    benchmark: ' spy ',
   });
 
   assert.deepEqual(pending, {
@@ -108,6 +126,7 @@ test('first remember creates v2 live generation and legacy compatibility mirror'
     key: OLD_KEY,
     createdAt: NOW - 10_000,
     jobId: null,
+    benchmark: 'SPY',
   });
 
   const generationKey = getPendingCalculationGenerationStorageKey(pending);
@@ -127,15 +146,18 @@ test('second remember for the same idempotency key reuses the original generatio
     key: OLD_KEY,
     createdAt: NOW - 10_000,
     jobId: null,
+    benchmark: 'SPY',
   });
   const updated = rememberPendingCalculationRequest(storage, OWNER, {
     key: OLD_KEY,
     createdAt: NOW - 1_000,
     jobId: OLD_JOB,
+    benchmark: 'spy',
   });
 
   assert.equal(updated.createdAt, first.createdAt);
   assert.equal(updated.jobId, OLD_JOB);
+  assert.equal(updated.benchmark, 'SPY');
   assert.equal(
     storage.entries().filter(([key]) => key.startsWith(`${PENDING_CALCULATION_V2_STORAGE_PREFIX}live.`)).length,
     1,
@@ -143,12 +165,33 @@ test('second remember for the same idempotency key reuses the original generatio
   assert.deepEqual(JSON.parse(storage.raw(CALCULATION_REQUEST_STORAGE_KEY)), updated);
 });
 
-test('ambiguous pre-job replay keeps the same generation beyond the historical TTL', () => {
+test('same idempotency generation cannot be rebound to a different benchmark intent', () => {
+  const storage = createStorage();
+  rememberPendingCalculationRequest(storage, OWNER, {
+    key: OLD_KEY,
+    createdAt: NOW - 10_000,
+    jobId: null,
+    benchmark: 'SPY',
+  });
+
+  assert.throws(
+    () => rememberPendingCalculationRequest(storage, OWNER, {
+      key: OLD_KEY,
+      createdAt: NOW,
+      jobId: OLD_JOB,
+      benchmark: 'QQQ',
+    }),
+    /benchmark intent conflicts/,
+  );
+});
+
+test('ambiguous pre-job replay keeps the same benchmark-scoped generation beyond the historical TTL', () => {
   const storage = createStorage();
   const first = rememberPendingCalculationRequest(storage, OWNER, {
     key: OLD_KEY,
     createdAt: NOW - CALCULATION_REQUEST_TTL_MS - 10_000,
     jobId: null,
+    benchmark: 'SPY',
   });
   assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), first);
 
@@ -156,10 +199,12 @@ test('ambiguous pre-job replay keeps the same generation beyond the historical T
     key: OLD_KEY,
     createdAt: NOW,
     jobId: null,
+    benchmark: ' spy ',
   });
   assert.equal(replay.key, first.key);
   assert.equal(replay.createdAt, first.createdAt);
   assert.equal(replay.jobId, null);
+  assert.equal(replay.benchmark, 'SPY');
 });
 
 test('newer generation coexists with older generation and is selected as authoritative', () => {
@@ -186,11 +231,13 @@ test('clearing an old exact job adds a separate tombstone and cannot disturb the
     key: OLD_KEY,
     createdAt: NOW - 10_000,
     jobId: OLD_JOB,
+    benchmark: 'SPY',
   });
   const newer = rememberPendingCalculationRequest(storage, OWNER, {
     key: NEW_KEY,
     createdAt: NOW - 1_000,
     jobId: NEW_JOB,
+    benchmark: 'QQQ',
   });
 
   assert.equal(clearPendingCalculationRequest(storage, OWNER, { jobId: OLD_JOB }, { now: NOW }), 1);
@@ -199,6 +246,7 @@ test('clearing an old exact job adds a separate tombstone and cannot disturb the
   assert.equal(oldLive.state, 'live');
   assert.equal(oldLive.clearedAt, null);
   assert.equal(oldTombstone.state, 'cleared');
+  assert.equal(oldTombstone.benchmark, 'SPY');
   assert.equal(oldTombstone.clearedAt, NOW);
   assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), newer);
 });
