@@ -142,12 +142,12 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 export DB --remote \
-            --experimental-provision=false \
-            --experimental-auto-create=false \
+          test "$CLOUDFLARE_D1_DATABASE_NAME" = "trading-journal-staging"
+          npx wrangler d1 export "$CLOUDFLARE_D1_DATABASE_NAME" --remote \
             --config .wrangler/staging.toml \
             --table "$DRILL_TABLE" \
             --output recovery-sentinel.sql \
