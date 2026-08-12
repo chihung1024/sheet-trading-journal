@@ -5,6 +5,7 @@ import { useAuthStore } from './auth';
 import { useToast } from '../composables/useToast';
 import {
     clearPendingCalculationRequest as clearStoredCalculationRequest,
+    pendingCalculationMatchesBenchmark,
     readPendingCalculationRequest as readStoredCalculationRequest,
     rememberPendingCalculationRequest as rememberStoredCalculationRequest,
 } from '../services/calculationJobState';
@@ -285,7 +286,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         if (didAttemptCalculationRecovery) return;
         didAttemptCalculationRecovery = true;
         const pending = readPendingCalculationRequest();
-        if (pending?.jobId) void startCalculationJobPolling(pending.jobId);
+        if (!pending) return;
+        try {
+            rememberPendingCalculationRequest(pending);
+        } catch (error) {
+            console.warn('無法升級待處理計算恢復狀態:', error);
+        }
+        if (pending.jobId) void startCalculationJobPolling(pending.jobId);
     };
 
     const performFetchAll = async () => {
@@ -519,11 +526,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
     };
 
-    const getOrCreateIdempotencyKey = () => {
+    const getOrCreateIdempotencyKey = (targetBenchmark) => {
         const pending = readPendingCalculationRequest();
-        if (pending) return pending.key;
+        if (pendingCalculationMatchesBenchmark(pending, targetBenchmark)) return pending.key;
         const key = createIdempotencyKey();
-        rememberPendingCalculationRequest({ key, createdAt: Date.now(), jobId: null });
+        rememberPendingCalculationRequest({
+            key,
+            createdAt: Date.now(),
+            jobId: null,
+            benchmark: targetBenchmark,
+        });
         return key;
     };
 
@@ -613,8 +625,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
         }
 
-        const targetBenchmark = benchmark || selectedBenchmark.value;
-        const idempotencyKey = getOrCreateIdempotencyKey();
+        const targetBenchmark = String(benchmark || selectedBenchmark.value || '').toUpperCase().trim();
+        const idempotencyKey = getOrCreateIdempotencyKey(targetBenchmark);
         try {
             const responseData = await fetchWithAuth('/api/trigger-update', {
                 method: 'POST',
@@ -631,7 +643,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 rememberPendingCalculationRequest({
                     key: idempotencyKey,
                     createdAt: Date.now(),
-                    jobId: responseData.job.id
+                    jobId: responseData.job.id,
+                    benchmark: responseData.job.benchmark || targetBenchmark,
                 });
                 const { addToast } = useToast();
                 addToast(
