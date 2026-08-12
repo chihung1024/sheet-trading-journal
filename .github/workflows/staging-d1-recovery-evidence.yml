@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 15
     environment: staging
     env:
-      DRILL_TABLE: recovery_evidence_sentinel
       EVIDENCE_DIR: recovery-evidence
 
     steps:
@@ -50,6 +49,17 @@ jobs:
             throw new Error('Recovery drill request is not the reviewed staging-only operation');
           }
           NODE
+
+      - name: Configure unique synthetic table identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          table="recovery_evidence_sentinel_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          if [[ ! "$table" =~ ^recovery_evidence_sentinel_[0-9]+_[0-9]+$ ]]; then
+            echo "Invalid synthetic table identity" >&2
+            exit 1
+          fi
+          echo "DRILL_TABLE=$table" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -96,7 +106,22 @@ jobs:
           if (!row || Number(row.drill_table_count) !== 0) throw new Error('Synthetic recovery table already exists');
           NODE
 
-      - name: Create synthetic sentinel
+      - name: Create owned synthetic table
+        id: table
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --command "CREATE TABLE $DRILL_TABLE (id INTEGER PRIMARY KEY, marker TEXT NOT NULL, checksum TEXT NOT NULL);"
+          echo "owned=true" >> "$GITHUB_OUTPUT"
+
+      - name: Insert synthetic sentinel
         id: sentinel
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -104,13 +129,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          checksum="$(printf '%s' "${GITHUB_SHA}:${GITHUB_RUN_ID}:schema3-recovery-drill" | sha256sum | awk '{print $1}')"
-          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+          checksum="$(printf '%s' "${GITHUB_SHA}:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:schema3-recovery-drill" | sha256sum | awk '{print $1}')"
           npx wrangler d1 execute DB --remote \
             --experimental-provision=false \
             --experimental-auto-create=false \
             --config .wrangler/staging.toml \
-            --command "CREATE TABLE $DRILL_TABLE (id INTEGER PRIMARY KEY, marker TEXT NOT NULL, checksum TEXT NOT NULL); INSERT INTO $DRILL_TABLE (id, marker, checksum) VALUES (1, 'recovery-sentinel', '$checksum');"
+            --command "INSERT INTO $DRILL_TABLE (id, marker, checksum) VALUES (1, 'recovery-sentinel', '$checksum');"
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
 
       - name: Verify sentinel before export
         env:
@@ -156,13 +181,14 @@ jobs:
           export_sha="$(sha256sum recovery-sentinel.sql | awk '{print $1}')"
           echo "export_sha=$export_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Destructively remove the synthetic table
+      - name: Destructively remove only the owned synthetic table
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         shell: bash
         run: |
           set -euo pipefail
+          test "${{ steps.table.outputs.owned }}" = "true"
           npx wrangler d1 execute DB --remote \
             --experimental-provision=false \
             --experimental-auto-create=false \
@@ -238,6 +264,7 @@ jobs:
             synthetic_only: true,
             baseline_sha: process.env.GITHUB_SHA,
             github_run_id: Number(process.env.GITHUB_RUN_ID),
+            github_run_attempt: Number(process.env.GITHUB_RUN_ATTEMPT),
             drill_table: process.env.DRILL_TABLE,
             sentinel_checksum: process.env.SENTINEL_CHECKSUM,
             export_sha256: process.env.EXPORT_SHA,
@@ -280,8 +307,8 @@ jobs:
           NODE
           echo "executed_at=$executed_at" >> "$GITHUB_OUTPUT"
 
-      - name: Cleanup synthetic staging table
-        if: always()
+      - name: Cleanup only the table owned by this run attempt
+        if: always() && steps.table.outputs.owned == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -294,8 +321,8 @@ jobs:
             --config .wrangler/staging.toml \
             --command "DROP TABLE IF EXISTS $DRILL_TABLE;"
 
-      - name: Verify cleanup completed
-        if: always()
+      - name: Verify owned-table cleanup completed
+        if: always() && steps.table.outputs.owned == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -317,8 +344,8 @@ jobs:
           if (!row || Number(row.drill_table_count) !== 0) throw new Error('Synthetic recovery table cleanup failed');
           NODE
 
-      - name: Upload sanitized recovery evidence only
-        if: always() && steps.evidence.outcome == 'success'
+      - name: Upload sanitized recovery evidence only after complete success
+        if: success() && steps.evidence.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: staging-d1-recovery-evidence-${{ github.sha }}
