@@ -1,5 +1,12 @@
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+
+const manifest = JSON.parse(await readFile("worker-manifest.json", "utf8"));
+const expectedSchemaVersion = Number(manifest.schemaVersion);
+const expectedReleaseVersion = manifest.releaseVersion;
+if (!Number.isInteger(expectedSchemaVersion) || expectedSchemaVersion < 0 || typeof expectedReleaseVersion !== "string") {
+  throw new Error("Worker manifest has invalid schema/release metadata");
+}
 
 await rm(".wrangler/state", { recursive: true, force: true });
 run(["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", "wrangler.toml"]);
@@ -18,7 +25,7 @@ const result = run([
 
 const parsed = JSON.parse(result.stdout);
 const row = parsed?.[0]?.results?.[0];
-if (Number(row?.schema_version) !== 2 || row?.release_version !== "4.07") {
+if (Number(row?.schema_version) !== expectedSchemaVersion || row?.release_version !== expectedReleaseVersion) {
   throw new Error(`Unexpected schema metadata: ${JSON.stringify(row)}`);
 }
 
@@ -70,7 +77,7 @@ if (duplicateCount !== 1) {
   throw new Error(`Calculation job idempotency uniqueness failed: ${duplicateCount}`);
 }
 
-console.log("D1 migrations applied and calculation job schema verified locally.");
+console.log("D1 migrations applied and schema metadata verified against the Worker manifest locally.");
 
 function run(args, capture = false) {
   const command = process.platform === "win32" ? "npx.cmd" : "npx";
