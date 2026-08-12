@@ -41,17 +41,17 @@ class ExplodingTicker:
 
 
 def test_selected_price_nan_detector_covers_absent_clean_and_invalid_frames():
-    assert MarketDataClient._selected_price_contains_nan(None) is False
-    assert MarketDataClient._selected_price_contains_nan(pd.DataFrame()) is False
-    assert MarketDataClient._selected_price_contains_nan(
+    assert not MarketDataClient._selected_price_contains_nan(None)
+    assert not MarketDataClient._selected_price_contains_nan(pd.DataFrame())
+    assert not MarketDataClient._selected_price_contains_nan(
         pd.DataFrame({"Close": [1.0]})
-    ) is False
-    assert MarketDataClient._selected_price_contains_nan(
+    )
+    assert not MarketDataClient._selected_price_contains_nan(
         pd.DataFrame({"Close_Adjusted": [1.0]})
-    ) is False
+    )
     assert MarketDataClient._selected_price_contains_nan(
         pd.DataFrame({"Close_Adjusted": [float("nan")]})
-    ) is True
+    )
 
 
 def test_daily_action_evidence_requires_present_and_numeric_required_columns():
