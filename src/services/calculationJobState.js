@@ -1,6 +1,8 @@
 import { PENDING_CALCULATION_V2_STORAGE_PREFIX } from './projectStorage.js';
 
 export const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
+// Historical browser expiry threshold retained for regression comparisons only.
+// It is no longer liveness authority for a durable calculation request.
 export const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
 export const CALCULATION_REQUEST_V2_VERSION = 2;
 
@@ -15,14 +17,12 @@ export function normalizeCalculationOwner(value) {
 
 export function validatePendingCalculationRequest(value, owner, options = {}) {
   const now = Number.isFinite(options.now) ? options.now : Date.now();
-  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : CALCULATION_REQUEST_TTL_MS;
   const expectedOwner = normalizeCalculationOwner(owner);
 
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (!expectedOwner || normalizeCalculationOwner(value.owner) !== expectedOwner) return null;
   if (typeof value.key !== 'string' || !IDEMPOTENCY_KEY_RE.test(value.key)) return null;
   if (!Number.isFinite(value.createdAt) || value.createdAt <= 0 || value.createdAt > now + 60_000) return null;
-  if (now - value.createdAt >= ttlMs) return null;
   if (value.jobId !== null && (typeof value.jobId !== 'string' || !JOB_ID_RE.test(value.jobId))) return null;
 
   return {
