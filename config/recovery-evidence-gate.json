@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "gate_id": "RECOVERY-EVIDENCE-GATE",
-  "status": "blocked",
+  "status": "passed",
   "max_schema_version_without_pass": 2,
-  "passed_at": null,
-  "baseline_sha": null,
+  "passed_at": "2026-08-12T16:31:03.000Z",
+  "baseline_sha": "5bed9aa1058c64e87889afd9b1698921eeb2c186",
   "evidence_root": "docs/governance/evidence/recovery",
   "required_evidence": [
     "export_backup",
@@ -14,6 +14,13 @@
     "migration_rollback_forward_strategy",
     "d1_recovery_proof"
   ],
-  "evidence": {},
-  "notes": "Schema 3 and later remain blocked until every required recovery evidence item references an existing structured JSON proof under evidence_root and status is explicitly set to passed after an actual drill. Cloudflare Time Travel availability alone is not sufficient."
+  "evidence": {
+    "export_backup": "docs/governance/evidence/recovery/2026-08-12-run-31570497634/export_backup.json",
+    "restore_drill": "docs/governance/evidence/recovery/2026-08-12-run-31570497634/restore_drill.json",
+    "rollback_timing": "docs/governance/evidence/recovery/2026-08-12-run-31570497634/rollback_timing.json",
+    "integrity_verification": "docs/governance/evidence/recovery/2026-08-12-run-31570497634/integrity_verification.json",
+    "migration_rollback_forward_strategy": "docs/governance/evidence/recovery/2026-08-12-run-31570497634/migration_rollback_forward_strategy.json",
+    "d1_recovery_proof": "docs/governance/evidence/recovery/2026-08-12-run-31570497634/d1_recovery_proof.json"
+  },
+  "notes": "Passed after the controlled isolated staging D1 synthetic export/drop/restore/integrity drill on GitHub Actions run 31570497634 attempt 2. GitHub artifact 9150025501 ZIP SHA-256 ded4e5e3c264775b663571bb9b59d79826482e419a6210c268a9c37192b1b716; measurements SHA-256 fd2848d62f88d8c751098dcd1967b172117322c615e21a7996037d097a984e0f."
 }
