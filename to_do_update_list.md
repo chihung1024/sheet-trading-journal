@@ -2,7 +2,7 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Historical plans and audits are evidence sources, not automatic execution authority. Operational quality aid: `docs/governance/DOCUMENT_QUALITY_STANDARD.md` (subordinate to the Playbook; no independent Gate authority).
 
-Last updated: **2026-08-12 11:31 Asia/Taipei**  
+Last updated: **2026-08-12 11:36 Asia/Taipei**  
 Handoff revision: **E1c-A.1 CLOSED / E1c-B MERGED + POST-MAIN VERIFIED / PRODUCTION LIFECYCLE VERIFICATION PENDING / MARKET-DATA NaN WATCH**
 
 ---
@@ -52,9 +52,9 @@ Primary Active Batch remains **E1c-B production verification only**. There is no
 
 ## 3. Stable State
 
-### Protected `main`
+### E1c-B product implementation baseline
 
-Current protected-main head:
+PR #206 merged product implementation baseline:
 
 `fdc1199bea47a2e47f38e2737827f1a2e38451f2`
 
@@ -62,13 +62,15 @@ Commit:
 
 `Merge PR #206: E1c-B lifecycle recovery and retained queue`
 
+This SHA is the **E1c-B product-code baseline**, not a durable assertion that it remains the latest `main` after later documentation-only merges. Always re-check GitHub remote truth for the current `main` head before consequential action.
+
 ### E1c-B merge evidence
 
 PR #206 — `E1c-B: retain browser recovery and workflow queue`
 
 - base at implementation start: `edda781e48383d2f185d7d3c2cbe07f3feb21091`;
 - final PR head: `7f6eaee6ef0ff1c03501e3e354ae7cd216013e14`;
-- merge commit: `fdc1199bea47a2e47f38e2737827f1a2e38451f2`;
+- merge commit / product baseline: `fdc1199bea47a2e47f38e2737827f1a2e38451f2`;
 - changed files: 5;
 - Independent Review: **PASS / NO REVIEW BLOCKER** on exact head;
 - exact-head CI #676 / run `31559136662`: **SUCCESS**;
@@ -314,7 +316,7 @@ Then select exactly one next functional implementation batch.
 
 ### D-2026-08-12-02 — E1c-B implementation accepted into main
 
-**Decision:** PR #206 is the current implementation baseline.  
+**Decision:** PR #206 is the current E1c-B product implementation baseline.  
 **Evidence:** focused Independent Review PASS, exact-head CI #676 SUCCESS, expected-head merge, post-main CI #677 SUCCESS, Pages deployment SUCCESS.  
 **Trade-off:** production lifecycle behavior is not inferred from CI; it remains separately NOT VERIFIED.  
 **Status:** MERGED / AWAITING PRODUCTION VERIFICATION.
@@ -325,6 +327,12 @@ Then select exactly one next functional implementation batch.
 **Reason:** product correctness/usability is the Primary Goal; governance and infrastructure are support mechanisms only.  
 **Reopen condition:** a newly proven high-impact safety/data/security/production issue may preempt the functional batch.  
 **Status:** WORKING BASELINE.
+
+### D-2026-08-12-04 — Do not encode mutable `main` head as durable handoff truth
+
+**Decision:** use immutable product/feature baseline SHAs for durable implementation evidence; retrieve the current `main` head from GitHub remote truth at execution time.  
+**Reason:** a documentation-only merge itself advances `main`, so a line claiming `Current protected-main head = <pre-doc-merge SHA>` becomes stale immediately after the document is merged.  
+**Status:** LOCKED DOCUMENTATION PRACTICE.
 
 ---
 
@@ -350,6 +358,12 @@ Then select exactly one next functional implementation batch.
 **Current evidence:** Yahoo/yfinance returned NaN selected price rows for Taiwan market data; semantic row classification remains unproven because the condition did not reproduce in #3239/#3240/#3241.  
 **Current action:** diagnostic watch only.  
 **Prohibited assumption:** do not infer that dropping/filling/substituting the row is financially correct without provider-row evidence.
+
+### RC-DOC-01 — Mutable main SHA created self-stale handoff prose
+
+**Symptom:** a handoff update correctly recorded the pre-merge `main` head, but merging that documentation PR immediately advanced `main` and made the phrase `Current protected-main head` stale.  
+**Root cause:** mutable repository head and immutable product baseline were represented as the same concept.  
+**Permanent fix:** record immutable product implementation baseline SHAs in durable prose and require remote lookup for current `main`.
 
 ---
 
@@ -405,6 +419,13 @@ Prefer updating an existing authoritative document over creating a new one. Comp
 
 Whenever repository prose conflicts with GitHub/CI/deployment remote truth, remote truth wins and this file should be corrected promptly.
 
+For SHAs, distinguish:
+
+- **immutable implementation baseline SHA** — suitable for durable handoff evidence;
+- **current mutable `main` SHA** — must be fetched from GitHub at execution time and should not be treated as permanently current prose.
+
+This prevents a documentation-only merge from making its own handoff stale immediately.
+
 ---
 
 ## 14. Functional Closeout Integrity
@@ -434,7 +455,7 @@ The goal is not zero bugs. The goal is not to close on a known major defect that
 - PR #206 final head `7f6eaee6ef0ff1c03501e3e354ae7cd216013e14`;
 - Independent Review PASS / NO REVIEW BLOCKER;
 - exact-head CI #676 / run `31559136662` SUCCESS;
-- merge commit `fdc1199bea47a2e47f38e2737827f1a2e38451f2`;
+- merge commit / E1c-B product baseline `fdc1199bea47a2e47f38e2737827f1a2e38451f2`;
 - post-main CI #677 / run `31559255388` SUCCESS;
 - Pages deployment run `31559254780` SUCCESS;
 - Update Portfolio Data #3239/#3240/#3241 SUCCESS;
@@ -443,14 +464,21 @@ The goal is not zero bugs. The goal is not to close on a known major defect that
 
 **Files changed:** `to_do_update_list.md` only.  
 **Runtime impact:** none.  
-**Rollback:** revert this documentation commit if any synchronized fact is later proven incorrect; do not roll back product code merely for a handoff-document error.
+**Rollback:** revert this documentation change if any synchronized fact is later proven incorrect; do not roll back product code merely for a handoff-document error.
+
+### 2026-08-12 — Handoff SHA semantics correction
+
+**Scope:** documentation-only correction following the remote-truth sync.  
+**Root cause:** labeling the PR #206 product merge SHA as the permanently `Current protected-main head` made the document self-stale once the documentation PR itself merged.  
+**Correction:** `fdc1199...` is now identified as the immutable E1c-B product implementation baseline; current `main` must be re-fetched from GitHub remote truth.  
+**Runtime impact:** none.
 
 ---
 
 ## 16. Next Exact Actions
 
 1. Treat E1c-A.1 as closed; do not spend more work on reconciliation/control-plane expansion without new material evidence.
-2. Use current `main` head `fdc1199bea47a2e47f38e2737827f1a2e38451f2` as the E1c-B implementation baseline.
+2. Use E1c-B product implementation baseline `fdc1199bea47a2e47f38e2737827f1a2e38451f2` for feature-level provenance, but fetch the actual current `main` head from GitHub before consequential action.
 3. Perform the minimum production lifecycle verification needed for E1c-B: trigger → observe pending → refresh/reopen recovery → terminal resolution → normal portfolio/snapshot display.
 4. Verify that serialized portfolio execution remains intact and that retained pending behavior introduces no duplicate/lost lifecycle execution.
 5. If production verification passes with no material blocker, update this handoff and close E1c-B/E1c as appropriate; do not add unrelated cleanup work to the closeout.
