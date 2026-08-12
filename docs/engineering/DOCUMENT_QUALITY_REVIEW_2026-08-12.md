@@ -1,96 +1,120 @@
 # Document Quality Independent Review — 2026-08-12
 
-Status: CANDIDATE / INDEPENDENT REVIEW INPUT
-Risk: R2 — governance semantics
+Status: **ROUND 1 BLOCKER RESOLVED / FOCUSED RE-REVIEW REQUIRED**
+Risk: **R2 — governance semantics**
+Reviewer type: **Same-AI Independent Review**
+Isolation method: **fresh repository evidence reconstruction + exact-PR-diff adversarial review**
 
 ## Objective
 
 Re-align repository documentation with product delivery. Preserve auditability and safety without allowing governance, historical remediation, CI/CD mechanics, or handoff prose to become the project goal.
 
-## Independent review method
-
-The review reconstructs judgment from repository evidence rather than accepting prior implementation conclusions. Primary evidence:
+## Evidence reconstructed independently
 
 - `AI_PROJECT_PLAYBOOK.md`
 - `README.md`
-- `to_do_update_list.md`
+- protected-main `to_do_update_list.md`
 - `docs/MASTER_REMEDIATION_PLAN.md`
 - current E1c lifecycle engineering records
 - protected-main remote truth
+- exact PR #203 candidate diff
 
-The review evaluates documentation architecture, source-of-truth boundaries, freshness, duplication, handoff usability, and product-priority preservation. It does not authorize runtime changes.
+The review evaluates source-of-truth hierarchy, freshness, product relevance, historical integrity, duplication, handoff usability, process inflation, and whether the candidate weakens existing R2/R3 gates.
 
-## Findings
+## Round 1 findings
 
-### DQ-01 — BLOCKER: live handoff can be dominated by operational closeout
+### DQ-01 — BLOCKER: live handoff was dominated by operational closeout
 
-The live handoff contains extensive deployment/reconciliation history and can make the next agent infer that control-plane work is the primary product roadmap.
+The previous handoff devoted most first-screen attention to deployment/reconciliation history. A new agent could reasonably infer that production control-plane work was the product roadmap.
 
-Required correction: the live handoff must begin with Product Goal, Current Functional Batch, Functional Acceptance Criteria, External Blockers, and Exact Next Product Action. Operational closeout may remain, but only as a bounded blocker section.
+Resolution in candidate: rewrite the live handoff around Product Goal, Single Active Functional Line, acceptance behavior, bounded external blocker, NOW/NEXT/BACKLOG/REJECT, and exact next actions.
 
-### DQ-02 — BLOCKER: historical remediation plans lack an explicit execution-authority boundary
+Status: **RESOLVED IN CANDIDATE; RE-REVIEW REQUIRED**.
 
-`docs/MASTER_REMEDIATION_PLAN.md` remains valuable historical architecture material, but its large B00–Bxx sequence can be mistaken for the current mandatory execution plan.
+### DQ-02 — BLOCKER: historical remediation plans could be mistaken for current execution authority
 
-Required correction: historical plans and audits are evidence/candidate sources unless explicitly promoted into the live handoff as the current batch. They do not independently authorize work.
+`docs/MASTER_REMEDIATION_PLAN.md` remains valuable historical architecture/remediation evidence, but its B00–Bxx sequence can look like a mandatory current queue.
 
-### DQ-03 — FOLLOW-UP: document quality lacks a compact acceptance gate
+Resolution in candidate: live handoff now explicitly treats historical plans/audits as candidate/evidence sources unless current evidence promotes work into the active plan. A confirmed Master Plan remains a Working Baseline when the live handoff identifies it as such and cannot be silently replaced.
 
-The Playbook already defines document roles, history compression, and review convergence, but lacks a compact quality gate covering authority, freshness, product relevance, evidence, consistency, compression, actionability, and duplication.
+Status: **RESOLVED IN CANDIDATE; RE-REVIEW REQUIRED**.
 
-### DQ-04 — FOLLOW-UP: documentation updates can create self-reinforcing process work
+### DQ-03 — FOLLOW-UP: document quality needed a compact acceptance checklist
 
-A requirement to document every material batch is useful, but without a documentation budget, agents can create new governance documents for every incident or sub-step.
+The Playbook already contains source-of-truth roles, History Compression, Review Convergence, risk-proportional governance, and gate applicability. A compact operational checklist improves consistency without needing a new mandatory gate.
 
-Required correction: prefer updating an existing authoritative document. Create a new durable document only for a stable contract, long-lived ADR/decision, reusable runbook, material RCA/evidence record, or independently useful specification.
+Resolution: `docs/governance/DOCUMENT_QUALITY_STANDARD.md` provides a subordinate checklist covering authority, freshness, product relevance, evidence, consistency, actionability, compression, duplicate authority, completion semantics, and process inflation.
 
-### DQ-05 — FOLLOW-UP: independent review needs an explicit product-value test
+Status: **RESOLVED IN CANDIDATE**.
 
-The current Independent Review Gate is strong on correctness and risk, but reviewer scope should explicitly test whether a proposed governance/infrastructure change is necessary for the current product objective.
+### DQ-04 — FOLLOW-UP: documentation work could become self-reinforcing process work
 
-For non-product changes require one of:
+Resolution: the standard adds a new-document checklist favoring updates to existing authoritative documents and limiting new durable records to artifacts with independent future value.
 
-- blocks the current product batch;
-- protects correctness, security, data integrity, or production availability;
-- produces a measurable delivery/maintenance benefit that exceeds migration/process cost.
+Status: **RESOLVED IN CANDIDATE**.
 
-Otherwise classify the proposal as BACKLOG or REJECT.
+### DQ-05 — FOLLOW-UP: independent review lacked an explicit product-relevance challenge
 
-## Recommended narrow governance patch
+Resolution: the standard adds a Product Relevance Test as a reviewer aid, explicitly not a new mandatory Gate. Existing mandatory review authority remains in `AI_PROJECT_PLAYBOOK.md`.
 
-1. Add Product-First Execution Authority.
-2. Add document authority/freshness labels.
-3. Add a Document Quality Gate.
-4. Add Documentation Budget / New-Document Gate.
-5. Add Historical Plan Non-Authority rule.
-6. Add Product Relevance Test to Independent Review.
-7. Define the minimum live handoff structure.
-8. Rewrite the current live handoff so product functionality is the first-screen truth.
+Status: **RESOLVED IN CANDIDATE**.
 
-## Acceptance criteria
+### DQ-06 — BLOCKER FOUND BY INDEPENDENT REVIEW: duplicate governance authority
 
-The candidate is acceptable only if:
+The first PR candidate created `docs/governance/DOCUMENT_QUALITY_POLICY.md` with mandatory-sounding rules. Because `AI_PROJECT_PLAYBOOK.md` is the highest governance authority, this would have created a second governance source and contradicted the source-of-truth objective.
 
-- no runtime behavior changes;
-- no production reconciliation request/workflow changes;
-- `README.md` remains stable architecture/user documentation, not status tracking;
-- `to_do_update_list.md` becomes concise and product-first;
-- historical evidence remains preserved rather than rewritten as current truth;
-- no new mandatory ceremony is introduced for R0/R1 work;
-- R2/R3 review rigor remains intact;
-- historical plans cannot become automatic execution authority;
-- documentation/governance work cannot displace product work without a risk/correctness/delivery reason.
+Resolution:
 
-## Independent review decision
+- remove `DOCUMENT_QUALITY_POLICY.md`;
+- replace it with `DOCUMENT_QUALITY_STANDARD.md`;
+- explicitly state that the standard is subordinate to the Playbook;
+- explicitly state that it creates/removes/weakens no Playbook Gate;
+- any future mandatory governance rule must satisfy a valid governance reopen condition and be integrated into `AI_PROJECT_PLAYBOOK.md`;
+- preserve product-priority execution truth in the live handoff rather than creating a competing governance hierarchy.
 
-PROCEED WITH NARROW GOVERNANCE PATCH.
+Status: **RESOLVED IN NEW CANDIDATE; FOCUSED RE-REVIEW REQUIRED**.
 
-Out of scope:
+## Scope decision
 
-- runtime code;
-- E1c implementation;
-- CI/CD redesign;
-- new audit framework;
-- schema changes;
-- deletion of historical documents;
-- broad README rewrite.
+### NOW
+
+- product-first live handoff;
+- subordinate document-quality checklist;
+- historical-plan authority boundary;
+- independent review evidence for this R2 candidate.
+
+### NEXT
+
+- none created by this documentation batch; return to E1c product lifecycle work after safe closeout.
+
+### BACKLOG
+
+- integrate any proven long-lived mandatory document-quality rule into `AI_PROJECT_PLAYBOOK.md` only if later evidence establishes a governance reopen condition.
+
+### REJECT
+
+- second governance hierarchy;
+- mandatory new ceremony for R0/R1 docs;
+- broad README rewrite;
+- historical-document deletion/rewrite;
+- CI/CD or audit-framework expansion.
+
+## Acceptance criteria for focused re-review
+
+The candidate may pass only if:
+
+- changed files remain documentation-only;
+- no runtime, Worker, D1, schema, reconciliation request, or workflow behavior changes;
+- `AI_PROJECT_PLAYBOOK.md` remains highest governance authority;
+- the new standard is clearly non-authoritative/subordinate and cannot silently add Gates;
+- confirmed Working Baselines cannot be silently replaced by a new session/model/document;
+- `to_do_update_list.md` is materially easier to use as a product-first handoff;
+- historical evidence is preserved and not restated as current truth;
+- R2/R3 safety/review rigor is not weakened;
+- no new infrastructure/governance work is made part of the product roadmap without current justification.
+
+## Current review decision
+
+**DO NOT MERGE YET.**
+
+Round 1 BLOCKER DQ-06 was fixed by a material candidate change. Per exact-head discipline, the new head requires focused independent re-review and applicable CI before merge.
