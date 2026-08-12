@@ -1,8 +1,8 @@
 import { PENDING_CALCULATION_V2_STORAGE_PREFIX } from './projectStorage.js';
 
 export const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
-// Pre-E1c-B generations without the lifecycle marker keep the historical expiry
-// rule so previously abandoned browser state is not resurrected by deployment.
+// Pre-E1c-B live generations without the lifecycle marker keep the historical
+// expiry rule so previously abandoned browser state is not resurrected.
 export const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
 export const CALCULATION_REQUEST_V2_VERSION = 2;
 
@@ -85,7 +85,13 @@ function validateGenerationRecord(value, owner, storageKey, options = {}) {
   if (value?.version !== CALCULATION_REQUEST_V2_VERSION) return null;
   if (value?.state !== LIVE_STATE && value?.state !== CLEARED_STATE) return null;
 
-  const base = validatePendingCalculationRequest(value, owner, options);
+  // A tombstone is a durable statement that this exact generation was cleared.
+  // Old tabs may write a pre-marker tombstone during rollout; never let its age
+  // resurrect a newer lifecycle-persistent rewrite of the same generation.
+  const validationValue = value.state === CLEARED_STATE
+    ? { ...value, lifecyclePersistent: true }
+    : value;
+  const base = validatePendingCalculationRequest(validationValue, owner, options);
   if (!base || generationStorageKey(base, value.state) !== storageKey) return null;
 
   const now = Number.isFinite(options.now) ? options.now : Date.now();
