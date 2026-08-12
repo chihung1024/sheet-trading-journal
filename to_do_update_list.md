@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Historical plans and audits are evidence sources, not automatic execution authority. Operational quality aid: `docs/governance/DOCUMENT_QUALITY_STANDARD.md` (subordinate to the Playbook; no independent Gate authority).
 
-Last updated: **2026-08-12 11:43 Asia/Taipei**  
-Handoff revision: **E1c-A.1 CLOSED / E1c-B WORKFLOW+CALCULATION PRODUCTION PATH VERIFIED / AUTHENTICATED BROWSER LIFECYCLE PENDING / MARKET-DATA NaN WATCH**
+Last updated: **2026-08-12 12:46 Asia/Taipei**  
+Handoff revision: **E1c-A.1 CLOSED / E1c-B BROWSER RECOVERY PARTIAL PASS / MD-NAN-B1 ACTIVE — SAME-PROVIDER BOUNDED RE-FETCH**
 
 ---
 
@@ -43,11 +43,12 @@ The project goal is product correctness and usability. Governance, CI/CD, deploy
 | E1c-B exact-head review/CI | **VERIFIED** | review PASS; exact-head CI #676 SUCCESS |
 | E1c-B post-main CI | **VERIFIED** | CI #677 SUCCESS |
 | E1c-B frontend deployment | **VERIFIED** | Pages deployment SUCCESS |
-| E1c-B workflow/calculation/snapshot production path | **VERIFIED** | scheduled #3242 on `fdc1199...` SUCCESS; 2 users processed, 0 failed |
-| E1c-B authenticated browser lifecycle | **NOT YET VERIFIED** | refresh/reopen pending identity + terminal cleanup require authenticated browser evidence |
-| Market-data NaN residual | **WATCH ONLY** | #3239/#3240/#3241/#3242 succeeded; no new diagnostic row evidence |
+| E1c-B workflow/calculation/snapshot production path | **VERIFIED** | scheduled #3242 SUCCESS; authenticated #3244 SUCCESS |
+| E1c-B authenticated browser recovery | **PARTIAL PRODUCTION PASS** | user observed queued/pending state after logout → login during live production activity; terminal browser cleanup still requires direct observation |
+| Market-data NaN residual | **ACTIVE NOW / PRODUCT BLOCKER** | #3243 reproduced `MARKET_DATA_FAILED` with 20 sanitized provider rows; #3244 succeeded minutes later on identical code, proving transient recurrence pattern |
+| MD-NAN-B1 | **ACTIVE IMPLEMENTATION** | bounded fresh re-fetch from same provider/parameters; persistent invalid data remains fail-closed |
 
-Primary Active Batch remains **E1c-B authenticated browser lifecycle verification only**. There is no remaining E1c-B implementation work unless verification reveals a material regression.
+**Primary Active Batch is now MD-NAN-B1** because #3243 is new material production evidence that directly blocked an authenticated portfolio update. E1c-B browser recovery is partially verified and remains a narrow terminal-cleanup observation after this blocker is stabilized.
 
 ---
 
@@ -94,7 +95,37 @@ PR #206 — `E1c-B: retain browser recovery and workflow queue`
 - final result: **2 users succeeded / 0 failed**;
 - no `MARKET_DATA_FAILED` or `NaN selected-price provider row` evidence observed.
 
-Because #3242 was a scheduled run, `CALCULATION_JOB_ID` was empty and lifecycle callback steps were correctly skipped. Therefore #3242 verifies the production workflow/calculation/snapshot/market-data path but **does not** prove the changed authenticated browser pending/recovery lifecycle.
+Because #3242 was a scheduled run, `CALCULATION_JOB_ID` was empty and lifecycle callback steps were correctly skipped. Therefore #3242 verifies the production workflow/calculation/snapshot path but not browser lifecycle recovery.
+
+### Authenticated production lifecycle evidence after PR #206
+
+`Update Portfolio Data #3243` / run `31563691963`:
+
+- event: `workflow_dispatch`;
+- head: `1b8ed8f60c804de1964e76dbf0008f093cbb4798`;
+- `Mark calculation job running`: **SUCCESS**;
+- user production observation while the job lifecycle was active: **logout → login still displayed queued/pending state**;
+- calculation result: **FAILED / MARKET_DATA_FAILED** due provider selected-price NaN rows;
+- terminal failed lifecycle callback: **SUCCESS**;
+- workflow conclusion: **FAILURE**, intentionally reflecting calculation failure rather than callback failure.
+
+This is material evidence that a live pending calculation identity can survive an authentication/session restart and be recovered by the deployed frontend. It does **not** by itself prove the browser terminal cleanup because direct post-terminal UI observation has not yet been recorded.
+
+`Update Portfolio Data #3244` / run `31563887062`:
+
+- event: `workflow_dispatch`;
+- same main head `1b8ed8f60c804de1964e76dbf0008f093cbb4798`;
+- `Mark calculation job running`: **SUCCESS**;
+- all 43 requested symbols plus SPY path downloaded without selected-price NaN diagnostics;
+- transaction prefix integrity: **PASS** for 144 rows;
+- canonical Daily PnL reconciliation: **PASS** for both groups;
+- split-adjusted ledger parity: **PASS** for 144 BUY/SELL rows;
+- snapshot upload: **SUCCESS**;
+- terminal succeeded lifecycle callback: **SUCCESS**;
+- final result: **1 user succeeded / 0 failed**;
+- workflow conclusion: **SUCCESS**.
+
+#3244 occurred before MD-NAN-B1 was merged and therefore is **not** evidence that the fix works. It is evidence that the #3243 provider-row defect was transient under unchanged application code.
 
 ### Runtime baseline carried from E1c-A.1
 
@@ -139,7 +170,14 @@ Authority boundaries:
 - browser pending state is recovery metadata, not independent server truth;
 - repository-wide portfolio calculation execution remains serialized;
 - E1c-B uses GitHub-native retained pending queue semantics and does not introduce a custom scheduler;
-- Worker/D1/calculation behavior remains outside E1c-B unless new production evidence proves a regression there.
+- MD-NAN-B1 is confined to market-data ingestion and must not change Worker/D1/lifecycle/snapshot semantics.
+
+Market-data integrity boundary for MD-NAN-B1:
+
+- selected `Close` remains Scheme A valuation authority;
+- invalid provider rows are never imputed, dropped, forward-filled, back-filled, or substituted merely to pass validation;
+- a fresh request to the **same provider with the same request semantics** is allowed because #3243 → #3244 proves the observed defect can disappear without an application semantic change;
+- if the bounded re-fetch remains invalid, the existing validator remains authoritative and the update fails closed.
 
 ---
 
@@ -149,8 +187,14 @@ Current Working Baseline:
 
 ```text
 E1c-B implementation merged
-→ workflow/calculation/snapshot production path verified (#3242)
-→ authenticated browser lifecycle verification
+→ workflow/calculation/snapshot production path verified
+→ authenticated browser recovery partially verified (#3243 user observation)
+→ new material blocker: recurring provider selected-price NaN (#3243)
+→ MD-NAN-B1 bounded same-provider fresh re-fetch
+→ exact-head tests/review/CI
+→ merge + post-main verification
+→ normal production observation of MD-NAN-B1
+→ finish E1c-B terminal browser cleanup observation
 → close E1c-B / E1c when acceptance is actually satisfied
 → focused Product Functionality Review
 → select one next user-impact/correctness batch
@@ -174,63 +218,75 @@ Reopen or redirect only on:
 
 ### Current functional phase
 
-`Gate E / E1c — calculation job lifecycle and idempotency`
+`Product stabilization before normal feature development — market-data correctness blocker`
 
 ### Current active batch
 
-`E1c-B — authenticated browser lifecycle verification and closeout`
+`MD-NAN-B1 — bounded same-provider fresh re-fetch for transient selected-price NaN`
 
 Status:
 
-**IMPLEMENTATION MERGED / EXACT-HEAD VERIFIED / POST-MAIN VERIFIED / FRONTEND DEPLOYED / PRODUCTION WORKFLOW+CALCULATION+SNAPSHOT VERIFIED / AUTHENTICATED BROWSER LIFECYCLE NOT VERIFIED**
+**ROOT CAUSE MIN-SAFE CLASSIFIED / IMPLEMENTATION ON BRANCH / REGRESSION TESTS ADDED / EXACT-HEAD CI + REVIEW PENDING**
 
-### Locked E1c-B product behavior
+Branch:
 
-1. active calculation recovery must not disappear solely because 15 minutes elapsed;
-2. a known `jobId` remains recoverable across refresh/reopen until durable terminal or explicit 404 semantics;
-3. ambiguous pre-job mutation state must retain/replay the same idempotency key until server outcome is resolved;
-4. generation/tombstone owner and cross-tab protections remain intact;
-5. pending workflow runs must not be silently displaced before lifecycle callback while repository-wide serialized calculation execution is preserved.
+`fix/market-data-nan-bounded-refetch`
 
-### Implemented scope in PR #206
+Base main at batch start:
 
-- new / explicitly upgraded pending generations carry `lifecyclePersistent: true` and no longer expire by age;
-- pre-E1c-B unmarked live generations retain the historical 15-minute rule, preventing rollout resurrection of abandoned state;
-- currently-valid legacy pending state is best-effort upgraded in place without changing key / createdAt / jobId;
-- cleared tombstones remain durable authority even if written by an old tab without the new marker;
-- benchmark intent is scoped so an old exact-key job cannot silently replay for a different explicit benchmark;
-- pre-E1c-B records without benchmark remain conservatively replayable during transition;
-- server-returned authoritative job benchmark is persisted;
-- terminal/404 cleanup and 20-minute active-polling resource cap remain unchanged;
-- owner/generation/tombstone cross-tab protections remain intact;
-- `portfolio-update` remains serialized with `cancel-in-progress: false` and retained pending queue behavior;
-- no Worker, D1, schema, market-data, calculation, snapshot, or broad store redesign.
+`1b8ed8f60c804de1964e76dbf0008f093cbb4798`
 
-### Production evidence already satisfied
+### Reproduction / evidence
 
-The following no longer need speculative re-testing unless a regression appears:
+#3243 reproduced the defect during an authenticated dispatch:
 
-- merged E1c-B workflow syntax executes successfully in production;
-- scheduled portfolio calculation on the E1c-B baseline succeeds;
-- market-data acquisition succeeds for the currently processed symbol set;
-- portfolio calculations and integrity checks succeed;
-- snapshot publication succeeds for all users processed by #3242;
-- no current NaN selected-price reproduction exists.
+- failure code: `MARKET_DATA_FAILED`;
+- affected date: `2026-08-11`;
+- affected symbols: `TMGN, AIHY, ANET, FOTO, AXTX, DRAM, WCLD, SMCX, NCLD, DELL, QCML, SPCH, LAZR, XA, LYTE, GSIB, RAM, SNDK, LUMA, VFLO`;
+- common row pattern: Open/High/Low/Volume present; Close + Adj Close NaN; Dividends=0; Stock Splits=0;
+- Capital Gains was null for ANET/DELL/LAZR/SNDK and zero for the other captured rows;
+- TMGN additionally had `Open > High`, proving at least one row was internally inconsistent beyond missing Close.
 
-### Remaining acceptance evidence
+Sanitized durable evidence:
 
-The minimum remaining production verification is the **authenticated browser lifecycle** changed by E1c-B:
+`docs/governance/evidence/MARKET_DATA_NAN_RUN_31563691963_2026-08-12.json`
 
-- trigger a production calculation from the deployed frontend;
-- observe a pending/known calculation identity;
-- refresh or reopen while the generation is still active and confirm the identity is recovered rather than age-forgotten;
-- confirm terminal success/failure or authoritative 404 clears/resolves the generation correctly;
-- confirm the frontend returns to normal usable state and refreshed portfolio/snapshot data is visible;
-- observe no duplicate execution, cross-benchmark replay, or stale-generation resurrection.
+#3244 then succeeded minutes later on unchanged application code and the same portfolio path, with no NaN selected-price diagnostics.
 
-A deliberate multi-run production load test is **not required by default** merely to prove GitHub queue syntax. Exact-head tests/review already validate the retained-queue contract; only escalate to additional production concurrency testing if normal production evidence shows displacement, duplicate execution, or serialization failure.
+### Minimum financially safe root-cause classification
 
-Do not mark E1c-B `CLOSED` until the applicable authenticated browser lifecycle evidence exists.
+**Transient upstream market-data daily-row incompleteness/inconsistency observed through Yahoo/yfinance retrieval.**
+
+Current evidence does not prove whether the exact responsibility is Yahoo's response, yfinance processing, or yfinance/session/cache behavior. Do not overstate the upstream component.
+
+### MD-NAN-B1 implementation contract
+
+1. normal complete provider history is accepted exactly as before;
+2. when prepared selected `Close_Adjusted` contains NaN, construct a fresh ticker request and re-fetch once;
+3. retry uses the same symbol, start date, provider, `auto_adjust=False`, and `actions=True` semantics;
+4. no row is dropped, repaired, filled, or substituted;
+5. if the second provider response is complete, accept that fresh provider response normally;
+6. if the second response is still invalid, return it unchanged and let the existing validator fail closed;
+7. no Worker, D1, workflow callback, snapshot, calculator, dividend, split, or benchmark semantic change.
+
+### Regression tests added
+
+`tests/test_market_data_nan_refetch.py` proves:
+
+- first invalid → second clean provider response is accepted from the fresh provider response, not imputed from OHLC/previous close;
+- Volume/Dividend evidence comes from the accepted fresh response;
+- clean SPY path is not needlessly retried;
+- persistent invalid response is attempted only within the bounded policy;
+- persistent NaN remains present and `PortfolioValidator.validate_price_data()` still rejects it.
+
+### E1c-B residual after MD-NAN-B1
+
+E1c-B implementation remains merged and is not reopened. Browser recovery has gained material production evidence:
+
+- logout → login while pending still showed queued/pending state;
+- authenticated dispatch running and terminal callbacks operate correctly.
+
+Remaining E1c-B closeout evidence is narrowed to **direct browser terminal cleanup / normal usable post-terminal state**. Do not broaden this into another lifecycle redesign unless that observation fails.
 
 ---
 
@@ -268,33 +324,21 @@ The Worker contract rejects conflicting callback run identity, so this remains s
 
 ## 8. Product-First Priority Queue
 
-### NOW — authenticated browser lifecycle verification only
+### NOW — MD-NAN-B1 functional correctness blocker
 
-No speculative E1c-B implementation work is authorized. The server/workflow/calculation/snapshot production path is already verified by #3242. Perform only the minimum authenticated frontend lifecycle smoke needed to validate the changed browser behavior and close the batch if it passes.
+Complete the bounded same-provider fresh re-fetch implementation, regression validation, independent review, merge, post-main CI, and one normal production observation.
 
-### NOW — material residual watch, not a speculative fix
+No financially semantic substitution is authorized. A retry may only obtain a new complete response from the same provider/request contract; persistent invalid data remains fail-closed.
 
-Scheduled updates #3237 and #3238 previously failed with `MARKET_DATA_FAILED` because Yahoo/yfinance produced NaN selected prices for Taiwan market data. PR #204 deployed fail-closed diagnostics only; it did **not** drop/fill/repair/substitute prices or weaken validation.
+### NEXT — finish E1c-B terminal browser closeout
 
-Subsequent runs:
+Browser pending recovery across logout/login has production evidence. After MD-NAN-B1 stabilizes, directly observe that a terminal job clears/resolves queued/pending state and returns the frontend to normal usable portfolio/snapshot display.
 
-- #3239 / run `31557518956`: **SUCCESS**;
-- #3240 / run `31557676809`: **SUCCESS**;
-- #3241 / run `31558309531`: **SUCCESS**;
-- #3242 / run `31560257260`: **SUCCESS** on the E1c-B product baseline, with 53 symbols downloaded and 2/2 user snapshots uploaded successfully.
-
-No run after #3238 has produced new `MARKET_DATA_FAILED` evidence in the currently observed remote truth.
-
-If a future run fails and logs contain `NaN selected-price provider row`:
-
-- extract only sanitized provider-row evidence: date, OHLC, Adj Close, Volume, Dividends, Stock Splits, Capital Gains;
-- classify the row with the minimum financially safe root-cause statement supported by evidence;
-- do **not** recommend drop/fill/substitution/forward-fill merely to make the workflow green;
-- only promote this watch into a repair batch if evidence demonstrates a current material correctness blocker.
+If that passes, close E1c-B/E1c without reopening already-verified server/workflow work.
 
 ### NEXT — Product Functionality Review
 
-Immediately after E1c-B production verification/closeout, review the real user flow:
+Immediately after E1c-B closeout, review the real user flow:
 
 ```text
 login
@@ -330,6 +374,8 @@ Then select exactly one next functional implementation batch.
 
 ### REJECT FOR CURRENT PHASE
 
+- dropping/filling/forward-filling/substituting invalid market price rows to make the workflow green;
+- switching market-data provider without evidence that bounded same-provider retrieval is insufficient;
 - reconciliation/scheduler framework expansion without demonstrated current failure mode;
 - new scheduler/queue infrastructure;
 - CI/CD beautification without a product blocker;
@@ -353,12 +399,12 @@ Then select exactly one next functional implementation batch.
 
 **Decision:** PR #206 is the current E1c-B product implementation baseline.  
 **Evidence:** focused Independent Review PASS, exact-head CI #676 SUCCESS, expected-head merge, post-main CI #677 SUCCESS, Pages deployment SUCCESS.  
-**Trade-off:** authenticated browser lifecycle behavior is not inferred from CI; it remains separately NOT VERIFIED.  
-**Status:** MERGED / PRODUCTION WORKFLOW PATH VERIFIED / AUTHENTICATED BROWSER VERIFICATION PENDING.
+**Trade-off:** authenticated browser lifecycle behavior is not inferred from CI; it remains separately verified by production observation.  
+**Status:** MERGED / PRODUCTION WORKFLOW PATH VERIFIED / BROWSER RECOVERY PARTIAL PASS.
 
 ### D-2026-08-12-03 — Product functionality resumes after closeout
 
-**Decision:** after E1c-B production verification, the project returns to a focused Product Functionality Review and one user-impact/correctness batch.  
+**Decision:** after current material blockers and E1c-B production verification are closed, the project returns to a focused Product Functionality Review and one user-impact/correctness batch.  
 **Reason:** product correctness/usability is the Primary Goal; governance and infrastructure are support mechanisms only.  
 **Reopen condition:** a newly proven high-impact safety/data/security/production issue may preempt the functional batch.  
 **Status:** WORKING BASELINE.
@@ -369,12 +415,19 @@ Then select exactly one next functional implementation batch.
 **Reason:** a documentation-only merge itself advances `main`, so a line claiming `Current protected-main head = <pre-doc-merge SHA>` becomes stale immediately after the document is merged.  
 **Status:** LOCKED DOCUMENTATION PRACTICE.
 
-### D-2026-08-12-05 — #3242 narrows, but does not close, E1c-B production verification
+### D-2026-08-12-05 — #3242 narrows E1c-B production verification
 
-**Decision:** treat #3242 as production verification of the E1c-B workflow/calculation/snapshot/market-data path, while keeping authenticated browser lifecycle recovery as the only remaining closeout evidence.  
+**Decision:** treat #3242 as production verification of the E1c-B workflow/calculation/snapshot path while keeping browser lifecycle behavior separately evidence-driven.  
 **Evidence:** #3242 ran on `fdc1199...`, completed 2/2 users successfully, uploaded both snapshots, and produced no NaN selected-price failure; lifecycle callbacks were skipped because scheduled runs have no `CALCULATION_JOB_ID`.  
-**Reason:** do not under-credit real production evidence, but do not misclassify a scheduled run as browser lifecycle proof.  
 **Status:** LOCKED FOR CURRENT CLOSEOUT.
+
+### D-2026-08-12-06 — #3243 promotes market-data NaN from WATCH to NOW
+
+**Decision:** MD-NAN-B1 preempts the remaining E1c-B closeout observation until the recurring production calculation blocker is stabilized.  
+**Evidence:** authenticated #3243 failed `MARKET_DATA_FAILED` with 20 exact sanitized `NaN selected-price provider row` diagnostics; #3244 succeeded minutes later on unchanged code.  
+**Minimum-safe classification:** transient upstream daily-row incompleteness/inconsistency observed via Yahoo/yfinance; exact upstream responsibility remains unproven.  
+**Authorized fix:** one bounded fresh re-fetch from the same provider/request semantics; persistent invalid data remains fail-closed.  
+**Status:** ACTIVE IMPLEMENTATION.
 
 ---
 
@@ -392,14 +445,18 @@ Then select exactly one next functional implementation batch.
 - default GitHub Actions pending behavior could displace a pending lifecycle run.
 
 **Permanent fix:** PR #206 lifecycle persistence + rollout marker + benchmark intent + durable tombstone handling + retained GitHub-native queue semantics.  
-**Verification:** exact-head tests/review/CI PASS; workflow/calculation/snapshot production path PASS via #3242; authenticated browser lifecycle verification pending.
+**Verification:** exact-head tests/review/CI PASS; workflow/calculation/snapshot production path PASS; user observed queued state survives logout → login during live production activity; direct browser terminal cleanup observation remains pending.
 
-### RC-MD-NAN-01 — Provider selected-price NaN residual
+### RC-MD-NAN-01 — Transient provider selected-price daily-row incompleteness/inconsistency
 
-**Symptom:** scheduled updates #3237/#3238 failed closed with `MARKET_DATA_FAILED`.  
-**Current evidence:** Yahoo/yfinance returned NaN selected price rows for Taiwan market data; semantic row classification remains unproven because the condition did not reproduce in #3239/#3240/#3241/#3242.  
-**Current action:** diagnostic watch only.  
-**Prohibited assumption:** do not infer that dropping/filling/substituting the row is financially correct without provider-row evidence.
+**Symptom:** #3237/#3238 and authenticated #3243 failed closed with `MARKET_DATA_FAILED` because selected `Close` contained NaN provider rows.  
+**Reproduction:** #3243 captured 20 affected US-listed symbols on `2026-08-11`; Open/High/Low/Volume existed while Close/Adj Close were NaN. TMGN additionally had Open > High.  
+**Recovery evidence:** #3244 succeeded minutes later on the same `main` code and portfolio path with no NaN diagnostics.  
+**Minimum-safe root cause:** transient upstream market-data row incompleteness/inconsistency observed through Yahoo/yfinance retrieval; exact responsibility layer is not yet proven.  
+**Impact:** authenticated portfolio calculation can fail even though a fresh provider retrieval minutes later is valid.  
+**Permanent mitigation under implementation:** one bounded fresh same-provider re-fetch only when the selected price contains NaN; persistent invalid data remains unchanged and fail-closed.  
+**Evidence:** `docs/governance/evidence/MARKET_DATA_NAN_RUN_31563691963_2026-08-12.json`.  
+**Prohibited assumption:** do not drop/fill/substitute/forward-fill the invalid row or infer financial meaning from incomplete OHLC/action evidence.
 
 ### RC-DOC-01 — Mutable main SHA created self-stale handoff prose
 
@@ -411,15 +468,15 @@ Then select exactly one next functional implementation batch.
 
 ## 11. Known Issues / Risks
 
-### K1 — Authenticated browser lifecycle evidence gap
+### K1 — E1c-B terminal browser cleanup evidence gap
 
-Severity: **current E1c-B closeout blocker, not a code blocker**.  
-The implementation, frontend deployment, and production workflow/calculation/snapshot path are verified. The remaining evidence gap is specifically the changed authenticated browser pending recovery across refresh/reopen and terminal cleanup. Do not broaden this back into a generic server/workflow investigation without new evidence.
+Severity: **closeout observation, not a code blocker**.  
+Pending recovery has real production evidence because logout → login preserved the queued state. The remaining evidence gap is specifically post-terminal browser cleanup / return to normal usable portfolio display. Do not broaden this back into generic lifecycle architecture work without a failed observation.
 
-### K2 — Market-data NaN may recur
+### K2 — Recurring transient selected-price NaN
 
-Severity: **watch / conditional product correctness risk**.  
-No current reproduction after #3238, including scheduled #3242 on the E1c-B product baseline. If it recurs, classify from sanitized raw provider-row diagnostics before changing financial semantics.
+Severity: **active product correctness blocker** until MD-NAN-B1 is merged and production-observed.  
+#3243 proved recurrence with 20 rows; #3244 proved the same application code can obtain clean rows minutes later. Bounded same-provider fresh re-fetch is the current narrow mitigation; persistent invalid data must remain fail-closed.
 
 ### K3 — Retained queue production concurrency is not force-tested
 
@@ -474,7 +531,8 @@ Production verification should also distinguish evidence layers rather than usin
 deployed artifact
 ≠ workflow execution
 ≠ calculation/snapshot success
-≠ authenticated browser lifecycle behavior
+≠ authenticated browser recovery
+≠ browser terminal cleanup
 ```
 
 Credit each layer once proven; keep only the truly missing layer open.
@@ -483,7 +541,7 @@ Credit each layer once proven; keep only the truly missing layer open.
 
 ## 14. Functional Closeout Integrity
 
-Before E1c-B or E1c is marked `CLOSED`, confirm at appropriate risk level:
+Before E1c-B, E1c, or MD-NAN-B1 is marked `CLOSED`, confirm at appropriate risk level:
 
 1. required behavior is actually satisfied;
 2. applicable regression/build/production verification passes;
@@ -512,8 +570,7 @@ The goal is not zero bugs. The goal is not to close on a known major defect that
 - post-main CI #677 / run `31559255388` SUCCESS;
 - Pages deployment run `31559254780` SUCCESS;
 - Update Portfolio Data #3239/#3240/#3241 SUCCESS;
-- no new NaN provider-row evidence observed;
-- E1c-B authenticated browser lifecycle remained explicitly NOT VERIFIED.
+- E1c-B authenticated browser lifecycle remained explicitly NOT VERIFIED at that point.
 
 **Files changed:** `to_do_update_list.md` only.  
 **Runtime impact:** none.  
@@ -532,19 +589,28 @@ The goal is not zero bugs. The goal is not to close on a known major defect that
 **Scope:** evidence-only handoff update; no runtime/workflow semantics changed.  
 **Evidence:** `Update Portfolio Data #3242` / run `31560257260`, scheduled on E1c-B baseline `fdc1199...`, SUCCESS.  
 **Result:** 53 market symbols downloaded; 2 users processed; 2 snapshots uploaded; 0 failures; no new NaN selected-price evidence.  
-**Boundary:** scheduled run had no `CALCULATION_JOB_ID`, so running/terminal lifecycle callbacks were skipped and authenticated browser recovery remains NOT VERIFIED.  
-**Conclusion:** production verification is narrowed to one remaining browser-lifecycle smoke rather than reopening workflow/calculation/server work.
+**Boundary:** scheduled run had no `CALCULATION_JOB_ID`, so running/terminal lifecycle callbacks were skipped and authenticated browser recovery remained unverified at that point.
+
+### 2026-08-12 — #3243/#3244 production evidence + MD-NAN-B1 activation
+
+**User-observed browser evidence:** during live production activity, logout → login still displayed queued/pending state.  
+**#3243:** authenticated `workflow_dispatch` on `1b8ed8f...`; running callback SUCCESS; calculation failed `MARKET_DATA_FAILED`; terminal failed callback SUCCESS; 20 exact sanitized provider rows captured.  
+**#3244:** authenticated `workflow_dispatch` minutes later on the same `main`; market data clean; 144-row transaction integrity PASS; calculation/reconciliation/ledger/snapshot PASS; terminal succeeded callback SUCCESS.  
+**Root-cause convergence:** transient upstream daily-row incompleteness/inconsistency; exact Yahoo vs yfinance responsibility not proven.  
+**Current implementation:** branch `fix/market-data-nan-bounded-refetch`; same-provider/same-parameter one-time fresh re-fetch; persistent invalid data remains fail-closed.  
+**Regression:** `tests/test_market_data_nan_refetch.py`.  
+**Sanitized evidence:** `docs/governance/evidence/MARKET_DATA_NAN_RUN_31563691963_2026-08-12.json`.  
+**Runtime deployment:** NOT YET MERGED / NOT YET PRODUCTION VERIFIED.
 
 ---
 
 ## 16. Next Exact Actions
 
-1. Treat E1c-A.1 as closed; do not spend more work on reconciliation/control-plane expansion without new material evidence.
-2. Use E1c-B product implementation baseline `fdc1199bea47a2e47f38e2737827f1a2e38451f2` for feature-level provenance, but fetch the actual current `main` head from GitHub before consequential action.
-3. Do **not** repeat generic workflow/calculation/snapshot production verification: #3242 already passed that layer on the E1c-B baseline.
-4. Perform the remaining authenticated browser lifecycle smoke: frontend trigger → pending observed → refresh/reopen → same generation recovered → terminal resolution → normal portfolio/snapshot display.
-5. Observe the resulting `Update Portfolio Data` run for same-job lifecycle callbacks and absence of duplicate/lost execution; do not manufacture additional concurrency unless normal evidence reveals a queue problem.
-6. If the authenticated browser smoke passes with no material blocker, update this handoff and close E1c-B/E1c as appropriate; do not add unrelated cleanup work to the closeout.
-7. Continue observing normal `Update Portfolio Data`; if `MARKET_DATA_FAILED` recurs with `NaN selected-price provider row`, extract sanitized date/OHLC/Adj Close/Volume/Dividends/Stock Splits/Capital Gains evidence and classify before proposing any financial-semantic fix.
-8. Immediately after E1c-B closeout, perform the defined Product Functionality Review.
-9. Select one next user-impact/correctness batch and resume normal functional optimization/development.
+1. Treat E1c-A.1 as closed; do not reopen reconciliation/control-plane work without new material dispatch-binding evidence.
+2. Complete MD-NAN-B1 exact-head diff review, CI, and Independent Review on `fix/market-data-nan-bounded-refetch`.
+3. If exact-head verification passes and no BLOCKER exists, merge MD-NAN-B1 using expected head; then verify post-main CI.
+4. Observe a normal production `Update Portfolio Data` after merge. If the first provider response is clean, record only that no regression occurred. If selected-price NaN recurs and the bounded same-provider re-fetch recovers, record that as direct production verification of the mitigation. If both attempts remain invalid, preserve fail-closed behavior and retain the new sanitized rows for further RCA.
+5. Do not treat #3244 as fix verification; it predates the fix and only demonstrates transient recovery under unchanged code.
+6. After MD-NAN-B1 is stable, finish the single remaining E1c-B browser observation: terminal job resolves queued/pending state and frontend returns to normal usable portfolio/snapshot display.
+7. If that observation passes with no material blocker, close E1c-B/E1c and immediately perform the focused Product Functionality Review.
+8. Select exactly one next user-impact/correctness batch and resume normal functional optimization/development.
