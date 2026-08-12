@@ -1,6 +1,6 @@
 # TO-DO / UPDATE LIST — Product-First Current Handoff
 
-> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Historical plans and audits are evidence sources, not automatic execution authority.
+> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Historical plans and audits are evidence sources, not automatic execution authority. Operational quality aid: `docs/governance/DOCUMENT_QUALITY_STANDARD.md` (subordinate to the Playbook; no independent Gate authority).
 
 Last updated: **2026-08-12**
 Handoff revision: **PRODUCT-FIRST REBASE / E1c-A.1 external closeout blocker / E1c-B next functional batch**
@@ -160,14 +160,24 @@ Always re-check remote truth before production-affecting action.
 
 ---
 
-## 6. Locked Decisions
+## 6. Locked Decisions / Working Baseline
 
 - Age alone is not liveness authority for active `queued` / `running` calculation jobs.
 - Server durable lifecycle is authoritative over browser TTL.
 - E1c is server-first: E1c-A production verification precedes E1c-B frontend/workflow activation.
 - `main` remains a potential production candidate; do not merge half-finished functional transitions.
 - Historical plans/audits inform discovery but do not independently authorize the next batch.
+- A confirmed Master Plan remains a Working Baseline when identified here; a new session/model/reviewer/document must not silently replace it. Reopen only for changed requirements, material new evidence, Critical defect, architecture conflict, external platform change, or clearly superior benefit relative to migration risk.
 - Product functionality is the default execution priority; infrastructure/governance work requires a current correctness, safety, production-stability, or measurable delivery justification.
+
+Current Working Baseline for execution priority is this Product-First Gate E sequence:
+
+```text
+minimum E1c-A.1 closeout
+→ E1c-B functional lifecycle
+→ Product Functionality Review
+→ select one next user-impact/correctness batch
+```
 
 ---
 
@@ -178,13 +188,14 @@ The live handoff must remain concise enough that the next agent can identify the
 Document placement:
 
 - `README.md`: stable product/architecture/development truth;
-- `AI_PROJECT_PLAYBOOK.md`: stable engineering governance;
-- `to_do_update_list.md`: current product-first execution truth only;
-- `docs/engineering/`: durable RCA, ADR-like engineering records, closeout evidence with long-lived value;
+- `AI_PROJECT_PLAYBOOK.md`: highest stable engineering governance and mandatory Gate authority;
+- `to_do_update_list.md`: current product-first execution truth;
+- `docs/governance/DOCUMENT_QUALITY_STANDARD.md`: subordinate operational quality checklist only; it cannot add/override Playbook Gates;
+- `docs/engineering/`: durable RCA, decisions, contracts, closeout/review evidence with long-lived value;
 - `docs/governance/evidence/`: sanitized machine-readable production evidence;
-- historical audit/remediation plans: evidence/candidate sources, not live execution authority.
+- historical audit/remediation plans: evidence/candidate sources unless current evidence explicitly re-promotes them.
 
-Prefer updating an existing authoritative document over creating a new one. A new durable document should have independent future value as a stable contract, decision, reusable runbook, material RCA/evidence record, or specification.
+Prefer updating an existing authoritative document over creating a new one. A new durable document should have independent future value as a stable contract, decision, reusable runbook, material RCA/evidence record, specification, or justified R2/R3 review record.
 
 Completed operational detail must be compressed out of this live handoff and retained through Git history or dedicated evidence records.
 
@@ -197,12 +208,13 @@ Current document-quality review candidate:
 ## 8. Next Exact Actions
 
 1. Do not advance production reconciliation control-plane main while run `31518085574` is still awaiting approval.
-2. When the production gate clears, complete only the defined E1c-A.1 verification/closeout.
-3. Start E1c-B as the single implementation batch.
-4. Validate E1c-B with focused lifecycle regression plus applicable repository CI/build.
-5. Perform Independent Review against exact candidate head.
-6. Merge/deploy only after applicable gates pass.
-7. After E1c-B closeout, perform Product Functionality Review and select one next user-impact batch.
+2. Complete focused Independent Re-Review + applicable CI for PR #203; do not merge it while that merge would invalidate the still-pending reconciliation freshness gate.
+3. When the production gate clears, complete only the defined E1c-A.1 verification/closeout.
+4. Start E1c-B as the single implementation batch.
+5. Validate E1c-B with focused lifecycle regression plus applicable repository CI/build.
+6. Perform Independent Review against exact candidate head.
+7. Merge/deploy only after applicable gates pass.
+8. After E1c-B closeout, perform Product Functionality Review and select one next user-impact batch.
 
 ---
 
@@ -210,10 +222,10 @@ Current document-quality review candidate:
 
 The following remain valuable evidence but are not automatic current execution plans:
 
-- `docs/MASTER_REMEDIATION_PLAN.md`
+- `docs/MASTER_REMEDIATION_PLAN.md` unless explicitly re-adopted as the current Working Baseline;
 - historical audit reports;
 - superseded PRs/candidates;
 - completed Gate records;
 - old operational recovery sequences.
 
-Reopen a historical candidate only when current evidence promotes it into NOW/NEXT and records why it is required for the active product objective.
+Reopen a historical candidate only when current evidence promotes it into NOW/NEXT and records why it is required for the active product objective. Do not silently reinterpret historical documents as a new Master Plan.
