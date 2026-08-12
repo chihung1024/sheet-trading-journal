@@ -431,6 +431,7 @@ class MarketDataClient:
         def fetch_single_ticker(t):
             first_invalid_result = None
             first_invalid_price_source = None
+            first_invalid_provider_index = None
             last_result = None
 
             for attempt in range(1, SELECTED_PRICE_REFETCH_ATTEMPTS + 1):
@@ -466,6 +467,18 @@ class MarketDataClient:
                         return first_invalid_result
 
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
+                    provider_daily_index = hist.index.copy()
+
+                    if (
+                        first_invalid_provider_index is not None
+                        and not first_invalid_provider_index.isin(provider_daily_index).all()
+                    ):
+                        print(
+                            f"[{t}] fresh re-fetch 遺失前次 provider daily row；"
+                            "拒絕以 row omission 繞過 NaN 並維持 fail closed"
+                        )
+                        return first_invalid_result
+
                     realtime_overlay_applied = False
 
                     intraday_quote = self._get_intraday_quote_with_date(ticker_obj)
@@ -505,6 +518,7 @@ class MarketDataClient:
                     if first_invalid_result is None:
                         first_invalid_result = last_result
                         first_invalid_price_source = metadata.get('price_source')
+                        first_invalid_provider_index = provider_daily_index
                         if not self._daily_action_evidence_complete(hist):
                             print(
                                 f"[{t}] invalid selected-price row 缺少或含 malformed "
