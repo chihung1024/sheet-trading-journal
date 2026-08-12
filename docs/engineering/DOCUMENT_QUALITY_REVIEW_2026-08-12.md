@@ -1,6 +1,6 @@
 # Document Quality Independent Review — 2026-08-12
 
-Status: **USER REQUIREMENT CLARIFIED / NEW EXACT-HEAD FOCUSED RE-REVIEW REQUIRED**
+Status: **CANDIDATE FINDINGS RESOLVED / FINAL EXACT-HEAD DECISION LIVES IN PR REVIEW**
 Risk: **R2 — governance semantics**
 Reviewer type: **Same-AI Independent Review**
 Isolation method: **fresh repository evidence reconstruction + exact-PR-diff adversarial review**
@@ -107,7 +107,7 @@ This exposed an ambiguity in the prior candidate. Phrases such as "minimum close
 - Product Functionality Review must classify material residual bugs as NOW and resolve them before phase close when they are required for the Stable State or would predictably obstruct/corrupt the next functional batch;
 - BACKLOG remains for genuinely safe-to-defer improvements, not a disposal area for inconvenient defects.
 
-Status: **RESOLVED IN NEW CANDIDATE; FOCUSED RE-REVIEW REQUIRED**.
+Status: **RESOLVED IN CANDIDATE**.
 
 ## Scope decision
 
@@ -136,7 +136,7 @@ Status: **RESOLVED IN NEW CANDIDATE; FOCUSED RE-REVIEW REQUIRED**.
 - CI/CD or audit-framework expansion without a demonstrated product/correctness need;
 - using "convergence" as justification for knowingly carrying a material current-scope functional defect into later feature work.
 
-## Acceptance criteria for new focused re-review
+## Acceptance criteria for final exact-head review
 
 The candidate may pass only if:
 
@@ -153,8 +153,19 @@ The candidate may pass only if:
 - R2/R3 safety/review rigor is not weakened;
 - no new infrastructure/governance work is made part of the product roadmap without current evidence.
 
-## Current review decision
+## Final-decision location
 
-**DO NOT MERGE YET.**
+This record intentionally does **not** self-certify its own exact-head approval. Updating this file after every final review would create needless candidate-head churn and stale status text.
 
-DQ-07 changed governance/document semantics after the previous reviewed head. Per exact-head discipline, the new candidate requires focused independent re-review and applicable exact-head CI before merge. In addition, the existing E1c-A.1 production reconciliation freshness dependency must no longer be endangered by advancing protected `main` before PR #203 can merge.
+Final merge authority for PR #203 must therefore be reconstructed from the current PR itself:
+
+```text
+exact PR head
++ applicable exact-head CI
++ Independent Review submission against that exact head
++ unresolved BLOCKER = 0
++ current main/base/mergeability
++ E1c-A.1 production freshness safety
+```
+
+A prior review or CI result does not authorize a later material head. The final PR review is the durable exact-head decision evidence.
