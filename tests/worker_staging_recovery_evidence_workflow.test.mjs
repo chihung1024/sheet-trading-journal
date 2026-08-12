@@ -9,9 +9,10 @@ test('staging recovery evidence workflow is isolated, synthetic, and non-product
 
   assert.match(workflow, /environment:\s*staging/);
   assert.match(workflow, /DRILL_TABLE:\s*recovery_evidence_sentinel/);
+  assert.match(workflow, /CLOUDFLARE_D1_DATABASE_NAME/);
   assert.match(workflow, /trading-journal-staging/);
   assert.match(workflow, /synthetic_only/);
-  assert.match(workflow, /d1 export DB --remote/);
+  assert.match(workflow, /d1 export "\$CLOUDFLARE_D1_DATABASE_NAME" --remote/);
   assert.match(workflow, /--table "\$DRILL_TABLE"/);
   assert.match(workflow, /DROP TABLE \$DRILL_TABLE/);
   assert.match(workflow, /d1 execute DB --remote/);
