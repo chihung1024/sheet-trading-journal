@@ -59,12 +59,23 @@ test('accepts valid same-owner pending state', () => {
   );
 });
 
-test('rejects malformed, expired, future, and cross-owner state', () => {
+test('rejects malformed, future, and cross-owner state without using age as liveness authority', () => {
   assert.equal(validatePendingCalculationRequest({ ...valid, key: 'short' }, OWNER, { now: NOW }), null);
   assert.equal(validatePendingCalculationRequest({ ...valid, jobId: 'job_invalid' }, OWNER, { now: NOW }), null);
-  assert.equal(validatePendingCalculationRequest({ ...valid, createdAt: NOW - CALCULATION_REQUEST_TTL_MS }, OWNER, { now: NOW }), null);
   assert.equal(validatePendingCalculationRequest({ ...valid, createdAt: NOW + 60_001 }, OWNER, { now: NOW }), null);
   assert.equal(validatePendingCalculationRequest(valid, 'other@example.com', { now: NOW }), null);
+});
+
+test('age alone does not expire known-job or ambiguous pre-job recovery identity', () => {
+  const muchLater = NOW + (7 * 24 * 60 * 60 * 1000);
+  assert.deepEqual(
+    validatePendingCalculationRequest(valid, OWNER, { now: muchLater }),
+    valid,
+  );
+  assert.deepEqual(
+    validatePendingCalculationRequest({ ...valid, jobId: null }, OWNER, { now: muchLater }),
+    { ...valid, jobId: null },
+  );
 });
 
 test('legacy read remains fail-closed and non-destructive on a non-enumerable Storage surface', () => {
@@ -130,6 +141,25 @@ test('second remember for the same idempotency key reuses the original generatio
     1,
   );
   assert.deepEqual(JSON.parse(storage.raw(CALCULATION_REQUEST_STORAGE_KEY)), updated);
+});
+
+test('ambiguous pre-job replay keeps the same generation beyond the historical TTL', () => {
+  const storage = createStorage();
+  const first = rememberPendingCalculationRequest(storage, OWNER, {
+    key: OLD_KEY,
+    createdAt: NOW - CALCULATION_REQUEST_TTL_MS - 10_000,
+    jobId: null,
+  });
+  assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), first);
+
+  const replay = rememberPendingCalculationRequest(storage, OWNER, {
+    key: OLD_KEY,
+    createdAt: NOW,
+    jobId: null,
+  });
+  assert.equal(replay.key, first.key);
+  assert.equal(replay.createdAt, first.createdAt);
+  assert.equal(replay.jobId, null);
 });
 
 test('newer generation coexists with older generation and is selected as authoritative', () => {
@@ -258,14 +288,14 @@ test('malformed and cross-owner v2 entries cannot override a valid same-owner ge
   assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), expected);
 });
 
-test('expired v2 generation and its legacy mirror are ignored', () => {
+test('historical TTL boundary no longer makes a durable v2 generation disappear', () => {
   const storage = createStorage();
-  rememberPendingCalculationRequest(storage, OWNER, {
+  const pending = rememberPendingCalculationRequest(storage, OWNER, {
     key: OLD_KEY,
     createdAt: NOW - CALCULATION_REQUEST_TTL_MS,
     jobId: OLD_JOB,
   });
-  assert.equal(readPendingCalculationRequest(storage, OWNER, { now: NOW }), null);
+  assert.deepEqual(readPendingCalculationRequest(storage, OWNER, { now: NOW }), pending);
 });
 
 test('terminal statuses remain explicit and unscoped cleanup is a no-op', () => {
