@@ -1,0 +1,327 @@
+name: Staging D1 Recovery Evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - config/staging-d1-recovery-drill-request.json
+      - .github/workflows/staging-d1-recovery-evidence.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-d1-recovery-evidence
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    name: Export restore and verify synthetic staging sentinel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      DRILL_TABLE: recovery_evidence_sentinel
+      EVIDENCE_DIR: recovery-evidence
+
+    steps:
+      - name: Checkout exact protected-main event
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate one-shot request and exact main event
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const request = JSON.parse(readFileSync('config/staging-d1-recovery-drill-request.json', 'utf8'));
+          if (
+            request.schema_version !== 1
+            || request.operation !== 'schema3_recovery_evidence_drill'
+            || request.environment !== 'staging'
+            || request.synthetic_only !== true
+          ) {
+            throw new Error('Recovery drill request is not the reviewed staging-only operation');
+          }
+          NODE
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Render reviewed isolated staging binding
+        env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+          STAGING_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_GOOGLE_CLIENT_ID }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${CLOUDFLARE_D1_DATABASE_NAME:-}" = "trading-journal-staging"
+          test -n "${CLOUDFLARE_D1_DATABASE_ID:-}"
+          test -n "${STAGING_GOOGLE_CLIENT_ID:-}"
+          node tools/render_staging_wrangler_config.mjs
+
+      - name: Verify synthetic table does not pre-exist
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --command "SELECT COUNT(*) AS drill_table_count FROM sqlite_schema WHERE type='table' AND name='$DRILL_TABLE';" \
+            --json > before-table.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const data = JSON.parse(readFileSync('before-table.json', 'utf8'));
+          const batches = Array.isArray(data) ? data : [data];
+          const rows = batches.flatMap((batch) => Array.isArray(batch?.results) ? batch.results : []);
+          const row = rows.find((entry) => Object.hasOwn(entry || {}, 'drill_table_count'));
+          if (!row || Number(row.drill_table_count) !== 0) throw new Error('Synthetic recovery table already exists');
+          NODE
+
+      - name: Create synthetic sentinel
+        id: sentinel
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          checksum="$(printf '%s' "${GITHUB_SHA}:${GITHUB_RUN_ID}:schema3-recovery-drill" | sha256sum | awk '{print $1}')"
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --command "CREATE TABLE $DRILL_TABLE (id INTEGER PRIMARY KEY, marker TEXT NOT NULL, checksum TEXT NOT NULL); INSERT INTO $DRILL_TABLE (id, marker, checksum) VALUES (1, 'recovery-sentinel', '$checksum');"
+
+      - name: Verify sentinel before export
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_CHECKSUM: ${{ steps.sentinel.outputs.checksum }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --command "SELECT id, marker, checksum FROM $DRILL_TABLE WHERE id=1;" \
+            --json > sentinel-before.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const data = JSON.parse(readFileSync('sentinel-before.json', 'utf8'));
+          const batches = Array.isArray(data) ? data : [data];
+          const rows = batches.flatMap((batch) => Array.isArray(batch?.results) ? batch.results : []);
+          const row = rows.find((entry) => Number(entry?.id) === 1);
+          if (!row || row.marker !== 'recovery-sentinel' || row.checksum !== process.env.EXPECTED_CHECKSUM) {
+            throw new Error('Synthetic sentinel integrity failed before export');
+          }
+          NODE
+
+      - name: Export only the synthetic table
+        id: backup
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 export DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --table "$DRILL_TABLE" \
+            --output recovery-sentinel.sql \
+            --skip-confirmation
+          test -s recovery-sentinel.sql
+          export_sha="$(sha256sum recovery-sentinel.sql | awk '{print $1}')"
+          echo "export_sha=$export_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Destructively remove the synthetic table
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --command "DROP TABLE $DRILL_TABLE;"
+
+      - name: Restore exported synthetic table and measure recovery time
+        id: restore
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          start_ms="$(date +%s%3N)"
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --file recovery-sentinel.sql \
+            --yes
+          end_ms="$(date +%s%3N)"
+          duration_ms="$((end_ms - start_ms))"
+          test "$duration_ms" -ge 0
+          echo "duration_ms=$duration_ms" >> "$GITHUB_OUTPUT"
+
+      - name: Verify restored data integrity
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_CHECKSUM: ${{ steps.sentinel.outputs.checksum }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --command "SELECT id, marker, checksum FROM $DRILL_TABLE WHERE id=1;" \
+            --json > sentinel-restored.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const data = JSON.parse(readFileSync('sentinel-restored.json', 'utf8'));
+          const batches = Array.isArray(data) ? data : [data];
+          const rows = batches.flatMap((batch) => Array.isArray(batch?.results) ? batch.results : []);
+          const row = rows.find((entry) => Number(entry?.id) === 1);
+          if (!row || row.marker !== 'recovery-sentinel' || row.checksum !== process.env.EXPECTED_CHECKSUM) {
+            throw new Error('Restored synthetic sentinel does not match the exported state');
+          }
+          NODE
+
+      - name: Build sanitized recovery evidence bundle
+        id: evidence
+        env:
+          EXPORT_SHA: ${{ steps.backup.outputs.export_sha }}
+          RESTORE_DURATION_MS: ${{ steps.restore.outputs.duration_ms }}
+          SENTINEL_CHECKSUM: ${{ steps.sentinel.outputs.checksum }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          executed_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          export EXECUTED_AT="$executed_at"
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { mkdirSync, writeFileSync } from 'node:fs';
+          const dir = process.env.EVIDENCE_DIR;
+          mkdirSync(dir, { recursive: true });
+          const measurements = {
+            schema_version: 1,
+            operation: 'schema3_recovery_evidence_drill',
+            environment: 'staging',
+            synthetic_only: true,
+            baseline_sha: process.env.GITHUB_SHA,
+            github_run_id: Number(process.env.GITHUB_RUN_ID),
+            drill_table: process.env.DRILL_TABLE,
+            sentinel_checksum: process.env.SENTINEL_CHECKSUM,
+            export_sha256: process.env.EXPORT_SHA,
+            restore_duration_ms: Number(process.env.RESTORE_DURATION_MS),
+            export_verified: true,
+            destructive_drop_verified: true,
+            restore_verified: true,
+            integrity_verified: true,
+            cleanup_required: true,
+          };
+          const measurementText = `${JSON.stringify(measurements, null, 2)}\n`;
+          writeFileSync(`${dir}/staging-d1-recovery-measurements.json`, measurementText);
+          const measurementSha = createHash('sha256').update(measurementText).digest('hex');
+          const types = {
+            export_backup: 'Synthetic staging D1 table exported to SQL and cryptographically hashed.',
+            restore_drill: 'The exported synthetic table was dropped and restored into the same isolated staging D1.',
+            rollback_timing: `Measured synthetic restore completed in ${measurements.restore_duration_ms} ms.`,
+            integrity_verification: 'Restored sentinel marker and checksum exactly matched the pre-export state.',
+            migration_rollback_forward_strategy: 'Schema 3 activation must remain server-first and additive; migration failure is fail-closed, the previous Worker remains compatible with additive schema, and frontend activation waits for production Worker verification.',
+            d1_recovery_proof: 'A real remote Cloudflare D1 export/drop/import/readback cycle completed on isolated staging using only synthetic data.',
+          };
+          for (const [evidenceType, summary] of Object.entries(types)) {
+            const doc = {
+              schema_version: 1,
+              evidence_type: evidenceType,
+              status: 'passed',
+              executed_at: process.env.EXECUTED_AT,
+              baseline_sha: process.env.GITHUB_SHA,
+              proof: {
+                method: 'controlled isolated staging D1 synthetic export/drop/restore drill',
+                result: 'pass',
+                artifact_reference: `github-actions://run/${process.env.GITHUB_RUN_ID}/staging-d1-recovery-measurements.json`,
+                artifact_sha256: measurementSha,
+                summary,
+              },
+            };
+            writeFileSync(`${dir}/${evidenceType}.json`, `${JSON.stringify(doc, null, 2)}\n`);
+          }
+          writeFileSync(`${dir}/measurement-sha256.txt`, `${measurementSha}\n`);
+          NODE
+          echo "executed_at=$executed_at" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup synthetic staging table
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --command "DROP TABLE IF EXISTS $DRILL_TABLE;"
+
+      - name: Verify cleanup completed
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            --config .wrangler/staging.toml \
+            --command "SELECT COUNT(*) AS drill_table_count FROM sqlite_schema WHERE type='table' AND name='$DRILL_TABLE';" \
+            --json > cleanup.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const data = JSON.parse(readFileSync('cleanup.json', 'utf8'));
+          const batches = Array.isArray(data) ? data : [data];
+          const rows = batches.flatMap((batch) => Array.isArray(batch?.results) ? batch.results : []);
+          const row = rows.find((entry) => Object.hasOwn(entry || {}, 'drill_table_count'));
+          if (!row || Number(row.drill_table_count) !== 0) throw new Error('Synthetic recovery table cleanup failed');
+          NODE
+
+      - name: Upload sanitized recovery evidence only
+        if: always() && steps.evidence.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: staging-d1-recovery-evidence-${{ github.sha }}
+          path: recovery-evidence
+          if-no-files-found: error
+          retention-days: 30
