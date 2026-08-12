@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "operation": "schema3_recovery_evidence_drill",
+  "environment": "staging",
+  "synthetic_only": true,
+  "reason": "Product Functionality Review NOW-1 record-create idempotency requires a narrow Schema 3 migration; satisfy the existing Recovery Evidence Gate without touching production data."
+}
