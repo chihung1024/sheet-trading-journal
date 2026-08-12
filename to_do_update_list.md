@@ -1,256 +1,219 @@
-# TO-DO / UPDATE LIST — Current Execution Handoff
+# TO-DO / UPDATE LIST — Product-First Current Handoff
 
-> **FIRST-READ CURRENT STATE.** Read `AI_PROJECT_PLAYBOOK.md`, `README.md`, this file, then re-check GitHub remote truth before consequential action. Remote systems override stale prose. Historical detail belongs in engineering/evidence records and Git history.
+> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Historical plans and audits are evidence sources, not automatic execution authority.
 
-Last updated: **2026-08-11**  
-Handoff revision: **E1c-A.1 / reconciliation workflow waiting for production approval**
+Last updated: **2026-08-12**
+Handoff revision: **PRODUCT-FIRST REBASE / E1c-A.1 external closeout blocker / E1c-B next functional batch**
 
 ---
 
-## 1. Current Production / Control-Plane Truth
+## 1. Primary Product Goal
 
-Repository: `chihung1024/sheet-trading-journal`
+Deliver a reliable Trading Journal user flow:
 
-Protected-main control-plane HEAD at this handoff:
+```text
+login
+→ view/manage transactions
+→ trigger portfolio update
+→ observe durable calculation progress
+→ recover after refresh/reopen
+→ publish/read correct holdings and performance
+→ surface actionable success/failure state
+```
 
-`8f9f942cc22b70e5bbec0f05438b0a74fefb8057` — merge of PR #197.
+The project goal is product correctness and usability. Governance, CI/CD, deployment tooling, audit evidence, and documentation exist only to support that goal.
 
-Deployed production Worker runtime:
+---
 
-`R_C1 = fe5f091fdb2c92970dff74c1a7c99052084adb95`
+## 2. Single Active Functional Line
 
-Production activation authority:
+### Current functional phase
 
-`A_C1 = baa07bafe4d3438abf488bcca703aa4848975083`
+`Gate E / E1c — calculation job lifecycle and idempotency`
+
+### Current functional batch
+
+`E1c-B — frontend lifecycle recovery + retained workflow queue`
+
+Status: **READY FOR IMPLEMENTATION AFTER E1c-A.1 PRODUCTION CLOSEOUT**
+
+Locked product behavior:
+
+1. active calculation recovery must not disappear solely because 15 minutes elapsed;
+2. a known `jobId` remains recoverable across refresh/reopen until durable terminal or explicit 404 semantics;
+3. ambiguous pre-job mutation state must retain/replay the same idempotency key until server outcome is resolved;
+4. generation/tombstone owner and cross-tab protections remain intact;
+5. pending workflow runs must not be silently displaced before lifecycle callback while repository-wide serialized calculation execution is preserved.
+
+Primary implementation surfaces:
+
+- `src/services/calculationJobState.js`
+- `src/stores/portfolio.js`
+- `.github/workflows/update.yml`
+- existing relevant lifecycle tests, especially `tests/worker_frontend_job_state.test.mjs`
+
+Out of E1c-B:
+
+- Worker lifecycle redesign;
+- D1 Schema 3;
+- ledger revision / compare-and-publish;
+- cursor-signing redesign;
+- provider redesign;
+- Decimal migration;
+- tenant UUID migration;
+- broad CI/CD or governance redesign.
+
+---
+
+## 3. External Production Blocker — Bounded, Not the Product Roadmap
+
+E1c-A.1 production closeout is waiting on GitHub `production` Environment Required Reviewer approval.
+
+Current reviewed reconciliation run:
+
+- workflow: `Production Legacy Job Reconciliation #3`
+- run: `31518085574`
+- head: `b022a0a50145d3c91deb21d52f7ac0696332c932`
+- preflight: **SUCCESS**
+- production job: **WAITING** on required reviewer approval
+
+This is an external release gate only. Do not expand it into additional scheduler, recovery, audit, or deployment framework work unless new Critical evidence appears.
+
+After approval:
+
+```text
+verify reconciliation result + sanitized artifact + bounded mutation + production contract audit
+→ verify legacy stuck browser generation reaches terminal/clears
+→ perform one normal authenticated update
+→ prove durable workflow_run_id binding and running/terminal callbacks
+→ close E1c-A.1
+→ activate E1c-B implementation
+```
+
+Do not rerun blindly, bypass the Environment reviewer, manually rewrite D1 jobs, or advance protected main in a way that invalidates reconciliation freshness while the run remains pending.
+
+---
+
+## 4. Product-First Priority Queue
+
+### NOW
+
+- Finish E1c-A.1 only to the minimum evidence required for safe closeout.
+- Implement and validate E1c-B product lifecycle behavior.
+- Keep user-visible calculation status/recovery coherent across refresh, long queue time, and terminal outcomes.
+
+### NEXT
+
+After E1c-B closes, run a focused Product Functionality Review over:
+
+```text
+login
+→ records CRUD
+→ calculation trigger
+→ progress/recovery
+→ snapshot refresh
+→ holdings/P&L/performance/benchmark display
+```
+
+Select the next batch from real user-impact or calculation-correctness findings only.
+
+### BACKLOG
+
+Potential future work remains evidence-driven, including Schema 3, ledger revision, cursor-secret separation, Decimal/fixed-point migration, provider redesign, tenant UUID migration, and historical remediation-plan candidates.
+
+### REJECT FOR CURRENT PHASE
+
+- more reconciliation framework;
+- scheduler-recovery framework expansion;
+- CI/CD beautification without a current product blocker;
+- governance/document proliferation;
+- broad architecture rewrite;
+- reopening already-closed E1a/E1b work without new evidence.
+
+---
+
+## 5. Stable Production State
+
+Deployed Worker runtime source:
+
+`fe5f091fdb2c92970dff74c1a7c99052084adb95`
 
 Live Worker version:
 
 `68f32cee-c609-4624-aaff-eaa55ef0c77d`
 
-Runtime contract remains:
+Runtime contract:
 
 `Worker 4.07 / API 2.60 / D1 Schema 2`
 
 Deploy Worker #4 / run `31475347673`: **SUCCESS**.
 
-- exact runtime source `R_C1`;
-- Worker tests 162 PASS / 0 FAIL;
-- production D1 identity PASS;
-- remote migrations: none;
-- stable production contract: 3 consecutive PASS;
-- post-deploy artifact `9095595916`;
-- independently verified ZIP SHA-256: `665cb83a56a6dc36f49df7759c09df978b9b5a44b73757441d2fac94d4aa3497`.
-
 Durable deploy evidence:
 
 `docs/governance/evidence/GATE_E_E1C_A1_DEPLOY_2026-08-11.json`
 
-**Always re-read protected `main` and the active workflow run before acting.**
-
----
-
-## 2. Current Gate State
-
-### Gate E
-
-- E0 architecture re-baseline: `CLOSED`.
-- E1a-A compatibility activation: `CLOSED / PRODUCTION VERIFIED`.
-- E1a-B opaque/email-free privacy cutover: `CLOSED / PRODUCTION VERIFIED`.
-- E1b historical EOD / realtime valuation integrity: `CLOSED / PRODUCTION VERIFIED`.
-- E1c-A server-first lifecycle compatibility: `DEPLOYED`.
-- E1c-A.1 durable GitHub dispatch binding: **`DEPLOYED / LEGACY RECONCILIATION WAITING FOR PRODUCTION APPROVAL`**.
-- E1c-B frontend lifecycle + workflow pending queue: `DEFERRED UNTIL E1c-A.1 CLOSEOUT`.
-- E1d cursor-signing secret separation: `PLANNED`.
-- Schema 3 / E2: `DEFERRED`.
-
-Primary E1c-A.1 record:
-
-`docs/engineering/GATE_E_E1C_A1_DISPATCH_BINDING_2026-08-11.md`
-
----
-
-## 3. Production Finding Being Closed
-
-A normal authenticated frontend trigger after E1c-A remained at `計算中...`, while repeated GitHub checks showed no new `Update Portfolio Data` run. The last prior normal run (#3235 / `31455526265`) had already completed with terminal `succeeded`.
-
-Production therefore exposed a legacy rollout residue:
-
-```text
-legacy durable calculation job
-status = queued
-github_run_id = NULL
--> active-job guard correctly prevents duplicate dispatch
--> browser keeps polling durable active job
--> no GitHub workflow exists to advance it
-```
-
-E1c-A.1 prevents new occurrences by requiring GitHub HTTP 200 + `workflow_run_id` and binding that run identity durably before browser acknowledgement.
-
-Do **not** restore age-based active-job expiry. Age is not liveness authority.
-
----
-
-## 4. Reconciliation Control Plane — MERGED / REVIEWED
-
-PR #197 is the authoritative reconciliation implementation.
-
-Final candidate:
-
-`dca0ae34495da8cf8b52d4bf6d27411e38ac166a`
-
-Evidence:
-
-- first candidate `ebc27b3d23c19d03be5ad7002845f603400cf4dd` passed CI #636 but fresh R3 review found production-control BLOCKERs;
-- blockers were fixed, not waived;
-- exact-head CI #637: **SUCCESS**;
-- fresh R3 Same-AI Independent Review: **PASS / NO BLOCKER**;
-- expected-head merge: `8f9f942cc22b70e5bbec0f05438b0a74fefb8057`;
-- post-main CI #638: **SUCCESS**.
-
-The merged control plane protects all of the following:
-
-- immutable reviewed operation-code/workflow materialization;
-- latest-main workflow/tool blob equality before mutation;
-- latest request-value and activation-authority rechecks;
-- exact live Worker source/version verification;
-- production D1 identity verification;
-- complete nonterminal `Update Portfolio Data` proof for `queued`, `in_progress`, `waiting`, `pending`, and `requested`;
-- zero-nonterminal proof before reviewer gate, 3 consecutive observations after approval, and one final observation immediately before mutation;
-- target cohort only `queued + github_run_id IS NULL + pre-cutover`;
-- reviewed `max_rows` bound;
-- mutation only `queued -> failed` with `LEGACY_DISPATCH_UNBOUND_RECONCILED`;
-- SQLite `changes()` must equal reviewed target cardinality;
-- no DELETE, transaction/snapshot mutation, tenant identity, or calculation-job ID in evidence;
-- same production approval also runs `REQUIRE_SYSTEM_CHECKS=1` contract audit.
-
-Recovery:
+Recovery reference:
 
 `backup-pre-e1c-a1-legacy-reconciliation-67b8735`
 
-### Superseded candidate
-
-PR #198 was opened from stale base after #197 had already merged. Relative to current main it would have weakened #197's stronger controls, so it was closed as:
-
-`SUPERSEDED / NO MERGE AUTHORITY`
-
-Do not reopen or merge PR #198.
+Always re-check remote truth before production-affecting action.
 
 ---
 
-## 5. Active Workflow — Exact Current State
+## 6. Locked Decisions
 
-Event-driven workflow:
-
-`Production Legacy Job Reconciliation #1`
-
-Run ID:
-
-`31479868929`
-
-Head/control-plane SHA:
-
-`8f9f942cc22b70e5bbec0f05438b0a74fefb8057`
-
-Current state at this handoff:
-
-- preflight job `Verify reconciliation request before reviewer gate`: **SUCCESS**;
-- request validation: PASS;
-- exact activation authority before reviewer gate: PASS;
-- zero nonterminal `Update Portfolio Data` proof before reviewer gate: PASS;
-- production job `Reconcile legacy unbound queued jobs and audit production`: **WAITING** on GitHub `production` Environment Required Reviewer.
-
-No additional workflow start, SHA entry, rerun, or manual D1 operation is required.
+- Age alone is not liveness authority for active `queued` / `running` calculation jobs.
+- Server durable lifecycle is authoritative over browser TTL.
+- E1c is server-first: E1c-A production verification precedes E1c-B frontend/workflow activation.
+- `main` remains a potential production candidate; do not merge half-finished functional transitions.
+- Historical plans/audits inform discovery but do not independently authorize the next batch.
+- Product functionality is the default execution priority; infrastructure/governance work requires a current correctness, safety, production-stability, or measurable delivery justification.
 
 ---
 
-## 6. Next Exact Sequence
+## 7. Documentation Quality / Handoff Rules
 
-The only external action still required by repository policy is the independent GitHub `production` Environment approval for run `31479868929`. The current connector does not expose that approval mutation.
+The live handoff must remain concise enough that the next agent can identify the product goal, active functional batch, blocker, next action, and explicit non-goals without reading historical incident detail first.
 
-After approval, continue automatically:
+Document placement:
 
-```text
-run #1 production job
--> revalidate latest request / reviewed operation code / authority
--> verify live Worker source + Worker version
--> verify production D1 identity
--> prove zero nonterminal update runs repeatedly
--> final request/code/authority/active-run gate
--> bounded legacy queued-job reconciliation
--> system contract audit
--> verify sanitized artifact + digest
--> verify stuck browser generation reaches terminal / clears
--> one normal authenticated frontend update
--> prove new workflow_run_id durable binding + running/terminal callbacks
--> E1c-A.1 closeout evidence/docs
--> E1c-B ACTIVE
-```
+- `README.md`: stable product/architecture/development truth;
+- `AI_PROJECT_PLAYBOOK.md`: stable engineering governance;
+- `to_do_update_list.md`: current product-first execution truth only;
+- `docs/engineering/`: durable RCA, ADR-like engineering records, closeout evidence with long-lived value;
+- `docs/governance/evidence/`: sanitized machine-readable production evidence;
+- historical audit/remediation plans: evidence/candidate sources, not live execution authority.
 
-Do **not**:
+Prefer updating an existing authoritative document over creating a new one. A new durable document should have independent future value as a stable contract, decision, reusable runbook, material RCA/evidence record, or specification.
 
-- re-run E1a/E1b identity/audit/smoke loops;
-- manually run or recreate the reconciliation workflow;
-- manually delete or rewrite D1 calculation jobs;
-- use elapsed age alone as liveness authority;
-- ask the operator to select normal Actions workflows or paste runtime SHAs;
-- reopen Schema 3, E1d, broad ledger/provider redesign, Decimal migration, tenant UUID migration, or unrelated product work.
+Completed operational detail must be compressed out of this live handoff and retained through Git history or dedicated evidence records.
+
+Current document-quality review candidate:
+
+`docs/engineering/DOCUMENT_QUALITY_REVIEW_2026-08-12.md`
 
 ---
 
-## 7. GitHub Actions Automation Boundary
+## 8. Next Exact Actions
 
-PR #196 made normal Worker deployment transport event-driven:
-
-```text
-reviewed deployment request
--> Production Deployment Dispatch Broker
--> canonical Deploy Worker
-```
-
-Broker #1 successfully created Deploy Worker #4 automatically. Normal deployment no longer requires manual `Run workflow`, SHA entry, or run discovery.
-
-The only retained manual boundary is GitHub `production` Environment Required Reviewer approval. It is an independent production-secret release gate, not a workflow-transport task, and must not be bypassed by bot self-approval or admin override.
-
-Engineering record:
-
-`docs/engineering/PRODUCTION_ACTIONS_AUTONOMOUS_DISPATCH_2026-08-11.md`
-
-Read-only Production Identity Evidence auto-start remains a separate automation FOLLOW-UP after the current E1c-A.1 correctness closeout.
+1. Do not advance production reconciliation control-plane main while run `31518085574` is still awaiting approval.
+2. When the production gate clears, complete only the defined E1c-A.1 verification/closeout.
+3. Start E1c-B as the single implementation batch.
+4. Validate E1c-B with focused lifecycle regression plus applicable repository CI/build.
+5. Perform Independent Review against exact candidate head.
+6. Merge/deploy only after applicable gates pass.
+7. After E1c-B closeout, perform Product Functionality Review and select one next user-impact batch.
 
 ---
 
-## 8. High-Value Evidence / Recovery References
+## 9. Historical Authority Boundary
 
-Preserve at minimum:
+The following remain valuable evidence but are not automatic current execution plans:
 
-- E1a closeout records and recoveries from PR #185–#189;
-- E1b PR #190, smoke #3230 / `31453892608`, and `backup-post-e1b-closeout-624b40f`;
-- E1c-A PR #192 and runtime `94215c9dfec54a9da80ceac9782a6aca16bee8ad`;
-- E1c-A.1 PR #194 and runtime `R_C1`;
-- Production Identity Evidence #15 / `31473362171`;
-- activation authority PR #195 / `A_C1`;
-- PR #196 autonomous dispatch and `backup-post-actions-autonomous-dispatch-67b8735`;
-- Deploy Worker #4 / `31475347673`;
-- Worker version `68f32cee-c609-4624-aaff-eaa55ef0c77d`;
-- deploy artifact `9095595916` + verified digest;
-- PR #197 final candidate `dca0ae34495da8cf8b52d4bf6d27411e38ac166a`;
-- reconciliation run #1 / `31479868929`;
-- `backup-pre-e1c-a1-legacy-reconciliation-67b8735`;
-- PR #198 as superseded forensic evidence only.
+- `docs/MASTER_REMEDIATION_PLAN.md`
+- historical audit reports;
+- superseded PRs/candidates;
+- completed Gate records;
+- old operational recovery sequences.
 
-Failed/superseded candidates and Pages #1482 remain forensic evidence. Do not erase or restate them as successes.
-
----
-
-## 9. Documentation Quality Rule
-
-Every material batch updates durable documentation **during execution**, not only at conversational closeout:
-
-- stable architecture/usage -> `README.md` or stable docs only when the stable contract changes;
-- governance -> `AI_PROJECT_PLAYBOOK.md` only under a valid governance reopen condition;
-- current execution truth -> this file;
-- root cause / invariants / rejected alternatives -> engineering record;
-- production facts -> sanitized evidence JSON;
-- completed historical detail -> dedicated closeout/evidence record, not live handoff prose.
-
-When remote truth advances, remove completed actions from the "next" section promptly. Prefer exact remote identifiers and compact evidence references over duplicated narrative.
+Reopen a historical candidate only when current evidence promotes it into NOW/NEXT and records why it is required for the active product objective.
