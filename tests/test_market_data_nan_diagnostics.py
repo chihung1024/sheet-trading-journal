@@ -36,8 +36,28 @@ def test_nan_provider_row_is_diagnosed_without_imputation(caplog):
     messages = "\n".join(record.getMessage() for record in caplog.records)
     assert "Selected price field Close contains 1 NaN row(s)" in messages
     assert "NaN selected-price provider row" in messages
-    assert "date=2026-08-11T00:00:00" in messages
+    assert "date=2026-08-11 00:00:00" in messages
     assert "'Volume': 12345.0" in messages
     assert "'Dividends': 1.25" in messages
     assert "'Stock Splits': 0.0" in messages
     assert "'Capital Gains': 0.0" in messages
+
+
+def test_nan_diagnostics_do_not_require_a_datetime_index(caplog):
+    frame = pd.DataFrame(
+        {
+            "Close": [float("nan")],
+            "Volume": [99.0],
+            "Dividends": [0.0],
+            "Stock Splits": [0.0],
+        },
+        index=["provider-row-without-date-parse-contract"],
+    )
+
+    with caplog.at_level(logging.ERROR, logger="journal_engine.clients.auto_price_selector"):
+        selected = AutoPriceSelector("TEST", frame).get_adjusted_price_series()
+
+    assert selected.isna().all()
+    assert "date=provider-row-without-date-parse-contract" in "\n".join(
+        record.getMessage() for record in caplog.records
+    )
