@@ -1,11 +1,11 @@
 /**
  * Worker: Trading Journal API
- * v2.60 / PR-07: durable calculation jobs, idempotent triggers, and observable status.
+ * v2.61 / durable record-create idempotency and calculation lifecycle.
  */
 
 const SERVICE_NAME = "trading-journal-api";
-const RELEASE_VERSION = "4.07";
-const API_VERSION = "2.60";
+const RELEASE_VERSION = "4.08";
+const API_VERSION = "2.61";
 const GITHUB_DISPATCH = Object.freeze({
   owner: "chihung1024",
   repository: "sheet-trading-journal",
@@ -14,7 +14,7 @@ const GITHUB_DISPATCH = Object.freeze({
 });
 const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;
 const GITHUB_API_VERSION = "2026-03-10";
-const REQUIRED_SCHEMA_VERSION = 2;
+const REQUIRED_SCHEMA_VERSION = 3;
 const SOURCE_COMMIT_FALLBACK = "development";
 const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings", "calculation_jobs"];
 const PUBLIC_ROUTE_METHODS = Object.freeze({
@@ -135,11 +135,11 @@ export default {
           response = await handleGitHubTrigger(request, env, ctx, principal, requestId);
           break;
         case "GET /api/calculation-jobs/:id":
-response = await handleGetCalculationJob(calculationJobMatch[1], env, principal, requestId);
-break;
+          response = await handleGetCalculationJob(calculationJobMatch[1], env, principal, requestId);
+          break;
         case "POST /api/calculation-jobs/status":
-response = await handleCalculationJobStatus(request, env, requestId);
-break;
+          response = await handleCalculationJobStatus(request, env, requestId);
+          break;
         case "GET /api/portfolio":
           response = await handleGetPortfolio(env, principal, requestId);
           break;
@@ -520,6 +520,20 @@ function recordCursorBase64Decode(value) {
   return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
 }
 
+function publicRecord(row) {
+  if (!isPlainObject(row)) throw new Error("InvalidRecordRow");
+  const { create_idempotency_hash: _idempotency, create_payload_hash: _payload, ...record } = row;
+  return record;
+}
+
+function validateRecordCreateHash(value, fieldName) {
+  const normalized = String(value || "").toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new RequestValidationError(`${fieldName} is invalid`);
+  }
+  return normalized;
+}
+
 const recordsRepository = Object.freeze({
   async listPage(db, scope, pagination, signingSecret) {
     const { limit, cursor } = pagination;
@@ -545,17 +559,54 @@ const recordsRepository = Object.freeze({
     const result = await statement.all();
     const rows = Array.isArray(result?.results) ? result.results : [];
     const hasMore = rows.length > limit;
-    const items = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore && items.length
-      ? await encodeRecordCursor(items[items.length - 1], signingSecret, scope)
+    const rawItems = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore && rawItems.length
+      ? await encodeRecordCursor(rawItems[rawItems.length - 1], signingSecret, scope)
       : null;
-    return { items, hasMore, nextCursor };
+    return { items: rawItems.map(publicRecord), hasMore, nextCursor };
   },
 
-  async insert(db, userId, body) {
-    return db.prepare(
-      "INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(userId, body.txn_date, body.symbol, body.txn_type, body.qty, body.price, body.fee, body.tax, body.tag, body.note).run();
+  async insert(db, userId, body, options = {}) {
+    const normalizedUser = normalizeEmail(userId);
+    const hasIdempotency = options.idempotencyHash !== undefined && options.idempotencyHash !== null;
+    if (!hasIdempotency) {
+      await db.prepare(
+        "INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(normalizedUser, body.txn_date, body.symbol, body.txn_type, body.qty, body.price, body.fee, body.tax, body.tag, body.note).run();
+      return { kind: "inserted", record: null };
+    }
+
+    const idempotencyHash = validateRecordCreateHash(options.idempotencyHash, "record create idempotency hash");
+    const payloadHash = validateRecordCreateHash(options.payloadHash, "record create payload hash");
+    const insert = await db.prepare(
+      "INSERT OR IGNORE INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note, create_idempotency_hash, create_payload_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      normalizedUser,
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      body.qty,
+      body.price,
+      body.fee,
+      body.tax,
+      body.tag,
+      body.note,
+      idempotencyHash,
+      payloadHash,
+    ).run();
+
+    const row = await db.prepare(
+      "SELECT id, create_payload_hash FROM records WHERE user_id = ? AND create_idempotency_hash = ? LIMIT 1",
+    ).bind(normalizedUser, idempotencyHash).first();
+    if (!row) throw new Error("RecordCreateIdempotencyLost");
+    const observedPayloadHash = String(row.create_payload_hash || "").toLowerCase();
+    if (observedPayloadHash !== payloadHash) {
+      return { kind: "conflict", record: { id: Number(row.id) } };
+    }
+    return {
+      kind: affectedRows(insert) === 1 ? "inserted" : "replayed",
+      record: { id: Number(row.id) },
+    };
   },
 
   async update(db, userId, body) {
@@ -602,8 +653,30 @@ const recordsRepository = Object.freeze({
 async function handleAddRecord(request, env, principal, requestId) {
   try {
     const body = validateTransactionPayload(await readJsonObject(request), { requireId: false });
-    await recordsRepository.insert(env.DB, principal.email, body);
-    return jsonResponse({ success: true });
+    const rawIdempotencyKey = request.headers.get("Idempotency-Key");
+    const idempotencyKey = rawIdempotencyKey === null
+      ? null
+      : validateIdempotencyKey(rawIdempotencyKey);
+    const result = idempotencyKey === null
+      ? await recordsRepository.insert(env.DB, principal.email, body)
+      : await recordsRepository.insert(env.DB, principal.email, body, {
+          idempotencyHash: await hashRecordCreateIdempotency(principal.email, idempotencyKey),
+          payloadHash: await hashRecordCreatePayload(body),
+        });
+
+    if (result.kind === "conflict") {
+      return apiError(
+        "IDEMPOTENCY_CONFLICT",
+        "Idempotency-Key was already used for a different record payload",
+        409,
+        requestId,
+      );
+    }
+    return jsonResponse({
+      success: true,
+      deduplicated: result.kind === "replayed",
+      record_id: result.record?.id || null,
+    });
   } catch (error) {
     return mutationError(error, requestId, "Record creation failed");
   }
@@ -894,6 +967,39 @@ async function hashCalculationJobIdempotency(userId, key) {
     .join("");
 }
 
+async function hashRecordCreateIdempotency(userId, key) {
+  const normalizedUser = normalizeEmail(userId);
+  const normalizedKey = validateIdempotencyKey(key);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`record-create\n${normalizedUser}\n${normalizedKey}`),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hashRecordCreatePayload(body) {
+  const canonical = JSON.stringify([
+    body.txn_date,
+    body.symbol,
+    body.txn_type,
+    body.qty,
+    body.price,
+    body.fee,
+    body.tax,
+    body.tag,
+    body.note,
+  ]);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function createCalculationJobId() {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -1163,7 +1269,6 @@ const calculationJobsRepository = Object.freeze({
     return { kind: "updated", job: await this.findById(db, transition.publicId) };
   },
 });
-
 
 function validateGitHubRunId(value) {
   if (typeof value === "number" && (!Number.isSafeInteger(value) || value <= 0)) {
@@ -1705,10 +1810,13 @@ export const __test = {
   handleGitHubTrigger,
   handleGetCalculationJob,
   handleCalculationJobStatus,
+  handleAddRecord,
   handleDeleteRecord,
   resolveIdempotencyKey,
   validateIdempotencyKey,
   hashCalculationJobIdempotency,
+  hashRecordCreateIdempotency,
+  hashRecordCreatePayload,
   createCalculationJobId,
   validateCalculationJobId,
   validateGitHubRunId,
@@ -1726,6 +1834,7 @@ export const __test = {
   parseRecordPageRequest,
   encodeRecordCursor,
   decodeRecordCursor,
+  publicRecord,
   recordsRepository,
   validateCorsRequest,
   validateGoogleClaims,

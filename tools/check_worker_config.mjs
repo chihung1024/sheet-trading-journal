@@ -7,6 +7,7 @@ const [
   deploymentEntry,
   worker,
   baselineMigration,
+  calculationJobsMigration,
   latestMigration,
 ] = await Promise.all([
   readFile("worker-manifest.json", "utf8"),
@@ -16,6 +17,7 @@ const [
   readFile("worker.js", "utf8"),
   readFile("migrations/0001_baseline.sql", "utf8"),
   readFile("migrations/0002_calculation_jobs.sql", "utf8"),
+  readFile("migrations/0003_record_create_idempotency.sql", "utf8"),
 ]);
 const manifest = JSON.parse(manifestRaw);
 const environmentContract = JSON.parse(environmentContractRaw);
@@ -79,9 +81,10 @@ expect(worker, `const API_VERSION = "${manifest.apiVersion}"`, "Worker API const
 expect(worker, `const REQUIRED_SCHEMA_VERSION = ${manifest.schemaVersion}`, "Worker schema constant");
 expect(baselineMigration, `schema_version, release_version`, "schema metadata columns");
 expect(baselineMigration, `VALUES (1, 1, '4.05'`, "baseline schema metadata row");
+expect(calculationJobsMigration, `CREATE TABLE IF NOT EXISTS calculation_jobs`, "calculation jobs table");
 expect(latestMigration, `schema_version = ${manifest.schemaVersion}`, "latest schema version update");
 expect(latestMigration, `release_version = '${manifest.releaseVersion}'`, "latest release version update");
-expect(latestMigration, `CREATE TABLE IF NOT EXISTS calculation_jobs`, "calculation jobs table");
+expect(latestMigration, `CREATE UNIQUE INDEX IF NOT EXISTS idx_records_user_create_idempotency`, "record-create idempotency index");
 
 if (!config.includes('database_id = "00000000-0000-0000-0000-000000000000"')) {
   errors.push("Tracked wrangler.toml must retain the safe local-only D1 sentinel");
