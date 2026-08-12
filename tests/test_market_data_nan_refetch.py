@@ -256,6 +256,38 @@ def test_refetch_missing_action_evidence_preserves_first_invalid_response():
     assert PortfolioValidator.validate_price_data("AAA", aaa) is False
 
 
+def test_refetch_cannot_resolve_nan_by_omitting_prior_provider_date():
+    client = MarketDataClient()
+    invalid = _history(final_close=float("nan"), dividend=0.25)
+    recovered_but_missing_invalid_date = _history(
+        final_close=101.25,
+        dividend=0.25,
+    ).iloc[:1]
+    spy = _history(final_close=500.0)
+    calls = defaultdict(int)
+
+    def ticker_factory(symbol):
+        call_index = calls[symbol]
+        calls[symbol] += 1
+        if symbol == "AAA":
+            frame = invalid if call_index == 0 else recovered_but_missing_invalid_date
+            return FakeTicker(frame)
+        return FakeTicker(spy)
+
+    with patch.object(client, "_download_currency_fx", return_value=None), patch(
+        "journal_engine.clients.market_data.yf.Ticker",
+        side_effect=ticker_factory,
+    ), patch("journal_engine.clients.market_data.time.sleep") as sleep:
+        market_data, _ = client.download_data(["AAA"], pd.Timestamp("2026-05-02"))
+
+    aaa = market_data["AAA"]
+    assert calls["AAA"] == 2
+    sleep.assert_called_once()
+    assert list(aaa.index) == list(invalid.index)
+    assert pd.isna(aaa.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"])
+    assert PortfolioValidator.validate_price_data("AAA", aaa) is False
+
+
 def test_first_invalid_frame_without_action_evidence_is_not_retried():
     client = MarketDataClient()
     invalid_without_dividend_evidence = _history(
