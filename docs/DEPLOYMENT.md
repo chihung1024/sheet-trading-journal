@@ -4,76 +4,94 @@ This is the repository's **canonical deployment navigation and production-activa
 
 Historical release notes, acceptance records, audit files, and `DEPLOYMENT_FINAL.md` are context only. They must not override current protected-main code, machine-readable contracts, current workflows, tests, or `to_do_update_list.md`.
 
-Current Gate-E rollout authority:
+Current project/activation authority:
 
-- `to_do_update_list.md`
-- `docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md`
-- `docs/engineering/GATE_E_E1A_A7_CLOSEOUT_2026-08-10.md`
+- current GitHub remote truth and protected `main`;
+- `worker-manifest.json` and `config/*.json` machine-readable contracts;
+- `.github/workflows/deploy-worker.yml` and deployment verifier tools;
+- `to_do_update_list.md`;
+- historical Gate-E plans only for rationale and prior evidence.
 
 ---
 
-## 1. Runtime identity
+## 1. Runtime identity — repository candidate vs. live production
 
-Use `worker-manifest.json` and current source as authority. Current contract remains:
+**Do not use one unqualified “current runtime” label for both repository source and deployed production.** They intentionally diverge between merge and controlled activation.
 
+### Repository candidate state
+
+`worker-manifest.json` on protected main is the authority for the currently reviewed source contract.
+
+After NOW-1A / PR #213 merged:
+
+- protected main/runtime source commit: `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`;
 - service: `journal-backend`;
 - runtime service metadata: `trading-journal-api`;
 - deployment entry: `worker-entry.js`;
 - canonical Worker source: `worker.js`;
+- Worker release: `4.08`;
+- API version: `2.61`;
+- D1 schema: `3`;
+- D1 binding: `DB`.
+
+This is a **reviewed repository candidate**, not proof that production is already running 4.08 / 2.61 / Schema 3.
+
+### Last verified live production state
+
+The latest successful canonical `Deploy Worker` execution is run #4 / `31475347673`, which deployed exact source:
+
+`P = fe5f091fdb2c92970dff74c1a7c99052084adb95`
+
+That run verified and deployed:
+
 - Worker release: `4.07`;
 - API version: `2.60`;
 - D1 schema: `2`;
-- D1 binding: `DB`.
+- Worker version ID: `68f32cee-c609-4624-aaff-eaa55ef0c77d`;
+- three consecutive post-deploy production-contract passes.
 
-Current deployed E1a-A runtime source:
+No NOW-1A production deployment has been executed yet. Until a newer successful activation proves otherwise, treat the above as the last verified live production contract.
 
-`R = 2d1fc1cd7190651c64b764c58f58d67826d408e8`
-
-Observed deployed Worker version:
-
-`245eb37c-0d52-4344-9cc3-f82866434f28`
-
-Do not copy version or identity values from old audit/release documents when current code differs.
+Do not infer live production identity merely from protected-main HEAD or `worker-manifest.json`.
 
 ---
 
-## 2. Current production-activation state
+## 2. Current production-activation state — NOW-1A pending
 
-E1a-A is deployed and live.
+NOW-1A server compatibility is merged to protected main and post-main CI has passed, but production activation is intentionally still pending.
 
-Activation authority used for the production deployment:
+Current state:
 
-`A = 0d4896d3161eebfea3dd9bec16b57b6e061cbf04`
+- PR #213 merge commit: `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`;
+- post-main CI #720 / `31621612621`: SUCCESS;
+- Recovery Evidence Gate: PASS, backed by the isolated staging D1 recovery drill;
+- repository candidate contract: Worker 4.08 / API 2.61 / Schema 3;
+- live production last verified contract: Worker 4.07 / API 2.60 / Schema 2.
 
-Canonical Deploy Worker run #1 / `31368153511`:
+`config/production-activation-authority.json` currently authorizes the older production source:
 
-- requested runtime: exact `R`;
-- runtime/D1/authority preflight: PASS;
-- reviewer-protected production gate: PASS;
-- D1 migration step: no pending migrations;
-- canonical Worker deploy command: SUCCESS;
-- deployed Worker version: `245eb37c-0d52-4344-9cc3-f82866434f28`.
+`fe5f091fdb2c92970dff74c1a7c99052084adb95`
 
-The run's final workflow conclusion was FAILURE because its immediate post-deploy CORS verifier hit a stale pre-deploy edge after the first single readiness observation. PR #183 root-caused this as a stabilization race and changed future deployment verification to require three consecutive full production-contract passes, resetting on any failure.
-
-Runtime `R` was not rolled back or redundantly redeployed merely to repair the failed verification history.
-
-Fresh reviewer-protected Production Contract Audit run #40 / `31386148724` subsequently proved exact `R` live with:
-
-- source/service/release/API/schema identity PASS;
-- `/api/version` and `/api/health` PASS;
-- anonymous auth rejection PASS;
-- production CORS PASS;
-- staging/localhost CORS rejection PASS;
-- trusted-system opaque-job E1a-A discriminator `404 NOT_FOUND` with no tenant identity.
-
-A post-A5 authenticated normal user calculation smoke also passed through `Update Portfolio Data` run #3222 / `31386988867`, including calculation-job running/succeeded lifecycle and snapshot upload.
+It **does not authorize** `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`.
 
 Therefore:
 
-> **Do not redeploy `R` merely because protected `main` is newer.**
+> **Do not dispatch production deployment for the NOW-1A source until a fresh reviewed activation authority explicitly authorizes that exact runtime source.**
 
-The next production Worker deployment should occur only when a new reviewed runtime candidate (for example E1a-B) intentionally changes the runtime and passes the applicable identity/authority/deployment gates.
+The next controlled production activation must preserve the existing order:
+
+```text
+reviewed runtime source R
+→ fresh production identity/precondition evidence as applicable
+→ protected-main activation authority A explicitly authorizes R
+→ canonical Deploy Worker workflow with source_sha=R
+→ remote additive migration
+→ Worker deploy
+→ stable post-deploy contract verification
+→ product smoke / closeout evidence
+```
+
+Do not make NOW-1B frontend stable-key behavior depend on Worker 4.08 until this production activation is verified.
 
 ---
 
@@ -85,9 +103,9 @@ For production deployment use, in order:
 2. `worker-manifest.json`, current runtime source, `wrangler.toml`, and `config/*.json` machine contracts;
 3. current `.github/workflows/*.yml`, verifier tools, and tests;
 4. `to_do_update_list.md`;
-5. `docs/engineering/GATE_E_E1A_PRODUCTION_ACTIVATION_PLAN.md`;
-6. this runbook;
-7. D3D acceptance/audit/evidence for historical rationale;
+5. this runbook;
+6. current batch-specific reviewed activation evidence / authority records;
+7. historical Gate-E acceptance/audit/evidence for rationale;
 8. archived/tombstoned material for forensic comparison only.
 
 See `docs/README.md` for repository-wide document authority.
@@ -96,19 +114,29 @@ See `docs/README.md` for repository-wide document authority.
 
 ## 4. Two-SHA production activation model
 
-Production activation intentionally separates immutable runtime source from the latest protected-main control plane.
+Production activation intentionally separates immutable runtime source from the later protected-main control plane that authorizes it.
 
-- **R — runtime source SHA:** exact deployable commit containing E1a-A compatibility and verified production runtime prerequisites.
-- **A — activation-authority SHA:** later protected-main commit containing reviewed evidence and explicitly authorizing `R`.
+- **R — runtime source SHA:** exact deployable commit containing the reviewed runtime candidate.
+- **A — activation-authority SHA:** protected-main commit containing reviewed evidence and explicitly authorizing exact `R`.
 
-For E1a-A:
+`A` may be newer than `R`. Do not collapse this into “deploy current HEAD”.
+
+For the next NOW-1A activation, the intended runtime candidate is currently:
+
+```text
+R = 6ea86620475cde8ac9a412921cdc8ae6ce11b9bf
+```
+
+but it is **not deployable under the current activation-authority record**, because that record still authorizes `fe5f091f...`. A fresh authority decision must explicitly bind to exact `R` before deployment.
+
+Historical E1a-A example:
 
 ```text
 R = 2d1fc1cd7190651c64b764c58f58d67826d408e8
 A = 0d4896d3161eebfea3dd9bec16b57b6e061cbf04
 ```
 
-`A` may be newer than `R`. Do not collapse this into “deploy current HEAD”.
+Those historical SHAs are preserved for provenance only and are not current activation targets.
 
 ---
 
@@ -134,13 +162,21 @@ The requested runtime source must:
 
 The workflow performs non-secret preflight **before** the reviewer-protected production Environment, then rechecks authority/source near mutation boundaries, renders reviewed Wrangler configuration, verifies live D1 identity, applies only allowed migration state, deploys `worker-entry.js`, and verifies stable propagated source/version/health/auth/CORS evidence.
 
-Post-PR #183, stable propagation requires three consecutive full production-contract passes; any failed/stale-edge probe resets the consecutive-success count.
+Stable propagation requires three consecutive full production-contract passes; any failed/stale-edge probe resets the consecutive-success count.
 
 Do not use routine Cloudflare dashboard Quick Edit or source copy/paste for production.
 
+### NOW-1A activation boundary
+
+For the current batch, do not call `deploy-worker.yml` with `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf` until `config/production-activation-authority.json` (or its reviewed successor) explicitly authorizes that exact SHA and the applicable evidence is accepted.
+
+When activation becomes authorized, the canonical workflow must apply additive migration `0003_record_create_idempotency.sql` before deploying Worker 4.08 and then verify live Schema 3 / release 4.08 / API 2.61 against exact source identity.
+
 ---
 
-## 6. Gate E / E1a-A activation sequence — completed evidence
+## 6. Historical Gate E / E1a-A activation sequence — completed evidence
+
+This section is historical provenance. It must not override the current NOW-1A activation state above.
 
 ### A1 — Authoritative production identity evidence
 
@@ -168,7 +204,7 @@ explicitly authorized exact `R` from reviewed A3 evidence.
 
 ### A5 — Deploy R
 
-Deploy Worker run #1 / `31368153511` deployed exact `R` successfully; the post-deploy verifier race is preserved as historical incident evidence and was corrected by PR #183.
+Deploy Worker run #1 / `31368153511` deployed exact `R` successfully; its immediate post-deploy verifier exposed a stale-edge stabilization race that was later corrected by PR #183.
 
 ### A6 — Prove E1a-A compatibility is live
 
@@ -186,28 +222,25 @@ Post-A5 authenticated legacy user calculation path:
 - terminal callback `succeeded`;
 - workflow SUCCESS.
 
-PR #185 records the final A7 current-state closeout. After its expected-head merge and post-main CI/Pages pass, E1a-A is CLOSED / PRODUCTION VERIFIED and E1a-B becomes active.
+PR #185 records the A7 historical closeout.
+
+Later Gate-E runtime deployments superseded E1a-A as the live source. In particular, successful Deploy Worker #4 / `31475347673` deployed `fe5f091fdb2c92970dff74c1a7c99052084adb95` and verified Worker 4.07 / API 2.60 / Schema 2. Therefore the E1a-A `R` above must never again be described as the current deployed source.
 
 ---
 
-## 7. E1a-B cutover guard
+## 7. Historical E1a-B cutover guard — completed
 
-After A7 closes, E1a-B becomes the current privacy batch.
+E1a-B removed tenant email from the normal public GitHub calculation dispatch and resolved ownership through the trusted opaque-job boundary.
 
-Its objective is to remove tenant email from the normal public GitHub calculation dispatch and resolve ownership only through the trusted opaque-job boundary.
+The historical invariants remain useful regression constraints:
 
-Required invariants:
-
-- canonical Worker owns the trusted-system opaque-job lookup before the temporary shim is removed;
+- canonical Worker owns the trusted-system opaque-job lookup;
 - normal calculation dispatch contains opaque job id and required non-tenant inputs, never tenant email/user id;
-- runner resolves owner through Worker before unchanged financial calculation;
+- runner resolves owner through Worker before financial calculation;
 - audit-only targeting remains separately scoped;
-- no schema migration;
-- durable job benchmark is authoritative, or dispatched benchmark exact-equality validates fail closed.
+- durable job benchmark remains authoritative or dispatched benchmark exact-equality validates fail closed.
 
-Do not merge the superseded prototype PR #172.
-
-E1a-B requires a fresh reviewed runtime candidate and a controlled production deployment/smoke. Do not infer that the existing authorization of `R` automatically authorizes a new E1a-B runtime SHA.
+E1a-B is no longer the active project batch. Do not reopen it without a new material regression or security finding.
 
 ---
 
@@ -223,13 +256,19 @@ Purpose: authoritative external identity/config discovery around a production ac
 
 `.github/workflows/production-contract-audit.yml`
 
-Purpose: verify an exact deployed/main-reachable Worker source and production API contract, including the E1a-A compatibility-specific read-only proof added by PR #184.
+Purpose: verify an exact deployed/main-reachable Worker source and production API contract.
 
 ### Staging Browser Smoke
 
 `.github/workflows/staging-browser-smoke.yml`
 
 Purpose: staging browser contract verification. Staging evidence is never production D1 authority.
+
+### Staging D1 Recovery Evidence
+
+`.github/workflows/staging-d1-recovery-evidence.yml`
+
+Purpose: destructive recovery rehearsal against the isolated staging D1 only. Its accepted structured evidence currently satisfies the repository Recovery Evidence Gate for the reviewed Schema 3 strategy. It is not permission to mutate production outside the canonical production activation path.
 
 ---
 
@@ -257,7 +296,9 @@ On production activation failure:
 
 Never weaken runtime, identity, authority, schema, security, or recovery checks to make a deployment pass.
 
-For A7 closeout itself no Worker/data mutation is required. Preserve:
+For NOW-1A specifically:
 
-- `backup-pre-e1a-a7-closeout-210e004` before the closeout PR;
-- a post-A7 recovery ref after protected-main merge/post-main verification.
+- migration 0003 is additive, but do not claim production Schema 3 until remote activation verifies it;
+- if migration succeeds but Worker activation fails, stop and use the reviewed additive-schema compatibility/rollback strategy rather than improvising destructive SQL;
+- if Worker 4.08 activates but produces a material production regression, prioritize rollback to the last known good compatible Worker while preserving evidence and re-evaluating the exact schema/runtime state;
+- NOW-1B frontend stable-key behavior must remain disabled until server activation and rollback compatibility are explicitly closed.
