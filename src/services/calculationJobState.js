@@ -15,6 +15,18 @@ export function normalizeCalculationOwner(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
+export function normalizeCalculationBenchmark(value) {
+  return typeof value === 'string' ? value.trim().toUpperCase() : '';
+}
+
+export function pendingCalculationMatchesBenchmark(pending, benchmark) {
+  if (!pending || typeof pending !== 'object') return false;
+  const expectedBenchmark = normalizeCalculationBenchmark(benchmark);
+  if (!expectedBenchmark) return false;
+  if (pending.benchmark === undefined || pending.benchmark === null) return true;
+  return normalizeCalculationBenchmark(pending.benchmark) === expectedBenchmark;
+}
+
 export function validatePendingCalculationRequest(value, owner, options = {}) {
   const now = Number.isFinite(options.now) ? options.now : Date.now();
   const expectedOwner = normalizeCalculationOwner(owner);
@@ -25,11 +37,17 @@ export function validatePendingCalculationRequest(value, owner, options = {}) {
   if (!Number.isFinite(value.createdAt) || value.createdAt <= 0 || value.createdAt > now + 60_000) return null;
   if (value.jobId !== null && (typeof value.jobId !== 'string' || !JOB_ID_RE.test(value.jobId))) return null;
 
+  const normalizedBenchmark = value.benchmark === undefined || value.benchmark === null
+    ? null
+    : normalizeCalculationBenchmark(value.benchmark);
+  if (value.benchmark !== undefined && value.benchmark !== null && !normalizedBenchmark) return null;
+
   return {
     owner: expectedOwner,
     key: value.key,
     createdAt: value.createdAt,
     jobId: value.jobId,
+    ...(normalizedBenchmark ? { benchmark: normalizedBenchmark } : {}),
   };
 }
 
@@ -224,15 +242,24 @@ export function rememberPendingCalculationRequest(storage, owner, pending) {
     ? findNewestLiveGenerationForKey(generations, proposed.key)
     : null;
   const legacy = readLegacyPending(storage, normalizedOwner, { now: proposed.createdAt });
+  const priorBenchmark = existing?.record.benchmark
+    ?? (legacy?.key === proposed.key ? legacy.benchmark : null)
+    ?? null;
+  if (proposed.benchmark && priorBenchmark && proposed.benchmark !== priorBenchmark) {
+    throw new Error('Pending calculation benchmark intent conflicts with existing generation');
+  }
+
   const stableCreatedAt = existing?.record.createdAt
     ?? (legacy?.key === proposed.key ? legacy.createdAt : proposed.createdAt);
   const stableJobId = proposed.jobId ?? existing?.record.jobId ?? null;
+  const stableBenchmark = proposed.benchmark ?? priorBenchmark;
   const stable = validatePendingCalculationRequest(
     {
       owner: normalizedOwner,
       key: proposed.key,
       createdAt: stableCreatedAt,
       jobId: stableJobId,
+      ...(stableBenchmark ? { benchmark: stableBenchmark } : {}),
     },
     normalizedOwner,
     { now: proposed.createdAt },
@@ -309,6 +336,7 @@ export function clearPendingCalculationRequest(storage, owner, selector, options
       key: match.record.key,
       createdAt: match.record.createdAt,
       jobId: match.record.jobId,
+      ...(match.record.benchmark ? { benchmark: match.record.benchmark } : {}),
       clearedAt: Math.max(now, match.record.createdAt),
     };
     try {
