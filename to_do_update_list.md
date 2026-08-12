@@ -32,7 +32,7 @@ The project goal is product correctness and usability. Governance, CI/CD, deploy
 | Area | Status | Remote-truth note |
 |---|---|---|
 | Gate A | DONE | closed |
-| Gate B | DONE | closed / post-main verified |
+| Gate B | DONE | closed |
 | Gate C | DONE | closed / post-main verified |
 | Gate D | DONE | D1a–D1e closed / post-main verified |
 | Gate E / E0 | DONE | architecture re-review closed |
@@ -347,6 +347,30 @@ E1c-B implementation remains merged and is not reopened. Browser recovery has ga
 - authenticated dispatch running and terminal callbacks operate correctly.
 
 Remaining E1c-B closeout evidence is narrowed to **direct browser terminal cleanup / normal usable post-terminal state**. Do not broaden this into another lifecycle redesign unless that observation fails.
+
+### E1c-B locked behavior carried forward
+
+These decisions remain authoritative even though MD-NAN-B1 is the current active batch:
+
+1. active calculation recovery must not disappear solely because 15 minutes elapsed;
+2. a known `jobId` remains recoverable across refresh/reopen until durable terminal or explicit 404 semantics;
+3. ambiguous pre-job mutation state must retain/replay the same idempotency key until server outcome is resolved;
+4. generation/tombstone owner and cross-tab protections remain intact;
+5. pending workflow runs must not be silently displaced before lifecycle callback while repository-wide serialized calculation execution is preserved.
+
+### E1c-B implementation decisions preserved
+
+- new / explicitly upgraded pending generations carry `lifecyclePersistent: true` and no longer expire by age;
+- pre-E1c-B unmarked live generations retain the historical 15-minute rule, preventing rollout resurrection of abandoned state;
+- currently-valid legacy pending state is best-effort upgraded in place without changing key / createdAt / jobId;
+- cleared tombstones remain durable authority even if written by an old tab without the new marker;
+- benchmark intent is scoped so an old exact-key job cannot silently replay for a different explicit benchmark;
+- pre-E1c-B records without benchmark remain conservatively replayable during transition;
+- server-returned authoritative job benchmark is persisted;
+- terminal/404 cleanup and 20-minute active-polling resource cap remain unchanged;
+- owner/generation/tombstone cross-tab protections remain intact;
+- `portfolio-update` remains serialized with `cancel-in-progress: false` and retained pending queue behavior;
+- no Worker, D1, schema, calculation, snapshot, or broad store redesign is implied by E1c-B.
 
 ---
 
