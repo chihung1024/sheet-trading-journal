@@ -81,17 +81,18 @@ It does **not** authorize a new NOW-1A activation source.
 
 Therefore:
 
-> **Do not dispatch production deployment for NOW-1A until an exact current-main runtime source `R` has been selected, read-only production identity evidence has passed for that exact `R`, and a later reviewed activation authority explicitly authorizes the same `R`.**
+> **Do not dispatch production deployment for NOW-1A until an exact current-main runtime source `R` has been selected after same-SHA main CI and Pages production deployment are stable, read-only production identity evidence has passed for that exact `R`, and a later reviewed activation authority explicitly authorizes the same `R`.**
 
 The next controlled production activation must preserve this order:
 
 ```text
 finish all pre-R repository/document/governance changes
-→ re-fetch protected main
-→ select R = exact current protected-main HEAD
-→ Production Identity Evidence(source_sha=R) while main HEAD is still exactly R
+→ wait post-main CI SUCCESS for candidate SHA
+→ wait Pages production deployment SUCCESS for the same candidate SHA
+→ re-fetch protected main and confirm it is still that exact SHA
+→ select/freeze R = that exact current protected-main HEAD
+→ Production Identity Evidence(source_sha=R)
 → inspect/accept sanitized PASS evidence
-→ freeze R as the reviewed runtime source
 → protected-main activation authority A explicitly authorizes R
 → canonical Deploy Worker workflow with source_sha=R
 → remote additive migration
@@ -100,7 +101,7 @@ finish all pre-R repository/document/governance changes
 → product smoke / closeout evidence
 ```
 
-If any runtime/deployment-affecting change lands after the evidence run and before activation, treat it as a new candidate: reselect `R`, recollect exact-source evidence, and re-review. Do not silently transfer evidence from one runtime source to another.
+If protected main changes while waiting for CI/Pages, discard the provisional candidate selection: wait for the new main SHA's CI and Pages deployment, re-check contracts, and then select a new `R`. If any runtime/deployment-affecting change lands after the evidence run and before activation, treat it as a new runtime candidate: reselect `R`, recollect exact-source evidence, and re-review. Do not silently transfer evidence from one runtime source to another.
 
 Do not make NOW-1B frontend stable-key behavior depend on Worker 4.08 until this production activation is verified.
 
@@ -127,29 +128,35 @@ See `docs/README.md` for repository-wide document authority.
 
 Production activation intentionally separates immutable runtime source from the later protected-main control plane that authorizes it.
 
-- **R — runtime source SHA:** exact deployable commit selected from protected main and bound to fresh production identity evidence.
+- **R — runtime source SHA:** exact deployable commit selected from protected main after its same-SHA CI/Pages state is stable and bound to fresh production identity evidence.
 - **A — activation-authority SHA:** later protected-main commit containing reviewed evidence and explicitly authorizing exact `R`.
 
 `A` may be newer than `R`. Do not collapse this into “deploy current HEAD”.
 
 ### Selecting R
 
-For the current workflow contract, `Production Identity Evidence` requires:
+For the current workflow/collector contract, Production Identity Evidence requires both:
 
 ```text
 inputs.source_sha == current protected-main HEAD
+canonical Pages production deployment commit == inputs.source_sha
 ```
 
-at the time its production read-only job runs. Therefore the correct selection rule is:
+Therefore the correct selection rule is:
 
 ```text
 complete all intended pre-R main changes
-→ re-fetch remote main
+→ wait same-SHA post-main CI SUCCESS
+→ wait same-SHA Pages production deployment SUCCESS
+→ re-fetch protected main
+→ confirm main is still that exact SHA
 → R = current protected-main HEAD
-→ immediately collect Production Identity Evidence for exact R
+→ collect Production Identity Evidence for exact R
 ```
 
 Do **not** preselect the earlier PR #213 merge SHA merely because it is the commit that introduced the runtime diff. A later docs/governance-only descendant can be the correct deployable `R` when it is current main and contains the same reviewed runtime contract.
+
+Do **not** dispatch the evidence collector before Pages has propagated the same SHA: that creates a predictable fail-closed audit against stale Pages state. If main changes while waiting for Pages, wait for the new main's same-SHA CI/Pages state and reselect `R`.
 
 Once exact-source evidence for `R` is accepted, preserve `R` as the immutable runtime target. The later authority commit `A` may then advance protected main while authorizing `R`, because the deploy workflow independently requires `R` to remain reachable from main.
 
@@ -276,7 +283,12 @@ E1a-B is no longer the active project batch. Do not reopen it without a new mate
 
 Purpose: authoritative external identity/config discovery around a production activation. GET-only; no deploy or data mutation.
 
-Operational constraint: its production job requires `source_sha` to equal current protected-main HEAD. This constraint is why `R` must be selected only after all intended pre-R main changes are complete.
+Operational constraints:
+
+- its production job requires `source_sha` to equal current protected-main HEAD;
+- its collector requires the canonical Pages production deployment commit to equal the same audited SHA.
+
+These constraints are why `R` must be selected only after all intended pre-R main changes are complete **and** the same SHA has completed Pages production deployment.
 
 ### Production Contract Audit
 
@@ -325,7 +337,8 @@ Never weaken runtime, identity, authority, schema, security, or recovery checks 
 For NOW-1A specifically:
 
 - migration 0003 is additive, but do not claim production Schema 3 until remote activation verifies it;
-- if exact-main Production Identity Evidence cannot bind to the intended source, stop and reselect `R` from current main; do not weaken the exact-main assertion;
+- if post-main CI or Pages is not successful for the same candidate SHA, do not select/freeze it as R yet;
+- if exact-main Production Identity Evidence cannot bind to the intended source or Pages SHA, stop and re-evaluate current main/Pages state; do not weaken either assertion;
 - if migration succeeds but Worker activation fails, stop and use the reviewed additive-schema compatibility/rollback strategy rather than improvising destructive SQL;
 - if Worker 4.08 activates but produces a material production regression, prioritize rollback to the last known good compatible Worker while preserving evidence and re-evaluating the exact schema/runtime state;
 - NOW-1B frontend stable-key behavior must remain disabled until server activation and rollback compatibility are explicitly closed.
