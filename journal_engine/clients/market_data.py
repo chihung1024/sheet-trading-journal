@@ -418,9 +418,9 @@ class MarketDataClient:
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
 
         def fetch_single_ticker(t):
-            try:
-                last_result = None
-                for attempt in range(1, SELECTED_PRICE_REFETCH_ATTEMPTS + 1):
+            last_result = None
+            for attempt in range(1, SELECTED_PRICE_REFETCH_ATTEMPTS + 1):
+                try:
                     # Construct a fresh Ticker on each attempt. The retry requests the
                     # same provider, date range, adjustment mode, and action fields;
                     # it never fills, drops, substitutes, or repairs a provider row.
@@ -432,6 +432,12 @@ class MarketDataClient:
                     )
 
                     if hist.empty:
+                        if last_result is not None:
+                            print(
+                                f"[{t}] fresh re-fetch 回傳空資料；保留前次 invalid "
+                                "provider response 交由 validator fail closed"
+                            )
+                            return last_result
                         print(f"[{t}] 警告: 無歷史數據")
                         return t, None, None, False
 
@@ -469,14 +475,20 @@ class MarketDataClient:
                         )
                         time.sleep(SELECTED_PRICE_REFETCH_DELAY_SECONDS)
 
-                # Persistent invalid data remains unchanged and is rejected by the
-                # existing downstream validator. Never make the workflow green by
-                # mutating financial semantics here.
-                return last_result
+                except Exception as exc:
+                    if last_result is not None:
+                        print(
+                            f"[{t}] fresh re-fetch 失敗: {exc}; 保留前次 invalid "
+                            "provider response 交由 validator fail closed"
+                        )
+                        return last_result
+                    print(f"[{t}] 下載錯誤: {exc}")
+                    return t, None, None, False
 
-            except Exception as e:
-                print(f"[{t}] 下載錯誤: {e}")
-                return t, None, None, False
+            # Persistent invalid data remains unchanged and is rejected by the
+            # existing downstream validator. Never make the workflow green by
+            # mutating financial semantics here.
+            return last_result
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_ticker = {executor.submit(fetch_single_ticker, t): t for t in all_tickers}
