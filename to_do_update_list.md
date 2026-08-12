@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 01:23 Asia/Taipei**  
-Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A MERGED + POST-MAIN VERIFIED / PRODUCTION ACTIVATION PENDING / DOC QUALITY ACTIVE**
+Last updated: **2026-08-13 01:27 Asia/Taipei**  
+Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A MERGED + POST-MAIN VERIFIED / PRODUCTION ACTIVATION PENDING / DOCUMENT QUALITY MAINTAINED**
 
 ---
 
@@ -39,7 +39,7 @@ login
 | Product Functionality Review | **ACTIVE — NOW-1** | record-create duplicate correctness defect remains the current single product line until server activation + NOW-1B close the user-visible ambiguity gap |
 | NOW-1A / PR #213 | **MERGED / POST-MAIN VERIFIED / PRODUCTION ACTIVATION PENDING** | server-side create-idempotency compatibility is on protected main; merge commit `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`; post-main CI #720 succeeded; production still runs the last verified 4.07 / 2.60 / Schema 2 contract |
 | Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled rerun `31570497634` attempt 2 completed real staging export/drop/restore/integrity/cleanup and produced verified evidence |
-| Document Quality | **ACTIVE — POST-NOW-1A TRUTH ALIGNMENT** | operational/handoff docs are being aligned before any production activation; README and Playbook were reviewed and do not require semantic changes |
+| Document Quality | **MAINTAINED — POST-NOW-1A TRUTH ALIGNED** | deployment/handoff authority boundaries are corrected on this candidate; README and Playbook were independently reviewed and require no semantic change |
 
 The lifecycle/control-plane work is no longer the project focus. Recovery investigation was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. The current infrastructure work is limited to the minimum production-activation boundary required to finish NOW-1A safely.
 
@@ -206,8 +206,8 @@ None of these should interrupt product functionality work without a demonstrated
 
 ## 8. Exact Next Actions / Master Plan
 
-1. Finish the post-NOW-1A document-quality PR: exact-head CI, Same-AI Independent Review, merge, and post-main verification. Do not deploy production while the operational source/live distinction is stale.
-2. After docs merge, re-fetch current protected `main`, `worker-manifest.json`, `config/production-activation-authority.json`, Recovery Evidence Gate, current production identity/preconditions, and applicable workflow/ruleset truth.
+1. Re-check GitHub remote truth before consequential work. This file describes the completed post-NOW-1A document-quality candidate; if PR #215 is not yet on protected `main`, finish its exact-head CI/review/strict-ruleset merge gate first. If it is already merged, proceed directly to production-activation preparation.
+2. Re-fetch current protected `main`, `worker-manifest.json`, `config/production-activation-authority.json`, Recovery Evidence Gate, current production identity/preconditions, and applicable workflow/ruleset truth.
 3. Create/accept fresh reviewed production activation authority that explicitly authorizes the exact NOW-1A runtime source. Current authority still authorizes `fe5f091fdb2c92970dff74c1a7c99052084adb95`; it does **not** authorize `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`.
 4. Only after exact-source authorization, execute the canonical `Deploy Worker` path. Require migration `0003_record_create_idempotency.sql` before Worker 4.08 deployment and verify exact source, Worker 4.08 / API 2.61 / Schema 3, D1 identity, health, auth/CORS, tenant isolation, and legacy no-key compatibility.
 5. Before NOW-1B production activation, resolve and test both review FOLLOW-UP items: (a) delete-then-reuse idempotency-key retention semantics; (b) frontend/Worker rollback-disable coordination once stable frontend keys exist.
@@ -221,7 +221,7 @@ None of these should interrupt product functionality work without a demonstrated
 
 ### Stable State
 
-- protected `main` is now `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`, the PR #213 merge commit;
+- protected `main` is `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf` at this document-quality candidate's evidence baseline; remote truth must be re-fetched because main may advance after this file is written;
 - PR #213 was synchronized with then-current main using non-force merge commit `cea2b5a66f884c3414e18d0764d75285e67e5a89` because strict required checks require an up-to-date branch;
 - exact up-to-date PR CI #719 / run `31621500033` completed SUCCESS across all three required checks;
 - PR #213 Independent Review Gate PASS; focused re-review on exact synchronized head PASS with no BLOCKER;
@@ -261,6 +261,12 @@ PR #213 branch compatibility/contract convergence:
 - `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf` — merge PR #213 to protected main;
 - CI #720 / `31621612621` — post-main full CI SUCCESS on `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`.
 
+Post-NOW-1A document-quality candidate:
+
+- `e28620ed5b3fd0d7404fd2cd4b9e1ffdc2750b90` — separate repository runtime candidate from last verified live production in `docs/DEPLOYMENT.md` and lock activation behind exact-source authority;
+- `92b98b98b26e5e908a5d994e48502cd7263ce72c` — align the live handoff with PR #213 merged/post-main state and record governance/ruleset root causes;
+- PR #215 first Independent Review found one self-staleness BLOCKER in the handoff's own document-quality status/next-action wording; the candidate was revised rather than merging stale live status.
+
 ### Root Cause Log
 
 1. **PR #213 active deployment-contract drift — FIXED**
@@ -296,6 +302,12 @@ PR #213 branch compatibility/contract convergence:
    - Fix: merge current main into the PR branch non-force, run exact-head CI #719, perform focused exact-head re-review, then merge normally.
    - Prevention: before final merge, inspect branch/ruleset up-to-date requirements in addition to CI conclusion; never infer merge-policy satisfaction solely from a green synthetic merge run.
 
+6. **Live handoff self-staleness at documentation merge boundary — FIXED ON PR #215 CANDIDATE**
+   - Symptom: first document-quality candidate labeled Document Quality `ACTIVE` and told the next agent to finish the same PR, which would become false immediately after merge.
+   - Root cause: the live handoff described transient PR execution state instead of a durable post-merge state, despite remote truth already being the higher authority for PR status.
+   - Fix: describe document quality as maintained on the candidate and make the first next action conditional on fresh GitHub remote truth; after merge the same text remains valid without another documentation-only cleanup loop.
+   - Prevention: live handoff changes should target a durable stable state and avoid self-referential “merge this document” instructions unless phrased as a remote-truth condition.
+
 ### Known Issues / Risks
 
 - Production Schema 3 migration / Worker 4.08 activation is **not yet performed**. Repository merge and staging/local evidence are not production deployment evidence.
@@ -320,11 +332,13 @@ PR #213 branch compatibility/contract convergence:
 
 ## 10. Document Quality Review — 2026-08-13
 
+Status: **COMPLETED ON THIS CANDIDATE / REMOTE PR STATE MUST STILL BE RE-CHECKED**
+
 Objective: prevent project memory distortion before NOW-1A production activation without turning documentation into a parallel project.
 
 ### Reviewed / changed
 
-- `to_do_update_list.md` — **UPDATED**: replaced stale pre-merge state with PR #213 merged/post-main verified state; separated immutable recovery baseline, current protected main, repository candidate runtime, and live production runtime; recorded review/ruleset root causes and exact next actions.
+- `to_do_update_list.md` — **UPDATED**: replaced stale pre-merge state with PR #213 merged/post-main verified state; separated immutable recovery baseline, current-main evidence baseline, repository candidate runtime, and live production runtime; recorded review/ruleset root causes and durable next actions.
 - `docs/DEPLOYMENT.md` — **UPDATED**: removed the misleading single “current runtime” concept; now separates repository candidate 4.08/2.61/Schema3 from last verified live production 4.07/2.60/Schema2 and explicitly records that current activation authority still targets the older production source.
 
 ### Reviewed / no semantic change required
@@ -332,6 +346,14 @@ Objective: prevent project memory distortion before NOW-1A production activation
 - `README.md` — **NO CHANGE**: it does not hard-code live Worker/API/Schema versions and correctly delegates operational deployment truth to `docs/DEPLOYMENT.md`.
 - `AI_PROJECT_PLAYBOOK.md` — **NO CHANGE**: §§20–24 already explicitly define Independent Review as independent judgment reconstruction rather than separate identity and fully specify Same-AI isolation. Duplicating the rule would add governance drift surface rather than improve quality.
 
+### Independent document review outcome
+
+- first exact candidate review found one BLOCKER: the handoff would have become stale immediately after its own merge;
+- the finding was recorded before implementation resumed;
+- the handoff was revised to a durable post-merge semantic state;
+- `docs/DEPLOYMENT.md` required no material review fix because its source/live/authority separation matched primary remote and machine evidence;
+- final exact-head CI and focused re-review remain the PR merge gate; GitHub remote truth determines whether that gate has completed.
+
 ### Quality rule reinforced
 
-Documentation quality means keeping authority boundaries, current state, historical evidence, and next actions unambiguous. Do not rewrite stable documents merely because a batch touched adjacent concepts.
+Documentation quality means keeping authority boundaries, current state, historical evidence, and next actions unambiguous. Do not rewrite stable documents merely because a batch touched adjacent concepts, and do not make a live handoff self-expire at its own merge boundary.
