@@ -1,223 +1,201 @@
 # Gate E / E1c — Calculation Job Lifecycle and Idempotency
 
-Status: **E1c-A SERVER-FIRST IMPLEMENTATION CANDIDATE**  
-Date: **2026-08-11**  
-Baseline protected main: `624b40f5b4bf40544050e6783adc0b6bc65bfb64`
+Status: **CLOSED / PRODUCTION VERIFIED**  
+Finalized: **2026-08-12**
 
-## 1. Problem
+## 1. Product problem that E1c solved
 
-The durable calculation-job implementation has explicit lifecycle states, but duplicate prevention and browser recovery were still controlled by fixed elapsed-time windows rather than durable lifecycle state.
+Calculation updates crossed three asynchronous systems: browser state, Cloudflare Worker durable jobs, and GitHub Actions. The original implementation incorrectly let elapsed time influence liveness and recovery:
 
-Three clocks can disagree:
+- browser pending recovery expired after 15 minutes;
+- Worker idempotency could previously release an active job by age;
+- GitHub default concurrency could retain only a limited pending slot and displace an older pending lifecycle run.
 
-- browser pending calculation state: 15 minutes;
-- Worker idempotency release: 15 minutes from job creation;
-- GitHub workflow job timeout: 20 minutes, excluding queue delay.
+The resulting user-visible failure mode was severe: a real calculation could remain active while the browser forgot it, a retry could rotate identity, or an accepted durable job could become an orphan that never reached a workflow callback.
 
-The shared GitHub Actions concurrency group can also replace an already-pending run before the workflow reaches its first lifecycle callback.
+E1c therefore had to make **durable lifecycle state authoritative over wall-clock age** without creating duplicate calculations during rollout.
 
-This creates two correctness classes:
+## 2. Locked architecture and rollout decision
 
-1. an active `queued` / `running` job can lose duplicate protection because enough wall-clock time elapsed;
-2. an accepted or ambiguous dispatch can leave a durable `queued` orphan that later interacts badly with browser key rotation or pending-run replacement.
-
-## 2. Root Causes
-
-### 2.1 Worker released active idempotency by age
-
-`calculationJobsRepository.createOrGet()` previously set the same tenant/key `idempotency_hash = NULL` once `created_at` was older than 15 minutes.
-
-The SQL had no lifecycle predicate. A legitimate `queued` or `running` job could therefore lose its unique `(user_id, idempotency_hash)` protection solely because it was old.
-
-### 2.2 Legacy browser can rotate the key while a server job is still active
-
-The current production frontend deliberately expires local pending calculation state after 15 minutes. Once expired, a later user retry can generate a new idempotency key even though the original durable job is still `queued` or `running`.
-
-Therefore a server-first Worker fix that protects only the original hash is insufficient for zero-downtime rollout: the still-old frontend can legitimately arrive with a different key during the transition.
-
-### 2.3 Dispatch exceptions could leave a queued orphan
-
-Explicit GitHub non-2xx responses already transition a newly inserted job to `failed`.
-
-A thrown dispatch `fetch()` error, including timeout/network failure, previously returned `502` without terminalizing the already-created durable job. The job could remain `queued` without a trustworthy dispatch result.
-
-### 2.4 Pending GitHub runs can be replaced before callback
-
-The current workflow uses one repository-wide concurrency group with `cancel-in-progress: false`, but platform-default concurrency keeps only a limited pending slot. A newer pending run can replace an older pending run before the older workflow reaches `Mark calculation job running`.
-
-That issue will be addressed in E1c-B after the server-first Worker compatibility layer is deployed.
-
-## 3. Zero-Downtime Transition BLOCKER and Phase Split
-
-The first E1c candidate attempted to change Worker, frontend pending semantics, and workflow pending retention in one PR. Exact-head CI passed, but a pre-deployment transition review found that this was not safe.
-
-### New frontend + old Worker is unsafe
-
-If Pages activates lifecycle-based browser recovery before production Worker deployment, the browser can keep replaying the same key beyond 15 minutes while the old Worker has already released that hash by age. A duplicate job can then be created.
-
-### New Worker + old frontend is unsafe without compatibility guard
-
-If Worker is deployed first but only protects the same idempotency hash, the still-old frontend can expire after 15 minutes and generate a new key. That different hash can create a second active job.
-
-### Locked correction
-
-E1c is therefore split into two independently safe batches:
+E1c was intentionally split server-first:
 
 ```text
-E1c-A server-first compatibility Worker
--> deploy and production-verify E1c-A
--> E1c-B frontend lifecycle + workflow retained queue
--> production smoke / E1c closeout
+E1c-A Worker compatibility lifecycle
+→ E1c-A.1 durable GitHub dispatch binding + legacy orphan reconciliation
+→ E1c-B frontend lifecycle recovery + retained workflow queue
+→ production browser smoke
+→ E1c closeout
 ```
 
-The former one-shot three-layer candidate is superseded. Its CI is historical evidence only and does not authorize the server-first candidate.
+This order prevented unsafe mixed-version combinations.
 
-## 4. E1c-A Locked Contract — Server First
+Core invariants that remain authoritative:
 
-### 4.1 Active same-key jobs never expire by age
+- `queued` / `running` jobs do not become dead merely because they are old;
+- exact idempotency-key replay resolves to the same durable intent;
+- old frontend key rotation cannot create a second active same-tenant/same-benchmark job;
+- different benchmark remains a distinct calculation intent;
+- GitHub dispatch must return a positive `workflow_run_id`;
+- Worker durably binds that run ID before acknowledging browser success;
+- callbacks with a conflicting run identity fail closed;
+- browser pending state is recovery metadata, not independent liveness authority;
+- terminal state or explicit 404 semantics clear browser recovery state;
+- repository-wide portfolio calculation execution remains serialized.
 
-- `queued` and `running` are active states.
-- Their idempotency hash is never released by `created_at` age.
-- Only terminal `succeeded` / `failed` jobs may release the exact hash after an explicit replay-retention interval.
-- Release is based on `completed_at`, not creation time.
+## 3. E1c-A / E1c-A.1 production closeout
 
-### 4.2 Exact-key replay remains first-class
+E1c-A.1 forward runtime source:
 
-Before creating anything, the Worker checks for the exact tenant + idempotency hash.
+`fe5f091fdb2c92970dff74c1a7c99052084adb95`
 
-If that row exists, active or terminal, the exact job is returned and no new dispatch occurs. This preserves idempotent transport replay semantics.
+Live Worker version:
 
-### 4.3 Legacy key-rotation compatibility is active tenant + benchmark scoped
+`68f32cee-c609-4624-aaff-eaa55ef0c77d`
 
-If no exact-key row exists, creation is guarded atomically by the presence of an already-active job for the same:
+Runtime contract:
+
+`Worker 4.07 / API 2.60 / D1 Schema 2`
+
+Legacy pre-binding residue was reconciled by protected production run `31518085574` attempt 2:
 
 ```text
-user_id + benchmark + status in {queued, running}
+before = 3
+changed = 3
+after = 0
 ```
 
-A rotated legacy browser key for the same tenant and benchmark therefore returns the existing active job instead of creating another dispatch.
+Only the reviewed legacy `queued + github_run_id IS NULL + pre-cutover` cohort transitioned to terminal `failed` with `LEGACY_DISPATCH_UNBOUND_RECONCILED`. No transaction or snapshot mutation occurred, and the post-production contract audit passed.
 
-Different benchmark remains a distinct calculation intent and is not silently collapsed.
+A fresh authenticated production trigger then created `Update Portfolio Data #3239` / run `31557518956`; running and terminal callbacks succeeded with the same GitHub run identity and snapshot publication succeeded. PR #205 recorded the durable closeout and activated E1c-B.
 
-The guard is implemented in the same D1 `INSERT ... WHERE NOT EXISTS(active same tenant+benchmark)` statement. This avoids a check-then-insert race across two different keys without adding a new schema/index.
+Durable E1c-A.1 evidence remains in:
 
-If the insert is suppressed, the Worker resolves in this order:
+- `docs/engineering/GATE_E_E1C_A1_DISPATCH_BINDING_2026-08-11.md`
+- `docs/governance/evidence/GATE_E_E1C_A1_CLOSEOUT_2026-08-12.json`
 
-1. exact hash, in case another concurrent request inserted it;
-2. active same tenant + benchmark, deterministically oldest first.
+## 4. E1c-B implementation
 
-### 4.4 Terminal replay retention
+PR #206 — `E1c-B: retain browser recovery and workflow queue`
 
-Terminal same-key rows retain the hash for 24 hours from `completed_at`.
+Product implementation baseline:
 
-This is a conservative transport-replay window. It does not change active lifecycle semantics and does not depend on browser TTL.
+`fdc1199bea47a2e47f38e2737827f1a2e38451f2`
 
-### 4.5 Ambiguous dispatch exception recovery is conditional
+Verified implementation behavior:
 
-When dispatch throws after a new durable job was inserted:
+1. new/explicitly upgraded pending generations are lifecycle-persistent and do not expire solely by age;
+2. pre-E1c-B stale unmarked live generations still obey the historical rollout TTL so old abandoned state is not resurrected;
+3. currently-valid legacy pending state is best-effort upgraded without blocking recovery if storage write fails;
+4. known `jobId` recovery survives refresh/reopen until durable terminal/404 semantics;
+5. ambiguous pre-job state retains/replays the same idempotency intent instead of rotating by age;
+6. benchmark intent is scoped so a later different benchmark does not silently reuse the prior exact-key intent;
+7. generation/tombstone owner and cross-tab protections remain intact;
+8. GitHub workflow concurrency remains `portfolio-update`, `cancel-in-progress: false`, with GitHub-native retained pending queue semantics (`queue: max`);
+9. no Worker lifecycle, D1 schema, calculation formula, or snapshot semantic change was introduced.
 
-- timeout uses `GITHUB_DISPATCH_TIMEOUT`;
-- other thrown dispatch failure uses `GITHUB_DISPATCH_FAILED`;
-- Worker attempts only conditional `queued -> failed`;
-- if GitHub actually accepted the run and its callback already advanced the job to `running`, recovery changes nothing.
+Verification chain:
 
-This avoids both a permanent queued orphan and the opposite race of falsely overwriting a real running job as failed.
+- Independent Review: **PASS / NO REVIEW BLOCKER**;
+- exact-head CI #676 / run `31559136662`: **SUCCESS**;
+- merge: `fdc1199bea47a2e47f38e2737827f1a2e38451f2`;
+- post-main CI #677 / run `31559255388`: **SUCCESS**;
+- Pages deployment #1491 / run `31559254780`: **SUCCESS**.
 
-## 5. E1c-B Locked Follow-up — Only After E1c-A Worker Production Verification
+## 5. Production verification
 
-E1c-B will change no Worker lifecycle semantics. It will finish the client/workflow side after the compatibility Worker is live.
+### Workflow / calculation / snapshot path
 
-Planned E1c-B scope:
+Scheduled `Update Portfolio Data #3242` / run `31560257260` completed successfully on the E1c-B product baseline, including market-data retrieval, calculation/reconciliation, transaction integrity, split-ledger parity, and snapshot publication.
 
-1. browser pending state stops expiring active recovery solely by age;
-2. known `jobId` state clears on durable terminal/404 semantics rather than 15-minute TTL;
-3. pre-job ambiguous mutation state retains/replays the same key until server outcome is resolved;
-4. generation/tombstone owner/cross-tab protections remain intact;
-5. workflow pending runs use retained queue semantics while keeping repository-wide serialized execution.
+### Authenticated lifecycle behavior
 
-The exact supported workflow syntax must be revalidated against current GitHub Actions behavior at E1c-B implementation time.
+`#3243` proved a live browser pending identity survived logout → login while the durable job remained active. The calculation itself later failed fail-closed because of a separate market-data provider defect; the terminal lifecycle callback still succeeded.
 
-## 6. Residual Fail-Closed Recovery
+`#3244` subsequently completed the authenticated lifecycle and snapshot path successfully.
 
-E1c deliberately does not add an automatic lease/heartbeat/sweeper or Schema 3 job columns.
+### Final browser refresh/reopen smoke
 
-A rare active job whose terminal callback is permanently lost is not guessed dead by elapsed time. It remains active/fail-closed. Existing system-only job status transition authority can explicitly move a known `queued` / `running` job to `failed` with an auditable error code.
-
-A future automatic lease/sweeper remains a separate evidence-driven decision and may be revisited with the later ledger-revision architecture if operational evidence justifies it.
-
-## 7. E1c-A Scope Lock
-
-In scope now:
-
-- `worker.js` lifecycle-based exact-key release;
-- active same tenant + benchmark cross-key compatibility guard;
-- race-safe dispatch-exception recovery;
-- Worker regression tests;
-- this phased engineering record.
-
-Explicitly deferred to E1c-B:
-
-- frontend pending TTL/lifecycle changes;
-- GitHub workflow retained pending queue change;
-- their corresponding tests.
-
-Out of E1c entirely:
-
-- D1 Schema 3 / new job columns;
-- ledger revision / compare-and-publish;
-- E1d cursor-signing secret separation;
-- provider redesign;
-- Decimal/fixed-point migration;
-- tenant UUID migration;
-- derivatives;
-- broad authentication/session redesign.
-
-## 8. Risk and Recovery
-
-**R3 — production lifecycle / duplicate-execution correctness.**
-
-E1c-A changes the deployed Worker trigger/idempotency boundary. A defect can create duplicate calculations or incorrectly suppress intended work.
-
-Pre-E1c recovery:
-
-`backup-pre-e1c-lifecycle-624b40f`
-
-No D1 migration is part of E1c-A.
-
-## 9. Required E1c-A Regression Proof
-
-Before merge:
-
-- exact changed-file scope: Worker + Worker lifecycle tests + this record only;
-- full repository CI;
-- active exact-key `queued/running` jobs have no `created_at` expiry;
-- terminal hash release requires terminal status + non-null old `completed_at`;
-- same exact key resolves to the same job;
-- different key + same tenant + same benchmark + active job resolves to the existing active job;
-- same tenant + different benchmark remains distinct;
-- atomic insertion contains an active same-tenant+benchmark `NOT EXISTS` guard;
-- thrown dispatch timeout closes only a still-queued inserted job;
-- timeout race cannot overwrite a job already advanced to `running`;
-- legacy frontend/workflow files are unchanged from protected main;
-- fresh R3 Same-AI Independent Review;
-- expected-head merge only.
-
-## 10. Production Activation Requirement
-
-E1c-A changes `worker.js`; merge and Pages deployment do **not** activate the server fix.
-
-The current production activation authority authorizes the older E1a-B runtime source only. It must not be reused.
-
-After E1c-A implementation merge:
+On 2026-08-12 the user performed the required production smoke:
 
 ```text
-post-main CI + Pages
--> exact E1c-A runtime production identity evidence
--> controlled activation evidence + new exact-source authority
--> Deploy Worker exact E1c-A runtime source
--> post-deploy Worker contract verification
--> server-first compatibility production proof
--> only then open E1c-B
+normal authenticated update
+→ calculation becomes active
+→ browser F5 refresh
+→ browser automatically resumes the existing calculation
+→ no second update button press
+→ same calculation reaches terminal completion
 ```
 
-No frontend TTL or workflow retained-queue change may be merged before E1c-A Worker production verification closes the transition blocker.
+GitHub remote truth identified this operation as:
+
+- `Update Portfolio Data #3245`;
+- run `31567498004`;
+- event `workflow_dispatch`;
+- head `c51291686d8eefd8aa5a50bc7492269857a3d081`;
+- conclusion **SUCCESS**.
+
+Backend evidence:
+
+- `Mark calculation job running`: **SUCCESS**;
+- calculation/reconciliation: **SUCCESS**;
+- snapshot upload: **SUCCESS**;
+- terminal `succeeded` callback: **SUCCESS**;
+- previous authenticated workflow_dispatch was #3244 more than one hour earlier, so the F5 recovery did **not** create a duplicate dispatch.
+
+The direct browser observation plus GitHub evidence closes the previously missing refresh/reopen + terminal-cleanup acceptance behavior.
+
+## 6. Retained queue closeout decision
+
+E1c-B uses GitHub-native `queue: max` while preserving repository-wide serialized execution and `cancel-in-progress: false`.
+
+The syntax and repository contract are covered by exact-head CI and independent review. We intentionally did **not** manufacture multiple simultaneous production calculations merely to force a queue-overlap demonstration. No production evidence currently shows retained-queue failure or saturation.
+
+Residual platform limitation: GitHub's retained queue is finite (currently up to 100 pending runs under the selected platform feature). This is an operational limit, not a current product blocker. A custom scheduler/queue is not justified without real saturation or replacement evidence.
+
+## 7. Related market-data defect discovered during E1c verification
+
+Production #3243 reproduced an independent `MARKET_DATA_FAILED` defect: transient provider daily rows contained incomplete/inconsistent price fields. PR #210 implemented a bounded same-provider fresh re-fetch that never imputes, substitutes, drops, or fills a price and preserves existing fail-closed validation.
+
+PR #210 product baseline:
+
+`a8b03877449e885df935389e63fc23e6eb765dd2`
+
+#3245 is the first normal production calculation observed after that merge and completed successfully. It did not reproduce the NaN condition, so it proves normal-path compatibility after the mitigation but does not prove the retry branch was exercised in production. The retry branch remains covered by deterministic regression tests and should stay under production watch rather than trigger speculative additional repair work.
+
+## 8. Final closeout decision
+
+**Gate E / E1c is CLOSED / PRODUCTION VERIFIED.**
+
+Acceptance is met because:
+
+- server active lifecycle no longer expires by age;
+- GitHub dispatch identity is durably bound before browser acknowledgement;
+- legacy unbound orphan residue is closed;
+- browser recovery no longer disappears solely because time passes;
+- refresh/reopen resumes the same active calculation;
+- terminal completion clears the user-visible active state;
+- the F5 smoke produced no duplicate workflow dispatch;
+- workflow execution remains serialized with retained pending semantics;
+- no known material E1c lifecycle/correctness blocker remains.
+
+Do not reopen E1c for general lifecycle idealization. Reopen only if new production evidence demonstrates duplicate dispatch, lost durable recovery, incorrect terminal cleanup, pending-run displacement, or another material regression in this impact radius.
+
+## 9. Next product step
+
+The lifecycle infrastructure is no longer the project focus.
+
+Next work is a focused Product Functionality Review over the real user path:
+
+```text
+login
+→ transaction CRUD
+→ trigger update
+→ progress/recovery
+→ snapshot refresh
+→ holdings
+→ P&L / performance
+→ benchmark
+→ actionable error/retry behavior
+```
+
+Classify actual findings as NOW / NEXT / BACKLOG / REJECT. Resolve material correctness or user-blocking defects before selecting the next feature/optimization batch; safely separable improvements should not keep E1c open.
