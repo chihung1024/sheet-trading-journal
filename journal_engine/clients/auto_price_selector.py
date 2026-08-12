@@ -47,7 +47,36 @@ class AutoPriceSelector:
     def get_adjusted_price_series(self) -> pd.Series:
         price_field = self.select_best_price()
         if price_field in self.df.columns:
-            return self.df[price_field].copy()
+            selected = self.df[price_field].copy()
+            missing_rows = self.df.loc[selected.isna()]
+            if not missing_rows.empty:
+                diagnostic_columns = [
+                    'Open',
+                    'High',
+                    'Low',
+                    'Close',
+                    'Adj Close',
+                    'Volume',
+                    'Dividends',
+                    'Stock Splits',
+                    'Capital Gains',
+                ]
+                logger.error(
+                    "[%s] Selected price field %s contains %s NaN row(s); "
+                    "preserving fail-closed input for downstream validation",
+                    self.symbol,
+                    price_field,
+                    len(missing_rows),
+                )
+                for row_index, row in missing_rows.head(10).iterrows():
+                    logger.error(
+                        "[%s] NaN selected-price provider row: field=%s date=%s market_fields=%s",
+                        self.symbol,
+                        price_field,
+                        str(row_index),
+                        row.reindex(diagnostic_columns).to_dict(),
+                    )
+            return selected
         return pd.Series(index=self.df.index, dtype=float)
 
     def get_metadata(self) -> dict:
