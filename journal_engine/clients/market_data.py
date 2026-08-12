@@ -71,7 +71,7 @@ class MarketDataClient:
         combined_index = twd_per_usd.index.union(native_per_usd.index).sort_values()
         usd_twd = twd_per_usd.reindex(combined_index).ffill()
         native_usd = native_per_usd.reindex(combined_index).ffill()
-        derived = twd_per_usd.reindex(combined_index).ffill() / native_usd
+        derived = usd_twd / native_usd
         return cls._clean_positive_series(derived)
 
     def __init__(self):
