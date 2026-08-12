@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Historical plans and audits are evidence sources, not automatic execution authority. Operational quality aid: `docs/governance/DOCUMENT_QUALITY_STANDARD.md` (subordinate to the Playbook; no independent Gate authority).
 
 Last updated: **2026-08-12**
-Handoff revision: **PRODUCT-FIRST REBASE / COMPLETE-THEN-CONVERGE / E1c-A.1 external closeout blocker / E1c-B next functional batch**
+Handoff revision: **PRODUCT-FIRST REBASE / COMPLETE-THEN-CONVERGE / E1c-A.1 current closeout blocker / E1c-B next functional implementation**
 
 ---
 
@@ -33,13 +33,21 @@ The project goal is product correctness and usability. Governance, CI/CD, deploy
 
 `Gate E / E1c — calculation job lifecycle and idempotency`
 
-### Current functional batch
+### Current closure obligation
+
+`E1c-A.1 — durable GitHub dispatch binding / production closeout`
+
+Status: **BLOCKED — waiting on external GitHub production Environment Required Reviewer approval**
+
+This is the only unfinished prerequisite in the current product line. It must be completed correctly, but it must not expand into a new infrastructure roadmap without evidence.
+
+### Next functional implementation batch
 
 `E1c-B — frontend lifecycle recovery + retained workflow queue`
 
-Status: **READY FOR IMPLEMENTATION AFTER E1c-A.1 PRODUCTION CLOSEOUT**
+Status: **PLANNED / READY TO START ONLY AFTER E1c-A.1 CLOSEOUT**
 
-Locked product behavior:
+Locked E1c-B product behavior:
 
 1. active calculation recovery must not disappear solely because 15 minutes elapsed;
 2. a known `jobId` remains recoverable across refresh/reopen until durable terminal or explicit 404 semantics;
@@ -47,7 +55,7 @@ Locked product behavior:
 4. generation/tombstone owner and cross-tab protections remain intact;
 5. pending workflow runs must not be silently displaced before lifecycle callback while repository-wide serialized calculation execution is preserved.
 
-Primary implementation surfaces:
+Primary E1c-B implementation surfaces:
 
 - `src/services/calculationJobState.js`
 - `src/stores/portfolio.js`
@@ -105,7 +113,7 @@ Do not rerun blindly, bypass the Environment reviewer, manually rewrite D1 jobs,
 
 - Finish E1c-A.1 to the evidence required for safe and functionally correct closeout; do not create additional control-plane work without evidence.
 - If E1c-A.1 verification exposes a material bug affecting calculation lifecycle, correctness, or E1c-B safety, fix/validate it before declaring E1c-A.1 `CLOSED`.
-- Implement and validate E1c-B product lifecycle behavior.
+- After E1c-A.1 closes, implement and validate E1c-B product lifecycle behavior.
 - Keep user-visible calculation status/recovery coherent across refresh, long queue time, and terminal outcomes.
 - Before E1c-B `CLOSED`, resolve known material regressions within its functional impact radius rather than moving them to backlog merely to shorten the Batch.
 
@@ -203,7 +211,7 @@ complete E1c-A.1 safely and functionally
 
 Documentation quality management exists primarily to **prevent project amnesia and project distortion**. It must preserve durable facts, decisions, root causes, material residual bugs/risks, and next actions without turning documentation itself into the project.
 
-The live handoff must remain concise enough that the next agent can identify the product goal, active functional batch, blocker, known material residual risks, next action, and explicit non-goals without reading historical incident detail first.
+The live handoff must remain concise enough that the next agent can identify the product goal, current closure obligation, next functional implementation batch, blocker, known material residual risks, next action, and explicit non-goals without reading historical incident detail first.
 
 Document placement:
 
@@ -244,9 +252,9 @@ The goal is not zero bugs or infinite perfection. The goal is to avoid **closing
 ## 9. Next Exact Actions
 
 1. Do not advance production reconciliation control-plane main while run `31518085574` is still awaiting approval.
-2. Re-review PR #203 after this clarified complete-then-converge requirement and require applicable exact-head CI; do not merge it while that merge would invalidate the still-pending reconciliation freshness gate.
+2. Re-review PR #203 against its final exact candidate head and require applicable exact-head CI; do not merge it while that merge would invalidate the still-pending reconciliation freshness gate.
 3. When the production gate clears, complete the defined E1c-A.1 verification/closeout, including a functional residual-risk check; fix any material E1c-A.1 lifecycle defect before `CLOSED`.
-4. Start E1c-B as the single implementation batch.
+4. Start E1c-B as the single functional implementation batch.
 5. Validate E1c-B with focused lifecycle regression plus applicable repository CI/build and production verification where applicable.
 6. Perform Independent Review against exact candidate head, including counterexample/regression search for the core calculation lifecycle.
 7. Resolve any material functional/correctness BLOCKER within the E1c impact radius before closing E1c; safely separable improvements go NEXT/BACKLOG with evidence.
