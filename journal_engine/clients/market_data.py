@@ -399,6 +399,17 @@ class MarketDataClient:
         selected = pd.to_numeric(frame['Close_Adjusted'], errors='coerce')
         return selected.isna().any()
 
+    @staticmethod
+    def _daily_action_evidence_complete(frame):
+        """Require the yfinance actions=True daily contract before accepting a retry."""
+        for column in ('Dividends', 'Stock Splits'):
+            if column not in frame.columns:
+                return False
+            values = pd.to_numeric(frame[column], errors='coerce')
+            if values.isna().any():
+                return False
+        return True
+
     def download_data(self, tickers: list, start_date):
         """下載市場數據（股票價格 + currency-aware 匯率）。"""
         print(f"正在下載市場數據，起始日期: {start_date}...")
@@ -418,7 +429,10 @@ class MarketDataClient:
         all_tickers = list(set([t for t in tickers if t] + ['SPY']))
 
         def fetch_single_ticker(t):
+            first_invalid_result = None
+            first_invalid_price_source = None
             last_result = None
+
             for attempt in range(1, SELECTED_PRICE_REFETCH_ATTEMPTS + 1):
                 try:
                     # Construct a fresh Ticker on each attempt. The retry requests the
@@ -432,14 +446,24 @@ class MarketDataClient:
                     )
 
                     if hist.empty:
-                        if last_result is not None:
+                        if first_invalid_result is not None:
                             print(
                                 f"[{t}] fresh re-fetch 回傳空資料；保留前次 invalid "
                                 "provider response 交由 validator fail closed"
                             )
-                            return last_result
+                            return first_invalid_result
                         print(f"[{t}] 警告: 無歷史數據")
                         return t, None, None, False
+
+                    if (
+                        first_invalid_result is not None
+                        and not self._daily_action_evidence_complete(hist)
+                    ):
+                        print(
+                            f"[{t}] fresh re-fetch 缺少或含 malformed corporate-action "
+                            "evidence；保留前次 invalid provider response fail closed"
+                        )
+                        return first_invalid_result
 
                     hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
                     realtime_overlay_applied = False
@@ -465,8 +489,28 @@ class MarketDataClient:
                     metadata = dict(hist_adj.attrs.get('price_provenance') or {})
                     last_result = (t, hist_adj, metadata, realtime_overlay_applied)
 
+                    if (
+                        first_invalid_result is not None
+                        and metadata.get('price_source') != first_invalid_price_source
+                    ):
+                        print(
+                            f"[{t}] fresh re-fetch selected price source 改變；"
+                            "拒絕隱性 price substitution 並保留前次 invalid response"
+                        )
+                        return first_invalid_result
+
                     if not self._selected_price_contains_nan(hist_adj):
                         return last_result
+
+                    if first_invalid_result is None:
+                        first_invalid_result = last_result
+                        first_invalid_price_source = metadata.get('price_source')
+                        if not self._daily_action_evidence_complete(hist):
+                            print(
+                                f"[{t}] invalid selected-price row 缺少或含 malformed "
+                                "corporate-action evidence；不重試且維持 fail closed"
+                            )
+                            return first_invalid_result
 
                     if attempt < SELECTED_PRICE_REFETCH_ATTEMPTS:
                         print(
@@ -476,12 +520,12 @@ class MarketDataClient:
                         time.sleep(SELECTED_PRICE_REFETCH_DELAY_SECONDS)
 
                 except Exception as exc:
-                    if last_result is not None:
+                    if first_invalid_result is not None:
                         print(
                             f"[{t}] fresh re-fetch 失敗: {exc}; 保留前次 invalid "
                             "provider response 交由 validator fail closed"
                         )
-                        return last_result
+                        return first_invalid_result
                     print(f"[{t}] 下載錯誤: {exc}")
                     return t, None, None, False
 
