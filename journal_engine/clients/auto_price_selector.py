@@ -73,7 +73,7 @@ class AutoPriceSelector:
                         "[%s] NaN selected-price provider row: field=%s date=%s market_fields=%s",
                         self.symbol,
                         price_field,
-                        pd.Timestamp(row_index).isoformat(),
+                        str(row_index),
                         row.reindex(diagnostic_columns).to_dict(),
                     )
             return selected
