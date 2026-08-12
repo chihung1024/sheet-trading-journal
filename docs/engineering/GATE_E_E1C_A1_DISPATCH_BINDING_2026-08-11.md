@@ -1,8 +1,8 @@
 # Gate E / E1c-A.1 — Dispatch Binding and Legacy Orphan Reconciliation
 
-Status: **DEPLOYED / RECONCILIATION WORKFLOW WAITING FOR PRODUCTION APPROVAL**  
-Document revision: **4**  
-Date: **2026-08-11**
+Status: **CLOSED / PRODUCTION VERIFIED**  
+Document revision: **5**  
+Date: **2026-08-12**
 
 ## 1. Production blocker and root cause
 
@@ -67,7 +67,7 @@ Sanitized durable deployment evidence:
 
 The forward fix intentionally does **not** guess that a legacy row is dead because it is old.
 
-The reconciliation cohort is narrowly defined as:
+The reconciliation cohort was narrowly defined as:
 
 ```text
 status = queued
@@ -77,27 +77,14 @@ AND created_at < reviewed E1c-A.1 deployment cutover
 
 The cutoff is only a rollout-cohort boundary. It is not liveness authority.
 
-Before the D1 mutation, the protected workflow must prove:
-
-- exact runtime `R_C1` is live;
-- live Worker version matches reviewed Deploy #4 evidence;
-- current production activation authority still authorizes `R_C1`;
-- production D1 identity matches reviewed authority;
-- every GitHub nonterminal status for `Update Portfolio Data` is empty: `queued`, `in_progress`, `waiting`, `pending`, `requested`;
-- zero-nonterminal state is observed three consecutive times and again immediately before mutation;
-- reviewed request values and reviewed operation-code/workflow blobs still match latest protected main;
-- candidate row count does not exceed reviewed `max_rows`.
-
-The mutation only transitions matching legacy jobs to:
+Before D1 mutation, the protected workflow proved exact runtime/Worker identity, activation authority, production D1 identity, zero nonterminal `Update Portfolio Data` runs, exact reviewed control-plane blobs, and bounded target cardinality. The mutation only transitioned matching legacy jobs to:
 
 ```text
 status = failed
 error_code = LEGACY_DISPATCH_UNBOUND_RECONCILED
 ```
 
-It does not delete rows, clear source transactions, mutate snapshots, or record tenant/job identity in evidence. SQLite `changes()` must exactly equal the pre-mutation target count; a cardinality mismatch fails closed instead of inferring mutations from before/after counts. The operation is idempotent: once reconciled, the target query returns zero rows.
-
-The same reviewer-protected production job then runs `verify_production_contract.mjs` with `REQUIRE_SYSTEM_CHECKS=1`, so reconciliation and post-mutation system contract proof share one production approval instead of creating another manual gate.
+It did not delete rows, clear source transactions, mutate snapshots, or record tenant/job identity in evidence. SQLite `changes()` was required to exactly equal the pre-mutation target count. The same reviewer-protected production job then ran the system contract audit.
 
 ## 5. R3 review hardening of the reconciliation control plane
 
@@ -105,13 +92,11 @@ The first exact candidate (`ebc27b3d23c19d03be5ad7002845f603400cf4dd`) passed CI
 
 Three safety defects were identified and fixed rather than waived:
 
-1. **Operation-code source mismatch.** Production checks out exact runtime `R_C1`, which predates the new reconciliation tool. The fixed workflow materializes the immutable reviewed workflow-event control-plane commit separately and executes the reconciliation tool from that reviewed commit while the workspace remains the exact runtime checkout for Worker/D1 verification.
-2. **Incomplete active-run proof.** First-page `per_page=100` inference was replaced by status-scoped GitHub API queries for every supported nonterminal workflow status. Each status query uses authoritative `total_count`, so the proof does not depend on recency ordering or pagination position.
-3. **Late control-plane drift window.** Immediately before D1 mutation, the workflow re-fetches latest protected main, revalidates request values, activation authority, and exact blob identity of both the reviewed workflow and mutation tool. Any request/code drift cancels the old operation.
+1. **Operation-code source mismatch.** Production checks out exact runtime `R_C1`, which predates the reconciliation tool. The fixed workflow materializes the immutable reviewed workflow-event control-plane commit separately and executes the reconciliation tool from that reviewed commit while the workspace remains the exact runtime checkout for Worker/D1 verification.
+2. **Incomplete active-run proof.** First-page inference was replaced by status-scoped GitHub API queries for every supported nonterminal workflow status, using authoritative `total_count`.
+3. **Late control-plane drift window.** Immediately before D1 mutation, the workflow re-fetches latest protected main and revalidates request values, activation authority, and exact workflow/tool blob identity.
 
-The reviewed operation tool also records actual mutation cardinality via SQLite `changes()` and requires it to equal the reviewed pre-mutation target count.
-
-No safety gate was weakened to obtain CI success.
+The reviewed operation tool also records actual mutation cardinality via SQLite `changes()` and requires it to equal the reviewed pre-mutation target count. No safety gate was weakened to obtain CI success.
 
 ## 6. Final merged reconciliation control plane
 
@@ -132,62 +117,92 @@ Recovery before the control-plane batch:
 
 `backup-pre-e1c-a1-legacy-reconciliation-67b8735`
 
-Risk remains **R3 — production lifecycle/data-control operation**.
+PR #198 remains **SUPERSEDED / NO MERGE AUTHORITY** and must not be reopened or merged.
 
-### Superseded PR #198
+The first reviewer-approved reconciliation execution (`31479868929`) was cancelled after a GitHub scheduler stall left the production job runnerless and stepless. The one-shot scheduler recovery proved the stall safely, cancelled only that target run, then retired itself. The first successor correctly failed closed after protected main advanced. PR #202 emitted the final fresh reconciliation event without changing the reviewed mutation boundary.
 
-PR #198 was created from stale base after #197 had already merged. Relative to the new protected main it would have replaced #197's stronger workflow/tool controls with a weaker candidate. It was therefore closed as:
+## 7. Final production reconciliation result
 
-`SUPERSEDED / NO MERGE AUTHORITY`
+Final reconciliation workflow run:
 
-The branch may remain forensic evidence of earlier pre-PR findings, but it must not be reopened or merged.
+- workflow: `Production Legacy Job Reconciliation #3`;
+- run ID: `31518085574`;
+- final successful attempt: **attempt 2**;
+- production job: `93984614952`;
+- conclusion: **SUCCESS**.
 
-## 7. Live production workflow state
-
-PR #197's request-path merge automatically started:
-
-`Production Legacy Job Reconciliation #1`
-
-Run ID:
-
-`31479868929`
-
-Control-plane head:
-
-`8f9f942cc22b70e5bbec0f05438b0a74fefb8057`
-
-Current verified state:
-
-- preflight job `Verify reconciliation request before reviewer gate`: **SUCCESS**;
-- exact protected-main request validation: PASS;
-- activation authority before reviewer gate: PASS;
-- zero nonterminal `Update Portfolio Data` proof before reviewer gate: PASS;
-- production job `Reconcile legacy unbound queued jobs and audit production`: **WAITING** for GitHub `production` Environment Required Reviewer.
-
-No additional Action start, SHA entry, rerun, or manual D1 operation is required.
-
-## 8. Remaining closeout sequence
+Verified mutation result:
 
 ```text
-production Environment approval for run 31479868929
--> revalidate latest request / reviewed operation code / authority
--> verify live Worker source + reviewed Worker version
--> verify production D1 identity
--> repeated + final zero-nonterminal-run proof
--> bounded legacy cohort reconciliation
--> post-mutation system contract audit
--> verify sanitized artifact and digest
--> confirm stuck frontend generation reaches terminal / clears
--> one normal authenticated frontend update
--> prove new dispatch has durable workflow_run_id + running/terminal callbacks
--> E1c-A.1 closeout evidence/docs
--> E1c-B ACTIVE
+target_before = 3
+changed       = 3
+target_after  = 0
 ```
 
-E1c-B remains responsible for frontend pending-age removal and `update.yml` queue semantics. E1d and Schema 3 remain out of scope.
+All three target rows transitioned only to terminal `failed` with:
 
-## 9. Documentation / continuation contract
+`LEGACY_DISPATCH_UNBOUND_RECONCILED`
 
-This engineering record owns root cause, safety invariants, rejected alternatives, review findings, and production-control evidence for E1c-A.1. Current execution status belongs in `to_do_update_list.md`; production results belong in sanitized evidence JSON.
+No transaction or snapshot mutation occurred. The post-mutation production system contract audit passed.
 
-When reconciliation run #1 completes, update this document to a final closeout revision instead of appending duplicate narrative. Remove stale "waiting" language, record the exact reconciliation result/artifact/digest, then advance the handoff to E1c-B only after the final authenticated dispatch-binding smoke passes.
+Sanitized artifact:
+
+- artifact ID: `9126247398`;
+- SHA-256: `677f2c6ccea36a0b46c68a40c0f21782ac8301523f0c618d603132eefbc39a20`.
+
+The evidence contains no tenant identity or calculation-job identifier.
+
+## 8. Normal authenticated production smoke
+
+After reconciliation and after the fail-closed market-data diagnostic patch reached main, one normal authenticated frontend update was performed.
+
+Result:
+
+- workflow: `Update Portfolio Data #3239`;
+- run ID: `31557518956`;
+- event: `workflow_dispatch`;
+- head: `7439c8fb39ec8885b0b16ffdb46b3996e64dc42f`;
+- attempt: `1`;
+- conclusion: **SUCCESS**.
+
+Lifecycle proof from the production job log:
+
+1. `Mark calculation job running` succeeded and sent `github_run_id=31557518956`, `github_run_attempt=1` to the production Worker status callback.
+2. Calculation fetched the authenticated tenant's records, downloaded required market data, completed calculation/reconciliation, and uploaded the snapshot successfully.
+3. `Report calculation job result` sent terminal `status=succeeded` with the same `github_run_id=31557518956`, `github_run_attempt=1` and succeeded.
+4. Current Worker repository contract rejects a callback whose GitHub run identity conflicts with the durably bound identity. Therefore successful running and terminal callbacks with the same run ID are production evidence that the new dispatch identity was durably bound consistently before lifecycle advancement.
+5. A fresh normal workflow was created instead of being deduplicated into the legacy orphan row, proving the reconciled residue no longer blocks normal frontend dispatch.
+
+Browser-local storage itself is not remotely observable from GitHub evidence. That does not reopen E1c-A.1: the server-side orphan/binding defect is closed, while long-lived browser recovery/age semantics are explicitly the E1c-B scope.
+
+Sanitized closeout evidence:
+
+`docs/governance/evidence/GATE_E_E1C_A1_CLOSEOUT_2026-08-12.json`
+
+## 9. Material residual issue discovered during closeout
+
+Scheduled updates #3237 and #3238 failed with `MARKET_DATA_FAILED` after Yahoo/yfinance returned NaN selected prices for Taiwan market data. This is a real product correctness issue but is independent of E1c-A.1 dispatch binding.
+
+PR #204 added fail-closed provider-row diagnostics only; it does not drop, fill, repair, substitute, or accept invalid prices. Exact-head CI #665, Independent Review, merge, and post-main CI #666 passed. The authenticated smoke #3239 then completed successfully and did not reproduce the NaN condition.
+
+Therefore no semantic price-repair change is currently justified. The next recurrence must be classified from exact provider-row OHLC/Volume/Dividend/Split/Capital-Gain evidence before choosing a financially safe fix.
+
+## 10. Closeout decision and next batch
+
+E1c-A.1 is **CLOSED / PRODUCTION VERIFIED** because:
+
+- the forward runtime binds GitHub run identity before browser acknowledgement;
+- conflicting callback identity is fail-closed;
+- all reviewed legacy unbound queued residue was reconciled with exact cardinality and system audit;
+- one fresh authenticated frontend trigger created a real `workflow_dispatch` run;
+- running and terminal callbacks succeeded with the same run identity;
+- calculation and snapshot publication succeeded;
+- no material E1c-A.1 server lifecycle blocker remains.
+
+Next implementation batch:
+
+`Gate E / E1c-B — frontend lifecycle recovery + retained workflow queue` **ACTIVE**.
+
+E1c-B remains responsible for browser pending-age removal, durable refresh/reopen recovery, ambiguous pre-job idempotency retention, generation/tombstone protections, and retained workflow queue semantics. E1d and Schema 3 remain deferred.
+
+Current execution truth belongs in `to_do_update_list.md`; this record now remains the durable E1c-A.1 RCA/contract/closeout reference.
