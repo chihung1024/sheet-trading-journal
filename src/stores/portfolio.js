@@ -286,7 +286,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         if (didAttemptCalculationRecovery) return;
         didAttemptCalculationRecovery = true;
         const pending = readPendingCalculationRequest();
-        if (pending?.jobId) void startCalculationJobPolling(pending.jobId);
+        if (!pending) return;
+        try {
+            rememberPendingCalculationRequest(pending);
+        } catch (error) {
+            console.warn('無法升級待處理計算恢復狀態:', error);
+        }
+        if (pending.jobId) void startCalculationJobPolling(pending.jobId);
     };
 
     const performFetchAll = async () => {
