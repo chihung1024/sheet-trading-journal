@@ -1,8 +1,8 @@
 import { PENDING_CALCULATION_V2_STORAGE_PREFIX } from './projectStorage.js';
 
 export const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
-// Historical browser expiry threshold retained for regression comparisons only.
-// It is no longer liveness authority for a durable calculation request.
+// Pre-E1c-B generations without the lifecycle marker keep the historical expiry
+// rule so previously abandoned browser state is not resurrected by deployment.
 export const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
 export const CALCULATION_REQUEST_V2_VERSION = 2;
 
@@ -23,6 +23,8 @@ export function pendingCalculationMatchesBenchmark(pending, benchmark) {
   if (!pending || typeof pending !== 'object') return false;
   const expectedBenchmark = normalizeCalculationBenchmark(benchmark);
   if (!expectedBenchmark) return false;
+  // Pre-E1c-B pending records had no benchmark field. Treat them as replayable
+  // during the transition rather than rotating a key and risking duplicate work.
   if (pending.benchmark === undefined || pending.benchmark === null) return true;
   return normalizeCalculationBenchmark(pending.benchmark) === expectedBenchmark;
 }
@@ -35,6 +37,7 @@ export function validatePendingCalculationRequest(value, owner, options = {}) {
   if (!expectedOwner || normalizeCalculationOwner(value.owner) !== expectedOwner) return null;
   if (typeof value.key !== 'string' || !IDEMPOTENCY_KEY_RE.test(value.key)) return null;
   if (!Number.isFinite(value.createdAt) || value.createdAt <= 0 || value.createdAt > now + 60_000) return null;
+  if (value.lifecyclePersistent !== true && now - value.createdAt >= CALCULATION_REQUEST_TTL_MS) return null;
   if (value.jobId !== null && (typeof value.jobId !== 'string' || !JOB_ID_RE.test(value.jobId))) return null;
 
   const normalizedBenchmark = value.benchmark === undefined || value.benchmark === null
@@ -48,6 +51,7 @@ export function validatePendingCalculationRequest(value, owner, options = {}) {
     createdAt: value.createdAt,
     jobId: value.jobId,
     ...(normalizedBenchmark ? { benchmark: normalizedBenchmark } : {}),
+    ...(value.lifecyclePersistent === true ? { lifecyclePersistent: true } : {}),
   };
 }
 
@@ -260,6 +264,7 @@ export function rememberPendingCalculationRequest(storage, owner, pending) {
       createdAt: stableCreatedAt,
       jobId: stableJobId,
       ...(stableBenchmark ? { benchmark: stableBenchmark } : {}),
+      lifecyclePersistent: true,
     },
     normalizedOwner,
     { now: proposed.createdAt },
@@ -337,6 +342,7 @@ export function clearPendingCalculationRequest(storage, owner, selector, options
       createdAt: match.record.createdAt,
       jobId: match.record.jobId,
       ...(match.record.benchmark ? { benchmark: match.record.benchmark } : {}),
+      lifecyclePersistent: true,
       clearedAt: Math.max(now, match.record.createdAt),
     };
     try {
