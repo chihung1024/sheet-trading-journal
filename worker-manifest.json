@@ -3,9 +3,9 @@
   "runtimeService": "trading-journal-api",
   "deploymentEntry": "worker-entry.js",
   "canonicalSource": "worker.js",
-  "releaseVersion": "4.07",
-  "apiVersion": "2.60",
-  "schemaVersion": 2,
+  "releaseVersion": "4.08",
+  "apiVersion": "2.61",
+  "schemaVersion": 3,
   "d1Binding": "DB",
   "versionMetadataBinding": "CF_VERSION_METADATA",
   "legacyArchive": "cloudflare worker/"

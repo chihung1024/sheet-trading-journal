@@ -26,9 +26,9 @@ binding = "CF_VERSION_METADATA"
 required = ["API_SECRET"]
 
 [vars]
-RELEASE_VERSION = "4.07"
-API_VERSION = "2.60"
-SCHEMA_VERSION = "2"
+RELEASE_VERSION = "4.08"
+API_VERSION = "2.61"
+SCHEMA_VERSION = "3"
 SOURCE_COMMIT = "development"
 DEPLOYMENT_ENVIRONMENT = "production"
 ALLOWED_ORIGINS = "https://sheet-trading-journal.pages.dev,https://chihung1024.github.io"
