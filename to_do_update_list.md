@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 00:23 Asia/Taipei**  
-Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1 RECOVERY-GATED**
+Last updated: **2026-08-13 00:41 Asia/Taipei**  
+Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A RECOVERY PASSED / PRE-MERGE REVIEW PENDING**
 
 ---
 
@@ -37,10 +37,10 @@ login
 | Gate E / E1c | **CLOSED** | no known material lifecycle blocker remains |
 | MD-NAN-B1 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH PASS** | bounded same-provider re-fetch mitigation deployed; retry branch remains production-watch only |
 | Product Functionality Review | **ACTIVE — NOW-1** | record-create duplicate correctness defect is current single product line |
-| NOW-1A / PR #213 | **IMPLEMENTED / RECOVERY-GATED** | server-side create idempotency compatibility is implemented; exact-head applicable CI reaches the intended Recovery Evidence Gate and fails closed |
-| Staging D1 Recovery Evidence | **BLOCKED — PLATFORM STATE ANOMALY** | main run `31570497634` has never executed a step; GitHub run/job and concurrency states disagree |
+| NOW-1A / PR #213 | **IMPLEMENTED / EXACT-HEAD CI PASS / REVIEW PENDING** | server-side create idempotency compatibility and Schema 3 recovery evidence are verified; merge still requires focused Independent Review and final head/base/mergeability check |
+| Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled rerun `31570497634` attempt 2 completed real staging export/drop/restore/integrity/cleanup and produced verified evidence |
 
-The lifecycle/control-plane work is no longer the project focus. The current infrastructure investigation exists only because it blocks a demonstrated product-correctness fix.
+The lifecycle/control-plane work is no longer the project focus. The recovery investigation was retained only because it blocked a demonstrated product-correctness fix; that blocker is now closed.
 
 ---
 
@@ -156,7 +156,7 @@ Rollout remains locked:
 
 `Recovery Evidence Gate → merge server compatibility → production migration/Worker activation → verify → NOW-1B frontend stable-key persistence/replay`
 
-Do not make the frontend depend on Schema 3 / Worker 4.08 before server activation is verified.
+Recovery Evidence Gate is now satisfied, but the remaining pre-merge review/mergeability gates still apply. Do not make the frontend depend on Schema 3 / Worker 4.08 before server activation is verified.
 
 ---
 
@@ -194,26 +194,39 @@ None of these should interrupt product functionality work without a demonstrated
 
 ## 8. Exact Next Actions / Master Plan
 
-1. Preserve the current reviewed recovery workflow and its evidence; do **not** change workflow code, concurrency group, staging policy, or Recovery Evidence Gate as a workaround.
-2. Resolve GitHub Actions run `31570497634` with one controlled **normal cancel**; immediately verify that the stale `staging-d1-recovery-evidence` concurrency lease is released.
-3. Only after release is verified, rerun the same recovery job/run against original main SHA `5bed9aa1058c64e87889afd9b1698921eeb2c186` and require real staging export/drop/restore/integrity evidence.
-4. If the rerun again becomes `queued` with no runner/steps while the concurrency group reports `in_progress`, stop retrying and classify GitHub platform orchestration as an externally reproducible BLOCKER.
-5. Independently verify the generated recovery artifact and gate metadata before changing Recovery Evidence Gate status.
-6. Re-run PR #213 exact-head CI after legitimate gate evidence is committed; require all applicable checks success, focused Independent Review, unchanged head/base/mergeability, and only then consider merge.
-7. After server migration/Worker production activation is verified, begin NOW-1B frontend stable-key persistence/replay as a separate batch.
-8. Keep MD-NAN-B1 under passive production watch; only reopen if new provider evidence materially changes the safety decision.
-9. Continue the remaining Product Functionality Review only after NOW-1 is no longer blocked.
+1. Re-run exact-head CI after this handoff update; require Python tests, frontend contracts/build, Worker tests, deployment metadata, Recovery Evidence Gate, and local D1 schema smoke all SUCCESS.
+2. Perform a focused Independent Review on the exact PR #213 head covering concurrency/race behavior, schema compatibility, tenant isolation, replay/conflict semantics, public-data privacy, security, regression, performance, tests, documentation, and rollback.
+3. Classify review findings as BLOCKER / FOLLOW-UP / BACKLOG / REJECT. Only BLOCKER prevents merge; do not reopen unrelated architecture work.
+4. Immediately before merge, re-fetch protected `main`, PR head/base, mergeability, and applicable checks. Merge only if head is unchanged, main has not introduced a conflicting change, CI is exact-head green, and review has no BLOCKER.
+5. After merge, verify post-main CI, then execute the reviewed production Schema 3 migration / Worker 4.08 activation path and verify exact runtime version, schema metadata, health, tenant isolation, and backward compatibility before any frontend dependency is introduced.
+6. Only after production server activation is verified, begin NOW-1B frontend stable-key persistence/replay as a separate product batch.
+7. Keep MD-NAN-B1 under passive production watch; only reopen if new provider evidence materially changes the safety decision.
+8. Resume the remaining Product Functionality Review after NOW-1A production activation is closed; do not let infrastructure cleanup replace product work.
 
 ---
 
-## 9. NOW-1 / Recovery Blocker Handoff Record
+## 9. NOW-1 / Recovery and CI Convergence Handoff Record
 
 ### Stable State
 
-- protected `main` remains at `5bed9aa1058c64e87889afd9b1698921eeb2c186` during this batch;
-- PR #213 branch only was modified; production and main runtime were not changed;
-- PR #213 exact-head CI #714 / run `31617117349` reaches the intended fail-closed Recovery Evidence Gate with Python tests SUCCESS, frontend tests/build SUCCESS, Worker test suite SUCCESS, and Worker deployment metadata SUCCESS;
-- no Recovery Evidence Gate bypass, fake evidence, production mutation, force push, or workflow workaround was used.
+- protected `main` is `5bed9aa1058c64e87889afd9b1698921eeb2c186`; this is also the exact recovery-evidence baseline;
+- production/main runtime were not changed by the PR-branch convergence work;
+- controlled recovery run `31570497634` attempt 2 completed SUCCESS after the stale attempt was normally cancelled;
+- Recovery Evidence Gate is now `passed` with existing structured JSON proofs under the controlled evidence root;
+- PR #213 exact-head CI #717 / run `31618585464` on `aff47febc0fc0b45ef0c3a7078841fb4d216d1e7` completed SUCCESS across Python, frontend, Worker tests, deployment metadata, Recovery Evidence Gate, and local D1 schema smoke;
+- no fake evidence, production recovery drill, force push, workflow bypass, or concurrency-policy workaround was used.
+
+### Recovery Evidence
+
+- workflow run: `31570497634`, attempt `2`, conclusion `success`;
+- original/main baseline: `5bed9aa1058c64e87889afd9b1698921eeb2c186`;
+- artifact id: `9150025501`;
+- artifact name: `staging-d1-recovery-evidence-5bed9aa1058c64e87889afd9b1698921eeb2c186`;
+- artifact ZIP SHA-256: `ded4e5e3c264775b663571bb9b59d79826482e419a6210c268a9c37192b1b716`, independently matched after download;
+- measurements SHA-256: `fd2848d62f88d8c751098dcd1967b172117322c615e21a7996037d097a984e0f`;
+- measured restore duration: `2907 ms`;
+- verified operations: synthetic export, destructive drop, restore, sentinel/checksum integrity, owned-table cleanup;
+- required evidence documents: `export_backup`, `restore_drill`, `rollback_timing`, `integrity_verification`, `migration_rollback_forward_strategy`, `d1_recovery_proof`, all `status=passed` and bound to the same baseline/measurements digest.
 
 ### Change Log
 
@@ -222,36 +235,45 @@ PR #213 branch compatibility/contract convergence:
 - `064162b15eaa1e0b7c58866a52b92a0e0eb0d05c` — align `tests/worker_deployment.test.mjs` with Worker 4.08 / API 2.61 / Schema 3;
 - `0e29810fd74b116b7472cb2637f33686c6e97c21` — synchronize canonical `worker-manifest.json`, tracked `wrangler.toml`, and deployment checker with Worker 4.08 / API 2.61 / migration 0003;
 - `4d132fde2a574b7fdd640a7a0aef8954da85fbb8` — align manifest exporter regression expectations with 4.08 / 2.61 / 3;
-- `5b669b3ab55dceb66e654852b8e29b9c852ee6b3` — restore explicit migration 0002 `calculation_jobs` validation while retaining migration 0003 Schema 3/idempotency validation.
+- `5b669b3ab55dceb66e654852b8e29b9c852ee6b3` — restore explicit migration 0002 `calculation_jobs` validation while retaining migration 0003 Schema 3/idempotency validation;
+- `d761554850f20dc89303ddf5458a040914166a28` — record the original NOW-1 recovery blocker handoff;
+- `6548e70697fd87ee8e28222d818792ab15fea331` — persist the independently verified recovery evidence and set Recovery Evidence Gate to passed;
+- `aff47febc0fc0b45ef0c3a7078841fb4d216d1e7` — bind local D1 schema smoke metadata verification to canonical `worker-manifest.json`, eliminating the final 4.07/Schema 2 stale assertion.
 
 ### Root Cause Log
 
-1. **PR #213 CI contract drift — FIXED on branch**
-   - Symptom: Worker tests/config checks initially failed before Recovery Evidence Gate.
-   - Root cause: runtime implementation had already advanced to Worker 4.08 / API 2.61 / Schema 3 while active deployment tests, manifest, Wrangler metadata, exporter expectations, and latest-migration checker still encoded 4.07 / 2.60 / Schema 2.
-   - Fix: synchronize only active deployment contract sources and regression expectations; preserve previous migration validation coverage.
-   - Regression: exact-head CI #714 reaches Recovery Evidence Gate with all preceding applicable checks successful.
+1. **PR #213 active deployment-contract drift — FIXED**
+   - Symptom: CI successively failed in Worker deployment tests, deployment metadata, manifest exporter expectations, and finally local D1 schema smoke after Schema 3 became eligible.
+   - Root cause: implementation had advanced to Worker 4.08 / API 2.61 / Schema 3 while several active contract checks still encoded 4.07 / 2.60 / Schema 2.
+   - Systemic prevention: canonical manifest now drives local D1 final metadata expectation; active manifest/Wrangler/migration checks are synchronized and previous migration coverage remains retained.
+   - Regression proof: CI #717 is fully green, including real local application of migrations 0001, 0002, and 0003.
 
-2. **Staging recovery workflow scheduling — PROBABLE EXTERNAL PLATFORM ROOT CAUSE / NOT REPO-FIXED**
-   - run `31570497634` and job `94031248237` remain `queued`; job has no runner and no executed steps;
-   - staging environment has no pending approval and permits `main`;
-   - repository concurrency API simultaneously lists the same run as `in_progress` in `staging-d1-recovery-evidence`;
-   - run-specific concurrency lookup does not consistently recognize that membership;
-   - later ordinary GitHub-hosted CI jobs in the same repository acquire runners normally.
-   - Current classification: GitHub Actions concurrency lease / workflow-run state desynchronization is the strongest evidence-based hypothesis. Backend service root cause is not directly observable and therefore is not claimed proven.
+2. **Staging recovery workflow scheduling anomaly — RESOLVED OPERATIONALLY / PLATFORM BACKEND ROOT CAUSE UNPROVEN**
+   - Original symptom: run `31570497634` was `queued` with no runner/steps while concurrency API simultaneously treated it as `in_progress`.
+   - Controlled action: user performed one normal cancel; the stale concurrency lease cleared.
+   - Diagnostic result: attempt 2 immediately acquired a GitHub-hosted runner, concurrency/run state became consistent, and the full drill succeeded.
+   - Conclusion: the evidence strongly supports a transient GitHub Actions orchestration/concurrency state desynchronization. Internal GitHub backend cause is not observable and is therefore not claimed proven.
+   - Reopen condition: only if the same queued/no-runner + concurrency-in-progress contradiction recurs.
+
+3. **Local D1 schema smoke stale metadata assertion — FIXED**
+   - Symptom: after Recovery Gate passed, all three migrations applied successfully but `tools/test_d1_schema.mjs` rejected the valid row `{schema_version:3, release_version:"4.08"}`.
+   - Failure point: hard-coded final expectation remained Schema 2 / 4.07.
+   - Root cause: smoke checker was not bound to the canonical runtime manifest.
+   - Fix: read `worker-manifest.json` and compare local D1 metadata against its schema/release contract.
+   - Regression proof: CI #717 local D1 schema step SUCCESS.
 
 ### Known Issues / Risks
 
-- Recovery drill has executed zero steps, therefore there is still **no acceptable Schema 3 recovery evidence**.
-- PR #213 must remain blocked even though its implementation/tests now converge correctly.
-- The connected GitHub action interface available to this session does not expose normal workflow-run cancellation or full-run rerun; do not substitute a job rerun against a still-queued job.
-- A controlled cancel/rerun is diagnostic only after the stale concurrency lease is verified released.
-- Independent Review for current PR #213 head remains pending and must occur after the blocker is resolved and exact-head applicable CI can pass.
+- Focused Independent Review for the final PR #213 head is still pending; do not merge until it has no BLOCKER findings.
+- Production Schema 3 migration / Worker 4.08 activation is **not yet performed**; current verification is PR/local/staging recovery evidence only.
+- NOW-1B frontend stable-key persistence/replay remains intentionally blocked until production server compatibility is verified.
+- Recovery evidence proves controlled isolated staging recoverability for the reviewed migration strategy; it does not justify unrelated Schema 3 expansion.
 
 ### Deferred / Rejected Candidates
 
-- **REJECT NOW:** remove/rename recovery concurrency group to force scheduling;
+- **REJECT NOW:** remove/rename recovery concurrency group;
 - **REJECT NOW:** remove `environment: staging`;
-- **REJECT NOW:** fabricate or manually mark recovery evidence passed;
-- **REJECT NOW:** merge PR #213 while the Recovery Evidence Gate is red;
-- **BACKLOG:** any broader GitHub Actions queue/orchestration redesign unless the controlled rerun reproduces the platform anomaly.
+- **REJECT NOW:** fabricate or manually mark recovery evidence without structured proof;
+- **REJECT NOW:** merge PR #213 without focused review merely because CI is green;
+- **BACKLOG:** broader GitHub Actions queue/orchestration redesign unless the exact platform anomaly recurs;
+- **BACKLOG:** unrelated broad Schema 3 roadmap items.
