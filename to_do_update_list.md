@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Historical plans and audits are evidence sources, not automatic execution authority. Operational quality aid: `docs/governance/DOCUMENT_QUALITY_STANDARD.md` (subordinate to the Playbook; no independent Gate authority).
 
-Last updated: **2026-08-12 12:46 Asia/Taipei**  
-Handoff revision: **E1c-A.1 CLOSED / E1c-B BROWSER RECOVERY PARTIAL PASS / MD-NAN-B1 ACTIVE — SAME-PROVIDER BOUNDED RE-FETCH**
+Last updated: **2026-08-12 13:11 Asia/Taipei**  
+Handoff revision: **E1c-A.1 CLOSED / E1c-B BROWSER RECOVERY PARTIAL PASS / MD-NAN-B1 IMPLEMENTED + RUNTIME CI VERIFIED / FINAL EXACT-HEAD CI+REVIEW PENDING**
 
 ---
 
@@ -32,7 +32,7 @@ The project goal is product correctness and usability. Governance, CI/CD, deploy
 | Area | Status | Remote-truth note |
 |---|---|---|
 | Gate A | DONE | closed |
-| Gate B | DONE | closed |
+| Gate B | DONE | closed / post-main verified |
 | Gate C | DONE | closed / post-main verified |
 | Gate D | DONE | D1a–D1e closed / post-main verified |
 | Gate E / E0 | DONE | architecture re-review closed |
@@ -45,10 +45,10 @@ The project goal is product correctness and usability. Governance, CI/CD, deploy
 | E1c-B frontend deployment | **VERIFIED** | Pages deployment SUCCESS |
 | E1c-B workflow/calculation/snapshot production path | **VERIFIED** | scheduled #3242 SUCCESS; authenticated #3244 SUCCESS |
 | E1c-B authenticated browser recovery | **PARTIAL PRODUCTION PASS** | user observed queued/pending state after logout → login during live production activity; terminal browser cleanup still requires direct observation |
-| Market-data NaN residual | **ACTIVE NOW / PRODUCT BLOCKER** | #3243 reproduced `MARKET_DATA_FAILED` with 20 sanitized provider rows; #3244 succeeded minutes later on identical code, proving transient recurrence pattern |
-| MD-NAN-B1 | **ACTIVE IMPLEMENTATION** | bounded fresh re-fetch from same provider/parameters; persistent invalid data remains fail-closed |
+| Market-data NaN residual | **ACTIVE NOW / PRODUCT BLOCKER UNTIL FIX IS MERGED+OBSERVED** | #3243 reproduced `MARKET_DATA_FAILED` with 20 sanitized provider rows; #3244 succeeded minutes later on identical code, proving transient recurrence pattern |
+| MD-NAN-B1 | **IMPLEMENTED / RUNTIME CI VERIFIED / PRE-MERGE** | PR #210; runtime/test head `ecf5873...` passed CI #693; final documentation-only head still requires exact-head CI + Independent Review |
 
-**Primary Active Batch is now MD-NAN-B1** because #3243 is new material production evidence that directly blocked an authenticated portfolio update. E1c-B browser recovery is partially verified and remains a narrow terminal-cleanup observation after this blocker is stabilized.
+**Primary Active Batch remains MD-NAN-B1** because #3243 is material production evidence that directly blocked an authenticated portfolio update. E1c-B browser recovery is partially verified and remains a narrow terminal-cleanup observation after this blocker is stabilized.
 
 ---
 
@@ -177,7 +177,9 @@ Market-data integrity boundary for MD-NAN-B1:
 - selected `Close` remains Scheme A valuation authority;
 - invalid provider rows are never imputed, dropped, forward-filled, back-filled, or substituted merely to pass validation;
 - a fresh request to the **same provider with the same request semantics** is allowed because #3243 → #3244 proves the observed defect can disappear without an application semantic change;
-- if the bounded re-fetch remains invalid, the existing validator remains authoritative and the update fails closed.
+- the retry is accepted only if required `Dividends` / `Stock Splits` evidence is complete, the selected price source is unchanged, and all original provider daily dates remain present;
+- row omission is not a valid repair mechanism;
+- if the bounded re-fetch remains unacceptable/invalid, the existing validator remains authoritative and the update fails closed.
 
 ---
 
@@ -191,7 +193,8 @@ E1c-B implementation merged
 → authenticated browser recovery partially verified (#3243 user observation)
 → new material blocker: recurring provider selected-price NaN (#3243)
 → MD-NAN-B1 bounded same-provider fresh re-fetch
-→ exact-head tests/review/CI
+→ runtime/test head verified by CI #693
+→ final documentation-only exact-head CI + Independent Review
 → merge + post-main verification
 → normal production observation of MD-NAN-B1
 → finish E1c-B terminal browser cleanup observation
@@ -226,7 +229,11 @@ Reopen or redirect only on:
 
 Status:
 
-**ROOT CAUSE MIN-SAFE CLASSIFIED / IMPLEMENTATION ON BRANCH / REGRESSION TESTS ADDED / EXACT-HEAD CI + REVIEW PENDING**
+**ROOT CAUSE MIN-SAFE CLASSIFIED / IMPLEMENTED / RUNTIME+REGRESSION CI #693 PASS / REVIEW BLOCKERS REMEDIATED / FINAL EXACT-HEAD CI + INDEPENDENT REVIEW PENDING**
+
+PR:
+
+`#210 — Market data: bounded same-provider re-fetch for transient NaN rows`
 
 Branch:
 
@@ -235,6 +242,12 @@ Branch:
 Base main at batch start:
 
 `1b8ed8f60c804de1964e76dbf0008f093cbb4798`
+
+Runtime/test implementation head verified by CI #693:
+
+`ecf5873d8c31e93b29c99107649e63b3a16e2eb5`
+
+Final PR head is mutable until the documentation sync is complete; fetch it from GitHub before review/merge.
 
 ### Reproduction / evidence
 
@@ -262,12 +275,27 @@ Current evidence does not prove whether the exact responsibility is Yahoo's resp
 ### MD-NAN-B1 implementation contract
 
 1. normal complete provider history is accepted exactly as before;
-2. when prepared selected `Close_Adjusted` contains NaN, construct a fresh ticker request and re-fetch once;
+2. when prepared selected `Close_Adjusted` contains NaN, a fresh ticker request may be attempted once;
 3. retry uses the same symbol, start date, provider, `auto_adjust=False`, and `actions=True` semantics;
-4. no row is dropped, repaired, filled, or substituted;
-5. if the second provider response is complete, accept that fresh provider response normally;
-6. if the second response is still invalid, return it unchanged and let the existing validator fail closed;
-7. no Worker, D1, workflow callback, snapshot, calculator, dividend, split, or benchmark semantic change.
+4. first invalid response must contain complete numeric `Dividends` and `Stock Splits` evidence before entering the retry path;
+5. fresh response must retain complete numeric `Dividends` and `Stock Splits` evidence;
+6. fresh response must retain every provider daily date present in the first invalid response; a missing row cannot count as a repair;
+7. fresh response must select the same price source as the first response; `Close` may not silently become `Adj Close`;
+8. no row is dropped, repaired, filled, back-filled, forward-filled, or substituted;
+9. if the fresh response satisfies the above gates and selected price is complete, accept that fresh provider response normally;
+10. if the fresh request is empty, throws, omits a prior date, changes selected source, lacks/malforms required action evidence, or remains NaN, preserve invalid provider evidence and let the existing validator fail closed;
+11. no Worker, D1, workflow callback, snapshot, calculator, dividend, split, capital-gain, or benchmark semantic change.
+
+### Independent Review blockers found and remediated during implementation
+
+1. **BLOCKER — invalid evidence could be discarded if fresh re-fetch returned empty/exception.**  
+   Remediation: preserve the first invalid provider response so existing validation retains the original fail-closed evidence.
+2. **BLOCKER — retry could otherwise become implicit price/action substitution.**  
+   Remediation: require same selected price source plus complete numeric `Dividends` / `Stock Splits` evidence; no `Close` → `Adj Close` rescue.
+3. **BLOCKER — retry could otherwise appear clean by omitting the original invalid provider date.**  
+   Remediation: require the fresh provider daily index to retain all dates from the first invalid provider response.
+
+These findings are all within the same MD-NAN-B1 correctness boundary; none authorizes provider redesign, row repair, or broader market-data architecture work.
 
 ### Regression tests added
 
@@ -277,7 +305,39 @@ Current evidence does not prove whether the exact responsibility is Yahoo's resp
 - Volume/Dividend evidence comes from the accepted fresh response;
 - clean SPY path is not needlessly retried;
 - persistent invalid response is attempted only within the bounded policy;
-- persistent NaN remains present and `PortfolioValidator.validate_price_data()` still rejects it.
+- persistent NaN remains present and `PortfolioValidator.validate_price_data()` still rejects it;
+- empty/exceptioning fresh requests preserve the initial invalid response;
+- selected source change is rejected;
+- missing/malformed required action evidence is rejected;
+- provider daily-row omission is rejected;
+- initial invalid data without required action evidence is not retried.
+
+`tests/test_market_data_nan_refetch_initial_failures.py` proves:
+
+- an initial empty provider response preserves the existing no-data behavior and is not retried as a NaN case;
+- an initial provider exception preserves the existing no-data behavior and is not retried as a NaN case.
+
+### Runtime/test verification
+
+Runtime/test head `ecf5873d8c31e93b29c99107649e63b3a16e2eb5`:
+
+- CI #693 / run `31565530250`: **SUCCESS**;
+- Worker security/deployment tests: **SUCCESS**;
+- Frontend contracts/build: **SUCCESS**;
+- Python: **458 passed**, 2 warnings, 18 subtests;
+- measured statements: 3,798;
+- measured branches: 1,474;
+- missing lines: **549**;
+- missing branches: **307**;
+- locked maximum missing branches: **309**;
+- Python coverage policy: **PASS**;
+- coverage baseline/gates: **UNCHANGED**.
+
+Intermediate failed CIs remain evidence, not merge authority:
+
+- #686: tests passed but missing-branch gate failed;
+- #689: test assertion used NumPy boolean identity incorrectly; test-only correction followed;
+- #692: 456 tests passed but new branch coverage still exceeded the locked baseline.
 
 ### E1c-B residual after MD-NAN-B1
 
@@ -326,9 +386,9 @@ The Worker contract rejects conflicting callback run identity, so this remains s
 
 ### NOW — MD-NAN-B1 functional correctness blocker
 
-Complete the bounded same-provider fresh re-fetch implementation, regression validation, independent review, merge, post-main CI, and one normal production observation.
+Runtime implementation and regression suite are verified by CI #693. Complete final documentation-only exact-head CI, Independent Review, expected-head merge, post-main CI, and one normal production observation.
 
-No financially semantic substitution is authorized. A retry may only obtain a new complete response from the same provider/request contract; persistent invalid data remains fail-closed.
+No financially semantic substitution is authorized. A retry may only obtain a new acceptable response from the same provider/request contract; persistent/unacceptable invalid data remains fail-closed.
 
 ### NEXT — finish E1c-B terminal browser closeout
 
@@ -375,6 +435,7 @@ Then select exactly one next functional implementation batch.
 ### REJECT FOR CURRENT PHASE
 
 - dropping/filling/forward-filling/substituting invalid market price rows to make the workflow green;
+- treating provider row omission as a successful repair;
 - switching market-data provider without evidence that bounded same-provider retrieval is insufficient;
 - reconciliation/scheduler framework expansion without demonstrated current failure mode;
 - new scheduler/queue infrastructure;
@@ -426,8 +487,9 @@ Then select exactly one next functional implementation batch.
 **Decision:** MD-NAN-B1 preempts the remaining E1c-B closeout observation until the recurring production calculation blocker is stabilized.  
 **Evidence:** authenticated #3243 failed `MARKET_DATA_FAILED` with 20 exact sanitized `NaN selected-price provider row` diagnostics; #3244 succeeded minutes later on unchanged code.  
 **Minimum-safe classification:** transient upstream daily-row incompleteness/inconsistency observed via Yahoo/yfinance; exact upstream responsibility remains unproven.  
-**Authorized fix:** one bounded fresh re-fetch from the same provider/request semantics; persistent invalid data remains fail-closed.  
-**Status:** ACTIVE IMPLEMENTATION.
+**Authorized fix:** one bounded fresh re-fetch from the same provider/request semantics; same source/action/date-integrity gates apply; persistent/unacceptable invalid data remains fail-closed.  
+**Verification:** runtime/test head passed CI #693 with unchanged coverage gates; final documentation-only exact-head CI + Independent Review still required before merge.  
+**Status:** PRE-MERGE VERIFIED / NOT YET PRODUCTION VERIFIED.
 
 ---
 
@@ -454,9 +516,10 @@ Then select exactly one next functional implementation batch.
 **Recovery evidence:** #3244 succeeded minutes later on the same `main` code and portfolio path with no NaN diagnostics.  
 **Minimum-safe root cause:** transient upstream market-data row incompleteness/inconsistency observed through Yahoo/yfinance retrieval; exact responsibility layer is not yet proven.  
 **Impact:** authenticated portfolio calculation can fail even though a fresh provider retrieval minutes later is valid.  
-**Permanent mitigation under implementation:** one bounded fresh same-provider re-fetch only when the selected price contains NaN; persistent invalid data remains unchanged and fail-closed.  
+**Permanent mitigation under PR #210:** one bounded fresh same-provider re-fetch only when the selected price contains NaN and first-response action evidence is complete; retry acceptance requires unchanged price source, complete required action evidence, preservation of all prior provider daily dates, and a complete selected price. Persistent/unacceptable invalid data remains fail-closed.  
 **Evidence:** `docs/governance/evidence/MARKET_DATA_NAN_RUN_31563691963_2026-08-12.json`.  
-**Prohibited assumption:** do not drop/fill/substitute/forward-fill the invalid row or infer financial meaning from incomplete OHLC/action evidence.
+**Pre-merge verification:** runtime/test head CI #693 PASS; production verification pending.  
+**Prohibited assumption:** do not drop/fill/substitute/forward-fill the invalid row, treat row omission as repair, or infer financial meaning from incomplete OHLC/action evidence.
 
 ### RC-DOC-01 — Mutable main SHA created self-stale handoff prose
 
@@ -475,8 +538,8 @@ Pending recovery has real production evidence because logout → login preserved
 
 ### K2 — Recurring transient selected-price NaN
 
-Severity: **active product correctness blocker** until MD-NAN-B1 is merged and production-observed.  
-#3243 proved recurrence with 20 rows; #3244 proved the same application code can obtain clean rows minutes later. Bounded same-provider fresh re-fetch is the current narrow mitigation; persistent invalid data must remain fail-closed.
+Severity: **active product correctness blocker until PR #210 is merged and production-observed**.  
+#3243 proved recurrence with 20 rows; #3244 proved the same application code can obtain clean rows minutes later. MD-NAN-B1 is runtime/test verified but not yet production verified. Persistent/unacceptable invalid data must remain fail-closed.
 
 ### K3 — Retained queue production concurrency is not force-tested
 
@@ -598,19 +661,33 @@ The goal is not zero bugs. The goal is not to close on a known major defect that
 **#3244:** authenticated `workflow_dispatch` minutes later on the same `main`; market data clean; 144-row transaction integrity PASS; calculation/reconciliation/ledger/snapshot PASS; terminal succeeded callback SUCCESS.  
 **Root-cause convergence:** transient upstream daily-row incompleteness/inconsistency; exact Yahoo vs yfinance responsibility not proven.  
 **Current implementation:** branch `fix/market-data-nan-bounded-refetch`; same-provider/same-parameter one-time fresh re-fetch; persistent invalid data remains fail-closed.  
-**Regression:** `tests/test_market_data_nan_refetch.py`.  
 **Sanitized evidence:** `docs/governance/evidence/MARKET_DATA_NAN_RUN_31563691963_2026-08-12.json`.  
 **Runtime deployment:** NOT YET MERGED / NOT YET PRODUCTION VERIFIED.
+
+### 2026-08-12 — MD-NAN-B1 pre-merge verification convergence
+
+**PR:** #210.  
+**Review blockers remediated:** preserve invalid evidence on retry empty/exception; reject selected-source/action-evidence drift; reject provider daily-row omission.  
+**Tests:** `tests/test_market_data_nan_refetch.py` + `tests/test_market_data_nan_refetch_initial_failures.py`.  
+**Runtime/test head:** `ecf5873d8c31e93b29c99107649e63b3a16e2eb5`.  
+**CI:** #693 / run `31565530250` SUCCESS.  
+**Python:** 458 passed; coverage missing lines 549; missing branches 307 ≤ locked maximum 309.  
+**Worker/frontend:** SUCCESS.  
+**Coverage policy:** PASS with no baseline weakening.  
+**Remaining pre-merge work:** final documentation-only exact-head CI + Independent Review on the actual immutable final head.  
+**Production verification:** pending until after merge.
 
 ---
 
 ## 16. Next Exact Actions
 
 1. Treat E1c-A.1 as closed; do not reopen reconciliation/control-plane work without new material dispatch-binding evidence.
-2. Complete MD-NAN-B1 exact-head diff review, CI, and Independent Review on `fix/market-data-nan-bounded-refetch`.
-3. If exact-head verification passes and no BLOCKER exists, merge MD-NAN-B1 using expected head; then verify post-main CI.
-4. Observe a normal production `Update Portfolio Data` after merge. If the first provider response is clean, record only that no regression occurred. If selected-price NaN recurs and the bounded same-provider re-fetch recovers, record that as direct production verification of the mitigation. If both attempts remain invalid, preserve fail-closed behavior and retain the new sanitized rows for further RCA.
-5. Do not treat #3244 as fix verification; it predates the fix and only demonstrates transient recovery under unchanged code.
-6. After MD-NAN-B1 is stable, finish the single remaining E1c-B browser observation: terminal job resolves queued/pending state and frontend returns to normal usable portfolio/snapshot display.
-7. If that observation passes with no material blocker, close E1c-B/E1c and immediately perform the focused Product Functionality Review.
-8. Select exactly one next user-impact/correctness batch and resume normal functional optimization/development.
+2. Fetch the final PR #210 head after this documentation sync; run/verify exact-head CI and focused Independent Review against that exact immutable head.
+3. Review must confirm: no price fabrication; no drop/fill/forward-fill/back-fill; no `Close` → `Adj Close` rescue; required action evidence preserved; original provider daily dates cannot disappear; failed/unacceptable retry remains fail-closed; no Worker/D1/scheduler expansion.
+4. If final exact-head CI passes, Independent Review reports zero BLOCKER, PR remains mergeable, and base/main has not unexpectedly drifted, merge PR #210 using the expected head.
+5. Verify post-main CI after merge.
+6. Observe a normal production `Update Portfolio Data` after merge. If the first provider response is clean, record only that no regression occurred. If selected-price NaN recurs and the bounded same-provider re-fetch recovers, record that as direct production verification of the mitigation. If the retry remains invalid/unacceptable, preserve fail-closed behavior and retain new sanitized evidence for further RCA.
+7. Do not treat #3244 as fix verification; it predates the fix and only demonstrates transient recovery under unchanged code.
+8. After MD-NAN-B1 is stable, finish the single remaining E1c-B browser observation: terminal job resolves queued/pending state and frontend returns to normal usable portfolio/snapshot display.
+9. If that observation passes with no material blocker, close E1c-B/E1c and immediately perform the focused Product Functionality Review.
+10. Select exactly one next user-impact/correctness batch and resume normal functional optimization/development.
