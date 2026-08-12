@@ -117,7 +117,7 @@ This is material evidence that a live pending calculation identity can survive a
 - event: `workflow_dispatch`;
 - same pre-fix main head `1b8ed8f60c804de1964e76dbf0008f093cbb4798`;
 - `Mark calculation job running`: **SUCCESS**;
-- all requested market-data paths downloaded without selected-price NaN diagnostics;
+- all 43 requested symbols plus SPY path downloaded without selected-price NaN diagnostics;
 - transaction prefix integrity: **PASS** for 144 rows;
 - canonical Daily PnL reconciliation: **PASS** for both groups;
 - split-adjusted ledger parity: **PASS** for 144 BUY/SELL rows;
@@ -133,8 +133,9 @@ This is material evidence that a live pending calculation identity can survive a
 PR #210 — `Market data: bounded same-provider re-fetch for transient NaN rows`
 
 - base: `1b8ed8f60c804de1964e76dbf0008f093cbb4798`;
-- final PR head: `644a2a7e2ba96dac65ab5c68ba1ceb277ab1501b`;
+- implementation branch: `fix/market-data-nan-bounded-refetch`;
 - runtime/test implementation head: `ecf5873d8c31e93b29c99107649e63b3a16e2eb5`;
+- final PR head: `644a2a7e2ba96dac65ab5c68ba1ceb277ab1501b`;
 - final Independent Review ID `4913241814`: **PASS / NO REVIEW BLOCKER** on exact final head;
 - final exact-head CI #696 / run `31565889026`: **SUCCESS**;
 - merge commit / MD-NAN-B1 product baseline: `a8b03877449e885df935389e63fc23e6eb765dd2`;
@@ -157,6 +158,8 @@ Live Worker version:
 Runtime contract:
 
 `Worker 4.07 / API 2.60 / D1 Schema 2`
+
+E1c-B intentionally does **not** change Worker lifecycle semantics, D1 schema, portfolio calculation semantics, snapshot semantics, or market-data semantics.
 
 Recovery reference:
 
@@ -249,6 +252,18 @@ PR:
 
 `#210 — Market data: bounded same-provider re-fetch for transient NaN rows`
 
+Implementation branch:
+
+`fix/market-data-nan-bounded-refetch`
+
+Base main at implementation start:
+
+`1b8ed8f60c804de1964e76dbf0008f093cbb4798`
+
+Runtime/test implementation head:
+
+`ecf5873d8c31e93b29c99107649e63b3a16e2eb5`
+
 Final PR head:
 
 `644a2a7e2ba96dac65ab5c68ba1ceb277ab1501b`
@@ -340,6 +355,12 @@ Runtime/test head `ecf5873d8c31e93b29c99107649e63b3a16e2eb5`:
 - locked maximum missing branches: **309**;
 - coverage policy: **PASS**;
 - coverage baseline/gates: **UNCHANGED**.
+
+Intermediate failed CI evidence retained for debugging/provenance; none is merge authority:
+
+- CI #686: all product tests passed, but the existing missing-branch coverage gate failed; no gate weakening was accepted;
+- CI #689: a new regression test used NumPy boolean identity incorrectly; test-only assertion was corrected without runtime semantic change;
+- CI #692: 456 tests passed, but newly introduced branch coverage still exceeded the locked missing-branch maximum; additional branch tests were added rather than changing the baseline.
 
 Final PR head `644a2a7e2ba96dac65ab5c68ba1ceb277ab1501b`:
 
@@ -624,7 +645,7 @@ Use:
 - `docs/engineering/`: durable RCA/contract/decision/closeout evidence;
 - `docs/governance/evidence/`: sanitized machine-readable production evidence.
 
-Prefer updating an existing authoritative document over creating a new one. Compress completed operational detail only after durable evidence exists, but never compress away unresolved material defects/risks.
+Prefer updating an existing authoritative document over creating a new one. Compress completed operational detail only after durable evidence exists, but never compress away unresolved material defects/risks or verification history that explains current decisions.
 
 Whenever repository prose conflicts with GitHub/CI/deployment remote truth, remote truth wins and this file should be corrected promptly.
 
@@ -718,7 +739,8 @@ The goal is not zero bugs. The goal is not to close on a known major defect that
 **Review blockers remediated:** preserve invalid evidence on retry empty/exception; reject selected-source/action-evidence drift; reject provider daily-row omission.  
 **Tests:** `tests/test_market_data_nan_refetch.py` + `tests/test_market_data_nan_refetch_initial_failures.py`.  
 **Runtime/test head:** `ecf5873d8c31e93b29c99107649e63b3a16e2eb5`.  
-**CI:** #693 / run `31565530250` SUCCESS.  
+**Intermediate verification history:** #686 coverage-branch gate fail after product tests passed; #689 test-only NumPy-bool assertion fail; #692 tests passed but coverage-branch gate still exceeded; each was fixed without weakening the locked gate.  
+**Successful CI:** #693 / run `31565530250` SUCCESS.  
 **Python:** 458 passed; coverage missing lines 549; missing branches 307 ≤ locked maximum 309.  
 **Worker/frontend:** SUCCESS.  
 **Coverage policy:** PASS with no baseline weakening.
