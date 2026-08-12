@@ -14,17 +14,20 @@ Current project/activation authority:
 
 ---
 
-## 1. Runtime identity — repository candidate vs. live production
+## 1. Runtime identity — repository source contract vs. live production
 
 **Do not use one unqualified “current runtime” label for both repository source and deployed production.** They intentionally diverge between merge and controlled activation.
 
-### Repository candidate state
+### Repository source contract
 
 `worker-manifest.json` on protected main is the authority for the currently reviewed source contract.
 
-After NOW-1A / PR #213 merged:
+NOW-1A / PR #213 introduced the runtime-changing source at merge commit:
 
-- protected main/runtime source commit: `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`;
+`6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`
+
+Its contract is:
+
 - service: `journal-backend`;
 - runtime service metadata: `trading-journal-api`;
 - deployment entry: `worker-entry.js`;
@@ -34,7 +37,9 @@ After NOW-1A / PR #213 merged:
 - D1 schema: `3`;
 - D1 binding: `DB`.
 
-This is a **reviewed repository candidate**, not proof that production is already running 4.08 / 2.61 / Schema 3.
+Protected main may legitimately advance after that runtime-changing merge for documentation/governance changes while preserving the same runtime tree and manifest. Therefore **the PR #213 merge SHA is provenance, not a permanently hard-coded production deployment target**.
+
+Before activation, select a fresh exact runtime source `R` using the source-selection rule in §4. Do not infer that production is already running 4.08 / 2.61 / Schema 3 merely because protected main contains that source contract.
 
 ### Last verified live production state
 
@@ -60,29 +65,33 @@ Do not infer live production identity merely from protected-main HEAD or `worker
 
 NOW-1A server compatibility is merged to protected main and post-main CI has passed, but production activation is intentionally still pending.
 
-Current state:
+Current durable facts:
 
-- PR #213 merge commit: `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`;
+- PR #213 runtime-changing merge commit: `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`;
 - post-main CI #720 / `31621612621`: SUCCESS;
 - Recovery Evidence Gate: PASS, backed by the isolated staging D1 recovery drill;
-- repository candidate contract: Worker 4.08 / API 2.61 / Schema 3;
+- repository source contract: Worker 4.08 / API 2.61 / Schema 3;
 - live production last verified contract: Worker 4.07 / API 2.60 / Schema 2.
 
 `config/production-activation-authority.json` currently authorizes the older production source:
 
 `fe5f091fdb2c92970dff74c1a7c99052084adb95`
 
-It **does not authorize** `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`.
+It does **not** authorize a new NOW-1A activation source.
 
 Therefore:
 
-> **Do not dispatch production deployment for the NOW-1A source until a fresh reviewed activation authority explicitly authorizes that exact runtime source.**
+> **Do not dispatch production deployment for NOW-1A until an exact current-main runtime source `R` has been selected, read-only production identity evidence has passed for that exact `R`, and a later reviewed activation authority explicitly authorizes the same `R`.**
 
-The next controlled production activation must preserve the existing order:
+The next controlled production activation must preserve this order:
 
 ```text
-reviewed runtime source R
-→ fresh production identity/precondition evidence as applicable
+finish all pre-R repository/document/governance changes
+→ re-fetch protected main
+→ select R = exact current protected-main HEAD
+→ Production Identity Evidence(source_sha=R) while main HEAD is still exactly R
+→ inspect/accept sanitized PASS evidence
+→ freeze R as the reviewed runtime source
 → protected-main activation authority A explicitly authorizes R
 → canonical Deploy Worker workflow with source_sha=R
 → remote additive migration
@@ -90,6 +99,8 @@ reviewed runtime source R
 → stable post-deploy contract verification
 → product smoke / closeout evidence
 ```
+
+If any runtime/deployment-affecting change lands after the evidence run and before activation, treat it as a new candidate: reselect `R`, recollect exact-source evidence, and re-review. Do not silently transfer evidence from one runtime source to another.
 
 Do not make NOW-1B frontend stable-key behavior depend on Worker 4.08 until this production activation is verified.
 
@@ -112,24 +123,37 @@ See `docs/README.md` for repository-wide document authority.
 
 ---
 
-## 4. Two-SHA production activation model
+## 4. Two-SHA production activation model and source-selection rule
 
 Production activation intentionally separates immutable runtime source from the later protected-main control plane that authorizes it.
 
-- **R — runtime source SHA:** exact deployable commit containing the reviewed runtime candidate.
-- **A — activation-authority SHA:** protected-main commit containing reviewed evidence and explicitly authorizing exact `R`.
+- **R — runtime source SHA:** exact deployable commit selected from protected main and bound to fresh production identity evidence.
+- **A — activation-authority SHA:** later protected-main commit containing reviewed evidence and explicitly authorizing exact `R`.
 
 `A` may be newer than `R`. Do not collapse this into “deploy current HEAD”.
 
-For the next NOW-1A activation, the intended runtime candidate is currently:
+### Selecting R
+
+For the current workflow contract, `Production Identity Evidence` requires:
 
 ```text
-R = 6ea86620475cde8ac9a412921cdc8ae6ce11b9bf
+inputs.source_sha == current protected-main HEAD
 ```
 
-but it is **not deployable under the current activation-authority record**, because that record still authorizes `fe5f091f...`. A fresh authority decision must explicitly bind to exact `R` before deployment.
+at the time its production read-only job runs. Therefore the correct selection rule is:
 
-Historical E1a-A example:
+```text
+complete all intended pre-R main changes
+→ re-fetch remote main
+→ R = current protected-main HEAD
+→ immediately collect Production Identity Evidence for exact R
+```
+
+Do **not** preselect the earlier PR #213 merge SHA merely because it is the commit that introduced the runtime diff. A later docs/governance-only descendant can be the correct deployable `R` when it is current main and contains the same reviewed runtime contract.
+
+Once exact-source evidence for `R` is accepted, preserve `R` as the immutable runtime target. The later authority commit `A` may then advance protected main while authorizing `R`, because the deploy workflow independently requires `R` to remain reachable from main.
+
+### Historical E1a-A example
 
 ```text
 R = 2d1fc1cd7190651c64b764c58f58d67826d408e8
@@ -168,7 +192,7 @@ Do not use routine Cloudflare dashboard Quick Edit or source copy/paste for prod
 
 ### NOW-1A activation boundary
 
-For the current batch, do not call `deploy-worker.yml` with `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf` until `config/production-activation-authority.json` (or its reviewed successor) explicitly authorizes that exact SHA and the applicable evidence is accepted.
+Do not call `deploy-worker.yml` for NOW-1A until the exact source-selection/evidence/authority sequence in §§2–4 has completed and `config/production-activation-authority.json` (or its reviewed successor) explicitly authorizes the selected `R`.
 
 When activation becomes authorized, the canonical workflow must apply additive migration `0003_record_create_idempotency.sql` before deploying Worker 4.08 and then verify live Schema 3 / release 4.08 / API 2.61 against exact source identity.
 
@@ -252,6 +276,8 @@ E1a-B is no longer the active project batch. Do not reopen it without a new mate
 
 Purpose: authoritative external identity/config discovery around a production activation. GET-only; no deploy or data mutation.
 
+Operational constraint: its production job requires `source_sha` to equal current protected-main HEAD. This constraint is why `R` must be selected only after all intended pre-R main changes are complete.
+
 ### Production Contract Audit
 
 `.github/workflows/production-contract-audit.yml`
@@ -299,6 +325,7 @@ Never weaken runtime, identity, authority, schema, security, or recovery checks 
 For NOW-1A specifically:
 
 - migration 0003 is additive, but do not claim production Schema 3 until remote activation verifies it;
+- if exact-main Production Identity Evidence cannot bind to the intended source, stop and reselect `R` from current main; do not weaken the exact-main assertion;
 - if migration succeeds but Worker activation fails, stop and use the reviewed additive-schema compatibility/rollback strategy rather than improvising destructive SQL;
 - if Worker 4.08 activates but produces a material production regression, prioritize rollback to the last known good compatible Worker while preserving evidence and re-evaluating the exact schema/runtime state;
 - NOW-1B frontend stable-key behavior must remain disabled until server activation and rollback compatibility are explicitly closed.
