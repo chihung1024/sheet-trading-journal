@@ -24,7 +24,7 @@ Document quality management exists primarily to prevent **project amnesia** and 
 
 The review evaluates source-of-truth hierarchy, freshness, product relevance, historical integrity, duplication, handoff usability, process inflation, completion integrity, and whether the candidate weakens existing R2/R3 gates.
 
-## Round 1 findings
+## Findings and resolutions
 
 ### DQ-01 — BLOCKER: live handoff was dominated by operational closeout
 
@@ -77,9 +77,7 @@ Resolution:
 
 Status: **RESOLVED**.
 
-The exact candidate head after DQ-06 was `84f9e5988280f2cad3fd310da4be4c4e780968eb`. Focused Same-AI Independent Review found no remaining blocker on that head, and exact-head CI run `31551421845` succeeded. That approval does **not** automatically carry forward after the material requirement clarification below.
-
-## Requirement clarification / DQ-07
+The exact candidate head after DQ-06 was `84f9e5988280f2cad3fd310da4be4c4e780968eb`. Focused Same-AI Independent Review found no remaining blocker on that head, and exact-head CI run `31551421845` succeeded. That approval does **not** automatically carry forward after later material clarification/fixes.
 
 ### DQ-07 — MATERIAL REQUIREMENT CLARIFICATION: convergence was at risk of being interpreted as early stop
 
@@ -89,25 +87,28 @@ The product owner clarified:
 
 This exposed an ambiguity in the prior candidate. Phrases such as "minimum closeout", "return to product work", `Out of Scope`, or BACKLOG classification could be misused by a future agent to stop too early while leaving a known material functional/correctness defect behind.
 
-### Resolution in new candidate
-
-`DOCUMENT_QUALITY_STANDARD.md` now states:
+Resolution in candidate:
 
 - documentation quality's primary role is preventing project amnesia and distortion;
 - **Convergence ≠ Early Stop**;
 - convergence means stop unnecessary scope expansion, finish evidence-justified necessary correctness/safety/functional work, verify regressions, preserve material residual risk, then close;
 - a known material functional/correctness defect cannot be hidden by `Out of Scope`, BACKLOG, history compression, or a desire to return to feature work;
-- important functional closeout should preserve and classify residual risks rather than silently discard them;
-- this is explicitly an interpretation of existing Playbook completion/correctness rules, not a new mandatory Gate.
+- important functional closeout preserves and classifies residual risks rather than silently discarding them;
+- the standard explicitly treats this as interpretation of existing Playbook completion/correctness rules, not a new mandatory Gate.
 
-`to_do_update_list.md` now states:
+Status: **RESOLVED**.
 
-- complete-then-converge as a Working Baseline;
-- E1c-A.1/E1c-B cannot be declared closed with a known material lifecycle/correctness regression;
-- Product Functionality Review must classify material residual bugs as NOW and resolve them before phase close when they are required for the Stable State or would predictably obstruct/corrupt the next functional batch;
-- BACKLOG remains for genuinely safe-to-defer improvements, not a disposal area for inconvenient defects.
+### DQ-08 — BLOCKER FOUND BY FOCUSED RE-REVIEW: current-vs-next batch status ambiguity
 
-Status: **RESOLVED IN CANDIDATE**.
+A later candidate called E1c-B the `Current functional batch` while simultaneously stating that it could not begin until E1c-A.1 production closeout. That creates handoff distortion: a new agent could incorrectly start E1c-B before the required prerequisite is actually closed.
+
+Resolution in candidate:
+
+- `Current closure obligation` is explicitly E1c-A.1 and status is `BLOCKED` on the external production reviewer gate;
+- `Next functional implementation batch` is explicitly E1c-B and status is `PLANNED / READY TO START ONLY AFTER E1c-A.1 CLOSEOUT`;
+- the Working Baseline still remains product-first: finish the existing prerequisite correctly without turning it into a new infrastructure roadmap, then immediately move into E1c-B functional implementation.
+
+Status: **RESOLVED**.
 
 ## Scope decision
 
@@ -117,6 +118,7 @@ Status: **RESOLVED IN CANDIDATE**.
 - subordinate document-quality checklist;
 - historical-plan authority boundary;
 - complete-then-converge / functional residual-risk interpretation;
+- accurate current-closure vs next-functional-batch state;
 - independent review evidence for this R2 candidate.
 
 ### NEXT
@@ -148,6 +150,7 @@ The candidate may pass only if:
 - the rule prevents early abandonment of material defects without creating an infinite-perfection requirement;
 - `Out of Scope` / BACKLOG cannot hide a material current Stable-State blocker;
 - safely separable improvements can still converge to NEXT/BACKLOG;
+- live handoff distinguishes the current closure obligation from the next functional implementation batch;
 - confirmed Working Baselines cannot be silently replaced by a new session/model/document;
 - `to_do_update_list.md` is materially easier to use as a product-first handoff and preserves known material residual functional risk;
 - R2/R3 safety/review rigor is not weakened;
