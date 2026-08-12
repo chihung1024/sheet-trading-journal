@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 01:35 Asia/Taipei**  
-Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A MERGED + POST-MAIN VERIFIED / PRODUCTION ACTIVATION PREP — SELECT R FROM CURRENT MAIN / DOCUMENT QUALITY MAINTAINED**
+Last updated: **2026-08-13 01:40 Asia/Taipei**  
+Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A MERGED + POST-MAIN VERIFIED / PRODUCTION ACTIVATION PREP — FREEZE R ONLY AFTER SAME-SHA CI + PAGES / DOCUMENT QUALITY MAINTAINED**
 
 ---
 
@@ -39,7 +39,7 @@ login
 | Product Functionality Review | **ACTIVE — NOW-1** | record-create duplicate correctness defect remains the current single product line until server activation + NOW-1B close the user-visible ambiguity gap |
 | NOW-1A / PR #213 | **MERGED / POST-MAIN VERIFIED / PRODUCTION ACTIVATION PENDING** | server-side create-idempotency compatibility is on protected main; runtime-changing merge commit `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`; production still runs the last verified 4.07 / 2.60 / Schema 2 contract |
 | Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled rerun `31570497634` attempt 2 completed real staging export/drop/restore/integrity/cleanup and produced verified evidence |
-| Document Quality | **MAINTAINED — ACTIVATION SOURCE-SELECTION CONTRACT CORRECTED** | source/live/authority boundaries are explicit; runtime source R is selected from exact current main only after all pre-R changes, preventing stale hard-coded activation SHAs |
+| Document Quality | **MAINTAINED — ACTIVATION SOURCE/EVIDENCE TIMING CONTRACT CORRECTED** | source/live/authority boundaries are explicit; production source R is frozen only after the same protected-main SHA has successful post-main CI and Pages production deployment and main is re-confirmed unchanged |
 
 The lifecycle/control-plane work is no longer the project focus. Recovery investigation was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. The current infrastructure work is limited to the minimum production-activation boundary required to finish NOW-1A safely.
 
@@ -158,7 +158,11 @@ Rollout state is now:
 ```text
 Recovery Evidence Gate PASS
 → server compatibility MERGED + POST-MAIN VERIFIED
-→ select exact current-main R after all pre-R changes
+→ finish pre-R main changes
+→ same-SHA post-main CI SUCCESS
+→ same-SHA Pages production deployment SUCCESS
+→ re-fetch main and confirm same SHA
+→ freeze R = exact current-main SHA
 → read-only Production Identity Evidence for exact R
 → reviewed authority A authorizes R
 → production Schema 3 migration / Worker 4.08 activation
@@ -186,7 +190,8 @@ Independent Review for NOW-1A is PASS under the repository's Same-AI Independent
 - historical remediation plans are evidence/candidate sources, not automatic execution roadmaps;
 - a known material product defect may be promoted to NOW even if it falls outside an older scope label;
 - protected-main source contract and live production runtime are separate states between merge and controlled activation; never infer production deployment from repository HEAD alone;
-- Production Identity Evidence requires `source_sha == current protected-main HEAD` during the read-only production job; therefore do not hard-code a provisional R before all intended pre-R main changes are complete;
+- Production Identity Evidence requires both `source_sha == current protected-main HEAD` and canonical Pages production deployment commit `== source_sha`; therefore do not freeze R until the same candidate SHA has successful post-main CI and Pages production deployment and protected main is re-confirmed unchanged;
+- if main changes while waiting for CI/Pages, the old provisional candidate is not R; wait for the new main SHA's same-SHA CI/Pages state and re-evaluate before freezing R;
 - once exact-source evidence is accepted for R, later activation-authority commit A may advance main while explicitly authorizing that immutable R.
 
 ---
@@ -211,16 +216,18 @@ None of these should interrupt product functionality work without a demonstrated
 
 ## 8. Exact Next Actions / Master Plan
 
-1. Re-check GitHub remote truth. This candidate corrects the activation source-selection contract; if that correction is not yet on protected `main`, finish its exact-head CI/review/strict-ruleset merge gate before collecting production evidence.
-2. After **all intended pre-R main changes are complete**, re-fetch protected `main`, `worker-manifest.json`, Recovery Evidence Gate, deployment environment contract, current activation authority, and production evidence workflow. Confirm no runtime/deployment-affecting diff invalidates Worker 4.08 / API 2.61 / Schema 3.
-3. Set `R = current protected-main HEAD` from that fresh read and immediately dispatch GET-only `Production Identity Evidence` with `source_sha=R`. Do not merge another pre-R change between R selection and that exact-main evidence run.
-4. Inspect the sanitized evidence artifact independently. Only a real PASS artifact bound to exact `R` may be transformed into the controlled production-activation evidence set and a fresh authority commit `A` that explicitly authorizes the same `R`.
-5. Current authority still authorizes only `fe5f091fdb2c92970dff74c1a7c99052084adb95`; it authorizes **no NOW-1A candidate**. Do not deploy until the new exact-R authority is reviewed and on protected main.
-6. Only after exact-source authorization, execute the canonical `Deploy Worker` path with `source_sha=R`. Require migration `0003_record_create_idempotency.sql` before Worker 4.08 deployment and verify exact source, Worker 4.08 / API 2.61 / Schema 3, D1 identity, health, auth/CORS, tenant isolation, and legacy no-key compatibility.
-7. Before NOW-1B production activation, resolve and test both review FOLLOW-UP items: (a) delete-then-reuse idempotency-key retention semantics; (b) frontend/Worker rollback-disable coordination once stable frontend keys exist.
-8. Only after production server activation is verified, begin NOW-1B frontend stable-key persistence/replay as a separate product batch.
-9. Keep MD-NAN-B1 under passive production watch; only reopen if new provider evidence materially changes the safety decision.
-10. Resume the remaining Product Functionality Review after NOW-1A production activation is closed; do not let infrastructure or document cleanup replace product work.
+1. Re-check GitHub remote truth. This candidate corrects the activation source/evidence timing contract; if PR #216 is not yet on protected `main`, finish its exact-head CI/review/strict-ruleset merge gate before collecting production evidence.
+2. After **all intended pre-R main changes are complete**, identify the current protected-main SHA as a provisional activation candidate and re-check `worker-manifest.json`, Recovery Evidence Gate, deployment environment contract, current activation authority, Production Identity Evidence workflow, and canonical deployment workflow. Confirm no runtime/deployment-affecting diff invalidates Worker 4.08 / API 2.61 / Schema 3.
+3. Require post-main CI SUCCESS and Pages production deployment SUCCESS for that **same provisional candidate SHA**. If main changes while waiting, discard that provisional candidate and restart this step for the new current-main SHA.
+4. After both same-SHA CI and Pages are successful, re-fetch protected main. Only if it still equals the verified candidate SHA, freeze `R = current protected-main HEAD`.
+5. Dispatch GET-only `Production Identity Evidence` with `source_sha=R`. Do not merge another pre-R change between the final main re-check and this exact-R evidence run.
+6. Inspect the sanitized evidence artifact independently. Only a real PASS artifact bound to exact `R` may be transformed into the controlled production-activation evidence set and a fresh authority commit `A` that explicitly authorizes the same `R`.
+7. Current authority still authorizes only `fe5f091fdb2c92970dff74c1a7c99052084adb95`; it authorizes **no NOW-1A candidate**. Do not deploy until the new exact-R authority is reviewed and on protected main.
+8. Only after exact-source authorization, execute the canonical `Deploy Worker` path with `source_sha=R`. Require migration `0003_record_create_idempotency.sql` before Worker 4.08 deployment and verify exact source, Worker 4.08 / API 2.61 / Schema 3, D1 identity, health, auth/CORS, tenant isolation, and legacy no-key compatibility.
+9. Before NOW-1B production activation, resolve and test both review FOLLOW-UP items: (a) delete-then-reuse idempotency-key retention semantics; (b) frontend/Worker rollback-disable coordination once stable frontend keys exist.
+10. Only after production server activation is verified, begin NOW-1B frontend stable-key persistence/replay as a separate product batch.
+11. Keep MD-NAN-B1 under passive production watch; only reopen if new provider evidence materially changes the safety decision.
+12. Resume the remaining Product Functionality Review after NOW-1A production activation is closed; do not let infrastructure or document cleanup replace product work.
 
 ---
 
@@ -229,7 +236,7 @@ None of these should interrupt product functionality work without a demonstrated
 ### Stable State
 
 - PR #213 runtime-changing merge is `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`; later documentation descendants may advance protected main without changing the Worker 4.08 / API 2.61 / Schema 3 runtime tree;
-- post-NOW-1A documentation merge `ff9d792a98dacdc8a9e5dc9d145020320624b86a` is an evidence baseline only, **not a permanently hard-coded R**; remote main must be re-fetched after the source-selection correction lands;
+- post-NOW-1A documentation merge `ff9d792a98dacdc8a9e5dc9d145020320624b86a` is an evidence baseline only, **not a permanently hard-coded R**;
 - exact up-to-date PR #213 CI #719 / run `31621500033` completed SUCCESS across all three required checks;
 - PR #213 Independent Review Gate PASS; focused re-review on exact synchronized head PASS with no BLOCKER;
 - post-main CI #720 / run `31621612621` on runtime-changing merge commit `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf` completed SUCCESS;
@@ -240,6 +247,7 @@ None of these should interrupt product functionality work without a demonstrated
 - repository source contract is Worker 4.08 / API 2.61 / Schema 3, but production activation has **not** occurred;
 - last verified live production deployment remains exact source `fe5f091fdb2c92970dff74c1a7c99052084adb95`, Worker 4.07 / API 2.60 / Schema 2, from successful Deploy Worker #4 / `31475347673`;
 - current activation authority still authorizes only that older `fe5f091f...` source;
+- no NOW-1A R is frozen yet; freeze R only after PR #216 (or any later intended pre-R change) is on main and that same main SHA has successful post-main CI + Pages deployment and remains current on a fresh re-check;
 - no fake evidence, force push, workflow bypass, ruleset bypass, or concurrency-policy workaround was used.
 
 ### Recovery Evidence
@@ -276,7 +284,9 @@ Post-NOW-1A document quality:
 - `92b98b98b26e5e908a5d994e48502cd7263ce72c` — align the live handoff with PR #213 merged/post-main state and record governance/ruleset root causes;
 - `4a50e698bef3a5a6f698bacf9570b80a196644e5` — resolve the first docs-review self-staleness BLOCKER by making the handoff durable across its own merge;
 - `ff9d792a98dacdc8a9e5dc9d145020320624b86a` — merge PR #215 document-quality corrections to protected main;
-- `28b834c3fdba5bd16824beb26d2c54e548f728ae` — correct the activation source-selection runbook after tracing the exact-main-only Production Identity Evidence contract.
+- `28b834c3fdba5bd16824beb26d2c54e548f728ae` — correct the activation source-selection runbook after tracing the exact-main-only Production Identity Evidence contract;
+- `22cdf13457a9e0dd4123505d6ef708f9db9da144` — add the same-SHA Pages propagation requirement before exact-R production identity evidence;
+- this handoff commit — mirror that exact-main + exact-Pages timing contract and record the second PR #216 review finding.
 
 ### Root Cause Log
 
@@ -319,18 +329,25 @@ Post-NOW-1A document quality:
    - Fix: describe document quality as maintained and make the first next action conditional on fresh GitHub remote truth; after merge the same text remains valid without another documentation-only cleanup loop.
    - Prevention: live handoff changes should target a durable stable state and avoid self-referential “merge this document” instructions unless phrased as a remote-truth condition.
 
-7. **Provisional activation R hard-coded before exact-main evidence contract trace — FIXED ON CURRENT CANDIDATE**
+7. **Provisional activation R hard-coded before exact-main evidence contract trace — FIXED ON PR #216 CANDIDATE**
    - Symptom: the first deployment-doc correction named the earlier PR #213 merge `6ea866...` as the intended next runtime source R; after the docs PR merged, protected main advanced, while `Production Identity Evidence` requires its `source_sha` to equal current main exactly.
    - Failure point: following the runbook literally would make a read-only evidence dispatch for `6ea866...` fail the workflow's exact-current-main assertion.
    - Root cause: runtime provenance SHA was confused with final activation-source selection. Source selection was documented before tracing the evidence collector's exact-main precondition through the complete activation sequence.
-   - Fix: remove the provisional hard-coded R. Complete all pre-R changes first, then set `R=current protected-main HEAD`, collect exact-R evidence immediately, freeze R, and only then allow later authority A to advance main while authorizing R.
+   - Fix: remove the provisional hard-coded R and select R only from a fresh current-main read after pre-R work is complete.
    - Prevention: trace all activation workflow preconditions before freezing an operational SHA in documentation; distinguish “commit that introduced runtime behavior” from “exact deployable source identity selected for activation”.
+
+8. **Production identity evidence timing omitted same-SHA Pages propagation — FIXED ON PR #216 CANDIDATE**
+   - Symptom: the first source-selection correction said to select R and immediately dispatch Production Identity Evidence after checking current main.
+   - Failure point: the collector also requires the canonical Pages production deployment commit to equal the audited `source_sha`; immediately dispatching before Pages propagation could predictably fail closed against stale Pages state.
+   - Root cause: review traced the workflow's exact-main assertion first but had not yet carried the collector's exact-Pages deployment equality through the operational sequence.
+   - Fix: require same-SHA post-main CI SUCCESS and same-SHA Pages production deployment SUCCESS, then re-fetch main and confirm the SHA is still current before freezing R and dispatching evidence.
+   - Prevention: production activation source selection must satisfy **all** workflow/collector preconditions, including asynchronous downstream propagation, before evidence collection begins.
 
 ### Known Issues / Risks
 
 - Production Schema 3 migration / Worker 4.08 activation is **not yet performed**. Repository merge and staging/local evidence are not production deployment evidence.
 - Current `config/production-activation-authority.json` still authorizes exact source `fe5f091fdb2c92970dff74c1a7c99052084adb95`; it authorizes **no NOW-1A source**.
-- A new NOW-1A `R` must not be guessed from PR #213 history. Select it from current main only after the source-selection correction and any other intended pre-R changes are merged, then immediately collect exact-main read-only evidence.
+- A new NOW-1A `R` must not be guessed from PR #213 history. After PR #216 and any other intended pre-R changes are merged, require the same current-main SHA to complete post-main CI + Pages deployment, then re-fetch main unchanged before freezing R and collecting exact-R read-only evidence.
 - NOW-1B frontend stable-key persistence/replay remains intentionally blocked until production server compatibility is verified.
 - **FOLLOW-UP before NOW-1B:** idempotency identity currently lives on the record row; deleting a keyed-created record removes retained key memory. Define/test bounded key lifetime or retained server tombstone/ledger semantics before claiming cross-deletion exactly-once.
 - **FOLLOW-UP before NOW-1B:** once frontend stable keys exist, rollback to an older Worker that ignores them can re-open duplicate-create risk. Define frontend disable/rollback coordination before frontend activation.
@@ -339,6 +356,7 @@ Post-NOW-1A document quality:
 ### Deferred / Rejected Candidates
 
 - **REJECT NOW:** weaken `Production Identity Evidence` exact-current-main assertion merely to reuse an older provisional SHA;
+- **REJECT NOW:** weaken the collector's canonical Pages deployment SHA equality merely to dispatch evidence earlier;
 - **REJECT NOW:** remove/rename recovery concurrency group;
 - **REJECT NOW:** remove `environment: staging`;
 - **REJECT NOW:** fabricate or manually mark recovery evidence without structured proof;
@@ -352,14 +370,14 @@ Post-NOW-1A document quality:
 
 ## 10. Document Quality Review — 2026-08-13
 
-Status: **MAINTAINED / ACTIVATION SOURCE-SELECTION CONTRACT CORRECTED ON CURRENT CANDIDATE**
+Status: **MAINTAINED / ACTIVATION SOURCE + EVIDENCE TIMING CONTRACT CORRECTED ON PR #216 CANDIDATE**
 
 Objective: prevent project memory distortion before NOW-1A production activation without turning documentation into a parallel project.
 
 ### Reviewed / changed
 
-- `to_do_update_list.md` — **UPDATED**: replaced stale pre-merge state with PR #213 merged/post-main verified state; separated immutable recovery baseline, runtime provenance, repository source contract, live production runtime, and activation-source selection; recorded review/ruleset/activation-contract root causes and durable next actions.
-- `docs/DEPLOYMENT.md` — **UPDATED**: separates repository source contract from live production; removes the provisional hard-coded NOW-1A R; documents the exact-current-main evidence prerequisite and the correct `select R → evidence → freeze R → later A authorizes R` sequence.
+- `to_do_update_list.md` — **UPDATED**: separates immutable recovery baseline, runtime provenance, repository source contract, live production runtime, activation-source selection, and same-SHA CI/Pages evidence timing; records review/ruleset/activation-contract root causes and durable next actions.
+- `docs/DEPLOYMENT.md` — **UPDATED**: separates repository source contract from live production; removes provisional hard-coded NOW-1A R; documents both exact-current-main and exact-Pages collector prerequisites and the correct `same-SHA CI + Pages → recheck main → freeze R → evidence → later A authorizes R` sequence.
 
 ### Reviewed / no semantic change required
 
@@ -369,10 +387,12 @@ Objective: prevent project memory distortion before NOW-1A production activation
 ### Independent document review outcomes
 
 - first PR #215 candidate review found one BLOCKER: handoff self-staleness at its own merge boundary; fixed before merge;
-- post-merge activation-contract trace found a second high-impact documentation flaw: provisional R was selected before respecting the exact-current-main evidence collector constraint;
-- the source-selection correction deliberately preserves the workflow's strict assertion rather than weakening policy to fit an older SHA;
-- final exact-head CI / Independent Review / strict-ruleset merge remain required before any production evidence dispatch.
+- post-PR #215 activation-contract trace found a second high-impact documentation flaw: provisional R was selected before respecting the exact-current-main evidence collector constraint;
+- first PR #216 review found a third operational timing flaw: source selection did not wait for the same SHA's canonical Pages production deployment, even though the collector verifies exact Pages deployment SHA equality;
+- each finding was recorded before implementation resumed; no failed review was silently converted to PASS;
+- the corrected sequence preserves both workflow/collector strict assertions instead of weakening policy to fit an older or not-yet-propagated SHA;
+- final exact-head CI / focused Independent Review / strict-ruleset merge remain required before any production evidence dispatch.
 
 ### Quality rule reinforced
 
-Documentation quality means keeping authority boundaries, current state, historical evidence, and next actions unambiguous. Do not rewrite stable documents merely because a batch touched adjacent concepts; do not make a live handoff self-expire at its own merge boundary; and do not freeze operational SHAs before tracing the exact workflow contract that consumes them.
+Documentation quality means keeping authority boundaries, current state, historical evidence, and next actions unambiguous. Do not rewrite stable documents merely because a batch touched adjacent concepts; do not make a live handoff self-expire at its own merge boundary; do not freeze operational SHAs before tracing the exact workflow contract that consumes them; and account for asynchronous downstream propagation before treating a repository SHA as evidence-ready.
