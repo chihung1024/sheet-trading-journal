@@ -31,9 +31,10 @@ For a ticker whose prepared selected `Close_Adjusted` still contains NaN:
 3. create a fresh ticker request;
 4. re-fetch once using the same symbol, provider, start date, `auto_adjust=False`, and `actions=True` semantics;
 5. require the fresh response to retain complete numeric `Dividends` and `Stock Splits` evidence;
-6. require the fresh response to select the same price source as the first response, so a failed `Close` fetch cannot silently turn into an `Adj Close` rescue;
-7. accept the fresh response only when the selected price no longer contains NaN; all existing downstream validation still applies unchanged;
-8. if the fresh request is empty, throws, changes price source, lacks/malforms required action evidence, or remains NaN, preserve an invalid provider response and let the existing validator fail closed.
+6. require the fresh response to retain every provider daily date present in the first invalid response, so a provider cannot make the NaN disappear merely by omitting that row;
+7. require the fresh response to select the same price source as the first response, so a failed `Close` fetch cannot silently turn into an `Adj Close` rescue;
+8. accept the fresh response only when the selected price no longer contains NaN; all existing downstream validation still applies unchanged;
+9. if the fresh request is empty, throws, omits a prior provider daily row, changes price source, lacks/malforms required action evidence, or remains NaN, preserve an invalid provider response and let the existing validator fail closed.
 
 This is retrieval retry, not price repair.
 
@@ -58,7 +59,11 @@ A second financial-semantics review identified two acceptance boundaries require
 - the retry may not change selected price source;
 - the retry may not be accepted without complete numeric `Dividends` and `Stock Splits` evidence.
 
-Both are now explicit code gates and regression-tested. These findings are within MD-NAN-B1 because they prevent the retry itself from becoming a new price/action correctness defect.
+A third review found that a fresh response could otherwise appear clean by omitting the first response's invalid daily row. That would be equivalent to letting provider row omission bypass the project's no-drop/fail-closed rule. The implementation now requires the fresh provider daily index to retain all daily dates from the first invalid response before that fresh response can be accepted.
+
+All three findings are within MD-NAN-B1 because they prevent the retry itself from becoming a new price/action/data-integrity defect.
+
+`Capital Gains` remains consistent with the locked E1b contract: yfinance may represent it for instruments where expected, but the required daily `actions=True` evidence gate is `Dividends` plus `Stock Splits`. MD-NAN-B1 does not invent a stricter or different capital-gain accounting rule.
 
 ## Regression contract
 
@@ -71,12 +76,32 @@ Both are now explicit code gates and regression-tested. These findings are withi
 - an empty or exceptioning fresh request preserves the first invalid response for fail-closed validation;
 - a fresh response that changes selected source from `Close` to `Adj Close` is rejected;
 - missing or malformed required daily action evidence is rejected;
+- a fresh response that omits a prior provider daily date is rejected;
 - an initial invalid frame without complete required action evidence is not retried;
 - helper boundary cases are covered so the repository coverage gate is not weakened.
 
-## CI note
+`tests/test_market_data_nan_refetch_initial_failures.py` additionally proves that an initial provider response which is empty or raises still preserves the pre-existing no-data behavior and does not enter the NaN retry path.
 
-One intermediate candidate passed the complete Python test suite but failed the repository's existing missing-branch coverage gate. The gate is not being weakened; additional branch regressions were added and a fresh exact-head CI is required before merge.
+## CI evidence
+
+Intermediate candidates exposed useful verification failures and were not reused as merge authority:
+
+- CI #686: product tests passed, but the existing missing-branch coverage gate failed;
+- CI #689: a new test incorrectly compared a NumPy boolean by object identity; the test was corrected without changing runtime semantics;
+- CI #692: 456 tests passed, but remaining newly introduced branch coverage still exceeded the locked no-regression gate.
+
+Runtime/test head `ecf5873d8c31e93b29c99107649e63b3a16e2eb5` then passed CI #693 / run `31565530250`:
+
+- Worker security/deployment tests: **SUCCESS**;
+- Frontend contracts/build: **SUCCESS**;
+- Python: **458 passed**, 2 warnings, 18 subtests;
+- Python coverage: 3,798 statements / 1,474 branches;
+- missing lines: **549**;
+- missing branches: **307** versus locked maximum **309**;
+- coverage policy: **PASS**;
+- no coverage baseline/gate weakening.
+
+A later documentation-only head still requires exact-head CI before merge; #693 is immutable evidence for the final runtime/test implementation.
 
 ## Rollback
 
