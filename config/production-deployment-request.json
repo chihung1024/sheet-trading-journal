@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "e1c-a1-fe5f091-20260811t0837z",
-  "source_sha": "fe5f091fdb2c92970dff74c1a7c99052084adb95",
-  "requested_at": "2026-08-11T08:37:25.000Z",
-  "reason": "Gate E E1c-A.1 exact-source production deployment after Production Identity Evidence #15 and activation authority PR #195."
+  "request_id": "now1a-r-842e566-20260813t0738z",
+  "source_sha": "842e5667b6ae3e75ea947f9ed08d7a8344337f9d",
+  "requested_at": "2026-08-13T07:38:23.000Z",
+  "reason": "NOW-1A controlled exact-source production activation after PR #222 authority and evidence; dispatch canonical Worker 4.08 / API 2.61 / Schema 3 deployment."
 }
