@@ -223,6 +223,12 @@ Required before rerun: configure those protected `production` environment secret
 
 The two failed runs uploaded only sanitized public-contract audit artifacts; they contain no token or transaction evidence. Their `always()` cleanup step had no token to remove, and no record cleanup is required because mutation was never reached.
 
+### Safe alternative verification completed — does not promote to production acceptance
+
+- Loopback verification against the repository's actual `worker.js` handlers and `run_production_record_idempotency_smoke.mjs`: `node --test tests/worker_record_create_idempotency.test.mjs tests/production_record_idempotency_smoke.test.mjs` passed **20/20**. This covers legacy no-key create, same-key replay, different-payload `409`, tenant isolation, fail-closed preflight/cleanup, and token-file/evidence redaction contracts.
+- Existing authenticated staging browser run [#18](https://github.com/chihung1024/sheet-trading-journal/actions/runs/31156230969) passed exact-source staging verification, non-production OAuth-client validation, token mint, browser-origin CRUD, cleanup, and logout. Its source was `09a741ab...`, before the production idempotency implementation, and its OAuth audience is deliberately staging; it is useful regression evidence only, not production idempotency acceptance.
+- The shared browser currently has no signed-in tab, and a staging token cannot be promoted to the production OAuth audience. The system API key/direct D1 path is intentionally not an equivalent user-tenant test and remains prohibited. No safe alternative can produce production authenticated evidence without a production-audience dedicated identity credential.
+
 This is a narrow Batch 1 acceptance transport, not NOW-1B frontend stable-key implementation or a general production test framework. If it cannot authenticate the dedicated test identity or the tenant is not safely empty, stop without mutation and retain the explicit blocker.
 
 ### Project Convergence Lock — Only Three Active Batches
@@ -472,6 +478,10 @@ Authority A and the NOW-1A production mutation are complete. Final deployment-af
     - Root cause: the runner received empty `PRODUCTION_E2E_GOOGLE_CLIENT_SECRET`, `PRODUCTION_E2E_GOOGLE_REFRESH_TOKEN`, and `PRODUCTION_E2E_EXPECTED_GOOGLE_SUB` values; the connector cannot inspect the protected environment metadata.
     - Boundary evidence: public/system contract passed; authenticated smoke, `POST`, `DELETE`, and test-tenant cleanup were not reached; artifacts contain only sanitized contract data.
     - Fix / reopen condition: configure the dedicated test identity secrets directly in the protected `production` environment, then require a fresh run to pass token mint and produce sanitized create/replay/conflict plus cleanup evidence.
+14. **Alternative-authentication path exhausted — NO SAFE SUBSTITUTE**:
+    - Loopback actual-handler/smoke-runner tests passed 20/20, and historical staging browser smoke #18 passed its own isolated CRUD contract.
+    - Neither is production evidence: staging uses a different OAuth audience and predates the idempotency runtime; the browser has no current signed-in session; system API key/direct D1 would bypass the user-authentication boundary.
+    - Reopen only when the dedicated production OAuth grant is configured or a formally approved, equivalent production-identity transport becomes available.
 
 ### Known Issues / Risks
 
