@@ -2,17 +2,28 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const SOURCE_SHA = "fe5f091fdb2c92970dff74c1a7c99052084adb95";
+test("production deployment request is exact, auditable, schema-1, and bound to current authority", async () => {
+  const [requestRaw, authorityRaw] = await Promise.all([
+    readFile("config/production-deployment-request.json", "utf8"),
+    readFile("config/production-activation-authority.json", "utf8"),
+  ]);
+  const request = JSON.parse(requestRaw);
+  const authority = JSON.parse(authorityRaw);
 
-test("production deployment request is exact, auditable, and schema-1", async () => {
-  const request = JSON.parse(await readFile("config/production-deployment-request.json", "utf8"));
   assert.equal(request.schema_version, 1);
   assert.match(request.request_id, /^[A-Za-z0-9._-]{8,128}$/);
-  assert.equal(request.source_sha, SOURCE_SHA);
   assert.match(request.source_sha, /^[0-9a-f]{40}$/);
   assert.equal(Number.isFinite(Date.parse(request.requested_at)), true);
   assert.equal(typeof request.reason, "string");
   assert.ok(request.reason.trim().length > 0);
+
+  assert.equal(authority.status, "ready");
+  assert.match(authority.authorized_source_sha, /^[0-9a-f]{40}$/);
+  assert.equal(
+    request.source_sha,
+    authority.authorized_source_sha,
+    "deployment request must target the exact source currently authorized for production",
+  );
 });
 
 test("dispatch broker is main-only, least-privilege, authority-gated, and cannot deploy directly", async () => {
