@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 11:03 Asia/Taipei**  
-Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A R=`842e566...` EVIDENCE PASS / AUTHORITY + PRODUCTION ACTIVATION PENDING / HANDOFF REVALIDATED**
+Last updated: **2026-08-13 11:46 Asia/Taipei**  
+Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A R=`842e566...` EVIDENCE PASS / FINAL DEPLOYMENT-DRIFT REVIEW PASS / THREE-BATCH CONVERGENCE LOCKED**
 
 ---
 
@@ -68,10 +68,10 @@ login
 | MD-NAN-B1 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH PASS** | bounded same-provider re-fetch mitigation deployed; retry branch remains passive watch |
 | MD-EVENT-ROW / PR #217 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH VERIFIED / SPECIAL BRANCH REGRESSION-VERIFIED** | provider rows are classified by semantics rather than ticker/date; only stable pure cash-dividend-only rows may become explicit `asof_carry_forward`; split/capital-gain/mixed/ambiguous cases remain fail-closed |
 | Product Functionality Review | **ACTIVE — NOW-1** | record-create duplicate correctness defect remains the current product line until server activation + NOW-1B close the user-visible ambiguity gap |
-| NOW-1A / PR #213 | **R SELECTED + IDENTITY EVIDENCE PASS / AUTHORITY + PRODUCTION ACTIVATION PENDING** | Worker 4.08 / API 2.61 / Schema 3 source is merged; exact `R=842e566...` has CI/Pages/Production Identity Evidence PASS; live production is still 4.07 / 2.60 / Schema 2 |
+| NOW-1A / PR #213 | **R SELECTED + IDENTITY EVIDENCE PASS + FINAL DRIFT REVIEW PASS / AUTHORITY + PRODUCTION ACTIVATION PENDING** | Worker 4.08 / API 2.61 / Schema 3 source is merged; exact `R=842e566...` is retained; live production is still 4.07 / 2.60 / Schema 2 |
 | Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled run `31570497634` attempt 2 proved isolated staging export/drop/restore/integrity/cleanup |
-| Production Identity Evidence #16 | **PASS — EXACT `R=842e566...`** | artifact is genuine exact-R evidence; authority A has not yet been created; later non-deploy changes require relevance review, not automatic invalidation |
-| Document Quality | **WHOLE-PROJECT RECHECKED / HANDOFF REVALIDATED** | stale Gate-E document authority, activation chronology, and evidence-lifecycle interpretation corrected; root README/Playbook remain stable |
+| Production Identity Evidence #16 | **PASS — EXACT `R=842e566...`** | artifact is genuine exact-R evidence; authority A has not yet been created; later non-deploy changes do not invalidate the same R after relevance review |
+| Document Quality | **WHOLE-PROJECT RECHECKED / HANDOFF REVALIDATED / THREE-BATCH CONVERGENCE LOCKED** | handoff now makes clear that deployment governance is a necessary guardrail inside Batch 1, not a new project direction |
 
 The lifecycle/control-plane work is no longer the project focus. Recovery work was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. The only infrastructure work allowed to interrupt Product Functionality Review now is the minimum production-activation boundary required to finish NOW-1A safely, or a newly demonstrated material product/security/data failure.
 
@@ -141,7 +141,7 @@ Both market-data fixes are passive watch. Reopen only on new material correctnes
 
 ---
 
-## 5. Current Active Batch — Product Functionality Review / NOW-1
+## 5. Current Active Product Line — NOW-1
 
 Review the real user path, not architecture in isolation:
 
@@ -183,6 +183,7 @@ Recovery Evidence PASS
 → same-R CI #727 PASS
 → same-R Pages #1501 attempt 2 PASS
 → Production Identity Evidence #16 PASS for exact R
+→ final R→main deployment-affecting drift review PASS after PR #219
 → CURRENT: persist/review controlled activation evidence + authority A for exact R
 → Deploy Worker(source_sha=R)
 → migration 0003 + Worker 4.08
@@ -190,9 +191,94 @@ Recovery Evidence PASS
 → NOW-1B frontend stable-key persistence/replay
 ```
 
-Before authority A, perform a final deployment-affecting drift review from R to current main. Do not discard R merely because unrelated Python/docs commits exist; do discard/re-evidence it if Worker/D1/manifest/migration/deploy-path semantics changed.
-
 Do not make frontend behavior depend on Schema 3 / Worker 4.08 before production server activation is verified.
+
+### Project Convergence Lock — Only Three Active Batches
+
+The project must now be understood as **three functional batches**, not as a chain of governance mini-projects.
+
+#### Batch 1 — NOW-1A Production Activation
+
+**Single product objective:** make the already-implemented server-side duplicate-create protection actually live in production.
+
+Necessary work only:
+
+```text
+retain exact R=842e566...
+→ persist/review the already-PASS exact-R activation evidence
+→ create authority A that explicitly authorizes exact R
+→ exact-head CI + Independent Review required by the existing safety contract
+→ canonical Deploy Worker(source_sha=R)
+→ remote additive migration 0003
+→ Worker 4.08 / API 2.61 / Schema 3 production verification
+→ verify legacy clients without Idempotency-Key still work
+```
+
+`R`, `A`, evidence, CI, review, migration ordering, and deploy verification are **guardrails inside this one production-activation batch**. They are not separate project phases and must not be expanded or beautified after they satisfy the existing deployment contract.
+
+Do **not** add architecture work to Batch 1 merely because Schema 3 is involved. In particular, do not reopen broad Schema 3, queue/scheduler, heartbeat/sweeper, ledger, UUID, Decimal, auth, or deployment-framework redesign without new material evidence.
+
+#### Batch 2 — NOW-1B Product Function
+
+**Single product objective:** complete the user-visible exactly-once/retry behavior after server compatibility is live.
+
+Required product behavior:
+
+```text
+user starts create
+→ frontend generates a stable create key
+→ timeout / ambiguous response / retry / recoverable reload
+→ retry reuses the same logical key
+→ server returns replay success instead of creating a duplicate record
+→ UI reaches one correct final record state
+```
+
+Before activation of stable frontend keys, resolve and test the two already-known correctness boundaries:
+
+1. **delete-then-reuse retention semantics** — define the intended lifetime of create identity so deletion does not silently create a false exactly-once claim;
+2. **frontend/Worker rollback coordination** — once stable keys are in use, prevent rollback to an older Worker that ignores them from silently reopening duplicate-create risk.
+
+Keep this narrow. Do not generalize it into a universal idempotency framework unless actual product evidence requires that scope.
+
+#### Batch 3 — Resume Product Functionality Review
+
+After NOW-1 closes, immediately resume the real product path:
+
+```text
+login / session restoration
+→ record CRUD
+→ portfolio update trigger
+→ queued/running/reopen recovery
+→ terminal success/failure feedback
+→ snapshot refresh
+→ holdings correctness
+→ realized / unrealized / daily P&L
+→ performance / benchmark
+→ empty / error / retry states
+→ mobile/responsive usability where functionally material
+```
+
+Only a demonstrated NOW-class defect opens a new blocking batch. NEXT/BACKLOG/REJECT findings must not displace functional verification.
+
+### What Is Explicitly Not a New Project Line
+
+Do not turn the following into independent phases after their current requirement is satisfied:
+
+- Production Identity Evidence;
+- R/A terminology or evidence packaging;
+- CI/review mechanics;
+- deployment-document beautification;
+- broad Schema 3 redesign;
+- custom scheduler/queue service;
+- heartbeat/sweeper;
+- ledger redesign;
+- Decimal/fixed-point migration;
+- tenant UUID migration;
+- broad provider redesign;
+- broad authentication/session redesign;
+- CI/CD/governance beautification.
+
+**Project direction in one sentence:** finish duplicate-create protection in production, complete the frontend retry/idempotency behavior, then return to end-to-end product functionality review.
 
 ---
 
@@ -212,7 +298,8 @@ Do not make frontend behavior depend on Schema 3 / Worker 4.08 before production
 - PASS evidence is exact-R evidence and never authorizes a different SHA;
 - later unrelated/non-deployed main commits do not automatically invalidate the same R; perform deployment-relevance diff review;
 - Worker/D1/manifest/migration/deploy-path drift after evidence requires new R/evidence;
-- activation authority A may be newer than R because canonical deployment verifies R is main-reachable and reads authority from latest main.
+- activation authority A may be newer than R because canonical deployment verifies R is main-reachable and reads authority from latest main;
+- governance/evidence steps exist to protect product activation; they are not independent optimization targets.
 
 ---
 
@@ -234,19 +321,34 @@ None may interrupt product functionality without demonstrated correctness/securi
 
 ---
 
-## 8. Exact Next Actions / Master Plan
+## 8. Exact Next Actions / Three-Batch Master Plan
 
-1. **Re-check remote truth.** If the whole-project handoff revalidation PR that produced this text is not yet on protected `main`, finish its exact-head CI + focused Independent Review + normal ruleset merge. If already merged, do not recreate/repeat the docs batch.
-2. Re-fetch final protected main and compare exact `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d` to that main. Explicitly inspect Worker source/entry, `worker-manifest.json`, Wrangler/deployment config, migration 0003/schema, Recovery/authority/deploy verifiers, and `.github/workflows/deploy-worker.yml`.
-3. If that focused compare still shows **no Worker/D1/manifest/migration/deploy-path drift**, retain exact R and Production Identity Evidence #16; do **not** manufacture a redundant evidence rerun merely because main contains unrelated Python/tests/docs commits.
-4. If relevant deployment drift is found, stop the retained-R path: select a new current-main R only after same-SHA CI + Pages PASS, then collect fresh Production Identity Evidence for that new R.
-5. For retained R, independently verify artifact #16 metadata/document and transform/retain the required reviewed evidence under `docs/governance/evidence/production-activation/...`; create/update `config/production-activation-authority.json` so authority commit `A` explicitly authorizes exact R. Artifact id `9165344610`; digest `sha256:b3273cf207d0a84fdbdaef298c4794d4f955cadd1059ac437eab456bc86cce9a`.
-6. Run exact-head CI and Independent Review for authority A, merge normally, then re-confirm latest main authority passes for `EXPECTED_SHA=R` and R remains main-reachable.
-7. Execute canonical `Deploy Worker` with `source_sha=R`. Require remote additive migration `0003_record_create_idempotency.sql` before Worker 4.08 and verify exact source, Worker 4.08 / API 2.61 / Schema 3, production D1 identity, health, auth/CORS, tenant isolation, and legacy no-key compatibility.
-8. Before NOW-1B production activation, resolve/test: (a) delete-then-reuse idempotency-key retention semantics; (b) frontend/Worker rollback-disable coordination once stable frontend keys exist.
-9. Only after server activation is production-verified, implement NOW-1B frontend stable-key persistence/replay as a separate product batch.
-10. Keep MD-NAN-B1 and MD-EVENT-ROW passive watch; reopen only on new material evidence.
-11. Resume remaining Product Functionality Review after NOW-1 closes; do not let infrastructure/document cleanup replace product work.
+### Batch 1 — NOW-1A Production Activation — **ACTIVE NOW**
+
+1. Re-check remote truth and machine authority before mutation. Current retained target is exact `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d`; PR #219 post-merge drift review already found no Worker/D1/manifest/migration/deploy-path drift through main `a6adc98561ad1942366c9178064ac41b449d0efd`.
+2. Independently verify/transform the already-PASS Production Identity Evidence #16 into the controlled evidence records required by `config/production-activation-authority.json`. Artifact id `9165344610`; digest `sha256:b3273cf207d0a84fdbdaef298c4794d4f955cadd1059ac437eab456bc86cce9a`.
+3. Create the minimum authority commit `A` that explicitly authorizes exact R. Do not modify unrelated runtime or architecture.
+4. Run exact-head CI + Independent Review for A, merge normally, then verify latest-main authority passes for `EXPECTED_SHA=R` and R remains main-reachable.
+5. Execute canonical `Deploy Worker(source_sha=R)`. Require additive migration `0003_record_create_idempotency.sql` before Worker 4.08 deployment.
+6. Production-verify exact R, Worker 4.08 / API 2.61 / Schema 3, D1 identity, health, auth/CORS, tenant isolation, idempotency replay/conflict behavior where safely testable, and legacy no-key compatibility.
+7. Close Batch 1. Do not continue deployment/governance optimization after these acceptance conditions pass.
+
+### Batch 2 — NOW-1B Product Function — **NEXT**
+
+1. Resolve/test delete-then-reuse idempotency-key retention semantics.
+2. Resolve/test frontend/Worker rollback-disable coordination for stable keys.
+3. Implement frontend stable-key generation, persistence, retry/replay behavior, and ambiguous-response recovery.
+4. Run regression + real user-path verification proving one logical create cannot become two records under the supported retry/recovery paths.
+5. Close NOW-1 when server + frontend behavior is production-verified.
+
+### Batch 3 — Remaining Product Functionality Review — **AFTER NOW-1**
+
+1. Resume the end-to-end user-path review from the first not-yet-closed functional area.
+2. Prioritize correctness of CRUD, update/recovery, snapshot, holdings, P&L, performance/benchmark, and material error/mobile states.
+3. Promote only demonstrated material defects to NOW. Keep NEXT/BACKLOG/REJECT work from displacing functionality.
+4. Keep MD-NAN-B1 and MD-EVENT-ROW passive watch; reopen only on new material evidence.
+
+**Do not create a fourth active batch for evidence, CI, review, documentation, deployment framework, or architecture cleanup unless new evidence demonstrates a separate material product/security/data blocker.**
 
 ---
 
@@ -258,9 +360,11 @@ None may interrupt product functionality without demonstrated correctness/securi
 - selected/evidenced activation source: `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d`;
 - product calculation semantic fix later merged as `0f4676f995db890b3a8c5fdb2310f7b47a80f207`;
 - market-data docs closeout #218 merged as `c3b578f543d74794b2d6a40e30d0475b36f9fa9b`;
-- whole-project recheck compared `842e566... → 0f4676...`: only Python market-data/main/tests/coverage files changed; `0f4676... → c3b578...`: docs only;
-- no Worker source/entry, manifest/Wrangler, migration, deploy workflow, Recovery Gate, or activation-verifier change was identified in those compare results;
-- therefore R is **retained pending final post-doc drift recheck**, not silently invalidated;
+- whole-project handoff revalidation #219 merged as `a6adc98561ad1942366c9178064ac41b449d0efd`;
+- PR #219 exact-head CI #742 PASS; post-main CI #743 / `31663770120` PASS; Pages #1504 / `31663769657` build/deploy/report PASS;
+- final post-#219 compare `842e566... → a6adc985...` contains only documentation plus Python market-data/main/tests/coverage files introduced after R;
+- no Worker source/entry, manifest/Wrangler, migration/schema, Deploy Worker workflow, Recovery Gate, or production activation verifier drift was found in that final compare;
+- R remains main-reachable and the **final deployment-affecting drift review is PASS**;
 - repository Worker/D1 contract is Worker 4.08 / API 2.61 / Schema 3;
 - production activation has not occurred;
 - live production remains exact `P=fe5f091fdb2c92970dff74c1a7c99052084adb95`, Worker 4.07 / API 2.60 / Schema 2, Deploy Worker #4 / `31475347673`;
@@ -284,7 +388,7 @@ Evidence chain for `R=842e566...`:
 - production D1 GET / Worker deployment binding / active versions / Pages config / live frontend HTTP+CSP checks all PASS;
 - `errors=[]`.
 
-No authority A and no NOW-1A production mutation followed yet. The correct next gate is **final deployment-affecting drift review → controlled evidence/authority A**, not a blind evidence rerun and not direct deployment.
+No authority A and no NOW-1A production mutation followed yet. Final deployment-affecting drift review is now PASS; the correct next gate is **controlled evidence → authority A**, not a blind evidence rerun and not direct deployment.
 
 ### Recovery Evidence
 
@@ -305,7 +409,9 @@ No authority A and no NOW-1A production mutation followed yet. The correct next 
 - Production #3253 exposed a product calculation blocker; functional RCA correctly took priority over activation work.
 - PR #217 — generic market-row semantic root fix; merge `0f4676...`; CI #738/post-main #739/production #3254 PASS within documented evidence scope.
 - PR #218 — market-data closeout docs; merge `c3b578...`; CI #741 + Pages #1503 PASS.
-- whole-project recheck — confirmed #217/#218 did not touch Worker/D1/deployable NOW-1A contract; corrected handoff from overbroad “main moved => R invalid” logic to relevance-based drift review.
+- PR #219 — whole-project handoff revalidation; merge `a6adc985...`; CI #743 + Pages #1504 PASS.
+- post-PR #219 final R→main deployment-affecting drift compare — PASS; R retained, no redundant Production Identity Evidence rerun required.
+- current handoff convergence — project execution explicitly narrowed to Batch 1 NOW-1A activation → Batch 2 NOW-1B product behavior → Batch 3 remaining Product Functionality Review.
 
 ### Root Cause Log
 
@@ -322,16 +428,20 @@ No authority A and no NOW-1A production mutation followed yet. The correct next 
 11. **Overbroad activation-evidence invalidation inference — FIXED BY WHOLE-PROJECT RECHECK**:
     - Symptom: after PR #217/#218 advanced main, handoff drifted toward treating exact-R evidence #16 as unusable solely because main changed.
     - Root cause: “repository/product runtime changed” was conflated with “Worker/D1 deployable runtime changed”, ignoring the two-SHA deploy contract.
-    - Primary evidence: compare `842e566...→0f4676...` lists only Python market-data/main/tests/coverage; `0f4676...→c3b578...` is docs only. Canonical deploy checks out exact requested R, requires it to remain main-reachable, and verifies authority from latest main.
+    - Primary evidence: compare `842e566...→0f4676...` lists only Python market-data/main/tests/coverage; later #218/#219 are docs-only. Canonical deploy checks out exact requested R, requires it to remain main-reachable, and verifies authority from latest main.
     - Fix: retain R/evidence across unrelated changes only after explicit deployment-affecting drift review; never transfer evidence to a different SHA.
     - Reopen: any Worker/D1/manifest/migration/deploy workflow/verifier drift after R, or R ceases to be main-reachable.
+12. **Governance steps visually displaced product work — FIXED BY THREE-BATCH CONVERGENCE**:
+    - Symptom: evidence → authority → CI → review → deploy → migration could be misread as many new project phases.
+    - Root cause: safety gates inside one activation batch were represented at the same conceptual level as product batches.
+    - Fix: execution is now explicitly three batches only: NOW-1A production activation, NOW-1B product function, then remaining Product Functionality Review. Governance/evidence mechanics remain subordinate guardrails inside Batch 1.
+    - Reopen: only if a new material product/security/data blocker demonstrates that a separate blocking batch is genuinely necessary.
 
 ### Known Issues / Risks
 
 - Production Schema 3 / Worker 4.08 activation is not yet performed.
 - Current activation authority still authorizes exact `fe5f091...`; R is not deploy-authorized yet.
-- R evidence is PASS, but controlled activation evidence/authority A still must be persisted/reviewed before deployment.
-- Final post-document merge drift review is required before relying on retained R.
+- R evidence is PASS and final deployment-affecting drift review is PASS, but controlled activation evidence/authority A still must be persisted/reviewed before deployment.
 - NOW-1B remains blocked until production server compatibility is verified.
 - **FOLLOW-UP before NOW-1B:** define/test delete-then-reuse idempotency-key retention semantics.
 - **FOLLOW-UP before NOW-1B:** define frontend disable/rollback coordination once stable frontend keys exist.
@@ -344,6 +454,7 @@ No authority A and no NOW-1A production mutation followed yet. The correct next 
 - **REJECT NOW:** weaken exact-main/Pages assertions for a new evidence collection;
 - **REJECT NOW:** require Copilot/another account merely to manufacture reviewer identity;
 - **REJECT NOW:** speculative market/provider repair or ticker-specific exceptions;
+- **REJECT NOW:** create a separate governance/deployment-document phase after Batch 1 acceptance criteria are satisfied;
 - **BACKLOG:** broad Actions queue redesign unless the same platform anomaly recurs;
 - **BACKLOG:** unrelated broad Schema 3 roadmap;
 - **BACKLOG:** remote D1 create-concurrency stress harness unless real race evidence appears.
@@ -352,15 +463,15 @@ No authority A and no NOW-1A production mutation followed yet. The correct next 
 
 ## 10. Document Quality Review — Whole-Project Recheck 2026-08-13
 
-Status: **HANDOFF REVALIDATED / AUTHORITY MAP + EXACT-R EVIDENCE LIFECYCLE CORRECTED**
+Status: **HANDOFF REVALIDATED / AUTHORITY MAP + EXACT-R EVIDENCE LIFECYCLE CORRECTED / THREE-BATCH CONVERGENCE RECORDED**
 
-Objective: allow future AI to resume from primary evidence without reopening closed Gates, redoing solved investigations, or either discarding valid exact-R evidence or transferring it to a different runtime.
+Objective: allow future AI to resume from primary evidence without reopening closed Gates, redoing solved investigations, or mistaking deployment guardrails for the product roadmap.
 
 ### Reviewed / changed
 
-- `to_do_update_list.md` — **UPDATED**: future-AI bootstrap; current R/evidence/authority state; durable next actions; Pages/evidence RCA; corrected deployment-relevance interpretation.
-- `docs/DEPLOYMENT.md` — **UPDATED**: two-SHA preservation rules, exact-R #16 evidence, deployment-affecting drift test, Pages diagnostic precedent.
-- `docs/README.md` — **UPDATED**: completed E1a plan removed from current authority; current document map + future-AI bootstrap corrected.
+- `to_do_update_list.md` — **UPDATED**: future-AI bootstrap; current R/evidence/authority state; final drift-review result; three-batch convergence; exact next actions.
+- `docs/DEPLOYMENT.md` — **UNCHANGED IN THIS BATCH**: two-SHA preservation rules and exact-R evidence lifecycle remain correct from PR #219.
+- `docs/README.md` — **UNCHANGED IN THIS BATCH**: current-vs-historical authority map remains correct from PR #219.
 
 ### Reviewed / no semantic change required
 
@@ -368,19 +479,19 @@ Objective: allow future AI to resume from primary evidence without reopening clo
 - `AI_PROJECT_PLAYBOOK.md` — **NO CHANGE**: product-first/RCA/convergence/Independent Review rules remain correct.
 - `worker-manifest.json` — **NO CHANGE**: Worker 4.08 / API 2.61 / Schema 3 source contract.
 - `config/recovery-evidence-gate.json` — **NO CHANGE**: passed, immutable staging evidence.
-- `config/production-activation-authority.json` — **NO CHANGE**: correctly still authorizes last verified live P only; authority change belongs to the next controlled activation batch.
-- Production Identity Evidence / Deploy Worker workflows — **NO CHANGE**: exact-R collection and two-SHA deploy authority behavior are safety contracts, not documentation defects.
-
-### Independent review findings
-
-- **NOW / fixed:** `docs/README.md` still called completed E1a activation plan current.
-- **NOW / fixed:** Exact Next Actions contained obsolete PR #216 condition.
-- **NOW / fixed:** initial revalidation draft incorrectly inferred that PR #217 invalidated R solely because it was a product runtime change; exact file diff and canonical deploy workflow disproved that overbroad conclusion before PR creation.
-- **KEEP:** root README and Playbook stable; no touch-every-file rewrite.
-- **KEEP:** live production remains 4.07 / 2.60 / Schema 2 until canonical deploy proves otherwise.
-- **KEEP:** R=842e566... evidence PASS, authority/deploy pending; final drift check required after docs merge.
-- **KEEP:** market-data fixes passive watch; no speculative expansion.
+- `config/production-activation-authority.json` — **NO CHANGE**: correctly still authorizes last verified live P only; authority change belongs to Batch 1 activation.
+- Production Identity Evidence / Deploy Worker workflows — **NO CHANGE**: safety contracts, not optimization targets.
 
 ### Quality rule reinforced
 
-Documentation quality means preserving **truth boundaries**, not maximizing document volume. Future AI must distinguish current authority from historical evidence, repository/product changes from deployable Worker/D1 changes, current live P from selected R, and exact-R evidence from authorization for another SHA. Every consequential action starts with fresh remote truth and exact relevance review; closed investigations remain closed unless their explicit reopen condition is met.
+Documentation quality means preserving **truth boundaries and execution priority**, not maximizing document volume. Future AI must distinguish current authority from historical evidence, product batches from deployment guardrails, repository/product changes from deployable Worker/D1 changes, current live P from selected R, and exact-R evidence from authorization for another SHA.
+
+The project now has exactly three active execution layers:
+
+```text
+Batch 1 — NOW-1A Production Activation
+→ Batch 2 — NOW-1B Product Function
+→ Batch 3 — Remaining Product Functionality Review
+```
+
+Do not create additional process/document/infrastructure phases unless new evidence proves a separate material blocker.
