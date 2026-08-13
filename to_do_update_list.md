@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
 Last updated: **2026-08-13 12:44 Asia/Taipei**  
-Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A R=`842e566...` EVIDENCE PASS / FINAL DEPLOYMENT-DRIFT REVIEW PASS / THREE-BATCH CONVERGENCE LOCKED / CURRENT TECH-DEBT TRIAGE RECORDED**
+Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / NOW-1A PRODUCTION ACTIVATED / PUBLIC CONTRACT VERIFIED / AUTHENTICATED CREATE ACCEPTANCE PENDING / THREE-BATCH CONVERGENCE LOCKED**
 
 ---
 
@@ -67,13 +67,13 @@ login
 | Gate E / E1c | **CLOSED** | no known material lifecycle blocker remains |
 | MD-NAN-B1 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH PASS** | bounded same-provider re-fetch mitigation deployed; retry branch remains passive watch |
 | MD-EVENT-ROW / PR #217 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH VERIFIED / SPECIAL BRANCH REGRESSION-VERIFIED** | provider rows are classified by semantics rather than ticker/date; only stable pure cash-dividend-only rows may become explicit `asof_carry_forward`; split/capital-gain/mixed/ambiguous cases remain fail-closed |
-| Product Functionality Review | **ACTIVE — NOW-1** | record-create duplicate correctness defect remains the current product line until server activation + NOW-1B close the user-visible ambiguity gap |
-| NOW-1A / PR #213 | **R SELECTED + IDENTITY EVIDENCE PASS + FINAL DRIFT REVIEW PASS / AUTHORITY + PRODUCTION ACTIVATION PENDING** | Worker 4.08 / API 2.61 / Schema 3 source is merged; exact `R=842e566...` is retained; live production is still 4.07 / 2.60 / Schema 2 |
+| Product Functionality Review | **ACTIVE — NOW-1** | server duplicate-create protection is live; authenticated create acceptance and NOW-1B still close the user-visible ambiguity gap |
+| NOW-1A / PR #213 | **PRODUCTION ACTIVATED / PUBLIC CONTRACT VERIFIED / AUTHENTICATED CREATE ACCEPTANCE PENDING** | exact `R=842e566...` is live as Worker 4.08 / API 2.61 / Schema 3; no real-user ledger was used for the remaining authenticated create smoke |
 | Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled run `31570497634` attempt 2 proved isolated staging export/drop/restore/integrity/cleanup |
-| Production Identity Evidence #16 | **PASS — EXACT `R=842e566...`** | artifact is genuine exact-R evidence; authority A has not yet been created; later non-deploy changes do not invalidate the same R after relevance review |
+| Production Identity Evidence #16 | **PASS — EXACT `R=842e566...` / AUTHORITY + DEPLOY COMPLETED** | genuine exact-R evidence was persisted in PR #222 and used by the canonical deployment after relevance review |
 | Document Quality | **WHOLE-PROJECT RECHECKED / HANDOFF REVALIDATED / THREE-BATCH CONVERGENCE LOCKED** | handoff now makes clear that deployment governance is a necessary guardrail inside Batch 1, not a new project direction |
 
-The lifecycle/control-plane work is no longer the project focus. Recovery work was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. The only infrastructure work allowed to interrupt Product Functionality Review now is the minimum production-activation boundary required to finish NOW-1A safely, or a newly demonstrated material product/security/data failure.
+The lifecycle/control-plane work is no longer the project focus. Recovery work was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. NOW-1A's runtime mutation is complete; only its isolated authenticated acceptance remains. The only infrastructure work allowed to interrupt Product Functionality Review now is the minimum boundary required to finish that acceptance safely, or a newly demonstrated material product/security/data failure.
 
 ---
 
@@ -183,15 +183,32 @@ Recovery Evidence PASS
 → same-R CI #727 PASS
 → same-R Pages #1501 attempt 2 PASS
 → Production Identity Evidence #16 PASS for exact R
-→ final R→main deployment-affecting drift review PASS after PR #219
-→ CURRENT: persist/review controlled activation evidence + authority A for exact R
-→ Deploy Worker(source_sha=R)
-→ migration 0003 + Worker 4.08
-→ production verification
+→ final R→main deployment-affecting drift review PASS
+→ controlled evidence + authority A merged in PR #222
+→ exact-head CI + Independent Review passed for authority
+→ deployment request + authority-bound dispatch test merged in PR #223
+→ canonical Deploy Worker run #31678943942 SUCCESS after production approval
+→ remote additive migration 0003 + Worker 4.08 deployment SUCCESS
+→ three consecutive public production-contract passes
+→ CURRENT: isolated authenticated legacy/no-key + idempotency replay/conflict acceptance
 → NOW-1B frontend stable-key persistence/replay
 ```
 
 Do not make frontend behavior depend on Schema 3 / Worker 4.08 before production server activation is verified.
+
+### NOW-1A Production Activation Execution — 2026-08-13
+
+Completed production mutation and public verification:
+
+- PR #222 persisted the reviewed exact-R evidence and made protected-main authority A authorize `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d`; PR #223 requested that exact source and changed the dispatch test from a stale hard-coded SHA to an authority-equality invariant.
+- The canonical [Deploy Worker run #31678943942](https://github.com/chihung1024/sheet-trading-journal/actions/runs/31678943942) completed successfully after protected-environment approval. It applied the additive remote migration `0003_record_create_idempotency.sql` before deploying the canonical Worker entry.
+- Post-deploy artifact `9173729753` (`production-post-deploy-842e5667b6ae3e75ea947f9ed08d7a8344337f9d`, digest `sha256:64c381e6f73471715eb924d1709831239aa4dccedf00ba635f9a6bdf9b5eb75b`) records exact source `R`, Worker 4.08 / API 2.61 / Schema 3, health/version success, anonymous record access rejected, allowed production CORS origins accepted, and disallowed origins rejected.
+- The workflow required three consecutive propagated public production-contract passes; the activation is therefore live and publicly verified.
+
+Still required before Batch 1 can close:
+
+- No authenticated tenant record-create probe has been run. The deployment's system principal cannot impersonate a user, and no real-user ledger was used as a substitute.
+- Use a dedicated isolated production test tenant with a documented cleanup plan to verify: legacy create without `Idempotency-Key`; same tenant/key/payload replay creates exactly one record; same key with different payload returns `409 IDEMPOTENCY_CONFLICT`; then delete only the test records and retain sanitized evidence.
 
 ### Project Convergence Lock — Only Three Active Batches
 
@@ -201,18 +218,19 @@ The project must now be understood as **three functional batches**, not as a cha
 
 **Single product objective:** make the already-implemented server-side duplicate-create protection actually live in production.
 
-Necessary work only:
+Completed guarded activation:
 
 ```text
 retain exact R=842e566...
-→ persist/review the already-PASS exact-R activation evidence
+→ persist/review exact-R activation evidence
 → create authority A that explicitly authorizes exact R
-→ exact-head CI + Independent Review required by the existing safety contract
+→ exact-head CI + Independent Review
 → canonical Deploy Worker(source_sha=R)
 → remote additive migration 0003
-→ Worker 4.08 / API 2.61 / Schema 3 production verification
-→ verify legacy clients without Idempotency-Key still work
+→ Worker 4.08 / API 2.61 / Schema 3 public production verification
 ```
+
+The runtime mutation and public contract are complete. Batch 1 remains open only for an isolated authenticated acceptance probe: legacy clients without `Idempotency-Key` must still create normally; same tenant+key+payload must replay without a second record; the same key with a different payload must return `409 IDEMPOTENCY_CONFLICT`. Do not use a real-user ledger to perform this test.
 
 `R`, `A`, evidence, CI, review, migration ordering, and deploy verification are **guardrails inside this one production-activation batch**. They are not separate project phases and must not be expanded or beautified after they satisfy the existing deployment contract.
 
@@ -323,15 +341,13 @@ None may interrupt product functionality without demonstrated correctness/securi
 
 ## 8. Exact Next Actions / Three-Batch Master Plan
 
-### Batch 1 — NOW-1A Production Activation — **ACTIVE NOW**
+### Batch 1 — NOW-1A Post-deploy authenticated acceptance — **ACTIVE NOW**
 
-1. Re-check remote truth and machine authority before mutation. Current retained target is exact `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d`; PR #219 post-merge drift review already found no Worker/D1/manifest/migration/deploy-path drift through main `a6adc98561ad1942366c9178064ac41b449d0efd`.
-2. Independently verify/transform the already-PASS Production Identity Evidence #16 into the controlled evidence records required by `config/production-activation-authority.json`. Artifact id `9165344610`; digest `sha256:b3273cf207d0a84fdbdaef298c4794d4f955cadd1059ac437eab456bc86cce9a`.
-3. Create the minimum authority commit `A` that explicitly authorizes exact R. Do not modify unrelated runtime or architecture.
-4. Run exact-head CI + Independent Review for A, merge normally, then verify latest-main authority passes for `EXPECTED_SHA=R` and R remains main-reachable.
-5. Execute canonical `Deploy Worker(source_sha=R)`. Require additive migration `0003_record_create_idempotency.sql` before Worker 4.08 deployment.
-6. Production-verify exact R, Worker 4.08 / API 2.61 / Schema 3, D1 identity, health, auth/CORS, tenant isolation, idempotency replay/conflict behavior where safely testable, and legacy no-key compatibility.
-7. Close Batch 1. Do not continue deployment/governance optimization after these acceptance conditions pass.
+1. Re-check protected-main and the live/public contract evidence before any further mutation. The deployed exact runtime is `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d`; canonical deployment run `31678943942` and post-deploy artifact `9173729753` are successful.
+2. Provision or designate a dedicated isolated production test tenant that can complete the supported login flow. Define test-only record markers and a cleanup plan before writing anything. Do not use a personal or operational trading ledger.
+3. With that tenant, verify and retain sanitized evidence for: (a) a legacy create without `Idempotency-Key`; (b) repeated same tenant/key/payload requests returning replay success with exactly one persisted record; and (c) same key with a different payload returning `409 IDEMPOTENCY_CONFLICT`.
+4. Read back and delete only the test records, confirm the test tenant ledger is clean, and record the result. A read-only Production Contract Audit may complement this evidence but cannot substitute for authenticated create behavior.
+5. Close Batch 1 only when the three authenticated behaviors and cleanup are evidenced; then start NOW-1B. Do not add further deployment/governance optimization.
 
 ### Batch 2 — NOW-1B Product Function — **NEXT**
 

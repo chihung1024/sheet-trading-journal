@@ -16,13 +16,11 @@ Current project/activation authority:
 
 ## 1. Runtime identity — repository source contract vs. live production
 
-**Do not use one unqualified “current runtime” label for both repository source and deployed production.** They intentionally diverge between merge and controlled activation.
+**Do not use one unqualified “current runtime” label for both repository source and deployed production.** They intentionally diverge between merge and controlled activation; NOW-1A has now crossed that activation boundary.
 
 ### Repository source contract
 
-`worker-manifest.json` on protected main is the authority for the currently reviewed Worker/D1 source contract.
-
-NOW-1A / PR #213 introduced the Worker/D1 runtime-changing source at merge commit:
+`worker-manifest.json` on protected main is the authority for the reviewed Worker/D1 source contract. NOW-1A / PR #213 introduced the relevant Worker/D1 runtime-changing source at merge commit:
 
 `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`
 
@@ -37,72 +35,53 @@ Its contract is:
 - D1 schema: `3`;
 - D1 binding: `DB`.
 
-Protected main has legitimately advanced after that merge. A later repository commit may contain Python calculation fixes or documentation changes without changing the deployable Worker/D1 tree. Therefore **the PR #213 merge SHA is provenance, not a permanently hard-coded production deployment target, and “main advanced” by itself is not proof that an already-evidenced Worker/D1 R became invalid**.
+Protected main may advance with unrelated calculation or documentation changes. A later repository commit is not automatically a new production runtime target; deployment identity remains bound to the exact source selected and authorized through the canonical two-SHA workflow.
 
-Before changing or discarding an accepted `R`, inspect the exact diff and decide whether any Worker/D1/manifest/migration/deploy-path contract changed. Do not infer that production is already running 4.08 / 2.61 / Schema 3 merely because protected main contains that source contract.
+### Current verified live production state
 
-### Last verified live production state
+The successful canonical [Deploy Worker run #31678943942](https://github.com/chihung1024/sheet-trading-journal/actions/runs/31678943942) activated exact source:
 
-The latest successful canonical `Deploy Worker` execution remains run #4 / `31475347673`, which deployed exact source:
+`R = 842e5667b6ae3e75ea947f9ed08d7a8344337f9d`
 
-`P = fe5f091fdb2c92970dff74c1a7c99052084adb95`
+The run completed remote additive migration `0003_record_create_idempotency.sql` before Worker deployment and verified:
 
-That run verified and deployed:
+- Worker release: `4.08`;
+- API version: `2.61`;
+- D1 schema: `3`;
+- runtime service: `trading-journal-api`;
+- three consecutive stable public production-contract passes.
 
-- Worker release: `4.07`;
-- API version: `2.60`;
-- D1 schema: `2`;
-- Worker version ID: `68f32cee-c609-4624-aaff-eaa55ef0c77d`;
-- three consecutive post-deploy production-contract passes.
+The immutable post-deploy artifact is `production-post-deploy-842e5667b6ae3e75ea947f9ed08d7a8344337f9d` (artifact id `9173729753`, digest `sha256:64c381e6f73471715eb924d1709831239aa4dccedf00ba635f9a6bdf9b5eb75b`). It records successful version/health checks, anonymous record access rejection, and allowed/rejected CORS behavior.
 
-No NOW-1A production Worker/D1 activation has been executed yet. Until a newer successful canonical activation proves otherwise, treat the above as the last verified live production contract.
-
-Do not infer live production identity merely from protected-main HEAD or `worker-manifest.json`.
+This proves the live public deployment contract. It does **not** yet prove authenticated tenant record-create behavior; that requires an isolated test tenant and remains the only Batch 1 acceptance item.
 
 ---
 
-## 2. Current production-activation state — NOW-1A pending
+## 2. Current production-activation state — NOW-1A deployed; authenticated create acceptance pending
 
-NOW-1A server compatibility is merged and validated, but production activation is intentionally still pending.
+NOW-1A server compatibility is merged, activated, and publicly verified. The remaining acceptance test is deliberately not being run against a real user ledger.
 
-Current durable facts:
+Completed chain:
 
-- PR #213 Worker/D1 runtime-changing merge: `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`;
-- Recovery Evidence Gate: PASS, backed by the isolated staging D1 recovery drill;
-- repository Worker/D1 source contract: Worker 4.08 / API 2.61 / Schema 3;
-- live production last verified Worker/D1 contract: Worker 4.07 / API 2.60 / Schema 2;
-- an exact NOW-1A runtime source `R = 842e5667b6ae3e75ea947f9ed08d7a8344337f9d` completed same-SHA CI, Pages, and read-only Production Identity Evidence #16;
-- no NOW-1A activation authority and no Worker/D1 production deploy has followed yet.
+- Production Identity Evidence #16 passed for exact `R` (artifact id `9165344610`, digest `sha256:b3273cf207d0a84fdbdaef298c4794d4f955cadd1059ac437eab456bc86cce9a`);
+- PR #222 persisted controlled evidence and made the latest protected-main authority explicitly authorize exact `R`;
+- PR #223 requested exact `R` and fixed a stale hard-coded deployment-request test by binding the request to the current authority instead;
+- the Production Deployment Dispatch Broker passed and dispatched canonical Deploy Worker run `31678943942`;
+- after protected-environment approval, that workflow applied migration 0003, deployed Worker 4.08, and passed its stable public contract verifier.
 
-`config/production-activation-authority.json` still authorizes the older production source:
-
-`fe5f091fdb2c92970dff74c1a7c99052084adb95`
-
-It does **not** yet authorize NOW-1A `R`.
-
-The next controlled production activation must preserve this order:
+The next required sequence is:
 
 ```text
-accepted exact R + PASS Production Identity Evidence
-→ re-check R remains main-reachable
-→ review all commits after R for Worker/D1/manifest/migration/deploy-path drift
-→ if no deployment-affecting drift: preserve R and its exact-R evidence
-→ transform/retain reviewed evidence under the controlled production-activation evidence root
-→ protected-main activation authority A explicitly authorizes exact R
-→ canonical Deploy Worker workflow with source_sha=R
-→ remote additive migration 0003
-→ Worker 4.08 deploy
-→ stable post-deploy contract verification
-→ authenticated product smoke / closeout evidence
+dedicated isolated production test tenant
+→ authenticated legacy create without Idempotency-Key
+→ same tenant/key/payload replay: one persisted record
+→ same key + changed payload: 409 IDEMPOTENCY_CONFLICT
+→ read-back and delete only test records
+→ sanitized evidence / Batch 1 closeout
+→ NOW-1B frontend stable-key persistence and retry behavior
 ```
 
-If the drift review finds a Worker/D1/deployment-affecting change after `R`, then the old evidence cannot authorize that changed deployable runtime: select a new current-main `R`, require same-SHA CI + Pages, and recollect Production Identity Evidence.
-
-If later commits change only unrelated Python calculation code, tests, documentation, or other non-deployed material, do **not** automatically discard an already accepted R. The canonical deploy workflow intentionally supports the two-SHA model: `R` need only remain reachable from protected main, while the latest main control plane contains authority `A` for exact `R`.
-
-A PASS artifact is **not transferable authorization to a different source SHA**. It remains exact-source evidence for `R`; later `A` may authorize that same immutable `R` only after drift/relevance review.
-
-Do not make NOW-1B frontend stable-key behavior depend on Worker 4.08 until this production activation is verified.
+The deployment system principal is intentionally not treated as a user principal. Do not substitute a production system-key check, a read-only audit, or a real-user ledger for this authenticated acceptance. A GET-only Production Contract Audit may add confidence but cannot close the create-path gap.
 
 ---
 
@@ -187,9 +166,7 @@ Whole-project recheck evidence on 2026-08-13:
 - `0f4676... → c3b578...` changed only market-data closeout documentation;
 - no Worker source/entry, `worker-manifest.json`, Wrangler/deployment config, migration 0003, deploy workflow, Recovery Gate, or production activation verifier change was present in those compare results.
 
-Therefore PR #217's product calculation fix **does not by itself invalidate the already-evidenced Worker/D1 R**. The current documentation revalidation branch is also docs-only. After this docs batch reaches main, perform one final focused deployment-drift compare from `R` to the resulting main. If the same no-relevant-drift condition still holds, keep `R=842e566...` and proceed to controlled evidence/authority `A` without manufacturing a redundant Production Identity Evidence rerun.
-
-If that final compare reveals a relevant deployment change, stop and start a new R/evidence cycle instead.
+Therefore PR #217's product calculation fix did **not** invalidate the already-evidenced Worker/D1 R. The final focused deployment-drift review passed before authority A and dispatch. Authority A was merged in PR #222, and exact R was activated by canonical Deploy Worker run #31678943942. Future changes still require the same relevance review before any new deployment; this completed activation must not be reinterpreted as authorization for a different descendant SHA.
 
 ### Historical E1a-A example
 
@@ -228,9 +205,9 @@ Do not use routine Cloudflare dashboard Quick Edit or source copy/paste for prod
 
 ### NOW-1A activation boundary
 
-Do not call `deploy-worker.yml` until controlled evidence for exact `R` is persisted/reviewed and `config/production-activation-authority.json` (or reviewed successor) explicitly authorizes the same `R`.
+This boundary was satisfied for exact `R`: controlled evidence was persisted and reviewed, `config/production-activation-authority.json` explicitly authorized the same SHA, and canonical Deploy Worker run #31678943942 applied additive migration `0003_record_create_idempotency.sql` before deploying Worker 4.08.
 
-When activated, the canonical workflow must apply additive migration `0003_record_create_idempotency.sql` before deploying Worker 4.08 and verify live Schema 3 / release 4.08 / API 2.61 against exact source identity.
+That workflow verified live Schema 3 / release 4.08 / API 2.61 against exact source identity and required three stable public-contract passes. Do not re-run a production deployment merely to repeat those checks; complete the isolated authenticated create acceptance instead.
 
 ---
 
@@ -343,7 +320,7 @@ Never weaken runtime, identity, authority, schema, security, or recovery checks 
 
 For NOW-1A specifically:
 
-- migration 0003 is additive, but do not claim production Schema 3 until remote activation verifies it;
+- migration 0003 is additive and remote activation has verified production Schema 3 for exact R; any later deployment still requires its own exact-source verification;
 - if exact R is no longer main-reachable, stop;
 - if Worker/D1/manifest/migration/deploy-path drift exists after R evidence, select/re-evidence a new R;
 - unrelated/non-deployed main changes require documented drift review, not automatic evidence invalidation;
