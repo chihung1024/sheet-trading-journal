@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 01:40 Asia/Taipei**  
-Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A MERGED + POST-MAIN VERIFIED / PRODUCTION ACTIVATION PREP — FREEZE R ONLY AFTER SAME-SHA CI + PAGES / DOCUMENT QUALITY MAINTAINED**
+Last updated: **2026-08-13 10:50 Asia/Taipei**  
+Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / MD-EVENT-ROW ROOT-CAUSE FIX MERGED + PRODUCTION NORMAL PATH VERIFIED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A MERGED + POST-MAIN VERIFIED / PRODUCTION ACTIVATION PREP — FREEZE R ONLY AFTER SAME-SHA CI + PAGES / DOCUMENT QUALITY MAINTAINED**
 
 ---
 
@@ -36,6 +36,7 @@ login
 | E1c-B | **CLOSED / PRODUCTION VERIFIED** | refresh/reopen recovery, terminal cleanup, retained workflow queue implemented and verified |
 | Gate E / E1c | **CLOSED** | no known material lifecycle blocker remains |
 | MD-NAN-B1 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH PASS** | bounded same-provider re-fetch mitigation deployed; retry branch remains production-watch only |
+| MD-EVENT-ROW / PR #217 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH VERIFIED / SPECIAL BRANCH REGRESSION-VERIFIED** | provider rows are classified by semantics rather than ticker/date; only stable pure cash-dividend-only rows may become explicit `asof_carry_forward`; split/capital-gain/mixed/ambiguous cases remain fail-closed |
 | Product Functionality Review | **ACTIVE — NOW-1** | record-create duplicate correctness defect remains the current single product line until server activation + NOW-1B close the user-visible ambiguity gap |
 | NOW-1A / PR #213 | **MERGED / POST-MAIN VERIFIED / PRODUCTION ACTIVATION PENDING** | server-side create-idempotency compatibility is on protected main; runtime-changing merge commit `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`; production still runs the last verified 4.07 / 2.60 / Schema 2 contract |
 | Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled rerun `31570497634` attempt 2 completed real staging export/drop/restore/integrity/cleanup and produced verified evidence |
@@ -84,7 +85,7 @@ Durable lifecycle record:
 
 ---
 
-## 4. Market-Data Correctness Residual
+## 4. Market-Data Correctness — Root Causes Closed / Passive Watch
 
 Production #3243 reproduced transient upstream daily-row incompleteness/inconsistency: provider rows could contain Open/High/Low/Volume while Close/Adj Close were NaN; at least one captured row was internally inconsistent enough that OHLC substitution would be unsafe.
 
@@ -104,7 +105,52 @@ Financial-integrity contract remains:
 - one bounded fresh request to the same provider/request semantics is allowed only with complete action evidence, same selected price source, and preservation of every original provider daily date;
 - unacceptable retry remains fail-closed.
 
-#3245 is a post-merge production SUCCESS and proves the normal path remains compatible after the mitigation. It did not reproduce NaN, so the actual retry branch is **not claimed production-exercised**. Keep passive production watch; do not add speculative market-data repair work unless the defect recurs or new evidence shows incorrect financial results.
+#3245 is a post-merge production SUCCESS and proves the normal path remains compatible after the mitigation. It did not reproduce NaN, so the actual retry branch is **not claimed production-exercised**.
+
+A later production failure exposed a second, distinct semantic root cause: a provider daily row may be intentionally retained because it carries a corporate action even when that row has no usable price observation. Treating every retained daily row as a price bar made a persistent event-only row fail downstream price validation even after the bounded same-provider re-fetch proved the shape was stable.
+
+PR #217 — generic market-row semantic normalization:
+
+- final exact candidate: `0a0eb00304de7bf48c94f235f93e350eed49f313`;
+- no ticker/date/dividend-amount special cases;
+- two successful prepared provider responses must reproduce the same semantic signature and selected price source before normalization is eligible;
+- only a stable **pure positive cash-dividend-only** event row may receive an explicit `Close_Adjusted` as-of effective valuation using the latest prior finite selected valuation;
+- raw OHLC and `Close_Raw` remain missing; provenance records `Valuation_Source=asof_carry_forward` and the actual prior `Valuation_Source_Date`;
+- stock splits, mixed dividend+split, capital gains, partial/mixed price bars, unstable retries, failed second requests, malformed semantic inputs, and no-prior-valuation cases remain fail-closed;
+- split events are deliberately not generalized from the dividend policy because share-count and contemporaneous price basis can both change.
+
+Verification:
+
+- exact-head CI #738 / `31661392819`: SUCCESS;
+- Python: 479 passed + 18 subtests;
+- `semantic_market_data.py`: 98% measured coverage;
+- raw missing-branch governance remained at `309` and the existing coverage policy PASSED; no threshold was lowered;
+- exact-head Independent Review: PASS with no remaining BLOCKER;
+- PR #217 merged to protected main as `0f4676f995db890b3a8c5fdb2310f7b47a80f207`;
+- post-main CI #739 / `31661520242`: all Python/coverage, Frontend, Worker/security/D1 jobs SUCCESS.
+
+Production normal-path smoke after merge:
+
+- normal authenticated web trigger created `Update Portfolio Data #3254` / run `31661928574`;
+- exact source: `0f4676f995db890b3a8c5fdb2310f7b47a80f207`;
+- calculation job: `job_gKRZsSdG78pdbbQewxIIwQ`;
+- 146 transaction records fetched; 45 market symbols processed;
+- market-data stage completed without `MARKET_DATA_FAILED`;
+- transaction-prefix integrity PASS: 146 rows / 2 scopes / 88 symbol scopes;
+- canonical Daily PnL reconciliation PASS for 2 groups, `94208.45 == 94208.45`, 20 symbols, legacy diagnostics 0;
+- split-adjusted ledger parity PASS for 146 BUY/SELL rows;
+- snapshot upload SUCCESS;
+- successful users 1 / failed users 0;
+- terminal calculation-job callback `succeeded`;
+- workflow conclusion SUCCESS.
+
+Evidence boundary: #3254 did **not** emit the semantic-normalizer warning, so the persistent dividend-only branch is **not claimed live production-exercised**. The production smoke proves merged normal-path compatibility and full end-to-end calculation/upload/callback success; the special branch is independently covered by exact-head generic regression tests and coverage.
+
+Durable root-cause/evidence record:
+
+`docs/engineering/MD_EVENT_ROW_SEMANTIC_NORMALIZATION_2026-08-13.md`
+
+Both market-data fixes are now under passive production watch. Do not add speculative provider repair, ticker/date exceptions, alternate-provider fallbacks, or guessed prices unless new evidence shows a material correctness failure or provider contract change.
 
 ---
 
@@ -226,7 +272,7 @@ None of these should interrupt product functionality work without a demonstrated
 8. Only after exact-source authorization, execute the canonical `Deploy Worker` path with `source_sha=R`. Require migration `0003_record_create_idempotency.sql` before Worker 4.08 deployment and verify exact source, Worker 4.08 / API 2.61 / Schema 3, D1 identity, health, auth/CORS, tenant isolation, and legacy no-key compatibility.
 9. Before NOW-1B production activation, resolve and test both review FOLLOW-UP items: (a) delete-then-reuse idempotency-key retention semantics; (b) frontend/Worker rollback-disable coordination once stable frontend keys exist.
 10. Only after production server activation is verified, begin NOW-1B frontend stable-key persistence/replay as a separate product batch.
-11. Keep MD-NAN-B1 under passive production watch; only reopen if new provider evidence materially changes the safety decision.
+11. Keep MD-NAN-B1 and MD-EVENT-ROW under passive production watch; only reopen either if new provider evidence materially changes the safety decision or shows incorrect financial results.
 12. Resume the remaining Product Functionality Review after NOW-1A production activation is closed; do not let infrastructure or document cleanup replace product work.
 
 ---
@@ -342,6 +388,15 @@ Post-NOW-1A document quality:
    - Root cause: review traced the workflow's exact-main assertion first but had not yet carried the collector's exact-Pages deployment equality through the operational sequence.
    - Fix: require same-SHA post-main CI SUCCESS and same-SHA Pages production deployment SUCCESS, then re-fetch main and confirm the SHA is still current before freezing R and dispatching evidence.
    - Prevention: production activation source selection must satisfy **all** workflow/collector preconditions, including asynchronous downstream propagation, before evidence collection begins.
+
+9. **Persistent corporate-action-only provider row treated as a price bar — FIXED / GENERALIZED**
+   - Symptom: after bounded same-provider re-fetch reproduced a stable event-only daily row with no usable selected price, downstream price validation still blocked the whole portfolio update.
+   - Failure point: provider daily-row retention semantics were passed directly into a price-observation contract.
+   - Root cause: ingestion conflated “row exists because it is a valuation observation” with “row exists because it carries a corporate action”.
+   - Fix: semantic classification is now symbol/date agnostic; only two-attempt-stable pure cash-dividend-only rows may use the existing explicit as-of effective-valuation contract, while unsupported/ambiguous action types remain fail-closed.
+   - Regression proof: PR #217 exact-head CI #738 PASS with 479 tests + 18 subtests, 98% coverage for the new semantic client, unchanged raw branch gate; post-main CI #739 PASS.
+   - Production proof boundary: #3254 on exact merged main completed the full normal authenticated calculation/reconciliation/upload/callback chain SUCCESS, but did not live-hit the normalizer warning; special-branch production execution is therefore not claimed.
+   - Reopen condition: a matching eligible dividend-only row still fails, normalization produces incorrect financial results, or new provider semantics require a separately modeled policy.
 
 ### Known Issues / Risks
 
