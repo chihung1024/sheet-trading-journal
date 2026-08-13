@@ -6,13 +6,16 @@ malformed market data while allowing two evidence-based recovery paths:
 
 1. A persistent invalid provider row may be re-requested from the same provider for
    the exact affected calendar date. Recovery is accepted only when two fresh narrow
-   daily requests reproduce the same complete OHLC/volume observation and preserve the
-   original corporate-action semantics. No price is synthesized or carried forward.
+   daily requests reproduce the same complete OHLC/volume observation, preserve every
+   finite market field already present in the broad response, and stay inside the
+   calculator's modeled corporate-action semantics. No price is synthesized or carried
+   forward by this path.
 2. If exact-date recovery is unavailable, a proven pure positive cash-dividend-only row
    may use the existing explicit ``asof_carry_forward`` effective valuation contract.
 
 Everything else remains fail-closed. There are no ticker/date exceptions, alternate
-provider substitutions, guessed prices, or relaxed ledger/validator rules.
+provider substitutions, guessed prices, unsupported capital-gain recovery, or relaxed
+ledger/validator rules.
 """
 
 from __future__ import annotations
@@ -96,7 +99,8 @@ class SemanticMarketDataClient(MarketDataClient):
 
         The candidate must be an exact-date single row with finite positive OHLC,
         internally consistent high/low bounds, finite non-negative volume, complete
-        dividend/split evidence, and finite optional adjustment/capital-gain values.
+        dividend/split evidence, zero unsupported capital gain, and a finite positive
+        adjustment value when the provider supplies one.
         """
         if frame is None or frame.empty:
             return None
@@ -140,9 +144,12 @@ class SemanticMarketDataClient(MarketDataClient):
         action_signature = cls._action_signature_from_row(row)
         if action_signature is None:
             return None
-        values["Dividends"], values["Stock Splits"], values["Capital Gains"] = (
-            action_signature
-        )
+        dividend, split, capital_gain = action_signature
+        if capital_gain != 0.0:
+            return None
+        values["Dividends"] = dividend
+        values["Stock Splits"] = split
+        values["Capital Gains"] = capital_gain
 
         if "Adj Close" in row.index:
             if pd.isna(row["Adj Close"]):
@@ -154,6 +161,35 @@ class SemanticMarketDataClient(MarketDataClient):
 
         signature = tuple((column, values[column]) for column in sorted(values))
         return values, signature
+
+    @classmethod
+    def _candidate_preserves_original_market_fields(
+        cls,
+        original_row: pd.Series,
+        candidate_values: dict[str, float],
+    ) -> bool:
+        """Require recovery to preserve every finite market fact already observed.
+
+        The long-range response may be missing selected price fields, but any finite
+        raw OHLC/Adj Close/Volume value already present is evidence, not a blank to be
+        overwritten. The narrow request may fill missing fields only; disagreement on
+        an existing finite market value leaves the whole frame fail-closed.
+        """
+        for column in (*_RAW_PRICE_COLUMNS, "Volume"):
+            if column not in original_row.index or pd.isna(original_row[column]):
+                continue
+            original_value = cls._finite_number(original_row[column])
+            candidate_value = cls._finite_number(candidate_values.get(column))
+            if original_value is None or candidate_value is None:
+                return False
+            if not math.isclose(
+                original_value,
+                candidate_value,
+                rel_tol=0.0,
+                abs_tol=1e-9,
+            ):
+                return False
+        return True
 
     @classmethod
     def _pure_action_only_signature(cls, frame: pd.DataFrame):
@@ -246,9 +282,10 @@ class SemanticMarketDataClient(MarketDataClient):
         """Recover persistent NaN rows from repeated exact-date provider observations.
 
         Recovery is atomic across all invalid selected-price rows. If any affected date
-        cannot produce two identical, complete same-provider daily observations whose
-        corporate-action semantics match the original broad response, the original
-        frame is returned unchanged for downstream fail-closed validation.
+        cannot produce two identical, complete same-provider daily observations that
+        preserve the original finite market facts and modeled corporate-action
+        semantics, the original frame is returned unchanged for downstream fail-closed
+        validation.
         """
         if frame is None or frame.empty or "Close_Adjusted" not in frame.columns:
             return frame, ()
@@ -287,8 +324,9 @@ class SemanticMarketDataClient(MarketDataClient):
             original_rows = normalized_frame.loc[normalized_frame.index == event_date]
             if len(original_rows) != 1:
                 return frame, ()
-            original_actions = self._action_signature_from_row(original_rows.iloc[0])
-            if original_actions is None:
+            original_row = original_rows.iloc[0]
+            original_actions = self._action_signature_from_row(original_row)
+            if original_actions is None or original_actions[2] != 0.0:
                 return frame, ()
 
             candidates = []
@@ -316,6 +354,17 @@ class SemanticMarketDataClient(MarketDataClient):
                 if candidate is None:
                     return frame, ()
                 values, signature = candidate
+                if not self._candidate_preserves_original_market_fields(
+                    original_row,
+                    values,
+                ):
+                    logger.warning(
+                        "[%s] exact-date daily recovery market-field mismatch for %s; "
+                        "fail closed",
+                        symbol,
+                        event_date.strftime("%Y-%m-%d"),
+                    )
+                    return frame, ()
                 candidate_actions = (
                     values["Dividends"],
                     values["Stock Splits"],
@@ -355,8 +404,6 @@ class SemanticMarketDataClient(MarketDataClient):
                     event_date.strftime("%Y-%m-%d")
                 )
 
-        # Re-run the canonical price selector and split-factor derivation over the
-        # complete frame. This avoids patching derived financial fields by hand.
         rebuilt = super()._prepare_data(symbol, work)
         if self._selected_price_contains_nan(rebuilt):
             return frame, ()
@@ -376,7 +423,6 @@ class SemanticMarketDataClient(MarketDataClient):
         frame: pd.DataFrame,
         signature,
     ) -> tuple[pd.DataFrame, bool]:
-        """Convert proven dividend-only event rows into explicit as-of valuations."""
         current_signature = cls._pure_action_only_signature(frame)
         if not signature or current_signature != signature:
             return frame, False
@@ -424,7 +470,6 @@ class SemanticMarketDataClient(MarketDataClient):
         return work, True
 
     def download_data(self, tickers: list, start_date):
-        """Run base retry, exact-date recovery, then narrow semantic fallback."""
         with self._semantic_attempt_lock:
             self._invalid_attempt_evidence = {}
 
