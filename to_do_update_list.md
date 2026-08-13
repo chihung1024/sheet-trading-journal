@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 12:44 Asia/Taipei**  
-Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / NOW-1A PRODUCTION ACTIVATED / PUBLIC CONTRACT VERIFIED / AUTHENTICATED CREATE ACCEPTANCE PENDING / THREE-BATCH CONVERGENCE LOCKED**
+Last updated: **2026-08-13 19:01 Asia/Taipei**
+Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / NOW-1A PRODUCTION ACTIVATED / PUBLIC CONTRACT VERIFIED / AUTHENTICATED SMOKE BLOCKED AT TOKEN MINT / TWO RUNS NO MUTATION / THREE-BATCH CONVERGENCE LOCKED**
 
 ---
 
@@ -68,12 +68,12 @@ login
 | MD-NAN-B1 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH PASS** | bounded same-provider re-fetch mitigation deployed; retry branch remains passive watch |
 | MD-EVENT-ROW / PR #217 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH VERIFIED / SPECIAL BRANCH REGRESSION-VERIFIED** | provider rows are classified by semantics rather than ticker/date; only stable pure cash-dividend-only rows may become explicit `asof_carry_forward`; split/capital-gain/mixed/ambiguous cases remain fail-closed |
 | Product Functionality Review | **ACTIVE — NOW-1** | server duplicate-create protection is live; authenticated create acceptance and NOW-1B still close the user-visible ambiguity gap |
-| NOW-1A / PR #213 | **PRODUCTION ACTIVATED / PUBLIC CONTRACT VERIFIED / AUTHENTICATED CREATE ACCEPTANCE PENDING** | exact `R=842e566...` is live as Worker 4.08 / API 2.61 / Schema 3; no real-user ledger was used for the remaining authenticated create smoke |
+| NOW-1A / PR #213 | **PRODUCTION ACTIVATED / PUBLIC CONTRACT VERIFIED / AUTHENTICATED SMOKE BLOCKED BEFORE MUTATION** | exact `R=842e566...` is live as Worker 4.08 / API 2.61 / Schema 3; two protected smoke runs reached token mint but the required production test secrets were empty, so no real-user or test ledger was mutated |
 | Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled run `31570497634` attempt 2 proved isolated staging export/drop/restore/integrity/cleanup |
 | Production Identity Evidence #16 | **PASS — EXACT `R=842e566...` / AUTHORITY + DEPLOY COMPLETED** | genuine exact-R evidence was persisted in PR #222 and used by the canonical deployment after relevance review |
 | Document Quality | **WHOLE-PROJECT RECHECKED / HANDOFF REVALIDATED / THREE-BATCH CONVERGENCE LOCKED** | handoff now makes clear that deployment governance is a necessary guardrail inside Batch 1, not a new project direction |
 
-The lifecycle/control-plane work is no longer the project focus. Recovery work was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. NOW-1A's runtime mutation is complete; only its isolated authenticated acceptance remains. The only infrastructure work allowed to interrupt Product Functionality Review now is the minimum boundary required to finish that acceptance safely, or a newly demonstrated material product/security/data failure.
+The lifecycle/control-plane work is no longer the project focus. Recovery work was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. NOW-1A's runtime mutation and public contract are complete; its isolated authenticated acceptance is currently blocked before mutation by missing protected test-identity secrets. The only infrastructure work allowed to interrupt Product Functionality Review now is the minimum boundary required to finish that acceptance safely, or a newly demonstrated material product/security/data failure.
 
 ---
 
@@ -190,11 +190,11 @@ Recovery Evidence PASS
 → canonical Deploy Worker run #31678943942 SUCCESS after production approval
 → remote additive migration 0003 + Worker 4.08 deployment SUCCESS
 → three consecutive public production-contract passes
-→ CURRENT: isolated authenticated legacy/no-key + idempotency replay/conflict acceptance
+→ CURRENT: isolated authenticated legacy/no-key + idempotency replay/conflict acceptance (blocked at token mint; no mutation)
 → NOW-1B frontend stable-key persistence/replay
 ```
 
-Do not make frontend behavior depend on Schema 3 / Worker 4.08 before production server activation is verified.
+Do not start NOW-1B frontend stable-key work until the authenticated acceptance closes Batch 1.
 
 ### NOW-1A Production Activation Execution — 2026-08-13
 
@@ -207,17 +207,21 @@ Completed production mutation and public verification:
 
 Still required before Batch 1 can close:
 
-- No authenticated tenant record-create probe has been run. The deployment's system principal cannot impersonate a user, and no real-user ledger was used as a substitute.
+- Two authenticated smoke attempts were executed against the exact deployed source: [run #1](https://github.com/chihung1024/sheet-trading-journal/actions/runs/31693084467) and [run #2](https://github.com/chihung1024/sheet-trading-journal/actions/runs/31693450871). Both passed checkout, source reachability, production contract resolution, manifest loading, and the public/trusted-system contract audit, then failed at `Mint a fresh Google ID token` because the required production environment secrets were empty/unavailable to the runner. The authenticated smoke step was skipped; no `POST` or `DELETE` ran and no test record was created.
 - Use a dedicated isolated production test tenant with a documented cleanup plan to verify: legacy create without `Idempotency-Key`; same tenant/key/payload replay creates exactly one record; same key with different payload returns `409 IDEMPOTENCY_CONFLICT`; then delete only the test records and retain sanitized evidence.
 
-### Authenticated acceptance transport candidate — not yet production-executed
+### Authenticated acceptance transport — merged, executed, blocked before mutation
 
-The shared-browser control channel became unavailable after the first normal legacy UI create, so it cannot safely provide the keyed HTTP transport. The replacement candidate is `.github/workflows/production-record-idempotency-smoke.yml`, a manual protected-`production` workflow that will use a **dedicated production test tenant only** after its exact candidate is reviewed and merged.
+The shared-browser control channel became unavailable after the first normal legacy UI create, so it cannot safely provide the keyed HTTP transport. The reviewed replacement is `.github/workflows/production-record-idempotency-smoke.yml`, a manual protected-`production` workflow merged in PR #226 at `8960f05b3b62cca3c93b7eb60bf57d056c51cca0`.
 
 - It verifies the exact deployed Worker public/system contract first, then mints a fresh production-audience Google ID token into a mode-`0600` runner-temporary file; the token is removed in `always()` cleanup and is neither logged nor uploaded.
 - It refuses to mutate a non-empty tenant, except for fully identified earlier test rows: the one documented browser row (`NOW1A-IDEMPOTENCY-TEST-20260813`, exact AAPL/BUY/qty/price/fees shape) or exact payload-and-note matched abandoned smoke rows. It deletes only those recognized rows, then proves legacy no-key create, same-key/same-payload replay, and same-key/different-payload `409`, reads back exactly two new marker rows, deletes only those rows, and requires an empty tenant at exit.
 - It uses the production Google client/API origin from the tracked environment contract and protected environment secrets for the dedicated test identity; it does not use the trusted system API key to mutate records, staging OAuth material, a Worker test route, or direct D1 access.
-- **NOT VERIFIED:** the workflow is not yet merged, its protected test-identity secrets have not been read or asserted available, no production workflow run has occurred, and no keyed production result may be claimed from this candidate.
+- **BLOCKED / NOT VERIFIED:** both production runs stopped before token mint completed because `PRODUCTION_E2E_GOOGLE_CLIENT_SECRET`, `PRODUCTION_E2E_GOOGLE_REFRESH_TOKEN`, and `PRODUCTION_E2E_EXPECTED_GOOGLE_SUB` were empty in the runner (optional `PRODUCTION_E2E_EXPECTED_GOOGLE_EMAIL` was also empty). The connector cannot inspect production-environment secret metadata (`403 Resource not accessible by integration`), so configuration must be completed directly in GitHub. No keyed production result may be claimed until a fresh run reaches the authenticated smoke step.
+
+Required before rerun: configure those protected `production` environment secrets directly in GitHub (never in chat) for a dedicated isolated test identity whose Google OAuth refresh grant can mint an ID token with the production audience; set the optional expected email only if the identity contract requires it. Do not rerun while any required value is absent.
+
+The two failed runs uploaded only sanitized public-contract audit artifacts; they contain no token or transaction evidence. Their `always()` cleanup step had no token to remove, and no record cleanup is required because mutation was never reached.
 
 This is a narrow Batch 1 acceptance transport, not NOW-1B frontend stable-key implementation or a general production test framework. If it cannot authenticate the dedicated test identity or the tenant is not safely empty, stop without mutation and retain the explicit blocker.
 
@@ -354,11 +358,11 @@ None may interrupt product functionality without demonstrated correctness/securi
 
 ### Batch 1 — NOW-1A Post-deploy authenticated acceptance — **ACTIVE NOW**
 
-1. Re-check protected-main and the live/public contract evidence before any further mutation. The deployed exact runtime is `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d`; canonical deployment run `31678943942` and post-deploy artifact `9173729753` are successful.
-2. Provision or designate a dedicated isolated production test tenant that can complete the supported login flow. Define test-only record markers and a cleanup plan before writing anything. Do not use a personal or operational trading ledger.
-3. With that tenant, verify and retain sanitized evidence for: (a) a legacy create without `Idempotency-Key`; (b) repeated same tenant/key/payload requests returning replay success with exactly one persisted record; and (c) same key with a different payload returning `409 IDEMPOTENCY_CONFLICT`.
-4. Read back and delete only the test records, confirm the test tenant ledger is clean, and record the result. A read-only Production Contract Audit may complement this evidence but cannot substitute for authenticated create behavior.
-5. Close Batch 1 only when the three authenticated behaviors and cleanup are evidenced; then start NOW-1B. Do not add further deployment/governance optimization.
+1. Keep the already-passed protected-main/live-contract preflight as the boundary for any future mutation. The deployed exact runtime is `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d`; canonical deployment run `31678943942` and post-deploy artifact `9173729753` are successful, and both smoke attempts independently re-verified the public/system contract.
+2. Configure the required protected `production` environment secrets directly in GitHub (never chat): `PRODUCTION_E2E_GOOGLE_CLIENT_SECRET`, `PRODUCTION_E2E_GOOGLE_REFRESH_TOKEN`, and `PRODUCTION_E2E_EXPECTED_GOOGLE_SUB`; set `PRODUCTION_E2E_EXPECTED_GOOGLE_EMAIL` only when applicable. Use a dedicated isolated production test tenant and define test-only markers/cleanup before writing anything. Do not use a personal or operational trading ledger.
+3. After the secret precondition is confirmed, rerun the merged workflow and retain sanitized evidence for: (a) legacy create without `Idempotency-Key`; (b) repeated same tenant/key/payload returning replay success with exactly one persisted record; and (c) same key with a different payload returning `409 IDEMPOTENCY_CONFLICT`.
+4. Read back and delete only the test records, confirm the test tenant ledger is clean, and record the result. A read-only Production Contract Audit may complement this evidence but cannot substitute for authenticated create behavior. The two failed runs required no cleanup because they never mutated.
+5. Close Batch 1 only when the three authenticated behaviors and cleanup are evidenced; then start NOW-1B. Do not add further deployment/governance optimization or rerun an unconfigured workflow.
 
 ### Batch 2 — NOW-1B Product Function — **NEXT**
 
@@ -393,9 +397,9 @@ None may interrupt product functionality without demonstrated correctness/securi
 - no Worker source/entry, manifest/Wrangler, migration/schema, Deploy Worker workflow, Recovery Gate, or production activation verifier drift was found in that final compare;
 - R remains main-reachable and the **final deployment-affecting drift review is PASS**;
 - repository Worker/D1 contract is Worker 4.08 / API 2.61 / Schema 3;
-- production activation has not occurred;
-- live production remains exact `P=fe5f091fdb2c92970dff74c1a7c99052084adb95`, Worker 4.07 / API 2.60 / Schema 2, Deploy Worker #4 / `31475347673`;
-- current activation authority still authorizes only P, not R;
+- production activation completed for exact `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d` via Deploy Worker run `31678943942`;
+- live production is exact `R`, Worker 4.08 / API 2.61 / Schema 3, with the additive record-idempotency migration applied;
+- current activation authority authorizes exact R; public/system contract verification passed;
 - Recovery Evidence Gate remains passed against immutable staging baseline `5bed9aa1058c64e87889afd9b1698921eeb2c186`;
 - no fake evidence, force push, workflow/ruleset/recovery bypass was used.
 
@@ -415,7 +419,7 @@ Evidence chain for `R=842e566...`:
 - production D1 GET / Worker deployment binding / active versions / Pages config / live frontend HTTP+CSP checks all PASS;
 - `errors=[]`.
 
-No authority A and no NOW-1A production mutation followed yet. Final deployment-affecting drift review is now PASS; the correct next gate is **controlled evidence → authority A**, not a blind evidence rerun and not direct deployment.
+Authority A and the NOW-1A production mutation are complete. Final deployment-affecting drift review and public/system contract verification are PASS; the current next gate is **authenticated tenant evidence after protected test-identity secret configuration**, not a blind evidence rerun or direct-D1/system-principal substitute.
 
 ### Recovery Evidence
 
@@ -432,7 +436,7 @@ No authority A and no NOW-1A production mutation followed yet. Final deployment-
 - PR #214 — isolated staging recovery workflow; recovery drill later PASS attempt 2.
 - PR #215 — source/live truth separation; merge `ff9d792...`.
 - PR #216 — exact-main/same-Pages source-selection contract; merge `842e566...`; CI #727 + Pages #1501 attempt 2 PASS.
-- Production Identity Evidence #16 / `31658614001` — PASS for exact R; authority/deploy not yet performed.
+- Production Identity Evidence #16 / `31658614001` — PASS for exact R; authority/deploy completed in PRs #222/#223; canonical Deploy Worker run `31678943942` SUCCESS.
 - Production #3253 exposed a product calculation blocker; functional RCA correctly took priority over activation work.
 - PR #217 — generic market-row semantic root fix; merge `0f4676...`; CI #738/post-main #739/production #3254 PASS within documented evidence scope.
 - PR #218 — market-data closeout docs; merge `c3b578...`; CI #741 + Pages #1503 PASS.
@@ -463,13 +467,18 @@ No authority A and no NOW-1A production mutation followed yet. Final deployment-
     - Root cause: safety gates inside one activation batch were represented at the same conceptual level as product batches.
     - Fix: execution is now explicitly three batches only: NOW-1A production activation, NOW-1B product function, then remaining Product Functionality Review. Governance/evidence mechanics remain subordinate guardrails inside Batch 1.
     - Reopen: only if a new material product/security/data blocker demonstrates that a separate blocking batch is genuinely necessary.
+13. **NOW-1A authenticated smoke blocked before mutation — ACTIVE CONFIGURATION BLOCKER**:
+    - Symptom: production smoke runs #1 (`31693084467`) and #2 (`31693450871`) reached the exact deployed contract audit, then failed at Google ID-token mint.
+    - Root cause: the runner received empty `PRODUCTION_E2E_GOOGLE_CLIENT_SECRET`, `PRODUCTION_E2E_GOOGLE_REFRESH_TOKEN`, and `PRODUCTION_E2E_EXPECTED_GOOGLE_SUB` values; the connector cannot inspect the protected environment metadata.
+    - Boundary evidence: public/system contract passed; authenticated smoke, `POST`, `DELETE`, and test-tenant cleanup were not reached; artifacts contain only sanitized contract data.
+    - Fix / reopen condition: configure the dedicated test identity secrets directly in the protected `production` environment, then require a fresh run to pass token mint and produce sanitized create/replay/conflict plus cleanup evidence.
 
 ### Known Issues / Risks
 
-- Production Schema 3 / Worker 4.08 activation is not yet performed.
-- Current activation authority still authorizes exact `fe5f091...`; R is not deploy-authorized yet.
-- R evidence is PASS and final deployment-affecting drift review is PASS, but controlled activation evidence/authority A still must be persisted/reviewed before deployment.
-- NOW-1B remains blocked until production server compatibility is verified.
+- Production Schema 3 / Worker 4.08 activation is complete and the exact `R=842e566...` public contract is verified.
+- PR #226 is merged at protected-main `8960f05...`; its production smoke workflow has two failed runs that stopped before mutation at token mint because required protected test-identity secrets were empty.
+- The GitHub connector cannot inspect the production environment's secret metadata (`403`); configuration must be completed directly in GitHub before another run.
+- NOW-1B remains blocked until authenticated server compatibility is verified through the three create behaviors and cleanup.
 - **FOLLOW-UP before NOW-1B:** define/test delete-then-reuse idempotency-key retention semantics.
 - **FOLLOW-UP before NOW-1B:** define frontend disable/rollback coordination once stable frontend keys exist.
 - Recovery evidence supports only the reviewed Schema 3 strategy, not unrelated expansion.
@@ -490,13 +499,13 @@ No authority A and no NOW-1A production mutation followed yet. Final deployment-
 
 ## 10. Document Quality Review — Whole-Project Recheck 2026-08-13
 
-Status: **HANDOFF REVALIDATED / AUTHORITY MAP + EXACT-R EVIDENCE LIFECYCLE CORRECTED / THREE-BATCH CONVERGENCE RECORDED**
+Status: **HANDOFF REVALIDATED / NOW-1A RUN EVIDENCE RECORDED / TOKEN-MINT BLOCKER EXPLICIT / THREE-BATCH CONVERGENCE RECORDED**
 
 Objective: allow future AI to resume from primary evidence without reopening closed Gates, redoing solved investigations, or mistaking deployment guardrails for the product roadmap.
 
 ### Reviewed / changed
 
-- `to_do_update_list.md` — **UPDATED**: future-AI bootstrap; current R/evidence/authority state; final drift-review result; three-batch convergence; exact next actions.
+- `to_do_update_list.md` — **UPDATED**: current protected-main/live state; two failed production smoke runs; no-mutation boundary; secret configuration prerequisite; exact next actions.
 - `docs/DEPLOYMENT.md` — **UNCHANGED IN THIS BATCH**: two-SHA preservation rules and exact-R evidence lifecycle remain correct from PR #219.
 - `docs/README.md` — **UNCHANGED IN THIS BATCH**: current-vs-historical authority map remains correct from PR #219.
 
@@ -541,7 +550,7 @@ Examples already corrected after that baseline include frontend all-page record 
 
 | Priority | Current issue / debt | Current interpretation | Action rule |
 |---|---|---|---|
-| **NOW** | record-create ambiguous-response duplication | production still lacks live Worker 4.08 / Schema 3 protection and frontend stable create key | finish existing Batch 1 → Batch 2; do not let unrelated debt interrupt |
+| **NOW** | record-create ambiguous-response duplication | Worker 4.08 / Schema 3 protection is live, but authenticated create/replay/conflict acceptance is blocked before mutation by missing dedicated-test secrets; frontend stable create key remains Batch 2 | configure secrets, complete Batch 1 evidence, then proceed to Batch 2; do not let unrelated debt interrupt |
 | **NEXT-CANDIDATE** | same-day transaction execution order | records persist date but no authoritative executed timestamp / broker sequence; FIFO/day-trade/dividend ordering can become ambiguous | reproduce with real or broker-derived same-day cases during Batch 3 before designing migration |
 | **NEXT-CANDIDATE** | record edit lost-update concurrency | update path has no record revision / optimistic locking, so stale multi-tab/device edits can overwrite newer values | validate realistic concurrent-edit scenario; promote only if materially reproducible |
 | **NEXT-CANDIDATE** | ledger/snapshot read consistency | no monotonic ledger revision currently binds pagination/calculation/snapshot publication into one explicit input revision | test concurrent mutation during paginated read/calculation before opening compare-and-publish work |
