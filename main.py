@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 import pandas as pd
 
 from journal_engine.clients.api_client import CloudflareClient
-from journal_engine.clients.market_data import MarketDataClient
+from journal_engine.clients.semantic_market_data import SemanticMarketDataClient as MarketDataClient
 from journal_engine.config import API_KEY
 from journal_engine.core.calculation_manifest import (
     CalculationManifestError,
