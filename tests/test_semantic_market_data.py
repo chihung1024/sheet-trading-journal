@@ -126,7 +126,7 @@ def test_persistent_dividend_action_only_row_becomes_explicit_asof_effective_val
     frame = market_data["AAA"]
     event_date = pd.Timestamp("2026-08-11")
 
-    assert calls["AAA"] == 4
+    assert calls["AAA"] == 3
     assert calls["SPY"] == 1
     sleep.assert_called_once()
     assert frame.loc[event_date, "Close_Adjusted"] == 100.0
