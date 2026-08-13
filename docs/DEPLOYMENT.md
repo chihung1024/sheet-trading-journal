@@ -83,6 +83,22 @@ dedicated isolated production test tenant
 
 The deployment system principal is intentionally not treated as a user principal. Do not substitute a production system-key check, a read-only audit, or a real-user ledger for this authenticated acceptance. A GET-only Production Contract Audit may add confidence but cannot close the create-path gap.
 
+### Supported production acceptance transport
+
+The manual `.github/workflows/production-record-idempotency-smoke.yml` workflow is the supported transport for this remaining acceptance once its candidate is merged. It is deliberately separate from the deploy workflow: it does not deploy a Worker, change schema, or use the trusted system principal to write tenant records.
+
+Before any record mutation, it:
+
+1. requires the exact deployed Worker source SHA to be main-reachable and verifies its public/trusted-system production contract;
+2. obtains a fresh Google ID token only for a dedicated production test tenant from the protected `production` environment;
+3. rejects a non-empty tenant unless every row is either the exact previously documented browser test record (`NOW1A-IDEMPOTENCY-TEST-20260813` with its full AAPL/BUY test shape) or a fully identified abandoned prior smoke row; it may delete only those recognized rows under the established cleanup authorization;
+4. uses a run-unique marker and key to test legacy no-key creation, same-key/same-payload replay, and same-key/different-payload `409 IDEMPOTENCY_CONFLICT`;
+5. reads back the exact marker rows, deletes only those rows, and fails unless the dedicated tenant ends empty.
+
+The workflow needs only the dedicated test tenant's refresh grant and identity assertions as protected environment secrets: `PRODUCTION_E2E_GOOGLE_CLIENT_SECRET`, `PRODUCTION_E2E_GOOGLE_REFRESH_TOKEN`, `PRODUCTION_E2E_EXPECTED_GOOGLE_SUB`, and optionally `PRODUCTION_E2E_EXPECTED_GOOGLE_EMAIL`. Its Google client ID and API origin are read from the tracked production environment contract. The fresh ID token is written mode `0600` under the runner temporary directory, removed in an `always()` cleanup step, never printed, and never uploaded. Sanitized artifacts retain response status/assertion/cleanup evidence only; they exclude the token, test-account identity, idempotency key, record IDs, and raw response bodies.
+
+If those protected secrets are absent or the tenant contains an unrecognized row, the workflow fails closed before mutating production records. It is not valid to add a Worker backdoor, use a system API key, reuse the staging identity, or access D1 directly to make this check pass.
+
 ---
 
 ## 3. Source-of-truth hierarchy
