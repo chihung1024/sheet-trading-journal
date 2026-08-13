@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 import pandas as pd
 
 from journal_engine.clients.api_client import CloudflareClient
-from journal_engine.clients.market_data import MarketDataClient
+from journal_engine.clients.semantic_market_data import SemanticMarketDataClient
 from journal_engine.config import API_KEY
 from journal_engine.core.calculation_manifest import (
     CalculationManifestError,
@@ -330,7 +330,7 @@ def run_update() -> None:
     )
 
     api_client = CloudflareClient()
-    market_client = MarketDataClient()
+    market_client = SemanticMarketDataClient()
 
     logger.info("正在從 Cloudflare 獲取原始交易紀錄")
     records = api_client.fetch_records(target_user_id=target_user_id or None)
