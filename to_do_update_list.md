@@ -210,6 +210,17 @@ Still required before Batch 1 can close:
 - No authenticated tenant record-create probe has been run. The deployment's system principal cannot impersonate a user, and no real-user ledger was used as a substitute.
 - Use a dedicated isolated production test tenant with a documented cleanup plan to verify: legacy create without `Idempotency-Key`; same tenant/key/payload replay creates exactly one record; same key with different payload returns `409 IDEMPOTENCY_CONFLICT`; then delete only the test records and retain sanitized evidence.
 
+### Authenticated acceptance transport candidate — not yet production-executed
+
+The shared-browser control channel became unavailable after the first normal legacy UI create, so it cannot safely provide the keyed HTTP transport. The replacement candidate is `.github/workflows/production-record-idempotency-smoke.yml`, a manual protected-`production` workflow that will use a **dedicated production test tenant only** after its exact candidate is reviewed and merged.
+
+- It verifies the exact deployed Worker public/system contract first, then mints a fresh production-audience Google ID token into a mode-`0600` runner-temporary file; the token is removed in `always()` cleanup and is neither logged nor uploaded.
+- It refuses to mutate a non-empty tenant, except for fully identified earlier test rows: the one documented browser row (`NOW1A-IDEMPOTENCY-TEST-20260813`, exact AAPL/BUY/qty/price/fees shape) or exact payload-and-note matched abandoned smoke rows. It deletes only those recognized rows, then proves legacy no-key create, same-key/same-payload replay, and same-key/different-payload `409`, reads back exactly two new marker rows, deletes only those rows, and requires an empty tenant at exit.
+- It uses the production Google client/API origin from the tracked environment contract and protected environment secrets for the dedicated test identity; it does not use the trusted system API key to mutate records, staging OAuth material, a Worker test route, or direct D1 access.
+- **NOT VERIFIED:** the workflow is not yet merged, its protected test-identity secrets have not been read or asserted available, no production workflow run has occurred, and no keyed production result may be claimed from this candidate.
+
+This is a narrow Batch 1 acceptance transport, not NOW-1B frontend stable-key implementation or a general production test framework. If it cannot authenticate the dedicated test identity or the tenant is not safely empty, stop without mutation and retain the explicit blocker.
+
 ### Project Convergence Lock — Only Three Active Batches
 
 The project must now be understood as **three functional batches**, not as a chain of governance mini-projects.

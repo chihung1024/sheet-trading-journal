@@ -1,0 +1,136 @@
+name: Production Record Idempotency Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed 40-character Worker source commit to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-record-idempotency-smoke
+  cancel-in-progress: false
+
+jobs:
+  unit:
+    name: Verify production idempotency smoke implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+      - run: node --test tests/production_record_idempotency_smoke.test.mjs
+
+  production:
+    name: Verify authenticated record-create idempotency on production
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+
+      - name: Validate requested deployed source is main-reachable
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "expected_sha must be an exact lowercase 40-character Git commit SHA" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git cat-file -e "$REQUESTED_SHA^{commit}"
+          git merge-base --is-ancestor "$REQUESTED_SHA" origin/main
+
+      - name: Resolve fixed production API and OAuth client contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "$GITHUB_ENV"
+          const contract = require('./config/deployment-environments.json');
+          const apiOrigins = contract?.production?.api_origins;
+          const clientIds = contract?.production?.google_client_ids;
+          if (!Array.isArray(apiOrigins) || apiOrigins.length !== 1 || !Array.isArray(clientIds) || clientIds.length !== 1) {
+            throw new Error('Production test contract requires exactly one API origin and one Google client ID');
+          }
+          console.log(`PRODUCTION_E2E_API_ORIGIN=${apiOrigins[0]}`);
+          console.log(`PRODUCTION_E2E_GOOGLE_CLIENT_ID=${clientIds[0]}`);
+          NODE
+
+      - name: Load canonical manifest from the exact deployed source
+        id: manifest
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.expected_sha }}
+          WORKER_MANIFEST_PATH: ${{ runner.temp }}/expected-worker-manifest.json
+        run: |
+          set -euo pipefail
+          git show "$REQUESTED_SHA:worker-manifest.json" > "$WORKER_MANIFEST_PATH"
+          node tools/export_worker_manifest.mjs
+
+      - name: Verify public and trusted-system production contract
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
+          EXPECTED_RELEASE_VERSION: ${{ steps.manifest.outputs.release_version }}
+          EXPECTED_API_VERSION: ${{ steps.manifest.outputs.api_version }}
+          EXPECTED_SCHEMA_VERSION: ${{ steps.manifest.outputs.schema_version }}
+          API_KEY: ${{ secrets.API_KEY }}
+          REQUIRE_SYSTEM_CHECKS: '1'
+          AUDIT_OUTPUT: production-record-idempotency-contract.json
+        run: |
+          set -euo pipefail
+          WORKER_BASE_URL="$PRODUCTION_E2E_API_ORIGIN" node tools/verify_production_contract.mjs
+
+      - name: Mint a fresh Google ID token for the dedicated production test tenant
+        env:
+          PRODUCTION_E2E_GOOGLE_CLIENT_SECRET: ${{ secrets.PRODUCTION_E2E_GOOGLE_CLIENT_SECRET }}
+          PRODUCTION_E2E_GOOGLE_REFRESH_TOKEN: ${{ secrets.PRODUCTION_E2E_GOOGLE_REFRESH_TOKEN }}
+          PRODUCTION_E2E_EXPECTED_GOOGLE_SUB: ${{ secrets.PRODUCTION_E2E_EXPECTED_GOOGLE_SUB }}
+          PRODUCTION_E2E_EXPECTED_GOOGLE_EMAIL: ${{ secrets.PRODUCTION_E2E_EXPECTED_GOOGLE_EMAIL }}
+          PRODUCTION_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/production-record-id-token
+        run: node tools/mint_production_e2e_id_token.mjs
+
+      - name: Run authenticated record-create replay and conflict smoke
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          PRODUCTION_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/production-record-id-token
+          PRODUCTION_E2E_EVIDENCE_FILE: production-record-idempotency-smoke.json
+        run: node tools/run_production_record_idempotency_smoke.mjs
+
+      - name: Remove temporary Google ID token
+        if: ${{ always() }}
+        env:
+          PRODUCTION_E2E_ID_TOKEN_FILE: ${{ runner.temp }}/production-record-id-token
+        shell: bash
+        run: rm -f "$PRODUCTION_E2E_ID_TOKEN_FILE"
+
+      - name: Upload sanitized production idempotency evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: production-record-idempotency-${{ inputs.expected_sha }}
+          path: |
+            production-record-idempotency-contract.json
+            production-record-idempotency-smoke.json
+          if-no-files-found: warn
+          retention-days: 30
