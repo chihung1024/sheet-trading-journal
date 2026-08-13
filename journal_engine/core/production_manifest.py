@@ -23,6 +23,7 @@ from .calculation_manifest import (
 )
 from .currency_detector import CurrencyDetector
 from .input_provenance import (
+    VALUATION_SOURCE_DATE_COLUMN,
     build_fx_inputs_identity,
     build_market_inputs_identity,
     build_provider_provenance_diagnostics,
@@ -98,6 +99,29 @@ def _window_fx_series(
     return work.loc[(work.index >= start_date) & (work.index <= end_date)].copy(deep=True)
 
 
+def _uses_same_date_valuation_source(
+    symbol: str,
+    frame: pd.DataFrame,
+    calculation_as_of: pd.Timestamp,
+) -> bool:
+    """Return whether the as-of row actually sources valuation from that same date."""
+    if calculation_as_of not in frame.index:
+        return False
+    if VALUATION_SOURCE_DATE_COLUMN not in frame.columns:
+        return True
+
+    raw_source_date = frame.loc[calculation_as_of, VALUATION_SOURCE_DATE_COLUMN]
+    if isinstance(raw_source_date, pd.Series):
+        raise ProductionManifestError(
+            f"{symbol} calculation-as-of market row is duplicated"
+        )
+    source_date = _normalize_date(
+        raw_source_date,
+        f"{symbol} calculation-as-of valuation source date",
+    )
+    return source_date == calculation_as_of
+
+
 def _realtime_fx_currencies_used_by_calculation(
     *,
     user_symbols: set[str],
@@ -107,15 +131,20 @@ def _realtime_fx_currencies_used_by_calculation(
 ) -> set[str]:
     """Return foreign currencies whose realtime FX path can affect this run.
 
-    PortfolioCalculator only has a valuation pass for ``calculation_as_of`` when at
-    least one source-transaction symbol contributes that date to the group trading-date
-    union.  On that pass a foreign symbol uses realtime FX only when its own effective
-    market row is also dated ``calculation_as_of``; otherwise ``get_price_asof`` pads to
-    an earlier row and the calculator uses historical FX for that row instead.
+    PortfolioCalculator has a valuation pass for ``calculation_as_of`` when at least
+    one source-transaction symbol contributes that date to the group trading-date
+    union.  A foreign symbol uses realtime FX on that pass only when the effective
+    valuation source date is also ``calculation_as_of``.  Synthetic carry-forward rows
+    may be indexed by today while truthfully sourcing an earlier market observation;
+    those rows must retain historical FX provenance.
     """
 
     has_asof_valuation = any(
-        calculation_as_of in market_window[symbol].index
+        _uses_same_date_valuation_source(
+            symbol,
+            market_window[symbol],
+            calculation_as_of,
+        )
         for symbol in user_symbols
         if symbol in market_window
     )
@@ -125,7 +154,7 @@ def _realtime_fx_currencies_used_by_calculation(
     currencies = set()
     for symbol in required_symbols:
         frame = market_window[symbol]
-        if calculation_as_of not in frame.index:
+        if not _uses_same_date_valuation_source(symbol, frame, calculation_as_of):
             continue
         currency = CurrencyDetector.detect(symbol)
         if currency != BASE_CURRENCY:
