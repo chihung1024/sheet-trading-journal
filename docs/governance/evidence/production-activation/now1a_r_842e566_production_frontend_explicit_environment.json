@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "check_name": "production_frontend_explicit_environment",
+  "status": "passed",
+  "observed_at": "2026-08-13T01:44:25.662Z",
+  "source_sha": "842e5667b6ae3e75ea947f9ed08d7a8344337f9d",
+  "proof": {
+    "result": "pass",
+    "summary": "Reviewer-protected GET-only Production Identity Evidence #16 proved the Pages production project used branch main with an explicit production environment, production API URL, and production Google OAuth client for exact runtime source 842e5667b6ae3e75ea947f9ed08d7a8344337f9d.",
+    "artifact_reference": "Production Identity Evidence run 31658614001 (#16); artifact 9165344610; sha256:b3273cf207d0a84fdbdaef298c4794d4f955cadd1059ac437eab456bc86cce9a"
+  }
+}
