@@ -2,7 +2,7 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 19:01 Asia/Taipei**
+Last updated: **2026-08-14 00:32 Asia/Taipei**
 Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / NOW-1A PRODUCTION ACTIVATED / PUBLIC CONTRACT VERIFIED / AUTHENTICATED SMOKE BLOCKED AT TOKEN MINT / TWO RUNS NO MUTATION / THREE-BATCH CONVERGENCE LOCKED**
 
 ---
@@ -515,7 +515,8 @@ Objective: allow future AI to resume from primary evidence without reopening clo
 
 ### Reviewed / changed
 
-- `to_do_update_list.md` — **UPDATED**: current protected-main/live state; two failed production smoke runs; no-mutation boundary; secret configuration prerequisite; exact next actions.
+- `to_do_update_list.md` — **UPDATED**: current protected-main/live state; two failed production smoke runs; no-mutation boundary; safe alternative verification; secret configuration prerequisite; exact next actions.
+- Docs-only CI #759 / `31700151970` — **SUCCESS**: Worker, frontend, and Python jobs all passed for the handoff update.
 - `docs/DEPLOYMENT.md` — **UNCHANGED IN THIS BATCH**: two-SHA preservation rules and exact-R evidence lifecycle remain correct from PR #219.
 - `docs/README.md` — **UNCHANGED IN THIS BATCH**: current-vs-historical authority map remains correct from PR #219.
 
