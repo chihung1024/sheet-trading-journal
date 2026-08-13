@@ -60,6 +60,7 @@
       "journal_engine/clients/api_client.py",
       "journal_engine/clients/auto_price_selector.py",
       "journal_engine/clients/market_data.py",
+      "journal_engine/clients/semantic_market_data.py",
       "journal_engine/config.py",
       "journal_engine/core/__init__.py",
       "journal_engine/core/calculation_manifest.py",
