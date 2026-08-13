@@ -83,6 +83,12 @@ dedicated isolated production test tenant
 
 The deployment system principal is intentionally not treated as a user principal. Do not substitute a production system-key check, a read-only audit, or a real-user ledger for this authenticated acceptance. A GET-only Production Contract Audit may add confidence but cannot close the create-path gap.
 
+### Authenticated acceptance attempt — 2026-08-13 (partial; not closeout)
+
+A dedicated test tenant began with zero records. The normal UI successfully created one exact tagged test row (`2026-08-13 / AAPL / BUY / qty 1 / price 1 / fee 0 / tax 0 / tag NOW1A-IDEMPOTENCY-TEST-20260813`); the UI then displayed one row and a successful create toast. This validates legacy no-key compatibility only, because the current create UI sends `POST /api/records` without `Idempotency-Key`.
+
+Keyed replay and conflict are **NOT VERIFIED**. The shared-browser control channel did not expose the short-lived authenticated token through its supported read-only interface, and a cleanup click subsequently timed out before its outcome could be read. No token was copied, logged, or stored; no direct D1 mutation or test backdoor was used. On the next supported authenticated session, first list the test tenant, delete only the exact tagged row if present, and confirm zero test rows before attempting a proper keyed API smoke.
+
 ---
 
 ## 3. Source-of-truth hierarchy
