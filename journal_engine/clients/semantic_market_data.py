@@ -1,25 +1,30 @@
 """Semantic normalization for provider rows that are events, not price observations.
 
 The underlying :class:`MarketDataClient` intentionally fails closed when its selected
-valuation field contains NaN.  This adapter preserves that behavior for ambiguous or
+valuation field contains NaN. This adapter preserves that behavior for ambiguous or
 malformed price bars, while recognizing one narrower provider shape after the existing
 bounded same-provider retry has independently reproduced it:
 
 - every raw OHLC field is missing;
 - volume is zero/missing;
-- the row carries a supported corporate action (dividend and/or split);
-- no unsupported capital-gain event is present; and
-- both successful invalid provider attempts report the same action semantics and the
+- the row carries a finite positive cash dividend;
+- no stock split or unsupported capital-gain event is present; and
+- both successful invalid provider attempts report the same event semantics and the
   same selected price source.
 
-Such a row is not treated as a vendor market close.  It is converted into the existing
+Such a row is not treated as a vendor market close. It is converted into the existing
 ``asof_carry_forward`` effective-valuation contract: only ``Close_Adjusted`` is supplied
-from the latest prior finite selected valuation, raw OHLC remains missing, the action
-fields remain untouched, and provenance records the actual source date.
+from the latest prior finite selected valuation, raw OHLC remains missing, the dividend
+field remains untouched, and provenance records the actual price source date.
+
+Non-zero stock splits deliberately remain fail-closed. A split can change both the
+share-count basis and the contemporaneous price basis; without an authoritative price
+observation, a generic carry-forward rule would be financially under-specified. The
+same conservative rule applies to capital gains, which the calculator does not model.
 
 This keeps transient/mixed price corruption fail-closed, avoids ticker/date-specific
-special cases, and makes the row semantics explicit for calculator and deterministic
-input provenance consumers.
+special cases, and makes supported provider-row semantics explicit for calculator and
+deterministic input provenance consumers.
 """
 
 from __future__ import annotations
@@ -45,7 +50,7 @@ _REQUIRED_ACTION_COLUMNS = ("Dividends", "Stock Splits")
 
 
 class SemanticMarketDataClient(MarketDataClient):
-    """Market client with generic persistent action-only row normalization."""
+    """Production market client with persistent event-row semantic normalization."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -62,11 +67,12 @@ class SemanticMarketDataClient(MarketDataClient):
 
     @classmethod
     def _pure_action_only_signature(cls, frame: pd.DataFrame):
-        """Return a stable semantic signature, or ``None`` when any row is ambiguous.
+        """Return a stable dividend-only signature, or ``None`` when ambiguous.
 
-        The signature covers *all* selected-price NaN rows in the frame.  Partial OHLC
-        bars, non-zero volume, malformed action fields, unsupported capital gains, or
-        rows with no material supported action are deliberately unclassifiable.
+        The signature covers *all* selected-price NaN rows in the frame. Partial OHLC
+        bars, non-zero volume, malformed action fields, stock splits, capital gains, or
+        rows without a positive dividend are deliberately unclassifiable so the base
+        fail-closed validator remains authoritative.
         """
         if frame is None or frame.empty or "Close_Adjusted" not in frame.columns:
             return None
@@ -84,8 +90,8 @@ class SemanticMarketDataClient(MarketDataClient):
 
         signature = []
         for raw_date, row in invalid.iterrows():
-            # A pure event row has no usable vendor price observation at all.  If any
-            # OHLC field exists, this is a malformed/mixed price bar and must remain
+            # A supported event row has no usable vendor price observation at all. If
+            # any OHLC field exists, it is a malformed/mixed price bar and must remain
             # under the original fail-closed path.
             if any(not pd.isna(row[column]) for column in _RAW_PRICE_COLUMNS):
                 return None
@@ -99,14 +105,14 @@ class SemanticMarketDataClient(MarketDataClient):
             dividend = cls._finite_number(row["Dividends"])
             split = cls._finite_number(row["Stock Splits"])
             split_factor = cls._finite_number(row["Split_Factor"])
-            if dividend is None or dividend < 0.0:
+            if dividend is None or dividend <= 0.0:
                 return None
-            if split is None or split < 0.0:
+            if split is None or split != 0.0:
                 return None
             if split_factor is None or split_factor <= 0.0:
                 return None
 
-            # Capital gains are not currently modeled by the calculator.  Never make
+            # Capital gains are not currently modeled by the calculator. Never make
             # an update green by silently discarding a material unsupported cash event.
             capital_gain = 0.0
             if "Capital Gains" in frame.columns and not pd.isna(row["Capital Gains"]):
@@ -115,11 +121,6 @@ class SemanticMarketDataClient(MarketDataClient):
                     return None
                 capital_gain = numeric_capital_gain
             if capital_gain != 0.0:
-                return None
-
-            # At least one supported action must explain why yfinance intentionally
-            # retained a row with no price/volume observation.
-            if dividend == 0.0 and split == 0.0:
                 return None
 
             event_date = pd.Timestamp(raw_date)
@@ -158,7 +159,7 @@ class SemanticMarketDataClient(MarketDataClient):
         frame: pd.DataFrame,
         signature,
     ) -> tuple[pd.DataFrame, bool]:
-        """Convert supported pure event rows into explicit effective as-of valuations."""
+        """Convert proven dividend-only event rows into explicit as-of valuations."""
         current_signature = cls._pure_action_only_signature(frame)
         if not signature or current_signature != signature:
             return frame, False
@@ -198,7 +199,7 @@ class SemanticMarketDataClient(MarketDataClient):
             staged.append((event_date, float(prior.iloc[-1]), source_date.normalize()))
 
         for event_date, price, source_date in staged:
-            # Do not mutate raw vendor OHLC/Close_Raw fields.  Close_Adjusted is the
+            # Do not mutate raw vendor OHLC/Close_Raw fields. Close_Adjusted is the
             # calculation-effective valuation channel and provenance makes its source
             # explicit as a carry-forward rather than a claimed market close.
             work.at[event_date, "Close_Adjusted"] = price
@@ -211,7 +212,7 @@ class SemanticMarketDataClient(MarketDataClient):
         return work, True
 
     def download_data(self, tickers: list, start_date):
-        """Run the existing bounded retry, then normalize only proven event-only rows."""
+        """Run the bounded retry, then normalize only proven dividend-only rows."""
         with self._semantic_attempt_lock:
             self._invalid_attempt_evidence = {}
 
@@ -250,7 +251,7 @@ class SemanticMarketDataClient(MarketDataClient):
                 event_date.strftime("%Y-%m-%d") for event_date, *_ in signature
             )
             logger.warning(
-                "[%s] persistent pure corporate-action row(s) normalized as explicit "
+                "[%s] persistent dividend-only row(s) normalized as explicit "
                 "as-of effective valuation: dates=%s count=%s",
                 symbol,
                 event_dates,
