@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 11:46 Asia/Taipei**  
-Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A R=`842e566...` EVIDENCE PASS / FINAL DEPLOYMENT-DRIFT REVIEW PASS / THREE-BATCH CONVERGENCE LOCKED**
+Last updated: **2026-08-13 12:44 Asia/Taipei**  
+Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A R=`842e566...` EVIDENCE PASS / FINAL DEPLOYMENT-DRIFT REVIEW PASS / THREE-BATCH CONVERGENCE LOCKED / CURRENT TECH-DEBT TRIAGE RECORDED**
 
 ---
 
@@ -495,3 +495,76 @@ Batch 1 — NOW-1A Production Activation
 ```
 
 Do not create additional process/document/infrastructure phases unless new evidence proves a separate material blocker.
+
+---
+
+## 11. Current Product Risk / Technical-Debt Triage — 2026-08-13
+
+Status: **CURRENT-MAIN RECHECKED / PRODUCT-RISK TRIAGE RECORDED / OLD RISK REGISTER IS HISTORICAL INPUT, NOT ACTIVE BACKLOG**
+
+Purpose: give future AI a current, product-first interpretation of remaining risks without turning every historical audit item into mandatory work.
+
+### Source-of-truth rule
+
+`docs/governance/risk-register.json` is a **2026-08-06 audit baseline**. Its entries are useful discovery candidates, but its status fields are not current authority: several items later received fixes while the file still says `accepted_for_remediation`. Reconstruct current truth from current code, tests, live handoff, remote CI/deployment evidence, and later acceptance/closeout records before promoting any historical risk.
+
+Examples already corrected after that baseline include frontend all-page record pagination, legacy full-record localStorage cleanup, token-refresh lifecycle/JWT decoding, cross-tab refresh control, benchmark provenance guards, GroupManager fail-closed mutation reporting, and isolated staging Worker/browser verification. Do not reopen those old symptoms merely because the historical risk register still lists them.
+
+### Current priority map
+
+| Priority | Current issue / debt | Current interpretation | Action rule |
+|---|---|---|---|
+| **NOW** | record-create ambiguous-response duplication | production still lacks live Worker 4.08 / Schema 3 protection and frontend stable create key | finish existing Batch 1 → Batch 2; do not let unrelated debt interrupt |
+| **NEXT-CANDIDATE** | same-day transaction execution order | records persist date but no authoritative executed timestamp / broker sequence; FIFO/day-trade/dividend ordering can become ambiguous | reproduce with real or broker-derived same-day cases during Batch 3 before designing migration |
+| **NEXT-CANDIDATE** | record edit lost-update concurrency | update path has no record revision / optimistic locking, so stale multi-tab/device edits can overwrite newer values | validate realistic concurrent-edit scenario; promote only if materially reproducible |
+| **NEXT-CANDIDATE** | ledger/snapshot read consistency | no monotonic ledger revision currently binds pagination/calculation/snapshot publication into one explicit input revision | test concurrent mutation during paginated read/calculation before opening compare-and-publish work |
+| **PRODUCT-DIRECTION DECISION** | no complete cash ledger / brokerage-account NAV model | current BUY/SELL/DIV security-project model is not automatically equivalent to full brokerage NAV after cash deposits, withdrawals, settlement, interest or liquidation | first decide whether product promises security-journal analytics or complete account NAV; do not build a cash ledger by assumption |
+| **SECURITY DEBT** | bearer authentication remains browser-localStorage based; residual CSP hardening remains | auth lifecycle reliability was substantially improved, but XSS blast radius remains higher than an HttpOnly/session design | keep BACKLOG unless public/multi-user exposure or concrete security evidence raises priority |
+| **BACKLOG / VERIFY ON EVIDENCE** | manual market-hours calendar | frontend still computes TW/US hours and DST without one authoritative holiday/early-close exchange calendar | promote only on demonstrated holiday/DST/early-close error |
+| **BACKLOG / LIMITATION** | GroupManager batch mutations are non-atomic | UI now reports partial failure honestly, but sequential committed rows are not rolled back | leave unless bulk strategy editing becomes a material workflow |
+| **PASSIVE WATCH** | yfinance remains the single market-data provider | provider semantic defects have generic fail-closed handling, but availability/licensing/schema dependency remains | monitor; do not build multi-provider architecture without repeated material evidence |
+| **BACKLOG** | SQLite `REAL` / Python `float` / JS `Number` financial model | binary floating-point can accumulate precision drift, but current reconciliation/tolerances exist | promote only if broker-statement/golden-case reconciliation shows material error |
+| **BACKLOG** | email remains persistent tenant identity | long-term identity/privacy coupling remains despite current signed-email checks | defer until email-change/multi-user/session redesign becomes real product need |
+| **LOW / TRACKER HYGIENE** | stale issues and historical risk statuses | old issues/risk entries can look open after their implementation was already completed | clean opportunistically; never let tracker cleanup displace product correctness |
+
+### Six items future Product Functionality Review should watch most closely
+
+After NOW-1 is production-closed, Batch 3 should preferentially validate these boundaries before broad infrastructure work:
+
+1. **same-day trade ordering** — can actual same-day BUY/SELL/fill sequences produce materially wrong FIFO, realized P&L, oversell, or dividend entitlement because only date is authoritative?
+2. **stale record updates** — can two tabs/devices silently overwrite a newer edit without a deterministic conflict?
+3. **ledger revision / snapshot consistency** — can a mutation during pagination or calculation cause an internally accepted result that does not correspond to one complete ledger revision?
+4. **cash-ledger/product semantics** — does the intended product need full account NAV, or are current security-project metrics intentionally sufficient?
+5. **auth storage + CSP** — does deployment exposure justify migrating away from bearer token localStorage and tightening residual CSP now?
+6. **market-calendar edge cases** — do holidays, early closes, DST boundaries, or Taiwan/US timezone transitions produce real refresh/as-of errors?
+
+These are **validation candidates, not six automatic implementation projects**. The required sequence is reproduce → evidence → classify → isolate root cause → implement the smallest generic correction only when the defect is materially demonstrated.
+
+### Explicit non-priorities unless new evidence appears
+
+Do not start broad redesign solely because it sounds architecturally cleaner. In particular, the following remain BACKLOG/PASSIVE WATCH unless promoted by concrete product/security/data evidence:
+
+- universal ledger redesign;
+- broad Decimal/fixed-point migration;
+- tenant UUID migration;
+- multi-provider market-data framework;
+- custom compute scheduler/queue;
+- heartbeat/sweeper framework;
+- broad auth/session redesign;
+- full cash-account model before product semantics are decided;
+- mass update of every historical audit/risk document;
+- closing/relabeling old GitHub issues as a standalone project.
+
+### Reopen / promotion rule
+
+A technical-debt item may displace the active three-batch line only when fresh evidence shows at least one of:
+
+- wrong financial result or corrupted/duplicated transaction data;
+- user-visible core flow cannot complete or recover;
+- material tenant/privacy/security exposure;
+- production outage or repeated platform/provider failure that existing fail-closed behavior cannot safely absorb;
+- proven delivery blocker for the current product batch.
+
+Otherwise classify it NEXT, BACKLOG, PASSIVE WATCH, or REJECT and continue the active product line.
+
+**Current conclusion:** the repository is not in a broad systemic-failure state. The highest-value work remains NOW-1 production exactly-once completion; the remaining technical debt should be evidence-driven during Batch 3 rather than used to justify a new refactor program.
