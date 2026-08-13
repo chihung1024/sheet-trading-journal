@@ -44,6 +44,47 @@ def _history(
     return frame
 
 
+def _nonterminal_partial_history():
+    frame = pd.DataFrame(
+        {
+            "Open": [99.0, 100.0, 102.0],
+            "High": [101.0, 102.0, 104.0],
+            "Low": [98.0, 99.0, 101.0],
+            "Close": [100.0, float("nan"), 103.0],
+            "Adj Close": [100.0, float("nan"), 103.0],
+            "Volume": [1000.0, 1200.0, 1300.0],
+            "Dividends": [0.0, 0.0, 0.0],
+            "Stock Splits": [0.0, 0.0, 0.0],
+            "Capital Gains": [0.0, 0.0, 0.0],
+        },
+        index=pd.to_datetime(["2026-08-10", "2026-08-11", "2026-08-12"]),
+    )
+    return frame
+
+
+def _single_day_history(
+    *,
+    close=101.0,
+    dividend=0.0,
+    split=0.0,
+    capital_gain=0.0,
+):
+    return pd.DataFrame(
+        {
+            "Open": [100.0],
+            "High": [max(102.0, close)],
+            "Low": [min(99.0, close)],
+            "Close": [close],
+            "Adj Close": [close],
+            "Volume": [12345.0],
+            "Dividends": [dividend],
+            "Stock Splits": [split],
+            "Capital Gains": [capital_gain],
+        },
+        index=pd.to_datetime(["2026-08-11"]),
+    )
+
+
 class FakeTicker:
     def __init__(self, daily_frame):
         self.daily_frame = daily_frame
@@ -62,6 +103,9 @@ class ExplodingTicker:
 def _run_download(client, ticker_factory):
     with patch.object(client, "_download_currency_fx", return_value=None), patch(
         "journal_engine.clients.market_data.yf.Ticker",
+        side_effect=ticker_factory,
+    ), patch(
+        "journal_engine.clients.semantic_market_data.yf.Ticker",
         side_effect=ticker_factory,
     ), patch("journal_engine.clients.market_data.time.sleep") as sleep:
         market_data, _ = client.download_data(["AAA"], pd.Timestamp("2026-05-02"))
@@ -82,7 +126,7 @@ def test_persistent_dividend_action_only_row_becomes_explicit_asof_effective_val
     frame = market_data["AAA"]
     event_date = pd.Timestamp("2026-08-11")
 
-    assert calls["AAA"] == 2
+    assert calls["AAA"] == 4
     assert calls["SPY"] == 1
     sleep.assert_called_once()
     assert frame.loc[event_date, "Close_Adjusted"] == 100.0
@@ -102,7 +146,108 @@ def test_persistent_dividend_action_only_row_becomes_explicit_asof_effective_val
     assert identity.synthetic_row_counts == {"asof_carry_forward": 1}
 
 
-def test_persistent_split_action_only_row_remains_fail_closed():
+def test_persistent_partial_price_bar_recovers_only_from_two_identical_exact_date_daily_rows():
+    client = SemanticMarketDataClient()
+    malformed = _history(partial_price=True)
+    recovered_daily = _single_day_history(close=101.75)
+    spy = _history(final_close=500.0)
+    calls = defaultdict(int)
+
+    def ticker_factory(symbol):
+        call_index = calls[symbol]
+        calls[symbol] += 1
+        if symbol == "AAA":
+            return FakeTicker(malformed if call_index < 2 else recovered_daily)
+        return FakeTicker(spy)
+
+    market_data, sleep = _run_download(client, ticker_factory)
+    frame = market_data["AAA"]
+    event_date = pd.Timestamp("2026-08-11")
+
+    assert calls["AAA"] == 4
+    sleep.assert_called_once()
+    assert frame.loc[event_date, "Close"] == 101.75
+    assert frame.loc[event_date, "Close_Adjusted"] == 101.75
+    assert frame.loc[event_date, "Close_Raw"] == 101.75
+    assert frame.loc[event_date, "Dividends"] == 0.0
+    assert frame.loc[event_date, "Stock Splits"] == 0.0
+    assert PortfolioValidator.validate_price_data("AAA", frame) is True
+    assert "exact-date same-provider" in client.price_metadata_by_symbol["AAA"]["selection_reason"]
+    identity = build_market_inputs_identity({"AAA": frame}, required_symbols=["AAA"])
+    assert identity.synthetic_row_counts == {}
+
+
+def test_exact_date_recovery_is_general_and_can_repair_a_nonterminal_historical_gap():
+    client = SemanticMarketDataClient()
+    malformed = _nonterminal_partial_history()
+    recovered_daily = _single_day_history(close=101.0)
+    spy = _history(final_close=500.0)
+    calls = defaultdict(int)
+
+    def ticker_factory(symbol):
+        call_index = calls[symbol]
+        calls[symbol] += 1
+        if symbol == "AAA":
+            return FakeTicker(malformed if call_index < 2 else recovered_daily)
+        return FakeTicker(spy)
+
+    market_data, _sleep = _run_download(client, ticker_factory)
+    frame = market_data["AAA"]
+
+    assert calls["AAA"] == 4
+    assert frame.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 101.0
+    assert frame.loc[pd.Timestamp("2026-08-12"), "Close_Adjusted"] == 103.0
+    assert PortfolioValidator.validate_price_data("AAA", frame) is True
+
+
+def test_exact_date_recovery_rejects_two_disagreeing_provider_observations():
+    client = SemanticMarketDataClient()
+    malformed = _history(partial_price=True)
+    narrow_first = _single_day_history(close=101.75)
+    narrow_second = _single_day_history(close=101.80)
+    spy = _history(final_close=500.0)
+    calls = defaultdict(int)
+
+    def ticker_factory(symbol):
+        call_index = calls[symbol]
+        calls[symbol] += 1
+        if symbol != "AAA":
+            return FakeTicker(spy)
+        if call_index < 2:
+            return FakeTicker(malformed)
+        return FakeTicker(narrow_first if call_index == 2 else narrow_second)
+
+    market_data, _sleep = _run_download(client, ticker_factory)
+    frame = market_data["AAA"]
+
+    assert calls["AAA"] == 4
+    assert frame["Close_Adjusted"].isna().sum() == 1
+    assert PortfolioValidator.validate_price_data("AAA", frame) is False
+
+
+def test_exact_date_recovery_rejects_corporate_action_mismatch():
+    client = SemanticMarketDataClient()
+    malformed = _history(partial_price=True, dividend=0.0)
+    narrow = _single_day_history(close=101.75, dividend=0.5)
+    spy = _history(final_close=500.0)
+    calls = defaultdict(int)
+
+    def ticker_factory(symbol):
+        call_index = calls[symbol]
+        calls[symbol] += 1
+        if symbol == "AAA":
+            return FakeTicker(malformed if call_index < 2 else narrow)
+        return FakeTicker(spy)
+
+    market_data, _sleep = _run_download(client, ticker_factory)
+    frame = market_data["AAA"]
+
+    assert calls["AAA"] == 3
+    assert frame["Close_Adjusted"].isna().sum() == 1
+    assert PortfolioValidator.validate_price_data("AAA", frame) is False
+
+
+def test_persistent_split_action_only_row_remains_fail_closed_when_exact_date_data_is_incomplete():
     client = SemanticMarketDataClient()
     action_only = _history(split=2.0, action_only=True)
     spy = _history(final_close=500.0)
@@ -117,7 +262,7 @@ def test_persistent_split_action_only_row_remains_fail_closed():
     before = pd.Timestamp("2026-08-10")
     event_date = pd.Timestamp("2026-08-11")
 
-    assert calls["AAA"] == 2
+    assert calls["AAA"] == 3
     sleep.assert_called_once()
     assert pd.isna(frame.loc[event_date, "Close_Adjusted"])
     assert frame.loc[event_date, "Stock Splits"] == 2.0
@@ -127,7 +272,7 @@ def test_persistent_split_action_only_row_remains_fail_closed():
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
 
 
-def test_partial_price_bar_remains_fail_closed_after_retry():
+def test_partial_price_bar_remains_fail_closed_when_narrow_provider_row_is_still_incomplete():
     client = SemanticMarketDataClient()
     malformed = _history(dividend=1.25, partial_price=True)
     spy = _history(final_close=500.0)
@@ -140,7 +285,7 @@ def test_partial_price_bar_remains_fail_closed_after_retry():
     market_data, sleep = _run_download(client, ticker_factory)
     frame = market_data["AAA"]
 
-    assert calls["AAA"] == 2
+    assert calls["AAA"] == 3
     sleep.assert_called_once()
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert "Valuation_Source" not in frame.columns
@@ -164,7 +309,7 @@ def test_action_semantics_must_be_stable_across_successful_refetches():
     market_data, sleep = _run_download(client, ticker_factory)
     frame = market_data["AAA"]
 
-    assert calls["AAA"] == 2
+    assert calls["AAA"] == 3
     sleep.assert_called_once()
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert frame.loc[pd.Timestamp("2026-08-11"), "Dividends"] == 1.30
@@ -187,7 +332,7 @@ def test_failed_second_fetch_is_not_evidence_of_persistent_action_semantics():
     market_data, sleep = _run_download(client, ticker_factory)
     frame = market_data["AAA"]
 
-    assert calls["AAA"] == 2
+    assert calls["AAA"] == 3
     sleep.assert_called_once()
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
@@ -206,7 +351,7 @@ def test_unmodeled_capital_gain_event_remains_fail_closed():
     market_data, sleep = _run_download(client, ticker_factory)
     frame = market_data["AAA"]
 
-    assert calls["AAA"] == 2
+    assert calls["AAA"] == 3
     sleep.assert_called_once()
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
@@ -225,7 +370,7 @@ def test_action_only_row_without_prior_valuation_remains_fail_closed():
     market_data, sleep = _run_download(client, ticker_factory)
     frame = market_data["AAA"]
 
-    assert calls["AAA"] == 2
+    assert calls["AAA"] == 3
     sleep.assert_called_once()
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
