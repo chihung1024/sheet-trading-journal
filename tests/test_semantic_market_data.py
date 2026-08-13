@@ -89,6 +89,7 @@ def test_persistent_dividend_action_only_row_becomes_explicit_asof_effective_val
     assert pd.isna(frame.loc[event_date, "Close"])
     assert pd.isna(frame.loc[event_date, "Close_Raw"])
     assert frame.loc[event_date, "Dividends"] == 1.25
+    assert frame.loc[event_date, "Stock Splits"] == 0.0
     assert frame.loc[event_date, "Valuation_Source"] == "asof_carry_forward"
     assert frame.loc[event_date, "Valuation_Source_Date"] == "2026-08-10"
     assert client.get_dividend("AAA", event_date) == 1.25
@@ -101,7 +102,7 @@ def test_persistent_dividend_action_only_row_becomes_explicit_asof_effective_val
     assert identity.synthetic_row_counts == {"asof_carry_forward": 1}
 
 
-def test_persistent_split_action_only_row_preserves_split_semantics():
+def test_persistent_split_action_only_row_remains_fail_closed():
     client = SemanticMarketDataClient()
     action_only = _history(split=2.0, action_only=True)
     spy = _history(final_close=500.0)
@@ -118,14 +119,12 @@ def test_persistent_split_action_only_row_preserves_split_semantics():
 
     assert calls["AAA"] == 2
     sleep.assert_called_once()
-    assert frame.loc[event_date, "Close_Adjusted"] == 100.0
+    assert pd.isna(frame.loc[event_date, "Close_Adjusted"])
     assert frame.loc[event_date, "Stock Splits"] == 2.0
     assert frame.loc[before, "Split_Factor"] == 2.0
     assert frame.loc[event_date, "Split_Factor"] == 1.0
-    assert client.get_transaction_multiplier("AAA", before) == 2.0
-    assert client.get_transaction_multiplier("AAA", event_date) == 1.0
-    assert frame.loc[event_date, "Valuation_Source"] == "asof_carry_forward"
-    assert PortfolioValidator.validate_price_data("AAA", frame) is True
+    assert "Valuation_Source" not in frame.columns
+    assert PortfolioValidator.validate_price_data("AAA", frame) is False
 
 
 def test_partial_price_bar_remains_fail_closed_after_retry():
