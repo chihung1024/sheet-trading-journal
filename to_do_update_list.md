@@ -2,8 +2,36 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → re-check GitHub remote truth before consequential action. Remote systems override stale prose. Documentation exists to prevent project amnesia/distortion, not to become the project.
 
-Last updated: **2026-08-13 10:50 Asia/Taipei**  
-Handoff revision: **E1c CLOSED / MD-NAN-B1 MERGED / MD-EVENT-ROW ROOT-CAUSE FIX MERGED + PRODUCTION NORMAL PATH VERIFIED / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A MERGED + POST-MAIN VERIFIED / PRODUCTION ACTIVATION PREP — FREEZE R ONLY AFTER SAME-SHA CI + PAGES / DOCUMENT QUALITY MAINTAINED**
+Last updated: **2026-08-13 11:03 Asia/Taipei**  
+Handoff revision: **WHOLE-PROJECT RECHECK / E1c CLOSED / MARKET-DATA ROOT CAUSES CLOSED + PASSIVE WATCH / PRODUCT FUNCTIONALITY REVIEW ACTIVE / NOW-1A R=`842e566...` EVIDENCE PASS / AUTHORITY + PRODUCTION ACTIVATION PENDING / HANDOFF REVALIDATED**
+
+---
+
+## 0. Future-AI Bootstrap / Authority Map
+
+Do not start by executing the most detailed historical plan you can find. Reconstruct current truth in this order:
+
+1. **Governance:** `AI_PROJECT_PLAYBOOK.md` — product-first priority, RCA, scope convergence, review/risk rules.
+2. **Product/architecture orientation:** `README.md`.
+3. **Live handoff:** this file — current Phase/Batch, blockers, exact next actions, known evidence boundaries.
+4. **Remote truth:** protected `main`, open PRs, CI, Pages/deployments, current workflow runs, production observations.
+5. **Machine contracts:** `worker-manifest.json`, `wrangler.toml`, `config/production-activation-authority.json`, `config/recovery-evidence-gate.json`, `config/deployment-environments.json`, current workflows/verifier tests.
+6. **Production runbook:** `docs/DEPLOYMENT.md`.
+7. **Documentation map:** `docs/README.md`.
+8. **Historical evidence/closeouts:** `docs/engineering/`, `docs/governance/evidence/`, `audits/`, PR/Git history — provenance only unless a current authority explicitly reactivates them.
+
+Key identity rule — **do not collapse these into one “current SHA”**:
+
+- repository source contract;
+- current protected-main HEAD;
+- last verified live production runtime `P`;
+- selected activation runtime source `R`;
+- later activation-authority commit `A`;
+- immutable recovery-evidence baseline.
+
+A PASS artifact proves the exact source/conditions to which it is bound. It does not authorize a different source SHA. Conversely, a later unrelated/non-deployed main commit does not automatically invalidate an already-evidenced `R`; use exact diff/relevance review and the canonical two-SHA deployment contract.
+
+If this file disagrees with fresh remote state or a machine-readable authority, stop and update the handoff before consequential mutation.
 
 ---
 
@@ -23,6 +51,8 @@ login
 
 **Convergence = finish necessary correctness/functionality work, then stop unnecessary expansion.** Do not close with a known material bug merely to shorten the phase; do not keep expanding infrastructure when no material product defect justifies it.
 
+**Functional correctness always outranks optimization, document beautification, and infrastructure idealization.** If a real user path breaks, pause lower-priority work, perform RCA, repair the generic root cause, regress it, then resume the prior main line.
+
 ---
 
 ## 2. Current Product Status
@@ -35,14 +65,15 @@ login
 | E1c-A.1 | CLOSED / PRODUCTION VERIFIED | durable dispatch binding + legacy orphan residue resolved |
 | E1c-B | **CLOSED / PRODUCTION VERIFIED** | refresh/reopen recovery, terminal cleanup, retained workflow queue implemented and verified |
 | Gate E / E1c | **CLOSED** | no known material lifecycle blocker remains |
-| MD-NAN-B1 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH PASS** | bounded same-provider re-fetch mitigation deployed; retry branch remains production-watch only |
+| MD-NAN-B1 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH PASS** | bounded same-provider re-fetch mitigation deployed; retry branch remains passive watch |
 | MD-EVENT-ROW / PR #217 | **MERGED / POST-MAIN VERIFIED / NORMAL PRODUCTION PATH VERIFIED / SPECIAL BRANCH REGRESSION-VERIFIED** | provider rows are classified by semantics rather than ticker/date; only stable pure cash-dividend-only rows may become explicit `asof_carry_forward`; split/capital-gain/mixed/ambiguous cases remain fail-closed |
-| Product Functionality Review | **ACTIVE — NOW-1** | record-create duplicate correctness defect remains the current single product line until server activation + NOW-1B close the user-visible ambiguity gap |
-| NOW-1A / PR #213 | **MERGED / POST-MAIN VERIFIED / PRODUCTION ACTIVATION PENDING** | server-side create-idempotency compatibility is on protected main; runtime-changing merge commit `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`; production still runs the last verified 4.07 / 2.60 / Schema 2 contract |
-| Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled rerun `31570497634` attempt 2 completed real staging export/drop/restore/integrity/cleanup and produced verified evidence |
-| Document Quality | **MAINTAINED — ACTIVATION SOURCE/EVIDENCE TIMING CONTRACT CORRECTED** | source/live/authority boundaries are explicit; production source R is frozen only after the same protected-main SHA has successful post-main CI and Pages production deployment and main is re-confirmed unchanged |
+| Product Functionality Review | **ACTIVE — NOW-1** | record-create duplicate correctness defect remains the current product line until server activation + NOW-1B close the user-visible ambiguity gap |
+| NOW-1A / PR #213 | **R SELECTED + IDENTITY EVIDENCE PASS / AUTHORITY + PRODUCTION ACTIVATION PENDING** | Worker 4.08 / API 2.61 / Schema 3 source is merged; exact `R=842e566...` has CI/Pages/Production Identity Evidence PASS; live production is still 4.07 / 2.60 / Schema 2 |
+| Staging D1 Recovery Evidence | **PASSED / VERIFIED** | controlled run `31570497634` attempt 2 proved isolated staging export/drop/restore/integrity/cleanup |
+| Production Identity Evidence #16 | **PASS — EXACT `R=842e566...`** | artifact is genuine exact-R evidence; authority A has not yet been created; later non-deploy changes require relevance review, not automatic invalidation |
+| Document Quality | **WHOLE-PROJECT RECHECKED / HANDOFF REVALIDATED** | stale Gate-E document authority, activation chronology, and evidence-lifecycle interpretation corrected; root README/Playbook remain stable |
 
-The lifecycle/control-plane work is no longer the project focus. Recovery investigation was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. The current infrastructure work is limited to the minimum production-activation boundary required to finish NOW-1A safely.
+The lifecycle/control-plane work is no longer the project focus. Recovery work was retained only because it blocked a demonstrated product-correctness fix; that blocker is closed. The only infrastructure work allowed to interrupt Product Functionality Review now is the minimum production-activation boundary required to finish NOW-1A safely, or a newly demonstrated material product/security/data failure.
 
 ---
 
@@ -60,97 +91,53 @@ Final browser recovery smoke:
 
 - user performed one normal authenticated update;
 - after calculation became active, browser was refreshed with F5;
-- after refresh the UI automatically resumed the existing calculation;
-- user did not press update again;
+- UI automatically resumed the same calculation without a second update dispatch;
 - UI reached terminal completion successfully.
 
-GitHub remote truth for that operation:
+GitHub evidence: `Update Portfolio Data #3245` / `31567498004`, exact `c512916...`, running callback/calculation/reconciliation/snapshot/terminal callback/workflow all SUCCESS.
 
-- `Update Portfolio Data #3245`;
-- run `31567498004`;
-- event `workflow_dispatch`;
-- head `c51291686d8eefd8aa5a50bc7492269857a3d081`;
-- running callback SUCCESS;
-- calculation/reconciliation SUCCESS;
-- snapshot upload SUCCESS;
-- terminal `succeeded` callback SUCCESS;
-- workflow SUCCESS;
-- previous authenticated dispatch #3244 occurred more than one hour earlier, therefore F5 did **not** create a duplicate workflow run.
+Retained queue uses GitHub-native `queue: max`, repository-wide `portfolio-update` serialization, and `cancel-in-progress: false`. Do not manufacture concurrent production calculations solely to prove queueing.
 
-Retained queue uses GitHub-native `queue: max` with repository-wide `portfolio-update` serialization and `cancel-in-progress: false`. Exact syntax/contract is covered by CI/review. Do not manufacture concurrent production calculations solely to demonstrate queueing; revisit only if real replacement/saturation evidence appears.
-
-Durable lifecycle record:
-
-`docs/engineering/GATE_E_E1C_JOB_LIFECYCLE_2026-08-11.md`
+Durable record: `docs/engineering/GATE_E_E1C_JOB_LIFECYCLE_2026-08-11.md`.
 
 ---
 
 ## 4. Market-Data Correctness — Root Causes Closed / Passive Watch
 
-Production #3243 reproduced transient upstream daily-row incompleteness/inconsistency: provider rows could contain Open/High/Low/Volume while Close/Adj Close were NaN; at least one captured row was internally inconsistent enough that OHLC substitution would be unsafe.
+### MD-NAN-B1 — transient incomplete price row
 
-PR #210 — bounded same-provider fresh re-fetch:
+Production #3243 reproduced upstream daily-row incompleteness/inconsistency. PR #210 permits one bounded fresh request to the same provider/request semantics while preserving fail-closed financial integrity.
 
-- product baseline: `a8b03877449e885df935389e63fc23e6eb765dd2`;
-- exact-head Independent Review: PASS;
-- exact-head CI #696 / `31565889026`: SUCCESS;
-- post-main CI #697 / `31566063069`: SUCCESS;
-- Pages #1495 / `31566062067`: SUCCESS.
+Contract remains: no guessed prices; no OHLC/Adj Close substitution; no alternate provider fallback; inconsistent retry remains fail-closed. PR CI/post-main passed and #3245 proved normal-path compatibility; retry branch was not falsely claimed production-exercised.
 
-Financial-integrity contract remains:
+### MD-EVENT-ROW — provider event row misclassified as price bar
 
-- no drop/fill/forward-fill/back-fill;
-- no Open/High/Low/Adj Close substitution;
-- no alternate provider or guessed price;
-- one bounded fresh request to the same provider/request semantics is allowed only with complete action evidence, same selected price source, and preservation of every original provider daily date;
-- unacceptable retry remains fail-closed.
+A later production failure exposed a distinct semantic root cause: a provider may retain a corporate-action row with no usable price observation. Treating every retained row as a valuation bar caused a stable action-only row to block the portfolio update.
 
-#3245 is a post-merge production SUCCESS and proves the normal path remains compatible after the mitigation. It did not reproduce NaN, so the actual retry branch is **not claimed production-exercised**.
+PR #217 generic fix:
 
-A later production failure exposed a second, distinct semantic root cause: a provider daily row may be intentionally retained because it carries a corporate action even when that row has no usable price observation. Treating every retained daily row as a price bar made a persistent event-only row fail downstream price validation even after the bounded same-provider re-fetch proved the shape was stable.
-
-PR #217 — generic market-row semantic normalization:
-
-- final exact candidate: `0a0eb00304de7bf48c94f235f93e350eed49f313`;
+- exact candidate `0a0eb00304de7bf48c94f235f93e350eed49f313`;
 - no ticker/date/dividend-amount special cases;
-- two successful prepared provider responses must reproduce the same semantic signature and selected price source before normalization is eligible;
-- only a stable **pure positive cash-dividend-only** event row may receive an explicit `Close_Adjusted` as-of effective valuation using the latest prior finite selected valuation;
-- raw OHLC and `Close_Raw` remain missing; provenance records `Valuation_Source=asof_carry_forward` and the actual prior `Valuation_Source_Date`;
-- stock splits, mixed dividend+split, capital gains, partial/mixed price bars, unstable retries, failed second requests, malformed semantic inputs, and no-prior-valuation cases remain fail-closed;
-- split events are deliberately not generalized from the dividend policy because share-count and contemporaneous price basis can both change.
+- two successful prepared responses must reproduce the same semantic signature and selected price source;
+- only stable **pure positive cash-dividend-only** rows may receive explicit `Close_Adjusted` as-of effective valuation from the latest prior finite selected valuation;
+- raw OHLC/`Close_Raw` remain missing and provenance records `asof_carry_forward` + actual source date;
+- split, dividend+split, capital gain, partial/mixed bars, unstable retry, second-request failure, malformed semantics, or no prior valuation remain fail-closed.
 
 Verification:
 
-- exact-head CI #738 / `31661392819`: SUCCESS;
-- Python: 479 passed + 18 subtests;
-- `semantic_market_data.py`: 98% measured coverage;
-- raw missing-branch governance remained at `309` and the existing coverage policy PASSED; no threshold was lowered;
-- exact-head Independent Review: PASS with no remaining BLOCKER;
-- PR #217 merged to protected main as `0f4676f995db890b3a8c5fdb2310f7b47a80f207`;
-- post-main CI #739 / `31661520242`: all Python/coverage, Frontend, Worker/security/D1 jobs SUCCESS.
+- CI #738 / `31661392819`: SUCCESS;
+- 479 Python tests + 18 subtests;
+- semantic client 98% measured coverage; raw missing-branch gate remained 309;
+- Independent Review PASS;
+- merge `0f4676f995db890b3a8c5fdb2310f7b47a80f207`;
+- post-main CI #739 SUCCESS;
+- authenticated production #3254 / `31661928574`: 146 records, 45 symbols, prefix integrity PASS, Daily PnL reconciliation PASS, split-ledger parity PASS, snapshot upload SUCCESS, user success 1/failure 0, terminal job `succeeded`, workflow SUCCESS.
 
-Production normal-path smoke after merge:
+Evidence boundary: #3254 did not emit the semantic-normalizer warning. Full normal-path production compatibility is verified; the persistent dividend-only branch is regression/coverage verified and not falsely claimed live-hit.
 
-- normal authenticated web trigger created `Update Portfolio Data #3254` / run `31661928574`;
-- exact source: `0f4676f995db890b3a8c5fdb2310f7b47a80f207`;
-- calculation job: `job_gKRZsSdG78pdbbQewxIIwQ`;
-- 146 transaction records fetched; 45 market symbols processed;
-- market-data stage completed without `MARKET_DATA_FAILED`;
-- transaction-prefix integrity PASS: 146 rows / 2 scopes / 88 symbol scopes;
-- canonical Daily PnL reconciliation PASS for 2 groups, `94208.45 == 94208.45`, 20 symbols, legacy diagnostics 0;
-- split-adjusted ledger parity PASS for 146 BUY/SELL rows;
-- snapshot upload SUCCESS;
-- successful users 1 / failed users 0;
-- terminal calculation-job callback `succeeded`;
-- workflow conclusion SUCCESS.
+Durable record: `docs/engineering/MD_EVENT_ROW_SEMANTIC_NORMALIZATION_2026-08-13.md`.
 
-Evidence boundary: #3254 did **not** emit the semantic-normalizer warning, so the persistent dividend-only branch is **not claimed live production-exercised**. The production smoke proves merged normal-path compatibility and full end-to-end calculation/upload/callback success; the special branch is independently covered by exact-head generic regression tests and coverage.
-
-Durable root-cause/evidence record:
-
-`docs/engineering/MD_EVENT_ROW_SEMANTIC_NORMALIZATION_2026-08-13.md`
-
-Both market-data fixes are now under passive production watch. Do not add speculative provider repair, ticker/date exceptions, alternate-provider fallbacks, or guessed prices unless new evidence shows a material correctness failure or provider contract change.
+Both market-data fixes are passive watch. Reopen only on new material correctness/provider-semantic evidence; no speculative ticker exception, alternate provider, guessed-price repair, or broad redesign.
 
 ---
 
@@ -159,295 +146,241 @@ Both market-data fixes are now under passive production watch. Do not add specul
 Review the real user path, not architecture in isolation:
 
 ```text
-1. login / session restoration
-2. transaction list/read
-3. add transaction
-4. edit transaction
-5. delete transaction
-6. portfolio update trigger
-7. queued/running progress and refresh/reopen recovery
-8. terminal success/failure feedback
-9. snapshot refresh
-10. holdings correctness
-11. realized/unrealized P&L and daily P&L
-12. performance metrics / benchmark behavior
-13. empty/error/retry states
-14. mobile/responsive usability where it affects actual use
+login/session
+→ record read/add/edit/delete
+→ update trigger
+→ queued/running + refresh recovery
+→ terminal feedback
+→ snapshot refresh
+→ holdings / realized-unrealized-daily P&L
+→ performance / benchmark
+→ empty/error/retry/mobile usability where functionally material
 ```
 
-For each finding classify:
-
-- **NOW** — material correctness/data bug, user-blocking failure, security/auth bypass, duplicate/lost calculation, incorrect snapshot/performance, or a defect that predictably contaminates the next functional batch;
-- **NEXT** — important user-facing improvement that is safely separable;
-- **BACKLOG** — genuine non-blocking technical/UX improvement;
-- **REJECT** — insufficient evidence/value or infrastructure idealization without a current product problem.
-
-Only NOW findings block the review closeout. Do not turn discovery into automatic scope expansion.
+Classify findings NOW / NEXT / BACKLOG / REJECT. Only material correctness/data/security/user-blocking findings may interrupt the current line. Discovery is not automatic scope expansion.
 
 ### NOW-1 — duplicate record creation after ambiguous POST outcome
 
-Material correctness defect: `POST /api/records` historically had no durable create identity. If D1 committed an INSERT but the response was lost, a later manual resubmission could create a second valid-looking BUY/SELL/DIV row and contaminate holdings, P&L, and performance.
+Historical defect: `POST /api/records` had no durable create identity, so response loss after committed INSERT could lead to a second valid-looking transaction on resubmission.
 
-NOW-1A PR #213 is intentionally server-first and narrow:
+NOW-1A / PR #213 server-first compatibility:
 
-- nullable internal `records.create_idempotency_hash` and `records.create_payload_hash`;
-- tenant-scoped unique create-idempotency index;
-- Worker `4.08` / API `2.61` / D1 Schema `3`;
-- old clients remain compatible when `Idempotency-Key` is absent;
-- same tenant + same key + same validated payload replays success without a second INSERT;
-- same key + different validated payload fails closed with HTTP 409 `IDEMPOTENCY_CONFLICT`;
-- different keys still permit intentionally identical legitimate trades;
-- internal hashes never enter public record projection.
+- nullable internal create-idempotency/payload hashes;
+- tenant-scoped unique idempotency index;
+- Worker 4.08 / API 2.61 / D1 Schema 3;
+- old clients work without `Idempotency-Key`;
+- same tenant+key+payload replays success without second INSERT;
+- same key + different payload => 409 `IDEMPOTENCY_CONFLICT`;
+- different keys may intentionally create identical trades;
+- internal hashes excluded from public record projection.
 
-Rollout state is now:
+Current rollout state:
 
 ```text
-Recovery Evidence Gate PASS
-→ server compatibility MERGED + POST-MAIN VERIFIED
-→ finish pre-R main changes
-→ same-SHA post-main CI SUCCESS
-→ same-SHA Pages production deployment SUCCESS
-→ re-fetch main and confirm same SHA
-→ freeze R = exact current-main SHA
-→ read-only Production Identity Evidence for exact R
-→ reviewed authority A authorizes R
-→ production Schema 3 migration / Worker 4.08 activation
+Recovery Evidence PASS
+→ server implementation MERGED / CI VERIFIED
+→ R=842e566... selected on then-current main
+→ same-R CI #727 PASS
+→ same-R Pages #1501 attempt 2 PASS
+→ Production Identity Evidence #16 PASS for exact R
+→ CURRENT: persist/review controlled activation evidence + authority A for exact R
+→ Deploy Worker(source_sha=R)
+→ migration 0003 + Worker 4.08
 → production verification
 → NOW-1B frontend stable-key persistence/replay
 ```
 
-Do not make the frontend depend on Schema 3 / Worker 4.08 before server activation is verified.
+Before authority A, perform a final deployment-affecting drift review from R to current main. Do not discard R merely because unrelated Python/docs commits exist; do discard/re-evidence it if Worker/D1/manifest/migration/deploy-path semantics changed.
 
-Independent Review for NOW-1A is PASS under the repository's Same-AI Independent Review Isolation Protocol. A separate GitHub identity / Copilot / human reviewer is not an intrinsic R2 requirement; specialist escalation remains mandatory only when the Playbook's risk/competence rules require it.
+Do not make frontend behavior depend on Schema 3 / Worker 4.08 before production server activation is verified.
 
 ---
 
 ## 6. Known Stable Decisions / Architecture Notes
 
-- durable server lifecycle is authoritative over browser age;
-- active jobs are not expired by age alone;
-- browser pending state is recovery metadata;
+- functional correctness outranks optimization/document/process work;
+- durable server lifecycle is authoritative over browser age; browser pending state is recovery metadata;
 - exact idempotency replay and benchmark intent remain protected;
-- Worker/D1 lifecycle semantics are not to be redesigned without new evidence;
-- E1c by itself does not justify Schema 3, a custom scheduler, heartbeat/sweeper, ledger redesign, Decimal migration, tenant UUID migration, or broad auth redesign;
-- the narrow record-create correctness defect **does** justify the isolated Schema 3 migration in NOW-1A, but does not reopen the historical broad Schema 3 roadmap;
-- `RECOVERY-EVIDENCE-GATE` remains authoritative and must not be bypassed, mocked, or satisfied by fabricated metadata;
-- Independent Review means independent evidence reconstruction and competent adversarial judgment, **not** necessarily a different GitHub account; use `AI_PROJECT_PLAYBOOK.md` §§20–24 as authority;
-- historical remediation plans are evidence/candidate sources, not automatic execution roadmaps;
-- a known material product defect may be promoted to NOW even if it falls outside an older scope label;
-- protected-main source contract and live production runtime are separate states between merge and controlled activation; never infer production deployment from repository HEAD alone;
-- Production Identity Evidence requires both `source_sha == current protected-main HEAD` and canonical Pages production deployment commit `== source_sha`; therefore do not freeze R until the same candidate SHA has successful post-main CI and Pages production deployment and protected main is re-confirmed unchanged;
-- if main changes while waiting for CI/Pages, the old provisional candidate is not R; wait for the new main SHA's same-SHA CI/Pages state and re-evaluate before freezing R;
-- once exact-source evidence is accepted for R, later activation-authority commit A may advance main while explicitly authorizing that immutable R.
+- Worker/D1 lifecycle semantics are not redesigned without new evidence;
+- E1c does not justify broad Schema 3, custom scheduler, heartbeat/sweeper, ledger redesign, Decimal migration, tenant UUID migration, or broad auth redesign;
+- narrow NOW-1 does justify migration 0003 but not the historical broad Schema 3 roadmap;
+- Recovery Evidence Gate is authoritative and cannot be bypassed/fabricated;
+- Independent Review = isolated evidence reconstruction + competent adversarial judgment, not account identity;
+- historical plans are provenance, not automatic current roadmaps;
+- protected-main source contract and live production are separate;
+- Production Identity Evidence requires exact current-main and exact Pages SHA **at collection time**;
+- PASS evidence is exact-R evidence and never authorizes a different SHA;
+- later unrelated/non-deployed main commits do not automatically invalidate the same R; perform deployment-relevance diff review;
+- Worker/D1/manifest/migration/deploy-path drift after evidence requires new R/evidence;
+- activation authority A may be newer than R because canonical deployment verifies R is main-reachable and reads authority from latest main.
 
 ---
 
 ## 7. Backlog / Deferred Unless Evidence Promotes Them
 
-- broad Schema 3 roadmap / unrelated new calculation-job columns;
-- custom scheduler or queue service;
+- broad Schema 3 roadmap / unrelated calculation-job columns;
+- custom scheduler/queue service;
 - automatic job lease/heartbeat/sweeper;
 - ledger revision / compare-and-publish;
 - cursor-signing redesign;
 - Decimal/fixed-point migration;
 - tenant UUID migration;
 - broad provider redesign;
-- broad authentication/session redesign;
-- CI/CD or governance beautification;
-- dedicated remote D1 record-create concurrency stress harness unless real race evidence appears.
+- broad auth/session redesign;
+- CI/CD/governance beautification;
+- dedicated remote D1 create-concurrency stress harness unless real race evidence appears.
 
-None of these should interrupt product functionality work without a demonstrated current correctness, security, outage, or delivery blocker.
+None may interrupt product functionality without demonstrated correctness/security/outage/delivery evidence.
 
 ---
 
 ## 8. Exact Next Actions / Master Plan
 
-1. Re-check GitHub remote truth. This candidate corrects the activation source/evidence timing contract; if PR #216 is not yet on protected `main`, finish its exact-head CI/review/strict-ruleset merge gate before collecting production evidence.
-2. After **all intended pre-R main changes are complete**, identify the current protected-main SHA as a provisional activation candidate and re-check `worker-manifest.json`, Recovery Evidence Gate, deployment environment contract, current activation authority, Production Identity Evidence workflow, and canonical deployment workflow. Confirm no runtime/deployment-affecting diff invalidates Worker 4.08 / API 2.61 / Schema 3.
-3. Require post-main CI SUCCESS and Pages production deployment SUCCESS for that **same provisional candidate SHA**. If main changes while waiting, discard that provisional candidate and restart this step for the new current-main SHA.
-4. After both same-SHA CI and Pages are successful, re-fetch protected main. Only if it still equals the verified candidate SHA, freeze `R = current protected-main HEAD`.
-5. Dispatch GET-only `Production Identity Evidence` with `source_sha=R`. Do not merge another pre-R change between the final main re-check and this exact-R evidence run.
-6. Inspect the sanitized evidence artifact independently. Only a real PASS artifact bound to exact `R` may be transformed into the controlled production-activation evidence set and a fresh authority commit `A` that explicitly authorizes the same `R`.
-7. Current authority still authorizes only `fe5f091fdb2c92970dff74c1a7c99052084adb95`; it authorizes **no NOW-1A candidate**. Do not deploy until the new exact-R authority is reviewed and on protected main.
-8. Only after exact-source authorization, execute the canonical `Deploy Worker` path with `source_sha=R`. Require migration `0003_record_create_idempotency.sql` before Worker 4.08 deployment and verify exact source, Worker 4.08 / API 2.61 / Schema 3, D1 identity, health, auth/CORS, tenant isolation, and legacy no-key compatibility.
-9. Before NOW-1B production activation, resolve and test both review FOLLOW-UP items: (a) delete-then-reuse idempotency-key retention semantics; (b) frontend/Worker rollback-disable coordination once stable frontend keys exist.
-10. Only after production server activation is verified, begin NOW-1B frontend stable-key persistence/replay as a separate product batch.
-11. Keep MD-NAN-B1 and MD-EVENT-ROW under passive production watch; only reopen either if new provider evidence materially changes the safety decision or shows incorrect financial results.
-12. Resume the remaining Product Functionality Review after NOW-1A production activation is closed; do not let infrastructure or document cleanup replace product work.
+1. **Re-check remote truth.** If the whole-project handoff revalidation PR that produced this text is not yet on protected `main`, finish its exact-head CI + focused Independent Review + normal ruleset merge. If already merged, do not recreate/repeat the docs batch.
+2. Re-fetch final protected main and compare exact `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d` to that main. Explicitly inspect Worker source/entry, `worker-manifest.json`, Wrangler/deployment config, migration 0003/schema, Recovery/authority/deploy verifiers, and `.github/workflows/deploy-worker.yml`.
+3. If that focused compare still shows **no Worker/D1/manifest/migration/deploy-path drift**, retain exact R and Production Identity Evidence #16; do **not** manufacture a redundant evidence rerun merely because main contains unrelated Python/tests/docs commits.
+4. If relevant deployment drift is found, stop the retained-R path: select a new current-main R only after same-SHA CI + Pages PASS, then collect fresh Production Identity Evidence for that new R.
+5. For retained R, independently verify artifact #16 metadata/document and transform/retain the required reviewed evidence under `docs/governance/evidence/production-activation/...`; create/update `config/production-activation-authority.json` so authority commit `A` explicitly authorizes exact R. Artifact id `9165344610`; digest `sha256:b3273cf207d0a84fdbdaef298c4794d4f955cadd1059ac437eab456bc86cce9a`.
+6. Run exact-head CI and Independent Review for authority A, merge normally, then re-confirm latest main authority passes for `EXPECTED_SHA=R` and R remains main-reachable.
+7. Execute canonical `Deploy Worker` with `source_sha=R`. Require remote additive migration `0003_record_create_idempotency.sql` before Worker 4.08 and verify exact source, Worker 4.08 / API 2.61 / Schema 3, production D1 identity, health, auth/CORS, tenant isolation, and legacy no-key compatibility.
+8. Before NOW-1B production activation, resolve/test: (a) delete-then-reuse idempotency-key retention semantics; (b) frontend/Worker rollback-disable coordination once stable frontend keys exist.
+9. Only after server activation is production-verified, implement NOW-1B frontend stable-key persistence/replay as a separate product batch.
+10. Keep MD-NAN-B1 and MD-EVENT-ROW passive watch; reopen only on new material evidence.
+11. Resume remaining Product Functionality Review after NOW-1 closes; do not let infrastructure/document cleanup replace product work.
 
 ---
 
-## 9. NOW-1 / Recovery, Review, Merge, and CI Convergence Handoff Record
+## 9. NOW-1 / Recovery / Activation Handoff Record
 
 ### Stable State
 
-- PR #213 runtime-changing merge is `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`; later documentation descendants may advance protected main without changing the Worker 4.08 / API 2.61 / Schema 3 runtime tree;
-- post-NOW-1A documentation merge `ff9d792a98dacdc8a9e5dc9d145020320624b86a` is an evidence baseline only, **not a permanently hard-coded R**;
-- exact up-to-date PR #213 CI #719 / run `31621500033` completed SUCCESS across all three required checks;
-- PR #213 Independent Review Gate PASS; focused re-review on exact synchronized head PASS with no BLOCKER;
-- post-main CI #720 / run `31621612621` on runtime-changing merge commit `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf` completed SUCCESS;
-- document-quality PR #215 merged as `ff9d792a98dacdc8a9e5dc9d145020320624b86a`; post-main CI #723 completed SUCCESS and Pages #1500 build/deploy completed successfully at the job level;
-- controlled recovery run `31570497634` attempt 2 completed SUCCESS after the stale attempt was normally cancelled;
-- the recovery-evidence baseline remains `5bed9aa1058c64e87889afd9b1698921eeb2c186`; do **not** confuse that immutable evidence baseline with current protected main;
-- Recovery Evidence Gate is `passed` with structured JSON proofs under the controlled evidence root;
-- repository source contract is Worker 4.08 / API 2.61 / Schema 3, but production activation has **not** occurred;
-- last verified live production deployment remains exact source `fe5f091fdb2c92970dff74c1a7c99052084adb95`, Worker 4.07 / API 2.60 / Schema 2, from successful Deploy Worker #4 / `31475347673`;
-- current activation authority still authorizes only that older `fe5f091f...` source;
-- no NOW-1A R is frozen yet; freeze R only after PR #216 (or any later intended pre-R change) is on main and that same main SHA has successful post-main CI + Pages deployment and remains current on a fresh re-check;
-- no fake evidence, force push, workflow bypass, ruleset bypass, or concurrency-policy workaround was used.
+- NOW-1A Worker/D1 provenance merge: `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`;
+- selected/evidenced activation source: `R=842e5667b6ae3e75ea947f9ed08d7a8344337f9d`;
+- product calculation semantic fix later merged as `0f4676f995db890b3a8c5fdb2310f7b47a80f207`;
+- market-data docs closeout #218 merged as `c3b578f543d74794b2d6a40e30d0475b36f9fa9b`;
+- whole-project recheck compared `842e566... → 0f4676...`: only Python market-data/main/tests/coverage files changed; `0f4676... → c3b578...`: docs only;
+- no Worker source/entry, manifest/Wrangler, migration, deploy workflow, Recovery Gate, or activation-verifier change was identified in those compare results;
+- therefore R is **retained pending final post-doc drift recheck**, not silently invalidated;
+- repository Worker/D1 contract is Worker 4.08 / API 2.61 / Schema 3;
+- production activation has not occurred;
+- live production remains exact `P=fe5f091fdb2c92970dff74c1a7c99052084adb95`, Worker 4.07 / API 2.60 / Schema 2, Deploy Worker #4 / `31475347673`;
+- current activation authority still authorizes only P, not R;
+- Recovery Evidence Gate remains passed against immutable staging baseline `5bed9aa1058c64e87889afd9b1698921eeb2c186`;
+- no fake evidence, force push, workflow/ruleset/recovery bypass was used.
+
+### Current R — Production Identity Evidence #16
+
+Evidence chain for `R=842e566...`:
+
+- CI #727 / `31624183902`: SUCCESS;
+- Pages #1501 / `31624182324`: attempt 2 SUCCESS after attempt 1's prolonged no-runner queue was normally cancelled;
+- Production Identity Evidence #16 / `31658614001`: SUCCESS;
+- artifact id `9165344610`;
+- artifact name `production-identity-evidence-842e5667b6ae3e75ea947f9ed08d7a8344337f9d`;
+- artifact/GitHub digest `sha256:b3273cf207d0a84fdbdaef298c4794d4f955cadd1059ac437eab456bc86cce9a` independently matched after download;
+- document `status=passed`, collected `2026-08-13T01:44:25.662Z`;
+- `evidence_source_sha=842e566...`;
+- canonical Pages production deployment exact same SHA;
+- production D1 GET / Worker deployment binding / active versions / Pages config / live frontend HTTP+CSP checks all PASS;
+- `errors=[]`.
+
+No authority A and no NOW-1A production mutation followed yet. The correct next gate is **final deployment-affecting drift review → controlled evidence/authority A**, not a blind evidence rerun and not direct deployment.
 
 ### Recovery Evidence
 
-- workflow run: `31570497634`, attempt `2`, conclusion `success`;
-- immutable recovery-evidence baseline: `5bed9aa1058c64e87889afd9b1698921eeb2c186`;
-- artifact id: `9150025501`;
-- artifact name: `staging-d1-recovery-evidence-5bed9aa1058c64e87889afd9b1698921eeb2c186`;
-- artifact ZIP SHA-256: `ded4e5e3c264775b663571bb9b59d79826482e419a6210c268a9c37192b1b716`, independently matched after download;
-- measurements SHA-256: `fd2848d62f88d8c751098dcd1967b172117322c615e21a7996037d097a984e0f`;
-- measured restore duration: `2907 ms`;
-- verified operations: synthetic export, destructive drop, restore, sentinel/checksum integrity, owned-table cleanup;
-- required evidence documents: `export_backup`, `restore_drill`, `rollback_timing`, `integrity_verification`, `migration_rollback_forward_strategy`, `d1_recovery_proof`, all `status=passed` and bound to the same baseline/measurements digest.
+- run `31570497634`, attempt 2, SUCCESS;
+- immutable baseline `5bed9aa1058c64e87889afd9b1698921eeb2c186`;
+- artifact id `9150025501`;
+- ZIP SHA-256 `ded4e5e3c264775b663571bb9b59d79826482e419a6210c268a9c37192b1b716`;
+- measurements SHA-256 `fd2848d62f88d8c751098dcd1967b172117322c615e21a7996037d097a984e0f`;
+- restore 2907 ms; export/drop/restore/integrity/cleanup verified.
 
-### Change Log
+### Key Timeline
 
-PR #213 branch compatibility/contract convergence:
-
-- `064162b15eaa1e0b7c58866a52b92a0e0eb0d05c` — align `tests/worker_deployment.test.mjs` with Worker 4.08 / API 2.61 / Schema 3;
-- `0e29810fd74b116b7472cb2637f33686c6e97c21` — synchronize canonical `worker-manifest.json`, tracked `wrangler.toml`, and deployment checker with Worker 4.08 / API 2.61 / migration 0003;
-- `4d132fde2a574b7fdd640a7a0aef8954da85fbb8` — align manifest exporter regression expectations with 4.08 / 2.61 / 3;
-- `5b669b3ab55dceb66e654852b8e29b9c852ee6b3` — restore explicit migration 0002 `calculation_jobs` validation while retaining migration 0003 Schema 3/idempotency validation;
-- `d761554850f20dc89303ddf5458a040914166a28` — record the original NOW-1 recovery blocker handoff;
-- `6548e70697fd87ee8e28222d818792ab15fea331` — persist the independently verified recovery evidence and set Recovery Evidence Gate to passed;
-- `aff47febc0fc0b45ef0c3a7078841fb4d216d1e7` — bind local D1 schema smoke metadata verification to canonical `worker-manifest.json`, eliminating the final 4.07/Schema 2 stale assertion;
-- `14e8d1d262117b35c2ce2867988d8a4f626ec255` — record recovery PASS and CI convergence before final review;
-- `cea2b5a66f884c3414e18d0764d75285e67e5a89` — merge current main into PR #213 branch without force so strict up-to-date required checks could run on the actual candidate;
-- `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf` — merge PR #213 to protected main;
-- CI #720 / `31621612621` — post-main full CI SUCCESS on `6ea86620475cde8ac9a412921cdc8ae6ce11b9bf`.
-
-Post-NOW-1A document quality:
-
-- `e28620ed5b3fd0d7404fd2cd4b9e1ffdc2750b90` — separate repository runtime contract from last verified live production in `docs/DEPLOYMENT.md` and lock activation behind exact-source authority;
-- `92b98b98b26e5e908a5d994e48502cd7263ce72c` — align the live handoff with PR #213 merged/post-main state and record governance/ruleset root causes;
-- `4a50e698bef3a5a6f698bacf9570b80a196644e5` — resolve the first docs-review self-staleness BLOCKER by making the handoff durable across its own merge;
-- `ff9d792a98dacdc8a9e5dc9d145020320624b86a` — merge PR #215 document-quality corrections to protected main;
-- `28b834c3fdba5bd16824beb26d2c54e548f728ae` — correct the activation source-selection runbook after tracing the exact-main-only Production Identity Evidence contract;
-- `22cdf13457a9e0dd4123505d6ef708f9db9da144` — add the same-SHA Pages propagation requirement before exact-R production identity evidence;
-- this handoff commit — mirror that exact-main + exact-Pages timing contract and record the second PR #216 review finding.
+- PR #213 — NOW-1A server compatibility; merge `6ea866...`; post-main CI #720 PASS.
+- PR #214 — isolated staging recovery workflow; recovery drill later PASS attempt 2.
+- PR #215 — source/live truth separation; merge `ff9d792...`.
+- PR #216 — exact-main/same-Pages source-selection contract; merge `842e566...`; CI #727 + Pages #1501 attempt 2 PASS.
+- Production Identity Evidence #16 / `31658614001` — PASS for exact R; authority/deploy not yet performed.
+- Production #3253 exposed a product calculation blocker; functional RCA correctly took priority over activation work.
+- PR #217 — generic market-row semantic root fix; merge `0f4676...`; CI #738/post-main #739/production #3254 PASS within documented evidence scope.
+- PR #218 — market-data closeout docs; merge `c3b578...`; CI #741 + Pages #1503 PASS.
+- whole-project recheck — confirmed #217/#218 did not touch Worker/D1/deployable NOW-1A contract; corrected handoff from overbroad “main moved => R invalid” logic to relevance-based drift review.
 
 ### Root Cause Log
 
-1. **PR #213 active deployment-contract drift — FIXED**
-   - Symptom: CI successively failed in Worker deployment tests, deployment metadata, manifest exporter expectations, and finally local D1 schema smoke after Schema 3 became eligible.
-   - Root cause: implementation had advanced to Worker 4.08 / API 2.61 / Schema 3 while several active contract checks still encoded 4.07 / 2.60 / Schema 2.
-   - Systemic prevention: canonical manifest now drives local D1 final metadata expectation; active manifest/Wrangler/migration checks are synchronized and previous migration coverage remains retained.
-   - Regression proof: CI #719 and post-main CI #720 are green, including local application of migrations 0001, 0002, and 0003.
-
-2. **Staging recovery workflow scheduling anomaly — RESOLVED OPERATIONALLY / PLATFORM BACKEND ROOT CAUSE UNPROVEN**
-   - Original symptom: run `31570497634` was `queued` with no runner/steps while concurrency API simultaneously treated it as `in_progress`.
-   - Controlled action: user performed one normal cancel; the stale concurrency lease cleared.
-   - Diagnostic result: attempt 2 immediately acquired a GitHub-hosted runner, concurrency/run state became consistent, and the full drill succeeded.
-   - Conclusion: evidence strongly supports a transient GitHub Actions orchestration/concurrency state desynchronization. Internal GitHub backend cause is not observable and is therefore not claimed proven.
-   - Reopen condition: only if the same queued/no-runner + concurrency-in-progress contradiction recurs.
-
-3. **Local D1 schema smoke stale metadata assertion — FIXED**
-   - Symptom: after Recovery Gate passed, all three migrations applied successfully but `tools/test_d1_schema.mjs` rejected the valid row `{schema_version:3, release_version:"4.08"}`.
-   - Failure point: hard-coded final expectation remained Schema 2 / 4.07.
-   - Root cause: smoke checker was not bound to the canonical runtime manifest.
-   - Fix: read `worker-manifest.json` and compare local D1 metadata against its schema/release contract.
-   - Regression proof: CI #719 and post-main CI #720 local D1 schema step SUCCESS.
-
-4. **Independent Review identity interpretation drift — FIXED**
-   - Symptom: a separate GitHub identity / Copilot / external reviewer was incorrectly treated as a mandatory R2 merge gate after the technical review was otherwise complete.
-   - Root cause: review execution drifted from `AI_PROJECT_PLAYBOOK.md` §§20–24, which explicitly define independence as fresh judgment reconstruction rather than different identity and explicitly permit Same-AI Independent Review with isolation.
-   - Fix: preserve the earlier review audit trail, add a superseding Same-AI Independent Review determination, re-establish primary evidence, perform adversarial review, and anchor the conclusion to exact candidate heads.
-   - Prevention: before inventing an external identity gate, read the Playbook's primary Independent Review and competence rules. Different identity is not evidence of independence; competence + isolated evidence reconstruction are the governing criteria.
-   - Reopen condition: R3/specialist requirement, competence insufficiency, or new critical residual risk.
-
-5. **Strict required-status merge block — FIXED WITHOUT BYPASS**
-   - Symptom: first PR #213 merge attempt was rejected even though GitHub's synthetic merge CI was green.
-   - Root cause: the protected-main ruleset uses strict up-to-date required status checks; the PR branch itself was behind current main, so required checks were still `expected` for merge policy purposes.
-   - Fix: merge current main into the PR branch non-force, run exact-head CI #719, perform focused exact-head re-review, then merge normally.
-   - Prevention: before final merge, inspect branch/ruleset up-to-date requirements in addition to CI conclusion; never infer merge-policy satisfaction solely from a green synthetic merge run.
-
-6. **Live handoff self-staleness at documentation merge boundary — FIXED**
-   - Symptom: first document-quality candidate labeled Document Quality `ACTIVE` and told the next agent to finish the same PR, which would become false immediately after merge.
-   - Root cause: the live handoff described transient PR execution state instead of a durable post-merge state, despite remote truth already being the higher authority for PR status.
-   - Fix: describe document quality as maintained and make the first next action conditional on fresh GitHub remote truth; after merge the same text remains valid without another documentation-only cleanup loop.
-   - Prevention: live handoff changes should target a durable stable state and avoid self-referential “merge this document” instructions unless phrased as a remote-truth condition.
-
-7. **Provisional activation R hard-coded before exact-main evidence contract trace — FIXED ON PR #216 CANDIDATE**
-   - Symptom: the first deployment-doc correction named the earlier PR #213 merge `6ea866...` as the intended next runtime source R; after the docs PR merged, protected main advanced, while `Production Identity Evidence` requires its `source_sha` to equal current main exactly.
-   - Failure point: following the runbook literally would make a read-only evidence dispatch for `6ea866...` fail the workflow's exact-current-main assertion.
-   - Root cause: runtime provenance SHA was confused with final activation-source selection. Source selection was documented before tracing the evidence collector's exact-main precondition through the complete activation sequence.
-   - Fix: remove the provisional hard-coded R and select R only from a fresh current-main read after pre-R work is complete.
-   - Prevention: trace all activation workflow preconditions before freezing an operational SHA in documentation; distinguish “commit that introduced runtime behavior” from “exact deployable source identity selected for activation”.
-
-8. **Production identity evidence timing omitted same-SHA Pages propagation — FIXED ON PR #216 CANDIDATE**
-   - Symptom: the first source-selection correction said to select R and immediately dispatch Production Identity Evidence after checking current main.
-   - Failure point: the collector also requires the canonical Pages production deployment commit to equal the audited `source_sha`; immediately dispatching before Pages propagation could predictably fail closed against stale Pages state.
-   - Root cause: review traced the workflow's exact-main assertion first but had not yet carried the collector's exact-Pages deployment equality through the operational sequence.
-   - Fix: require same-SHA post-main CI SUCCESS and same-SHA Pages production deployment SUCCESS, then re-fetch main and confirm the SHA is still current before freezing R and dispatching evidence.
-   - Prevention: production activation source selection must satisfy **all** workflow/collector preconditions, including asynchronous downstream propagation, before evidence collection begins.
-
-9. **Persistent corporate-action-only provider row treated as a price bar — FIXED / GENERALIZED**
-   - Symptom: after bounded same-provider re-fetch reproduced a stable event-only daily row with no usable selected price, downstream price validation still blocked the whole portfolio update.
-   - Failure point: provider daily-row retention semantics were passed directly into a price-observation contract.
-   - Root cause: ingestion conflated “row exists because it is a valuation observation” with “row exists because it carries a corporate action”.
-   - Fix: semantic classification is now symbol/date agnostic; only two-attempt-stable pure cash-dividend-only rows may use the existing explicit as-of effective-valuation contract, while unsupported/ambiguous action types remain fail-closed.
-   - Regression proof: PR #217 exact-head CI #738 PASS with 479 tests + 18 subtests, 98% coverage for the new semantic client, unchanged raw branch gate; post-main CI #739 PASS.
-   - Production proof boundary: #3254 on exact merged main completed the full normal authenticated calculation/reconciliation/upload/callback chain SUCCESS, but did not live-hit the normalizer warning; special-branch production execution is therefore not claimed.
-   - Reopen condition: a matching eligible dividend-only row still fails, normalization produces incorrect financial results, or new provider semantics require a separately modeled policy.
+1. **PR #213 deployment-contract drift — FIXED**: active metadata checks lagged Schema/Worker implementation; canonical manifest now drives expectations.
+2. **Staging recovery scheduling anomaly — RESOLVED OPERATIONALLY / BACKEND CAUSE UNPROVEN**: normal cancel cleared contradictory no-runner/concurrency state; attempt 2 passed full drill.
+3. **Local D1 schema-smoke stale assertion — FIXED**: hard-coded Schema2/4.07 replaced by manifest-bound expectation.
+4. **Independent Review identity interpretation drift — FIXED**: independence is isolated competent judgment, not mandatory separate GitHub account.
+5. **Strict required-status merge block — FIXED WITHOUT BYPASS**: branch had to be current with main for strict required checks.
+6. **Live handoff self-staleness — FIXED**: next actions now condition on fresh remote truth rather than instructing future AI to finish an already-merged docs PR.
+7. **Provisional R hard-coded before collector-contract trace — FIXED**: R selection follows exact evidence contract, not implementation provenance alone.
+8. **Production identity timing omitted same-SHA Pages — FIXED**: new R collection requires same-SHA CI+Pages then current-main confirmation.
+9. **Corporate-action-only provider row treated as price bar — FIXED / GENERALIZED**: semantic classifier handles supported pure dividend events; unsupported action shapes fail closed.
+10. **Pages #1501 no-runner state — RESOLVED OPERATIONALLY / BACKEND CAUSE UNPROVEN**: bounded observation, normal cancel, job-level attempt2 success; no routine retry policy inferred.
+11. **Overbroad activation-evidence invalidation inference — FIXED BY WHOLE-PROJECT RECHECK**:
+    - Symptom: after PR #217/#218 advanced main, handoff drifted toward treating exact-R evidence #16 as unusable solely because main changed.
+    - Root cause: “repository/product runtime changed” was conflated with “Worker/D1 deployable runtime changed”, ignoring the two-SHA deploy contract.
+    - Primary evidence: compare `842e566...→0f4676...` lists only Python market-data/main/tests/coverage; `0f4676...→c3b578...` is docs only. Canonical deploy checks out exact requested R, requires it to remain main-reachable, and verifies authority from latest main.
+    - Fix: retain R/evidence across unrelated changes only after explicit deployment-affecting drift review; never transfer evidence to a different SHA.
+    - Reopen: any Worker/D1/manifest/migration/deploy workflow/verifier drift after R, or R ceases to be main-reachable.
 
 ### Known Issues / Risks
 
-- Production Schema 3 migration / Worker 4.08 activation is **not yet performed**. Repository merge and staging/local evidence are not production deployment evidence.
-- Current `config/production-activation-authority.json` still authorizes exact source `fe5f091fdb2c92970dff74c1a7c99052084adb95`; it authorizes **no NOW-1A source**.
-- A new NOW-1A `R` must not be guessed from PR #213 history. After PR #216 and any other intended pre-R changes are merged, require the same current-main SHA to complete post-main CI + Pages deployment, then re-fetch main unchanged before freezing R and collecting exact-R read-only evidence.
-- NOW-1B frontend stable-key persistence/replay remains intentionally blocked until production server compatibility is verified.
-- **FOLLOW-UP before NOW-1B:** idempotency identity currently lives on the record row; deleting a keyed-created record removes retained key memory. Define/test bounded key lifetime or retained server tombstone/ledger semantics before claiming cross-deletion exactly-once.
-- **FOLLOW-UP before NOW-1B:** once frontend stable keys exist, rollback to an older Worker that ignores them can re-open duplicate-create risk. Define frontend disable/rollback coordination before frontend activation.
-- Recovery evidence proves controlled isolated staging recoverability for the reviewed migration strategy; it does not justify unrelated Schema 3 expansion.
+- Production Schema 3 / Worker 4.08 activation is not yet performed.
+- Current activation authority still authorizes exact `fe5f091...`; R is not deploy-authorized yet.
+- R evidence is PASS, but controlled activation evidence/authority A still must be persisted/reviewed before deployment.
+- Final post-document merge drift review is required before relying on retained R.
+- NOW-1B remains blocked until production server compatibility is verified.
+- **FOLLOW-UP before NOW-1B:** define/test delete-then-reuse idempotency-key retention semantics.
+- **FOLLOW-UP before NOW-1B:** define frontend disable/rollback coordination once stable frontend keys exist.
+- Recovery evidence supports only the reviewed Schema 3 strategy, not unrelated expansion.
 
 ### Deferred / Rejected Candidates
 
-- **REJECT NOW:** weaken `Production Identity Evidence` exact-current-main assertion merely to reuse an older provisional SHA;
-- **REJECT NOW:** weaken the collector's canonical Pages deployment SHA equality merely to dispatch evidence earlier;
-- **REJECT NOW:** remove/rename recovery concurrency group;
-- **REJECT NOW:** remove `environment: staging`;
-- **REJECT NOW:** fabricate or manually mark recovery evidence without structured proof;
-- **REJECT NOW:** require Copilot / another GitHub account solely to manufacture reviewer identity when Playbook-compliant Independent Review is already possible;
-- **REJECT NOW:** broad idempotency ledger / soft-delete redesign solely for architectural completeness;
-- **BACKLOG:** broader GitHub Actions queue/orchestration redesign unless the exact platform anomaly recurs;
-- **BACKLOG:** unrelated broad Schema 3 roadmap items;
-- **BACKLOG:** dedicated remote D1 record-create concurrency stress harness unless real race evidence appears.
+- **REJECT NOW:** transfer #16 evidence to a different SHA;
+- **REJECT NOW:** automatically discard #16 merely because unrelated main commits exist;
+- **REJECT NOW:** weaken exact-main/Pages assertions for a new evidence collection;
+- **REJECT NOW:** require Copilot/another account merely to manufacture reviewer identity;
+- **REJECT NOW:** speculative market/provider repair or ticker-specific exceptions;
+- **BACKLOG:** broad Actions queue redesign unless the same platform anomaly recurs;
+- **BACKLOG:** unrelated broad Schema 3 roadmap;
+- **BACKLOG:** remote D1 create-concurrency stress harness unless real race evidence appears.
 
 ---
 
-## 10. Document Quality Review — 2026-08-13
+## 10. Document Quality Review — Whole-Project Recheck 2026-08-13
 
-Status: **MAINTAINED / ACTIVATION SOURCE + EVIDENCE TIMING CONTRACT CORRECTED ON PR #216 CANDIDATE**
+Status: **HANDOFF REVALIDATED / AUTHORITY MAP + EXACT-R EVIDENCE LIFECYCLE CORRECTED**
 
-Objective: prevent project memory distortion before NOW-1A production activation without turning documentation into a parallel project.
+Objective: allow future AI to resume from primary evidence without reopening closed Gates, redoing solved investigations, or either discarding valid exact-R evidence or transferring it to a different runtime.
 
 ### Reviewed / changed
 
-- `to_do_update_list.md` — **UPDATED**: separates immutable recovery baseline, runtime provenance, repository source contract, live production runtime, activation-source selection, and same-SHA CI/Pages evidence timing; records review/ruleset/activation-contract root causes and durable next actions.
-- `docs/DEPLOYMENT.md` — **UPDATED**: separates repository source contract from live production; removes provisional hard-coded NOW-1A R; documents both exact-current-main and exact-Pages collector prerequisites and the correct `same-SHA CI + Pages → recheck main → freeze R → evidence → later A authorizes R` sequence.
+- `to_do_update_list.md` — **UPDATED**: future-AI bootstrap; current R/evidence/authority state; durable next actions; Pages/evidence RCA; corrected deployment-relevance interpretation.
+- `docs/DEPLOYMENT.md` — **UPDATED**: two-SHA preservation rules, exact-R #16 evidence, deployment-affecting drift test, Pages diagnostic precedent.
+- `docs/README.md` — **UPDATED**: completed E1a plan removed from current authority; current document map + future-AI bootstrap corrected.
 
 ### Reviewed / no semantic change required
 
-- `README.md` — **NO CHANGE**: it does not hard-code live Worker/API/Schema versions and correctly delegates operational deployment truth to `docs/DEPLOYMENT.md`.
-- `AI_PROJECT_PLAYBOOK.md` — **NO CHANGE**: §§20–24 already explicitly define Independent Review as independent judgment reconstruction rather than separate identity and fully specify Same-AI isolation. Duplicating the rule would add governance drift surface rather than improve quality.
+- `README.md` — **NO CHANGE**: product/architecture navigation remains valid and avoids live-version hardcoding.
+- `AI_PROJECT_PLAYBOOK.md` — **NO CHANGE**: product-first/RCA/convergence/Independent Review rules remain correct.
+- `worker-manifest.json` — **NO CHANGE**: Worker 4.08 / API 2.61 / Schema 3 source contract.
+- `config/recovery-evidence-gate.json` — **NO CHANGE**: passed, immutable staging evidence.
+- `config/production-activation-authority.json` — **NO CHANGE**: correctly still authorizes last verified live P only; authority change belongs to the next controlled activation batch.
+- Production Identity Evidence / Deploy Worker workflows — **NO CHANGE**: exact-R collection and two-SHA deploy authority behavior are safety contracts, not documentation defects.
 
-### Independent document review outcomes
+### Independent review findings
 
-- first PR #215 candidate review found one BLOCKER: handoff self-staleness at its own merge boundary; fixed before merge;
-- post-PR #215 activation-contract trace found a second high-impact documentation flaw: provisional R was selected before respecting the exact-current-main evidence collector constraint;
-- first PR #216 review found a third operational timing flaw: source selection did not wait for the same SHA's canonical Pages production deployment, even though the collector verifies exact Pages deployment SHA equality;
-- each finding was recorded before implementation resumed; no failed review was silently converted to PASS;
-- the corrected sequence preserves both workflow/collector strict assertions instead of weakening policy to fit an older or not-yet-propagated SHA;
-- final exact-head CI / focused Independent Review / strict-ruleset merge remain required before any production evidence dispatch.
+- **NOW / fixed:** `docs/README.md` still called completed E1a activation plan current.
+- **NOW / fixed:** Exact Next Actions contained obsolete PR #216 condition.
+- **NOW / fixed:** initial revalidation draft incorrectly inferred that PR #217 invalidated R solely because it was a product runtime change; exact file diff and canonical deploy workflow disproved that overbroad conclusion before PR creation.
+- **KEEP:** root README and Playbook stable; no touch-every-file rewrite.
+- **KEEP:** live production remains 4.07 / 2.60 / Schema 2 until canonical deploy proves otherwise.
+- **KEEP:** R=842e566... evidence PASS, authority/deploy pending; final drift check required after docs merge.
+- **KEEP:** market-data fixes passive watch; no speculative expansion.
 
 ### Quality rule reinforced
 
-Documentation quality means keeping authority boundaries, current state, historical evidence, and next actions unambiguous. Do not rewrite stable documents merely because a batch touched adjacent concepts; do not make a live handoff self-expire at its own merge boundary; do not freeze operational SHAs before tracing the exact workflow contract that consumes them; and account for asynchronous downstream propagation before treating a repository SHA as evidence-ready.
+Documentation quality means preserving **truth boundaries**, not maximizing document volume. Future AI must distinguish current authority from historical evidence, repository/product changes from deployable Worker/D1 changes, current live P from selected R, and exact-R evidence from authorization for another SHA. Every consequential action starts with fresh remote truth and exact relevance review; closed investigations remain closed unless their explicit reopen condition is met.
