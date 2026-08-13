@@ -27,7 +27,7 @@ def _prepared_event_row(
         row["Capital Gains"] = [capital_gain]
     return pd.DataFrame(
         row,
-        index=index or pd.to_datetime(["2026-08-11"]),
+        index=index if index is not None else pd.to_datetime(["2026-08-11"]),
     )
 
 
