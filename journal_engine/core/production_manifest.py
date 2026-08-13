@@ -140,11 +140,7 @@ def _realtime_fx_currencies_used_by_calculation(
     """
 
     has_asof_valuation = any(
-        _uses_same_date_valuation_source(
-            symbol,
-            market_window[symbol],
-            calculation_as_of,
-        )
+        calculation_as_of in market_window[symbol].index
         for symbol in user_symbols
         if symbol in market_window
     )
