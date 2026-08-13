@@ -210,6 +210,21 @@ Still required before Batch 1 can close:
 - No authenticated tenant record-create probe has been run. The deployment's system principal cannot impersonate a user, and no real-user ledger was used as a substitute.
 - Use a dedicated isolated production test tenant with a documented cleanup plan to verify: legacy create without `Idempotency-Key`; same tenant/key/payload replay creates exactly one record; same key with different payload returns `409 IDEMPOTENCY_CONFLICT`; then delete only the test records and retain sanitized evidence.
 
+### Authenticated acceptance attempt — 2026-08-13 (partial; **not** a Batch 1 pass)
+
+Observed through the dedicated test tenant:
+
+- The transaction list began at zero records.
+- The normal UI created exactly one tagged test row: `2026-08-13 / AAPL / BUY / qty 1 / price 1 / fee 0 / tax 0 / tag NOW1A-IDEMPOTENCY-TEST-20260813`. The UI reported success and the list showed exactly one row. Source inspection confirms this UI path sends `POST /api/records` **without** `Idempotency-Key`, so this is valid evidence for legacy no-key compatibility only.
+- No portfolio calculation was triggered. The UI correctly marked the snapshot stale after the mutation.
+
+Unverified / recovery boundary:
+
+- Keyed replay and same-key/different-payload conflict were **not verified**. The current create UI has no key input or stable-key persistence; that remains NOW-1B.
+- The shared-browser sandbox did not expose the short-lived user token to the supported read-only inspection API, so no token was extracted, logged, persisted, or transmitted outside the normal UI path.
+- A first UI cleanup click caused the cloud-browser control connection to time out before its result could be read. **Do not infer either successful deletion or a failed deletion.**
+- Before any further write, reopen the test tenant, read the list, and delete **only** the exact tagged AAPL test row if it remains. Confirm zero test rows before attempting any keyed test. Do not use direct D1 mutation or a production test backdoor.
+
 ### Project Convergence Lock — Only Three Active Batches
 
 The project must now be understood as **three functional batches**, not as a chain of governance mini-projects.
