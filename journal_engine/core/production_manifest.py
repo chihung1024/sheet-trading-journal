@@ -91,7 +91,7 @@ def _window_fx_series(
     work = series.copy(deep=True)
     index = pd.to_datetime(work.index, errors="coerce")
     if index.isna().any():
-        raise ProductionManifestError(f"{currency} FX history contains an invalid date")
+        raise ProductionManifestError(f"FX provenance has invalid date index: {currency}")
     if index.tz is not None:
         index = index.tz_localize(None)
     work.index = index.normalize()
