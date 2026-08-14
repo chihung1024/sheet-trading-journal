@@ -27,7 +27,7 @@
     </div>
 
     <div class="explanation-copy">
-      以下數字直接來自後端已對帳的逐檔 day ledger；不在瀏覽器重新計算投資組合損益。
+      以下數字直接來自計算引擎已對帳的逐檔 day ledger，不在瀏覽器重新計算投資組合損益。畫面四捨五入至 TWD 整數；對帳仍使用原始未四捨五入數值。
     </div>
 
     <div class="contributor-list">
