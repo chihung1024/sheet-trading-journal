@@ -31,3 +31,10 @@ test('dividend recovery copy describes same-key reconciliation rather than paylo
   assert.match(source, /配息已入帳；重新計算狀態將由系統持續追蹤與恢復，無需重複操作。/);
   assert.doesNotMatch(source, /配息已入帳，但自動更新失敗，請手動點擊「更新數據」/);
 });
+
+test('restored-session initial read copy reflects the existing automatic full-read recovery', async () => {
+  const source = await readSource('../src/App.vue');
+
+  assert.match(source, /已登入，但初始資料暫時載入失敗，系統將自動重試/);
+  assert.doesNotMatch(source, /已登入，但初始資料載入失敗，請稍後手動刷新/);
+});
