@@ -110,8 +110,6 @@ const parseIntent = (raw, owner) => {
     || value.owner !== normalizedOwner
     || typeof value.idempotencyKey !== 'string'
     || !OPAQUE_ID_RE.test(value.idempotencyKey)
-    || typeof value.body !== 'string'
-    || !value.body
     || typeof value.barrierToken !== 'string'
     || !OPAQUE_ID_RE.test(value.barrierToken)
     || !Number.isFinite(value.createdAt)
@@ -119,6 +117,19 @@ const parseIntent = (raw, owner) => {
   ) {
     return null;
   }
+
+  if (value.state === RECORD_CREATE_INTENT_STATE.LIVE) {
+    if (typeof value.body !== 'string' || !value.body) return null;
+  } else if (
+    !Number.isFinite(value.terminalAt)
+    || !(
+      value.terminalReason === null
+      || typeof value.terminalReason === 'string'
+    )
+  ) {
+    return null;
+  }
+
   return Object.freeze({ ...value });
 };
 
@@ -198,13 +209,30 @@ export const markRecordCreateIntentTerminal = (
   const key = intentStorageKey(assertOpaqueId(idempotencyKey, 'Record-create idempotency key'));
   const intent = parseIntent(target.getItem(key), normalizedOwner);
   if (!intent) return false;
+
   const terminal = {
-    ...intent,
+    version: intent.version,
+    owner: intent.owner,
+    idempotencyKey: intent.idempotencyKey,
+    barrierToken: intent.barrierToken,
+    createdAt: intent.createdAt,
     state: RECORD_CREATE_INTENT_STATE.TERMINAL,
     terminalAt: now,
     terminalReason: typeof reason === 'string' && reason.trim() ? reason.trim() : null,
   };
-  verifiedSetJson(target, key, terminal);
+
+  try {
+    verifiedSetJson(target, key, terminal);
+  } catch (writeError) {
+    try {
+      target.removeItem(key);
+      if (target.getItem(key) === null) return true;
+    } catch {
+      // Preserve the original persistence error. A storage surface that cannot be read/written
+      // will also fail closed when recovery later tries to enumerate/read the intent.
+    }
+    throw writeError;
+  }
   return true;
 };
 
