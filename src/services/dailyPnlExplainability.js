@@ -99,9 +99,12 @@ export function buildDailyPnlExplanation({ dayLedger, summary } = {}) {
   if (publishedTotal === null) return unavailable('invalid_published_total');
 
   const normalizedRows = [];
+  const observedSymbols = new Set();
   for (const raw of dayLedger) {
     const row = normalizeRow(raw);
     if (!row) return unavailable('invalid_day_ledger');
+    if (observedSymbols.has(row.symbol)) return unavailable('duplicate_symbol');
+    observedSymbols.add(row.symbol);
     normalizedRows.push(row);
   }
 
