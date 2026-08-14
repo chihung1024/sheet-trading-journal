@@ -83,8 +83,8 @@
                     </th>
                     <th class="text-right">股數</th>
                     <th class="text-right">單價</th>
-                    <th @click="sortBy('total_amount_twd')" class="text-right sortable">
-                        總額 (TWD) <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
+                    <th @click="sortBy('total_amount_twd')" class="text-right sortable" title="TWD 排序僅使用可可靠換算的 TWD / USD 交易；其他幣別待後端權威估值">
+                        總額 <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
                     </th>
                     <th class="text-right">操作</th>
                 </tr>
@@ -114,9 +114,16 @@
                         </span>
                     </td>
                     <td class="text-right font-num">{{ formatNumber(r.qty, 2) }}</td>
-                    <td class="text-right font-num">{{ formatNumber(getRecordAvgPrice(r), 4) }}</td>
+                    <td class="text-right font-num">{{ formatNativeAmount(getRecordAvgPrice(r), getRecordCurrency(r), 4) }}</td>
                     <td class="text-right font-num font-bold">
-                        NT${{ formatNumber(getTotalAmountTWD(r), 0) }}
+                        <div>{{ formatRecordNativeAmount(r, 2) }}</div>
+                        <div
+                            v-if="getRecordCurrency(r) !== 'TWD'"
+                            class="record-twd-note"
+                            :class="{ unavailable: getTotalAmountTWD(r) == null }"
+                        >
+                            {{ getTwdPresentation(r) }}
+                        </div>
                     </td>
                     <td class="text-right actions">
                         <button class="btn-icon edit" @click="editRecord(r)" title="編輯">✎</button>
@@ -149,14 +156,21 @@
             <div class="m-card-body">
                 <div class="m-main-info">
                     <span class="m-symbol">{{ r.symbol }}</span>
-                    <span class="m-amount">NT$ {{ formatNumber(getTotalAmountTWD(r), 0) }}</span>
+                    <span class="m-amount">{{ formatRecordNativeAmount(r, 2) }}</span>
+                </div>
+                <div
+                    v-if="getRecordCurrency(r) !== 'TWD'"
+                    class="m-twd-note"
+                    :class="{ unavailable: getTotalAmountTWD(r) == null }"
+                >
+                    {{ getTwdPresentation(r) }}
                 </div>
                 <div class="m-sub-info">
                     <span class="m-detail">
-                        {{ formatNumber(r.qty, 2) }} 股 @ ${{ formatNumber(getRecordAvgPrice(r), 2) }}
+                        {{ formatNumber(r.qty, 2) }} 股 @ {{ formatNativeAmount(getRecordAvgPrice(r), getRecordCurrency(r), 2) }}
                     </span>
                     <span class="m-fee" v-if="r.fee > 0 || r.tax > 0">
-                        (費: {{ (r.fee||0) + (r.tax||0) }})
+                        ({{ getRecordCurrency(r) }} 費: {{ (r.fee||0) + (r.tax||0) }})
                     </span>
                 </div>
             </div>
@@ -203,6 +217,11 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
+import {
+    canConvertWithLegacyUsdTwdRate,
+    detectNativeCurrency,
+    formatNativeAmount,
+} from '../services/instrumentCurrency.js';
 
 const store = usePortfolioStore();
 const { addToast } = useToast();
@@ -258,17 +277,17 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
-// [v2.48] 判斷是否為台股
-const isTaiwanStock = (symbol) => {
-    const upper = symbol.toUpperCase();
-    return upper.endsWith('.TW') || upper.endsWith('.TWO');
-};
+const getRecordCurrency = (record) => detectNativeCurrency(record?.symbol);
 
-// 計算邏輯
+// Legacy history exposes one scalar USD/TWD reference rate only. Keep that
+// compatibility path for USD, but never reuse it as KRW/HKD/CNY/JPY/GBp/EUR FX.
 const fxRateMap = computed(() => {
     const map = {};
     if (store.history && store.history.length > 0) {
-        store.history.forEach(item => { map[item.date] = item.fx_rate || 32.0; });
+        store.history.forEach(item => {
+            const rate = Number(item.fx_rate);
+            if (item.date && Number.isFinite(rate) && rate > 0) map[item.date] = rate;
+        });
     }
     return map;
 });
@@ -279,10 +298,10 @@ const getFxRateByDate = (dateStr) => {
     for (let i = dates.length - 1; i >= 0; i--) {
         if (dates[i] <= dateStr) return fxRateMap.value[dates[i]];
     }
-    return dates.length > 0 ? fxRateMap.value[dates[dates.length - 1]] : 32.0;
+    return null;
 };
 
-const calculateTotalAmountUSD = (record) => {
+const calculateTotalAmountNative = (record) => {
     const qty = Number(record.qty) || 0;
     const price = Number(record.price) || 0;
     const totalAmount = Number(record.total_amount) || 0;
@@ -291,6 +310,10 @@ const calculateTotalAmountUSD = (record) => {
     const baseTotal = totalAmount > 0 ? totalAmount : Math.abs(qty * price);
     return baseTotal + commission + tax;
 };
+
+const formatRecordNativeAmount = (record, digits = 2) => (
+    formatNativeAmount(calculateTotalAmountNative(record), getRecordCurrency(record), digits)
+);
 
 const getRecordAvgPrice = (record) => {
     const qty = Number(record.qty) || 0;
@@ -309,19 +332,21 @@ const getRecordAvgPrice = (record) => {
     return price;
 };
 
-// [v2.48] 修复：台股不乘汇率
 const getTotalAmountTWD = (record) => {
-    const baseAmount = calculateTotalAmountUSD(record);
-    
-    // 判断是否为台股
-    if (isTaiwanStock(record.symbol)) {
-        // 台股：Price 本身就是 TWD，不需要转换
-        return baseAmount;
-    } else {
-        // 美股/其他：需要乘以汇率转换为 TWD
-        const fxRate = getFxRateByDate(record.txn_date);
-        return baseAmount * fxRate;
-    }
+    const nativeAmount = calculateTotalAmountNative(record);
+    const currency = getRecordCurrency(record);
+    if (!canConvertWithLegacyUsdTwdRate(currency)) return null;
+    if (currency === 'TWD') return nativeAmount;
+
+    const fxRate = getFxRateByDate(record.txn_date);
+    if (!Number.isFinite(fxRate) || fxRate <= 0) return null;
+    return nativeAmount * fxRate;
+};
+
+const getTwdPresentation = (record) => {
+    const amount = getTotalAmountTWD(record);
+    if (amount == null) return 'TWD 尚無可靠換算';
+    return `≈ NT$${formatNumber(amount, 0)}`;
 };
 
 const availableYears = computed(() => {
@@ -365,6 +390,12 @@ const processedRecords = computed(() => {
         if (sortKey.value === 'total_amount_twd') {
             valA = getTotalAmountTWD(a);
             valB = getTotalAmountTWD(b);
+            const missingA = valA == null;
+            const missingB = valB == null;
+            if (missingA || missingB) {
+                if (missingA && missingB) return 0;
+                return missingA ? 1 : -1;
+            }
         } else {
             valA = a[sortKey.value];
             valB = b[sortKey.value];
@@ -534,6 +565,8 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .record-row:hover { background-color: var(--bg-secondary); }
 .date-cell { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--text-sub); }
 .symbol-badge { font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--primary); }
+.record-twd-note, .m-twd-note { margin-top: 2px; color: var(--text-sub); font-size: 0.75rem; font-weight: 500; }
+.record-twd-note.unavailable, .m-twd-note.unavailable { color: var(--warning); }
 
 .type-badge { font-size: 0.8rem; padding: 4px 8px; border-radius: 6px; font-weight: 600; display: inline-block; }
 .type-badge.buy { background: rgba(59, 130, 246, 0.1); color: var(--primary); }
@@ -557,6 +590,7 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .m-main-info { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
 .m-symbol { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
 .m-amount { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.m-twd-note { text-align: right; margin-bottom: 4px; }
 
 .m-sub-info { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-sub); }
 .m-fee { font-size: 0.75rem; color: var(--text-sub); opacity: 0.7; }

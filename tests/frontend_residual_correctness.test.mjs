@@ -102,13 +102,14 @@ test('viewport zoom remains available and formerly clickable header/tag spans ar
   assert.match(tradeForm, /<button[^>]*v-for="t in commonTags"/);
 });
 
-test('TradeForm currency labels are derived instead of hardcoded to USD', () => {
+test('TradeForm currency labels are derived through the shared native-currency contract', () => {
   const source = read(TRADE_FORM_PATH);
   assert.doesNotMatch(source, /成交單價 \(USD\)/);
   assert.doesNotMatch(source, /交易總金額 \(USD\)/);
+  assert.match(source, /from '\.\.\/services\/instrumentCurrency\.js'/);
+  assert.match(source, /detectNativeCurrency/);
+  assert.match(source, /getCurrencyInputAffix/);
   assert.match(source, /transactionCurrency/);
   assert.match(source, /transactionCurrencySymbol/);
-  assert.match(source, /\.TW/);
-  assert.match(source, /TWD/);
-  assert.match(source, /USD/);
+  assert.doesNotMatch(source, /const isTaiwanSymbol/);
 });
