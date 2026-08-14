@@ -14,7 +14,7 @@
                 <input 
                     type="text" 
                     v-model="searchQuery" 
-                    placeholder="搜尋代碼..." 
+                    placeholder="搜尋代碼、標籤或備註..." 
                     class="search-input"
                 >
              </div>
@@ -90,12 +90,13 @@
                     >
                         總額 <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
                     </th>
+                    <th>備註</th>
                     <th class="text-right">操作</th>
                 </tr>
             </thead>
             <tbody>
                 <tr v-if="paginatedRecords.length === 0">
-                    <td colspan="7" class="empty-state">
+                    <td colspan="8" class="empty-state">
                         <div class="empty-icon">📋</div>
                         <div>無符合條件的紀錄</div>
                     </td>
@@ -128,6 +129,10 @@
                         >
                             {{ getTwdPresentation(r) }}
                         </div>
+                    </td>
+                    <td class="note-cell">
+                        <span v-if="r.note" class="note-preview" :title="r.note">{{ r.note }}</span>
+                        <span v-else class="note-empty">—</span>
                     </td>
                     <td class="text-right actions">
                         <button class="btn-icon edit" @click="editRecord(r)" title="編輯">✎</button>
@@ -177,13 +182,14 @@
                         ({{ getRecordCurrency(r) }} 費: {{ (r.fee||0) + (r.tax||0) }})
                     </span>
                 </div>
+                <div v-if="r.note" class="m-note">{{ r.note }}</div>
             </div>
 
             <div class="m-card-actions">
                 <button class="btn-action edit" @click="editRecord(r)">
                     ✎ 編輯
                 </button>
-                <div class="v-divider"></div>
+                <div class="m-divider"></div>
                 <button class="btn-action delete" @click="deleteRecord(r.id)">
                     ✕ 刪除
                 </button>
@@ -341,9 +347,12 @@ const getSortIcon = (key) => {
     return sortOrder.value === 'asc' ? '↑' : '↓';
 };
 
+const normalizeSearchText = value => String(value || '').toLocaleLowerCase();
+
 const processedRecords = computed(() => {
+    const query = searchQuery.value.trim().toLocaleLowerCase();
     let result = store.records.filter(r => {
-        const matchSearch = r.symbol.toUpperCase().includes(searchQuery.value.toUpperCase());
+        const matchSearch = !query || [r.symbol, r.tag, r.note].some(value => normalizeSearchText(value).includes(query));
         const matchType = filterType.value === 'ALL' || r.txn_type === filterType.value;
         const matchYear = filterYear.value === 'ALL' || r.txn_date.startsWith(filterYear.value);
         let matchGroup = true;
@@ -536,6 +545,9 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .symbol-badge { font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--primary); }
 .record-twd-note, .m-twd-note { margin-top: 2px; color: var(--text-sub); font-size: 0.75rem; font-weight: 500; }
 .record-twd-note.unavailable, .m-twd-note.unavailable { color: var(--warning); }
+.note-cell { min-width: 180px; max-width: 320px; }
+.note-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; color: var(--text-main); line-height: 1.4; }
+.note-empty { color: var(--text-sub); }
 
 .type-badge { font-size: 0.8rem; padding: 4px 8px; border-radius: 6px; font-weight: 600; display: inline-block; }
 .type-badge.buy { background: rgba(59, 130, 246, 0.1); color: var(--primary); }
@@ -563,12 +575,13 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 
 .m-sub-info { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-sub); }
 .m-fee { font-size: 0.75rem; color: var(--text-sub); opacity: 0.7; }
+.m-note { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-main); font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .m-card-actions { display: flex; border-top: 1px solid var(--border-color); margin: 0 -16px -16px -16px; }
 .btn-action { flex: 1; border: none; background: transparent; padding: 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer; color: var(--text-sub); }
 .btn-action.edit { color: var(--primary); }
 .btn-action.delete { color: var(--danger); }
-.v-divider { width: 1px; background: var(--border-color); }
+.m-divider { width: 1px; background: var(--border-color); }
 
 /* Pagination */
 .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 24px; }
