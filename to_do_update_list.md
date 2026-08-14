@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-15 Asia/Taipei**  
-Current line: **Phase 2 / Batch 2.1 Trading Journal Note UX CLOSED / PRODUCTION PAGES VERIFIED — next primary product line is Phase 3 portfolio explainability audit using existing published day-ledger/snapshot evidence**
+Current line: **Phase 3 / Batch 3.1 Daily P&L Explainability CLOSED / PRODUCTION PAGES VERIFIED — next action is a Phase 3 Convergence Review; open Batch 3.2 only if another existing-data explainability slice has material user value, otherwise mark Phase 3 OPTIMIZED FOR CURRENT REQUIREMENTS and advance to Phase 4 strategy analytics audit**
 
 ---
 
@@ -13,9 +13,10 @@ Current line: **Phase 2 / Batch 2.1 Trading Journal Note UX CLOSED / PRODUCTION 
 2. Fix generic root causes; parallel investigation must converge.
 3. Financial/data correctness is fail-closed.
 4. Keep one primary active batch.
-5. R2+ work requires exact-head CI, rollback/recovery, independent review and permanent handoff.
+5. R2+ work requires exact-head CI, rollback/recovery, independent/frozen review and permanent handoff.
 6. Prefer invisible deterministic automation; **AI 管流程，不管帳**.
 7. Do not create infrastructure or retry machinery for theoretical edge cases without production/user evidence.
+8. Explainability may expose authoritative data, but must not create a second accounting engine in the browser.
 
 ---
 
@@ -43,9 +44,10 @@ Current line: **Phase 2 / Batch 2.1 Trading Journal Note UX CLOSED / PRODUCTION 
 | Snapshot freshness API/manifest record contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #247 merged as `cc51ebc2b0f020e23c2efbf2cdcb7c2102c7d0a9`; final PR CI #871, post-main CI #872 + Pages #1530 SUCCESS; Independent Review Gate PASS |
 | Phase 1 / Batch 1.1 frontend native-currency contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #249 merged as `4ce9c8fc1b390db77587f50f59a3f3d251b1a107`; final PR CI #878, post-main CI #879 + Pages #1532 SUCCESS; R2 review BLOCKER 0 |
 | Phase 1 / Batch 1.2 authoritative transaction valuation | CLOSED / PRODUCTION PAGES VERIFIED | PR #251 merged as `92f78af6c77506ea310a046c9f96ee6130fd9c24`; final PR CI #891, post-main CI #892 + Pages #1534 SUCCESS; frozen-diff R2 review BLOCKER 0 |
-| **Phase 2 / Batch 2.1 Trading Journal Note UX** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #254 final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`; exact-head CI #898 SUCCESS; independent review BLOCKER 0; merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`; post-main CI #899 + Pages #1536 SUCCESS |
+| Phase 2 / Batch 2.1 Trading Journal Note UX | CLOSED / PRODUCTION PAGES VERIFIED | PR #254 final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`; exact-head CI #898 SUCCESS; review BLOCKER 0; merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`; post-main CI #899 + Pages #1536 SUCCESS |
+| **Phase 3 / Batch 3.1 Daily P&L Explainability** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #256 final head `fc57b221a9b2c0e3adf6c929c1db6caf5e6c9c22`; exact-head CI #904 SUCCESS; frozen review BLOCKER 0; merge `2f46516e2eee7f9ec653587bef8987260dfffb65`; post-main CI #905 + Pages #1538 SUCCESS |
 
-Do not reopen closed phases without new material evidence.
+Do not reopen closed phases/batches without new material evidence.
 
 ---
 
@@ -53,22 +55,25 @@ Do not reopen closed phases without new material evidence.
 
 Current verified runtime merge checkpoint:
 
-`7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`
+`2f46516e2eee7f9ec653587bef8987260dfffb65`
 
-- **Phase 2 / Batch 2.1 is CLOSED / PRODUCTION PAGES VERIFIED.**
-- Trading Journal now exposes the existing server-owned `note` field as a first-class UX: create/edit/reset in TradeForm, desktop/mobile history presentation, and symbol/tag/note search.
-- The implementation remains additive to the established financial form declaration and reuses the existing `store.addRecord()` / `store.updateRecord()` mutation, idempotency, ambiguity recovery, dirty-generation and recalculation lifecycle.
-- No note-only API path or caller-declared recalculation bypass was introduced.
-- `note` remains excluded from financial snapshot source identity; changing journal prose alone does not alter canonical financial source identity.
-- Worker/D1 already owned the note contract; no Worker runtime change, D1 schema change, migration, or Python financial-methodology change was required.
-- PR #254 final exact head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`; final exact-head CI #898 / run `31824375970`: **SUCCESS**.
-- Frozen-diff independent review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**.
-- Exact merge-SHA post-main CI #899 / run `31824494110`: **SUCCESS**.
-- Exact merge-SHA Pages #1536 / run `31824492603`: **SUCCESS**.
-- Final compare before merge: `behind_by=0`; runtime scope remained exactly `TradeForm.vue`, `RecordList.vue`, plus focused regression.
-- Production Worker remains release `4.08`, API `2.61`, schema `3`; no Worker deployment or D1 migration was required for Phase 2.1.
-- Rollback is a normal revert of PR #254 / merge `7d0dbe2d...` or previous Pages deployment. Existing stored notes remain backward-compatible.
-- Repository policy does not allow squash merge; PR #254 used the established normal exact-head merge path without changing repository policy.
+- **Phase 3 / Batch 3.1 is CLOSED / PRODUCTION PAGES VERIFIED.**
+- The overview Daily P&L card now has an explicit, touch/keyboard-accessible `查看損益來源` control when trustworthy explainability evidence exists.
+- The detail view exposes the currently selected group's already-published per-symbol `day_ledger` contribution and five existing calculation components: price, FX, dividend, execution, and fee/tax.
+- Frontend does **not** recalculate portfolio accounting. It validates published component/row/summary consistency and then only sorts/labels the existing values.
+- Missing ledger, missing current group, malformed/non-finite row, row-component mismatch, summary mismatch, or duplicate-symbol evidence fails closed and suppresses the explanation control rather than guessing.
+- Group selection is exact. When a `groups` object exists, the selector does not fall through to another group or an unrelated root ledger.
+- UI explicitly states that displayed values are rounded to integer TWD while reconciliation uses raw unrounded values, preventing false on-screen rounding expectations.
+- No Worker/API/auth change, D1/schema/migration/data change, Python financial-methodology change, retry/recovery change, or store orchestration refactor was required.
+- PR #256 final exact head `fc57b221a9b2c0e3adf6c929c1db6caf5e6c9c22`.
+- Final exact-head CI #904 / run `31826358947`: **SUCCESS**.
+- Frozen-diff R2 review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**.
+- Runtime merge: `2f46516e2eee7f9ec653587bef8987260dfffb65`.
+- Exact merge-SHA post-main CI #905 / run `31826520662`: **SUCCESS**.
+- Exact merge-SHA Pages #1538 / run `31826519726`: **SUCCESS**.
+- Final compare before merge: `behind_by=0`; runtime scope remained exactly four focused frontend/test files.
+- Production Worker remains release `4.08`, API `2.61`, schema `3`; Worker deploy and D1 migration were not required.
+- Rollback is a normal revert of PR #256 / merge `2f46516e...` or restore the previous Pages deployment.
 
 Stable product lifecycle remains:
 
@@ -83,6 +88,17 @@ record create durable intent
 → bounded self-healing only when integrity evidence proves repair is safe
 ```
 
+Explainability authority boundary now remains:
+
+```text
+Python canonical calculation / reconciliation
+→ published group day_ledger + summary
+→ exact current-group selection
+→ frontend fail-closed structural/reconciliation validation
+→ presentation-only sorting / labels / responsive UI
+→ no browser accounting recomputation
+```
+
 Phase-1 presentation invariant remains:
 
 ```text
@@ -90,7 +106,7 @@ symbol
 → shared frontend native-currency detection aligned with Python CurrencyDetector
 → native transaction settlement semantics aligned with current PortfolioCalculator
 → TWD base-currency value directly for TWD
-→ foreign TWD value only after Phase 3 verifies the exact snapshot + exact record objects
+→ foreign TWD value only after exact snapshot + exact record integrity proof
 → exact transaction-date history._raw_fx_rates[currency]
 → legacy exact-date scalar history.fx_rate only for USD-compatible old snapshots
 → no nearest-date/as-of guessing in browser
@@ -100,7 +116,7 @@ symbol
 
 ### User-facing verification boundary
 
-Repository CI, production build, and Pages deployment are verified. No real-user ledger mutation was created solely for smoke testing. Phase 2.1 does not move financial/accounting authority into the browser: Worker/D1 remain authoritative for record persistence, Python remains authoritative for portfolio calculations, and frontend journal metadata reuses the established mutation/recovery lifecycle.
+Repository CI, production build, and Pages deployment are verified. No real-user ledger mutation was created solely for smoke testing. Phase 3.1 is presentation-only over authoritative published snapshot data: Python remains accounting authority; Worker/D1 remain persistence/API authority; frontend is only a fail-closed evidence consumer.
 
 ### 2A. Closed Batch — Phase 1 / Batch 1.1 Frontend Native Currency Contract
 
@@ -189,7 +205,7 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 - confirmed DIV cash flow follows current calculator: `qty * price`.
 - Browser uses normalized record fee/tax values in the same arithmetic as the calculator and does **not** create a second `abs()` transformation. Normal Worker record writes already enforce non-negative fee/tax via `optionalFiniteNumber(..., { minInclusive: 0 })`; preserving supplied values still prevents projection drift for historical/direct-import ledger rows and keeps frontend semantics identical to the calculation source it receives.
 - TWD records use base-currency multiplier `1`.
-- foreign records require existing Phase 3 cryptographic proof for the exact snapshot object and exact record object.
+- foreign records require existing cryptographic proof for the exact snapshot object and exact record object.
 - verified foreign FX uses only the exact transaction-date `history._raw_fx_rates[currency]`.
 - older verified USD-only snapshots may use the exact same date `history.fx_rate` compatibility value.
 - no nearest-date/backward scan, no as-of policy invented in browser, no `32.0` fallback.
@@ -201,7 +217,7 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 - CI #882: Worker + Python passed; Frontend failed because Batch 1.1 regression still required RecordList to own the old `canConvertWithLegacyUsdTwdRate` implementation shape.
 - Root cause: valuation authority had moved into `transactionValuation.js`; the regression was updated to verify delegation and continued prohibition of non-TWD-as-USD / `32.0` fallback. Runtime was not weakened.
 - **R2 BLOCKER 1:** first helper version added an extra `abs()` transform for fee/tax. Normal Worker writes are non-negative, but Python preparation/calculator do not introduce that frontend-only transform and historical/direct-import rows cannot be assumed to have only UI provenance. Helper + regressions were corrected to mirror the calculator’s supplied-value arithmetic exactly.
-- **R2 BLOCKER 2:** `snapshotFreshness='loaded'` occurs before Phase 3 cryptographic integrity verification. A memory-only proof bound to the exact assessed snapshot + records was added; foreign monetary FX now requires that actual proof.
+- **R2 BLOCKER 2:** `snapshotFreshness='loaded'` occurs before cryptographic integrity verification. A memory-only proof bound to the exact assessed snapshot + records was added; foreign monetary FX now requires that actual proof.
 - Oversell review: production runner already executes split-adjusted transaction-prefix integrity validation before `PortfolioCalculator`; a published snapshot cannot depend on partial oversell clamp to hide invalid source data.
 - **Evidence correction recorded during Phase 2 preflight:** re-reading `optionalFiniteNumber()` confirmed current Worker normal writes enforce `fee/tax >= 0`; earlier review prose saying Worker “accepts any finite fee/tax” was inaccurate. Runtime choice remains unchanged because the correct invariant is calculator parity without a second frontend-only sign transform.
 - final exact-head `7bf436849e985eaa51263f22fd75d6973d0b0833`;
@@ -210,7 +226,7 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 - Python tests + branch coverage: PASS;
 - Worker security/deployment tests + Recovery Evidence Gate + local D1 baseline: PASS;
 - final compare: `behind_by=0`, exactly 7 focused frontend/lifecycle/regression files;
-- frozen-diff independent review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0**;
+- frozen-diff review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0**;
 - main merge `92f78af6c77506ea310a046c9f96ee6130fd9c24`;
 - post-main CI #892 / `31817053580`: **SUCCESS**;
 - Pages #1534 / `31817052263`: **SUCCESS**;
@@ -221,14 +237,13 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 Rollback:
 
 - revert PR #251 / merge `92f78af6...` or restore previous Pages deployment;
-- no Worker/schema/data/Python rollback required;
-- memory-only verification proof disappears naturally on reload/revert.
+- no Worker/schema/data/Python rollback required.
 
 ### 2C. Closed Batch — Phase 2 / Batch 2.1 Trading Journal Note UX
 
 **Primary Goal — SATISFIED / PRODUCTION PAGES VERIFIED**
 
-The product now exposes its existing `records.note` field as an actual trading-journal function without creating a second write authority or broad architecture change.
+The product exposes its existing `records.note` field as an actual trading-journal function without creating a second write authority or broad architecture change.
 
 Runtime:
 
@@ -260,7 +275,7 @@ Verification chronology:
 - final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`;
 - exact-head CI #898 / `31824375970`: **SUCCESS**;
 - final compare: `behind_by=0`, exactly 3 focused files;
-- independent frozen-diff review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**;
+- frozen-diff review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**;
 - merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`;
 - post-main CI #899 / `31824494110`: **SUCCESS**;
 - Pages #1536 / `31824492603`: **SUCCESS**;
@@ -274,6 +289,63 @@ Rollback:
 - revert PR #254 / merge `7d0dbe2d...` or restore previous Pages deployment;
 - no Worker/schema/data/Python rollback required;
 - persisted notes remain compatible with previous frontend versions.
+
+### 2D. Closed Batch — Phase 3 / Batch 3.1 Daily P&L Explainability
+
+**Primary Goal — SATISFIED / PRODUCTION PAGES VERIFIED**
+
+Users can answer “今天是哪一檔、哪一類因素造成損益？” directly from the overview on desktop and mobile, using only the Python engine's already-reconciled published data.
+
+Runtime:
+
+- `src/services/dailyPnlExplainability.js`
+- `src/components/DailyPnlExplanation.vue`
+- `src/components/StatsGrid.vue`
+
+Regression:
+
+- `tests/frontend_daily_pnl_explainability.test.mjs`
+
+Behavior locked:
+
+- current-group `day_ledger` selection is exact and fail-closed;
+- no explanation is synthesized from holdings, summary, another group, or guessed values;
+- every row requires finite published total and all five published components;
+- five components must reconcile to the row total within display-validation tolerance;
+- duplicate symbol rows are rejected as ambiguous evidence;
+- per-symbol raw total must reconcile to published rounded `summary.daily_pnl_twd` within the Python publication rounding boundary;
+- rows are ranked by absolute contribution only after validation;
+- the detail control is a native button with `aria-controls` / `aria-expanded` and works on touch devices;
+- values are rendered with Vue interpolation only;
+- UI tells the user integer TWD display is rounded while raw values remain the reconciliation source;
+- no browser fetch/API mutation is added by the detail component.
+
+Verification chronology:
+
+- audit confirmed `PortfolioGroupData.day_ledger` is already a production snapshot field;
+- Python `DailyPnLReconciler` already produces per-symbol price/FX/dividend/execution/fee-tax components and fails closed when canonical group total does not reconcile to history;
+- existing StatsGrid exposed only TW/overseas/FX via hover `title`, leaving touch users and per-symbol questions underserved;
+- audit rejected a new Worker/D1/Python explainability projection because authoritative data already exists;
+- audit also confirmed `lot_ledger` has no current production producer, so historical per-trade attribution remains out of scope;
+- initial exact-head CI #902 / `31826178991`: **SUCCESS**;
+- R2 frozen review then identified one Closely Related integrity edge: duplicate-symbol rows could remain numerically reconciled while producing ambiguous attribution / duplicate Vue keys;
+- duplicate evidence was changed to fail closed and a regression was added;
+- final exact head `fc57b221a9b2c0e3adf6c929c1db6caf5e6c9c22`;
+- final exact-head CI #904 / `31826358947`: **SUCCESS**;
+- final compare: `behind_by=0`, exactly 4 focused frontend/test files;
+- frozen-diff R2 review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**;
+- merge `2f46516e2eee7f9ec653587bef8987260dfffb65`;
+- post-main CI #905 / `31826520662`: **SUCCESS**;
+- Pages #1538 / `31826519726`: **SUCCESS**;
+- Worker deploy: NOT REQUIRED / NOT RUN;
+- D1 migration: NOT REQUIRED / NOT RUN;
+- Python runtime change: NONE;
+- real-user ledger mutation smoke: NOT REQUIRED / NOT RUN.
+
+Rollback:
+
+- revert PR #256 / merge `2f46516e...` or restore previous Pages deployment;
+- no Worker/schema/data/Python/persisted-state rollback required.
 
 ---
 
@@ -306,6 +378,41 @@ Explicitly unchanged:
 ---
 
 ## 4. Root Cause Log
+
+### 2026-08-15 — Daily P&L had authoritative per-symbol causes but the UI exposed only a coarse hover summary
+
+**Symptom / Product Gap**  
+The overview showed Daily P&L and a TW / overseas / FX hover tooltip, but users could not answer which symbol or which published component caused the current Daily P&L. Touch/mobile users had no dependable hover interaction.
+
+**Evidence**
+
+- `PortfolioGroupData.day_ledger` already exists in the production snapshot contract.
+- Python `DailyPnLReconciler` publishes per-symbol price, FX, dividend, execution, fee/tax and total P&L components.
+- Python reconciles canonical group total against history and fails closed before publication on material mismatch.
+- Existing `StatsGrid.vue` consumed only `daily_pnl_breakdown` for a coarse `title` tooltip.
+- `lot_ledger` currently has no production producer, so historical lot/trade attribution is not yet an authoritative product contract.
+
+**Failure Point**  
+Authoritative explainability data stopped at the snapshot boundary; frontend presentation did not expose it as a touch-accessible, per-symbol user feature.
+
+**Root Cause**  
+Presentation lagged behind the calculation engine's already-published explainability contract. The missing feature was not a data or accounting-engine gap.
+
+**Systemic Cause**  
+Historically, correctness work prioritized calculation/reconciliation and reliability before building an explicit UX layer over the resulting ledger evidence.
+
+**Permanent Fix**
+
+- Build a pure frontend explainability adapter over the exact current group's published `day_ledger`.
+- Validate evidence before display; do not derive new accounting numbers.
+- Add a responsive explicit detail control and per-symbol/component view.
+- Suppress explanation when evidence is missing or inconsistent.
+
+**Review finding / prevention**
+
+- R2 review identified duplicate-symbol evidence as an ambiguity even if arithmetic still reconciles.
+- Duplicate symbols now fail closed and have a regression.
+- Future explainability features must use authoritative producer fields, provenance, fail-closed unavailable states, and must not infer historical attribution from insufficient data.
 
 ### 2026-08-15 — Journal-note CI regression tested an invented Worker implementation shape
 
@@ -348,7 +455,7 @@ After Batch 1.1, non-USD records correctly stopped using the USD/TWD scalar but 
 - `day_ledger` cannot map old records; `lot_ledger` currently has no producer.
 - current calculator BUY/SELL/DIV cash-flow formulas differ by transaction type.
 - current Worker normal record writes enforce non-negative fee/tax through `optionalFiniteNumber`, while Python preparation/calculator consume supplied ledger values without adding a second sign-normalization layer; historical/direct-import provenance must therefore remain compatible with the calculator rather than a frontend-only transform.
-- `fetchSnapshot()` sets `snapshotFreshness='loaded'` before Phase 3 later proves source identity.
+- `fetchSnapshot()` sets `snapshotFreshness='loaded'` before later source-identity verification.
 
 **Failure Points**
 
@@ -357,18 +464,18 @@ After Batch 1.1, non-USD records correctly stopped using the USD/TWD scalar but 
 3. Read-success (`loaded`) was initially mistaken for sufficient monetary authorization.
 
 **Root Cause**  
-Frontend presentation had evolved separately from the authoritative Python snapshot contract. Existing accounting/FX evidence and existing Phase 3 integrity proof were not connected to RecordList.
+Frontend presentation had evolved separately from the authoritative Python snapshot contract. Existing accounting/FX evidence and existing integrity proof were not connected to RecordList.
 
 **Impact Analysis**
 
 - No D1 corruption or Python accounting defect.
 - Multi-currency records could lack valid TWD presentation unnecessarily.
 - SELL displayed amount could differ from calculator cash-flow semantics.
-- Without the Phase 3 proof guard, a newly read but not-yet-verified snapshot could theoretically supply foreign FX during a short cross-device/stale window.
+- Without the integrity proof guard, a newly read but not-yet-verified snapshot could theoretically supply foreign FX during a short cross-device/stale window.
 
 **Permanent Fix**
 
-- Reuse exact-date `history._raw_fx_rates[currency]` after Phase 3 verifies the exact snapshot/record pair.
+- Reuse exact-date `history._raw_fx_rates[currency]` after exact snapshot/record proof.
 - Keep legacy scalar `fx_rate` USD-only and exact-date.
 - Mirror current calculator BUY/SELL/DIV cash-flow arithmetic on supplied normalized record values; do not add an independent frontend `abs()` rule.
 - Add memory-only `snapshotVerification` rather than a second persistent freshness state or new recovery controller.
@@ -380,7 +487,7 @@ Frontend presentation had evolved separately from the authoritative Python snaps
 - supplied-value fee/tax parity regression against actual calculator source shape;
 - replacement snapshot/record object invalidation tests;
 - source-contract tests forbid browser nearest-date logic, `32.0`, and frontend-only `abs()` normalization drift;
-- Phase 3 self-healing regression proves FRESH publishes the UI proof and stale repair does not.
+- self-healing regression proves FRESH publishes the UI proof and stale repair does not.
 
 ### 2026-08-14 — Frontend transaction currency contract narrower than Python
 
@@ -431,6 +538,44 @@ User observed both `快照待重算` and `持倉與績效快照待重新計算` 
 
 ## 5. Change Log / Verification
 
+### Phase 3 / Batch 3.1 — PR #256
+
+Implementation branch: `feat/phase3-daily-pnl-explainability`  
+Base/recovery point: `0feef486766397bdacd90ece00e569d3931195e4`  
+Final PR head: `fc57b221a9b2c0e3adf6c929c1db6caf5e6c9c22`  
+Main merge: `2f46516e2eee7f9ec653587bef8987260dfffb65`
+
+Scope:
+
+- `src/services/dailyPnlExplainability.js`
+- `src/components/DailyPnlExplanation.vue`
+- `src/components/StatsGrid.vue`
+- `tests/frontend_daily_pnl_explainability.test.mjs`
+
+Verification:
+
+- audit proved per-group `day_ledger` already contains authoritative per-symbol Daily P&L components;
+- no new Python/Worker/D1 projection was required;
+- initial exact-head CI #902 / `31826178991`: SUCCESS;
+- R2 review found duplicate-symbol ambiguity; classified Closely Related / NOW, fixed fail-closed, regression added;
+- final exact-head CI #904 / `31826358947`: **SUCCESS**;
+- Frontend contracts + production build: PASS;
+- Python tests + branch coverage: PASS;
+- Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
+- exact diff: 4 focused files, `behind_by=0` before merge;
+- frozen-diff R2 review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1;
+- post-main exact merge-SHA CI #905 / `31826520662`: **SUCCESS**;
+- Pages production deployment #1538 / `31826519726`: **SUCCESS**;
+- Worker deploy: NOT REQUIRED / NOT RUN;
+- D1 migration: NOT REQUIRED / NOT RUN;
+- Python runtime change: NONE;
+- real-user ledger mutation smoke: NOT REQUIRED / NOT RUN.
+
+Rollback:
+
+- revert PR #256 / merge `2f46516e...` or previous Pages deployment;
+- no Worker/schema/data/Python/persisted-state rollback required.
+
 ### Phase 2 / Batch 2.1 — PR #254
 
 Implementation branch: `feat/phase2-trading-journal-note-v2`  
@@ -452,7 +597,7 @@ Verification:
 - Python tests + branch coverage: PASS;
 - Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
 - exact diff: 3 focused files, `behind_by=0` before merge;
-- independent frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1;
+- frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1;
 - post-main exact merge-SHA CI #899 / `31824494110`: **SUCCESS**;
 - Pages production deployment #1536 / `31824492603`: **SUCCESS**;
 - Worker deploy: NOT REQUIRED / NOT RUN;
@@ -486,7 +631,7 @@ Verification:
 - Python tests + branch coverage: PASS;
 - Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
 - exact diff: 7 focused frontend/lifecycle/test files, `behind_by=0` before merge;
-- independent frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0;
+- frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0;
 - post-main exact merge-SHA CI #892 / `31817053580`: **SUCCESS**;
 - Pages production deployment #1534 / `31817052263`: **SUCCESS**;
 - Worker deploy: NOT REQUIRED / NOT RUN;
@@ -534,17 +679,26 @@ Verification:
 
 ### Merge-method note
 
-Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head attempts). Repository policy was never modified or bypassed. Phase 1 and Phase 2.1 PRs used normal exact-head merges once this policy was established.
+Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head attempts). Repository policy was never modified or bypassed. Phase 1, Phase 2.1 and Phase 3.1 PRs used normal exact-head merges once this policy was established.
 
 ### Deployment
 
-- Frontend Pages: **DEPLOYED / VERIFIED through #1536** for runtime merge `7d0dbe2d...`.
-- Production Worker: **NOT REQUIRED / NOT DEPLOYED** for Phase 2.1.
-- D1 migration: **NOT REQUIRED / NOT RUN** for Phase 2.1.
+- Frontend Pages: **DEPLOYED / VERIFIED through #1538** for runtime merge `2f46516e...`.
+- Production Worker: **NOT REQUIRED / NOT DEPLOYED** for Phase 3.1.
+- D1 migration: **NOT REQUIRED / NOT RUN** for Phase 3.1.
 
 ---
 
 ## 6. Decision Log
+
+### D-2026-08-15-02 — Daily P&L explainability consumes reconciled day_ledger; browser does not become accounting authority
+
+- **Evidence:** Python already publishes per-group per-symbol `day_ledger` with price/FX/dividend/execution/fee-tax/total components and performs canonical reconciliation before publication.
+- **Alternatives:** new Python presentation projection; Worker/D1 explainability endpoint; browser recomputation from holdings/history; consume existing reconciled ledger.
+- **Decision:** consume existing exact-group ledger through a pure fail-closed frontend validation/presentation adapter.
+- **Trade-off:** old/insufficient snapshots without valid ledger evidence simply do not expose detailed attribution; this is preferred to guessed or synthesized explanations.
+- **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
+- **Reopen Condition:** authoritative day-ledger semantics materially change or a reviewed versioned producer supersedes the current fields.
 
 ### D-2026-08-15-01 — Journal note reuses the established mutation lifecycle
 
@@ -558,8 +712,8 @@ Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head
 ### D-2026-08-14-05 — Loaded snapshot is not monetary authorization
 
 - **Original assumption challenged:** a successful `/api/portfolio` read sets `snapshotFreshness='loaded'`.
-- **New evidence:** Phase 3 cryptographic source/benchmark verification runs after that read transition.
-- **Decision:** foreign-currency monetary presentation may use snapshot FX only after Phase 3 has verified the exact snapshot object and exact record objects assessed together.
+- **New evidence:** cryptographic source/benchmark verification runs after that read transition.
+- **Decision:** foreign-currency monetary presentation may use snapshot FX only after the exact snapshot object and exact record objects assessed together are verified.
 - **Implementation:** memory-only `snapshotVerification`; no persistent key, retry, queue, backend state, or new financial authority.
 - **Trade-off:** foreign TWD value may briefly remain unavailable while integrity verification completes; false confidence is rejected.
 - **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
@@ -570,7 +724,7 @@ Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head
 - **Original candidate:** add a versioned Python `record_id → currency/fx/TWD` presentation projection.
 - **New evidence:** root snapshot history already carries the exact per-date `_raw_fx_rates` produced by Python and is already uploaded in full.
 - **Alternatives:** new Python projection; browser FX derivation; reuse current history evidence.
-- **Decision:** reuse current authoritative exact-date snapshot FX after Phase 3 proof; do not add a duplicate Python/Worker/schema contract.
+- **Decision:** reuse current authoritative exact-date snapshot FX after integrity proof; do not add a duplicate Python/Worker/schema contract.
 - **Migration Risk avoided:** no model/version/schema/deployment expansion.
 - **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
 - **Reopen Condition:** `_raw_fx_rates` ceases to be published, becomes explicitly internal-only/removed, or a reviewed public presentation contract supersedes it.
@@ -597,23 +751,20 @@ Status: **LOCKED**.
 
 ## 7. Known Issues / Risks / Technical Debt
 
-### Current product gap
+### Current product status
 
-Phase 2.1 Trading Journal note UX is closed. The next previously queued high-value product line is **Phase 3 portfolio explainability using existing published day-ledger/snapshot evidence**. Before implementation, audit what the current snapshot can explain truthfully without inventing new accounting semantics or backend authority.
+Phase 3 / Batch 3.1 Daily P&L Explainability is closed and production Pages verified. The product can now explain current Daily P&L per symbol and published component without adding a second accounting engine.
 
-Phase 2.1 closure evidence:
+Before opening another explainability implementation batch, perform a **Phase 3 Convergence Review**:
 
-- Worker/D1 record contract already stores and returns `note`;
-- TradeForm now exposes note input/edit/reset;
-- RecordList now renders note on desktop/mobile and searches symbol/tag/note;
-- financial snapshot source identity intentionally does not use `note`;
-- generic mutation/recalculation lifecycle remains authoritative.
-
-Do **not** optimize note-only recalculation by adding a caller-side bypass. A future optimization requires production evidence and a safe server-authoritative concurrency contract.
+- identify remaining user questions that current authoritative snapshot fields can answer truthfully;
+- reject questions that require historical lot/trade attribution until an authoritative producer exists;
+- compare marginal UX value against moving to Phase 4 strategy analytics;
+- if no remaining explainability candidate has material value, mark **Phase 3 OPTIMIZED FOR CURRENT REQUIREMENTS** and stop.
 
 ### Current risk
 
-Cross-layer source and presentation contracts can drift if Worker/Python semantics change. Existing source-shape and cross-language regressions materially reduce this risk; future changes must update contracts deliberately rather than weakening tests.
+Cross-layer source and presentation contracts can drift if Worker/Python semantics change. Existing source-shape, cross-language and explainability regressions materially reduce this risk; future changes must update contracts deliberately rather than weakening tests.
 
 ### Known non-blocking documentation/status drift
 
@@ -633,7 +784,8 @@ Do not promote without new evidence:
 7. TypeScript/framework/state-manager migration without a product blocker;
 8. staging Issue #97 until product/release risk requires it;
 9. new public transaction-presentation snapshot projection while existing verified exact-date FX remains sufficient;
-10. note-only mutation / skipped recalculation optimization without measured product or compute evidence.
+10. note-only mutation / skipped recalculation optimization without measured product or compute evidence;
+11. historical/lot-level attribution until `lot_ledger` has a reviewed production producer and semantics.
 
 ---
 
@@ -641,21 +793,22 @@ Do not promote without new evidence:
 
 **NOW**
 
-- Phase 2 / Batch 2.1 is **CLOSED / PRODUCTION PAGES VERIFIED**.
-- Merge this docs-only Stable Checkpoint and verify exact-main CI/Pages if triggered.
-- Do not reopen note runtime while documentation closure is the only active Batch.
+- Phase 3 / Batch 3.1 runtime is **CLOSED / PRODUCTION PAGES VERIFIED**.
+- Complete this docs-only Stable Checkpoint and verify exact-main CI/Pages if triggered.
+- Do not modify Batch 3.1 runtime during documentation closure.
 
-**NEXT — Phase 3 portfolio explainability audit before implementation**
+**NEXT — Phase 3 Convergence Review, not automatic implementation**
 
-1. Re-read current published snapshot/day-ledger fields and UI data flow.
-2. Identify the highest-value user questions that existing authoritative data can answer without new accounting methodology.
-3. Separate explanatory presentation from financial calculation authority.
-4. Define a narrow first explainability slice with explicit provenance, unavailable states and regression boundaries.
-5. Reuse existing snapshot fields when sufficient; do not create a new backend projection until evidence proves an actual contract gap.
-6. Scope-lock one implementation Batch only after the audit converges.
+1. Re-read current published snapshot/group/day-ledger fields and the current UI after Batch 3.1.
+2. List remaining high-value explainability questions users actually need answered.
+3. Classify each candidate by whether existing authoritative evidence is sufficient.
+4. Reject or backlog historical/lot questions without a production producer.
+5. Select **at most one** Batch 3.2 only if Benefit materially exceeds added UX/maintenance surface.
+6. If no such candidate exists, record `Phase 3 OPTIMIZED FOR CURRENT REQUIREMENTS` and advance to a Phase 4 strategy analytics audit.
 
 **BACKLOG**
 
+- historical/lot attribution after authoritative producer semantics exist;
 - Phase 4 strategy analytics using group snapshots;
 - Phase 5 trading analytics after lot-ledger semantics are proven;
 - Phase 6 UX convergence;
@@ -664,22 +817,27 @@ Do not promote without new evidence:
 
 **REJECT**
 
-- copy/reimplement Python FX engine in browser;
+- copy/reimplement Python FX or Daily P&L accounting engine in browser;
+- synthesize current Daily P&L attribution from holdings/summary when `day_ledger` is missing;
+- use another group's ledger as fallback;
+- infer historical lot/trade attribution from current-day `day_ledger`;
+- add Worker/D1/Python explainability projection for data already published and reconciled;
 - browser nearest-date/as-of FX guessing or hard-coded FX fallback;
 - redundant Python transaction-presentation projection without new evidence;
 - broad frontend refactor / TypeScript / framework migration during product batches;
 - staging/retry/governance expansion without product evidence;
-- force-clearing snapshot stale state because a job succeeded;
-- caller-declared “note-only” flags that can skip recalculation without server/data proof;
-- modifying repository merge policy merely to obtain squash history.
+- force-clear snapshot stale state because a job succeeded;
+- caller-declared “note-only” flags that skip recalculation without server/data proof;
+- modify repository merge policy merely to obtain squash history.
 
 ---
 
 ## 9. Next Actions
 
-1. Merge this Phase-2.1 Stable Checkpoint documentation PR and verify exact-main CI/Pages if triggered.
+1. Merge this Phase-3.1 Stable Checkpoint documentation PR and verify exact-main CI/Pages if triggered.
 2. Re-read remote `main`, open PRs, recent commits, `AI_PROJECT_PLAYBOOK.md`, `README.md`, and this handoff.
-3. Open exactly one Primary Active Batch: **Phase 3 portfolio explainability audit**.
-4. Start from existing authoritative snapshot/day-ledger evidence and current user-facing questions; do not begin with new infrastructure.
-5. Converge candidate explanations into NOW / NEXT / BACKLOG / REJECT before any implementation.
-6. Require risk-proportional tests, exact-head review/CI, rollback and post-main verification for the first Phase 3 runtime Batch.
+3. Run one **Phase 3 Convergence Review** before creating any new runtime branch.
+4. Converge remaining explainability candidates into NOW / NEXT / BACKLOG / REJECT.
+5. If a material existing-data explainability gap remains, open exactly one narrowly scoped Batch 3.2 with explicit provenance and unavailable states.
+6. Otherwise mark `Phase 3 OPTIMIZED FOR CURRENT REQUIREMENTS` and move to a Phase 4 strategy analytics audit rather than continuing low-value explainability work.
+7. Any next R2+ runtime Batch again requires recovery point, focused diff, exact-head CI, frozen review, rollback and post-main verification.
