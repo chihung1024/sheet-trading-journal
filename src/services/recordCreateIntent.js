@@ -5,6 +5,7 @@ import {
 
 export const RECORD_CREATE_INTENT_VERSION = 1;
 export const RECORD_CREATE_INTENT_TTL_MS = 24 * 60 * 60 * 1000;
+export const RECORD_CREATE_RECONCILIATION_WINDOW_MS = 60 * 1000;
 export const RECORD_CREATE_INTENT_STATE = Object.freeze({
   LIVE: 'live',
   TERMINAL: 'terminal',
@@ -120,6 +121,12 @@ const parseIntent = (raw, owner) => {
 
   if (value.state === RECORD_CREATE_INTENT_STATE.LIVE) {
     if (typeof value.body !== 'string' || !value.body) return null;
+    if (
+      value.reconcilingUntil !== undefined
+      && !Number.isFinite(value.reconcilingUntil)
+    ) {
+      return null;
+    }
   } else if (
     !Number.isFinite(value.terminalAt)
     || !(
@@ -170,6 +177,21 @@ export const beginRecordCreateIntent = (
     throw new Error('Record-create payload must be JSON serializable');
   }
 
+  const [reconcilingIntent] = readEligibleRecordCreateIntents(target, normalizedOwner, {
+    now,
+    limit: 1,
+  });
+  if (
+    reconcilingIntent?.body === body
+    && Number.isFinite(reconcilingIntent.reconcilingUntil)
+    && reconcilingIntent.reconcilingUntil > now
+  ) {
+    const error = new Error('相同的新增交易正在自動確認結果，請稍候再操作');
+    error.name = 'RecordCreateReconciliationInProgressError';
+    error.outcomeAmbiguous = false;
+    throw error;
+  }
+
   const barrier = rotateRecordMutationBarrier(target, normalizedOwner, { now, createOpaqueId });
   const idempotencyKey = assertOpaqueId(createOpaqueId(), 'Record-create idempotency key');
   const intent = {
@@ -193,6 +215,40 @@ export const beginRecordCreateIntent = (
   }
 
   return Object.freeze(intent);
+};
+
+export const markRecordCreateIntentReconciling = (
+  storage,
+  owner,
+  idempotencyKey,
+  {
+    now = Date.now(),
+    windowMs = RECORD_CREATE_RECONCILIATION_WINDOW_MS,
+  } = {},
+) => {
+  const target = requireStorage(storage);
+  const normalizedOwner = normalizeRecordCreateOwner(owner);
+  if (!Number.isFinite(windowMs) || windowMs <= 0) {
+    throw new TypeError('Record-create reconciliation window must be positive');
+  }
+  const key = intentStorageKey(assertOpaqueId(idempotencyKey, 'Record-create idempotency key'));
+  const intent = parseIntent(target.getItem(key), normalizedOwner);
+  const barrier = readBarrier(target, normalizedOwner);
+  if (
+    !intent
+    || intent.state !== RECORD_CREATE_INTENT_STATE.LIVE
+    || !barrier
+    || intent.barrierToken !== barrier.token
+  ) {
+    return null;
+  }
+
+  const reconciling = {
+    ...intent,
+    reconcilingUntil: now + windowMs,
+  };
+  verifiedSetJson(target, key, reconciling);
+  return Object.freeze(reconciling);
 };
 
 export const markRecordCreateIntentTerminal = (
