@@ -6,6 +6,9 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
+import { useAuthStore } from './stores/auth';
+import { usePortfolioStore } from './stores/portfolio';
+import { installSnapshotSelfHealing } from './services/snapshotSelfHealing.js';
 
 // 引入全域樣式與動畫 (順序很重要：先動畫，後主樣式)
 import './styles/animations.css';
@@ -49,7 +52,12 @@ window.addEventListener('unhandledrejection', (event) => {
 // 1. 安裝 Pinia 狀態管理
 app.use(pinia);
 
-// 2. 掛載 Vue 應用程式
+// 2. 安裝 snapshot self-healing controller，與 App 共用同一組 Pinia stores
+const auth = useAuthStore(pinia);
+const portfolio = usePortfolioStore(pinia);
+installSnapshotSelfHealing({ portfolio, auth, storage: localStorage });
+
+// 3. 掛載 Vue 應用程式
 app.mount('#app');
 
 console.log('🚀 Trading Journal PRO (UI Optimized) 已啟動');

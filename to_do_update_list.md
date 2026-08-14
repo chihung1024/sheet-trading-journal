@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **Phase 2 Automatic Recalculation → merge/production Pages verification → Phase 3 Self-healing Snapshot Lifecycle**
+Current line: **Phase 3 Self-healing Snapshot Lifecycle — final exact-head CI → merge → post-main CI/Pages → Phase 4**
 
 ---
 
@@ -27,11 +27,12 @@ Reconstruct truth in this order:
 1. `AI_PROJECT_PLAYBOOK.md` — governance/risk rules.
 2. `README.md` — architecture/product orientation.
 3. this file — current batch and exact next action.
-4. protected `main`, open PRs, CI, Pages and current deployment state.
-5. `worker-manifest.json`, Worker/D1/recovery/deployment contracts only if backend/deployment work is actually required.
-6. `docs/engineering/PHASE2_AUTOMATIC_RECALCULATION_2026-08-14.md` — active Phase 2 design and reasoning.
-7. `docs/engineering/NOW1B_DURABLE_RECORD_CREATE_INTENT_2026-08-14.md` — prior durable-create boundary.
-8. older docs/evidence/PR/Git history for provenance only.
+4. protected `main`, open PRs, exact-head CI, Pages and deployment state.
+5. `docs/engineering/PHASE3_SELF_HEALING_SNAPSHOT_2026-08-14.md` — active Phase 3 design, RCAs and closure gate.
+6. `docs/engineering/PHASE2_AUTOMATIC_RECALCULATION_2026-08-14.md` — closed automatic-recalculation contract Phase 3 reuses.
+7. `docs/engineering/NOW1B_DURABLE_RECORD_CREATE_INTENT_2026-08-14.md` — closed durable-create boundary.
+8. Worker/D1/recovery/deployment contracts only when backend/deployment work is actually required.
+9. older docs/evidence/PR/Git history for provenance only.
 
 Do not collapse protected-main HEAD, Pages source, Worker runtime source, production authority and immutable evidence into one “current SHA”. Re-fetch before consequential actions.
 
@@ -49,11 +50,11 @@ transaction/update intent
   -> GitHub Actions Python engine
   -> market data / ledger / split / FX / FIFO / dividend / TWR / XIRR
   -> fail-closed validation + reconciliation
-  -> snapshot upload
+  -> snapshot + deterministic calculation manifest
   -> browser poll/readback
 ```
 
-D1 is authoritative for transactions. Browser persistence is only bounded recovery/orchestration state. Do not move accounting truth into browser state or AI inference.
+D1 is authoritative for transactions. Browser persistence is bounded recovery/orchestration state only. Do not move accounting truth into browser state or AI inference.
 
 ---
 
@@ -64,185 +65,217 @@ D1 is authoritative for transactions. Browser persistence is only bounded recove
 | Gate A–D / E0 / E1 lifecycle work | CLOSED | no current product blocker |
 | Market-data NaN/event-row incident | CLOSED / PRODUCTION VERIFIED | passive watch only |
 | Server record-create idempotency | LIVE | tenant-scoped replay/conflict contract |
-| NOW-1B-A rollback-safe create transport | CLOSED / PRODUCTION VERIFIED | `/api/records/idempotent` safe to consume |
-| NOW-1B-B durable create intent | **CLOSED** | PR #231 merged `e7c94adc...`; post-main CI #791 + Pages #1514 PASS |
+| NOW-1B-A rollback-safe create transport | CLOSED / PRODUCTION VERIFIED | `/api/records/idempotent` live; Worker runtime source `a0213f05...` |
+| NOW-1B-B durable create intent | CLOSED | PR #231 merged `e7c94adc...`; post-main CI #791 + Pages #1514 PASS |
+| Phase 2 Automatic Recalculation | **CLOSED** | PR #232 merged `a458966...`; post-main CI #799 + Pages #1515 PASS |
 | Old dedicated production create-smoke blocker | NOT A PRODUCT BLOCKER | do not hold product work for missing isolated tenant |
 
 Do not restart broad OAuth, provider, Decimal, cash-ledger, stale-PUT, UUID, generalized idempotency, backend tombstone or distributed-ordering redesign without new concrete production evidence.
 
 ---
 
-## 4. NOW-1B closure evidence
+## 4. Phase 2 closure contract Phase 3 may rely on
 
-Backend compatibility transport:
-
-- production Worker runtime source `a0213f05c64f8b1636711e5e3bfdea650f42f2df`;
-- Production Identity Evidence #17 PASS;
-- Deploy Worker #6 / run `31759350109` SUCCESS;
-- stable 3-pass production contract;
-- Worker 4.08 / API 2.61 / Schema 3.
-
-Frontend durable intent:
-
-- PR #231 final head `4de8f6f008d6f872b7ce05eed7ff29d422f995e1`;
-- exact-head CI #790 / run `31764192669` SUCCESS;
-- merged main `e7c94adc13903676dcf8634d3c119d28976f09b4`;
-- post-main CI #791 PASS;
-- production Pages #1514 PASS.
-
-NOW-1B is closed. Phase 2 may rely on its mutation outcome truth and durable create recovery.
-
----
-
-## 5. Phase 2 Automatic Recalculation — ACTIVE
-
-PR: **#232 — `Phase 2: automatic recalculation after committed mutations`**  
-Branch: `feat/phase2-automatic-recalculation`  
-Risk: **R2 Significant** — browser orchestration/recovery state + transaction-to-calculation lifecycle.  
-Base: `e7c94adc13903676dcf8634d3c119d28976f09b4`.
-
-Primary KPI:
+Primary KPI achieved by design:
 
 > **normal confirmed add/edit/delete transaction → manual “update portfolio” clicks = 0**
 
-### Root cause
-
-Backend active-job dedupe is correct, but blind re-triggering is insufficient. A transaction may commit after an already-running job has captured its input; a new trigger can deduplicate to that old job even though the old job cannot contain the new transaction.
-
-Phase 2 solves this with an exact dirty-generation/coverage contract while reusing the existing `calculation_jobs` queue.
-
-### Durable state
-
-Service: `src/services/automaticRecalculationState.js`
-
-Fixed reviewed keys:
-
-- `automatic_recalculation_dirty.v1`
-- `automatic_recalculation_clean.v1`
-
-Dynamic owner-validated coverage prefix:
-
-- `automatic_recalculation_coverage.v1.<jobId>`
-
-All state is non-authoritative and contains no transaction payload.
-
-### Generation semantics
+Existing lifecycle:
 
 ```text
-confirmed mutation M1 -> dirty token T1
-new job J1 -> coverage(J1)=T1
-confirmed mutation M2 while J1 runs -> dirty token T2
-J1 succeeds -> clean token T1
-T2 != T1 -> still dirty -> one follow-up job required
+confirmed mutation
+-> durable dirty generation
+-> debounce/coalesce
+-> existing /api/trigger-update
+-> calculation_jobs
+-> exact generation coverage
+-> polling/recovery
+-> fresh snapshot readback
 ```
 
-Rules:
+Important invariants remain active:
 
-- rejected/ambiguous transaction mutation never creates dirty state;
-- every confirmed non-reset mutation creates a new random dirty token;
-- only a **new**, non-deduplicated job may claim the generation captured immediately before its dispatch;
-- deduplicated active job never claims a later dirty token;
-- success cleans only exact covered token;
-- failure/404 never declares dirty work clean;
-- late old job cannot move clean backward over a newer covered generation;
-- generation benchmark is fallback metadata only; actual current selected benchmark job may cover the dirty token.
+- ambiguous/rejected mutation is never declared dirty as if committed;
+- deduplicated active job cannot claim a later dirty generation;
+- mutation during a running job survives the old job’s success and causes one follow-up;
+- first-trade `snapshotPollActive` blocks a parallel second calculation;
+- job failure/404 never declares work clean;
+- browser state is owner-bound, non-authoritative and contains no transaction payload.
 
-### Debounce / active-lane behavior
-
-- debounce: 1200 ms;
-- burst committed mutations cancel/restart one timer and converge on latest token;
-- automatic flush is single-flight and bounded once per token per store lifetime;
-- no automatic retry loop after trigger failure; durable dirty state allows reload/new-mutation recovery.
-
-Automatic dispatch is blocked while any existing calculation lane is active:
-
-1. first-trade legacy `snapshotPollActive`;
-2. in-flight trigger request;
-3. queued/running `calculationJob`;
-4. persisted pending calculation job ID.
-
-This prevents Phase 2 from running a second calculation while the existing first-trade server `auto_update` is still propagating.
-
-### Mutation wiring
-
-- confirmed add / recovered add: dirty unless server already returned first-trade `auto_update`;
-- confirmed update: dirty before record refresh;
-- confirmed normal delete: dirty before record refresh;
-- delete-all `RELOAD_UI`: clear Phase 2 state;
-- record-refresh failure after commit does not erase dirtiness.
-
-### Existing trigger lifecycle reuse
-
-`performTriggerUpdate()` captures dirty generation immediately before the existing `/api/trigger-update` POST. A returned newly created job may receive coverage; a deduplicated job may not. Manual trigger callers remain compatible and can satisfy pending dirty work.
-
-No Worker, D1, financial formula, market-data, auth protocol or second backend queue change is part of Phase 2.
+Phase 3 must hand repair work into this lifecycle rather than build another calculation queue.
 
 ---
 
-## 6. Phase 2 verification chronology
+## 5. Phase 3 Self-healing Snapshot Lifecycle — ACTIVE
 
-- CI #792: Worker + Python PASS; frontend failed because dynamic coverage **prefix** was mistakenly inserted into the fixed-key browser-storage inventory.
-- Root cause correction: fixed-key baseline now contains only dirty/clean keys; dynamic coverage remains governed by `projectStorage` prefix cleanup + executable service tests. Safety inventory was not weakened.
-- Additional review refinements:
-  - current benchmark job may cover a dirty token created under an older benchmark;
-  - `snapshotPollActive` is treated as an active calculation lane.
-- Code-bearing candidate `da07db39a64ee3f8970bbac779467b40ee4adeb2`: exact-head **CI #796 / run `31765526505` SUCCESS** across Frontend, Worker and Python.
-- R2 code review on that candidate: PASS / 0 BLOCKER.
+PR: **#233 — `Phase 3: self-healing snapshot lifecycle`**  
+Branch: `feat/phase3-self-healing-snapshot`  
+Risk: **R2 Significant**.  
+Base / protected `main` at phase start: `a4589667604eb5f03dd4a8b2dfc6bf70b84021b9`.
 
-Permanent handoff/document commits after `da07db39...` advance the PR head. Therefore **do not merge based only on CI #796**; re-fetch current PR head and require a fresh exact-head full CI.
+Product objective:
 
----
+> After a successful full read, automatically prove whether the materialized portfolio snapshot covers current authoritative transactions and requested benchmark. If repair is safe, hand one bounded repair intent to Phase 2; otherwise fail closed.
 
-## 7. Phase 2 remaining gates
+### Deterministic proof
 
-Execute autonomously unless GitHub/platform genuinely requires owner action:
+Implementation: `src/services/snapshotIntegrity.js`.
 
-1. re-fetch PR #232, protected `main` and exact current head;
-2. require full exact-current-head CI after handoff docs;
-3. final R2 adversarial review must still confirm:
-   - rejected/ambiguous transaction mutation never dirty;
-   - confirmed mutation persists dirty before UI record refresh;
-   - burst mutations coalesce;
-   - first-trade snapshot polling blocks second calculation;
-   - mutation during running job survives old-job success;
-   - deduplicated job cannot claim later dirty token;
-   - generation captured pre-dispatch handles mutation race;
-   - current benchmark can cover old dirty token;
-   - job failure/404 never clean;
-   - owner isolation/logout cleanup;
-   - follow-up timer vs `fetchAllFresh()` cannot double-dispatch;
-   - no tight retry loop;
-   - no Worker/D1/finance/market-data drift;
-4. update PR #232 body with exact final head, CI and review result;
-5. mark Ready and ordinary merge if all gates pass;
-6. verify post-main CI;
-7. verify production Pages build/deploy for merge SHA;
-8. no Worker deployment expected;
-9. do not create/delete a real-user transaction solely for smoke testing.
+The browser reproduces the existing Python `calculation_manifest.deterministic_identity.source_records` contract byte-for-byte:
 
-Close Phase 2 only after post-main CI + Pages are green.
+- exact material transaction field set;
+- `(Date, id)` ordering;
+- Symbol/Type normalization;
+- raw optional Tag semantics;
+- Python-compatible `float.hex()`;
+- versioned compact/sorted canonical JSON;
+- UTF-8 SHA-256.
 
----
+Python/frontend parity is locked by fixture SHA:
 
-## 8. Next product phase
+`87d3299660d98bc027a2ee16bcb3dbb246098b5c4e7ca6faf83fa9b3328fdaa4`
 
-After Phase 2 closure, proceed to **Phase 3 — Self-healing Snapshot Lifecycle**.
+This detects cross-device edits even when `record_count` and `max_record_id` do not change.
 
-The next design should begin from user-visible failure modes and the now-automatic mutation→calculation path. Do not pre-emptively build generalized infrastructure. Expected focus:
+### Classification / repair policy
+
+- `fresh`, `empty` → no repair;
+- `missing`, `stale_source`, `stale_benchmark` → bounded repair;
+- malformed current/legacy-compatible manifest → bounded one-attempt repair;
+- malformed authoritative records → fail closed;
+- explicit future manifest / deterministic identity / canonicalization version → fail closed as unsupported.
+
+Legacy/current snapshots may omit additive version metadata. Missing optional metadata remains compatible; explicit future versions do not.
+
+Repair fingerprints are semantic and **exclude `updated_at`**, preventing an unchanged defect from evading the attempt bound merely by publishing a new timestamp.
+
+### Self-healing handoff
+
+Implementation: `src/services/snapshotSelfHealing.js`.
+
+The controller runs only after `portfolioReadStatus === 'loaded'` from a successful full read. It:
+
+1. assesses current records + snapshot + requested benchmark;
+2. marks anomaly stale for UI truth;
+3. bounds each semantic fingerprint to one attempt per installed controller lifetime;
+4. never replaces an already-dirty Phase 2 generation;
+5. otherwise persists one Phase 2 dirty generation;
+6. yields one task boundary past the completed read single-flight;
+7. invokes one fresh `portfolio.fetchAll()` handoff;
+8. lets Phase 2 own debounce, trigger, `calculation_jobs`, coverage and polling.
+
+Phase 3 never calls `/api/trigger-update` directly and adds no new persistent browser key.
+
+### Production bootstrap
+
+`src/main.js` installs exactly one controller using the same Pinia instance as the app:
 
 ```text
-calculation/snapshot lifecycle state
--> detect stale/missing/inconsistent snapshot
--> prove whether safe self-repair exists
--> automatically repair or surface one actionable state
--> preserve financial reconciliation and fail-closed boundaries
+const auth = useAuthStore(pinia)
+const portfolio = usePortfolioStore(pinia)
+installSnapshotSelfHealing({ portfolio, auth, storage: localStorage })
 ```
+
+---
+
+## 6. Phase 3 verification chronology
+
+### CI #800 / run `31766645660`
+
+- Worker PASS;
+- Python PASS;
+- Frontend 254/255 PASS;
+- root cause: Phase 3 service existed but production `src/main.js` did not install it.
+
+Fix: minimal shared-Pinia bootstrap. No store/backend rewrite.
+
+### CI #801 / run `31772089355`
+
+Exact head `53c1f6ed2bb9904337002c2bbf054e75e337743a`: **SUCCESS**.
+
+### Post-#801 adversarial review
+
+Found two real correctness issues before merge:
+
+1. `updated_at` was part of repair fingerprint and could enable timestamp-only repair loops;
+2. explicit future manifest contracts were treated as current malformed contracts and could be auto-repaired by an older frontend.
+
+Both were corrected with executable regressions.
+
+### CI #803 / run `31772260676`
+
+- Worker PASS;
+- Python PASS;
+- Frontend 255/257 PASS;
+- root cause: first future-version correction accidentally made additive version metadata mandatory, breaking valid legacy/current snapshot compatibility.
+
+Fix: absent optional metadata remains compatible; explicit supported v1 remains compatible; explicit future version fails closed.
+
+### CI #804 / run `31772363579`
+
+Code-bearing exact head `316a7ba6af1c211a0fdae69232b7520d3b8c648c`: **SUCCESS** across Frontend, Worker and Python.
+
+This proves the code-bearing candidate only. Permanent handoff documentation advances the branch head afterward.
+
+---
+
+## 7. Phase 3 exact remaining gates
+
+Do these autonomously unless GitHub/platform genuinely requires owner action:
+
+1. after this handoff update, re-fetch PR #233 exact current head;
+2. require a **fresh full CI on that exact docs-bearing head** — do not merge based on CI #804;
+3. compare PR against protected `main`; expected scope is exactly:
+   - `src/services/snapshotIntegrity.js`
+   - `src/services/snapshotSelfHealing.js`
+   - `src/main.js`
+   - `tests/frontend_snapshot_integrity.test.mjs`
+   - `tests/frontend_snapshot_self_healing.test.mjs`
+   - `tests/frontend_snapshot_self_healing_bootstrap.test.mjs`
+   - `docs/engineering/PHASE3_SELF_HEALING_SNAPSHOT_2026-08-14.md`
+   - `to_do_update_list.md`
+4. final R2 adversarial review must confirm:
+   - Python/browser SHA parity;
+   - cross-device edit detection;
+   - malformed records never auto-repair;
+   - future snapshot contracts fail closed;
+   - legacy additive metadata remains compatible;
+   - timestamps cannot refresh repair fingerprints;
+   - one semantic fingerprint attempt per controller lifetime;
+   - existing Phase 2 dirty generation is never replaced;
+   - reconcile only after successful full read;
+   - task-boundary/single-flight handoff is bounded;
+   - no second trigger/debounce/retry lane;
+   - exactly one shared-Pinia bootstrap controller;
+   - no Worker/D1/finance/market-data/auth/deployment drift;
+5. update PR #233 body with exact final head, CI and review result;
+6. ordinary merge only;
+7. require post-main CI SUCCESS;
+8. require production Pages SUCCESS for merge SHA;
+9. no Worker deployment expected;
+10. do not mutate a real-user ledger solely for smoke testing.
+
+Only then mark Phase 3 **CLOSED**.
+
+---
+
+## 8. Phase 4 lock
+
+A branch named `feat/phase4-failure-triage-recovery` exists, but **Phase 4 is not active and no Phase 4 code should be developed until Phase 3 closes**.
+
+After Phase 3 post-main CI + Pages verification:
+
+1. verify the Phase 4 branch has no independent work;
+2. fast-forward/recreate it from the new protected `main` if necessary;
+3. begin Phase 4 from existing deterministic signals: calculation-job error codes, API outcome classes, snapshot-integrity states and financial validation/reconciliation results;
+4. classify only safe deterministic recovery vs fail-closed/user-action states before adding AI orchestration;
+5. AI may triage/route/recover workflows but must not infer or rewrite accounting truth.
 
 ---
 
 ## 9. Later roadmap
 
-1. Phase 3 — Self-healing Snapshot Lifecycle.
+1. **Phase 3 — Self-healing Snapshot Lifecycle — ACTIVE until closure gates pass.**
 2. Phase 4 — AI failure triage/recovery.
 3. Phase 5 — AI Ops Autopilot.
 4. Phase 6 — AI UX.
@@ -253,6 +286,6 @@ Each phase begins only after the prior user-visible flow is functionally closed.
 
 ## 10. Historical provenance
 
-The handoff is intentionally converged rather than append-only. Closed Gate-E/NOW-1A/NOW-1B detail remains available in Git history, merged PRs, engineering docs, governance evidence and workflow artifacts.
+This handoff is intentionally converged rather than append-only. Closed Gate-E/NOW-1A/NOW-1B/Phase-2 detail remains available in Git history, merged PRs, engineering docs, governance evidence and workflow artifacts.
 
 This file exists to answer one operational question accurately: **what should the next AI do now without breaking the product?**
