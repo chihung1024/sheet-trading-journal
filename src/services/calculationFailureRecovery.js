@@ -2,6 +2,7 @@ import { CALCULATION_FAILURE_RECOVERY_STORAGE_KEY } from './projectStorage.js';
 
 export const CALCULATION_FAILURE_RECOVERY_VERSION = 1;
 export const MAX_AUTOMATIC_FAILURE_RETRIES_PER_GENERATION = 1;
+export const CALCULATION_FAILURE_RECOVERY_CLAIM_SETTLE_MS = 75;
 
 export const FAILURE_RECOVERY_CLASS = Object.freeze({
   RETRYABLE_TRANSIENT: 'retryable_transient',
@@ -12,6 +13,7 @@ export const FAILURE_RECOVERY_CLASS = Object.freeze({
 });
 
 const TOKEN_RE = /^[A-Za-z0-9._-]{16,128}$/;
+const CLAIM_ID_RE = /^[A-Za-z0-9._-]{8,128}$/;
 const ERROR_CODE_RE = /^[A-Z0-9_]{1,64}$/;
 const MAX_FUTURE_SKEW_MS = 60_000;
 
@@ -68,13 +70,19 @@ const parseObject = raw => {
   }
 };
 
-const verifiedWrite = (storage, value) => {
-  const encoded = JSON.stringify(value);
-  storage.setItem(CALCULATION_FAILURE_RECOVERY_STORAGE_KEY, encoded);
-  if (storage.getItem(CALCULATION_FAILURE_RECOVERY_STORAGE_KEY) !== encoded) {
-    throw new Error('Failed to durably persist calculation failure recovery state');
+const createDefaultClaimId = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  if (globalThis.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
   }
+  throw new Error('Secure random identifier source is unavailable');
 };
+
+const defaultDelay = milliseconds => new Promise(resolve => {
+  globalThis.setTimeout(resolve, milliseconds);
+});
 
 const validateState = (value, owner, { now = Date.now() } = {}) => {
   const expectedOwner = normalizeOwner(owner);
@@ -84,6 +92,8 @@ const validateState = (value, owner, { now = Date.now() } = {}) => {
     || normalizeOwner(value.owner) !== expectedOwner
     || typeof value.generationToken !== 'string'
     || !TOKEN_RE.test(value.generationToken)
+    || typeof value.claimId !== 'string'
+    || !CLAIM_ID_RE.test(value.claimId)
     || !Number.isSafeInteger(value.attempts)
     || value.attempts < 1
     || value.attempts > MAX_AUTOMATIC_FAILURE_RETRIES_PER_GENERATION
@@ -99,6 +109,7 @@ const validateState = (value, owner, { now = Date.now() } = {}) => {
     version: CALCULATION_FAILURE_RECOVERY_VERSION,
     owner: expectedOwner,
     generationToken: value.generationToken,
+    claimId: value.claimId,
     attempts: value.attempts,
     lastErrorCode: value.lastErrorCode,
     claimedAt: value.claimedAt,
@@ -175,12 +186,17 @@ export const readCalculationFailureRecoveryState = (storage, owner, options = {}
   )
 );
 
-export const claimAutomaticFailureRetry = (
+export const claimAutomaticFailureRetry = async (
   storage,
   owner,
   generationToken,
   triage,
-  { now = Date.now() } = {},
+  {
+    now = Date.now(),
+    settleMs = CALCULATION_FAILURE_RECOVERY_CLAIM_SETTLE_MS,
+    delay = defaultDelay,
+    createClaimId = createDefaultClaimId,
+  } = {},
 ) => {
   const target = requireStorage(storage);
   const normalizedOwner = normalizeOwner(owner);
@@ -189,6 +205,10 @@ export const claimAutomaticFailureRetry = (
     || typeof generationToken !== 'string'
     || !TOKEN_RE.test(generationToken)
     || triage?.retryable !== true
+    || !Number.isFinite(settleMs)
+    || settleMs < 0
+    || typeof delay !== 'function'
+    || typeof createClaimId !== 'function'
   ) {
     return false;
   }
@@ -201,16 +221,42 @@ export const claimAutomaticFailureRetry = (
     return false;
   }
 
+  let claimId;
+  try {
+    claimId = createClaimId();
+  } catch {
+    return false;
+  }
+  if (typeof claimId !== 'string' || !CLAIM_ID_RE.test(claimId)) return false;
+
   const state = {
     version: CALCULATION_FAILURE_RECOVERY_VERSION,
     owner: normalizedOwner,
     generationToken,
+    claimId,
     attempts: 1,
     lastErrorCode: normalizeErrorCode(triage.errorCode),
     claimedAt: now,
   };
-  verifiedWrite(target, state);
-  return true;
+
+  try {
+    target.setItem(CALCULATION_FAILURE_RECOVERY_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    return false;
+  }
+
+  try {
+    await delay(settleMs);
+  } catch {
+    return false;
+  }
+
+  const confirmation = readCalculationFailureRecoveryState(target, normalizedOwner);
+  return confirmation?.generationToken === generationToken
+    && confirmation.claimId === claimId
+    && confirmation.attempts === 1
+    && confirmation.lastErrorCode === state.lastErrorCode
+    && confirmation.claimedAt === now;
 };
 
 export const clearCalculationFailureRecoveryState = (
