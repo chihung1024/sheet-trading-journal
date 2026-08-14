@@ -232,10 +232,10 @@ const readManifestIdentity = snapshot => {
   const runtime = identity?.runtime_config;
   const benchmark = normalizeOwnerlessBenchmark(runtime?.benchmark_symbol);
   if (
-    manifest?.manifest_version !== SUPPORTED_MANIFEST_VERSION
+    (manifest?.manifest_version !== undefined && manifest.manifest_version !== SUPPORTED_MANIFEST_VERSION)
     || identity?.identity_version !== SUPPORTED_IDENTITY_VERSION
     || source?.canonicalization_version !== SUPPORTED_SOURCE_CANONICALIZATION_VERSION
-    || runtime?.canonicalization_version !== SUPPORTED_RUNTIME_CANONICALIZATION_VERSION
+    || (runtime?.canonicalization_version !== undefined && runtime.canonicalization_version !== SUPPORTED_RUNTIME_CANONICALIZATION_VERSION)
     || typeof source?.sha256 !== 'string'
     || !SHA256_RE.test(source.sha256)
     || !Number.isSafeInteger(source?.record_count)
