@@ -49,7 +49,7 @@ const baseRecord = {
   tax: 1,
 };
 
-test('transaction native cash flow mirrors Python BUY/SELL/DIV semantics', () => {
+test('transaction native cash flow mirrors current Python BUY/SELL/DIV semantics', () => {
   assert.equal(resolveNetCashflowNative(baseRecord), -1006);
   assert.equal(resolveSettlementAmountNative(baseRecord), 1006);
 
@@ -61,8 +61,12 @@ test('transaction native cash flow mirrors Python BUY/SELL/DIV semantics', () =>
   assert.equal(resolveNetCashflowNative(dividend), 1000);
   assert.equal(resolveSettlementAmountNative(dividend), 1000);
 
+  // Worker accepts any finite fee/tax and prepare_transactions preserves sign.
+  // Keep the browser projection identical to the actual calculator rather than
+  // silently normalizing historical/source data differently.
   const negativeCosts = { ...baseRecord, fee: -5, tax: -1 };
-  assert.equal(resolveNetCashflowNative(negativeCosts), -1006);
+  assert.equal(resolveNetCashflowNative(negativeCosts), -994);
+  assert.equal(resolveNetCashflowNative({ ...negativeCosts, txn_type: 'SELL' }), 1006);
 
   assert.equal(resolveNetCashflowNative({ ...baseRecord, qty: 0 }), null);
   assert.equal(resolveNetCashflowNative({ ...baseRecord, price: -1 }), null);
@@ -127,10 +131,12 @@ test('resolved TWD settlement uses authoritative date FX and preserves transacti
   assert.equal(krwSell.settlementAmountTwd, 99850 * 0.02215);
 });
 
-test('frontend consumes the root snapshot FX contract without duplicating FX derivation or as-of guessing', () => {
+test('frontend consumes existing authoritative contracts without inventing FX or fee normalization', () => {
   const recordList = read('src/components/RecordList.vue');
   const valuation = read('src/services/transactionValuation.js');
   const calculator = read('journal_engine/core/calculator.py');
+  const runner = read('main.py');
+  const worker = read('worker.js');
   const apiClient = read('journal_engine/clients/api_client.py');
 
   assert.match(recordList, /resolveTransactionValuation\(store\.rawData, record\)/);
@@ -141,10 +147,17 @@ test('frontend consumes the root snapshot FX contract without duplicating FX der
 
   assert.match(valuation, /row\._raw_fx_rates/);
   assert.match(valuation, /snapshot\.history\.find/);
+  assert.doesNotMatch(valuation, /Math\.abs\(commission\)/);
+  assert.doesNotMatch(valuation, /Math\.abs\(tax\)/);
   assert.doesNotMatch(valuation, /sort\(\)/);
   assert.doesNotMatch(valuation, /<= target/);
   assert.doesNotMatch(valuation, /32\.0/);
 
-  assert.match(calculator, /"_raw_fx_rates": self\._serialize_fx_context\(fx_context, fx\)/);
+  assert.match(calculator, /cost_usd = \(row\['Qty'\] \* row\['Price'\]\) \+ row\['Commission'\] \+ row\['Tax'\]/);
+  assert.match(calculator, /proceeds_twd = \(\(executable_qty \* row\['Price'\]\) - executed_commission - executed_tax\) \* effective_fx/);
+  assert.match(calculator, /"_raw_fx_rates": self\._serialize_fx_context\(/);
+  assert.match(runner, /df\[column\] = pd\.to_numeric\(df\[column\], errors="raise"\)\.fillna\(0\.0\)/);
+  assert.match(worker, /fee: optionalFiniteNumber\(body\.fee, "fee", 0\)/);
+  assert.match(worker, /tax: optionalFiniteNumber\(body\.tax, "tax", 0\)/);
   assert.match(apiClient, /snapshot\.model_dump\(mode="json"\)/);
 });
