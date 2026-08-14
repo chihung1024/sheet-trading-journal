@@ -66,7 +66,7 @@ const detectSourceRecordSchema = (record) => {
   throw new Error('source record schema is unsupported');
 };
 
-export const normalizeSourceRecordForManifest = (record) => {
+const normalizeSourceRecordForManifest = (record) => {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new Error('source record must be an object');
   }
