@@ -14,6 +14,7 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TRADE_FORM_PATH = path.join(ROOT, 'src', 'components', 'TradeForm.vue');
 const RECORD_LIST_PATH = path.join(ROOT, 'src', 'components', 'RecordList.vue');
+const TRANSACTION_VALUATION_PATH = path.join(ROOT, 'src', 'services', 'transactionValuation.js');
 const PYTHON_CURRENCY_PATH = path.join(ROOT, 'journal_engine', 'core', 'currency_detector.py');
 
 function read(filePath) {
@@ -89,14 +90,22 @@ test('TradeForm delegates currency labels to the shared native-currency contract
   assert.doesNotMatch(source, /transactionCurrency\.value === 'TWD' \? 'NT\$' : '\$'/);
 });
 
-test('RecordList never treats every non-TWD market as USD or invents a 32 TWD/USD fallback', () => {
-  const source = read(RECORD_LIST_PATH);
-  assert.match(source, /detectNativeCurrency/);
-  assert.match(source, /canConvertWithLegacyUsdTwdRate/);
-  assert.match(source, /if \(!canConvertWithLegacyUsdTwdRate\(currency\)\) return null;/);
-  assert.match(source, /TWD 尚無可靠換算/);
-  assert.match(source, /formatNativeAmount\(getRecordAvgPrice\(r\), getRecordCurrency\(r\), 2\)/);
-  assert.doesNotMatch(source, /isTaiwanStock/);
-  assert.doesNotMatch(source, /32\.0/);
-  assert.doesNotMatch(source, /calculateTotalAmountUSD/);
+test('RecordList delegates TWD valuation without restoring the old non-TWD-as-USD fallback', () => {
+  const recordList = read(RECORD_LIST_PATH);
+  const valuation = read(TRANSACTION_VALUATION_PATH);
+
+  assert.match(recordList, /detectNativeCurrency/);
+  assert.match(recordList, /resolveTransactionValuation/);
+  assert.match(recordList, /resolveSettlementAmountNative/);
+  assert.match(recordList, /TWD 尚無可靠換算/);
+  assert.match(recordList, /formatNativeAmount\(getRecordAvgPrice\(r\), getRecordCurrency\(r\), 2\)/);
+  assert.doesNotMatch(recordList, /isTaiwanStock/);
+  assert.doesNotMatch(recordList, /32\.0/);
+  assert.doesNotMatch(recordList, /calculateTotalAmountUSD/);
+  assert.doesNotMatch(recordList, /canConvertWithLegacyUsdTwdRate/);
+
+  assert.match(valuation, /detectNativeCurrency/);
+  assert.match(valuation, /row\._raw_fx_rates/);
+  assert.match(valuation, /currency === 'USD'/);
+  assert.doesNotMatch(valuation, /32\.0/);
 });
