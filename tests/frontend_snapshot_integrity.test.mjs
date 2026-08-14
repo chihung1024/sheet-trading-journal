@@ -4,11 +4,12 @@ import test from 'node:test';
 import {
   assessSnapshotIntegrity,
   buildSourceRecordsIdentity,
+  buildSourceRecordsProjection,
   pythonFloatHex,
   SNAPSHOT_INTEGRITY_STATUS,
 } from '../src/services/snapshotIntegrity.js';
 
-const RECORDS = Object.freeze([
+const CALCULATION_RECORDS = Object.freeze([
   Object.freeze({
     id: 2,
     Date: '2026-08-14',
@@ -30,6 +31,35 @@ const RECORDS = Object.freeze([
     Commission: 0,
     Tax: 1.25,
     Tag: '',
+  }),
+]);
+
+const API_RECORDS = Object.freeze([
+  Object.freeze({
+    id: 2,
+    user_id: 'user@example.com',
+    txn_date: '2026-08-14',
+    symbol: 'aapl',
+    txn_type: 'buy',
+    qty: 1.5,
+    price: 100.25,
+    fee: 0.1,
+    tax: 0,
+    tag: ' Stock ',
+    note: 'ignored by manifest identity',
+  }),
+  Object.freeze({
+    id: 1,
+    user_id: 'user@example.com',
+    txn_date: '2026-08-13',
+    symbol: 'TSM',
+    txn_type: 'SELL',
+    qty: 2,
+    price: 200,
+    fee: 0,
+    tax: 1.25,
+    tag: '',
+    note: '',
   }),
 ]);
 
@@ -63,32 +93,77 @@ test('float canonicalization matches Python float.hex for IEEE-754 edge fixtures
   assert.equal(pythonFloatHex(Number.MAX_VALUE), '0x1.fffffffffffffp+1023');
 });
 
-test('source identity matches the Python canonical SHA fixture byte-for-byte', async () => {
-  const identity = await buildSourceRecordsIdentity(RECORDS);
-  assert.equal(identity.sha256, PYTHON_RECORDS_SHA256);
-  assert.equal(identity.record_count, 2);
-  assert.equal(identity.max_record_id, 2);
+test('Worker API records project to the exact calculation manifest source contract', () => {
+  assert.deepEqual(
+    buildSourceRecordsProjection(API_RECORDS),
+    buildSourceRecordsProjection(CALCULATION_RECORDS),
+  );
 });
 
-test('source identity is deterministic across input order and normalizes symbol/type exactly like engine contract', async () => {
-  const first = await buildSourceRecordsIdentity(RECORDS);
-  const second = await buildSourceRecordsIdentity([...RECORDS].reverse());
-  const normalized = await buildSourceRecordsIdentity(RECORDS.map(record => ({
+test('Worker API and calculation-schema records produce the same Python canonical SHA', async () => {
+  const apiIdentity = await buildSourceRecordsIdentity(API_RECORDS);
+  const calculationIdentity = await buildSourceRecordsIdentity(CALCULATION_RECORDS);
+
+  assert.deepEqual(apiIdentity, calculationIdentity);
+  assert.equal(apiIdentity.sha256, PYTHON_RECORDS_SHA256);
+  assert.equal(apiIdentity.record_count, 2);
+  assert.equal(apiIdentity.max_record_id, 2);
+});
+
+test('API source identity is deterministic across order and ignores non-manifest API fields', async () => {
+  const first = await buildSourceRecordsIdentity(API_RECORDS);
+  const second = await buildSourceRecordsIdentity([...API_RECORDS].reverse());
+  const changedNonManifestFields = await buildSourceRecordsIdentity(API_RECORDS.map(record => ({
     ...record,
-    Symbol: `  ${record.Symbol.toUpperCase()}  `,
-    Type: ` ${record.Type.toUpperCase()} `,
+    user_id: 'other@example.com',
+    note: 'different note',
   })));
 
   assert.deepEqual(first, second);
-  assert.deepEqual(first, normalized);
-  assert.match(first.sha256, /^[0-9a-f]{64}$/);
-  assert.equal(first.record_count, 2);
-  assert.equal(first.max_record_id, 2);
+  assert.deepEqual(first, changedNonManifestFields);
 });
 
-test('exact source identity and benchmark classify snapshot as fresh', async () => {
-  const identity = await buildSourceRecordsIdentity(RECORDS);
-  const result = await assessSnapshotIntegrity(RECORDS, snapshotFor(identity), {
+test('API symbol and type normalization preserves the existing trim and uppercase manifest contract', async () => {
+  const normalized = await buildSourceRecordsIdentity(API_RECORDS);
+  const padded = await buildSourceRecordsIdentity(API_RECORDS.map(record => ({
+    ...record,
+    symbol: `  ${record.symbol.toLowerCase()}  `,
+    txn_type: ` ${record.txn_type.toLowerCase()} `,
+  })));
+
+  assert.deepEqual(normalized, padded);
+});
+
+test('API optional fee/tax/tag defaults match Python prepare_transactions normalization', async () => {
+  const apiRecord = [{
+    id: 1,
+    txn_date: '2026-08-13',
+    symbol: 'TSM',
+    txn_type: 'BUY',
+    qty: 2,
+    price: 200,
+  }];
+  const calculationRecord = [{
+    id: 1,
+    Date: '2026-08-13',
+    Symbol: 'TSM',
+    Type: 'BUY',
+    Qty: 2,
+    Price: 200,
+    Commission: 0,
+    Tax: 0,
+    Tag: '',
+  }];
+
+  assert.deepEqual(
+    await buildSourceRecordsIdentity(apiRecord),
+    await buildSourceRecordsIdentity(calculationRecord),
+  );
+});
+
+test('exact Worker API source identity and benchmark classify snapshot as fresh', async () => {
+  const identity = await buildSourceRecordsIdentity(CALCULATION_RECORDS);
+  const result = await assessSnapshotIntegrity(API_RECORDS, snapshotFor(identity), {
     expectedBenchmark: 'spy',
   });
 
@@ -98,7 +173,7 @@ test('exact source identity and benchmark classify snapshot as fresh', async () 
 });
 
 test('records with no materialized snapshot are provably repairable', async () => {
-  const result = await assessSnapshotIntegrity(RECORDS, { updated_at: '' }, {
+  const result = await assessSnapshotIntegrity(API_RECORDS, { updated_at: '' }, {
     expectedBenchmark: 'SPY',
   });
   assert.equal(result.status, SNAPSHOT_INTEGRITY_STATUS.MISSING);
@@ -106,10 +181,10 @@ test('records with no materialized snapshot are provably repairable', async () =
   assert.match(result.fingerprint, /^missing\|/);
 });
 
-test('source mismatch catches edits even when record count and max id are unchanged', async () => {
-  const identity = await buildSourceRecordsIdentity(RECORDS);
-  const edited = RECORDS.map(record => (
-    record.id === 1 ? { ...record, Price: record.Price + 1 } : record
+test('source mismatch catches API-record edits even when record count and max id are unchanged', async () => {
+  const identity = await buildSourceRecordsIdentity(API_RECORDS);
+  const edited = API_RECORDS.map(record => (
+    record.id === 1 ? { ...record, price: record.price + 1 } : record
   ));
   const result = await assessSnapshotIntegrity(edited, snapshotFor(identity), {
     expectedBenchmark: 'SPY',
@@ -123,8 +198,8 @@ test('source mismatch catches edits even when record count and max id are unchan
 });
 
 test('current user benchmark mismatch is repairable without pretending source records are stale', async () => {
-  const identity = await buildSourceRecordsIdentity(RECORDS);
-  const result = await assessSnapshotIntegrity(RECORDS, snapshotFor(identity, 'SPY'), {
+  const identity = await buildSourceRecordsIdentity(API_RECORDS);
+  const result = await assessSnapshotIntegrity(API_RECORDS, snapshotFor(identity, 'SPY'), {
     expectedBenchmark: 'QQQ',
   });
 
@@ -135,8 +210,24 @@ test('current user benchmark mismatch is repairable without pretending source re
   assert.equal(result.currentSource.sha256, identity.sha256);
 });
 
-test('missing or malformed current-engine manifest is repairable but malformed records fail closed without auto repair', async () => {
-  const missingManifest = await assessSnapshotIntegrity(RECORDS, {
+test('mixed API/calculation schema fails closed instead of silently hashing ambiguous records', async () => {
+  const mixed = [{
+    ...API_RECORDS[0],
+    Date: API_RECORDS[0].txn_date,
+  }];
+  const result = await assessSnapshotIntegrity(
+    mixed,
+    snapshotFor(await buildSourceRecordsIdentity(API_RECORDS)),
+    { expectedBenchmark: 'SPY' },
+  );
+
+  assert.equal(result.status, SNAPSHOT_INTEGRITY_STATUS.UNVERIFIABLE_RECORDS);
+  assert.equal(result.repairNeeded, false);
+  assert.match(result.fingerprint, /mixes API and calculation schemas/);
+});
+
+test('missing or malformed current-engine manifest is repairable but malformed API records fail closed without auto repair', async () => {
+  const missingManifest = await assessSnapshotIntegrity(API_RECORDS, {
     updated_at: '2026-08-14T03:30:00Z',
     holdings: [],
   }, { expectedBenchmark: 'SPY' });
@@ -144,16 +235,16 @@ test('missing or malformed current-engine manifest is repairable but malformed r
   assert.equal(missingManifest.repairNeeded, true);
 
   const malformedRecords = await assessSnapshotIntegrity([
-    { ...RECORDS[0], Qty: 'not-a-number' },
+    { ...API_RECORDS[0], qty: 'not-a-number' },
   ], { updated_at: '2026-08-14T03:30:00Z' }, { expectedBenchmark: 'SPY' });
   assert.equal(malformedRecords.status, SNAPSHOT_INTEGRITY_STATUS.UNVERIFIABLE_RECORDS);
   assert.equal(malformedRecords.repairNeeded, false);
 });
 
 test('semantic repair fingerprints ignore updated_at churn', async () => {
-  const identity = await buildSourceRecordsIdentity(RECORDS);
-  const edited = RECORDS.map(record => (
-    record.id === 1 ? { ...record, Price: record.Price + 1 } : record
+  const identity = await buildSourceRecordsIdentity(API_RECORDS);
+  const edited = API_RECORDS.map(record => (
+    record.id === 1 ? { ...record, price: record.price + 1 } : record
   ));
 
   const staleA = await assessSnapshotIntegrity(edited, snapshotFor(identity), {
@@ -166,29 +257,29 @@ test('semantic repair fingerprints ignore updated_at churn', async () => {
   });
   assert.equal(staleA.fingerprint, staleB.fingerprint);
 
-  const invalidA = await assessSnapshotIntegrity(RECORDS, {
+  const invalidA = await assessSnapshotIntegrity(API_RECORDS, {
     updated_at: '2026-08-14T03:30:00Z',
     calculation_manifest: { manifest_version: 1 },
   }, { expectedBenchmark: 'SPY' });
-  const invalidB = await assessSnapshotIntegrity(RECORDS, {
+  const invalidB = await assessSnapshotIntegrity(API_RECORDS, {
     updated_at: '2026-08-14T04:30:00Z',
     calculation_manifest: { manifest_version: 1 },
   }, { expectedBenchmark: 'SPY' });
   assert.equal(invalidA.fingerprint, invalidB.fingerprint);
 
-  const benchmarkA = await assessSnapshotIntegrity(RECORDS, snapshotFor(identity, 'SPY'), {
+  const benchmarkA = await assessSnapshotIntegrity(API_RECORDS, snapshotFor(identity, 'SPY'), {
     expectedBenchmark: 'QQQ',
   });
   const benchmarkSnapshotB = snapshotFor(identity, 'SPY');
   benchmarkSnapshotB.updated_at = '2026-08-14T04:30:00Z';
-  const benchmarkB = await assessSnapshotIntegrity(RECORDS, benchmarkSnapshotB, {
+  const benchmarkB = await assessSnapshotIntegrity(API_RECORDS, benchmarkSnapshotB, {
     expectedBenchmark: 'QQQ',
   });
   assert.equal(benchmarkA.fingerprint, benchmarkB.fingerprint);
 });
 
 test('explicit future manifest contracts fail closed instead of being repaired by an older frontend', async () => {
-  const identity = await buildSourceRecordsIdentity(RECORDS);
+  const identity = await buildSourceRecordsIdentity(API_RECORDS);
   const variants = [
     snapshot => { snapshot.calculation_manifest.manifest_version = 2; },
     snapshot => { snapshot.calculation_manifest.deterministic_identity.identity_version = 2; },
@@ -199,7 +290,7 @@ test('explicit future manifest contracts fail closed instead of being repaired b
   for (const mutate of variants) {
     const snapshot = snapshotFor({ ...identity });
     mutate(snapshot);
-    const result = await assessSnapshotIntegrity(RECORDS, snapshot, {
+    const result = await assessSnapshotIntegrity(API_RECORDS, snapshot, {
       expectedBenchmark: 'SPY',
     });
     assert.equal(result.status, SNAPSHOT_INTEGRITY_STATUS.UNSUPPORTED_MANIFEST);

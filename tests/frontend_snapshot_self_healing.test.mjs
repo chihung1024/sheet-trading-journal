@@ -41,19 +41,21 @@ const OWNER = 'user@example.com';
 const RECORDS = Object.freeze([
   Object.freeze({
     id: 1,
-    Date: '2026-08-14',
-    Symbol: 'AAPL',
-    Type: 'BUY',
-    Qty: 1,
-    Price: 100,
-    Commission: 0,
-    Tax: 0,
-    Tag: 'Stock',
+    user_id: OWNER,
+    txn_date: '2026-08-14',
+    symbol: 'AAPL',
+    txn_type: 'BUY',
+    qty: 1,
+    price: 100,
+    fee: 0,
+    tax: 0,
+    tag: 'Stock',
+    note: '',
   }),
 ]);
 
 const makeSnapshot = async ({ price = 100, benchmark = 'SPY' } = {}) => {
-  const records = RECORDS.map(record => ({ ...record, Price: price }));
+  const records = RECORDS.map(record => ({ ...record, price }));
   const source = await buildSourceRecordsIdentity(records);
   return {
     updated_at: '2026-08-14T04:00:00Z',
@@ -87,7 +89,7 @@ const makeContext = async ({ snapshot, records = RECORDS, readStatus = 'loaded' 
   return { storage, portfolio, auth, calls };
 };
 
-test('fresh cryptographic snapshot proof performs no repair handoff', async () => {
+test('fresh cryptographic snapshot proof from Worker API records performs no repair handoff', async () => {
   const context = await makeContext();
   const result = await reconcileSnapshotSelfHealing({
     ...context,
@@ -156,9 +158,9 @@ test('same anomaly fingerprint is attempted at most once per installed tracker l
   assert.equal(context.calls.fetchAll, 1);
 });
 
-test('malformed authoritative records fail closed without creating repair state', async () => {
+test('malformed authoritative API records fail closed without creating repair state', async () => {
   const context = await makeContext({
-    records: [{ ...RECORDS[0], Qty: 'invalid' }],
+    records: [{ ...RECORDS[0], qty: 'invalid' }],
   });
   const result = await reconcileSnapshotSelfHealing({
     ...context,

@@ -42,20 +42,22 @@ const OWNER = 'user@example.com';
 const RECORDS = Object.freeze([
   Object.freeze({
     id: 1,
-    Date: '2026-08-14',
-    Symbol: 'AAPL',
-    Type: 'BUY',
-    Qty: 1,
-    Price: 100,
-    Commission: 0,
-    Tax: 0,
-    Tag: 'Stock',
+    user_id: OWNER,
+    txn_date: '2026-08-14',
+    symbol: 'AAPL',
+    txn_type: 'BUY',
+    qty: 1,
+    price: 100,
+    fee: 0,
+    tax: 0,
+    tag: 'Stock',
+    note: '',
   }),
 ]);
 
 const makeSnapshotForPrice = async (price) => {
   const source = await buildSourceRecordsIdentity(
-    RECORDS.map(record => ({ ...record, Price: price })),
+    RECORDS.map(record => ({ ...record, price })),
   );
   return {
     updated_at: '2026-08-14T10:32:53Z',
@@ -71,7 +73,7 @@ const makeSnapshotForPrice = async (price) => {
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-test('a stale snapshot discovered after a succeeded calculation re-enters the Phase 2 full-read handoff once', async () => {
+test('a stale snapshot discovered after a succeeded calculation re-enters the Phase 2 full-read handoff once for real Worker API records', async () => {
   const storage = new MemoryStorage();
   const calls = { fetchAll: 0, stale: 0 };
   const portfolio = reactive({
