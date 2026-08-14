@@ -1,6 +1,8 @@
 import canonicalWorker, { __test as canonicalTest } from './worker.js';
 
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
+const IDEMPOTENT_RECORD_CREATE_PATH = '/api/records/idempotent';
+const CANONICAL_RECORDS_PATH = '/api/records';
 
 export default {
   async fetch(request, env = {}, ctx) {
@@ -12,7 +14,7 @@ export default {
       }
     }
 
-    return canonicalWorker.fetch(request, env, ctx);
+    return canonicalWorker.fetch(routeRecordCreateRequest(request), env, ctx);
   },
 };
 
@@ -31,7 +33,23 @@ export const __test = Object.freeze({
   },
   getExplicitOriginPolicy,
   parseConfiguredOrigin,
+  routeRecordCreateRequest,
 });
+
+function routeRecordCreateRequest(request) {
+  if (request?.method !== 'POST') return request;
+
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return request;
+  }
+  if (url.pathname !== IDEMPOTENT_RECORD_CREATE_PATH) return request;
+
+  url.pathname = CANONICAL_RECORDS_PATH;
+  return new Request(url.toString(), request);
+}
 
 function getExplicitOriginPolicy(env) {
   if (!hasExplicitAllowedOrigins(env)) {

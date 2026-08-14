@@ -149,9 +149,16 @@ test("tenant cannot resolve another user's opaque job", async () => {
   assert.equal(JSON.stringify(payload).includes(OWNER), false);
 });
 
-test("temporary worker-entry compatibility shim is retired after canonical ownership", async () => {
+test("retired opaque-target entry shim stays retired while record-create routing remains narrowly scoped", async () => {
   const entry = await readFile("worker-entry.js", "utf8");
   assert.doesNotMatch(entry, /handleOpaqueTargetCompatibility/);
   assert.doesNotMatch(entry, /COMPAT_JOB_PATH_RE/);
-  assert.match(entry, /return canonicalWorker\.fetch\(request, env, ctx\)/);
+  assert.doesNotMatch(entry, /X-Target-User/);
+  assert.doesNotMatch(entry, /target_user_id/);
+  assert.match(entry, /IDEMPOTENT_RECORD_CREATE_PATH = '\/api\/records\/idempotent'/);
+  assert.match(entry, /CANONICAL_RECORDS_PATH = '\/api\/records'/);
+  assert.match(entry, /if \(request\?\.method !== 'POST'\) return request/);
+  assert.match(entry, /if \(url\.pathname !== IDEMPOTENT_RECORD_CREATE_PATH\) return request/);
+  assert.match(entry, /url\.pathname = CANONICAL_RECORDS_PATH/);
+  assert.match(entry, /return canonicalWorker\.fetch\(routeRecordCreateRequest\(request\), env, ctx\)/);
 });
