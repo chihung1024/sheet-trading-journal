@@ -12,7 +12,27 @@
     </div>
 
     <div class="comparability-note" role="note">
-      各策略群組的歷史資料範圍可能不同，而且同一筆交易可能同時屬於多個標籤群組；此處是同一已發布快照的並列概覽，不是同期間績效排名，群組金額也不可直接相加。
+      各策略群組的完整歷史資料範圍可能不同，而且同一筆交易可能同時屬於多個標籤群組；完整歷史指標不是同期間績效排名，群組金額也不可直接相加。若共同期間 TWR 可用，僅採所有群組都存在且 TWR 可靠的完全相同日期，不做近似日期或補值。
+    </div>
+
+    <div
+      v-if="overview.status === 'ready' && overview.commonPeriodTwr.status === 'ready'"
+      class="common-period-card"
+      role="note"
+    >
+      <div>
+        <span class="common-period-label">共同期間 TWR</span>
+        <strong>{{ overview.commonPeriodTwr.startDate }} → {{ overview.commonPeriodTwr.endDate }}</strong>
+      </div>
+      <p>所有群組使用相同的已發布可靠起訖日期；數值由既有 linked TWR 重新定基，不重算投資組合會計，也不依績效排序。</p>
+    </div>
+
+    <div
+      v-else-if="overview.status === 'ready' && overview.groups.length >= 2"
+      class="common-period-unavailable"
+      role="note"
+    >
+      共同期間 TWR 暫不可用：{{ commonPeriodStatusLabel(overview.commonPeriodTwr) }}。
     </div>
 
     <div v-if="overview.status === 'unavailable'" class="empty-state">
@@ -64,12 +84,17 @@
             <dd :class="pnlClass(group.totalPnlTwd)">{{ formatSignedTwd(group.totalPnlTwd) }}</dd>
           </div>
           <div class="metric-item">
-            <dt>TWR</dt>
+            <dt>完整歷史 TWR</dt>
             <dd :class="metricClass(group.twr)">{{ formatPerformance(group.twr) }}</dd>
             <small v-if="group.twr.status !== 'ok'">{{ metricStatusLabel(group.twr) }}</small>
           </div>
           <div class="metric-item">
-            <dt>XIRR</dt>
+            <dt>共同期間 TWR</dt>
+            <dd :class="metricClass(group.commonPeriodTwr)">{{ formatPerformance(group.commonPeriodTwr) }}</dd>
+            <small v-if="group.commonPeriodTwr.status !== 'ok'">{{ metricStatusLabel(group.commonPeriodTwr) }}</small>
+          </div>
+          <div class="metric-item">
+            <dt>完整歷史 XIRR</dt>
             <dd :class="metricClass(group.xirr)">{{ formatPerformance(group.xirr) }}</dd>
             <small v-if="group.xirr.status !== 'ok'">{{ metricStatusLabel(group.xirr) }}</small>
           </div>
@@ -122,6 +147,17 @@ const metricStatusLabel = (metric) => {
   if (metric?.status === 'not_applicable') return '尚不適用';
   if (metric?.status === 'undefined') return '無法可靠計算';
   return '資料不可用';
+};
+
+const commonPeriodStatusLabel = (commonPeriod) => {
+  if (commonPeriod?.reason === 'insufficient_groups') return '至少需要兩個策略群組';
+  if (commonPeriod?.reason === 'insufficient_common_reliable_dates') return '沒有至少兩個所有群組共有的可靠 TWR 日期';
+  if (commonPeriod?.reason === 'duplicate_history_date') return '歷史資料含重複日期，無法安全選定共同期間';
+  if (commonPeriod?.reason === 'missing_history') return '至少一個群組缺少歷史資料';
+  if (commonPeriod?.reason === 'invalid_history_date' || commonPeriod?.reason === 'invalid_history_row') {
+    return '至少一個群組的歷史資料格式無法驗證';
+  }
+  return '目前資料不足以建立可驗證的共同期間';
 };
 
 const pnlClass = (value) => {
@@ -182,15 +218,52 @@ const metricClass = (metric) => (
   font-weight: 700;
 }
 
-.comparability-note {
+.comparability-note,
+.common-period-card,
+.common-period-unavailable {
   margin-bottom: 14px;
   padding: 10px 12px;
-  border: 1px solid rgba(217, 119, 6, 0.35);
   border-radius: 10px;
-  background: rgba(217, 119, 6, 0.07);
   color: var(--text-sub);
   font-size: 0.8rem;
   line-height: 1.55;
+}
+
+.comparability-note {
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  background: rgba(217, 119, 6, 0.07);
+}
+
+.common-period-card {
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.common-period-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.common-period-card strong {
+  color: var(--text-main);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+}
+
+.common-period-card p {
+  margin: 5px 0 0;
+}
+
+.common-period-label {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.common-period-unavailable {
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
 }
 
 .empty-state {
@@ -339,7 +412,8 @@ const metricClass = (metric) => (
 
   .overview-header,
   .strategy-card-header,
-  .history-range {
+  .history-range,
+  .common-period-card > div {
     align-items: flex-start;
     flex-direction: column;
   }
