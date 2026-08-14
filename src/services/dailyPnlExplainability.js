@@ -72,6 +72,21 @@ const normalizeRow = (raw) => {
   });
 };
 
+export function selectCurrentGroupDayLedger({ rawData, currentGroup = 'all' } = {}) {
+  if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return [];
+
+  const groups = rawData.groups;
+  if (groups && typeof groups === 'object' && !Array.isArray(groups)) {
+    const selected = groups[currentGroup];
+    return Array.isArray(selected?.day_ledger) ? selected.day_ledger : [];
+  }
+
+  if (currentGroup === 'all' && Array.isArray(rawData.day_ledger)) {
+    return rawData.day_ledger;
+  }
+  return [];
+}
+
 export function buildDailyPnlExplanation({ dayLedger, summary } = {}) {
   if (!Array.isArray(dayLedger) || dayLedger.length === 0) {
     return unavailable('missing_day_ledger');
