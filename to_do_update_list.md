@@ -3,149 +3,179 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **Phase 5 bounded data read self-recovery — code complete → Draft PR / exact-head CI**
+Current line: **Phase 5 GroupManager batch mutation lifecycle — permanent handoff complete → final docs-bearing CI / merge / post-main closure**
 
 ---
 
 ## 0. Operating doctrine
 
-1. Product functionality and user experience are highest priority.
-2. Fix generic root causes, not individual symptoms. Parallel investigation must converge.
-3. Financial/data correctness is fail-closed and may not be traded for convenience.
-4. Keep one primary active batch; do not reopen closed work without new material evidence.
-5. Preserve exact-head CI, rollback/recovery and permanent handoff for R2+ work.
-6. Prefer invisible automation when deterministic evidence permits it.
-7. AI may orchestrate workflow, but accounting/ledger truth remains deterministic rules — **AI 管流程，不管帳**.
+1. Product functionality and UX are highest priority.
+2. Fix generic root causes; parallel investigation must converge.
+3. Financial/data correctness is fail-closed.
+4. Keep one primary active batch.
+5. R2+ work requires exact-head CI, rollback/recovery, independent review and permanent handoff.
+6. Prefer invisible deterministic automation; **AI 管流程，不管帳**.
 
 ---
 
-## 1. Current production truth
+## 1. Closed product automation chain
 
-Protected main currently contains the complete closed automation chain through Phase 4:
+| Area | State | Closure evidence |
+|---|---|---|
+| Market-data malformed-row incident | CLOSED / PRODUCTION VERIFIED | passive watch only |
+| NOW-1B-A rollback-safe record-create transport | CLOSED / PRODUCTION VERIFIED | `/api/records/idempotent` live |
+| NOW-1B-B durable record-create intent | CLOSED | PR #231 `e7c94adc...`; CI #791 + Pages #1514 |
+| Phase 2 Automatic Recalculation | CLOSED | PR #232 `a458966...`; CI #799 + Pages #1515 |
+| Phase 3 Self-healing Snapshot | CLOSED | PR #233 `5706cb7463ad1e6e433ca9e852ff728ba0cc9c0e`; CI #807 + Pages #1516 |
+| Phase 4 terminal calculation failure recovery | CLOSED | PR #234 `3ed4711af539b7d60657adbec177607014b7a0e4`; CI #818 + Pages #1517 |
+| Phase 4 trigger outcome ambiguity replay | CLOSED | PR #235 `b8d412559ef684bfb2b9197480898f140a92bd43`; CI #823 + Pages #1518 |
+| Phase 5 bounded data-read self-recovery | **CLOSED** | PR #236 `80abac173a5b5a5c75c5420af11d92480407180b`; post-main CI #825 + Pages #1519 SUCCESS |
 
-- NOW-1B durable record-create intent — CLOSED.
-- Phase 2 automatic recalculation — CLOSED.
-- Phase 3 snapshot self-healing — CLOSED.
-- Phase 4 bounded terminal calculation failure recovery — CLOSED.
-- Phase 4 trigger outcome ambiguity replay — CLOSED.
-
-Latest closed Phase 4 trigger ambiguity evidence:
-
-- PR #235 ordinary merged as `b8d412559ef684bfb2b9197480898f140a92bd43`.
-- post-main CI #823 SUCCESS.
-- production Pages #1518 SUCCESS.
-- no Worker deployment or D1 change was required.
-
-Do not reopen these closed phases without new material evidence.
+Do not reopen these phases without new material evidence.
 
 ---
 
-## 2. Active Phase 5 slice
+## 2. ACTIVE — Phase 5 GroupManager batch mutation lifecycle
 
-Branch: `feat/phase5-read-self-recovery`
+PR: **#237 — `Phase 5: converge group batch mutation lifecycle`**  
+Branch: `feat/phase5-group-batch-lifecycle`  
+Base: verified protected main `80abac173a5b5a5c75c5420af11d92480407180b`  
+Risk: **R2 Significant**.
 
-Permanent design:
+Permanent engineering handoff:
 
-`docs/engineering/PHASE5_BOUNDED_DATA_READ_SELF_RECOVERY_2026-08-14.md`
+`docs/engineering/PHASE5_GROUP_BATCH_MUTATION_LIFECYCLE_2026-08-14.md`
 
-Product objective:
+### Root cause
 
-> When a safe portfolio GET read fails transiently, attempt one invisible reconnect before asking the user to press the existing reliability banner's `重新載入` button.
+`GroupManager.vue` is the only production record-update path outside `portfolioStore` that directly performs sequential `PUT /api/records` through `groupRecordMutation.js`.
 
-### Recoverable exact paths
+The previous path correctly stopped on partial/ambiguous failure, but it did not establish:
 
-- `GET /api/records`
-- `GET /api/portfolio`
-- `GET /api/user-settings`
+- NOW-1B record-create supersede barrier;
+- Phase 2 durable dirty-generation intent.
 
-### Retryable evidence
+Calling `portfolioStore.updateRecord()` N times was rejected because it would cause N full record readbacks/toasts.
 
-- timeout;
-- malformed response/success evidence;
-- network `TypeError` / `NetworkError`;
-- explicit HTTP 5xx.
+### Final lifecycle contract
 
-### Fail closed
+Before the first browser batch PUT:
 
-- mutation methods;
-- HTTP 4xx/client rejection;
-- external/user abort;
-- calculation-job polling routes;
-- unknown non-network errors;
-- signed-out state;
-- explicit browser offline state.
+1. derive owner from the server-issued JWT email claim;
+2. inspect same-owner eligible pending record-create intents;
+3. if any exist, rotate the existing record mutation barrier;
+4. barrier/owner failure stops before any PUT.
 
-### Bounded episode semantics
+For **every verified committed row**:
 
-- auto recovery only runs after `portfolioReadStatus === 'error'`;
-- 2-second backoff;
-- same signed owner + token + online state required at retry time;
-- one `portfolio.fetchAll()` automatic retry per failed episode;
-- a verified later `portfolioReadStatus === 'loaded'` resets the allowance;
-- failed auto retry leaves the existing DataReliabilityBanner/manual `重新載入` fallback intact;
-- no automatic loop.
+```text
+PUT confirmed
+-> verified succeeded count +1
+-> rotate Phase 2 dirty generation
+-> continue sequentially
+```
 
-### Cross-owner correction found during R2 review
+Every row must rotate the generation because a calculation can start mid-batch. A later row must leave a newer token that an older job cannot falsely settle clean.
 
-Initial implementation used one controller-wide episode flag. During a 2-second backoff, switching accounts could cancel the old timer but accidentally consume the new account's one-attempt allowance.
+For an **outcome-ambiguous row**:
 
-Correction:
+```text
+ambiguous PUT
+-> rotate dirty generation because row may have committed
+-> STOP
+-> do not send remaining rows
+```
 
-- episode allowance is now owner-aware;
-- account change resets the episode allowance and clears old pending evidence;
-- old-owner timer cannot run under the new owner;
-- a new-owner pending failure can schedule after the old timer releases;
-- notification/timer helper failures are contained.
+If a verified row commits but the dirty generation cannot be written:
 
----
+- count the row as committed;
+- raise `RECOVERY_STATE_FAILED`;
+- stop immediately;
+- mutate no later rows without durable recovery state.
 
-## 3. Current implementation files
-
-Expected active diff:
-
-- `src/services/dataReadSelfRecovery.js`
-- `src/main.js`
-- `tests/frontend_data_read_self_recovery.test.mjs`
-- `tests/frontend_data_read_self_recovery_bootstrap.test.mjs`
-- `docs/engineering/PHASE5_BOUNDED_DATA_READ_SELF_RECOVERY_2026-08-14.md`
-- this file.
-
-No Worker, D1/schema, Python-engine, finance, market-data, validation or reconciliation changes are expected.
+GroupManager's existing final `portfolioStore.triggerUpdate()` can then read the latest dirty generation and use the normal Phase 2 job-coverage lifecycle. Deduplicated/mid-batch older jobs cannot claim a newer token.
 
 ---
 
-## 4. Remaining gates
+## 3. Code-bearing verification
+
+Latest code-bearing exact head before permanent docs:
+
+`e70e0263bd10f03f7742b564640620ed4ad508c1`
+
+CI #829 / run `31777582194`: **SUCCESS**
+
+- Frontend contracts/build: SUCCESS
+- Worker security/deployment/local D1: SUCCESS
+- Python tests/coverage: SUCCESS
+
+Code-bearing compare against protected main:
+
+- `behind_by=0`
+- exactly 3 files:
+  - `src/services/groupRecordMutation.js`
+  - `tests/frontend_group_batch_lifecycle.test.mjs`
+  - `tests/frontend_group_batch_generation_race.test.mjs`
+
+R2 review: **PASS / 0 BLOCKER**.
+
+Important RCA captured by tests:
+
+- a LIVE create intent is actually superseded, not merely expired by TTL;
+- invalid owner/token context fails before PUT;
+- dirty-state failure after a committed row stops later writes;
+- each committed row creates a distinct dirty token;
+- ambiguous row rotates again and stops the batch.
+
+Permanent docs advance the branch head, so CI #829 is **not** the final merge gate.
+
+---
+
+## 4. Exact remaining gates
 
 Do autonomously unless GitHub/platform genuinely requires owner action:
 
-1. create Draft PR from `feat/phase5-read-self-recovery` to `main`;
-2. require exact-head full CI across Frontend, Worker and Python;
-3. if CI fails, RCA the single current failure; do not weaken safety gates;
-4. adversarial review must confirm:
-   - GET-only exact-path scope;
-   - one retry per failed episode;
-   - successful load resets allowance;
-   - 4xx/abort/non-read routes fail closed;
-   - owner switch cannot replay old-owner work or consume new-owner quota;
-   - offline state cancels retry;
-   - helper/notify failures cannot leak globally;
-   - no second data loader/cache/queue;
-   - existing manual reload remains fallback;
-5. final compare against protected `main`, `behind_by=0`;
-6. update PR body with exact head/CI/review evidence;
+1. re-fetch PR #237 latest docs-bearing head;
+2. require fresh full CI on that exact head;
+3. compare against protected `main` and require `behind_by=0`;
+4. expected final scope is only:
+   - `src/services/groupRecordMutation.js`;
+   - two targeted frontend regression files;
+   - `docs/engineering/PHASE5_GROUP_BATCH_MUTATION_LIFECYCLE_2026-08-14.md`;
+   - this file;
+5. final R2 review must confirm:
+   - signed-owner context before mutation;
+   - pending create supersede before first PUT;
+   - sequential stop-on-first-failure behavior preserved;
+   - every verified row rotates dirty generation;
+   - ambiguous row rotates dirty generation;
+   - recovery-state persistence failure stops future writes;
+   - old/deduplicated jobs cannot falsely clean newer rows;
+   - no Worker/D1/Python/finance/validation drift;
+6. update PR #237 body with final exact head/CI/scope/review;
 7. mark Ready;
 8. ordinary merge with expected head SHA;
 9. require post-main CI SUCCESS;
 10. require production Pages SUCCESS;
 11. no Worker deploy expected;
-12. no real-user ledger mutation for smoke testing.
+12. no real-user ledger mutation solely for smoke testing.
 
-Only then mark this Phase 5 slice CLOSED.
+Only then mark this slice CLOSED.
 
 ---
 
-## 5. What not to do next
+## 5. Residual bounded UX gap after #237
 
-Do not convert Phase 5 into a broad AI-agent rewrite. After this read-self-recovery slice closes, independently identify the next highest-friction manual operation and automate only where deterministic evidence permits it.
+Do not expand #237 for this unless correctness evidence changes.
 
-Repository hygiene item `tmp-do-not-create` remains zero-diff/nonfunctional and must not block product work.
+`GroupManager.vue` still uses standalone `portfolioStore.fetchRecords()` for its immediate post-batch readback. A failure of that narrow read can still ask the user to refresh the page, because the Phase 5 global read self-recovery controller only activates for a full portfolio read episode with `portfolioReadStatus === 'error'`.
+
+After #237 closes, reassess whether this is the next highest-value UX slice. A possible solution is to converge GroupManager readback onto a full lifecycle that can reuse the existing read self-recovery and automatic recalculation, but do not redesign auth/backend or create another queue merely to remove warning copy.
+
+A second conservative limitation: GroupManager captures its auth token at batch start. If that token expires mid-batch, the server rejects the row and the batch stops with partial truth. Safe behavior is already preserved; do not broaden into auth redesign without production evidence.
+
+---
+
+## 6. Repository hygiene
+
+`tmp-do-not-create` is a zero-diff accidental branch with no unique commits or production effect. Remove later when a supported branch-delete path is available; never block product work for it.
