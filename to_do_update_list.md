@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **PR #247 ACTIVE — snapshot freshness API/manifest record-contract root-cause fix; code head CI #870 SUCCESS; final PR gates pending**
+Current line: **PR #247 CLOSED / PRODUCTION PAGES VERIFIED — snapshot freshness API/manifest record-contract root cause fixed; no runtime batch active; user browser symptom recheck is the next evidence point**
 
 ---
 
@@ -39,22 +39,26 @@ Current line: **PR #247 ACTIVE — snapshot freshness API/manifest record-contra
 | Record-create recovery UI completion | CLOSED / PRODUCTION PAGES VERIFIED | PR #242 `268a7b31c1354da67857c910b7dbea7f4d602112`; final PR CI #854, post-main CI #855 + Pages #1525 SUCCESS |
 | Phase 5 closure handoff | CLOSED | PR #243 `74351c863bcceb061a10d85ed673f6611d2e1faa`; post-main CI #857 + Pages #1526 SUCCESS |
 | Restored-session read recovery copy | CLOSED / PRODUCTION PAGES VERIFIED | PR #244 `f00c5616a1d9eca819e6c7cccda181fe6be322e8`; final PR CI #858, post-main CI #859 + Pages #1527 SUCCESS |
-| Three user-reported product defects | **PARTIAL REOPEN — stale-snapshot item only** | PR #245 `112c9b7b0d93ea49547f3cd005f4a5024f152bd5`; layout + TWR fixes remain CLOSED; new production evidence reopened stale-snapshot root cause in PR #247 |
+| Three user-reported product defects | CLOSED / PARTIALLY SUPERSEDED | PR #245 `112c9b7b0d93ea49547f3cd005f4a5024f152bd5`; layout + TWR remain closed; stale-snapshot item was reopened by new production evidence and superseded by PR #247 |
+| Snapshot freshness API/manifest record contract | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #247 merged as `cc51ebc2b0f020e23c2efbf2cdcb7c2102c7d0a9`; final PR CI #871, post-main CI #872 + Pages #1530 SUCCESS; Independent Review Gate PASS |
 
-Do not reopen other closed phases without new material evidence.
+Do not reopen closed phases without new material evidence.
 
 ---
 
 ## 2. Project Status / Stable State
 
-Current protected `main` before PR #247:
+Current verified runtime merge checkpoint:
 
-`c1acaa2039eecca301440e8b26fa065a2d61c36d`
+`cc51ebc2b0f020e23c2efbf2cdcb7c2102c7d0a9`
 
-- PR #246 advanced `main` with handoff/documentation only; no new Worker/D1/Python runtime contract was introduced.
-- Production Worker remains release `4.08`, API `2.61`, schema `3`; PR #247 does not change Worker, D1, migrations, or Python calculation methodology.
-- Latest reproduced calculation path itself is healthy: production `Update Portfolio Data` run #3276 completed record fetch, financial calculation, snapshot upload, and terminal `succeeded` callback. The defect is browser-side freshness verification after that successful publication.
-- Recovery point for the active batch: branch `fix/snapshot-integrity-record-contract`, created from exact `main@c1acaa2039eecca301440e8b26fa065a2d61c36d`.
+- PR #247 is merged and its frontend runtime is deployed through Pages production deployment #1530.
+- Exact merge-SHA post-main CI #872 / run `31801023106`: **SUCCESS**.
+- Exact merge-SHA Pages #1530 / run `31801022403`: **SUCCESS**.
+- Production Worker remains release `4.08`, API `2.61`, schema `3`; PR #247 changed no Worker source, D1 schema/migration, or Python financial methodology, so no Worker deployment was required.
+- The reproduced backend calculation path itself was already healthy: production `Update Portfolio Data` run #3276 completed record fetch, financial calculation, snapshot upload, and terminal `succeeded` callback. PR #247 fixes the browser-side false-negative freshness verification after successful publication.
+- Recovery point for the runtime batch was branch `fix/snapshot-integrity-record-contract`, created from `main@c1acaa2039eecca301440e8b26fa065a2d61c36d`.
+- Rollback remains a normal revert of PR #247 / merge `cc51ebc2...`; no schema or data rollback is required.
 
 Stable product invariants remain:
 
@@ -69,49 +73,43 @@ record create durable intent
 → bounded self-healing only when integrity evidence proves repair is safe
 ```
 
+### User-facing verification boundary
+
+Repository, CI, and Pages deployment are verified. An actual already-open browser tab can still be running the pre-deploy JavaScript bundle until reload. The next useful product evidence is therefore a normal browser reload followed by observation of a fresh snapshot / next calculation cycle. If the stale pill/banner still persists after the deployed bundle is loaded, reopen from that new evidence instead of adding speculative retry logic.
+
 ---
 
-## 3. Current Phase / Batch — PR #247 Snapshot Integrity Record Contract
+## 3. Closed Batch — PR #247 Snapshot Integrity Record Contract
 
-### Primary Goal
+### Primary Goal — SATISFIED BY CODE/DEPLOYMENT EVIDENCE
 
-After a successful calculation publishes a snapshot, every legal transaction set returned by the real Worker `/api/records` contract must be canonicalized exactly like Python before comparison with `calculation_manifest`. A genuinely matching snapshot must converge to verified/non-stale UI state; true data/benchmark mismatches and malformed/unknown contracts must remain fail-closed.
+Every legal transaction set returned by the real Worker `/api/records` contract is now canonicalized through the same API→calculation field boundary used by Python before comparison with `calculation_manifest`. A matching source/benchmark can converge to verified/non-stale state; true mismatches and malformed/unknown contracts remain fail-closed.
 
-### In Scope
+### Scope completed
+
+Runtime:
 
 - `src/services/snapshotIntegrity.js`
-- real Worker API-shaped snapshot-integrity regression fixtures
-- snapshot self-healing regression coverage
-- the original user-reported stale-after-success lifecycle regression
-- handoff / root-cause documentation
 
-### Out of Scope
+Regression:
 
-- Worker API or authorization changes
-- D1 schema/migrations
-- Python financial calculations or manifest methodology
-- extra retry loops or timers
-- forcing/hiding stale UI state
-- `portfolio.js` refactor
-- deployment architecture changes
+- `tests/frontend_snapshot_integrity.test.mjs`
+- `tests/frontend_snapshot_self_healing.test.mjs`
+- `tests/frontend_user_reported_product_defects.test.mjs`
 
-### Allowed Investigation
+Handoff:
 
-Trace only the established path:
+- `to_do_update_list.md`
 
-```text
-successful calculation job
-→ snapshot upload
-→ terminal callback
-→ fetchAll / records + settings + snapshot
-→ snapshotIntegrity
-→ snapshotSelfHealing
-→ snapshotFreshness / reliability UI
-```
+Explicitly unchanged:
 
-### Expansion Trigger
-
-Expand only if final tests show the Worker API projection still cannot reproduce the Python source-record identity, or if a fresh production snapshot after deployment still proves a different mismatch. Do not add retries/UI special cases as a substitute.
+- Worker API/auth
+- D1 schema/migrations/data
+- Python financial calculations / manifest methodology
+- retry/timer policy
+- `portfolio.js` orchestration
+- UI copy/components
+- production Worker deployment architecture
 
 ---
 
@@ -127,36 +125,36 @@ User observed both `快照待重算` and `持倉與績效快照待重新計算` 
 - Production calculation run #3276 succeeded end-to-end, including snapshot upload and terminal `succeeded` callback.
 - Worker `/api/records` returns the persisted API/D1 field contract: `txn_date`, `symbol`, `txn_type`, `qty`, `price`, `fee`, `tax`, `tag`.
 - Browser pagination passes those record objects into Pinia without converting field names.
-- Python `prepare_transactions()` explicitly converts that API schema to `Date`, `Symbol`, `Type`, `Qty`, `Price`, `Commission`, `Tax`, `Tag` before building the deterministic source-record manifest.
+- Python `prepare_transactions()` explicitly converts that API schema to `Date`, `Symbol`, `Type`, `Qty`, `Price`, `Commission`, `Tax`, `Tag` before building deterministic source-record identity.
 - Pre-PR-247 `snapshotIntegrity.js` skipped that boundary and read browser records directly as the Python field names.
 
 **Failure Point**  
 `buildSourceRecordsIdentity(records)` could not construct a valid canonical projection from real Worker records; `assessSnapshotIntegrity()` therefore classified legitimate production records as `UNVERIFIABLE_RECORDS`. Snapshot self-healing correctly treated that as fail-closed and called `markSnapshotStale()`.
 
 **Contributing Factor**  
-PR #245 fixed a real post-terminal/full-read scheduling race, but its regression fixtures used calculation-schema records (`Date`, `Symbol`, etc.) rather than the actual Worker API record shape. The lifecycle test therefore passed while the production schema-boundary defect remained invisible.
+PR #245 fixed a separate real post-terminal/full-read scheduling race, but its regression fixtures used calculation-schema records (`Date`, `Symbol`, etc.) rather than the actual Worker API record shape. The lifecycle test therefore passed while the schema-boundary defect remained invisible.
 
 **Root Cause**  
 The browser integrity layer independently implemented Python manifest canonicalization but omitted the API-record → calculation-record normalization boundary used by the authoritative Python engine.
 
 **Systemic Cause**  
-The same cross-layer source-record contract existed in Worker/API, Python preprocessing, frontend integrity logic, and tests without a regression that fed the real Worker API shape through the browser canonicalizer and compared it against the existing Python canonical SHA fixture.
+The same source-record contract existed across Worker/API, Python preprocessing, frontend integrity logic, and tests without a regression that fed the real Worker API shape through the browser canonicalizer and compared it with the established Python canonical SHA fixture.
 
 **Impact Analysis**
 
 - No evidence of D1 data corruption or incorrect Python financial calculation.
 - A correctly published snapshot could be falsely marked stale in the browser.
-- Re-triggering calculation could not permanently solve it because the same frontend integrity check would reject the next correct snapshot again.
-- The stale warning was therefore truthful relative to frontend verification state, but the verification state itself was wrong.
+- Re-triggering calculation could not permanently solve the defect because the same frontend integrity check rejected the next correct snapshot again.
+- The warning was truthful relative to frontend verification state, but that verification state was wrong.
 
 **Permanent Fix**
 
-- Add an explicit schema-boundary adapter inside `snapshotIntegrity.js` matching Python `prepare_transactions()` field normalization.
-- Preserve the existing calculation-schema input only for the pure manifest projection contract/tests.
-- Reject mixed API/calculation schema objects as ambiguous and fail-closed.
-- Preserve Python-compatible defaults for optional API `fee`, `tax`, and `tag`.
-- Exercise real Worker API-shaped records across integrity, self-healing, and the user-reported lifecycle regression.
-- Keep the adapter internal; do not expand frontend public API solely for testing.
+- Added an explicit internal schema-boundary adapter in `snapshotIntegrity.js` matching Python `prepare_transactions()` field normalization.
+- Preserved calculation-schema input for the existing pure manifest projection contract/tests.
+- Mixed API/calculation schema objects are rejected as ambiguous and fail-closed.
+- Optional API `fee`, `tax`, and `tag` use Python-compatible defaults.
+- Regression coverage now uses real Worker API-shaped records across identity, self-healing, and the user-reported terminal-success lifecycle.
+- No stale state is force-cleared; successful job status alone never proves freshness.
 
 **Prevention**
 
@@ -166,61 +164,52 @@ The regression suite now requires:
 2. both produce the exact pre-existing Python canonical SHA fixture;
 3. symbol/type trim + uppercase normalization remains stable;
 4. non-manifest fields such as `user_id` / `note` do not affect identity;
-5. a matching API record set classifies as `FRESH`;
+5. matching API records classify as `FRESH`;
 6. true record edits remain `STALE_SOURCE`;
 7. malformed or mixed schemas remain fail-closed;
-8. a fresh proof does not invoke self-healing repair.
+8. fresh proof does not invoke self-healing repair.
 
 ---
 
 ## 5. Change Log / Verification
 
-### Batch PR #247
+### PR #247
 
-Branch: `fix/snapshot-integrity-record-contract`
+Implementation branch: `fix/snapshot-integrity-record-contract`  
+Final PR head: `09486cfb4a9422a070d17ae8a2a8943c7f41159f`  
+Main merge: `cc51ebc2b0f020e23c2efbf2cdcb7c2102c7d0a9`
 
-Verified code head before handoff commit:
-
-`83adbf475c41041ba99af8f24f227937771e661c`
-
-Files changed in runtime/test scope:
-
-- `src/services/snapshotIntegrity.js`
-- `tests/frontend_snapshot_integrity.test.mjs`
-- `tests/frontend_snapshot_self_healing.test.mjs`
-- `tests/frontend_user_reported_product_defects.test.mjs`
-
-Implementation:
-
-- API/D1 records are normalized into the same manifest projection used by Python.
-- No store data shape is mutated.
-- No stale state is force-cleared.
-- Unknown/mixed/invalid contracts still fail closed.
-
-Verification completed on code head `83adbf4...`:
+Verification:
 
 - targeted canonical SHA/integrity regression: PASS;
-- PR CI #870 (`31800319339`): **SUCCESS**;
-- frontend contracts: PASS, including real API-record integrity/self-healing regressions;
-- frontend production build: PASS;
-- Python tests + branch coverage gate: PASS;
+- code-head CI #870 / `31800319339`: SUCCESS;
+- final exact-head PR CI #871 / `31800465725`: **SUCCESS**;
+- Python tests + branch coverage: PASS;
+- frontend contracts + production build: PASS;
 - Worker security/deployment tests: PASS;
-- Worker config / Recovery Evidence Gate / local D1 schema gate: PASS;
-- diff review: runtime change remains isolated to `snapshotIntegrity.js`; no Worker/D1/Python/store/UI runtime change.
+- Worker config / Recovery Evidence Gate / local D1 schema: PASS;
+- independent frozen-diff review on exact head: **PASS**;
+  - BLOCKER: 0;
+  - FOLLOW-UP: 0;
+  - BACKLOG: 1 — if the source-record/API/manifest contract materially versions in the future, consider generated/versioned cross-language mapping instead of duplicated mapping;
+- post-main exact merge-SHA CI #872 / `31801023106`: **SUCCESS**;
+- Pages production deployment #1530 / `31801022403`: **SUCCESS**.
 
-Final PR head after this handoff-only commit must rerun required CI before Ready/Merge.
+### Merge-method note
+
+The intended squash merge was attempted twice against exact PR head `09486cf...`; GitHub's canonical merge mutation endpoint returned HTTP 405 `Squash merges are not allowed on this repository` both times. Repository merge policy was **not** modified or bypassed. A normal exact-head `merge` was then used, consistent with existing repository history, producing `cc51ebc2...`.
+
+### Deployment
+
+- Frontend Pages: **DEPLOYED / VERIFIED**.
+- Production Worker: **NOT REQUIRED / NOT DEPLOYED**.
+- D1 migration: **NOT REQUIRED / NOT RUN**.
+- User browser symptom recheck after loading the new frontend bundle: **NOT YET DIRECTLY OBSERVED BY THE AUTOMATED REPOSITORY GATES**.
 
 Rollback:
 
-- squash/revert PR #247 if regression is observed;
-- no schema/data migration rollback is required;
-- reverting restores the previous browser integrity behavior without changing D1 or published snapshots.
-
-Deployment:
-
-- **NOT DEPLOYED YET**.
-- This is frontend-only runtime code; after merge, normal protected-main Pages deployment is required.
-- Production Worker deploy is **not required** because Worker source/D1 contract are unchanged.
+- revert PR #247 / merge `cc51ebc2...` if a regression is observed;
+- no schema/data migration rollback is required.
 
 ---
 
@@ -231,13 +220,15 @@ Deployment:
 - **Evidence:** successful backend calculation/publication plus deterministic frontend `UNVERIFIABLE_RECORDS` path.
 - **Alternatives rejected:** force `snapshotFreshness` to fresh; hide warning after `succeeded`; add another calculation retry; change Worker API field names; change Python manifest format.
 - **Reason:** those alternatives either conceal unverifiable data or broaden impact without addressing the mismatched contract.
-- **Trade-off:** frontend supports two explicit source input shapes at the canonicalization boundary (real API shape and calculation projection shape) and rejects mixed objects.
-- **Status:** ACTIVE in PR #247.
-- **Reopen Condition:** production evidence proves another valid Worker record shape or Python manifest contract version that is not represented by this boundary.
+- **Trade-off:** frontend accepts two explicit source input shapes at the canonicalization boundary (real API shape and calculation projection shape) and rejects mixed objects.
+- **Status:** CLOSED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
+- **Reopen Condition:** fresh production evidence proves another valid Worker record shape or manifest contract that is not represented by this boundary, or the user reproduces the stale state after loading the deployed frontend bundle.
 
 ### D-2026-08-14-02 — Keep fail-closed integrity semantics
 
 A successful job status alone is not proof that the displayed snapshot matches current records. Freshness still requires source SHA/count/max-id and benchmark agreement. Job success must never directly clear the stale warning.
+
+Status: **LOCKED**.
 
 ---
 
@@ -245,12 +236,12 @@ A successful job status alone is not proof that the displayed snapshot matches c
 
 ### Current risk
 
-The main risk is cross-layer canonicalization drift if Worker/Python field contracts change in the future. The new API-shaped SHA parity tests reduce this risk but do not replace versioning discipline.
+Cross-layer canonicalization could drift if Worker/Python field contracts materially change in the future. The API-shaped SHA parity tests reduce this risk; versioning discipline remains required.
 
-### Known non-blocking documentation drift
+### Known non-blocking documentation/status drift
 
 - `docs/DEPLOYMENT.md` historical/current-live text can lag remote deployment truth; deployment methodology remains authoritative but live identity must be revalidated from Actions/contracts.
-- Issue #97 staging status has historical stale wording; it is not part of this product batch.
+- Issue #97 contains historical staging status wording and is not a blocker for current product functionality.
 
 ### Technical Debt / Deferred Candidates
 
@@ -260,7 +251,8 @@ Do not promote without new evidence:
 2. calculation polling beyond 20 minutes;
 3. broad cross-group dividend pending filtering;
 4. broad `portfolio.js` refactor;
-5. Worker/D1 changes for this snapshot incident.
+5. Worker/D1 changes for the closed snapshot incident;
+6. generated/versioned cross-language source-record mapping contract before an actual contract-version change.
 
 ---
 
@@ -268,38 +260,33 @@ Do not promote without new evidence:
 
 **NOW**
 
-- complete final exact-head PR #247 CI after handoff commit;
-- perform independent third-party PR review;
-- classify review findings as BLOCKER / FOLLOW-UP / BACKLOG / REJECT;
-- only BLOCKER can prevent merge.
+- no runtime implementation batch active;
+- obtain the next direct user-facing evidence by loading the deployed frontend and observing whether the stale pill/banner converges away for a matching snapshot / next calculation cycle.
 
 **NEXT**
 
-- mark PR #247 Ready once final gates pass;
-- squash merge to protected `main`;
-- verify post-main CI and Pages production deployment;
-- verify normal browser full-read can classify a matching production snapshot without the stale banner/pill.
+- if user verification passes: return to evidence-driven product / UX audit;
+- if user verification fails: reopen this incident from fresh browser + current production evidence, classify the newly observed failure point, and do not assume the same root cause.
 
 **BACKLOG**
 
 - documentation/status hygiene listed above;
+- generated/versioned cross-language mapping only if a future schema/version change justifies it;
 - unrelated deferred product candidates already reviewed.
 
 **REJECT**
 
 - force-clearing stale state because the job says `succeeded`;
 - adding retries to mask integrity verification failure;
-- changing Worker/D1/Python for this root cause without new evidence;
-- broad refactor during this incident batch.
+- changing Worker/D1/Python for this incident without new evidence;
+- broad refactor during incident closeout.
 
 ---
 
 ## 9. Next Actions
 
-1. Wait for exact final PR head CI after this handoff commit.
-2. Run independent review on the final diff.
-3. Resolve only BLOCKER findings in this Batch; classify other findings without expanding scope.
-4. If final CI + review pass, mark Ready and squash merge.
-5. Verify protected-main CI and Cloudflare Pages deployment.
-6. Confirm production UI convergence; if it still remains stale, reopen from fresh evidence rather than adding speculative recovery machinery.
-
+1. User/browser loads the newly deployed frontend bundle (reload current tab if it predates Pages #1530).
+2. Observe current matching snapshot or the next normal calculation completion.
+3. Expected state: no `快照待重算` top pill and no `持倉與績效快照待重新計算` banner once source/benchmark identity matches.
+4. If the warning remains, capture fresh evidence and reopen Root Cause investigation from the current deployed code; do not add speculative retries or force freshness.
+5. Otherwise mark the user-facing symptom externally confirmed and resume the next product/UX evidence-driven batch.
