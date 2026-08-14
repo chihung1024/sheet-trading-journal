@@ -33,6 +33,44 @@ export function relativeTwrValue(point, baseline) {
   return Number.isFinite(relative) ? relative : null;
 }
 
+const relativeBenchmarkValue = (point, baseline) => {
+  const pointValue = Number(point?.benchmark_twr);
+  const baselineValue = Number(baseline?.benchmark_twr);
+  if (!Number.isFinite(pointValue) || !Number.isFinite(baselineValue)) return null;
+
+  const denominator = 1 + baselineValue / 100;
+  if (!Number.isFinite(denominator) || Math.abs(denominator) < 1e-12) return null;
+
+  const relative = ((1 + pointValue / 100) / denominator - 1) * 100;
+  return Number.isFinite(relative) ? relative : null;
+};
+
+export function buildComparableTwrComparison(history) {
+  const rows = Array.isArray(history) ? history : [];
+  const anchorIndex = rows.findIndex(row => (
+    isTwrPointReliable(row)
+    && relativeBenchmarkValue(row, row) !== null
+  ));
+
+  if (anchorIndex < 0) {
+    return Object.freeze({
+      anchor: null,
+      rows: Object.freeze([]),
+      strategy: Object.freeze([]),
+      benchmark: Object.freeze([]),
+    });
+  }
+
+  const anchor = rows[anchorIndex];
+  const comparableRows = rows.slice(anchorIndex);
+  return Object.freeze({
+    anchor,
+    rows: Object.freeze(comparableRows),
+    strategy: Object.freeze(comparableRows.map(row => relativeTwrValue(row, anchor))),
+    benchmark: Object.freeze(comparableRows.map(row => relativeBenchmarkValue(row, anchor))),
+  });
+}
+
 export function firstTwrInvalidDate(history) {
   for (const row of history || []) {
     if (row?.twr_status === 'undefined') {
