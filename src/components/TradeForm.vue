@@ -113,6 +113,21 @@
                 </div>
             </div>
         </div>
+
+        <div class="form-group full note-group">
+            <div class="note-label-row">
+                <label for="trade-note">交易備註 / 投資理由</label>
+                <span class="note-count">{{ (form.note || '').length }} / 2000</span>
+            </div>
+            <textarea
+                id="trade-note"
+                v-model="form.note"
+                class="note-textarea"
+                maxlength="2000"
+                rows="4"
+                placeholder="記錄進場理由、風險、交易計畫或事後檢討…"
+            ></textarea>
+        </div>
     </div>
 
     <div class="summary-box">
@@ -168,6 +183,8 @@ const tagInput = ref('');
 const selectedSellGroups = ref([]);
 const holdingGroups = ref([]);
 
+// Keep the long-standing financial form declaration stable; journal-only metadata
+// is attached additively so existing transaction/idempotency contracts remain intact.
 const form = reactive({
     txn_date: formatLocalCalendarDate(),
     symbol: '', 
@@ -179,6 +196,8 @@ const form = reactive({
     total_amount: '',
     tag: '' 
 });
+const journalDefaults = Object.freeze({ note: '' });
+Object.assign(form, journalDefaults);
 
 const normalizedSymbol = computed(() => String(form.symbol || '').trim().toUpperCase());
 const transactionCurrency = computed(() => detectNativeCurrency(normalizedSymbol.value));
@@ -253,6 +272,7 @@ const setTxnType = (type) => {
 const buildRecordPayload = () => {
     const payload = { ...form };
     ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
+    payload.note = String(payload.note || '').slice(0, 2000);
     if (payload.qty > 0) {
         if (payload.price <= 0 && payload.total_amount > 0) {
             payload.price = payload.total_amount / payload.qty;
@@ -316,7 +336,8 @@ const resetForm = () => {
     form.fee = '';
     form.tax = '';
     form.total_amount = '';
-    form.tag = ''; 
+    form.tag = '';
+    form.note = '';
     form.txn_type = 'BUY';
     holdingGroups.value = [];
     selectedSellGroups.value = [];
@@ -328,6 +349,7 @@ const setupForm = (r) => {
     isEditing.value = true; 
     editingId.value = r.id;
     Object.keys(form).forEach(k => form[k] = r[k]);
+    form.note = r.note || '';
     checkHoldings();
 };
 
@@ -522,6 +544,25 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 }
 .quick-tag:hover { border-color: var(--primary); color: var(--primary); background: rgba(59, 130, 246, 0.05); }
 
+.note-label-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.note-count { font-size: 0.75rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+.note-textarea {
+    width: 100%;
+    min-height: 96px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    resize: vertical;
+    box-sizing: border-box;
+    font-family: 'Inter', sans-serif;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--text-main);
+    background: var(--bg-card);
+    transition: all 0.2s;
+}
+.note-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+
 /* 賣出提示 (Smart Sell) */
 .smart-sell-options { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px; }
 .hint-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
@@ -613,7 +654,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     .form-group.full { grid-column: span 1; }
     
     /* 輸入框更加寬大舒適 */
-    input { font-size: 1.1rem; padding: 14px; }
+    input, .note-textarea { font-size: 1.1rem; padding: 14px; }
     
     .dual-input { gap: 16px; }
     
