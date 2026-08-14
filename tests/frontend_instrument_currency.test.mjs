@@ -69,7 +69,9 @@ test('currency presentation is native-aware and legacy scalar FX is limited to T
   assert.equal(formatNativeAmount(1234.5, 'USD', 2), '$1,234.50');
   assert.equal(formatNativeAmount(1234.5, 'TWD', 0), 'NT$1,235');
   assert.equal(formatNativeAmount(1234.5, 'GBp', 2), '1,234.50 GBp');
-  assert.equal(formatNativeAmount(Number.NaN, 'JPY', 2), '—');
+  for (const missing of [null, undefined, '', '   ', false, Number.NaN]) {
+    assert.equal(formatNativeAmount(missing, 'JPY', 2), '—');
+  }
 
   assert.equal(canConvertWithLegacyUsdTwdRate('TWD'), true);
   assert.equal(canConvertWithLegacyUsdTwdRate('USD'), true);
