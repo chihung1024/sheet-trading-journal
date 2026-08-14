@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-15 Asia/Taipei**  
-Current line: **Phase 3 Explainability OPTIMIZED FOR CURRENT REQUIREMENTS; Phase 4 / Batch 4.1 Strategy Group Overview CLOSED / PRODUCTION PAGES VERIFIED — next action is a Phase 4 Convergence Review before any common-period comparison implementation**
+Current line: **Phase 3 Explainability OPTIMIZED FOR CURRENT REQUIREMENTS; Phase 4 Strategy Analytics OPTIMIZED FOR CURRENT REQUIREMENTS after Batch 4.2 Common-Period TWR CLOSED / PRODUCTION PAGES VERIFIED — next action is a Phase 6 UX Convergence Audit; Phase 5 lot/trade analytics remains BACKLOG until an authoritative production lot-ledger producer exists**
 
 ---
 
@@ -46,8 +46,10 @@ Current line: **Phase 3 Explainability OPTIMIZED FOR CURRENT REQUIREMENTS; Phase
 | Phase 1 / Batch 1.2 authoritative transaction valuation | CLOSED / PRODUCTION PAGES VERIFIED | PR #251 merged as `92f78af6c77506ea310a046c9f96ee6130fd9c24`; final PR CI #891, post-main CI #892 + Pages #1534 SUCCESS; frozen-diff R2 review BLOCKER 0 |
 | Phase 2 / Batch 2.1 Trading Journal Note UX | CLOSED / PRODUCTION PAGES VERIFIED | PR #254 final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`; exact-head CI #898 SUCCESS; independent review BLOCKER 0; merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`; post-main CI #899 + Pages #1536 SUCCESS |
 | Phase 3 / Batch 3.1 Daily P&L Explainability | CLOSED / PRODUCTION PAGES VERIFIED | PR #256 final head `fc57b221a9b2c0e3adf6c929c1db6caf5e6c9c22`; exact-head CI #904 SUCCESS; frozen review BLOCKER 0; merge `2f46516e2eee7f9ec653587bef8987260dfffb65`; post-main CI #905 + Pages #1538 SUCCESS |
-| **Phase 3 Explainability Convergence** | **OPTIMIZED FOR CURRENT REQUIREMENTS** | Current P&L explainability, holding-level P&L, TWR/XIRR reliability, and data-reliability UX cover the existing authoritative evidence; historical lot/trade attribution remains blocked on missing production producer |
-| **Phase 4 / Batch 4.1 Strategy Group Overview** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #258 final head `65e6e2710dc7a01cb17b5ee2d74ae91fe79136a1`; exact-head CI #911 SUCCESS; frozen R2 review BLOCKER 0; merge `6d0c7708e08bba41231063c6ca765b29c41766b6`; post-main CI #912 + Pages #1540 SUCCESS |
+| Phase 3 Explainability Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | Current P&L explainability, holding-level P&L, TWR/XIRR reliability, and data-reliability UX cover the existing authoritative evidence; historical lot/trade attribution remains blocked on missing production producer |
+| Phase 4 / Batch 4.1 Strategy Group Overview | CLOSED / PRODUCTION PAGES VERIFIED | PR #258 final head `65e6e2710dc7a01cb17b5ee2d74ae91fe79136a1`; exact-head CI #911 SUCCESS; frozen R2 review BLOCKER 0; merge `6d0c7708e08bba41231063c6ca765b29c41766b6`; post-main CI #912 + Pages #1540 SUCCESS |
+| **Phase 4 / Batch 4.2 Exact Common-Period TWR** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #260 final head `8c6d34d818662474c0db34abb93dee5af57b4808`; final exact-head CI #917 SUCCESS; frozen R2 review BLOCKER 0; merge `6137030afe43a7dc2a4a3c8b813584fbd7144cae`; post-main CI #918 + Pages #1542 SUCCESS |
+| **Phase 4 Strategy Analytics Convergence** | **OPTIMIZED FOR CURRENT REQUIREMENTS** | Full-history descriptive overview + exact common-period reliable TWR now cover the high-value strategy comparison that can be derived from existing authoritative outputs without new financial methodology |
 
 Do not reopen closed phases/batches without new material evidence.
 
@@ -57,28 +59,26 @@ Do not reopen closed phases/batches without new material evidence.
 
 Current verified runtime merge checkpoint:
 
-`6d0c7708e08bba41231063c6ca765b29c41766b6`
+`6137030afe43a7dc2a4a3c8b813584fbd7144cae`
 
-- **Phase 3 Explainability is OPTIMIZED FOR CURRENT REQUIREMENTS.** No Phase 3.2 runtime batch is currently justified.
-- **Phase 4 / Batch 4.1 Strategy Group Overview is CLOSED / PRODUCTION PAGES VERIFIED.**
-- The existing Group Management page now includes an alphabetic side-by-side overview of named strategy groups using the already-published group `summary / holdings / history` snapshot data.
-- Each strategy card shows history-data range, total asset value, invested capital, total P&L, TWR, XIRR, holdings count, and can set that group as the current group through the existing store method.
-- The UI explicitly states that group history ranges may differ, the view is **not** a same-period performance ranking, one transaction may belong to multiple tag groups, and group monetary values therefore cannot be summed directly.
-- The frontend does not calculate TWR/XIRR/ROI, perform common-period rebasing, create a strategy score, or call a new API.
-- Monetary values require actual finite published numbers; explicit TWR/XIRR reliability states suppress invalid numeric sentinels; legacy snapshots without status remain compatible when finite values exist.
-- The history provenance is intentionally called **歷史資料範圍**, not strategy inception, because calculator history contains a baseline row before first activity.
-- Noncanonical strategy-group snapshot keys with leading/trailing whitespace are rejected rather than normalized into a display/store key mismatch.
-- `GroupManager.vue` integration was only `+3 / -0`; its existing batch mutation/recovery lifecycle was not rewritten.
-- No Worker/API/auth change, D1/schema/migration/data change, Python financial-methodology change, retry/recovery change, App navigation refactor, or new analytics methodology was required.
-- PR #258 final exact head `65e6e2710dc7a01cb17b5ee2d74ae91fe79136a1`.
-- Final exact-head CI #911 / run `31828606975`: **SUCCESS**.
+- **Phase 3 Explainability is OPTIMIZED FOR CURRENT REQUIREMENTS.**
+- **Phase 4 Strategy Analytics is OPTIMIZED FOR CURRENT REQUIREMENTS.** No Phase 4.3 runtime batch is currently justified.
+- **Phase 4 / Batch 4.2 Exact Common-Period TWR is CLOSED / PRODUCTION PAGES VERIFIED.**
+- Strategy Group Overview retains the Phase 4.1 alphabetic full-history snapshot view and now additionally shows a common-period TWR only when at least two named groups have at least two exact calendar dates that exist in every group and carry reliable TWR evidence.
+- Common-period TWR reuses the existing production `twrState.js` authority: `isTwrPointReliable()` determines eligibility and `relativeTwrValue(end, start)` rebases the already-published cumulative linked TWR. Browser code does not reimplement Modified Dietz, reconstruct cash flows, or recalculate portfolio accounting.
+- No nearest-date, as-of, interpolation, market-calendar fill, common-period XIRR/P&L, benchmark ranking, best/winner ranking, Sharpe, Sortino, MDD, or strategy score was introduced.
+- A malformed/duplicate history date, insufficient exact shared reliable dates, or invalid relative TWR fails the common-period comparison closed while preserving the safe Phase 4.1 full-history descriptive overview.
+- R2 review identified a user-defined group-name key edge (`__proto__` / `constructor`) in the new metric lookup; the lookup now uses a null-prototype dictionary and has a hostile-key regression.
+- Final PR head `8c6d34d818662474c0db34abb93dee5af57b4808`.
+- Final exact-head CI #917 / run `31830778223`: **SUCCESS**.
 - Frozen-diff R2 review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**.
-- Runtime merge: `6d0c7708e08bba41231063c6ca765b29c41766b6`.
-- Exact merge-SHA post-main CI #912 / run `31828773310`: **SUCCESS**.
-- Exact merge-SHA Pages #1540 / run `31828772380`: **SUCCESS**.
-- Final compare before merge: `behind_by=0`; runtime scope remained exactly four focused files.
-- Production Worker remains release `4.08`, API `2.61`, schema `3`; Worker deploy and D1 migration were not required.
-- Rollback is a normal revert of PR #258 / merge `6d0c7708...` or restore the previous Pages deployment.
+- Runtime merge: `6137030afe43a7dc2a4a3c8b813584fbd7144cae`.
+- Exact merge-SHA post-main CI #918 / run `31830934523`: **SUCCESS**.
+- Exact merge-SHA Pages #1542 / run `31830933197`: **SUCCESS**.
+- Final compare before merge: `behind_by=0`; runtime scope remained exactly three focused frontend/test files.
+- No Worker/API/auth change, D1/schema/migration/data change, Python financial-methodology change, retry/recovery change, store/App refactor, or production Worker deploy was required.
+- Production Worker remains release `4.08`, API `2.61`, schema `3`.
+- Rollback is a normal revert of PR #260 / merge `6137030a...` or restore the previous Pages deployment.
 
 Stable product lifecycle remains:
 
@@ -99,8 +99,9 @@ Explainability / analytics authority boundary remains:
 Python canonical calculation / reconciliation
 → published snapshot group summary / holdings / history / day_ledger
 → frontend fail-closed structural/reliability validation
+→ existing reviewed TWR rebasing helper for interval presentation only
 → presentation-only sorting / labels / responsive UI
-→ no browser accounting or ranking methodology
+→ no browser accounting, XIRR reconstruction, or risk-scoring methodology
 ```
 
 Phase-1 presentation invariant remains:
@@ -120,7 +121,7 @@ symbol
 
 ### User-facing verification boundary
 
-Repository CI, production build, and Pages deployment are verified. No real-user ledger mutation was created solely for smoke testing. Phase 4.1 is presentation-only over authoritative published strategy-group snapshot data: Python remains financial/performance authority; Worker/D1 remain persistence/API authority; frontend does not derive a new strategy-performance methodology.
+Repository CI, production build, and Pages deployment are verified. No real-user ledger mutation was created solely for smoke testing. Phase 4.2 is presentation-only over already-published group TWR history and the existing reviewed TWR reliability/rebasing contract: Python remains financial/performance authority; Worker/D1 remain persistence/API authority; frontend does not derive a new portfolio-return methodology.
 
 ### 2A. Closed Batch — Phase 1 / Batch 1.1 Frontend Native Currency Contract
 
@@ -408,6 +409,64 @@ Rollback:
 - revert PR #258 / merge `6d0c7708...` or restore previous Pages deployment;
 - no Worker/schema/data/Python/persisted-state rollback required.
 
+### 2F. Closed Batch — Phase 4 / Batch 4.2 Exact Common-Period TWR
+
+**Primary Goal — SATISFIED / PRODUCTION PAGES VERIFIED**
+
+Users can compare named strategy groups over one exact, auditable common period without turning the browser into a second return-calculation engine.
+
+Runtime:
+
+- `src/services/strategyGroupOverview.js`
+- `src/components/StrategyGroupOverview.vue`
+
+Regression:
+
+- `tests/frontend_strategy_common_period_twr.test.mjs`
+- existing `tests/frontend_twr_reliability.test.mjs` remains the shared TWR rebasing contract.
+
+Behavior locked:
+
+- requires at least two named groups;
+- every compared group must have valid history rows with unique ISO dates;
+- common endpoints are chosen only from dates that exist in every group and pass existing `isTwrPointReliable()`;
+- at least two exact common reliable dates are required;
+- start = first exact common reliable date; end = last exact common reliable date;
+- interval TWR uses existing `relativeTwrValue(end, start)` only;
+- no nearest-date/as-of/interpolation/calendar-fill alignment;
+- unreliable/malformed/duplicate evidence makes common-period output unavailable rather than guessed;
+- common-period unavailability does not hide the safe full-history descriptive overview;
+- group metric lookup is prototype-safe for exact user-defined keys such as `__proto__` and `constructor`;
+- UI explicitly distinguishes complete-history TWR/XIRR from common-period TWR;
+- no performance sorting, best/winner label, XIRR recomputation, risk score, API fetch, or accounting recomputation.
+
+Verification chronology:
+
+- methodology audit proved `twrState.js` already contains reviewed `isTwrPointReliable()` and `relativeTwrValue()` used by production PerformanceChart;
+- Python `annotate_twr_history()` publishes sticky reliability: once an undefined subperiod occurs, later cumulative TWR remains undefined, so a reliable endpoint cannot silently bridge a later reliability gap;
+- initial exact head `a454b541c2c060bf5ecd4260f7ebdd31fec36e14`;
+- initial CI #915 / `31830587856`: **SUCCESS**;
+- R2 review identified prototype-like user group names colliding with a normal JavaScript metric dictionary; classified Closely Related / NOW and fixed with `Object.create(null)` plus regression;
+- final exact head `8c6d34d818662474c0db34abb93dee5af57b4808`;
+- final exact-head CI #917 / `31830778223`: **SUCCESS**;
+- Frontend contracts + production build: PASS;
+- Python tests + branch coverage: PASS;
+- Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
+- final compare: `behind_by=0`, exactly 3 focused frontend/test files;
+- frozen-diff R2 review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**;
+- merge `6137030afe43a7dc2a4a3c8b813584fbd7144cae`;
+- post-main CI #918 / `31830934523`: **SUCCESS**;
+- Pages #1542 / `31830933197`: **SUCCESS**;
+- Worker deploy: NOT REQUIRED / NOT RUN;
+- D1 migration: NOT REQUIRED / NOT RUN;
+- Python runtime change: NONE;
+- real-user ledger mutation smoke: NOT REQUIRED / NOT RUN.
+
+Rollback:
+
+- revert PR #260 / merge `6137030a...` or restore previous Pages deployment;
+- no Worker/schema/data/Python/persisted-state rollback required.
+
 ---
 
 ## 3. Closed Batch — PR #247 Snapshot Integrity Record Contract
@@ -439,6 +498,38 @@ Explicitly unchanged:
 ---
 
 ## 4. Root Cause Log
+
+### 2026-08-15 — Different strategy histories prevented a truthful same-period comparison
+
+**Symptom / Product Gap**  
+Phase 4.1 made all strategy groups visible side by side but correctly refused to call full-history TWR/XIRR directly comparable because groups can start at different times. Users still lacked a truthful same-period return field.
+
+**Evidence**
+
+- every group already publishes cumulative linked TWR history;
+- production frontend already uses `relativeTwrValue()` to rebase cumulative linked TWR for PerformanceChart;
+- `isTwrPointReliable()` and Python sticky `twr_status` provide existing reliability authority;
+- groups can have different market-date sets, so nearest-date alignment would create a new policy;
+- common-period XIRR would require reconstructing interval cash flows and terminal value, which is materially broader than presentation.
+
+**Failure Point**  
+The product had authoritative per-group histories and a reviewed interval-TWR rebasing primitive but no cross-group exact-date intersection layer.
+
+**Root Cause**  
+Strategy comparison presentation stopped at descriptive full-history metrics because no common-period methodology had yet been audited.
+
+**Permanent Fix**
+
+- intersect exact reliable history dates across every displayed named group;
+- require at least two common reliable dates;
+- use the existing reviewed `relativeTwrValue(end, start)` helper;
+- fail closed on malformed/duplicate/insufficient evidence;
+- keep XIRR/P&L/risk-adjusted methods out of this batch.
+
+**Review finding / prevention**
+
+- user-defined Tag names can be JavaScript prototype-like keys; metric maps now use a null-prototype dictionary and a hostile-key regression;
+- future strategy analytics must prove that the required methodology already exists or undergo a separate financial-methodology review before implementation.
 
 ### 2026-08-15 — Strategy groups had authoritative snapshots but no truthful cross-group overview
 
@@ -636,6 +727,43 @@ User observed both `快照待重算` and `持倉與績效快照待重新計算` 
 
 ## 5. Change Log / Verification
 
+### Phase 4 / Batch 4.2 — PR #260
+
+Implementation branch: `feat/phase4-common-period-twr`  
+Base/recovery point: `6e2a589b9b3dfe871d82363e2dcdacf49535c311`  
+Final PR head: `8c6d34d818662474c0db34abb93dee5af57b4808`  
+Main merge: `6137030afe43a7dc2a4a3c8b813584fbd7144cae`
+
+Scope:
+
+- `src/services/strategyGroupOverview.js`
+- `src/components/StrategyGroupOverview.vue`
+- `tests/frontend_strategy_common_period_twr.test.mjs`
+
+Verification:
+
+- methodology audit reused the existing production TWR reliability and interval-rebasing contract rather than introducing a new financial formula;
+- exact common reliable dates only; nearest/as-of/interpolation is prohibited;
+- initial exact-head CI #915 / `31830587856`: SUCCESS;
+- R2 review found prototype-key collision risk for user-defined strategy names; classified Closely Related / NOW, fixed with null-prototype metric dictionary and regression;
+- final exact-head CI #917 / `31830778223`: **SUCCESS**;
+- Frontend contracts + production build: PASS;
+- Python tests + branch coverage: PASS;
+- Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
+- exact diff: 3 focused files, `behind_by=0` before merge;
+- frozen-diff R2 review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1;
+- post-main exact merge-SHA CI #918 / `31830934523`: **SUCCESS**;
+- Pages production deployment #1542 / `31830933197`: **SUCCESS**;
+- Worker deploy: NOT REQUIRED / NOT RUN;
+- D1 migration: NOT REQUIRED / NOT RUN;
+- Python runtime change: NONE;
+- real-user ledger mutation smoke: NOT REQUIRED / NOT RUN.
+
+Rollback:
+
+- revert PR #260 / merge `6137030a...` or previous Pages deployment;
+- no Worker/schema/data/Python/persisted-state rollback required.
+
 ### Phase 4 / Batch 4.1 — PR #258
 
 Implementation branch: `feat/phase4-strategy-group-overview`  
@@ -817,17 +945,35 @@ Verification:
 
 ### Merge-method note
 
-Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head attempts). Repository policy was never modified or bypassed. Phase 1, Phase 2.1, Phase 3.1 and Phase 4.1 PRs used normal exact-head merges once this policy was established.
+Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head attempts). Repository policy was never modified or bypassed. Phase 1, Phase 2.1, Phase 3.1, Phase 4.1 and Phase 4.2 PRs used normal exact-head merges once this policy was established.
 
 ### Deployment
 
-- Frontend Pages: **DEPLOYED / VERIFIED through #1540** for runtime merge `6d0c7708...`.
-- Production Worker: **NOT REQUIRED / NOT DEPLOYED** for Phase 4.1.
-- D1 migration: **NOT REQUIRED / NOT RUN** for Phase 4.1.
+- Frontend Pages: **DEPLOYED / VERIFIED through #1542** for runtime merge `6137030a...`.
+- Production Worker: **NOT REQUIRED / NOT DEPLOYED** for Phase 4.2.
+- D1 migration: **NOT REQUIRED / NOT RUN** for Phase 4.2.
 
 ---
 
 ## 6. Decision Log
+
+### D-2026-08-15-06 — Phase 4 Strategy Analytics is optimized for current requirements
+
+- **Evidence:** Phase 4.1 exposes truthful full-history group metrics; Phase 4.2 adds exact common-period reliable TWR using existing authority. Remaining candidates—common-period XIRR/P&L, Sharpe/Sortino/MDD, strategy scores—require new financial/risk methodology or interval cash-flow reconstruction rather than presentation of existing authoritative fields.
+- **Alternatives:** continue into risk-adjusted analytics; implement common-period XIRR; stop and shift to higher-value UX/product work.
+- **Decision:** no Phase 4.3. Mark Phase 4 `OPTIMIZED FOR CURRENT REQUIREMENTS`.
+- **Trade-off:** advanced strategy scoring remains deferred, while current users get both descriptive full-history context and an auditable exact same-period TWR.
+- **Status:** LOCKED / CONVERGED.
+- **Reopen Condition:** new user requirements justify a specific advanced metric and its methodology is separately reviewed, or the backend publishes a new authoritative comparison field.
+
+### D-2026-08-15-05 — Common-period strategy comparison is exact-date TWR only
+
+- **Evidence:** existing `twrState.js` already provides reviewed reliability and interval-rebasing helpers; Python publishes sticky TWR reliability. Different group market calendars make nearest-date alignment a new policy, while XIRR/P&L would require new interval cash-flow/value reconstruction.
+- **Alternatives:** full-history ranking; nearest-date alignment; common-period TWR; common-period XIRR; new risk score.
+- **Decision:** compare only TWR from the first to last exact calendar dates shared and reliable across every displayed named group; require at least two exact dates; fail closed otherwise.
+- **Trade-off:** comparison availability is intentionally conservative, but every displayed common-period value has the same auditable start/end dates.
+- **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
+- **Reopen Condition:** market-calendar alignment or interval-return methodology materially changes, or an authoritative backend common-period contract supersedes the current frontend selection layer.
 
 ### D-2026-08-15-04 — Strategy group overview is descriptive, not a cross-period leaderboard
 
@@ -910,15 +1056,15 @@ Status: **LOCKED**.
 ### Current product status
 
 - Phase 3 Explainability: **OPTIMIZED FOR CURRENT REQUIREMENTS**.
-- Phase 4 / Batch 4.1 Strategy Group Overview: **CLOSED / PRODUCTION PAGES VERIFIED**.
+- Phase 4 Strategy Analytics: **OPTIMIZED FOR CURRENT REQUIREMENTS**.
+- Phase 4 / Batch 4.2 Exact Common-Period TWR: **CLOSED / PRODUCTION PAGES VERIFIED**.
+- Phase 5 historical/lot-level trading analytics remains blocked from NOW because `lot_ledger` still lacks a reviewed production producer/semantics.
 
-Before opening another strategy-analytics runtime batch, run a **Phase 4 Convergence Review**. The strongest remaining candidate is common-period strategy comparison, but it must not be implemented by simply ranking current full-history TWR/XIRR because group ranges differ and groups may overlap.
-
-The Phase 4 review must decide whether a safe common-period comparison can be produced from existing authoritative group history without creating a second financial methodology. If the answer is no or the UX benefit is marginal, mark Phase 4 optimized and stop rather than inventing a score.
+The next product audit is **Phase 6 UX Convergence**. Its purpose is not broad visual redesign: it should identify where mature automatic recalculation, calculation-job, snapshot-freshness, recovery and connectivity machinery still leaks implementation details into normal user workflows. No runtime batch should open until that audit selects one narrow, high-value UX slice.
 
 ### Current risk
 
-Cross-layer source and presentation contracts can drift if Worker/Python semantics change. Existing source-shape, cross-language, explainability and strategy-overview regressions materially reduce this risk; future changes must update contracts deliberately rather than weakening tests.
+Cross-layer source and presentation contracts can drift if Worker/Python semantics change. Existing source-shape, cross-language, explainability, strategy-overview and common-period regressions materially reduce this risk; future changes must update contracts deliberately rather than weakening tests.
 
 ### Known non-blocking documentation/status drift
 
@@ -940,7 +1086,8 @@ Do not promote without new evidence:
 9. new public transaction-presentation snapshot projection while existing verified exact-date FX remains sufficient;
 10. note-only mutation / skipped recalculation optimization without measured product or compute evidence;
 11. historical/lot-level attribution until `lot_ledger` has a reviewed production producer and semantics;
-12. Sharpe/Sortino/MDD/strategy scoring until a separate product and financial-methodology requirement justifies them.
+12. Sharpe/Sortino/MDD/strategy scoring until a separate product and financial-methodology requirement justifies them;
+13. common-period XIRR/P&L until an authoritative interval cash-flow/value contract or explicit methodology requirement exists.
 
 ---
 
@@ -948,36 +1095,39 @@ Do not promote without new evidence:
 
 **NOW**
 
-- Phase 3 is **OPTIMIZED FOR CURRENT REQUIREMENTS**.
-- Phase 4 / Batch 4.1 runtime is **CLOSED / PRODUCTION PAGES VERIFIED**.
+- Phase 3 Explainability is **OPTIMIZED FOR CURRENT REQUIREMENTS**.
+- Phase 4 Strategy Analytics is **OPTIMIZED FOR CURRENT REQUIREMENTS**.
+- Phase 4 / Batch 4.2 runtime is **CLOSED / PRODUCTION PAGES VERIFIED**.
 - Complete this docs-only Stable Checkpoint and verify exact-main CI/Pages if triggered.
-- Do not modify Batch 4.1 runtime during documentation closure.
+- Do not modify Batch 4.2 runtime during documentation closure.
 
-**NEXT — Phase 4 Convergence Review, not automatic implementation**
+**NEXT — Phase 6 UX Convergence Audit, not automatic implementation**
 
-1. Re-read current per-group history/TWR reliability and benchmark provenance.
-2. Determine whether a common-period comparison can be derived from existing authoritative history without reimplementing portfolio accounting.
-3. Define what “common period” means, especially when groups have different starts or intermittent undefined TWR periods.
-4. Decide whether overlapping tag groups make the comparison descriptive-only or still suitable for a clearly labeled relative view.
-5. Select at most one Batch 4.2 only if the methodology is simple, auditable, regression-testable and materially useful.
-6. Otherwise mark `Phase 4 OPTIMIZED FOR CURRENT REQUIREMENTS` and advance to Phase 5 trading analytics audit only when lot-level producer semantics exist.
+1. Re-read the actual header/status banners, manual trigger controls, automatic recalculation state, calculation-job progress, snapshot freshness/recovery messaging, mobile behavior and PWA/update messaging.
+2. Identify implementation terms visible to normal users (`GitHub Actions`, `觸發`, polling/job/snapshot internals) and distinguish useful recovery information from engineering leakage.
+3. Map the normal user journey: record saved → calculation automatically starts → data updating → verified fresh; define the minimum user-facing state model needed to communicate this without hiding actionable failures.
+4. Preserve existing recovery/fail-closed semantics; the audit must not create a second state machine merely to simplify wording.
+5. Converge candidates into NOW / NEXT / BACKLOG / REJECT and select at most one narrow UX Batch if Benefit materially exceeds migration/regression risk.
+6. Prefer frontend presentation/convergence over new backend infrastructure unless audit evidence proves a backend contract is necessary.
 
 **BACKLOG**
 
-- common-period strategy comparison pending Phase 4 methodology audit;
 - historical/lot attribution after authoritative producer semantics exist;
 - Phase 5 trading analytics after lot-ledger semantics are proven;
-- Phase 6 UX convergence;
+- common-period XIRR/P&L unless an authoritative interval contract becomes available;
+- Sharpe/Sortino/MDD or strategy scoring only after a specific user/product requirement and methodology review;
 - note-only mutation / skipped recalculation optimization if real usage demonstrates material value;
-- new risk-adjusted strategy analytics only after methodology requirements are approved;
 - unrelated technical candidates above.
 
 **REJECT**
 
 - direct best/winner ranking using full-history metrics from different group ranges;
+- rank common-period TWR as a product “winner” without a separate product requirement;
+- nearest-date/as-of/interpolated strategy alignment when exact common dates are unavailable;
 - sum overlapping tag-group values as if groups are disjoint portfolios;
 - call the first history row a strategy inception date;
-- create a browser-side strategy score or new financial methodology in Batch 4.1;
+- reconstruct common-period XIRR/P&L in browser solely to extend Phase 4;
+- create a browser-side strategy score or new financial/risk methodology without review;
 - copy/reimplement Python FX or Daily P&L accounting engine in browser;
 - synthesize current Daily P&L attribution from holdings/summary when `day_ledger` is missing;
 - use another group's ledger as fallback;
@@ -995,11 +1145,11 @@ Do not promote without new evidence:
 
 ## 9. Next Actions
 
-1. Merge this Phase-4.1 Stable Checkpoint documentation PR and verify exact-main CI/Pages if triggered.
+1. Merge this Phase-4.2 Stable Checkpoint documentation PR and verify exact-main CI/Pages if triggered.
 2. Re-read remote `main`, open PRs, recent commits, `AI_PROJECT_PLAYBOOK.md`, `README.md`, and this handoff.
-3. Run one **Phase 4 Convergence Review** before creating any new runtime branch.
-4. Audit common-period comparison against actual published history/TWR reliability semantics; do not start from a desired ranking UI.
-5. Converge candidates into NOW / NEXT / BACKLOG / REJECT.
-6. If a materially useful and methodology-safe common-period slice exists, open exactly one narrow Batch 4.2.
-7. Otherwise mark `Phase 4 OPTIMIZED FOR CURRENT REQUIREMENTS` and stop strategy-analytics expansion for current requirements.
+3. Run one **Phase 6 UX Convergence Audit** before creating another runtime branch.
+4. Audit the normal save→automatic calculation→fresh data user journey and all visible status/trigger/recovery surfaces on desktop and mobile.
+5. Converge findings into NOW / NEXT / BACKLOG / REJECT; do not reopen Phase 3/4 or blocked lot-level Phase 5 work without new evidence.
+6. If one material UX slice exists, open exactly one narrow Batch with an explicit user-state contract and no duplicate recovery authority.
+7. Otherwise mark UX convergence optimized for current requirements and run a new product-function gap audit rather than performing technical refactors for their own sake.
 8. Any next R2+ runtime Batch again requires recovery point, focused diff, exact-head CI, frozen review, rollback and post-main verification.
