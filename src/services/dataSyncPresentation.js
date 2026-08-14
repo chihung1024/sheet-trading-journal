@@ -8,14 +8,27 @@ export function buildDataSyncPresentation({
   loading = false,
   isPolling = false,
   connectionStatus = 'unknown',
+  portfolioReadStatus = 'unknown',
   snapshotFreshness = 'unknown',
   verified = false,
 } = {}) {
-  if (loading) {
+  if (loading || portfolioReadStatus === 'loading') {
     return presentation(
       'loading',
       '載入資料中',
       '正在載入交易、持倉與績效資料',
+    );
+  }
+
+  // portfolioReadStatus is deliberately separate from connectionStatus. A later
+  // unrelated API success can restore the global connection indicator while the
+  // latest full portfolio read is still known to have failed. Never let a prior
+  // verification proof mask that read-specific failure.
+  if (portfolioReadStatus === 'error') {
+    return presentation(
+      'error',
+      '最新資料讀取失敗',
+      '最新資料暫時讀取失敗；重新載入成功前，畫面可能保留上一次成功載入的內容',
     );
   }
 
