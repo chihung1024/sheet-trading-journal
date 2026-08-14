@@ -36,6 +36,7 @@ test('strategy overview excludes all and stays alphabetic instead of ranking by 
       Zeta: group({ summary: summary({ twr: 500, total_pnl: 9_000_000 }) }),
       Alpha: group({ summary: summary({ twr: -20, total_pnl: -5_000 }) }),
       Core: group({ summary: summary({ twr: 45, total_pnl: 500_000 }) }),
+      ' Bad ': group({ summary: summary({ twr: 1_000 }) }),
     },
   });
 
@@ -43,6 +44,7 @@ test('strategy overview excludes all and stays alphabetic instead of ranking by 
   assert.equal(overview.updatedAt, '2026-08-15 02:00');
   assert.deepEqual(overview.groups.map(item => item.name), ['Alpha', 'Core', 'Zeta']);
   assert.equal(overview.groups.some(item => item.name === 'all'), false);
+  assert.equal(overview.groups.some(item => item.name === 'Bad'), false);
 });
 
 test('history range preserves each groups published history provenance and is not called an inception date', () => {
