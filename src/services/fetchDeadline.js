@@ -2,6 +2,7 @@ import {
     RequestAbortedError,
     RequestTimeoutError,
 } from './requestErrors.js';
+import { publishRequestFailure } from './requestFailureSignal.js';
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -74,12 +75,22 @@ export const fetchWithDeadline = async (
     try {
         return await Promise.race(candidates);
     } catch (error) {
-        if (error instanceof RequestTimeoutError || error instanceof RequestAbortedError) throw error;
-        if (timedOut) throw new RequestTimeoutError(timeoutMs, { cause: error });
-        if (externallyAborted || signal?.aborted) {
-            throw new RequestAbortedError({ cause: error, reason: signal?.reason });
+        let normalizedError = error;
+        if (error instanceof RequestTimeoutError || error instanceof RequestAbortedError) {
+            normalizedError = error;
+        } else if (timedOut) {
+            normalizedError = new RequestTimeoutError(timeoutMs, { cause: error });
+        } else if (externallyAborted || signal?.aborted) {
+            normalizedError = new RequestAbortedError({ cause: error, reason: signal?.reason });
         }
-        throw error;
+
+        publishRequestFailure({
+            input,
+            init,
+            error: normalizedError,
+            externallyAborted,
+        });
+        throw normalizedError;
     } finally {
         if (timeoutId !== null) clearTimeoutImpl(timeoutId);
         removeAbortListener?.();
