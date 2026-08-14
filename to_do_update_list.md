@@ -44,7 +44,7 @@ Current line: **Phase 3 / Batch 3.1 Daily P&L Explainability CLOSED / PRODUCTION
 | Snapshot freshness API/manifest record contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #247 merged as `cc51ebc2b0f020e23c2efbf2cdcb7c2102c7d0a9`; final PR CI #871, post-main CI #872 + Pages #1530 SUCCESS; Independent Review Gate PASS |
 | Phase 1 / Batch 1.1 frontend native-currency contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #249 merged as `4ce9c8fc1b390db77587f50f59a3f3d251b1a107`; final PR CI #878, post-main CI #879 + Pages #1532 SUCCESS; R2 review BLOCKER 0 |
 | Phase 1 / Batch 1.2 authoritative transaction valuation | CLOSED / PRODUCTION PAGES VERIFIED | PR #251 merged as `92f78af6c77506ea310a046c9f96ee6130fd9c24`; final PR CI #891, post-main CI #892 + Pages #1534 SUCCESS; frozen-diff R2 review BLOCKER 0 |
-| Phase 2 / Batch 2.1 Trading Journal Note UX | CLOSED / PRODUCTION PAGES VERIFIED | PR #254 final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`; exact-head CI #898 SUCCESS; review BLOCKER 0; merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`; post-main CI #899 + Pages #1536 SUCCESS |
+| Phase 2 / Batch 2.1 Trading Journal Note UX | CLOSED / PRODUCTION PAGES VERIFIED | PR #254 final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`; exact-head CI #898 SUCCESS; independent review BLOCKER 0; merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`; post-main CI #899 + Pages #1536 SUCCESS |
 | **Phase 3 / Batch 3.1 Daily P&L Explainability** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #256 final head `fc57b221a9b2c0e3adf6c929c1db6caf5e6c9c22`; exact-head CI #904 SUCCESS; frozen review BLOCKER 0; merge `2f46516e2eee7f9ec653587bef8987260dfffb65`; post-main CI #905 + Pages #1538 SUCCESS |
 
 Do not reopen closed phases/batches without new material evidence.
@@ -205,7 +205,7 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 - confirmed DIV cash flow follows current calculator: `qty * price`.
 - Browser uses normalized record fee/tax values in the same arithmetic as the calculator and does **not** create a second `abs()` transformation. Normal Worker record writes already enforce non-negative fee/tax via `optionalFiniteNumber(..., { minInclusive: 0 })`; preserving supplied values still prevents projection drift for historical/direct-import ledger rows and keeps frontend semantics identical to the calculation source it receives.
 - TWD records use base-currency multiplier `1`.
-- foreign records require existing cryptographic proof for the exact snapshot object and exact record object.
+- foreign records require existing Phase 3 cryptographic proof for the exact snapshot object and exact record object.
 - verified foreign FX uses only the exact transaction-date `history._raw_fx_rates[currency]`.
 - older verified USD-only snapshots may use the exact same date `history.fx_rate` compatibility value.
 - no nearest-date/backward scan, no as-of policy invented in browser, no `32.0` fallback.
@@ -217,7 +217,7 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 - CI #882: Worker + Python passed; Frontend failed because Batch 1.1 regression still required RecordList to own the old `canConvertWithLegacyUsdTwdRate` implementation shape.
 - Root cause: valuation authority had moved into `transactionValuation.js`; the regression was updated to verify delegation and continued prohibition of non-TWD-as-USD / `32.0` fallback. Runtime was not weakened.
 - **R2 BLOCKER 1:** first helper version added an extra `abs()` transform for fee/tax. Normal Worker writes are non-negative, but Python preparation/calculator do not introduce that frontend-only transform and historical/direct-import rows cannot be assumed to have only UI provenance. Helper + regressions were corrected to mirror the calculator’s supplied-value arithmetic exactly.
-- **R2 BLOCKER 2:** `snapshotFreshness='loaded'` occurs before cryptographic integrity verification. A memory-only proof bound to the exact assessed snapshot + records was added; foreign monetary FX now requires that actual proof.
+- **R2 BLOCKER 2:** `snapshotFreshness='loaded'` occurs before Phase 3 cryptographic integrity verification. A memory-only proof bound to the exact assessed snapshot + records was added; foreign monetary FX now requires that actual proof.
 - Oversell review: production runner already executes split-adjusted transaction-prefix integrity validation before `PortfolioCalculator`; a published snapshot cannot depend on partial oversell clamp to hide invalid source data.
 - **Evidence correction recorded during Phase 2 preflight:** re-reading `optionalFiniteNumber()` confirmed current Worker normal writes enforce `fee/tax >= 0`; earlier review prose saying Worker “accepts any finite fee/tax” was inaccurate. Runtime choice remains unchanged because the correct invariant is calculator parity without a second frontend-only sign transform.
 - final exact-head `7bf436849e985eaa51263f22fd75d6973d0b0833`;
@@ -226,7 +226,7 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 - Python tests + branch coverage: PASS;
 - Worker security/deployment tests + Recovery Evidence Gate + local D1 baseline: PASS;
 - final compare: `behind_by=0`, exactly 7 focused frontend/lifecycle/regression files;
-- frozen-diff review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0**;
+- frozen-diff independent review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0**;
 - main merge `92f78af6c77506ea310a046c9f96ee6130fd9c24`;
 - post-main CI #892 / `31817053580`: **SUCCESS**;
 - Pages #1534 / `31817052263`: **SUCCESS**;
@@ -237,13 +237,14 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 Rollback:
 
 - revert PR #251 / merge `92f78af6...` or restore previous Pages deployment;
-- no Worker/schema/data/Python rollback required.
+- no Worker/schema/data/Python rollback required;
+- memory-only verification proof disappears naturally on reload/revert.
 
 ### 2C. Closed Batch — Phase 2 / Batch 2.1 Trading Journal Note UX
 
 **Primary Goal — SATISFIED / PRODUCTION PAGES VERIFIED**
 
-The product exposes its existing `records.note` field as an actual trading-journal function without creating a second write authority or broad architecture change.
+The product now exposes its existing `records.note` field as an actual trading-journal function without creating a second write authority or broad architecture change.
 
 Runtime:
 
@@ -275,7 +276,7 @@ Verification chronology:
 - final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`;
 - exact-head CI #898 / `31824375970`: **SUCCESS**;
 - final compare: `behind_by=0`, exactly 3 focused files;
-- frozen-diff review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**;
+- independent frozen-diff review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**;
 - merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`;
 - post-main CI #899 / `31824494110`: **SUCCESS**;
 - Pages #1536 / `31824492603`: **SUCCESS**;
@@ -455,7 +456,7 @@ After Batch 1.1, non-USD records correctly stopped using the USD/TWD scalar but 
 - `day_ledger` cannot map old records; `lot_ledger` currently has no producer.
 - current calculator BUY/SELL/DIV cash-flow formulas differ by transaction type.
 - current Worker normal record writes enforce non-negative fee/tax through `optionalFiniteNumber`, while Python preparation/calculator consume supplied ledger values without adding a second sign-normalization layer; historical/direct-import provenance must therefore remain compatible with the calculator rather than a frontend-only transform.
-- `fetchSnapshot()` sets `snapshotFreshness='loaded'` before later source-identity verification.
+- `fetchSnapshot()` sets `snapshotFreshness='loaded'` before Phase 3 later proves source identity.
 
 **Failure Points**
 
@@ -464,18 +465,18 @@ After Batch 1.1, non-USD records correctly stopped using the USD/TWD scalar but 
 3. Read-success (`loaded`) was initially mistaken for sufficient monetary authorization.
 
 **Root Cause**  
-Frontend presentation had evolved separately from the authoritative Python snapshot contract. Existing accounting/FX evidence and existing integrity proof were not connected to RecordList.
+Frontend presentation had evolved separately from the authoritative Python snapshot contract. Existing accounting/FX evidence and existing Phase 3 integrity proof were not connected to RecordList.
 
 **Impact Analysis**
 
 - No D1 corruption or Python accounting defect.
 - Multi-currency records could lack valid TWD presentation unnecessarily.
 - SELL displayed amount could differ from calculator cash-flow semantics.
-- Without the integrity proof guard, a newly read but not-yet-verified snapshot could theoretically supply foreign FX during a short cross-device/stale window.
+- Without the Phase 3 proof guard, a newly read but not-yet-verified snapshot could theoretically supply foreign FX during a short cross-device/stale window.
 
 **Permanent Fix**
 
-- Reuse exact-date `history._raw_fx_rates[currency]` after exact snapshot/record proof.
+- Reuse exact-date `history._raw_fx_rates[currency]` after Phase 3 verifies the exact snapshot/record pair.
 - Keep legacy scalar `fx_rate` USD-only and exact-date.
 - Mirror current calculator BUY/SELL/DIV cash-flow arithmetic on supplied normalized record values; do not add an independent frontend `abs()` rule.
 - Add memory-only `snapshotVerification` rather than a second persistent freshness state or new recovery controller.
@@ -487,7 +488,7 @@ Frontend presentation had evolved separately from the authoritative Python snaps
 - supplied-value fee/tax parity regression against actual calculator source shape;
 - replacement snapshot/record object invalidation tests;
 - source-contract tests forbid browser nearest-date logic, `32.0`, and frontend-only `abs()` normalization drift;
-- self-healing regression proves FRESH publishes the UI proof and stale repair does not.
+- Phase 3 self-healing regression proves FRESH publishes the UI proof and stale repair does not.
 
 ### 2026-08-14 — Frontend transaction currency contract narrower than Python
 
@@ -597,7 +598,7 @@ Verification:
 - Python tests + branch coverage: PASS;
 - Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
 - exact diff: 3 focused files, `behind_by=0` before merge;
-- frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1;
+- independent frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1;
 - post-main exact merge-SHA CI #899 / `31824494110`: **SUCCESS**;
 - Pages production deployment #1536 / `31824492603`: **SUCCESS**;
 - Worker deploy: NOT REQUIRED / NOT RUN;
@@ -631,7 +632,7 @@ Verification:
 - Python tests + branch coverage: PASS;
 - Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
 - exact diff: 7 focused frontend/lifecycle/test files, `behind_by=0` before merge;
-- frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0;
+- independent frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0;
 - post-main exact merge-SHA CI #892 / `31817053580`: **SUCCESS**;
 - Pages production deployment #1534 / `31817052263`: **SUCCESS**;
 - Worker deploy: NOT REQUIRED / NOT RUN;
@@ -712,8 +713,8 @@ Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head
 ### D-2026-08-14-05 — Loaded snapshot is not monetary authorization
 
 - **Original assumption challenged:** a successful `/api/portfolio` read sets `snapshotFreshness='loaded'`.
-- **New evidence:** cryptographic source/benchmark verification runs after that read transition.
-- **Decision:** foreign-currency monetary presentation may use snapshot FX only after the exact snapshot object and exact record objects assessed together are verified.
+- **New evidence:** Phase 3 cryptographic source/benchmark verification runs after that read transition.
+- **Decision:** foreign-currency monetary presentation may use snapshot FX only after Phase 3 has verified the exact snapshot object and exact record objects assessed together.
 - **Implementation:** memory-only `snapshotVerification`; no persistent key, retry, queue, backend state, or new financial authority.
 - **Trade-off:** foreign TWD value may briefly remain unavailable while integrity verification completes; false confidence is rejected.
 - **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
@@ -724,7 +725,7 @@ Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head
 - **Original candidate:** add a versioned Python `record_id → currency/fx/TWD` presentation projection.
 - **New evidence:** root snapshot history already carries the exact per-date `_raw_fx_rates` produced by Python and is already uploaded in full.
 - **Alternatives:** new Python projection; browser FX derivation; reuse current history evidence.
-- **Decision:** reuse current authoritative exact-date snapshot FX after integrity proof; do not add a duplicate Python/Worker/schema contract.
+- **Decision:** reuse current authoritative exact-date snapshot FX after Phase 3 proof; do not add a duplicate Python/Worker/schema contract.
 - **Migration Risk avoided:** no model/version/schema/deployment expansion.
 - **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
 - **Reopen Condition:** `_raw_fx_rates` ceases to be published, becomes explicitly internal-only/removed, or a reviewed public presentation contract supersedes it.
