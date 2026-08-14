@@ -57,7 +57,7 @@ const unavailableCommonPeriod = (reason, status = 'unavailable') => Object.freez
   reason,
   startDate: null,
   endDate: null,
-  metrics: Object.freeze({}),
+  metrics: Object.freeze(Object.create(null)),
 });
 
 const reliableHistoryByDate = (history) => {
@@ -101,8 +101,7 @@ const buildCommonPeriodTwr = (groupEntries) => {
     histories.push([name, reliable.rows]);
   }
 
-  const [firstName, firstRows] = histories[0];
-  void firstName;
+  const firstRows = histories[0][1];
   const commonDates = [...firstRows.entries()]
     .filter(([, row]) => row !== null)
     .map(([date]) => date)
@@ -119,7 +118,10 @@ const buildCommonPeriodTwr = (groupEntries) => {
     return unavailableCommonPeriod('invalid_common_period');
   }
 
-  const metrics = {};
+  // Group names are user-defined Tag values. A null-prototype dictionary keeps
+  // keys such as "__proto__" and "constructor" exact instead of colliding with
+  // JavaScript object-prototype properties.
+  const metrics = Object.create(null);
   for (const [name, rows] of histories) {
     const relative = relativeTwrValue(rows.get(endDate), rows.get(startDate));
     if (typeof relative !== 'number' || !Number.isFinite(relative)) {
