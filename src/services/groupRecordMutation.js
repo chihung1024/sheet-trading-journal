@@ -250,7 +250,7 @@ export async function updateRecordTagsSequentially({
 }) {
   if (!Array.isArray(updates)) throw new TypeError('updates must be an array');
   const total = updates.length;
-  if (total === 0) return { succeeded: 0, total: 0, recoveryGeneration: null };
+  if (total === 0) return { succeeded: 0, total: 0 };
 
   let lifecycle;
   try {
@@ -324,6 +324,7 @@ export async function updateRecordTagsSequentially({
     }
   }
 
+  if (!lifecycle) return { succeeded, total };
   return {
     succeeded,
     total,
