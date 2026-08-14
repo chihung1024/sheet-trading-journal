@@ -1,4 +1,5 @@
 import { detectNativeCurrency } from './instrumentCurrency.js';
+import { isSnapshotRecordVerified } from './snapshotVerification.js';
 
 const finiteNumber = value => {
   if (
@@ -58,14 +59,18 @@ const exactHistoryRow = (snapshot, txnDate) => {
 
 /**
  * Read the exact transaction-date FX context already published by Python.
- * Never infer FX from a nearby date in the browser. Older USD-only snapshots may
- * use the same row's legacy scalar fx_rate; no hard-coded fallback is permitted.
+ * Never infer FX from a nearby date in the browser. Foreign-currency FX is usable
+ * only when existing Phase 3 snapshot integrity has cryptographically verified the
+ * exact snapshot + record object pair. Older USD-only snapshots may then use the
+ * same row's legacy scalar fx_rate; no hard-coded fallback is permitted.
  */
 export const resolveAuthoritativeTransactionFx = (snapshot, record) => {
   const currency = detectNativeCurrency(record?.symbol);
   if (currency === 'TWD') {
     return { currency, fxRate: 1, source: 'base-currency' };
   }
+
+  if (!isSnapshotRecordVerified(snapshot, record)) return null;
 
   const row = exactHistoryRow(snapshot, record?.txn_date);
   if (!row) return null;
