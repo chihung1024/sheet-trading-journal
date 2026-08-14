@@ -8,6 +8,7 @@ test('data sync presentation never treats loaded-but-unverified data as synchron
   assert.deepEqual(
     buildDataSyncPresentation({
       connectionStatus: 'connected',
+      portfolioReadStatus: 'loaded',
       snapshotFreshness: 'loaded',
       verified: false,
     }),
@@ -21,11 +22,33 @@ test('data sync presentation never treats loaded-but-unverified data as synchron
   assert.equal(
     buildDataSyncPresentation({
       connectionStatus: 'connected',
+      portfolioReadStatus: 'loaded',
       snapshotFreshness: 'loaded',
       verified: true,
     }).label,
     '資料已同步',
   );
+});
+
+test('latest portfolio read failure cannot be masked by a prior verification proof or unrelated API success', () => {
+  const state = buildDataSyncPresentation({
+    connectionStatus: 'connected',
+    portfolioReadStatus: 'error',
+    snapshotFreshness: 'loaded',
+    verified: true,
+  });
+
+  assert.equal(state.className, 'error');
+  assert.equal(state.label, '最新資料讀取失敗');
+  assert.match(state.title, /重新載入成功前/);
+
+  assert.equal(buildDataSyncPresentation({
+    isPolling: true,
+    connectionStatus: 'connected',
+    portfolioReadStatus: 'error',
+    snapshotFreshness: 'stale',
+    verified: true,
+  }).label, '最新資料讀取失敗');
 });
 
 test('active update, connection error and stale evidence take precedence over a prior verification proof', () => {
@@ -40,16 +63,18 @@ test('active update, connection error and stale evidence take precedence over a 
 
 test('loading and initial connected states stay non-authoritative', () => {
   assert.equal(buildDataSyncPresentation({ loading: true }).label, '載入資料中');
+  assert.equal(buildDataSyncPresentation({ portfolioReadStatus: 'loading' }).label, '載入資料中');
   assert.equal(buildDataSyncPresentation({ connectionStatus: 'connected' }).label, '準備資料中');
   assert.equal(buildDataSyncPresentation().label, '連線中');
 });
 
-test('App uses the existing snapshot verification proof and product-level sync language', async () => {
+test('App uses the existing snapshot verification proof and read-specific status with product-level sync language', async () => {
   const source = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8');
 
   assert.match(source, /buildDataSyncPresentation/);
   assert.match(source, /isSnapshotVerificationCurrent/);
   assert.match(source, /isSnapshotVerificationCurrent\(\s*portfolioStore\.rawData,\s*portfolioStore\.records,\s*\)/);
+  assert.match(source, /portfolioReadStatus:\s*portfolioStore\.portfolioReadStatus/);
   assert.match(source, />立即更新</);
   assert.match(source, /:aria-label="portfolioStore\.isPolling \? '資料更新中' : '立即更新資料'"/);
   assert.match(source, /下次自動更新/);
