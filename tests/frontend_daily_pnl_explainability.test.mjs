@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { buildDailyPnlExplanation } from '../src/services/dailyPnlExplainability.js';
+import {
+  buildDailyPnlExplanation,
+  selectCurrentGroupDayLedger,
+} from '../src/services/dailyPnlExplainability.js';
 
 const row = (overrides = {}) => ({
   symbol: 'NVDA',
@@ -68,6 +71,34 @@ test('rounded published total may differ from raw ledger by at most the Python r
   assert.equal(result.publishedTotalTwd, 100);
 });
 
+test('current group selection never falls through to another group ledger', () => {
+  const allLedger = [row({ symbol: 'ALL' })];
+  const coreLedger = [row({ symbol: 'CORE' })];
+  const rawData = {
+    day_ledger: [row({ symbol: 'LEGACY' })],
+    groups: {
+      all: { day_ledger: allLedger },
+      Core: { day_ledger: coreLedger },
+      Empty: { day_ledger: [] },
+    },
+  };
+
+  assert.equal(selectCurrentGroupDayLedger({ rawData, currentGroup: 'all' }), allLedger);
+  assert.equal(selectCurrentGroupDayLedger({ rawData, currentGroup: 'Core' }), coreLedger);
+  assert.deepEqual(selectCurrentGroupDayLedger({ rawData, currentGroup: 'Empty' }), []);
+  assert.deepEqual(selectCurrentGroupDayLedger({ rawData, currentGroup: 'Missing' }), []);
+
+  const legacyRoot = [row({ symbol: 'ROOT' })];
+  assert.equal(
+    selectCurrentGroupDayLedger({ rawData: { day_ledger: legacyRoot }, currentGroup: 'all' }),
+    legacyRoot,
+  );
+  assert.deepEqual(
+    selectCurrentGroupDayLedger({ rawData: { day_ledger: legacyRoot }, currentGroup: 'Core' }),
+    [],
+  );
+});
+
 test('missing legacy ledger fails closed instead of synthesizing attribution from holdings or summary', () => {
   const result = buildDailyPnlExplanation({
     dayLedger: [],
@@ -105,17 +136,21 @@ test('ledger and published summary mismatch fails closed', () => {
   assert.equal(result.reason, 'summary_mismatch');
 });
 
-test('portfolio store exposes only the current group day ledger and StatsGrid uses an explicit mobile-accessible detail control', async () => {
-  const storeSource = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+test('StatsGrid delegates group selection and exposes a mobile-accessible explanation control', async () => {
   const statsSource = await readFile(new URL('../src/components/StatsGrid.vue', import.meta.url), 'utf8');
+  const detailSource = await readFile(new URL('../src/components/DailyPnlExplanation.vue', import.meta.url), 'utf8');
 
-  assert.match(storeSource, /const dayLedger = computed\(\(\) => currentGroupData\.value\.day_ledger \|\| \[\]\);/);
-  assert.match(storeSource, /\bdayLedger,\s*\n/);
-
+  assert.match(statsSource, /selectCurrentGroupDayLedger\(\{/);
+  assert.match(statsSource, /rawData:\s*store\.rawData/);
+  assert.match(statsSource, /currentGroup:\s*store\.currentGroup/);
   assert.match(statsSource, /buildDailyPnlExplanation/);
-  assert.match(statsSource, /store\.dayLedger/);
-  assert.match(statsSource, /aria-expanded="isDailyExplanationOpen"/);
+  assert.match(statsSource, /:aria-expanded="isDailyExplanationOpen"/);
+  assert.match(statsSource, /aria-controls="daily-pnl-explanation"/);
   assert.match(statsSource, /查看損益來源/);
-  assert.match(statsSource, /daily-pnl-explanation/);
-  assert.doesNotMatch(statsSource, /rawData\.groups/);
+  assert.match(statsSource, /<DailyPnlExplanation/);
+  assert.doesNotMatch(statsSource, /store\.rawData\.groups|rawData\.groups/);
+
+  assert.match(detailSource, /id="daily-pnl-explanation"/);
+  assert.match(detailSource, /逐檔 day ledger/);
+  assert.doesNotMatch(detailSource, /fetch\(|\/api\//);
 });
