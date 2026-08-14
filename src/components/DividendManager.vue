@@ -198,8 +198,9 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
 import {
   getDividendCurrency,
@@ -210,8 +211,10 @@ import {
   isMutationAmbiguous,
   isMutationCommitted,
 } from '../services/mutationOutcome.js';
+import { subscribeRecordCreateRecoverySuccess } from '../services/recordCreateRecoverySignal.js';
 
 const store = usePortfolioStore();
+const auth = useAuthStore();
 const { addToast } = useToast();
 
 const loading = ref(false);
@@ -324,6 +327,39 @@ const formatNumber = (val, d = 2) => {
     maximumFractionDigits: d
   });
 };
+
+const normalizeRecoveryOwner = value => (
+  typeof value === 'string' ? value.trim().toLowerCase() : ''
+);
+
+const unsubscribeRecordCreateRecovery = subscribeRecordCreateRecoverySuccess(event => {
+  if (event.owner !== normalizeRecoveryOwner(auth.user?.email)) return;
+
+  let payload;
+  try {
+    payload = JSON.parse(event.body);
+  } catch {
+    return;
+  }
+
+  if (payload?.txn_type !== 'DIV' || payload?.tag !== 'Auto-Dividend') return;
+  const symbol = String(payload.symbol || '').trim().toUpperCase();
+  const txnDate = String(payload.txn_date || '').trim();
+  if (!symbol || !txnDate) return;
+
+  const matchingDividend = localDividends.value.find(div => (
+    String(div.symbol || '').trim().toUpperCase() === symbol
+    && String(div.ex_date || '').trim() === txnDate
+  ));
+  if (!matchingDividend) return;
+
+  const key = getDivKey(matchingDividend);
+  if (confirmedKeys.value.has(key)) return;
+  confirmedKeys.value.add(key);
+  saveConfirmedKeys();
+});
+
+onUnmounted(() => unsubscribeRecordCreateRecovery());
 
 // ✅ 大幅簡化配息確認流程：2 步驟完成
 const confirmDividend = async (div) => {

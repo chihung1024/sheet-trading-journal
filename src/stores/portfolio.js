@@ -32,6 +32,7 @@ import {
     readEligibleRecordCreateIntents,
     rotateRecordMutationBarrier,
 } from '../services/recordCreateIntent.js';
+import { publishRecordCreateRecoverySuccess } from '../services/recordCreateRecoverySignal.js';
 import { readApiJson } from '../services/apiResponse';
 import {
     formatRequestError,
@@ -566,6 +567,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
             markSnapshotStale();
             if (!json.auto_update) markCommittedMutationDirtyForAutomaticRecalculation();
+            publishRecordCreateRecoverySuccess({
+                owner: intent.owner,
+                body: intent.body,
+            });
             addToast('已自動確認先前未完成回應的新增交易', 'success');
             if (json.auto_update) handleAutoUpdateSignal('🚀 已恢復第一筆交易，系統正自動啟動背景計算...');
             return true;

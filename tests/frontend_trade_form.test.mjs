@@ -47,14 +47,33 @@ test('TradeForm uses local calendar date for initialization and every reset', ()
   assert.match(source, /const resetForm = \(\) => \{[\s\S]*?form\.txn_date = formatLocalCalendarDate\(\);/);
 });
 
-test('TradeForm emits submitted exactly once and only inside successful mutation handling', () => {
+test('TradeForm emits submitted only after an immediate committed mutation or exact recovered-create confirmation', () => {
   const source = read(TRADE_FORM_PATH);
   assert.match(source, /const emit = defineEmits\(\['submitted'\]\);/);
-  assert.equal((source.match(/emit\('submitted'\)/g) || []).length, 1);
+  assert.equal((source.match(/emit\('submitted'\)/g) || []).length, 2);
 
-  const successBlock = source.match(/if \(success\) \{([\s\S]*?)\n\s*\}/)?.[1] || '';
+  const successStart = source.indexOf('if (success) {');
+  const submitCatch = source.indexOf('} catch(e)', successStart);
+  const successBlock = source.slice(successStart, submitCatch);
+  assert.ok(successStart >= 0 && submitCatch > successStart);
   assert.match(successBlock, /resetForm\(\);/);
   assert.match(successBlock, /emit\('submitted'\);/);
+
+  const recoveryStart = source.indexOf('const unsubscribeRecordCreateRecovery');
+  const recoveryEnd = source.indexOf('onUnmounted(', recoveryStart);
+  const recoveryBlock = source.slice(recoveryStart, recoveryEnd);
+  assert.ok(recoveryStart >= 0 && recoveryEnd > recoveryStart);
+
+  const ownerGuard = recoveryBlock.indexOf('event.owner !== normalizeRecoveryOwner(auth.user?.email)');
+  const bodyGuard = recoveryBlock.indexOf('event.body !== unresolvedCreateBody');
+  const currentBodyGuard = recoveryBlock.indexOf('if (currentBody !== recoveredBody)');
+  const resetAt = recoveryBlock.indexOf('resetForm()');
+  const emitAt = recoveryBlock.indexOf("emit('submitted')");
+  assert.ok(ownerGuard >= 0);
+  assert.ok(bodyGuard > ownerGuard);
+  assert.ok(currentBodyGuard > bodyGuard);
+  assert.ok(resetAt > currentBodyGuard);
+  assert.ok(emitAt > resetAt);
 
   const appSource = read(APP_PATH);
   assert.match(appSource, /<TradeForm[^>]*@submitted="onTradeSubmitted"/);
@@ -62,7 +81,11 @@ test('TradeForm emits submitted exactly once and only inside successful mutation
 
 test('editing continues to load the source record date instead of replacing it with today', () => {
   const source = read(TRADE_FORM_PATH);
-  const setupBlock = source.match(/const setupForm = \(r\) => \{([\s\S]*?)\n\};\n\ndefineExpose/)?.[1] || '';
+  const start = source.indexOf('const setupForm = (r) => {');
+  const end = source.indexOf('const normalizeRecoveryOwner', start);
+  assert.ok(start >= 0 && end > start);
+  const setupBlock = source.slice(start, end);
   assert.match(setupBlock, /Object\.keys\(form\)\.forEach\(k => form\[k\] = r\[k\]\);/);
   assert.doesNotMatch(setupBlock, /formatLocalCalendarDate/);
+  assert.match(setupBlock, /unresolvedCreateBody = null/);
 });
