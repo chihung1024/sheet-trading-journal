@@ -55,16 +55,17 @@ function okResponse() {
   };
 }
 
-test('browser batch supersedes an eligible create intent and writes one dirty generation after first verified commit', async () => {
+test('browser batch supersedes a live eligible create intent and writes latest dirty generation', async () => {
   const storage = createStorage();
   storage.setItem('user_benchmark', 'qqq');
   const owner = 'user@example.com';
+  const now = Date.now();
   const ids = ['barrier_token_1234567890', 'intent_key_1234567890'];
   beginRecordCreateIntent(storage, owner, { symbol: 'AAPL', txn_type: 'BUY' }, {
-    now: 1000,
+    now,
     createOpaqueId: () => ids.shift(),
   });
-  assert.equal(readEligibleRecordCreateIntents(storage, owner, { now: 1000 }).length, 1);
+  assert.equal(readEligibleRecordCreateIntents(storage, owner, { now }).length, 1);
 
   const calls = [];
   const result = await updateRecordTagsSequentially({
@@ -84,7 +85,7 @@ test('browser batch supersedes an eligible create intent and writes one dirty ge
   assert.deepEqual(calls, [1, 2]);
   assert.equal(result.succeeded, 2);
   assert.equal(result.total, 2);
-  assert.equal(readEligibleRecordCreateIntents(storage, owner).length, 0);
+  assert.equal(readEligibleRecordCreateIntents(storage, owner, { now: Date.now() }).length, 0);
   const status = readAutomaticRecalculationStatus(storage, owner);
   assert.equal(status.dirty, true);
   assert.equal(status.generation.benchmark, 'QQQ');
