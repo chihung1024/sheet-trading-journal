@@ -28,8 +28,9 @@ test('current D1 and Worker contracts already persist and return note without a 
   const worker = read('worker.js');
 
   assert.match(migration, /\bnote\s+TEXT\b/);
-  assert.match(worker, /const MAX_NOTE_LENGTH\s*=\s*2000/);
-  assert.match(worker, /note:\s*sanitizeText\(body\.note\s*\|\|\s*"",\s*MAX_NOTE_LENGTH\)/);
+  const noteValidation = worker.match(/note:\s*sanitizeText\(body\.note\s*\|\|\s*"",\s*([0-9_]+)\)/);
+  assert.ok(noteValidation, 'Worker must validate the note field before persistence');
+  assert.equal(Number(noteValidation[1].replaceAll('_', '')), 2000);
   assert.match(worker, /INSERT INTO records \(user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note\)/);
   assert.match(worker, /UPDATE records SET txn_date=\?, symbol=\?, txn_type=\?, qty=\?, price=\?, fee=\?, tax=\?, tag=\?, note=\?/);
   assert.match(worker, /const \{ create_idempotency_hash: _idempotency, create_payload_hash: _payload, \.\.\.record \} = row/);
