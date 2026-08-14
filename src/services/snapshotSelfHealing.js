@@ -108,26 +108,108 @@ export const installSnapshotSelfHealing = ({
   if (!portfolio || !auth || !storage) return () => {};
 
   const attemptedFingerprints = createSnapshotRepairTracker();
+  const attemptedTerminalDirtyTokens = new Set();
   let reconciliationPromise = null;
+  let rerunRequested = false;
+  let scheduledTerminalDirtyToken = null;
+
+  const readTerminalDirtyToken = () => {
+    if (
+      portfolio.portfolioReadStatus !== 'loaded'
+      || portfolio.snapshotFreshness !== 'stale'
+      || portfolio.loading
+      || portfolio.calculationJob?.status !== 'succeeded'
+    ) {
+      return null;
+    }
+
+    const owner = normalizeOwner(auth?.user?.email);
+    if (!owner) return null;
+    try {
+      const status = readAutomaticRecalculationStatus(storage, owner);
+      return status.dirty ? status.generation?.token || null : null;
+    } catch (error) {
+      console.warn('Snapshot terminal handoff cannot read Phase 2 recovery state', error);
+      return null;
+    }
+  };
+
+  const scheduleTerminalDirtyHandoff = () => {
+    if (reconciliationPromise) return;
+    const token = readTerminalDirtyToken();
+    if (
+      !token
+      || scheduledTerminalDirtyToken === token
+      || attemptedTerminalDirtyTokens.has(token)
+    ) {
+      return;
+    }
+
+    scheduledTerminalDirtyToken = token;
+    setTimeout(() => {
+      if (scheduledTerminalDirtyToken === token) scheduledTerminalDirtyToken = null;
+      const currentToken = readTerminalDirtyToken();
+      if (currentToken !== token || attemptedTerminalDirtyTokens.has(token)) return;
+
+      // A successful calculation can finish while Phase 3 is creating a newer
+      // dirty generation from the just-read snapshot. Re-entering the existing
+      // full-read lifecycle after the active trigger stack has unwound gives
+      // Phase 2 one deterministic chance to observe and schedule that durable
+      // generation. No new retry authority or financial calculation is added.
+      attemptedTerminalDirtyTokens.add(token);
+      void portfolio.fetchAll().catch(error => {
+        console.warn('Snapshot terminal dirty handoff refresh failed; durable dirty state is retained', error);
+      });
+    }, 0);
+  };
 
   const run = () => {
-    if (reconciliationPromise) return reconciliationPromise;
-    reconciliationPromise = reconcileSnapshotSelfHealing({
-      portfolio,
-      auth,
-      storage,
-      attemptedFingerprints,
-    }).finally(() => {
+    if (reconciliationPromise) {
+      rerunRequested = true;
+      return reconciliationPromise;
+    }
+
+    reconciliationPromise = (async () => {
+      let result;
+      do {
+        rerunRequested = false;
+        result = await reconcileSnapshotSelfHealing({
+          portfolio,
+          auth,
+          storage,
+          attemptedFingerprints,
+        });
+      } while (rerunRequested && portfolio.portfolioReadStatus === 'loaded');
+      return result;
+    })().finally(() => {
       reconciliationPromise = null;
+      scheduleTerminalDirtyHandoff();
+      if (rerunRequested && portfolio.portfolioReadStatus === 'loaded') void run();
     });
     return reconciliationPromise;
   };
 
-  return watch(
+  const stopReadWatch = watch(
     () => portfolio.portfolioReadStatus,
     status => {
       if (status === 'loaded') void run();
     },
     { flush: 'post' },
   );
+
+  const stopTerminalHandoffWatch = watch(
+    () => [
+      portfolio.snapshotFreshness,
+      portfolio.loading,
+      portfolio.calculationJob?.status,
+      portfolio.calculationJob?.id,
+    ],
+    () => scheduleTerminalDirtyHandoff(),
+    { flush: 'post' },
+  );
+
+  return () => {
+    stopReadWatch();
+    stopTerminalHandoffWatch();
+  };
 };
