@@ -5,6 +5,11 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  isSnapshotRecordVerified,
+  isSnapshotVerificationCurrent,
+  publishSnapshotVerification,
+} from '../src/services/snapshotVerification.js';
+import {
   resolveAuthoritativeTransactionFx,
   resolveNetCashflowNative,
   resolveSettlementAmountNative,
@@ -14,7 +19,7 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relativePath => fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
 
-const snapshot = {
+const makeSnapshot = () => ({
   history: [
     {
       date: '2026-08-04',
@@ -36,9 +41,9 @@ const snapshot = {
       _raw_fx_rates: { TWD: 1, USD: 32.021234, KRW: 0.02222 },
     },
   ],
-};
+});
 
-const baseRecord = {
+const makeBaseRecord = () => ({
   id: 1,
   txn_date: '2026-08-04',
   symbol: 'NVDA',
@@ -47,9 +52,10 @@ const baseRecord = {
   price: 100,
   fee: 5,
   tax: 1,
-};
+});
 
 test('transaction native cash flow mirrors current Python BUY/SELL/DIV semantics', () => {
+  const baseRecord = makeBaseRecord();
   assert.equal(resolveNetCashflowNative(baseRecord), -1006);
   assert.equal(resolveSettlementAmountNative(baseRecord), 1006);
 
@@ -73,8 +79,39 @@ test('transaction native cash flow mirrors current Python BUY/SELL/DIV semantics
   assert.equal(resolveNetCashflowNative({ ...baseRecord, txn_type: 'TRANSFER' }), null);
 });
 
+test('foreign FX remains unavailable until Phase 3 verifies the exact snapshot and record objects', () => {
+  const snapshot = makeSnapshot();
+  const record = { ...makeBaseRecord(), symbol: '005930.KS' };
+  const records = [record];
+
+  assert.equal(resolveAuthoritativeTransactionFx(snapshot, record), null);
+  assert.equal(isSnapshotVerificationCurrent(snapshot, records), false);
+  assert.equal(isSnapshotRecordVerified(snapshot, record), false);
+
+  assert.equal(publishSnapshotVerification(snapshot, records), true);
+  assert.equal(isSnapshotVerificationCurrent(snapshot, records), true);
+  assert.equal(isSnapshotRecordVerified(snapshot, record), true);
+  assert.deepEqual(resolveAuthoritativeTransactionFx(snapshot, record), {
+    currency: 'KRW',
+    fxRate: 0.02215,
+    source: 'snapshot-fx-context',
+  });
+
+  // A new API read replaces record objects; an old integrity proof cannot
+  // authorize the new record set even when values happen to be identical.
+  const replacedRecord = { ...record };
+  assert.equal(isSnapshotRecordVerified(snapshot, replacedRecord), false);
+  assert.equal(resolveAuthoritativeTransactionFx(snapshot, replacedRecord), null);
+
+  const replacedSnapshot = { ...snapshot, history: [...snapshot.history] };
+  assert.equal(isSnapshotRecordVerified(replacedSnapshot, record), false);
+  assert.equal(resolveAuthoritativeTransactionFx(replacedSnapshot, record), null);
+});
+
 test('currency-aware FX comes only from the exact transaction-date Python snapshot context', () => {
-  const krw = { ...baseRecord, symbol: '005930.KS' };
+  const snapshot = makeSnapshot();
+  const krw = { ...makeBaseRecord(), symbol: '005930.KS' };
+  publishSnapshotVerification(snapshot, [krw]);
   assert.deepEqual(resolveAuthoritativeTransactionFx(snapshot, krw), {
     currency: 'KRW',
     fxRate: 0.02215,
@@ -82,14 +119,17 @@ test('currency-aware FX comes only from the exact transaction-date Python snapsh
   });
 
   const missingDate = { ...krw, txn_date: '2026-08-03' };
+  publishSnapshotVerification(snapshot, [missingDate]);
   assert.equal(resolveAuthoritativeTransactionFx(snapshot, missingDate), null);
 
-  const missingCurrency = {
+  const missingCurrencySnapshot = {
     history: [{ date: '2026-08-04', _raw_fx_rates: { TWD: 1, USD: 31.9 } }],
   };
-  assert.equal(resolveAuthoritativeTransactionFx(missingCurrency, krw), null);
+  const missingCurrencyRecord = { ...krw };
+  publishSnapshotVerification(missingCurrencySnapshot, [missingCurrencyRecord]);
+  assert.equal(resolveAuthoritativeTransactionFx(missingCurrencySnapshot, missingCurrencyRecord), null);
 
-  const twd = { ...baseRecord, symbol: '2330.TW' };
+  const twd = { ...makeBaseRecord(), symbol: '2330.TW' };
   assert.deepEqual(resolveAuthoritativeTransactionFx({}, twd), {
     currency: 'TWD',
     fxRate: 1,
@@ -97,20 +137,37 @@ test('currency-aware FX comes only from the exact transaction-date Python snapsh
   });
 });
 
-test('legacy scalar FX is an exact-date USD-only compatibility path, never a foreign-currency fallback', () => {
+test('legacy scalar FX is an exact-date verified USD-only compatibility path', () => {
   const legacy = { history: [{ date: '2026-08-04', fx_rate: 31.9876 }] };
-  assert.deepEqual(resolveAuthoritativeTransactionFx(legacy, baseRecord), {
+  const usd = makeBaseRecord();
+  publishSnapshotVerification(legacy, [usd]);
+  assert.deepEqual(resolveAuthoritativeTransactionFx(legacy, usd), {
     currency: 'USD',
     fxRate: 31.9876,
     source: 'legacy-usd-reference',
   });
 
-  const jpy = { ...baseRecord, symbol: '7203.T' };
+  const jpy = { ...makeBaseRecord(), symbol: '7203.T' };
+  publishSnapshotVerification(legacy, [jpy]);
   assert.equal(resolveAuthoritativeTransactionFx(legacy, jpy), null);
 });
 
-test('resolved TWD settlement uses authoritative date FX and preserves transaction direction internally', () => {
-  const buy = resolveTransactionValuation(snapshot, baseRecord);
+test('resolved TWD settlement uses verified authoritative date FX and preserves direction internally', () => {
+  const snapshot = makeSnapshot();
+  const buyRecord = makeBaseRecord();
+  const krwSellRecord = {
+    ...makeBaseRecord(),
+    id: 2,
+    symbol: '005930.KS',
+    txn_type: 'SELL',
+    qty: 2,
+    price: 50000,
+    fee: 100,
+    tax: 50,
+  };
+  publishSnapshotVerification(snapshot, [buyRecord, krwSellRecord]);
+
+  const buy = resolveTransactionValuation(snapshot, buyRecord);
   assert.equal(buy.currency, 'USD');
   assert.equal(buy.fxSource, 'snapshot-fx-context');
   assert.equal(buy.netCashflowNative, -1006);
@@ -118,15 +175,7 @@ test('resolved TWD settlement uses authoritative date FX and preserves transacti
   assert.equal(buy.netCashflowTwd, -1006 * 31.912345);
   assert.equal(buy.settlementAmountTwd, 1006 * 31.912345);
 
-  const krwSell = resolveTransactionValuation(snapshot, {
-    ...baseRecord,
-    symbol: '005930.KS',
-    txn_type: 'SELL',
-    qty: 2,
-    price: 50000,
-    fee: 100,
-    tax: 50,
-  });
+  const krwSell = resolveTransactionValuation(snapshot, krwSellRecord);
   assert.equal(krwSell.netCashflowNative, 99850);
   assert.equal(krwSell.settlementAmountTwd, 99850 * 0.02215);
 });
@@ -134,6 +183,7 @@ test('resolved TWD settlement uses authoritative date FX and preserves transacti
 test('frontend consumes existing authoritative contracts without inventing FX or fee normalization', () => {
   const recordList = read('src/components/RecordList.vue');
   const valuation = read('src/services/transactionValuation.js');
+  const selfHealing = read('src/services/snapshotSelfHealing.js');
   const calculator = read('journal_engine/core/calculator.py');
   const runner = read('main.py');
   const worker = read('worker.js');
@@ -147,11 +197,16 @@ test('frontend consumes existing authoritative contracts without inventing FX or
 
   assert.match(valuation, /row\._raw_fx_rates/);
   assert.match(valuation, /snapshot\.history\.find/);
+  assert.match(valuation, /isSnapshotRecordVerified\(snapshot, record\)/);
   assert.doesNotMatch(valuation, /Math\.abs\(commission\)/);
   assert.doesNotMatch(valuation, /Math\.abs\(tax\)/);
   assert.doesNotMatch(valuation, /sort\(\)/);
   assert.doesNotMatch(valuation, /<= target/);
   assert.doesNotMatch(valuation, /32\.0/);
+
+  assert.match(selfHealing, /const assessedRecords = portfolio\.records/);
+  assert.match(selfHealing, /const assessedSnapshot = portfolio\.rawData/);
+  assert.match(selfHealing, /publishSnapshotVerification\(assessedSnapshot, assessedRecords\)/);
 
   assert.match(calculator, /cost_usd = \(row\['Qty'\] \* row\['Price'\]\) \+ row\['Commission'\] \+ row\['Tax'\]/);
   assert.match(calculator, /proceeds_twd = \(\(executable_qty \* row\['Price'\]\) - executed_commission - executed_tax\) \* effective_fx/);
