@@ -182,7 +182,7 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 - BUY cash flow follows current calculator: `-(qty * price + fee + tax)`.
 - SELL cash flow follows current calculator: `qty * price - fee - tax`.
 - confirmed DIV cash flow follows current calculator: `qty * price`.
-- fee/tax signs are preserved exactly; browser does not add an `abs()` normalization that production does not have.
+- Browser uses normalized record fee/tax values in the same arithmetic as the calculator and does **not** create a second `abs()` transformation. Normal Worker record writes already enforce non-negative fee/tax via `optionalFiniteNumber(..., { minInclusive: 0 })`; preserving supplied values still prevents projection drift for historical/direct-import ledger rows and keeps frontend semantics identical to the calculation source it receives.
 - TWD records use base-currency multiplier `1`.
 - foreign records require existing Phase 3 cryptographic proof for the exact snapshot object and exact record object.
 - verified foreign FX uses only the exact transaction-date `history._raw_fx_rates[currency]`.
@@ -195,9 +195,10 @@ The provisional Python projection was therefore **REJECTED before PR creation**.
 
 - CI #882: Worker + Python passed; Frontend failed because Batch 1.1 regression still required RecordList to own the old `canConvertWithLegacyUsdTwdRate` implementation shape.
 - Root cause: valuation authority had moved into `transactionValuation.js`; the regression was updated to verify delegation and continued prohibition of non-TWD-as-USD / `32.0` fallback. Runtime was not weakened.
-- **R2 BLOCKER 1:** first helper version applied `abs()` to fee/tax. Worker accepts any finite values, `prepare_transactions()` preserves sign, and current calculator uses those signs. Helper + regressions were corrected to mirror production exactly.
+- **R2 BLOCKER 1:** first helper version added an extra `abs()` transform for fee/tax. Normal Worker writes are non-negative, but Python preparation/calculator do not introduce that frontend-only transform and historical/direct-import rows cannot be assumed to have only UI provenance. Helper + regressions were corrected to mirror the calculator’s supplied-value arithmetic exactly.
 - **R2 BLOCKER 2:** `snapshotFreshness='loaded'` occurs before Phase 3 cryptographic integrity verification. A memory-only proof bound to the exact assessed snapshot + records was added; foreign monetary FX now requires that actual proof.
 - Oversell review: production runner already executes split-adjusted transaction-prefix integrity validation before `PortfolioCalculator`; a published snapshot cannot depend on partial oversell clamp to hide invalid source data.
+- **Evidence correction recorded during Phase 2 preflight:** re-reading `optionalFiniteNumber()` confirmed current Worker normal writes enforce `fee/tax >= 0`; earlier review prose saying Worker “accepts any finite fee/tax” was inaccurate. Runtime choice remains unchanged because the correct invariant is calculator parity without a second frontend-only sign transform.
 - final exact-head `7bf436849e985eaa51263f22fd75d6973d0b0833`;
 - final exact-head CI #891 / `31816830443`: **SUCCESS**;
 - Frontend contracts + production build: PASS;
@@ -261,7 +262,7 @@ After Batch 1.1, non-USD records correctly stopped using the USD/TWD scalar but 
 - API client uploads the full snapshot model dump, so no new backend field was required.
 - `day_ledger` cannot map old records; `lot_ledger` currently has no producer.
 - current calculator BUY/SELL/DIV cash-flow formulas differ by transaction type.
-- Worker validates fee/tax as finite but does not force non-negative; `prepare_transactions()` preserves their sign.
+- current Worker normal record writes enforce non-negative fee/tax through `optionalFiniteNumber`, while Python preparation/calculator consume supplied ledger values without adding a second sign-normalization layer; historical/direct-import provenance must therefore remain compatible with the calculator rather than a frontend-only transform.
 - `fetchSnapshot()` sets `snapshotFreshness='loaded'` before Phase 3 later proves source identity.
 
 **Failure Points**
@@ -284,16 +285,16 @@ Frontend presentation had evolved separately from the authoritative Python snaps
 
 - Reuse exact-date `history._raw_fx_rates[currency]` after Phase 3 verifies the exact snapshot/record pair.
 - Keep legacy scalar `fx_rate` USD-only and exact-date.
-- Mirror current calculator BUY/SELL/DIV cash-flow rules exactly, including fee/tax sign behavior.
+- Mirror current calculator BUY/SELL/DIV cash-flow arithmetic on supplied normalized record values; do not add an independent frontend `abs()` rule.
 - Add memory-only `snapshotVerification` rather than a second persistent freshness state or new recovery controller.
 - Remove RecordList backward-date FX lookup.
 
 **Prevention**
 
 - executable KRW/exact-date/missing-date/legacy-USD tests;
-- negative fee/tax parity regression against actual calculator source shape;
+- supplied-value fee/tax parity regression against actual calculator source shape;
 - replacement snapshot/record object invalidation tests;
-- source-contract tests forbid browser nearest-date logic, `32.0`, and `abs()` normalization drift;
+- source-contract tests forbid browser nearest-date logic, `32.0`, and frontend-only `abs()` normalization drift;
 - Phase 3 self-healing regression proves FRESH publishes the UI proof and stale repair does not.
 
 ### 2026-08-14 — Frontend transaction currency contract narrower than Python
@@ -357,9 +358,10 @@ Verification:
 - audit rejected redundant Python projection after proving root snapshot already carries authoritative per-date currency-aware FX;
 - CI #882 exposed one stale Batch-1.1 implementation-shape test while Worker/Python passed;
 - stale test corrected at the contract boundary, not by restoring old runtime logic;
-- R2 BLOCKER 1 fee/tax sign parity fixed;
+- R2 BLOCKER 1 frontend-only fee/tax sign normalization removed in favor of exact calculator supplied-value arithmetic;
 - R2 BLOCKER 2 loaded-vs-verified monetary authorization fixed;
 - production prefix-integrity preflight reviewed for SELL/oversell boundary: PASS;
+- Phase 2 preflight later corrected the review prose: normal Worker writes already enforce non-negative fee/tax; the runtime parity decision remains valid for calculator consistency and legacy/direct-import provenance;
 - final exact-head CI #891 / `31816830443`: **SUCCESS**;
 - Frontend contracts + production build: PASS;
 - Python tests + branch coverage: PASS;
