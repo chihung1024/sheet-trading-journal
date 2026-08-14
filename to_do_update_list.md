@@ -132,9 +132,11 @@ one logical create
 - intent prefix: `pending_record_create.v1.`;
 - mutation barrier: `record_mutation_barrier.v1`;
 - storage key has no email/PII;
-- stored value is owner-validated and contains the exact serialized create body;
+- **LIVE** value is owner-validated and contains the exact serialized create body required for replay;
+- **TERMINAL** tombstone omits the transaction body and keeps only owner/key/barrier/timestamps/state/reason needed to remain non-replayable;
 - secure random key/barrier generation;
 - persistence is write/read-back verified;
+- if a terminal rewrite fails but removal is still available, the LIVE intent is removed so a definitely rejected create cannot later replay;
 - logout removes barrier and all intent-prefix entries.
 
 ### Mutation semantics
@@ -144,9 +146,9 @@ one logical create
 - 401 refresh recursively reuses the same endpoint/options, preserving key/body;
 - verified create success clears the exact intent before `fetchRecords()`;
 - a refresh failure after commit remains a committed mutation, never a reason to create again;
-- explicit 4xx/409/unsupported 404 become terminal for that intent; no automatic new key and no legacy fallback;
-- timeout/network/5xx ambiguity retains the exact live intent;
-- recovery is single-flight and bounded once per intent key per store lifetime; reload permits a new bounded attempt if still live;
+- explicit 4xx/409/unsupported 404 become terminal for that intent; no automatic new key and no legacy fallback; terminal state retains no transaction body;
+- timeout/network/5xx ambiguity retains the exact LIVE intent;
+- recovery is single-flight and bounded once per intent key per store lifetime; reload permits a new bounded attempt if still LIVE;
 - later new create rotates the barrier;
 - UPDATE/DELETE first supersede an eligible old create intent before sending their own mutation.
 
@@ -158,12 +160,10 @@ The barrier is a browser replay-eligibility fence. It prevents a superseded **pe
 
 - CI #777 exposed the missing reviewed storage-inventory entry; safety inventory was updated rather than weakened.
 - CI #782 was the first run with executable durable-intent service tests in the frontend glob; 212/213 passed and the sole failure was a test-only raw-string assertion against nested JSON storage.
-- CI #783 / run `31763766650`: **SUCCESS** on the code-bearing candidate after correcting that test assertion.
-- Frontend contracts + executable storage tests + build: PASS.
-- Worker security/deployment tests: PASS.
-- Python tests/coverage: PASS.
+- CI #783 / run `31763766650`: **SUCCESS** on the earlier code-bearing candidate after correcting that test assertion.
+- Final R2 review then added the minimal terminal-tombstone/privacy/fail-closed refinement, so CI #783 is no longer the exact-head merge gate.
 
-Handoff/document-only commits after the code-bearing CI must still receive fresh exact-head CI before merge. Do not quote CI #783 as exact-head if the PR head has advanced.
+The exact current PR head and its fresh CI must always be re-fetched before merge.
 
 ---
 
@@ -172,12 +172,13 @@ Handoff/document-only commits after the code-bearing CI must still receive fresh
 Execute without asking the user unless GitHub/platform requires owner action:
 
 1. re-fetch PR #231 head/base/main and ensure no unexpected drift;
-2. run/wait for exact-current-head full CI after handoff changes;
+2. run/wait for exact-current-head full CI after the final terminal-tombstone + handoff changes;
 3. perform R2 independent adversarial review:
    - persist-before-send;
-   - exact same key/body on recovery/token refresh;
+   - exact same key/body on LIVE recovery/token refresh;
    - no legacy endpoint fallback;
    - 409/404 terminal without key rotation;
+   - terminal tombstone has no transaction body and terminal-write failure cannot leave a replayable LIVE intent when removal is available;
    - ambiguous outcomes retained but no tight retry loop;
    - owner isolation / no PII in storage key;
    - logout cleanup;
