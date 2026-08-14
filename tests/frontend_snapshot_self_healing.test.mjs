@@ -10,6 +10,10 @@ import {
   readAutomaticRecalculationStatus,
 } from '../src/services/automaticRecalculationState.js';
 import { buildSourceRecordsIdentity } from '../src/services/snapshotIntegrity.js';
+import {
+  isSnapshotRecordVerified,
+  isSnapshotVerificationCurrent,
+} from '../src/services/snapshotVerification.js';
 
 class MemoryStorage {
   constructor(entries = []) {
@@ -89,7 +93,7 @@ const makeContext = async ({ snapshot, records = RECORDS, readStatus = 'loaded' 
   return { storage, portfolio, auth, calls };
 };
 
-test('fresh cryptographic snapshot proof from Worker API records performs no repair handoff', async () => {
+test('fresh cryptographic snapshot proof from Worker API records performs no repair and publishes exact UI proof', async () => {
   const context = await makeContext();
   const result = await reconcileSnapshotSelfHealing({
     ...context,
@@ -100,6 +104,24 @@ test('fresh cryptographic snapshot proof from Worker API records performs no rep
   assert.equal(context.calls.stale, 0);
   assert.equal(context.calls.fetchAll, 0);
   assert.equal(readAutomaticRecalculationStatus(context.storage, OWNER).dirty, false);
+  assert.equal(
+    isSnapshotVerificationCurrent(context.portfolio.rawData, context.portfolio.records),
+    true,
+  );
+  assert.equal(
+    isSnapshotRecordVerified(context.portfolio.rawData, context.portfolio.records[0]),
+    true,
+  );
+
+  // Replacing either side of the full-read pair immediately invalidates the proof.
+  assert.equal(
+    isSnapshotVerificationCurrent(context.portfolio.rawData, [...context.portfolio.records]),
+    false,
+  );
+  assert.equal(
+    isSnapshotRecordVerified({ ...context.portfolio.rawData }, context.portfolio.records[0]),
+    false,
+  );
 });
 
 test('provably stale source creates one Phase 2 dirty generation and hands off through fetchAll', async () => {
@@ -114,6 +136,7 @@ test('provably stale source creates one Phase 2 dirty generation and hands off t
   assert.equal(result.action, 'repair_handed_to_phase2');
   assert.equal(context.calls.stale, 1);
   assert.equal(context.calls.fetchAll, 1);
+  assert.equal(isSnapshotVerificationCurrent(context.portfolio.rawData, context.portfolio.records), false);
   const status = readAutomaticRecalculationStatus(context.storage, OWNER);
   assert.equal(status.dirty, true);
   assert.equal(status.generation.benchmark, 'SPY');

@@ -8,6 +8,7 @@ import {
   assessSnapshotIntegrity,
   SNAPSHOT_INTEGRITY_STATUS,
 } from './snapshotIntegrity.js';
+import { publishSnapshotVerification } from './snapshotVerification.js';
 
 const nextTask = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -32,9 +33,14 @@ export const reconcileSnapshotSelfHealing = async ({
     return Object.freeze({ action: 'no_owner', assessment: null });
   }
 
+  // Capture the exact object/array pair being assessed. If another full read or
+  // record refresh replaces either reference while SHA-256 work is in flight, the
+  // published proof cannot authorize the newer UI state.
+  const assessedRecords = portfolio.records;
+  const assessedSnapshot = portfolio.rawData;
   const assessment = await assessSnapshotIntegrity(
-    portfolio.records,
-    portfolio.rawData,
+    assessedRecords,
+    assessedSnapshot,
     { expectedBenchmark: portfolio.selectedBenchmark },
   );
 
@@ -42,6 +48,7 @@ export const reconcileSnapshotSelfHealing = async ({
     assessment.status === SNAPSHOT_INTEGRITY_STATUS.FRESH
     || assessment.status === SNAPSHOT_INTEGRITY_STATUS.EMPTY
   ) {
+    publishSnapshotVerification(assessedSnapshot, assessedRecords);
     return Object.freeze({ action: 'verified', assessment });
   }
 
