@@ -1,0 +1,331 @@
+<template>
+  <section
+    id="daily-pnl-explanation"
+    class="daily-pnl-explanation"
+    aria-labelledby="daily-pnl-explanation-title"
+  >
+    <div class="explanation-header">
+      <div>
+        <p class="eyebrow">當日損益來源</p>
+        <h3 id="daily-pnl-explanation-title">{{ groupLabel }}</h3>
+        <p class="explanation-period">{{ periodLabel }}</p>
+      </div>
+      <div class="published-total" :class="pnlClass(explanation.publishedTotalTwd)">
+        {{ signedTwd(explanation.publishedTotalTwd) }}
+      </div>
+    </div>
+
+    <div v-if="explanation.componentTotals.length" class="component-summary" aria-label="損益來源總結">
+      <div
+        v-for="component in explanation.componentTotals"
+        :key="component.key"
+        class="component-chip"
+      >
+        <span>{{ component.label }}</span>
+        <strong :class="pnlClass(component.valueTwd)">{{ signedTwd(component.valueTwd) }}</strong>
+      </div>
+    </div>
+
+    <div class="explanation-copy">
+      以下數字直接來自後端已對帳的逐檔 day ledger；不在瀏覽器重新計算投資組合損益。
+    </div>
+
+    <div class="contributor-list">
+      <article
+        v-for="row in visibleRows"
+        :key="row.symbol"
+        class="contributor-row"
+      >
+        <div class="contributor-main">
+          <div class="symbol-block">
+            <strong>{{ row.symbol }}</strong>
+            <span v-if="row.currency" class="currency-badge">{{ row.currency }}</span>
+          </div>
+          <strong class="contributor-total" :class="pnlClass(row.totalPnlTwd)">
+            {{ signedTwd(row.totalPnlTwd) }}
+          </strong>
+        </div>
+
+        <div v-if="row.components.length" class="contributor-components">
+          <span
+            v-for="component in row.components"
+            :key="component.key"
+            class="component-detail"
+          >
+            {{ component.label }}
+            <strong :class="pnlClass(component.valueTwd)">{{ signedTwd(component.valueTwd) }}</strong>
+          </span>
+        </div>
+        <div v-else class="no-component-change">無顯著分項變動</div>
+      </article>
+    </div>
+
+    <button
+      v-if="hasHiddenRows"
+      type="button"
+      class="show-more-btn"
+      @click="showAll = !showAll"
+    >
+      {{ showAll ? '收起其餘標的' : `顯示全部 ${explanation.rows.length} 檔` }}
+    </button>
+  </section>
+</template>
+
+<script setup>
+import { computed, ref, watch } from 'vue';
+
+const props = defineProps({
+  explanation: {
+    type: Object,
+    required: true,
+  },
+  groupName: {
+    type: String,
+    default: 'all',
+  },
+  prevDate: {
+    type: String,
+    default: '',
+  },
+  asOfDate: {
+    type: String,
+    default: '',
+  },
+});
+
+const DEFAULT_VISIBLE_ROWS = 8;
+const showAll = ref(false);
+
+watch(
+  () => props.groupName,
+  () => {
+    showAll.value = false;
+  },
+);
+
+const groupLabel = computed(() => (
+  props.groupName === 'all' ? '全部投資組合' : `群組：${props.groupName}`
+));
+
+const periodLabel = computed(() => {
+  if (props.prevDate && props.asOfDate) return `${props.prevDate} → ${props.asOfDate}`;
+  if (props.asOfDate) return `估值日 ${props.asOfDate}`;
+  return '目前已發布快照';
+});
+
+const visibleRows = computed(() => (
+  showAll.value
+    ? props.explanation.rows
+    : props.explanation.rows.slice(0, DEFAULT_VISIBLE_ROWS)
+));
+
+const hasHiddenRows = computed(() => props.explanation.rows.length > DEFAULT_VISIBLE_ROWS);
+
+const signedTwd = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  const rounded = Math.round(number).toLocaleString('zh-TW');
+  return `${number >= 0 ? '+' : ''}${rounded} TWD`;
+};
+
+const pnlClass = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number === 0) return '';
+  return number > 0 ? 'text-green' : 'text-red';
+};
+</script>
+
+<style scoped>
+.daily-pnl-explanation {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.explanation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--text-sub);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.explanation-header h3 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 1.05rem;
+}
+
+.explanation-period {
+  margin: 4px 0 0;
+  color: var(--text-sub);
+  font-size: 0.8rem;
+}
+
+.published-total {
+  flex: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.component-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.component-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-sub);
+  font-size: 0.78rem;
+}
+
+.component-chip strong,
+.component-detail strong {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.explanation-copy {
+  margin-bottom: 12px;
+  color: var(--text-sub);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.contributor-list {
+  display: grid;
+  gap: 8px;
+}
+
+.contributor-row {
+  padding: 11px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.contributor-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.symbol-block {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-main);
+}
+
+.currency-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  color: var(--text-sub);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.contributor-total {
+  flex: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+}
+
+.contributor-components {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 7px;
+  color: var(--text-sub);
+  font-size: 0.75rem;
+}
+
+.component-detail {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.no-component-change {
+  margin-top: 7px;
+  color: var(--text-sub);
+  font-size: 0.75rem;
+}
+
+.show-more-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.show-more-btn:hover {
+  background: var(--bg-secondary);
+}
+
+.text-green { color: var(--success); }
+.text-red { color: var(--danger); }
+
+@media (max-width: 768px) {
+  .daily-pnl-explanation {
+    margin-top: 12px;
+    padding: 14px;
+  }
+
+  .explanation-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .published-total {
+    font-size: 1rem;
+  }
+
+  .component-summary {
+    gap: 6px;
+  }
+
+  .component-chip {
+    padding: 5px 7px;
+  }
+
+  .contributor-main {
+    align-items: flex-start;
+  }
+
+  .contributor-components {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px 10px;
+  }
+}
+</style>
