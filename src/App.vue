@@ -30,13 +30,13 @@
           <div v-if="marketRefresh.isMarketHours() && !portfolioStore.loading && !portfolioStore.isPolling"
                class="auto-refresh-indicator"
                :class="{ paused: marketRefresh.isPaused.value }"
-               :title="marketRefresh.isPaused.value ? '已暫停自動刷新' : `下次觸發: ${marketRefresh.formattedTimeRemaining()}`">
+               :title="marketRefresh.isPaused.value ? '已暫停自動更新' : `下次自動更新: ${marketRefresh.formattedTimeRemaining()}`">
             <span class="market-badge">{{ marketRefresh.currentMarket.value === 'TW' ? '🇹🇼' : '🇺🇸' }}</span>
             <button
               type="button"
               class="refresh-icon"
               @click="marketRefresh.togglePause()"
-              :aria-label="marketRefresh.isPaused.value ? '繼續盤中自動刷新' : '暫停盤中自動刷新'"
+              :aria-label="marketRefresh.isPaused.value ? '繼續盤中自動更新' : '暫停盤中自動更新'"
             >
               <span v-if="marketRefresh.isPaused.value">⏸️</span>
               <span v-else>🔄</span>
@@ -50,6 +50,9 @@
             class="status-indicator"
             :class="statusPresentation.className"
             :title="statusPresentation.title"
+            :aria-label="statusPresentation.label"
+            role="status"
+            aria-live="polite"
           >
             <span class="dot"></span>
             <span class="desktop-only">{{ statusPresentation.label }}</span>
@@ -60,10 +63,11 @@
             class="action-trigger-btn"
             @click="handleTriggerUpdate"
             :disabled="portfolioStore.isPolling"
-            :title="portfolioStore.isPolling ? '計算中...' : '手動觸發計算'"
+            :title="portfolioStore.isPolling ? '資料更新中' : '立即更新資料'"
+            :aria-label="portfolioStore.isPolling ? '資料更新中' : '立即更新資料'"
           >
-            <span>⚙️</span>
-            <span class="desktop-only">觸發</span>
+            <span>🔄</span>
+            <span class="desktop-only">立即更新</span>
           </button>
 
           <button type="button" class="theme-toggle" @click="toggleTheme" aria-label="切換明暗主題">
@@ -200,6 +204,8 @@ import { useDarkMode } from './composables/useDarkMode';
 import { usePWA } from './composables/usePWA';
 import { useMarketHoursRefresh } from './composables/useMarketHoursRefresh';
 import { useTokenRefresh } from './composables/useTokenRefresh';
+import { buildDataSyncPresentation } from './services/dataSyncPresentation.js';
+import { isSnapshotVerificationCurrent } from './services/snapshotVerification.js';
 
 import LoginOverlay from './components/LoginOverlay.vue';
 import DataReliabilityBanner from './components/DataReliabilityBanner.vue';
@@ -317,31 +323,19 @@ const hasPendingDividends = computed(() => portfolioStore.pending_dividends?.len
 const pendingDividendsCount = computed(() => portfolioStore.pending_dividends ? portfolioStore.pending_dividends.length : 0);
 
 const userInitial = computed(() => authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'U');
+const snapshotVerified = computed(() => isSnapshotVerificationCurrent(
+  portfolioStore.rawData,
+  portfolioStore.records,
+));
 
-const statusPresentation = computed(() => {
-  if (portfolioStore.loading) {
-    return { className: 'loading', label: '更新中...', title: '正在向後端載入資料' };
-  }
-  if (portfolioStore.isPolling) {
-    return { className: 'polling', label: '計算中...', title: '背景計算或快照同步中' };
-  }
-  if (portfolioStore.connectionStatus === 'error') {
-    return { className: 'error', label: '連線異常', title: '最近一次 API 請求失敗' };
-  }
-  if (portfolioStore.snapshotFreshness === 'stale') {
-    return { className: 'stale', label: '快照待重算', title: '交易紀錄已變更；持倉與績效快照尚未確認更新' };
-  }
-  if (
-    portfolioStore.connectionStatus === 'connected'
-    && portfolioStore.snapshotFreshness === 'loaded'
-  ) {
-    return { className: 'ready', label: '已連線・快照已載入', title: 'API 已驗證連線；目前已載入後端快照' };
-  }
-  if (portfolioStore.connectionStatus === 'connected') {
-    return { className: 'ready', label: '已連線', title: '最近一次 API 請求成功；快照新鮮度尚未確認' };
-  }
-  return { className: 'unknown', label: '尚未驗證', title: '尚未完成 API 連線驗證' };
-});
+const statusPresentation = computed(() => buildDataSyncPresentation({
+  loading: portfolioStore.loading,
+  isPolling: portfolioStore.isPolling,
+  connectionStatus: portfolioStore.connectionStatus,
+  portfolioReadStatus: portfolioStore.portfolioReadStatus,
+  snapshotFreshness: portfolioStore.snapshotFreshness,
+  verified: snapshotVerified.value,
+}));
 
 // 📈 盤中自動刷新 - 台股/美股盤中每 3 分鐘觸發 triggerUpdate
 const marketRefresh = useMarketHoursRefresh();
@@ -364,16 +358,13 @@ const onTradeSubmitted = () => {
 
 const handleTriggerUpdate = async () => {
   if (portfolioStore.isPolling) {
-    addToast("⌛ 背景計算中，請稍候...", "info");
+    addToast('⌛ 資料正在更新，請稍候...', 'info');
     return;
   }
-  if (!confirm("確定要觸發後端計算嗎？")) return;
   try {
-    addToast("🚀 正在觸發 GitHub Actions...", "info");
     await portfolioStore.triggerUpdate();
-    addToast("✅ 已觸發！系統將自動輪詢狀態。", "success");
   } catch (error) {
-    addToast(`❌ 觸發失敗: ${error.message}`, "error");
+    addToast(`❌ 資料更新失敗: ${error.message}`, 'error');
   }
 };
 
@@ -437,7 +428,6 @@ onUnmounted(() => {
   authStore.stopStorageSync();
 });
 </script>
-
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 

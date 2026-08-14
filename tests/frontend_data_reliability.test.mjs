@@ -69,7 +69,7 @@ test('portfolio read failure and stale snapshot are persistent reliability issue
     'snapshot_anomaly',
   ]);
   assert.equal(issues[0].retryable, true);
-  assert.match(issues[0].message, /上一次成功載入的快照/);
+  assert.match(issues[0].message, /上一次成功載入的資料/);
   assert.match(issues[1].message, /交易紀錄已變更/);
 });
 
