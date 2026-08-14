@@ -3,6 +3,7 @@ import test from 'node:test';
 import { nextTick, reactive } from 'vue';
 
 import { markAutomaticRecalculationDirty } from '../src/services/automaticRecalculationState.js';
+import { rememberPendingCalculationRequest } from '../src/services/calculationJobState.js';
 import { claimAutomaticFailureRetry } from '../src/services/calculationFailureRecovery.js';
 import { installCalculationFailureRecovery } from '../src/services/calculationFailureRecoveryController.js';
 
@@ -162,11 +163,37 @@ test('retry is cancelled after owner change or when another calculation is alrea
   }
 });
 
+test('shared durable pending calculation intent cancels recovery from a stale failed tab', async () => {
+  let timerCallback = null;
+  const harness = createHarness({ timer(callback) { timerCallback = callback; } });
+  markAutomaticRecalculationDirty(
+    harness.storage, 'user@example.com', 'SPY',
+    { createToken: () => 'generation_token_shared_pending_01' },
+  );
+  const stop = harness.install();
+  harness.portfolio.calculationJob = {
+    id: 'job_7234567890123456789012', status: 'failed', error_code: 'MARKET_DATA_FAILED',
+  };
+  await flushAsync();
+  assert.equal(typeof timerCallback, 'function');
+
+  rememberPendingCalculationRequest(harness.storage, 'user@example.com', {
+    key: 'pending_retry_key_1234567890',
+    createdAt: Date.now(),
+    jobId: 'job_8234567890123456789012',
+    benchmark: 'SPY',
+  });
+  timerCallback();
+  await flushAsync();
+  assert.equal(harness.calls.length, 0);
+  stop();
+});
+
 test('retryable failure without a Phase 2 dirty generation does not invent calculation intent', async () => {
   const harness = createHarness();
   const stop = harness.install();
   harness.portfolio.calculationJob = {
-    id: 'job_7234567890123456789012', status: 'failed', error_code: 'MARKET_DATA_FAILED',
+    id: 'job_9234567890123456789012', status: 'failed', error_code: 'MARKET_DATA_FAILED',
   };
   await flushAsync();
   assert.equal(harness.calls.length, 0);
