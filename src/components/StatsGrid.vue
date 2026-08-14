@@ -66,8 +66,18 @@
           ({{ dailyPnL >= 0 ? '+' : '' }}{{ dailyRoi }}%)
         </div>
       </div>
-      <div class="stat-footer">
+      <div class="stat-footer daily-pnl-footer">
         <span class="text-sub text-xs footer-desc">{{ pnlDescription }}</span>
+        <button
+          v-if="dailyPnlExplanation.status === 'ready'"
+          type="button"
+          class="explain-btn"
+          aria-controls="daily-pnl-explanation"
+          :aria-expanded="isDailyExplanationOpen"
+          @click="isDailyExplanationOpen = !isDailyExplanationOpen"
+        >
+          {{ isDailyExplanationOpen ? '收起損益來源' : '查看損益來源' }}
+        </button>
       </div>
     </div>
     
@@ -107,11 +117,24 @@
       </div>
     </div>
   </div>
+
+  <DailyPnlExplanation
+    v-if="isDailyExplanationOpen && dailyPnlExplanation.status === 'ready'"
+    :explanation="dailyPnlExplanation"
+    :group-name="store.currentGroup"
+    :prev-date="stats.daily_pnl_prev_date || ''"
+    :as-of-date="stats.daily_pnl_asof_date || ''"
+  />
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import DailyPnlExplanation from './DailyPnlExplanation.vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import {
+  buildDailyPnlExplanation,
+  selectCurrentGroupDayLedger,
+} from '../services/dailyPnlExplainability.js';
 import { isTwrSummaryAvailable } from '../services/twrState.js';
 
 const store = usePortfolioStore();
@@ -130,6 +153,28 @@ const roi = computed(() => {
 
 const dailyPnL = computed(() => store.dailyPnL || 0);
 const dailyPnlBreakdown = computed(() => stats.value.daily_pnl_breakdown || null);
+const currentDayLedger = computed(() => selectCurrentGroupDayLedger({
+  rawData: store.rawData,
+  currentGroup: store.currentGroup,
+}));
+const dailyPnlExplanation = computed(() => buildDailyPnlExplanation({
+  dayLedger: currentDayLedger.value,
+  summary: stats.value,
+}));
+const isDailyExplanationOpen = ref(false);
+
+watch(
+  () => store.currentGroup,
+  () => {
+    isDailyExplanationOpen.value = false;
+  },
+);
+watch(
+  () => dailyPnlExplanation.value.status,
+  (status) => {
+    if (status !== 'ready') isDailyExplanationOpen.value = false;
+  },
+);
 
 const formatSigned = (val) => {
   const n = Number(val) || 0;
@@ -397,6 +442,33 @@ const getPnlBgClass = (val) => {
     min-height: 32px;
 }
 
+.daily-pnl-footer {
+    gap: 8px;
+}
+
+.explain-btn {
+    flex: none;
+    padding: 4px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.explain-btn:hover {
+    border-color: var(--primary);
+}
+
+.explain-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
 .footer-item { 
     display: flex; 
     align-items: center; 
@@ -491,7 +563,7 @@ const getPnlBgClass = (val) => {
     
     .icon-box { 
         width: 30px; 
-        height: 30px; 
+        height: 30px;
         font-size: 1rem;
         border-radius: 8px;
     }
