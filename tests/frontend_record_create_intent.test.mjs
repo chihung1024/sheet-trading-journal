@@ -108,6 +108,46 @@ test('later explicit mutation barrier supersedes older pending create replay', (
   assert.deepEqual(readEligibleRecordCreateIntents(storage, OWNER, { now: NOW + 2 }), []);
 });
 
+test('terminal tombstone removes transaction body and remains non-replayable', () => {
+  const storage = new MemoryStorage();
+  const intent = beginRecordCreateIntent(storage, OWNER, PAYLOAD, {
+    now: NOW,
+    createOpaqueId: ids('barrier-000000000001', 'intent-0000000000001'),
+  });
+  const intentKey = `${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${intent.idempotencyKey}`;
+
+  assert.equal(markRecordCreateIntentTerminal(storage, OWNER, intent.idempotencyKey, {
+    now: NOW + 1,
+    reason: 'conflict',
+  }), true);
+
+  const terminal = JSON.parse(storage.getItem(intentKey));
+  assert.equal(terminal.state, 'terminal');
+  assert.equal(terminal.terminalReason, 'conflict');
+  assert.equal(terminal.terminalAt, NOW + 1);
+  assert.equal(Object.hasOwn(terminal, 'body'), false);
+  assert.deepEqual(readEligibleRecordCreateIntents(storage, OWNER, { now: NOW + 2 }), []);
+  assert.equal(completeRecordCreateIntent(storage, OWNER, intent.idempotencyKey), true);
+  assert.equal(storage.getItem(intentKey), null);
+});
+
+test('terminal persistence failure falls back to removal so definite rejection cannot replay', () => {
+  const storage = new MemoryStorage();
+  const intent = beginRecordCreateIntent(storage, OWNER, PAYLOAD, {
+    now: NOW,
+    createOpaqueId: ids('barrier-000000000001', 'intent-0000000000001'),
+  });
+  const intentKey = `${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${intent.idempotencyKey}`;
+  storage.failSet = true;
+
+  assert.equal(markRecordCreateIntentTerminal(storage, OWNER, intent.idempotencyKey, {
+    now: NOW + 1,
+    reason: 'HTTP_409',
+  }), true);
+  assert.equal(storage.getItem(intentKey), null);
+  assert.deepEqual(readEligibleRecordCreateIntents(storage, OWNER, { now: NOW + 2 }), []);
+});
+
 test('terminal, stale, malformed, future and cross-owner intents fail closed', () => {
   const storage = new MemoryStorage();
   const intent = beginRecordCreateIntent(storage, OWNER, PAYLOAD, {
