@@ -16,8 +16,10 @@ const normalizedTransactionType = record => String(record?.txn_type || '').trim(
 /**
  * Mirror the authoritative PortfolioCalculator transaction cash-flow semantics.
  * BUY consumes cash; SELL and confirmed DIV produce cash. Commission/tax are
- * normalized with abs() exactly as the calculator does. DIV records already carry
- * the actual confirmed cash-flow price, so fee/tax are not applied a second time.
+ * used exactly as the normalized source ledger supplies them; the current Worker
+ * accepts any finite fee/tax and main.prepare_transactions() does not change sign.
+ * Confirmed DIV records already carry the actual cash-flow price, so fee/tax are
+ * not applied a second time.
  */
 export const resolveNetCashflowNative = record => {
   const qty = finiteNumber(record?.qty);
@@ -36,10 +38,8 @@ export const resolveNetCashflowNative = record => {
   ) return null;
 
   const gross = qty * price;
-  const fee = Math.abs(commission);
-  const taxAmount = Math.abs(tax);
-  if (txnType === 'BUY') return -(gross + fee + taxAmount);
-  if (txnType === 'SELL') return gross - fee - taxAmount;
+  if (txnType === 'BUY') return -(gross + commission + tax);
+  if (txnType === 'SELL') return gross - commission - tax;
   if (txnType === 'DIV') return gross;
   return null;
 };
