@@ -12,6 +12,7 @@ import { useToast } from './composables/useToast';
 import { installSnapshotSelfHealing } from './services/snapshotSelfHealing.js';
 import { installCalculationFailureRecovery } from './services/calculationFailureRecoveryController.js';
 import { installCalculationTriggerAmbiguityRecovery } from './services/calculationTriggerAmbiguityRecovery.js';
+import { installDataReadSelfRecovery } from './services/dataReadSelfRecovery.js';
 
 // 引入全域樣式與動畫 (順序很重要：先動畫，後主樣式)
 import './styles/animations.css';
@@ -70,6 +71,11 @@ installCalculationTriggerAmbiguityRecovery({
   portfolio,
   auth,
   storage: localStorage,
+  notify: addToast,
+});
+installDataReadSelfRecovery({
+  portfolio,
+  auth,
   notify: addToast,
 });
 
