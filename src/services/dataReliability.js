@@ -66,7 +66,7 @@ export const normalizePortfolioAnomaly = (value) => {
     severity: 'warning',
     code,
     title: '計算警示',
-    message: rawMessage || `後端回報資料異常（${code}），請先確認資料再依此結果操作。`,
+    message: rawMessage || `系統回報資料異常（${code}），請先確認資料再依此結果操作。`,
     symbol,
     date,
     currency,
@@ -98,7 +98,7 @@ export const buildDataReliabilityIssues = ({
       source: 'portfolio_read',
       severity: 'error',
       title: '最新資料讀取失敗',
-      message: '目前畫面可能仍保留上一次成功載入的快照。重新載入成功前，請勿把目前持倉、績效或配息推算視為最新結果。',
+      message: '目前畫面可能仍保留上一次成功載入的資料。重新載入成功前，請勿把目前持倉、績效或配息推算視為最新結果。',
       retryable: true,
     });
   }
@@ -108,8 +108,8 @@ export const buildDataReliabilityIssues = ({
       key: 'snapshot-stale',
       source: 'snapshot',
       severity: 'warning',
-      title: '持倉與績效快照待重新計算',
-      message: '交易紀錄已變更，但後端尚未確認發布新的計算快照。請等待背景計算完成或手動觸發重算。',
+      title: '持倉與績效資料待更新',
+      message: '交易紀錄已變更，最新持倉與績效尚未完成同步。請稍候；若長時間未更新，可使用「立即更新」。',
       retryable: false,
     });
   }
