@@ -10,6 +10,13 @@ import {
     rememberPendingCalculationRequest as rememberStoredCalculationRequest,
 } from '../services/calculationJobState';
 import {
+    clearAutomaticRecalculationState,
+    markAutomaticRecalculationCoverage,
+    markAutomaticRecalculationDirty,
+    readAutomaticRecalculationStatus,
+    settleAutomaticRecalculationJob,
+} from '../services/automaticRecalculationState.js';
+import {
     claimCalculationJobPoll,
     clearCalculationJobPollClaim,
 } from '../services/calculationJobPollClaim.js';
@@ -46,6 +53,7 @@ const CALCULATION_JOB_POLL_DELAY_MS = 5000;
 const CALCULATION_JOB_POLL_LIMIT_MS = 20 * 60 * 1000;
 const SNAPSHOT_POLL_DELAY_MS = 5000;
 const SNAPSHOT_POLL_LIMIT_MS = 180000;
+const AUTOMATIC_RECALCULATION_DEBOUNCE_MS = 1200;
 
 export const usePortfolioStore = defineStore('portfolio', () => {
     const loading = ref(false);
@@ -67,6 +75,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     let didAttemptCalculationRecovery = false;
     let lastRecordCreateRecoveryKey = null;
     let recordCreateRecoveryPromise = null;
+    let automaticRecalculationTimer = null;
+    let automaticRecalculationPromise = null;
+    let lastAutomaticRecalculationAttemptToken = null;
 
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
     const currentGroup = ref('all');
@@ -192,6 +203,79 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         selector,
     );
 
+    const cancelAutomaticRecalculationTimer = () => {
+        if (automaticRecalculationTimer) {
+            clearTimeout(automaticRecalculationTimer);
+            automaticRecalculationTimer = null;
+        }
+    };
+
+    const readAutomaticRecalculation = () => readAutomaticRecalculationStatus(
+        localStorage,
+        getCalculationOwner(),
+    );
+
+    const hasActiveCalculationIntent = () => {
+        if (snapshotPollActive) return true;
+        if (triggerUpdatePromise) return true;
+        if (calculationJob.value?.status === 'queued' || calculationJob.value?.status === 'running') return true;
+        const pending = readPendingCalculationRequest();
+        return Boolean(pending?.jobId);
+    };
+
+    const scheduleAutomaticRecalculationFlush = (delayMs = AUTOMATIC_RECALCULATION_DEBOUNCE_MS) => {
+        cancelAutomaticRecalculationTimer();
+        automaticRecalculationTimer = setTimeout(() => {
+            automaticRecalculationTimer = null;
+            void flushAutomaticRecalculation();
+        }, delayMs);
+    };
+
+    const markCommittedMutationDirtyForAutomaticRecalculation = () => {
+        try {
+            const generation = markAutomaticRecalculationDirty(
+                localStorage,
+                getCalculationOwner(),
+                selectedBenchmark.value,
+            );
+            lastAutomaticRecalculationAttemptToken = null;
+            scheduleAutomaticRecalculationFlush();
+            return generation;
+        } catch (error) {
+            console.warn('交易已提交，但無法保存自動重算狀態:', error);
+            const { addToast } = useToast();
+            addToast('交易已保存，但自動重新計算狀態無法保存；必要時可手動更新', 'warning');
+            return null;
+        }
+    };
+
+    const clearAutomaticRecalculationForCurrentOwner = () => {
+        cancelAutomaticRecalculationTimer();
+        lastAutomaticRecalculationAttemptToken = null;
+        try {
+            return clearAutomaticRecalculationState(localStorage, getCalculationOwner());
+        } catch (error) {
+            console.warn('無法清除自動重算恢復狀態:', error);
+            return 0;
+        }
+    };
+
+    const resumeAutomaticRecalculation = () => {
+        if (records.value.length === 0) {
+            clearAutomaticRecalculationForCurrentOwner();
+            return false;
+        }
+        try {
+            const status = readAutomaticRecalculation();
+            if (!status.dirty || hasActiveCalculationIntent()) return false;
+            scheduleAutomaticRecalculationFlush();
+            return true;
+        } catch (error) {
+            console.warn('無法恢復自動重算狀態:', error);
+            return false;
+        }
+    };
+
     const updatePollingState = () => {
         isPolling.value = snapshotPollActive || calculationJobPollActive;
     };
@@ -210,7 +294,25 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         stopCalculationJobPolling();
         clearCalculationJobPollClaim(localStorage, getToken(), job.id);
         clearPendingCalculationRequest({ jobId: job.id });
+
+        let automaticStatus = null;
+        try {
+            automaticStatus = settleAutomaticRecalculationJob(
+                localStorage,
+                getCalculationOwner(),
+                job.id,
+                { succeeded: job.status === 'succeeded' },
+            );
+        } catch (error) {
+            console.warn('無法結算自動重算 coverage:', error);
+            if (job.status === 'succeeded') {
+                lastAutomaticRecalculationAttemptToken = null;
+                scheduleAutomaticRecalculationFlush();
+            }
+        }
+
         if (job.status === 'succeeded') {
+            if (automaticStatus?.dirty) scheduleAutomaticRecalculationFlush();
             try {
                 await fetchAllFresh();
                 addToast('✅ 數據已更新完畢！', 'success');
@@ -255,6 +357,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 clearCalculationJobPollClaim(localStorage, getToken(), jobId);
                 clearPendingCalculationRequest({ jobId });
                 calculationJob.value = null;
+                try {
+                    settleAutomaticRecalculationJob(
+                        localStorage,
+                        getCalculationOwner(),
+                        jobId,
+                        { succeeded: false },
+                    );
+                    scheduleAutomaticRecalculationFlush();
+                } catch (settleError) {
+                    console.warn('找不到計算工作且無法釋放自動重算 coverage:', settleError);
+                }
                 addToast('找不到先前的計算工作，已清除本機恢復狀態', 'info');
                 return true;
             }
@@ -327,6 +440,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 resetData();
                 snapshotFreshness.value = 'loaded';
             }
+            if (records.value.length === 0) clearAutomaticRecalculationForCurrentOwner();
+            else resumeAutomaticRecalculation();
             portfolioReadStatus.value = 'loaded';
             return true;
         } catch (error) {
@@ -450,6 +565,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 console.warn('新增交易已由伺服器確認，但本機恢復狀態清除失敗:', error);
             }
             markSnapshotStale();
+            if (!json.auto_update) markCommittedMutationDirtyForAutomaticRecalculation();
             addToast('已自動確認先前未完成回應的新增交易', 'success');
             if (json.auto_update) handleAutoUpdateSignal('🚀 已恢復第一筆交易，系統正自動啟動背景計算...');
             return true;
@@ -502,6 +618,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             console.warn('新增交易已提交，但本機待處理狀態清除失敗:', error);
         }
         markSnapshotStale();
+        if (!json.auto_update) markCommittedMutationDirtyForAutomaticRecalculation();
         addToast('新增成功；持倉快照待重新計算', 'success');
         const refresh = await refreshRecordsAfterCommittedMutation('新增交易', addToast);
         if (json.auto_update) handleAutoUpdateSignal('🚀 這是您的第一筆交易，系統正自動啟動背景計算...');
@@ -549,6 +666,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
 
         markSnapshotStale();
+        markCommittedMutationDirtyForAutomaticRecalculation();
         addToast('更新成功；持倉快照待重新計算', 'success');
         const refresh = await refreshRecordsAfterCommittedMutation('更新交易', addToast);
         return resolveRecordMutationOutcome(committedMutationOutcome({
@@ -598,6 +716,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         addToast('刪除成功；持倉快照待重新計算', 'success');
 
         if (json.message === 'RELOAD_UI') {
+            clearAutomaticRecalculationForCurrentOwner();
             records.value = [];
             handleAutoUpdateSignal('🧹 紀錄已清空，系統正重置資產數據...');
             return resolveRecordMutationOutcome(committedMutationOutcome({
@@ -606,6 +725,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }), options);
         }
 
+        markCommittedMutationDirtyForAutomaticRecalculation();
         const refresh = await refreshRecordsAfterCommittedMutation('刪除交易', addToast);
         return resolveRecordMutationOutcome(committedMutationOutcome({
             response: json,
@@ -731,7 +851,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         updatePollingState();
     };
 
-    const performTriggerUpdate = async (benchmark = null) => {
+    const performTriggerUpdate = async (benchmark = null, options = {}) => {
         const token = getToken();
         if (!token) throw new Error('請先登入');
 
@@ -758,6 +878,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
         const targetBenchmark = String(benchmark || selectedBenchmark.value || '').toUpperCase().trim();
         const idempotencyKey = getOrCreateIdempotencyKey(targetBenchmark);
+        let generationAtDispatch = null;
+        try {
+            const automaticStatus = readAutomaticRecalculation();
+            generationAtDispatch = automaticStatus.dirty ? automaticStatus.generation : null;
+        } catch (error) {
+            console.warn('無法讀取重算 dirty generation；本次計算仍可執行，但不宣告 coverage:', error);
+        }
+
         try {
             const responseData = await fetchWithAuth('/api/trigger-update', {
                 method: 'POST',
@@ -777,17 +905,44 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                     jobId: responseData.job.id,
                     benchmark: responseData.job.benchmark || targetBenchmark,
                 });
+
+                let coverageRecorded = false;
+                if (generationAtDispatch && responseData.job.deduplicated !== true) {
+                    try {
+                        coverageRecorded = markAutomaticRecalculationCoverage(
+                            localStorage,
+                            getCalculationOwner(),
+                            generationAtDispatch,
+                            responseData.job,
+                        );
+                    } catch (error) {
+                        console.warn('計算工作已建立，但無法保存 dirty-generation coverage:', error);
+                    }
+                }
+                if (typeof options.onJob === 'function') {
+                    options.onJob(responseData.job, {
+                        generation: generationAtDispatch,
+                        coverageRecorded,
+                    });
+                }
+
                 const { addToast } = useToast();
                 addToast(
                     responseData.job.deduplicated
                         ? '相同的計算要求已在排隊，繼續追蹤原工作'
-                        : '🔄 已建立後端計算工作，正在同步中...',
+                        : options.automatic
+                            ? '🔄 交易已變更，系統正在自動重新計算...'
+                            : '🔄 已建立後端計算工作，正在同步中...',
                     'info'
                 );
                 await startCalculationJobPolling(responseData.job.id);
             } else {
                 clearPendingCalculationRequest({ key: idempotencyKey });
-                handleAutoUpdateSignal('🔄 已手動觸發數據重算，正在同步中...');
+                handleAutoUpdateSignal(
+                    options.automatic
+                        ? '🔄 交易已變更，系統正在自動重新計算...'
+                        : '🔄 已手動觸發數據重算，正在同步中...'
+                );
             }
             return true;
         } catch (error) {
@@ -805,12 +960,51 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
     };
 
-    const triggerUpdate = (benchmark = null) => {
+    const triggerUpdate = (benchmark = null, options = {}) => {
         if (triggerUpdatePromise) return triggerUpdatePromise;
-        triggerUpdatePromise = performTriggerUpdate(benchmark).finally(() => {
+        triggerUpdatePromise = performTriggerUpdate(benchmark, options).finally(() => {
             triggerUpdatePromise = null;
         });
         return triggerUpdatePromise;
+    };
+
+    const flushAutomaticRecalculation = async () => {
+        if (automaticRecalculationPromise) return automaticRecalculationPromise;
+
+        let status;
+        try {
+            status = readAutomaticRecalculation();
+        } catch (error) {
+            console.warn('無法讀取自動重算狀態:', error);
+            return false;
+        }
+        if (!status.dirty || !status.generation) return false;
+        if (hasActiveCalculationIntent()) return false;
+        if (lastAutomaticRecalculationAttemptToken === status.generation.token) return false;
+
+        lastAutomaticRecalculationAttemptToken = status.generation.token;
+        const benchmark = selectedBenchmark.value || status.generation.benchmark;
+        automaticRecalculationPromise = (async () => {
+            try {
+                await triggerUpdate(benchmark, {
+                    automatic: true,
+                    onJob: (job, metadata) => {
+                        if (job?.deduplicated === true || metadata?.coverageRecorded !== true) {
+                            lastAutomaticRecalculationAttemptToken = null;
+                        }
+                    },
+                });
+                return true;
+            } catch (error) {
+                console.warn('自動重新計算暫時失敗，保留 dirty generation 供後續安全恢復:', error);
+                const { addToast } = useToast();
+                addToast('交易已保存，但自動重新計算暫時失敗；稍後重新整理可安全恢復', 'warning');
+                return false;
+            }
+        })().finally(() => {
+            automaticRecalculationPromise = null;
+        });
+        return automaticRecalculationPromise;
     };
 
     return {

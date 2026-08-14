@@ -1,21 +1,21 @@
 # TO-DO / UPDATE LIST — Product-First Current Handoff
 
-> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not an instruction to restart closed work.
+> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **NOW-1B Durable Transaction Intent → merge/production Pages verification → Phase 2 Automatic Recalculation**
+Current line: **Phase 2 Automatic Recalculation → merge/production Pages verification → Phase 3 Self-healing Snapshot Lifecycle**
 
 ---
 
 ## 0. Operating doctrine
 
 1. Product functionality and user experience are the highest priority.
-2. Debugging, CI, deployment governance, RCA and documentation exist to protect functionality; they are not the product roadmap.
+2. Debugging, CI, deployment governance, RCA and documentation protect functionality; they are not the roadmap.
 3. Fix generic root causes, not individual symptoms. Parallel investigation is allowed only when it converges.
 4. Financial/data correctness is fail-closed and may not be traded for convenience.
 5. Keep one primary active batch. Do not reopen closed infrastructure or market-data work without new material evidence.
-6. Preserve stable checkpoints, exact-head CI, rollback/recovery paths and a permanent handoff for R2+ work.
-7. Prefer invisible automation. The user should express intent; the system should handle dedupe, retry/recovery, recalculation and synchronization when correctness permits.
+6. Preserve exact-head CI, rollback/recovery paths and permanent handoff for R2+ work.
+7. Prefer invisible automation. User intent should drive the system; dedupe, recovery, recalculation and synchronization should be automatic when correctness permits.
 8. AI may orchestrate workflows; deterministic ledger/accounting logic remains rules-based — **AI 管流程，不管帳**.
 
 ---
@@ -24,24 +24,16 @@ Current line: **NOW-1B Durable Transaction Intent → merge/production Pages ver
 
 Reconstruct truth in this order:
 
-1. `AI_PROJECT_PLAYBOOK.md` — governance and risk rules.
+1. `AI_PROJECT_PLAYBOOK.md` — governance/risk rules.
 2. `README.md` — architecture/product orientation.
 3. this file — current batch and exact next action.
-4. protected `main`, open PRs, CI, Pages, current workflow/deployment state.
-5. `worker-manifest.json`, `wrangler.toml`, `config/production-activation-authority.json`, recovery/deployment contracts and verifier tests.
-6. `docs/engineering/NOW1B_DURABLE_RECORD_CREATE_INTENT_2026-08-14.md` — current NOW-1B design/evidence.
-7. `docs/DEPLOYMENT.md` only when deployment work is actually required.
-8. older `docs/engineering/`, `docs/governance/evidence/`, `audits/`, PR/Git history for provenance only.
+4. protected `main`, open PRs, CI, Pages and current deployment state.
+5. `worker-manifest.json`, Worker/D1/recovery/deployment contracts only if backend/deployment work is actually required.
+6. `docs/engineering/PHASE2_AUTOMATIC_RECALCULATION_2026-08-14.md` — active Phase 2 design and reasoning.
+7. `docs/engineering/NOW1B_DURABLE_RECORD_CREATE_INTENT_2026-08-14.md` — prior durable-create boundary.
+8. older docs/evidence/PR/Git history for provenance only.
 
-Do not collapse these identities into one “current SHA”:
-
-- protected-main HEAD;
-- selected/deployed Worker runtime source;
-- Pages source;
-- production activation authority;
-- immutable evidence baseline.
-
-Always re-fetch before consequential actions.
+Do not collapse protected-main HEAD, Pages source, Worker runtime source, production authority and immutable evidence into one “current SHA”. Re-fetch before consequential actions.
 
 ---
 
@@ -61,181 +53,206 @@ transaction/update intent
   -> browser poll/readback
 ```
 
-D1 is authoritative for transactions. Browser persistence is only bounded recovery/cache state. Do not move accounting truth into browser state or AI inference.
+D1 is authoritative for transactions. Browser persistence is only bounded recovery/orchestration state. Do not move accounting truth into browser state or AI inference.
 
 ---
 
 ## 3. Closed work — do not reopen by default
 
-| Area | State | Meaning |
+| Area | State | Evidence / meaning |
 |---|---|---|
 | Gate A–D / E0 / E1 lifecycle work | CLOSED | no current product blocker |
-| Market-data NaN/event-row incident | CLOSED / PRODUCTION VERIFIED | generic recovery path was production exercised; passive watch only |
-| Server record-create idempotency | LIVE | tenant-scoped exactly-once replay contract is active |
-| NOW-1B-A rollback-safe transport | **CLOSED / PRODUCTION VERIFIED** | frontend may safely use `/api/records/idempotent` |
-| Old authenticated-create smoke infrastructure blocker | **NOT A PRODUCT BLOCKER** | do not hold frontend/product work for a missing dedicated production test tenant |
+| Market-data NaN/event-row incident | CLOSED / PRODUCTION VERIFIED | passive watch only |
+| Server record-create idempotency | LIVE | tenant-scoped replay/conflict contract |
+| NOW-1B-A rollback-safe create transport | CLOSED / PRODUCTION VERIFIED | `/api/records/idempotent` safe to consume |
+| NOW-1B-B durable create intent | **CLOSED** | PR #231 merged `e7c94adc...`; post-main CI #791 + Pages #1514 PASS |
+| Old dedicated production create-smoke blocker | NOT A PRODUCT BLOCKER | do not hold product work for missing isolated tenant |
 
-Do not restart broad OAuth, provider, Decimal, cash-ledger, stale-PUT, UUID, generalized idempotency, or backend tombstone redesign without new concrete evidence.
-
----
-
-## 4. NOW-1B-A — production evidence
-
-Rollback-safe transport exists because a simple capability preflight had a TOCTOU rollback race.
-
-Contract:
-
-- frontend create endpoint: **`POST /api/records/idempotent`**;
-- new `worker-entry.js` rewrites only that exact POST path to canonical `/api/records`;
-- older Worker runtime does not know the alias and returns 404 before authentication/mutation;
-- frontend must never fall back to legacy `/api/records` after alias failure.
-
-Production verification:
-
-- runtime source: `a0213f05c64f8b1636711e5e3bfdea650f42f2df`;
-- Production Identity Evidence #17: run `31757896091`, artifact `9203733363`, PASS;
-- Deploy Worker #6: run `31759350109`, SUCCESS;
-- deployed version ID: `ea9c129f-6e8f-4071-be36-e22721f82ef8`;
-- post-deploy artifact: `9205266306`;
-- stable production contract: 3 consecutive PASS after edge propagation;
-- Worker 4.08 / API 2.61 / Schema 3;
-- no new D1 migration required.
-
-NOW-1B-A is closed. Do not redeploy it unless a later source actually requires deployment.
+Do not restart broad OAuth, provider, Decimal, cash-ledger, stale-PUT, UUID, generalized idempotency, backend tombstone or distributed-ordering redesign without new concrete production evidence.
 
 ---
 
-## 5. NOW-1B-B — ACTIVE
+## 4. NOW-1B closure evidence
 
-PR: **#231 — `NOW-1B: durable record-create intent and invisible recovery`**  
-Risk: **R2 Significant** — browser persistence + transaction create/recovery semantics.  
-Base when opened: protected main `1bfe2ba728cec8736a30be7298a5b8bfb9693b78`.
+Backend compatibility transport:
 
-### Product contract
+- production Worker runtime source `a0213f05c64f8b1636711e5e3bfdea650f42f2df`;
+- Production Identity Evidence #17 PASS;
+- Deploy Worker #6 / run `31759350109` SUCCESS;
+- stable 3-pass production contract;
+- Worker 4.08 / API 2.61 / Schema 3.
+
+Frontend durable intent:
+
+- PR #231 final head `4de8f6f008d6f872b7ce05eed7ff29d422f995e1`;
+- exact-head CI #790 / run `31764192669` SUCCESS;
+- merged main `e7c94adc13903676dcf8634d3c119d28976f09b4`;
+- post-main CI #791 PASS;
+- production Pages #1514 PASS.
+
+NOW-1B is closed. Phase 2 may rely on its mutation outcome truth and durable create recovery.
+
+---
+
+## 5. Phase 2 Automatic Recalculation — ACTIVE
+
+PR: **#232 — `Phase 2: automatic recalculation after committed mutations`**  
+Branch: `feat/phase2-automatic-recalculation`  
+Risk: **R2 Significant** — browser orchestration/recovery state + transaction-to-calculation lifecycle.  
+Base: `e7c94adc13903676dcf8634d3c119d28976f09b4`.
+
+Primary KPI:
+
+> **normal confirmed add/edit/delete transaction → manual “update portfolio” clicks = 0**
+
+### Root cause
+
+Backend active-job dedupe is correct, but blind re-triggering is insufficient. A transaction may commit after an already-running job has captured its input; a new trigger can deduplicate to that old job even though the old job cannot contain the new transaction.
+
+Phase 2 solves this with an exact dirty-generation/coverage contract while reusing the existing `calculation_jobs` queue.
+
+### Durable state
+
+Service: `src/services/automaticRecalculationState.js`
+
+Fixed reviewed keys:
+
+- `automatic_recalculation_dirty.v1`
+- `automatic_recalculation_clean.v1`
+
+Dynamic owner-validated coverage prefix:
+
+- `automatic_recalculation_coverage.v1.<jobId>`
+
+All state is non-authoritative and contains no transaction payload.
+
+### Generation semantics
 
 ```text
-one logical create
--> persist owner-bound intent before POST
--> stable random idempotency key + immutable serialized body
--> send rollback-safe compatibility path
--> timeout / network / 5xx may remain ambiguous
--> bounded recovery reuses exact key/body
--> verified success clears replay eligibility before UI refresh
--> one logical trade remains one D1 record
+confirmed mutation M1 -> dirty token T1
+new job J1 -> coverage(J1)=T1
+confirmed mutation M2 while J1 runs -> dirty token T2
+J1 succeeds -> clean token T1
+T2 != T1 -> still dirty -> one follow-up job required
 ```
 
-### Implemented browser state
+Rules:
 
-- service: `src/services/recordCreateIntent.js`;
-- version: 1;
-- live recovery TTL: 24 hours;
-- intent prefix: `pending_record_create.v1.`;
-- mutation barrier: `record_mutation_barrier.v1`;
-- storage key has no email/PII;
-- **LIVE** value is owner-validated and contains the exact serialized create body required for replay;
-- **TERMINAL** tombstone omits the transaction body and keeps only owner/key/barrier/timestamps/state/reason needed to remain non-replayable;
-- secure random key/barrier generation;
-- persistence is write/read-back verified;
-- if a terminal rewrite fails but removal is still available, the LIVE intent is removed so a definitely rejected create cannot later replay;
-- logout removes barrier and all intent-prefix entries.
+- rejected/ambiguous transaction mutation never creates dirty state;
+- every confirmed non-reset mutation creates a new random dirty token;
+- only a **new**, non-deduplicated job may claim the generation captured immediately before its dispatch;
+- deduplicated active job never claims a later dirty token;
+- success cleans only exact covered token;
+- failure/404 never declares dirty work clean;
+- late old job cannot move clean backward over a newer covered generation;
+- generation benchmark is fallback metadata only; actual current selected benchmark job may cover the dirty token.
 
-### Mutation semantics
+### Debounce / active-lane behavior
 
-- create persists barrier + intent **before** network mutation;
-- create sends exactly one normal-call POST to `/api/records/idempotent`;
-- 401 refresh recursively reuses the same endpoint/options, preserving key/body;
-- verified create success clears the exact intent before `fetchRecords()`;
-- a refresh failure after commit remains a committed mutation, never a reason to create again;
-- explicit 4xx/409/unsupported 404 become terminal for that intent; no automatic new key and no legacy fallback; terminal state retains no transaction body;
-- timeout/network/5xx ambiguity retains the exact LIVE intent;
-- recovery is single-flight and bounded once per intent key per store lifetime; reload permits a new bounded attempt if still LIVE;
-- later new create rotates the barrier;
-- UPDATE/DELETE first supersede an eligible old create intent before sending their own mutation.
+- debounce: 1200 ms;
+- burst committed mutations cancel/restart one timer and converge on latest token;
+- automatic flush is single-flight and bounded once per token per store lifetime;
+- no automatic retry loop after trigger failure; durable dirty state allows reload/new-mutation recovery.
 
-### Cross-tab/distributed-ordering boundary
+Automatic dispatch is blocked while any existing calculation lane is active:
 
-The barrier is a browser replay-eligibility fence. It prevents a superseded **pending** intent from starting a future automatic replay. It does not claim to cancel or reorder a request already dispatched by another tab. Existing server idempotency protects duplicate create dispatches. Do not add a backend tombstone/transaction-ordering subsystem unless production evidence demonstrates that stronger ordering is necessary.
+1. first-trade legacy `snapshotPollActive`;
+2. in-flight trigger request;
+3. queued/running `calculationJob`;
+4. persisted pending calculation job ID.
 
-### Verification already obtained
+This prevents Phase 2 from running a second calculation while the existing first-trade server `auto_update` is still propagating.
 
-- CI #777 exposed the missing reviewed storage-inventory entry; safety inventory was updated rather than weakened.
-- CI #782 was the first run with executable durable-intent service tests in the frontend glob; 212/213 passed and the sole failure was a test-only raw-string assertion against nested JSON storage.
-- CI #783 / run `31763766650`: **SUCCESS** on the earlier code-bearing candidate after correcting that test assertion.
-- Final R2 review then added the minimal terminal-tombstone/privacy/fail-closed refinement, so CI #783 is no longer the exact-head merge gate.
+### Mutation wiring
 
-The exact current PR head and its fresh CI must always be re-fetched before merge.
+- confirmed add / recovered add: dirty unless server already returned first-trade `auto_update`;
+- confirmed update: dirty before record refresh;
+- confirmed normal delete: dirty before record refresh;
+- delete-all `RELOAD_UI`: clear Phase 2 state;
+- record-refresh failure after commit does not erase dirtiness.
+
+### Existing trigger lifecycle reuse
+
+`performTriggerUpdate()` captures dirty generation immediately before the existing `/api/trigger-update` POST. A returned newly created job may receive coverage; a deduplicated job may not. Manual trigger callers remain compatible and can satisfy pending dirty work.
+
+No Worker, D1, financial formula, market-data, auth protocol or second backend queue change is part of Phase 2.
 
 ---
 
-## 6. NOW-1B-B remaining gates
+## 6. Phase 2 verification chronology
 
-Execute without asking the user unless GitHub/platform requires owner action:
+- CI #792: Worker + Python PASS; frontend failed because dynamic coverage **prefix** was mistakenly inserted into the fixed-key browser-storage inventory.
+- Root cause correction: fixed-key baseline now contains only dirty/clean keys; dynamic coverage remains governed by `projectStorage` prefix cleanup + executable service tests. Safety inventory was not weakened.
+- Additional review refinements:
+  - current benchmark job may cover a dirty token created under an older benchmark;
+  - `snapshotPollActive` is treated as an active calculation lane.
+- Code-bearing candidate `da07db39a64ee3f8970bbac779467b40ee4adeb2`: exact-head **CI #796 / run `31765526505` SUCCESS** across Frontend, Worker and Python.
+- R2 code review on that candidate: PASS / 0 BLOCKER.
 
-1. re-fetch PR #231 head/base/main and ensure no unexpected drift;
-2. run/wait for exact-current-head full CI after the final terminal-tombstone + handoff changes;
-3. perform R2 independent adversarial review:
-   - persist-before-send;
-   - exact same key/body on LIVE recovery/token refresh;
-   - no legacy endpoint fallback;
-   - 409/404 terminal without key rotation;
-   - terminal tombstone has no transaction body and terminal-write failure cannot leave a replayable LIVE intent when removal is available;
-   - ambiguous outcomes retained but no tight retry loop;
-   - owner isolation / no PII in storage key;
-   - logout cleanup;
-   - success clears replay state before record refresh;
-   - update/delete supersede eligible older replay before mutation;
-   - no Worker/D1/financial/market-data changes;
-4. update PR body with exact current head + CI + review result;
-5. mark Ready and merge if all gates pass;
+Permanent handoff/document commits after `da07db39...` advance the PR head. Therefore **do not merge based only on CI #796**; re-fetch current PR head and require a fresh exact-head full CI.
+
+---
+
+## 7. Phase 2 remaining gates
+
+Execute autonomously unless GitHub/platform genuinely requires owner action:
+
+1. re-fetch PR #232, protected `main` and exact current head;
+2. require full exact-current-head CI after handoff docs;
+3. final R2 adversarial review must still confirm:
+   - rejected/ambiguous transaction mutation never dirty;
+   - confirmed mutation persists dirty before UI record refresh;
+   - burst mutations coalesce;
+   - first-trade snapshot polling blocks second calculation;
+   - mutation during running job survives old-job success;
+   - deduplicated job cannot claim later dirty token;
+   - generation captured pre-dispatch handles mutation race;
+   - current benchmark can cover old dirty token;
+   - job failure/404 never clean;
+   - owner isolation/logout cleanup;
+   - follow-up timer vs `fetchAllFresh()` cannot double-dispatch;
+   - no tight retry loop;
+   - no Worker/D1/finance/market-data drift;
+4. update PR #232 body with exact final head, CI and review result;
+5. mark Ready and ordinary merge if all gates pass;
 6. verify post-main CI;
-7. verify production Pages build/deployment for the merge SHA;
-8. do **not** create/delete a real-user transaction merely for smoke testing.
+7. verify production Pages build/deploy for merge SHA;
+8. no Worker deployment expected;
+9. do not create/delete a real-user transaction solely for smoke testing.
 
-Close NOW-1B-B only after post-main CI + Pages are green.
+Close Phase 2 only after post-main CI + Pages are green.
 
 ---
 
-## 7. Next product phase — Phase 2 Automatic Recalculation
+## 8. Next product phase
 
-After NOW-1B-B closure, immediately move to:
+After Phase 2 closure, proceed to **Phase 3 — Self-healing Snapshot Lifecycle**.
+
+The next design should begin from user-visible failure modes and the now-automatic mutation→calculation path. Do not pre-emptively build generalized infrastructure. Expected focus:
 
 ```text
-confirmed transaction mutation
--> snapshot stale
--> debounce/coalesce dirty generation
--> automatically request calculation
--> durable job poll/recovery
--> fresh snapshot published/read
--> UI refresh
+calculation/snapshot lifecycle state
+-> detect stale/missing/inconsistent snapshot
+-> prove whether safe self-repair exists
+-> automatically repair or surface one actionable state
+-> preserve financial reconciliation and fail-closed boundaries
 ```
 
-Primary UX KPI: **normal add/edit/delete transaction → manual “update portfolio” clicks = 0**.
+---
 
-Requirements:
+## 9. Later roadmap
 
-- do not trigger calculation for a definitely rejected mutation;
-- ambiguous transaction mutation must first resolve through the existing mutation/recovery truth before recalculation logic assumes a commit;
-- coalesce rapid successive committed mutations;
-- if a mutation occurs while calculation is running, retain a dirty generation and run one required follow-up calculation;
-- reuse existing durable `calculation_jobs` lifecycle and polling instead of building a second queue;
-- preserve all financial validation/reconciliation gates.
+1. Phase 3 — Self-healing Snapshot Lifecycle.
+2. Phase 4 — AI failure triage/recovery.
+3. Phase 5 — AI Ops Autopilot.
+4. Phase 6 — AI UX.
+
+Each phase begins only after the prior user-visible flow is functionally closed.
 
 ---
 
-## 8. Later roadmap
+## 10. Historical provenance
 
-1. Phase 2 — Automatic Recalculation.
-2. Phase 3 — Self-healing snapshot lifecycle.
-3. Phase 4 — AI failure triage/recovery.
-4. Phase 5 — AI Ops Autopilot.
-5. Phase 6 — AI UX.
+The handoff is intentionally converged rather than append-only. Closed Gate-E/NOW-1A/NOW-1B detail remains available in Git history, merged PRs, engineering docs, governance evidence and workflow artifacts.
 
-Each phase begins only after the prior user-visible flow is functionally closed. Avoid infrastructure-first expansion.
-
----
-
-## 9. Historical provenance
-
-The previous long-form handoff was intentionally converged on 2026-08-14 because it mixed closed Gate-E/NOW-1A history with current blockers and could misdirect future agents. Nothing was erased from repository history. For detailed prior evidence use Git history, merged PRs, `docs/engineering/`, `docs/governance/evidence/` and workflow artifacts.
-
-The purpose of this file is to answer one question accurately: **what should the next AI do now without breaking the product?**
+This file exists to answer one operational question accurately: **what should the next AI do now without breaking the product?**
