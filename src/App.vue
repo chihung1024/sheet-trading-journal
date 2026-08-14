@@ -417,7 +417,7 @@ onMounted(async () => {
       await portfolioStore.fetchAll();
     } catch (error) {
       console.error('已登入，但初始資料載入失敗:', error);
-      addToast('已登入，但初始資料載入失敗，請稍後手動刷新', 'error');
+      addToast('已登入，但初始資料暫時載入失敗，系統將自動重試', 'error');
     }
   }
 
