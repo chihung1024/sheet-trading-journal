@@ -33,6 +33,8 @@ const RECORDS = Object.freeze([
   }),
 ]);
 
+const PYTHON_RECORDS_SHA256 = '87d3299660d98bc027a2ee16bcb3dbb246098b5c4e7ca6faf83fa9b3328fdaa4';
+
 const snapshotFor = (identity, benchmark = 'SPY') => ({
   updated_at: '2026-08-14T03:30:00Z',
   calculation_manifest: {
@@ -59,6 +61,13 @@ test('float canonicalization matches Python float.hex for IEEE-754 edge fixtures
   assert.equal(pythonFloatHex(100.25), '0x1.9100000000000p+6');
   assert.equal(pythonFloatHex(Number.MIN_VALUE), '0x0.0000000000001p-1022');
   assert.equal(pythonFloatHex(Number.MAX_VALUE), '0x1.fffffffffffffp+1023');
+});
+
+test('source identity matches the Python canonical SHA fixture byte-for-byte', async () => {
+  const identity = await buildSourceRecordsIdentity(RECORDS);
+  assert.equal(identity.sha256, PYTHON_RECORDS_SHA256);
+  assert.equal(identity.record_count, 2);
+  assert.equal(identity.max_record_id, 2);
 });
 
 test('source identity is deterministic across input order and normalizes symbol/type exactly like engine contract', async () => {
