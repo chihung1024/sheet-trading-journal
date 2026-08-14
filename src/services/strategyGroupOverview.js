@@ -13,8 +13,9 @@ const finiteMetric = (value) => (
 );
 
 const normalizeGroupName = (value) => {
-  const name = typeof value === 'string' ? value.trim() : '';
-  if (!name || name.length > GROUP_NAME_MAX_LENGTH) return null;
+  if (typeof value !== 'string') return null;
+  const name = value.trim();
+  if (!name || name.length > GROUP_NAME_MAX_LENGTH || name !== value) return null;
   return name;
 };
 
