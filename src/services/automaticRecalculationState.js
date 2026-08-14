@@ -212,11 +212,13 @@ export const markAutomaticRecalculationCoverage = (
   const target = requireStorage(storage);
   const normalizedOwner = normalizeOwner(owner);
   const validatedGeneration = validateGeneration(generation, normalizedOwner, { now });
+  const jobBenchmark = normalizeBenchmark(job?.benchmark);
   if (
     !validatedGeneration
     || job?.deduplicated === true
     || typeof job?.id !== 'string'
     || !JOB_ID_RE.test(job.id)
+    || (jobBenchmark && jobBenchmark !== validatedGeneration.benchmark)
   ) {
     return false;
   }
@@ -226,7 +228,7 @@ export const markAutomaticRecalculationCoverage = (
     owner: normalizedOwner,
     token: validatedGeneration.token,
     dirtyAt: validatedGeneration.createdAt,
-    benchmark: normalizeBenchmark(job.benchmark) || validatedGeneration.benchmark,
+    benchmark: validatedGeneration.benchmark,
     jobId: job.id,
     coveredAt: now,
   };
