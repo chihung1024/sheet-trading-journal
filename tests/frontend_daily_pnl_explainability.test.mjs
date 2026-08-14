@@ -126,6 +126,23 @@ test('non-finite, malformed, or internally unreconciled rows fail closed', () =>
   assert.equal(mismatched.reason, 'invalid_day_ledger');
 });
 
+test('duplicate symbol evidence fails closed even when totals would otherwise reconcile', () => {
+  const duplicate = row({
+    price_pnl_twd: 74,
+    fx_pnl_twd: 0,
+    execution_pnl_twd: 0,
+    fee_tax_pnl_twd: 0,
+    total_pnl_twd: 74,
+  });
+  const result = buildDailyPnlExplanation({
+    dayLedger: [duplicate, { ...duplicate }],
+    summary: { daily_pnl_twd: 148 },
+  });
+
+  assert.equal(result.status, 'unavailable');
+  assert.equal(result.reason, 'duplicate_symbol');
+});
+
 test('ledger and published summary mismatch fails closed', () => {
   const result = buildDailyPnlExplanation({
     dayLedger: [row()],
@@ -151,6 +168,7 @@ test('StatsGrid delegates group selection and exposes a mobile-accessible explan
   assert.doesNotMatch(statsSource, /store\.rawData\.groups|rawData\.groups/);
 
   assert.match(detailSource, /id="daily-pnl-explanation"/);
-  assert.match(detailSource, /逐檔 day ledger/);
+  assert.match(detailSource, /計算引擎已對帳的逐檔 day ledger/);
+  assert.match(detailSource, /四捨五入至 TWD 整數/);
   assert.doesNotMatch(detailSource, /fetch\(|\/api\//);
 });
