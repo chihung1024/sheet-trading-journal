@@ -150,7 +150,7 @@
           </section>
         </main>
 
-        <!-- Right: 固定交易面板（維持原本配置） -->
+        <!-- Right: 桌面 sticky 交易面板；手機維持 sheet overlay -->
         <aside class="side-column" :class="{ 'mobile-sheet': isMobileView, 'sheet-open': showMobileTrade }">
           <div class="mobile-sheet-header" v-if="isMobileView">
             <h3>交易管理</h3>
@@ -571,8 +571,8 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .avatar, .avatar-img { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--primary); color: white; font-weight: 700; object-fit: cover; }
 
 /* Layout Grid */
-.main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
-.content-container { max-width: var(--layout-max); margin: 0 auto; padding: var(--space-desktop) 24px 24px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: hidden; }
+.main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: clip; }
+.content-container { max-width: var(--layout-max); margin: 0 auto; padding: var(--space-desktop) 24px 24px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: clip; }
 .main-column { display: flex; flex-direction: column; gap: var(--space-desktop); min-width: 0; overflow-x: hidden; }
 .section-overview { display: flex; flex-direction: column; gap: var(--space-desktop); }
 .side-column { min-width: 0; }
@@ -643,12 +643,11 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
 .card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); overflow-x: hidden; }
 .chart-wrapper.chart-full { height: 450px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 
-/* 🔒 固定面板 */
+/* Desktop sticky transaction rail */
 .fixed-panel {
-  position: fixed;
+  position: sticky;
   top: calc(var(--header-height) + var(--space-desktop));
-  right: max(24px, calc((100vw - var(--layout-max)) / 2 + 24px));
-  width: 360px;
+  width: 100%;
   max-height: calc(100vh - var(--header-height) - 48px);
   overflow-y: auto;
   overflow-x: hidden;

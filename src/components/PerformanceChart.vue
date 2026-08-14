@@ -102,9 +102,9 @@ import {
   resolveBenchmarkApplicationState,
 } from '../services/benchmarkState.js';
 import {
+  buildComparableTwrComparison,
   firstTwrInvalidDate,
   lastFiniteSeriesIndex,
-  relativeTwrValue,
 } from '../services/twrState.js';
 
 const portfolioStore = usePortfolioStore();
@@ -275,8 +275,16 @@ const drawChart = () => {
     const dataWithBaseline = displayedData.value[0]?.date === baselineData.value.date 
       ? displayedData.value 
       : [baselineData.value, ...displayedData.value];
+    const twrComparison = chartType.value === 'twr'
+      ? buildComparableTwrComparison(dataWithBaseline)
+      : null;
+    const chartRows = chartType.value === 'asset'
+      ? displayedData.value
+      : chartType.value === 'twr'
+        ? twrComparison.rows
+        : dataWithBaseline;
     
-    const labels = (chartType.value === 'asset' ? displayedData.value : dataWithBaseline).map(d => {
+    const labels = chartRows.map(d => {
         const date = new Date(d.date);
         return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
     });
@@ -333,11 +341,10 @@ const drawChart = () => {
             }];
         }
     } else {
-        const baseBenchmark = baselineData.value.benchmark_twr;
         datasets = [
             {
                 label: '策略 TWR',
-                data: dataWithBaseline.map(d => relativeTwrValue(d, baselineData.value)),
+                data: twrComparison.strategy,
                 borderColor: '#8b5cf6',
                 backgroundColor: 'rgba(139, 92, 246, 0.05)',
                 fill: true,
@@ -345,7 +352,7 @@ const drawChart = () => {
             },
             {
                 label: publishedBenchmarkLegend.value,
-                data: dataWithBaseline.map(d => ((1 + d.benchmark_twr/100) / (1 + baseBenchmark/100) - 1) * 100),
+                data: twrComparison.benchmark,
                 borderColor: '#94a3b8',
                 borderWidth: 1.5,
                 borderDash: [4, 4],
