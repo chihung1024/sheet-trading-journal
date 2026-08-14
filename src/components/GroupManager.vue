@@ -1,4 +1,6 @@
 <template>
+  <StrategyGroupOverview />
+
   <div class="card gm-card">
     <div class="gm-header">
       <div>
@@ -123,6 +125,7 @@ import { useAuthStore } from '../stores/auth';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
+import StrategyGroupOverview from './StrategyGroupOverview.vue';
 import {
   formatGroupBatchFailureMessage,
   summarizeGroupBatchFailure,
