@@ -67,7 +67,9 @@ export function buildComparableTwrComparison(history) {
     anchor,
     rows: Object.freeze(comparableRows),
     strategy: Object.freeze(comparableRows.map(row => relativeTwrValue(row, anchor))),
-    benchmark: Object.freeze(comparableRows.map(row => relativeBenchmarkValue(row, anchor))),
+    benchmark: Object.freeze(comparableRows.map(row => (
+      isTwrPointReliable(row) ? relativeBenchmarkValue(row, anchor) : null
+    ))),
   });
 }
 
