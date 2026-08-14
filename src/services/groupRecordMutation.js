@@ -140,9 +140,6 @@ const requireSignedBatchOwner = (token) => {
 };
 
 const prepareBatchLifecycle = ({ token, storage, benchmark }) => {
-  // Pure transport/unit-test callers may deliberately omit browser storage.
-  // Production browser callers provide localStorage and therefore enter this
-  // lifecycle before the first mutation is sent.
   if (!storage) return null;
 
   const owner = requireSignedBatchOwner(token);
@@ -280,8 +277,11 @@ export async function updateRecordTagsSequentially({
       });
       succeeded += 1;
 
-      if (!recoveryGeneration && lifecycle) {
+      if (lifecycle) {
         try {
+          // Every committed row rotates the generation. A calculation that
+          // starts mid-batch may only cover an earlier token; the newest row
+          // must leave a newer dirty token for a follow-up calculation.
           recoveryGeneration = markBatchDirty(lifecycle);
         } catch (recoveryStateError) {
           const cause = new RecordTagUpdateError(
@@ -306,8 +306,10 @@ export async function updateRecordTagsSequentially({
       if (cause instanceof PartialRecordTagBatchError) throw cause;
 
       let recoveryStateError = null;
-      if (cause?.outcomeAmbiguous === true && !recoveryGeneration && lifecycle) {
+      if (cause?.outcomeAmbiguous === true && lifecycle) {
         try {
+          // The failed row may have committed after the most recent confirmed
+          // row, so ambiguity itself must rotate the dirty generation.
           recoveryGeneration = markBatchDirty(lifecycle);
         } catch (error) {
           recoveryStateError = error;
