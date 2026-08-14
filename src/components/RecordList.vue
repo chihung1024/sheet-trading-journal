@@ -83,7 +83,11 @@
                     </th>
                     <th class="text-right">股數</th>
                     <th class="text-right">單價</th>
-                    <th @click="sortBy('total_amount_twd')" class="text-right sortable" title="TWD 排序僅使用可可靠換算的 TWD / USD 交易；其他幣別待後端權威估值">
+                    <th
+                        @click="sortBy('total_amount_twd')"
+                        class="text-right sortable"
+                        title="外幣 TWD 金額只使用目前已載入快照中完全相同交易日期的權威 FX；缺少證據時不估算"
+                    >
                         總額 <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
                     </th>
                     <th class="text-right">操作</th>
@@ -218,10 +222,13 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import {
-    canConvertWithLegacyUsdTwdRate,
     detectNativeCurrency,
     formatNativeAmount,
 } from '../services/instrumentCurrency.js';
+import {
+    resolveSettlementAmountNative,
+    resolveTransactionValuation,
+} from '../services/transactionValuation.js';
 
 const store = usePortfolioStore();
 const { addToast } = useToast();
@@ -279,74 +286,36 @@ const getTypeLabel = (type) => {
 
 const getRecordCurrency = (record) => detectNativeCurrency(record?.symbol);
 
-// Legacy history exposes one scalar USD/TWD reference rate only. Keep that
-// compatibility path for USD, but never reuse it as KRW/HKD/CNY/JPY/GBp/EUR FX.
-const fxRateMap = computed(() => {
-    const map = {};
-    if (store.history && store.history.length > 0) {
-        store.history.forEach(item => {
-            const rate = Number(item.fx_rate);
-            if (item.date && Number.isFinite(rate) && rate > 0) map[item.date] = rate;
-        });
-    }
-    return map;
-});
-
-const getFxRateByDate = (dateStr) => {
-    if (fxRateMap.value[dateStr]) return fxRateMap.value[dateStr];
-    const dates = Object.keys(fxRateMap.value).sort();
-    for (let i = dates.length - 1; i >= 0; i--) {
-        if (dates[i] <= dateStr) return fxRateMap.value[dates[i]];
-    }
-    return null;
+const getRecordValuation = (record) => {
+    const currency = getRecordCurrency(record);
+    if (currency !== 'TWD' && store.snapshotFreshness !== 'loaded') return null;
+    return resolveTransactionValuation(store.rawData, record);
 };
 
-const calculateTotalAmountNative = (record) => {
-    const qty = Number(record.qty) || 0;
-    const price = Number(record.price) || 0;
-    const totalAmount = Number(record.total_amount) || 0;
-    const commission = Number(record.fee || record.commission) || 0;
-    const tax = Number(record.tax) || 0;
-    const baseTotal = totalAmount > 0 ? totalAmount : Math.abs(qty * price);
-    return baseTotal + commission + tax;
-};
+const getRecordSettlementNative = (record) => resolveSettlementAmountNative(record);
 
 const formatRecordNativeAmount = (record, digits = 2) => (
-    formatNativeAmount(calculateTotalAmountNative(record), getRecordCurrency(record), digits)
+    formatNativeAmount(getRecordSettlementNative(record), getRecordCurrency(record), digits)
 );
 
 const getRecordAvgPrice = (record) => {
-    const qty = Number(record.qty) || 0;
-    if (qty <= 0) return 0;
-    const price = Number(record.price) || 0;
-    const totalAmount = Number(record.total_amount) || 0;
-    const commission = Number(record.fee || record.commission) || 0;
-    const tax = Number(record.tax) || 0;
-    const baseTotal = totalAmount > 0 ? totalAmount : Math.abs(qty * price);
-    if (record.txn_type === 'BUY') {
-        return (baseTotal + commission + tax) / qty;
-    }
-    if (record.txn_type === 'SELL') {
-        return (baseTotal - commission - tax) / qty;
-    }
-    return price;
+    const qty = Number(record?.qty);
+    const settlement = getRecordSettlementNative(record);
+    if (!Number.isFinite(qty) || qty <= 0 || settlement == null) return null;
+    return settlement / qty;
 };
 
 const getTotalAmountTWD = (record) => {
-    const nativeAmount = calculateTotalAmountNative(record);
     const currency = getRecordCurrency(record);
-    if (!canConvertWithLegacyUsdTwdRate(currency)) return null;
-    if (currency === 'TWD') return nativeAmount;
-
-    const fxRate = getFxRateByDate(record.txn_date);
-    if (!Number.isFinite(fxRate) || fxRate <= 0) return null;
-    return nativeAmount * fxRate;
+    if (currency === 'TWD') return getRecordSettlementNative(record);
+    return getRecordValuation(record)?.settlementAmountTwd ?? null;
 };
 
 const getTwdPresentation = (record) => {
-    const amount = getTotalAmountTWD(record);
-    if (amount == null) return 'TWD 尚無可靠換算';
-    return `≈ NT$${formatNumber(amount, 0)}`;
+    const valuation = getRecordValuation(record);
+    if (!valuation) return 'TWD 尚無可靠換算';
+    const prefix = valuation.fxSource === 'legacy-usd-reference' ? '≈ ' : '';
+    return `${prefix}NT$${formatNumber(valuation.settlementAmountTwd, 0)}`;
 };
 
 const availableYears = computed(() => {
