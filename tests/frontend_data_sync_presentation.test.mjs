@@ -49,9 +49,9 @@ test('App uses the existing snapshot verification proof and product-level sync l
 
   assert.match(source, /buildDataSyncPresentation/);
   assert.match(source, /isSnapshotVerificationCurrent/);
-  assert.match(source, /isSnapshotVerificationCurrent\(portfolioStore\.rawData, portfolioStore\.records\)/);
+  assert.match(source, /isSnapshotVerificationCurrent\(\s*portfolioStore\.rawData,\s*portfolioStore\.records,\s*\)/);
   assert.match(source, />立即更新</);
-  assert.match(source, /aria-label="立即更新資料"/);
+  assert.match(source, /:aria-label="portfolioStore\.isPolling \? '資料更新中' : '立即更新資料'"/);
   assert.match(source, /下次自動更新/);
   assert.match(source, /暫停盤中自動更新/);
 
