@@ -1,5 +1,6 @@
 import { watch } from 'vue';
 import { readAutomaticRecalculationStatus } from './automaticRecalculationState.js';
+import { readPendingCalculationRequest } from './calculationJobState.js';
 import {
   claimAutomaticFailureRetry,
   FAILURE_RECOVERY_CLASS,
@@ -122,6 +123,14 @@ export const installCalculationFailureRecovery = ({
     ) {
       return;
     }
+
+    let pendingCalculation = null;
+    try {
+      pendingCalculation = readPendingCalculationRequest(storage, owner);
+    } catch {
+      return;
+    }
+    if (pendingCalculation) return;
 
     const activeJob = portfolio.calculationJob;
     if (activeJob?.status === 'queued' || activeJob?.status === 'running') return;
