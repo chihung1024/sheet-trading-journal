@@ -332,6 +332,7 @@ const statusPresentation = computed(() => buildDataSyncPresentation({
   loading: portfolioStore.loading,
   isPolling: portfolioStore.isPolling,
   connectionStatus: portfolioStore.connectionStatus,
+  portfolioReadStatus: portfolioStore.portfolioReadStatus,
   snapshotFreshness: portfolioStore.snapshotFreshness,
   verified: snapshotVerified.value,
 }));
