@@ -77,6 +77,18 @@ test('benchmark comparison never extends through a strategy TWR reliability gap'
   assert.equal(comparison.benchmark[2], null);
 });
 
+test('TWR comparison rejects missing or non-numeric benchmark values instead of coercing them to zero', () => {
+  const comparison = buildComparableTwrComparison([
+    { date: '2026-08-01', twr: 1, twr_status: 'ok', benchmark_twr: null },
+    { date: '2026-08-02', twr: 2, twr_status: 'ok', benchmark_twr: undefined },
+    { date: '2026-08-03', twr: 3, twr_status: 'ok', benchmark_twr: 6 },
+  ]);
+
+  assert.equal(comparison.anchor.date, '2026-08-03');
+  assert.deepEqual(comparison.strategy, [0]);
+  assert.deepEqual(comparison.benchmark, [0]);
+});
+
 test('TWR comparison fails closed when there is no common reliable anchor', () => {
   const comparison = buildComparableTwrComparison([
     { date: '2026-08-01', twr: null, twr_status: 'not_applicable', benchmark_twr: 3 },
