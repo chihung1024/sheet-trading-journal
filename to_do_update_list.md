@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **Phase 5 same-page record-create ambiguity reconciliation — permanent handoff complete → final docs-bearing CI / merge / post-main closure**
+Current line: **Phase 5 automation chain CLOSED → product/UX evidence audit; no runtime feature batch is active**
 
 ---
 
@@ -15,6 +15,7 @@ Current line: **Phase 5 same-page record-create ambiguity reconciliation — per
 4. Keep one primary active batch.
 5. R2+ work requires exact-head CI, rollback/recovery, independent review and permanent handoff.
 6. Prefer invisible deterministic automation; **AI 管流程，不管帳**.
+7. Do not create infrastructure or retry machinery for theoretical edge cases without production/user evidence.
 
 ---
 
@@ -31,145 +32,101 @@ Current line: **Phase 5 same-page record-create ambiguity reconciliation — per
 | Phase 4 trigger outcome ambiguity replay | CLOSED | PR #235 `b8d412559ef684bfb2b9197480898f140a92bd43`; CI #823 + Pages #1518 |
 | Phase 5 bounded data-read self-recovery | CLOSED | PR #236 `80abac173a5b5a5c75c5420af11d92480407180b`; CI #825 + Pages #1519 |
 | Phase 5 GroupManager batch mutation lifecycle | CLOSED | PR #237 `98b2f2e1c765d020065a7b0493a304042455bf71`; CI #832 + Pages #1520 |
-| Phase 5 dirty standalone record readback recovery | **CLOSED** | PR #238 `0cd9353232b26924d509fa75f5bc45ead24cb10c`; post-main CI #838 + Pages #1521 SUCCESS |
+| Phase 5 dirty standalone record readback recovery | CLOSED | PR #238 `0cd9353232b26924d509fa75f5bc45ead24cb10c`; CI #838 + Pages #1521 |
+| Phase 5 same-page record-create ambiguity reconciliation | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #239 merge `b45505dc9d532ea076d9fcebabd65ef65e39c312`; post-main CI #842 + Pages #1522 SUCCESS |
 
 Do not reopen closed phases without new material evidence.
 
 ---
 
-## 2. ACTIVE — Phase 5 same-page record-create ambiguity reconciliation
+## 2. Current remote truth
 
-PR: **#239 — `Phase 5: reconcile ambiguous record create on same page`**  
-Branch: `feat/phase5-record-create-reconciliation`  
-Base: verified protected main `0cd9353232b26924d509fa75f5bc45ead24cb10c`  
-Risk: **R2 Significant**.
+Protected `main` after Phase 5 closure:
 
-Permanent engineering handoff:
+`b45505dc9d532ea076d9fcebabd65ef65e39c312`
 
-`docs/engineering/PHASE5_RECORD_CREATE_AMBIGUITY_RECONCILIATION_2026-08-14.md`
+PR #239 is merged/closed. Its same-page ambiguous CREATE reconciliation is production-active on Pages.
 
-### Root cause
+Old documentation-only Draft PRs #225 and #227 were closed without merge because later NOW-1B / production evidence superseded their blocker narrative.
 
-NOW-1B already persists exact record-create body + idempotency key and can recover it safely during `fetchAll()`/reload. The remaining short window was same-page UI control after an ambiguous POST:
+Issue #79 (deterministic JWT expiry / refresh scheduling) was re-audited against current code and closed as **completed**: shared `jwtClaims.js`, immediate token watcher, bounded monitor and overlap guards are already present.
 
-- `TradeForm.vue` receives legacy `false`, keeps the form and re-enables submit;
-- `DividendManager.vue` receives an ambiguous outcome, removes local confirmed state, re-enables its confirm action, and warns the user not to submit again.
-
-A second click is a new logical create and therefore gets a new key. If the first ambiguous request actually committed, that second legitimate new intent can create a duplicate row.
-
-Permanent payload/content dedupe is rejected because intentionally identical trades must remain legal.
-
-### Final reconciliation contract
-
-A LIVE durable create intent may carry a bounded:
-
-`reconcilingUntil`
-
-Default window: **60 seconds**.
-
-Exact POST `/api/records/idempotent` outcome ambiguity is observed through the existing request-failure signal. Before caller UI regains control, the controller synchronously marks the current same-owner/current-barrier LIVE intent as reconciling.
-
-Before `beginRecordCreateIntent()` rotates the barrier or creates a new key:
-
-- same exact serialized payload + active `reconcilingUntil` → fail-before-send with `RecordCreateReconciliationInProgressError`;
-- different payload → valid new logical create; normal barrier rotation supersedes old recovery;
-- same payload after window expiry → valid new logical create;
-- same payload when no ambiguous reconciliation exists → existing NOW-1B behavior unchanged, distinct new key allowed.
-
-After 750 ms the controller rechecks owner + exact eligible key. If still current, it calls existing `portfolio.fetchAll()`; `performFetchAll()` begins with `recoverPendingRecordCreateIntent()`, which replays the exact original key/body.
-
-`addRecord()` itself remains one-shot. The controller is external and permits only one same-page recovery handoff per exact key per installed-controller lifetime.
-
-Explicit 4xx does not acquire reconciliation authority. Success removes the intent; explicit rejection makes it terminal; repeated ambiguity leaves the durable intent for later reload/full-read recovery.
+No open product PR remains at this handoff.
 
 ---
 
-## 3. Code-bearing verification
+## 3. ACTIVE — product / UX evidence audit
 
-Code-bearing exact head before permanent docs:
+This is an audit state, not permission to create a broad refactor.
 
-`edb7c5e26122ccaa7fa6129f8d7505ea52e630ff`
+### Findings already checked and intentionally **not** promoted to runtime work
 
-CI #839 / run `31779502756`: **SUCCESS**
+1. **20-minute calculation polling limit**
+   - recent `Update Portfolio Data` runs complete far below the limit (latest observed normal run about tens of seconds);
+   - no evidence supports adding longer/background polling machinery.
 
-- Frontend contracts/build: SUCCESS
-- Worker security/deployment/local D1: SUCCESS
-- Python tests/coverage: SUCCESS
+2. **UPDATE / DELETE outcome ambiguity**
+   - deterministic readback reconciliation is architecturally possible, but would require a new mutation descriptor/durable intent surface;
+   - do not expand into generalized mutation-idempotency without production/user evidence.
 
-Code-bearing compare:
+3. **Dividend pending state across devices**
+   - Python authoritative calculation already derives `confirmed_dividends` from DIV records and removes confirmed events from new snapshots;
+   - global frontend `symbol+date` filtering could be wrong across strategy groups/tags;
+   - do not add a broader rule without a reproducible group-aware defect.
 
-- `behind_by=0`;
-- exactly five expected frontend/test files;
-- no Worker/D1/Python/finance drift.
+4. **Old manual fallback copy**
+   - several messages still say “手動刷新 / 手動更新” even though Phase 4/5 recovery now covers the underlying failure path;
+   - treat as low-risk presentation cleanup, not a new recovery architecture.
 
-New regressions prove:
+### Next product batch selection rule
 
-- same payload blocked only during active reconciliation window;
-- different payload remains legal and supersedes old recovery;
-- same payload becomes legal again after expiry;
-- exact ambiguous record-create failure synchronously locks the LIVE intent before UI resubmit;
-- one full recovery handoff is performed;
-- a newer different create cancels the old timer;
-- explicit 409 and non-record-create failures do not lock/recover;
-- production controller installed exactly once.
+Choose the next runtime batch only from one of these evidence sources:
 
-Existing NOW-1B regression suite remains unchanged and passes, including the requirement that intentionally identical trades remain legal outside active reconciliation.
+- a reproducible user-facing defect;
+- a current open product issue whose acceptance is not already implemented;
+- production logs/jobs showing a repeated failure class;
+- a measurable UX path with unnecessary actions that the existing lifecycle cannot already recover automatically.
 
-Independent R2 review: **PASS / 0 BLOCKER**.
-
-Permanent docs advance the branch head, so CI #839 is **not** the final merge gate.
-
----
-
-## 4. Exact remaining gates
-
-Do autonomously unless GitHub/platform genuinely requires owner action:
-
-1. re-fetch PR #239 latest docs-bearing head;
-2. require fresh full CI on that exact head;
-3. compare against protected `main` and require `behind_by=0`;
-4. expected final scope is exactly:
-   - `src/main.js`;
-   - `src/services/recordCreateAmbiguityRecovery.js`;
-   - `src/services/recordCreateIntent.js`;
-   - `tests/frontend_record_create_ambiguity_bootstrap.test.mjs`;
-   - `tests/frontend_record_create_ambiguity_recovery.test.mjs`;
-   - `docs/engineering/PHASE5_RECORD_CREATE_AMBIGUITY_RECONCILIATION_2026-08-14.md`;
-   - this file;
-5. final R2 review must confirm:
-   - no permanent payload dedupe;
-   - legal identical trades still allowed outside active reconciliation;
-   - sync same-payload lock before caller regains UI;
-   - `addRecord()` itself remains one-shot;
-   - exact POST `/api/records/idempotent` + outcome ambiguity only;
-   - explicit 4xx ignored by controller;
-   - exact owner/key/barrier rechecked after delay;
-   - different payload/new barrier cancels old recovery;
-   - one attempt per key/controller lifetime;
-   - helper failures contained;
-   - no Worker/D1/Python/finance/validation drift;
-6. update PR #239 body with final exact head / CI / scope / review;
-7. mark Ready;
-8. ordinary merge with expected head SHA;
-9. require post-main CI SUCCESS;
-10. require production Pages SUCCESS;
-11. no Worker deploy expected;
-12. no real-user ledger mutation solely for smoke testing.
-
-Only then mark this slice CLOSED.
+Before writing code, verify the candidate against current `main` and existing tests so old roadmap items are not reimplemented.
 
 ---
 
-## 5. Next-line rule after #239
+## 4. Open roadmap item intentionally deferred
 
-Do not jump into broad AI-agent work.
+Issue #97 — staging Worker/D1 deployment contract — remains open, but it is **infrastructure**, not current product functionality.
 
-After #239 closes, re-scan remaining functional bypasses and unnecessary manual operations. `DividendManager.vue` still performs an immediate `triggerUpdate()` after a committed `addRecord()`, but this is not currently a duplicate dispatch: it claims the existing Phase 2 dirty generation before the debounce fires. Its warning copy about manually clicking update may be stale if the trigger call fails, because the dirty generation remains recoverable. Treat this as presentation/efficiency work unless new evidence shows a correctness defect.
+Do not promote #97 ahead of user-facing work unless staging becomes necessary to safely deliver a concrete product change or the owner explicitly reprioritizes it.
 
-TradeForm and DividendManager may also retain their current form/button state after the original ambiguous call even when the external controller later recovers it; #239 prevents duplicate same-payload network create during the bounded reconciliation window. Auto-resetting UI after external recovery is presentation-only unless evidence shows material user confusion.
+---
+
+## 5. Product automation invariants to preserve
+
+Current normal mutation/recovery chain:
+
+```text
+record create durable intent
+→ rollback-safe idempotent endpoint
+→ mutation commit/readback
+→ Phase 2 dirty generation
+→ calculation job lifecycle
+→ bounded terminal-failure recovery
+→ trigger ambiguity same-key confirmation
+→ snapshot integrity/self-healing
+→ bounded read self-recovery
+→ same-page ambiguous CREATE reconciliation
+```
+
+Never weaken:
+
+- D1 transaction truth;
+- same-key idempotency semantics;
+- mutation barrier supersede rules;
+- deterministic finance validation/reconciliation;
+- exact owner isolation;
+- fail-closed handling of unknown/deterministic correctness failures.
 
 ---
 
 ## 6. Repository hygiene
 
-`tmp-do-not-create` and any zero-diff exploratory branch are nonfunctional hygiene only. Remove later through a supported branch-delete path; never block product work for them.
+Zero-diff exploratory branches such as `tmp-do-not-create` or other abandoned zero-diff branches are nonfunctional hygiene only. Remove through a supported branch-delete path when convenient; never block product work for this cleanup.
