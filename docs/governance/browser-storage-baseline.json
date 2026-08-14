@@ -32,6 +32,15 @@
       "owner_paths": ["src/services/projectStorage.js"]
     },
     {
+      "key": "calculation_failure_recovery.v1",
+      "classification": "tenant-operation-recovery-state",
+      "authoritative": false,
+      "risk_ids": ["RISK-020", "RISK-038"],
+      "target_batch": "PHASE-4",
+      "planned_action": "retain-owner-validated-one-attempt-per-dirty-generation",
+      "owner_paths": ["src/services/calculationFailureRecovery.js", "src/services/projectStorage.js"]
+    },
+    {
       "key": "confirmed_dividend_keys",
       "classification": "tenant-financial-state",
       "authoritative": false,
