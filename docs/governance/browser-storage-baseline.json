@@ -14,15 +14,6 @@
       "owner_paths": ["src/services/automaticRecalculationState.js", "src/services/projectStorage.js"]
     },
     {
-      "key": "automatic_recalculation_coverage.v1.",
-      "classification": "tenant-operation-recovery-prefix",
-      "authoritative": false,
-      "risk_ids": ["RISK-020", "RISK-038"],
-      "target_batch": "PHASE-2",
-      "planned_action": "retain-owner-validated-per-job-coverage-only",
-      "owner_paths": ["src/services/automaticRecalculationState.js", "src/services/projectStorage.js"]
-    },
-    {
       "key": "automatic_recalculation_dirty.v1",
       "classification": "tenant-operation-recovery-state",
       "authoritative": false,
