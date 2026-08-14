@@ -20,7 +20,7 @@ NOW-1B-A — rollback-safe backend transport — is **PRODUCTION VERIFIED**:
 
 The new path is the rollback-safe capability boundary. A runtime that does not contain the compatibility entry route returns 404 before record mutation. Frontend code must never fall back from this path to legacy `POST /api/records`.
 
-NOW-1B-B — durable browser create intent — is implemented in PR #231. The last code-bearing candidate `9b13dc1f2cae53a2ec1ffa7b1a47c90663f47210` passed CI #783 / run `31763766650` across Frontend contracts/build, Worker security/deployment tests, and Python tests. Handoff-only commits may advance the PR head; the exact current PR head and its CI must always be re-fetched before merge. Merge/post-main verification remains the final gate.
+NOW-1B-B — durable browser create intent — is implemented in PR #231. CI #783 / run `31763766650` proved the earlier code-bearing candidate across Frontend contracts/build, Worker security/deployment tests, and Python tests. A later R2 review refinement minimized terminal persistence; therefore the exact current PR head and a fresh exact-head CI must be re-fetched before merge. Merge/post-main verification remains the final gate.
 
 ## Product objective
 
@@ -45,9 +45,11 @@ Implementation owner: `src/services/recordCreateIntent.js`.
 - dynamic intent prefix: `pending_record_create.v1.`;
 - fixed mutation barrier: `record_mutation_barrier.v1`;
 - storage key contains only the opaque idempotency key, never email/PII;
-- stored value is owner-validated and contains the immutable serialized request body needed for exact replay;
+- a **LIVE** intent is owner-validated and contains the immutable serialized request body required for exact replay;
+- a **TERMINAL** tombstone intentionally omits the transaction body and retains only version, owner, opaque key, barrier token, timestamps, state, and terminal reason;
 - secure random idempotency/barrier identifiers use `crypto.randomUUID()` or `crypto.getRandomValues()`;
 - persist operations are read-back verified before the caller may send the POST;
+- if terminal rewrite fails but removal remains available, the service removes the live intent so a definitely rejected create cannot later auto-replay;
 - malformed, cross-owner, unsupported-version, impossible-future, stale, terminal, or superseded intents fail closed;
 - logout removes both the barrier and every dynamic record-create intent through `clearSensitiveProjectStorage()`.
 
@@ -70,11 +72,11 @@ Recovery is outside `addRecord()` so the normal create call never contains a bli
 ## Error semantics
 
 - verified success: committed; clear the exact intent before refreshing records;
-- HTTP/application 4xx, including `IDEMPOTENCY_CONFLICT` and unsupported-path 404: terminal; never rotate a replacement key automatically for that logical submission;
-- timeout, network failure, 5xx, or other outcome that does not prove rollback: ambiguous; retain the exact live intent/key/body for bounded recovery;
+- HTTP/application 4xx, including `IDEMPOTENCY_CONFLICT` and unsupported-path 404: terminal; never rotate a replacement key automatically for that logical submission; terminal persistence removes the transaction body;
+- timeout, network failure, 5xx, or other outcome that does not prove rollback: ambiguous; retain the exact LIVE intent/key/body for bounded recovery;
 - storage unavailable before POST: fail before mutation;
 - token refresh: preserve exact key/body;
-- storage cleanup after a server-confirmed commit is best effort only; the same server idempotency key remains the safety net if the local entry survives unexpectedly.
+- storage cleanup after a server-confirmed commit is best effort only; the same server idempotency key remains the safety net if the local LIVE entry survives unexpectedly.
 
 ## Correctness boundary: later record mutations supersede stale create replay
 
@@ -88,24 +90,26 @@ A simple `/api/version` preflight was rejected because runtime rollback could oc
 
 ## Required regressions
 
-The PR now carries both source-contract and executable storage-service regressions for:
+The PR carries both source-contract and executable storage-service regressions for:
 
 1. persist-before-send;
 2. same logical recovery uses the same key/body;
 3. distinct creates get distinct keys even for identical payloads;
-4. payload is immutable for a key;
+4. LIVE payload is immutable for a key;
 5. conflict/404 do not rotate a new key or fall back to the legacy endpoint;
-6. ambiguous failure retains intent;
-7. same-owner reload/fetch recovery;
-8. cross-owner state cannot replay;
-9. logout clears create-intent/barrier state while preserving unrelated storage;
-10. token refresh preserves key/body;
-11. later create/update/delete supersede older replay eligibility;
-12. terminal/stale/malformed/future state fails closed;
-13. recovery is bounded per intent and has no tight retry loop;
-14. storage failure aborts before POST;
-15. existing mutation-outcome callers remain compatible;
-16. no financial-engine, snapshot-calculation, Worker, or D1 behavior change.
+6. terminal tombstone removes the transaction body and remains non-replayable;
+7. terminal-write failure falls back to removing the LIVE intent when possible;
+8. ambiguous failure retains LIVE intent;
+9. same-owner reload/fetch recovery;
+10. cross-owner state cannot replay;
+11. logout clears create-intent/barrier state while preserving unrelated storage;
+12. token refresh preserves key/body;
+13. later create/update/delete supersede older replay eligibility;
+14. terminal/stale/malformed/future state fails closed;
+15. recovery is bounded per intent and has no tight retry loop;
+16. storage failure aborts before POST;
+17. existing mutation-outcome callers remain compatible;
+18. no financial-engine, snapshot-calculation, Worker, or D1 behavior change.
 
 ## Completion rule
 
