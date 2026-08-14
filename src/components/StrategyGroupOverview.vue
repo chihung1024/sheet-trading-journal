@@ -136,6 +136,7 @@ const metricClass = (metric) => (
 
 <style scoped>
 .strategy-overview-card {
+  margin-bottom: 18px;
   padding: 18px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
