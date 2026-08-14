@@ -4,6 +4,7 @@ export const SNAPSHOT_INTEGRITY_STATUS = Object.freeze({
   MISSING: 'missing',
   STALE_SOURCE: 'stale_source',
   STALE_BENCHMARK: 'stale_benchmark',
+  UNSUPPORTED_MANIFEST: 'unsupported_manifest',
   UNVERIFIABLE_MANIFEST: 'unverifiable_manifest',
   UNVERIFIABLE_RECORDS: 'unverifiable_records',
 });
@@ -22,6 +23,10 @@ const SOURCE_RECORD_FIELDS = Object.freeze([
 const SUPPORTED_TRANSACTION_TYPES = new Set(['BUY', 'SELL', 'DIV']);
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const SUPPORTED_MANIFEST_VERSION = 1;
+const SUPPORTED_IDENTITY_VERSION = 1;
+const SUPPORTED_SOURCE_CANONICALIZATION_VERSION = 1;
+const SUPPORTED_RUNTIME_CANONICALIZATION_VERSION = 1;
 
 const normalizeOwnerlessBenchmark = value => (
   typeof value === 'string' ? value.trim().toUpperCase() : ''
@@ -201,13 +206,36 @@ export const buildSourceRecordsIdentity = async (records) => {
   });
 };
 
-const readManifestIdentity = snapshot => {
-  const identity = snapshot?.calculation_manifest?.deterministic_identity;
+const versionIfFuture = (value, supported) => (
+  Number.isSafeInteger(value) && value > supported ? value : null
+);
+
+const readUnsupportedManifestVersion = (snapshot) => {
+  const manifest = snapshot?.calculation_manifest;
+  const identity = manifest?.deterministic_identity;
   const source = identity?.source_records;
-  const benchmark = normalizeOwnerlessBenchmark(identity?.runtime_config?.benchmark_symbol);
+  const runtime = identity?.runtime_config;
+  const candidates = [
+    ['manifest', versionIfFuture(manifest?.manifest_version, SUPPORTED_MANIFEST_VERSION)],
+    ['identity', versionIfFuture(identity?.identity_version, SUPPORTED_IDENTITY_VERSION)],
+    ['source', versionIfFuture(source?.canonicalization_version, SUPPORTED_SOURCE_CANONICALIZATION_VERSION)],
+    ['runtime', versionIfFuture(runtime?.canonicalization_version, SUPPORTED_RUNTIME_CANONICALIZATION_VERSION)],
+  ];
+  const [component, version] = candidates.find(([, candidate]) => candidate !== null) || [];
+  return component ? Object.freeze({ component, version }) : null;
+};
+
+const readManifestIdentity = snapshot => {
+  const manifest = snapshot?.calculation_manifest;
+  const identity = manifest?.deterministic_identity;
+  const source = identity?.source_records;
+  const runtime = identity?.runtime_config;
+  const benchmark = normalizeOwnerlessBenchmark(runtime?.benchmark_symbol);
   if (
-    identity?.identity_version !== 1
-    || source?.canonicalization_version !== 1
+    manifest?.manifest_version !== SUPPORTED_MANIFEST_VERSION
+    || identity?.identity_version !== SUPPORTED_IDENTITY_VERSION
+    || source?.canonicalization_version !== SUPPORTED_SOURCE_CANONICALIZATION_VERSION
+    || runtime?.canonicalization_version !== SUPPORTED_RUNTIME_CANONICALIZATION_VERSION
     || typeof source?.sha256 !== 'string'
     || !SHA256_RE.test(source.sha256)
     || !Number.isSafeInteger(source?.record_count)
@@ -220,7 +248,7 @@ const readManifestIdentity = snapshot => {
   }
   return Object.freeze({
     source: Object.freeze({
-      canonicalization_version: 1,
+      canonicalization_version: SUPPORTED_SOURCE_CANONICALIZATION_VERSION,
       sha256: source.sha256,
       record_count: source.record_count,
       max_record_id: source.max_record_id,
@@ -282,12 +310,29 @@ export const assessSnapshotIntegrity = async (
     });
   }
 
+  const unsupported = readUnsupportedManifestVersion(snapshot);
+  if (unsupported) {
+    return Object.freeze({
+      status: SNAPSHOT_INTEGRITY_STATUS.UNSUPPORTED_MANIFEST,
+      repairNeeded: false,
+      fingerprint: fingerprint(
+        'manifest-unsupported',
+        unsupported.component,
+        unsupported.version,
+        currentSource.sha256,
+      ),
+      currentSource,
+      manifestSource: null,
+      unsupportedManifest: unsupported,
+    });
+  }
+
   const manifest = readManifestIdentity(snapshot);
   if (!manifest) {
     return Object.freeze({
       status: SNAPSHOT_INTEGRITY_STATUS.UNVERIFIABLE_MANIFEST,
       repairNeeded: true,
-      fingerprint: fingerprint('manifest-invalid', currentSource.sha256, snapshot.updated_at),
+      fingerprint: fingerprint('manifest-invalid', currentSource.sha256),
       currentSource,
       manifestSource: null,
     });
@@ -306,7 +351,6 @@ export const assessSnapshotIntegrity = async (
         'source-mismatch',
         currentSource.sha256,
         manifest.source.sha256,
-        snapshot.updated_at,
       ),
       currentSource,
       manifestSource: manifest.source,
@@ -324,7 +368,6 @@ export const assessSnapshotIntegrity = async (
         currentSource.sha256,
         manifest.benchmark,
         expected,
-        snapshot.updated_at,
       ),
       currentSource,
       manifestSource: manifest.source,
