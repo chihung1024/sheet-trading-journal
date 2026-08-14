@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   assessSnapshotIntegrity,
   buildSourceRecordsIdentity,
-  normalizeSourceRecordForManifest,
+  buildSourceRecordsProjection,
   pythonFloatHex,
   SNAPSHOT_INTEGRITY_STATUS,
 } from '../src/services/snapshotIntegrity.js';
@@ -93,10 +93,10 @@ test('float canonicalization matches Python float.hex for IEEE-754 edge fixtures
   assert.equal(pythonFloatHex(Number.MAX_VALUE), '0x1.fffffffffffffp+1023');
 });
 
-test('Worker API records normalize to the exact calculation manifest source contract', () => {
+test('Worker API records project to the exact calculation manifest source contract', () => {
   assert.deepEqual(
-    normalizeSourceRecordForManifest(API_RECORDS[0]),
-    CALCULATION_RECORDS[0],
+    buildSourceRecordsProjection(API_RECORDS),
+    buildSourceRecordsProjection(CALCULATION_RECORDS),
   );
 });
 
@@ -121,6 +121,17 @@ test('API source identity is deterministic across order and ignores non-manifest
 
   assert.deepEqual(first, second);
   assert.deepEqual(first, changedNonManifestFields);
+});
+
+test('API symbol and type normalization preserves the existing trim and uppercase manifest contract', async () => {
+  const normalized = await buildSourceRecordsIdentity(API_RECORDS);
+  const padded = await buildSourceRecordsIdentity(API_RECORDS.map(record => ({
+    ...record,
+    symbol: `  ${record.symbol.toLowerCase()}  `,
+    txn_type: ` ${record.txn_type.toLowerCase()} `,
+  })));
+
+  assert.deepEqual(normalized, padded);
 });
 
 test('API optional fee/tax/tag defaults match Python prepare_transactions normalization', async () => {
