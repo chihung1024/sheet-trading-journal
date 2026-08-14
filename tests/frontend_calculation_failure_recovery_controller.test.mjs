@@ -202,6 +202,7 @@ test('retryable failure without a Phase 2 dirty generation does not invent calcu
   };
   await flushAsync();
   assert.equal(harness.calls.length, 0);
-  assert.match(harness.notifications.at(-1).message, /自動安全重試一次/);
+  assert.match(harness.notifications.at(-1).message, /沒有待自動重算狀態.*停止自動重試/);
+  assert.doesNotMatch(harness.notifications.at(-1).message, /將自動.*重試/);
   stop();
 });
