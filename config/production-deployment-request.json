@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "now1a-r-842e566-20260813t0738z",
-  "source_sha": "842e5667b6ae3e75ea947f9ed08d7a8344337f9d",
-  "requested_at": "2026-08-13T07:38:23.000Z",
-  "reason": "NOW-1A controlled exact-source production activation after PR #222 authority and evidence; dispatch canonical Worker 4.08 / API 2.61 / Schema 3 deployment."
+  "request_id": "now1b-transport-a0213f05-20260814t0100z",
+  "source_sha": "a0213f05c64f8b1636711e5e3bfdea650f42f2df",
+  "requested_at": "2026-08-14T01:00:30.000Z",
+  "reason": "NOW-1B compatibility transport production activation after exact-source evidence #17 and refreshed authority."
 }
