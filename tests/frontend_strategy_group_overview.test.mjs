@@ -134,12 +134,14 @@ test('missing or invalid group evidence fails closed without synthesizing a stra
   assert.equal(buildStrategyGroupOverview({ groups: { all: group() } }).status, 'empty');
 });
 
-test('strategy overview UI must explain non-comparable ranges, use only published values, and switch groups through the store', async () => {
+test('strategy overview UI explains non-comparable and overlapping groups, uses published values, and switches through the store', async () => {
   const componentSource = await readFile(new URL('../src/components/StrategyGroupOverview.vue', import.meta.url), 'utf8');
-  const appSource = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8');
+  const managerSource = await readFile(new URL('../src/components/GroupManager.vue', import.meta.url), 'utf8');
 
   assert.match(componentSource, /歷史資料範圍可能不同/);
+  assert.match(componentSource, /同一筆交易可能同時屬於多個標籤群組/);
   assert.match(componentSource, /不是同期間績效排名/);
+  assert.match(componentSource, /群組金額也不可直接相加/);
   assert.match(componentSource, /store\.setGroup\(group\.name\)/);
   assert.match(componentSource, /buildStrategyGroupOverview\(store\.rawData\)/);
   assert.match(componentSource, /總資產淨值/);
@@ -152,7 +154,7 @@ test('strategy overview UI must explain non-comparable ranges, use only publishe
   assert.doesNotMatch(componentSource, /fetch\(|\/api\//);
   assert.doesNotMatch(componentSource, /daily_pnl|benchmark_twr/);
 
-  assert.match(appSource, /import StrategyGroupOverview from '\.\/components\/StrategyGroupOverview\.vue'/);
-  assert.match(appSource, /<StrategyGroupOverview\s*\/>/);
-  assert.match(appSource, /<GroupManager\s*\/>/);
+  assert.match(managerSource, /import StrategyGroupOverview from '\.\/StrategyGroupOverview\.vue'/);
+  assert.match(managerSource, /<StrategyGroupOverview\s*\/>/);
+  assert.match(managerSource, /<h3 class="gm-title">管理策略群組<\/h3>/);
 });
