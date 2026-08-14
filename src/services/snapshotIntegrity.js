@@ -20,6 +20,26 @@ const SOURCE_RECORD_FIELDS = Object.freeze([
   'Tax',
   'Tag',
 ]);
+const API_SOURCE_RECORD_MARKERS = Object.freeze([
+  'txn_date',
+  'symbol',
+  'txn_type',
+  'qty',
+  'price',
+  'fee',
+  'tax',
+  'tag',
+]);
+const CALCULATION_SOURCE_RECORD_MARKERS = Object.freeze([
+  'Date',
+  'Symbol',
+  'Type',
+  'Qty',
+  'Price',
+  'Commission',
+  'Tax',
+  'Tag',
+]);
 const SUPPORTED_TRANSACTION_TYPES = new Set(['BUY', 'SELL', 'DIV']);
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -31,6 +51,53 @@ const SUPPORTED_RUNTIME_CANONICALIZATION_VERSION = 1;
 const normalizeOwnerlessBenchmark = value => (
   typeof value === 'string' ? value.trim().toUpperCase() : ''
 );
+
+const hasOwn = (record, key) => Object.prototype.hasOwnProperty.call(record, key);
+
+const detectSourceRecordSchema = (record) => {
+  const hasApiFields = API_SOURCE_RECORD_MARKERS.some(field => hasOwn(record, field));
+  const hasCalculationFields = CALCULATION_SOURCE_RECORD_MARKERS.some(field => hasOwn(record, field));
+
+  if (hasApiFields && hasCalculationFields) {
+    throw new Error('source record mixes API and calculation schemas');
+  }
+  if (hasApiFields) return 'api';
+  if (hasCalculationFields) return 'calculation';
+  throw new Error('source record schema is unsupported');
+};
+
+export const normalizeSourceRecordForManifest = (record) => {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new Error('source record must be an object');
+  }
+
+  const schema = detectSourceRecordSchema(record);
+  if (schema === 'api') {
+    return {
+      id: record.id,
+      Date: record.txn_date,
+      Symbol: record.symbol,
+      Type: record.txn_type,
+      Qty: record.qty,
+      Price: record.price,
+      Commission: record.fee ?? 0,
+      Tax: record.tax ?? 0,
+      Tag: record.tag ?? '',
+    };
+  }
+
+  return {
+    id: record.id,
+    Date: record.Date,
+    Symbol: record.Symbol,
+    Type: record.Type,
+    Qty: record.Qty,
+    Price: record.Price,
+    Commission: record.Commission,
+    Tax: record.Tax,
+    Tag: record.Tag,
+  };
+};
 
 const requireFiniteNumber = (value, label) => {
   if (typeof value === 'boolean') throw new Error(`${label} must be numeric`);
@@ -136,35 +203,33 @@ export const buildSourceRecordsProjection = (records) => {
 
   const seenIds = new Set();
   const rows = records.map(record => {
-    if (!record || typeof record !== 'object' || Array.isArray(record)) {
-      throw new Error('source record must be an object');
-    }
-    const id = requirePositiveInteger(record.id, 'record id');
+    const sourceRecord = normalizeSourceRecordForManifest(record);
+    const id = requirePositiveInteger(sourceRecord.id, 'record id');
     if (seenIds.has(id)) throw new Error('source record ids must be unique');
     seenIds.add(id);
 
-    const type = normalizeRequiredText(record.Type, 'transaction Type');
+    const type = normalizeRequiredText(sourceRecord.Type, 'transaction Type');
     if (!SUPPORTED_TRANSACTION_TYPES.has(type)) {
       throw new Error(`unsupported transaction Type: ${type}`);
     }
 
-    const qty = requireFiniteNumber(record.Qty, 'Qty');
-    const price = requireFiniteNumber(record.Price, 'Price');
-    const commission = requireFiniteNumber(record.Commission, 'Commission');
-    const tax = requireFiniteNumber(record.Tax, 'Tax');
+    const qty = requireFiniteNumber(sourceRecord.Qty, 'Qty');
+    const price = requireFiniteNumber(sourceRecord.Price, 'Price');
+    const commission = requireFiniteNumber(sourceRecord.Commission, 'Commission');
+    const tax = requireFiniteNumber(sourceRecord.Tax, 'Tax');
     if (qty <= 0) throw new Error('Qty must be positive');
     if (price < 0) throw new Error('Price must be non-negative');
 
     return {
       id,
-      Date: normalizeDate(record.Date),
-      Symbol: normalizeRequiredText(record.Symbol, 'transaction Symbol'),
+      Date: normalizeDate(sourceRecord.Date),
+      Symbol: normalizeRequiredText(sourceRecord.Symbol, 'transaction Symbol'),
       Type: type,
       Qty: qty,
       Price: price,
       Commission: commission,
       Tax: tax,
-      Tag: normalizeOptionalText(record.Tag),
+      Tag: normalizeOptionalText(sourceRecord.Tag),
     };
   });
 
