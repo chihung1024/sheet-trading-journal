@@ -149,6 +149,10 @@ import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
 import { formatLocalCalendarDate } from '../services/calendarDate';
+import {
+    detectNativeCurrency,
+    getCurrencyInputAffix,
+} from '../services/instrumentCurrency.js';
 import { subscribeRecordCreateRecoverySuccess } from '../services/recordCreateRecoverySignal.js';
 
 const emit = defineEmits(['submitted']);
@@ -177,9 +181,8 @@ const form = reactive({
 });
 
 const normalizedSymbol = computed(() => String(form.symbol || '').trim().toUpperCase());
-const isTaiwanSymbol = computed(() => /\.(TW|TWO)$/.test(normalizedSymbol.value));
-const transactionCurrency = computed(() => isTaiwanSymbol.value ? 'TWD' : 'USD');
-const transactionCurrencySymbol = computed(() => transactionCurrency.value === 'TWD' ? 'NT$' : '$');
+const transactionCurrency = computed(() => detectNativeCurrency(normalizedSymbol.value));
+const transactionCurrencySymbol = computed(() => getCurrencyInputAffix(transactionCurrency.value));
 
 const submitButtonText = computed(() => {
     switch(form.txn_type) {
@@ -310,7 +313,7 @@ const resetForm = () => {
     form.symbol = ''; 
     form.qty = ''; 
     form.price = ''; 
-    form.fee = ''; 
+    form.fee = '';
     form.tax = '';
     form.total_amount = '';
     form.tag = ''; 
