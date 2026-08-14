@@ -449,8 +449,7 @@ const confirmDividend = async (div) => {
 .btn-refresh:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: white; transform: translateY(-1px); }
 .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 .spinning { display: inline-block; animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); }
-}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .row-confirmed { opacity: 0.6; background: rgba(16, 185, 129, 0.05) !important; }
 .row-confirmed .date-display, .row-confirmed .symbol-tag, .row-confirmed .input-field, .row-confirmed .net-display { text-decoration: line-through; color: var(--text-sub) !important; }
 .symbol-wrapper { display: flex; flex-direction: column; align-items: center; gap: 4px; }
