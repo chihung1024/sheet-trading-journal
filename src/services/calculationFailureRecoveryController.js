@@ -38,12 +38,16 @@ export const installCalculationFailureRecovery = ({
   notify = () => {},
   retryDelayMs = CALCULATION_FAILURE_RETRY_DELAY_MS,
   setTimeoutImpl = setTimeout,
+  claimRetry = claimAutomaticFailureRetry,
 } = {}) => {
   if (!portfolio || !auth || !storage) {
     throw new TypeError('Failure recovery controller requires portfolio, auth, and storage');
   }
   if (typeof portfolio.triggerUpdate !== 'function') {
     throw new TypeError('Failure recovery controller requires portfolio.triggerUpdate');
+  }
+  if (typeof claimRetry !== 'function') {
+    throw new TypeError('Failure recovery controller requires a retry claim function');
   }
 
   let stopped = false;
@@ -85,7 +89,7 @@ export const installCalculationFailureRecovery = ({
 
     let claimed = false;
     try {
-      claimed = claimAutomaticFailureRetry(
+      claimed = await claimRetry(
         storage,
         owner,
         generation.token,
@@ -95,7 +99,7 @@ export const installCalculationFailureRecovery = ({
       claimed = false;
     }
     if (!claimed) {
-      notify('暫時性計算異常已達自動重試上限，已保留既有快照', 'warning');
+      notify('暫時性計算異常已達自動重試上限或由其他分頁接手，已保留既有快照', 'warning');
       return;
     }
 
