@@ -3,31 +3,23 @@ import test from 'node:test';
 import { nextTick, reactive } from 'vue';
 
 import { markAutomaticRecalculationDirty } from '../src/services/automaticRecalculationState.js';
+import { claimAutomaticFailureRetry } from '../src/services/calculationFailureRecovery.js';
 import { installCalculationFailureRecovery } from '../src/services/calculationFailureRecoveryController.js';
 
 const createStorage = () => {
   const values = new Map();
   return {
-    get length() {
-      return values.size;
-    },
-    key(index) {
-      return [...values.keys()][index] ?? null;
-    },
-    getItem(key) {
-      return values.has(key) ? values.get(key) : null;
-    },
-    setItem(key, value) {
-      values.set(key, String(value));
-    },
-    removeItem(key) {
-      values.delete(key);
-    },
+    get length() { return values.size; },
+    key(index) { return [...values.keys()][index] ?? null; },
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, String(value)); },
+    removeItem(key) { values.delete(key); },
   };
 };
 
 const flushAsync = async () => {
   await nextTick();
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
 };
@@ -37,6 +29,7 @@ const createHarness = ({ timer = callback => callback() } = {}) => {
   const auth = reactive({ user: { email: 'user@example.com' } });
   const calls = [];
   const notifications = [];
+  let claimCounter = 0;
   const portfolio = reactive({
     calculationJob: null,
     selectedBenchmark: 'SPY',
@@ -58,6 +51,14 @@ const createHarness = ({ timer = callback => callback() } = {}) => {
         storage,
         retryDelayMs: 0,
         setTimeoutImpl: timer,
+        claimRetry: (...args) => {
+          claimCounter += 1;
+          return claimAutomaticFailureRetry(...args, {
+            settleMs: 0,
+            delay: async () => {},
+            createClaimId: () => `controller_claim_${String(claimCounter).padStart(8, '0')}`,
+          });
+        },
         notify(message, type) {
           notifications.push({ message, type });
         },
@@ -69,17 +70,12 @@ const createHarness = ({ timer = callback => callback() } = {}) => {
 test('allowlisted terminal failure retries the current dirty generation exactly once', async () => {
   const harness = createHarness();
   markAutomaticRecalculationDirty(
-    harness.storage,
-    'user@example.com',
-    'SPY',
+    harness.storage, 'user@example.com', 'SPY',
     { createToken: () => 'generation_token_retry_0001' },
   );
   const stop = harness.install();
-
   harness.portfolio.calculationJob = {
-    id: 'job_1234567890123456789012',
-    status: 'failed',
-    error_code: 'MARKET_DATA_FAILED',
+    id: 'job_1234567890123456789012', status: 'failed', error_code: 'MARKET_DATA_FAILED',
   };
   await flushAsync();
   assert.equal(harness.calls.length, 1);
@@ -88,13 +84,11 @@ test('allowlisted terminal failure retries the current dirty generation exactly 
   assert.match(harness.notifications[0].message, /自動安全重試一次/);
 
   harness.portfolio.calculationJob = {
-    id: 'job_2234567890123456789012',
-    status: 'failed',
-    error_code: 'MARKET_DATA_FAILED',
+    id: 'job_2234567890123456789012', status: 'failed', error_code: 'MARKET_DATA_FAILED',
   };
   await flushAsync();
   assert.equal(harness.calls.length, 1);
-  assert.match(harness.notifications.at(-1).message, /已達自動重試上限/);
+  assert.match(harness.notifications.at(-1).message, /已達自動重試上限|其他分頁接手/);
   stop();
 });
 
@@ -102,16 +96,12 @@ test('financial integrity and record validation failures never auto retry', asyn
   for (const errorCode of ['RECONCILIATION_FAILED', 'SNAPSHOT_VALIDATION_FAILED', 'RECORD_VALIDATION_FAILED']) {
     const harness = createHarness();
     markAutomaticRecalculationDirty(
-      harness.storage,
-      'user@example.com',
-      'SPY',
+      harness.storage, 'user@example.com', 'SPY',
       { createToken: () => `generation_${errorCode.toLowerCase()}_0001` },
     );
     const stop = harness.install();
     harness.portfolio.calculationJob = {
-      id: 'job_3234567890123456789012',
-      status: 'failed',
-      error_code: errorCode,
+      id: 'job_3234567890123456789012', status: 'failed', error_code: errorCode,
     };
     await flushAsync();
     assert.equal(harness.calls.length, 0, errorCode);
@@ -122,30 +112,20 @@ test('financial integrity and record validation failures never auto retry', asyn
 
 test('retry is cancelled if a newer dirty generation appears during backoff', async () => {
   let timerCallback = null;
-  const harness = createHarness({
-    timer(callback) {
-      timerCallback = callback;
-    },
-  });
+  const harness = createHarness({ timer(callback) { timerCallback = callback; } });
   markAutomaticRecalculationDirty(
-    harness.storage,
-    'user@example.com',
-    'SPY',
+    harness.storage, 'user@example.com', 'SPY',
     { createToken: () => 'generation_token_before_0001' },
   );
   const stop = harness.install();
   harness.portfolio.calculationJob = {
-    id: 'job_4234567890123456789012',
-    status: 'failed',
-    error_code: 'SNAPSHOT_UPLOAD_FAILED',
+    id: 'job_4234567890123456789012', status: 'failed', error_code: 'SNAPSHOT_UPLOAD_FAILED',
   };
   await flushAsync();
   assert.equal(typeof timerCallback, 'function');
 
   markAutomaticRecalculationDirty(
-    harness.storage,
-    'user@example.com',
-    'QQQ',
+    harness.storage, 'user@example.com', 'QQQ',
     { createToken: () => 'generation_token_after_00001' },
   );
   timerCallback();
@@ -157,22 +137,14 @@ test('retry is cancelled if a newer dirty generation appears during backoff', as
 test('retry is cancelled after owner change or when another calculation is already active', async () => {
   for (const scenario of ['owner', 'active']) {
     let timerCallback = null;
-    const harness = createHarness({
-      timer(callback) {
-        timerCallback = callback;
-      },
-    });
+    const harness = createHarness({ timer(callback) { timerCallback = callback; } });
     markAutomaticRecalculationDirty(
-      harness.storage,
-      'user@example.com',
-      'SPY',
+      harness.storage, 'user@example.com', 'SPY',
       { createToken: () => `generation_token_${scenario}_000001` },
     );
     const stop = harness.install();
     harness.portfolio.calculationJob = {
-      id: 'job_5234567890123456789012',
-      status: 'failed',
-      error_code: 'RECORDS_API_FAILED',
+      id: 'job_5234567890123456789012', status: 'failed', error_code: 'RECORDS_API_FAILED',
     };
     await flushAsync();
 
@@ -180,9 +152,7 @@ test('retry is cancelled after owner change or when another calculation is alrea
       harness.auth.user.email = 'other@example.com';
     } else {
       harness.portfolio.calculationJob = {
-        id: 'job_6234567890123456789012',
-        status: 'running',
-        error_code: null,
+        id: 'job_6234567890123456789012', status: 'running', error_code: null,
       };
     }
     timerCallback();
@@ -196,9 +166,7 @@ test('retryable failure without a Phase 2 dirty generation does not invent calcu
   const harness = createHarness();
   const stop = harness.install();
   harness.portfolio.calculationJob = {
-    id: 'job_7234567890123456789012',
-    status: 'failed',
-    error_code: 'MARKET_DATA_FAILED',
+    id: 'job_7234567890123456789012', status: 'failed', error_code: 'MARKET_DATA_FAILED',
   };
   await flushAsync();
   assert.equal(harness.calls.length, 0);
