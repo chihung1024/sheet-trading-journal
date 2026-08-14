@@ -212,13 +212,14 @@ export const markAutomaticRecalculationCoverage = (
   const target = requireStorage(storage);
   const normalizedOwner = normalizeOwner(owner);
   const validatedGeneration = validateGeneration(generation, normalizedOwner, { now });
-  const jobBenchmark = normalizeBenchmark(job?.benchmark);
+  const coveredBenchmark = normalizeBenchmark(job?.benchmark) || validatedGeneration?.benchmark || '';
   if (
     !validatedGeneration
     || job?.deduplicated === true
     || typeof job?.id !== 'string'
     || !JOB_ID_RE.test(job.id)
-    || (jobBenchmark && jobBenchmark !== validatedGeneration.benchmark)
+    || !coveredBenchmark
+    || coveredBenchmark.length > 64
   ) {
     return false;
   }
@@ -228,7 +229,7 @@ export const markAutomaticRecalculationCoverage = (
     owner: normalizedOwner,
     token: validatedGeneration.token,
     dirtyAt: validatedGeneration.createdAt,
-    benchmark: validatedGeneration.benchmark,
+    benchmark: coveredBenchmark,
     jobId: job.id,
     coveredAt: now,
   };
