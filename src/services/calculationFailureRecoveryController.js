@@ -64,13 +64,22 @@ export const installCalculationFailureRecovery = ({
     try {
       automaticStatus = readAutomaticRecalculationStatus(storage, owner);
     } catch {
-      notify(failureMessage(triage), triage.retryable ? 'warning' : 'error');
+      notify(
+        triage.retryable
+          ? '偵測到暫時性計算服務異常，但無法確認安全重試狀態；已停止自動重試'
+          : failureMessage(triage),
+        triage.retryable ? 'warning' : 'error',
+      );
       return;
     }
 
     const generation = automaticStatus?.dirty ? automaticStatus.generation : null;
-    if (!triage.retryable || !generation) {
-      notify(failureMessage(triage), triage.retryable ? 'warning' : 'error');
+    if (!triage.retryable) {
+      notify(failureMessage(triage), 'error');
+      return;
+    }
+    if (!generation) {
+      notify('偵測到暫時性計算服務異常；目前沒有待自動重算狀態，已停止自動重試', 'warning');
       return;
     }
 
