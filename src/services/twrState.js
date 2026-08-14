@@ -34,8 +34,11 @@ export function relativeTwrValue(point, baseline) {
 }
 
 const relativeBenchmarkValue = (point, baseline) => {
-  const pointValue = Number(point?.benchmark_twr);
-  const baselineValue = Number(baseline?.benchmark_twr);
+  if (point?.benchmark_twr == null || baseline?.benchmark_twr == null) return null;
+  if (typeof point.benchmark_twr === 'boolean' || typeof baseline.benchmark_twr === 'boolean') return null;
+
+  const pointValue = Number(point.benchmark_twr);
+  const baselineValue = Number(baseline.benchmark_twr);
   if (!Number.isFinite(pointValue) || !Number.isFinite(baselineValue)) return null;
 
   const denominator = 1 + baselineValue / 100;
