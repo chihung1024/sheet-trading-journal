@@ -144,11 +144,12 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, watch } from 'vue';
+import { reactive, ref, computed, watch, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
 import { formatLocalCalendarDate } from '../services/calendarDate';
+import { subscribeRecordCreateRecoverySuccess } from '../services/recordCreateRecoverySignal.js';
 
 const emit = defineEmits(['submitted']);
 const store = usePortfolioStore();
@@ -157,6 +158,7 @@ const { addToast } = useToast();
 const loading = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
+let unresolvedCreateBody = null;
 
 const tagInput = ref('');
 const selectedSellGroups = ref([]);
@@ -245,6 +247,19 @@ const setTxnType = (type) => {
     checkHoldings();
 };
 
+const buildRecordPayload = () => {
+    const payload = { ...form };
+    ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
+    if (payload.qty > 0) {
+        if (payload.price <= 0 && payload.total_amount > 0) {
+            payload.price = payload.total_amount / payload.qty;
+        } else if (payload.total_amount <= 0 && payload.price > 0) {
+            payload.total_amount = payload.price * payload.qty;
+        }
+    }
+    return payload;
+};
+
 const submit = async () => {
     if (!form.symbol || !form.qty || (!form.price && !form.total_amount)) { 
         addToast("請填寫完整資料", "error"); 
@@ -264,21 +279,15 @@ const submit = async () => {
     
     loading.value = true;
     try {
-        const payload = { ...form };
-        ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
-        if (payload.qty > 0) {
-            if (payload.price <= 0 && payload.total_amount > 0) {
-                payload.price = payload.total_amount / payload.qty;
-            } else if (payload.total_amount <= 0 && payload.price > 0) {
-                payload.total_amount = payload.price * payload.qty;
-            }
-        }
+        const payload = buildRecordPayload();
         
         let success = false;
         if (isEditing.value) {
+            unresolvedCreateBody = null;
             payload.id = editingId.value;
             success = await store.updateRecord(payload);
         } else {
+            unresolvedCreateBody = JSON.stringify(payload);
             success = await store.addRecord(payload);
         }
         
@@ -294,6 +303,7 @@ const submit = async () => {
 };
 
 const resetForm = () => {
+    unresolvedCreateBody = null;
     isEditing.value = false; 
     editingId.value = null;
     form.txn_date = formatLocalCalendarDate();
@@ -311,11 +321,43 @@ const resetForm = () => {
 };
 
 const setupForm = (r) => {
+    unresolvedCreateBody = null;
     isEditing.value = true; 
     editingId.value = r.id;
     Object.keys(form).forEach(k => form[k] = r[k]);
     checkHoldings();
 };
+
+const normalizeRecoveryOwner = value => (
+    typeof value === 'string' ? value.trim().toLowerCase() : ''
+);
+
+const unsubscribeRecordCreateRecovery = subscribeRecordCreateRecoverySuccess(event => {
+    if (isEditing.value || !unresolvedCreateBody) return;
+    if (event.owner !== normalizeRecoveryOwner(auth.user?.email)) return;
+    if (event.body !== unresolvedCreateBody) return;
+
+    const recoveredBody = unresolvedCreateBody;
+    unresolvedCreateBody = null;
+
+    let currentBody = null;
+    try {
+        currentBody = JSON.stringify(buildRecordPayload());
+    } catch {
+        currentBody = null;
+    }
+
+    if (currentBody !== recoveredBody) {
+        addToast('先前未確認的新增交易已自動確認；目前表單已修改，已保留新的輸入', 'info');
+        return;
+    }
+
+    resetForm();
+    emit('submitted');
+    addToast('先前未確認的新增交易已自動確認，表單已清空', 'success');
+});
+
+onUnmounted(() => unsubscribeRecordCreateRecovery());
 
 defineExpose({ setupForm, resetForm });
 </script>
@@ -345,7 +387,7 @@ defineExpose({ setupForm, resetForm });
 .panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
 .mode-badge { font-size: 0.75rem; background: var(--warning); color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
 
-/* 交易類型切換 (Segmented Control) */
+/* 根據模式切換 */
 .trade-type-switch { 
     display: flex; 
     background: var(--bg-secondary); 
