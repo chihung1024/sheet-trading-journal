@@ -2,8 +2,8 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
-Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **Phase 1 CLOSED / PRODUCTION PAGES VERIFIED — Batch 1.1 native-currency UX + Batch 1.2 authoritative transaction-date FX complete; next primary phase is Phase 2 / Batch 2.1 Trading Journal note UX**
+Last updated: **2026-08-15 Asia/Taipei**  
+Current line: **Phase 2 / Batch 2.1 Trading Journal Note UX CLOSED / PRODUCTION PAGES VERIFIED — next primary product line is Phase 3 portfolio explainability audit using existing published day-ledger/snapshot evidence**
 
 ---
 
@@ -42,7 +42,8 @@ Current line: **Phase 1 CLOSED / PRODUCTION PAGES VERIFIED — Batch 1.1 native-
 | Three user-reported product defects | CLOSED / PARTIALLY SUPERSEDED | PR #245 `112c9b7b0d93ea49547f3cd005f4a5024f152bd5`; layout + TWR remain closed; stale-snapshot item was reopened by new production evidence and superseded by PR #247 |
 | Snapshot freshness API/manifest record contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #247 merged as `cc51ebc2b0f020e23c2efbf2cdcb7c2102c7d0a9`; final PR CI #871, post-main CI #872 + Pages #1530 SUCCESS; Independent Review Gate PASS |
 | Phase 1 / Batch 1.1 frontend native-currency contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #249 merged as `4ce9c8fc1b390db77587f50f59a3f3d251b1a107`; final PR CI #878, post-main CI #879 + Pages #1532 SUCCESS; R2 review BLOCKER 0 |
-| Phase 1 / Batch 1.2 authoritative transaction valuation | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #251 merged as `92f78af6c77506ea310a046c9f96ee6130fd9c24`; final PR CI #891, post-main CI #892 + Pages #1534 SUCCESS; frozen-diff R2 review BLOCKER 0 |
+| Phase 1 / Batch 1.2 authoritative transaction valuation | CLOSED / PRODUCTION PAGES VERIFIED | PR #251 merged as `92f78af6c77506ea310a046c9f96ee6130fd9c24`; final PR CI #891, post-main CI #892 + Pages #1534 SUCCESS; frozen-diff R2 review BLOCKER 0 |
+| **Phase 2 / Batch 2.1 Trading Journal Note UX** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #254 final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`; exact-head CI #898 SUCCESS; independent review BLOCKER 0; merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`; post-main CI #899 + Pages #1536 SUCCESS |
 
 Do not reopen closed phases without new material evidence.
 
@@ -52,18 +53,22 @@ Do not reopen closed phases without new material evidence.
 
 Current verified runtime merge checkpoint:
 
-`92f78af6c77506ea310a046c9f96ee6130fd9c24`
+`7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`
 
-- **Phase 1 is CLOSED / PRODUCTION PAGES VERIFIED.**
-- Batch 1.1 closed the frontend native-currency contract gap.
-- Batch 1.2 closed the historical transaction TWD valuation gap without adding Python, Worker, D1, schema, or manifest-methodology changes.
-- PR #251 final exact head `7bf436849e985eaa51263f22fd75d6973d0b0833`; final exact-head CI #891 / run `31816830443`: **SUCCESS**.
-- Exact merge-SHA post-main CI #892 / run `31817053580`: **SUCCESS**.
-- Exact merge-SHA Pages #1534 / run `31817052263`: **SUCCESS**.
-- Production Worker remains release `4.08`, API `2.61`, schema `3`; no Worker deployment or D1 migration was required for Phase 1.
-- Batch 1.2 recovery point was branch `feat/phase1-authoritative-transaction-valuation`, created from stable `main@0ae02373e550206bc3af7604f72521ce89b9fe88`.
-- Rollback is a normal revert of PR #251 / merge `92f78af6...` or previous Pages deployment. `snapshotVerification` is memory-only and has no persisted rollback state.
-- Repository policy does not allow squash merge. PR #251 therefore used the already-established normal exact-head merge path without changing repository policy.
+- **Phase 2 / Batch 2.1 is CLOSED / PRODUCTION PAGES VERIFIED.**
+- Trading Journal now exposes the existing server-owned `note` field as a first-class UX: create/edit/reset in TradeForm, desktop/mobile history presentation, and symbol/tag/note search.
+- The implementation remains additive to the established financial form declaration and reuses the existing `store.addRecord()` / `store.updateRecord()` mutation, idempotency, ambiguity recovery, dirty-generation and recalculation lifecycle.
+- No note-only API path or caller-declared recalculation bypass was introduced.
+- `note` remains excluded from financial snapshot source identity; changing journal prose alone does not alter canonical financial source identity.
+- Worker/D1 already owned the note contract; no Worker runtime change, D1 schema change, migration, or Python financial-methodology change was required.
+- PR #254 final exact head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`; final exact-head CI #898 / run `31824375970`: **SUCCESS**.
+- Frozen-diff independent review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**.
+- Exact merge-SHA post-main CI #899 / run `31824494110`: **SUCCESS**.
+- Exact merge-SHA Pages #1536 / run `31824492603`: **SUCCESS**.
+- Final compare before merge: `behind_by=0`; runtime scope remained exactly `TradeForm.vue`, `RecordList.vue`, plus focused regression.
+- Production Worker remains release `4.08`, API `2.61`, schema `3`; no Worker deployment or D1 migration was required for Phase 2.1.
+- Rollback is a normal revert of PR #254 / merge `7d0dbe2d...` or previous Pages deployment. Existing stored notes remain backward-compatible.
+- Repository policy does not allow squash merge; PR #254 used the established normal exact-head merge path without changing repository policy.
 
 Stable product lifecycle remains:
 
@@ -78,7 +83,7 @@ record create durable intent
 → bounded self-healing only when integrity evidence proves repair is safe
 ```
 
-Phase-1 presentation invariant is now:
+Phase-1 presentation invariant remains:
 
 ```text
 symbol
@@ -95,7 +100,7 @@ symbol
 
 ### User-facing verification boundary
 
-Repository CI, production build, and Pages deployment are verified. No real-user ledger mutation was created solely for smoke testing. Phase 1 does not move financial/accounting authority into the browser: Python still produces the market/FX context and financial snapshots; frontend code only consumes already-published exact-date evidence after existing Phase 3 source verification authorizes the corresponding snapshot/record objects.
+Repository CI, production build, and Pages deployment are verified. No real-user ledger mutation was created solely for smoke testing. Phase 2.1 does not move financial/accounting authority into the browser: Worker/D1 remain authoritative for record persistence, Python remains authoritative for portfolio calculations, and frontend journal metadata reuses the established mutation/recovery lifecycle.
 
 ### 2A. Closed Batch — Phase 1 / Batch 1.1 Frontend Native Currency Contract
 
@@ -219,6 +224,57 @@ Rollback:
 - no Worker/schema/data/Python rollback required;
 - memory-only verification proof disappears naturally on reload/revert.
 
+### 2C. Closed Batch — Phase 2 / Batch 2.1 Trading Journal Note UX
+
+**Primary Goal — SATISFIED / PRODUCTION PAGES VERIFIED**
+
+The product now exposes its existing `records.note` field as an actual trading-journal function without creating a second write authority or broad architecture change.
+
+Runtime:
+
+- `src/components/TradeForm.vue`
+- `src/components/RecordList.vue`
+
+Regression:
+
+- `tests/frontend_journal_note.test.mjs`
+- all existing frontend mutation/idempotency/recovery contracts remain green unchanged.
+
+Behavior locked:
+
+- note input/edit/reset is available in the established trade form;
+- UI input is bounded to 2000 characters and the test verifies the existing Worker validation bound behavior rather than a specific internal constant name;
+- notes render on desktop and mobile transaction history;
+- search matches symbol, tag, or note;
+- Vue interpolation remains the rendering boundary; no raw HTML path was added;
+- note metadata remains financially neutral to canonical snapshot source identity;
+- existing record mutation/recalculation lifecycle is reused; no note-only bypass exists.
+
+Verification chronology:
+
+- v1 PR #253 was closed without merge after its test strategy overbound itself to internal implementation shape;
+- v2 PR #254 restarted from verified `main@9df351c883226c5d667d243ef565ba87d7b716a9` with narrower scope;
+- initial CI #897: Worker + Python passed; Frontend failed 335/336 because the new regression required a nonexistent `MAX_NOTE_LENGTH` symbol even though Worker already enforced `sanitizeText(..., 2_000)`;
+- failure classified as test-contract drift, not runtime defect;
+- correction changed the regression to verify the actual 2000-character Worker behavior without modifying Worker/API/D1 runtime;
+- final head `e72f37a3e4c562db403d933f0e6b0c5837af49e4`;
+- exact-head CI #898 / `31824375970`: **SUCCESS**;
+- final compare: `behind_by=0`, exactly 3 focused files;
+- independent frozen-diff review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**;
+- merge `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`;
+- post-main CI #899 / `31824494110`: **SUCCESS**;
+- Pages #1536 / `31824492603`: **SUCCESS**;
+- Worker deploy: NOT REQUIRED / NOT RUN;
+- D1 migration: NOT REQUIRED / NOT RUN;
+- Python runtime change: NONE;
+- real-user ledger mutation smoke: NOT REQUIRED / NOT RUN.
+
+Rollback:
+
+- revert PR #254 / merge `7d0dbe2d...` or restore previous Pages deployment;
+- no Worker/schema/data/Python rollback required;
+- persisted notes remain compatible with previous frontend versions.
+
 ---
 
 ## 3. Closed Batch — PR #247 Snapshot Integrity Record Contract
@@ -250,6 +306,35 @@ Explicitly unchanged:
 ---
 
 ## 4. Root Cause Log
+
+### 2026-08-15 — Journal-note CI regression tested an invented Worker implementation shape
+
+**Symptom**  
+PR #254 exact-head CI #897 failed only the new journal-note contract test while the other 335 frontend tests, Worker suite and Python suite remained healthy.
+
+**Failure Point**  
+`tests/frontend_journal_note.test.mjs` required `const MAX_NOTE_LENGTH = 2000` and required `sanitizeText(..., MAX_NOTE_LENGTH)`. Current Worker instead directly uses `sanitizeText(body.note || "", 2_000)`.
+
+**Root Cause**  
+The regression encoded an assumed internal symbol name rather than the product contract: D1 has `note`, Worker validates it to 2000 characters, persists it on create/update, and returns it. This repeated the same class of implementation-shape coupling already rejected during the v1 convergence review.
+
+**Impact Analysis**
+
+- No production runtime defect.
+- No note length or persistence gap.
+- No Worker/API/D1/Python change was justified.
+- Merging was correctly blocked until the regression itself represented the real contract.
+
+**Permanent Fix**
+
+- Test now extracts the Worker `sanitizeText()` numeric note bound and asserts the normalized value equals `2000`.
+- Keep persistence/read contract assertions.
+- Do not introduce a Worker constant solely to satisfy a test.
+
+**Prevention**
+
+- Prefer behavior/contract assertions over private symbol/implementation-shape assertions.
+- When CI conflicts with audited source evidence, classify runtime vs test-contract drift before editing production code.
 
 ### 2026-08-14 — Historical transaction TWD presentation did not consume already-published authoritative FX
 
@@ -346,6 +431,40 @@ User observed both `快照待重算` and `持倉與績效快照待重新計算` 
 
 ## 5. Change Log / Verification
 
+### Phase 2 / Batch 2.1 — PR #254
+
+Implementation branch: `feat/phase2-trading-journal-note-v2`  
+Base/recovery point: `9df351c883226c5d667d243ef565ba87d7b716a9`  
+Final PR head: `e72f37a3e4c562db403d933f0e6b0c5837af49e4`  
+Main merge: `7d0dbe2d0203ce1efbb0d992d2ec9df2942eddde`
+
+Verification:
+
+- audit confirmed baseline D1 already has `records.note TEXT` and Worker already validates/persists/returns note;
+- note remains outside financial snapshot source identity;
+- dedicated note-only Worker route investigated then BACKLOGGED because existing mutation lifecycle is correct and lower-risk for current UX;
+- v1 PR #253 closed unmerged after implementation/test shape expanded unnecessarily;
+- v2 narrowed to additive journal metadata while preserving established financial form declaration;
+- CI #897 exposed one test-contract drift only: regression required nonexistent `MAX_NOTE_LENGTH` symbol;
+- root-cause correction verified actual `sanitizeText(..., 2_000)` behavior without runtime change;
+- final exact-head CI #898 / `31824375970`: **SUCCESS**;
+- Frontend contracts + production build: PASS;
+- Python tests + branch coverage: PASS;
+- Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
+- exact diff: 3 focused files, `behind_by=0` before merge;
+- independent frozen-diff review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1;
+- post-main exact merge-SHA CI #899 / `31824494110`: **SUCCESS**;
+- Pages production deployment #1536 / `31824492603`: **SUCCESS**;
+- Worker deploy: NOT REQUIRED / NOT RUN;
+- D1 migration: NOT REQUIRED / NOT RUN;
+- Python runtime change: NONE;
+- real-user ledger mutation smoke: NOT REQUIRED / NOT RUN.
+
+Rollback:
+
+- revert PR #254 / merge `7d0dbe2d...` or previous Pages deployment;
+- no Worker/schema/data/Python rollback required.
+
 ### Phase 1 / Batch 1.2 — PR #251
 
 Implementation branch: `feat/phase1-authoritative-transaction-valuation`  
@@ -415,17 +534,26 @@ Verification:
 
 ### Merge-method note
 
-Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head attempts). Repository policy was never modified or bypassed. Phase 1 PRs used normal exact-head merges once this policy was established.
+Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head attempts). Repository policy was never modified or bypassed. Phase 1 and Phase 2.1 PRs used normal exact-head merges once this policy was established.
 
 ### Deployment
 
-- Frontend Pages: **DEPLOYED / VERIFIED through #1534** for runtime merge `92f78af6...`.
-- Production Worker: **NOT REQUIRED / NOT DEPLOYED** for Phase 1.
-- D1 migration: **NOT REQUIRED / NOT RUN** for Phase 1.
+- Frontend Pages: **DEPLOYED / VERIFIED through #1536** for runtime merge `7d0dbe2d...`.
+- Production Worker: **NOT REQUIRED / NOT DEPLOYED** for Phase 2.1.
+- D1 migration: **NOT REQUIRED / NOT RUN** for Phase 2.1.
 
 ---
 
 ## 6. Decision Log
+
+### D-2026-08-15-01 — Journal note reuses the established mutation lifecycle
+
+- **Evidence:** D1/Worker already persist `note`; financial snapshot source identity excludes note; existing create/update lifecycle already owns idempotency, ambiguity recovery, dirty generation and recalculation.
+- **Alternatives:** dedicated note-only endpoint; caller flag to skip recalculation; reuse established mutation path.
+- **Decision:** reuse established record mutation lifecycle for Batch 2.1. Do not create a second write authority or recalculation bypass solely to optimize compute.
+- **Trade-off:** note-only edits may still trigger the existing recalculation lifecycle, but current correctness, concurrency and recovery semantics remain unified.
+- **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
+- **Reopen Condition:** measured usage proves material UX/compute cost and a server-authoritative note-only path can preserve concurrent financial fields and data integrity.
 
 ### D-2026-08-14-05 — Loaded snapshot is not monetary authorization
 
@@ -471,16 +599,17 @@ Status: **LOCKED**.
 
 ### Current product gap
 
-Phase 1 multi-market transaction presentation is closed. The next high-value product gap is that the product is named a Trading Journal but the normal frontend UX still does not expose the already-stored `note` field as a first-class journal function.
+Phase 2.1 Trading Journal note UX is closed. The next previously queued high-value product line is **Phase 3 portfolio explainability using existing published day-ledger/snapshot evidence**. Before implementation, audit what the current snapshot can explain truthfully without inventing new accounting semantics or backend authority.
 
-Known repository evidence to re-audit before Phase 2 implementation:
+Phase 2.1 closure evidence:
 
 - Worker/D1 record contract already stores and returns `note`;
-- TradeForm currently has no note input;
-- RecordList search currently centers on symbol/filter controls rather than journal text;
-- financial snapshot source identity intentionally does not use `note`.
+- TradeForm now exposes note input/edit/reset;
+- RecordList now renders note on desktop/mobile and searches symbol/tag/note;
+- financial snapshot source identity intentionally does not use `note`;
+- generic mutation/recalculation lifecycle remains authoritative.
 
-Do **not** assume note-only edits can skip recalculation until the mutation path is audited. Current generic update flow marks snapshots stale and schedules recalculation; a safe note-only path must not create a hidden stale/concurrency bug merely to save compute.
+Do **not** optimize note-only recalculation by adding a caller-side bypass. A future optimization requires production evidence and a safe server-authoritative concurrency contract.
 
 ### Current risk
 
@@ -503,7 +632,8 @@ Do not promote without new evidence:
 6. generated/versioned cross-language source-record mapping before a real contract-version change;
 7. TypeScript/framework/state-manager migration without a product blocker;
 8. staging Issue #97 until product/release risk requires it;
-9. new public transaction-presentation snapshot projection while existing verified exact-date FX remains sufficient.
+9. new public transaction-presentation snapshot projection while existing verified exact-date FX remains sufficient;
+10. note-only mutation / skipped recalculation optimization without measured product or compute evidence.
 
 ---
 
@@ -511,26 +641,25 @@ Do not promote without new evidence:
 
 **NOW**
 
-- Phase 1 is **CLOSED / PRODUCTION PAGES VERIFIED**.
+- Phase 2 / Batch 2.1 is **CLOSED / PRODUCTION PAGES VERIFIED**.
 - Merge this docs-only Stable Checkpoint and verify exact-main CI/Pages if triggered.
-- Then open exactly one Primary Active Batch: **Phase 2 / Batch 2.1 — Trading Journal Note UX**.
+- Do not reopen note runtime while documentation closure is the only active Batch.
 
-**NEXT — Phase 2 / Batch 2.1 audit before implementation**
+**NEXT — Phase 3 portfolio explainability audit before implementation**
 
-1. Reconfirm current Worker/D1 `note` validation/storage/read contract.
-2. Trace TradeForm create/edit payload and RecordList display/search data flow.
-3. Audit snapshot deterministic identity and automatic recalculation mutation path.
-4. Decide the smallest safe note-write architecture:
-   - reuse existing record mutation if recalculation is necessary for correctness; or
-   - if note-only mutation can be proved financially non-material, implement a safe server-authoritative note-only path that cannot accidentally overwrite concurrent financial fields and does not falsely skip required recalculation.
-5. Add note input/edit/display/search only after the write/recalc boundary is proven.
+1. Re-read current published snapshot/day-ledger fields and UI data flow.
+2. Identify the highest-value user questions that existing authoritative data can answer without new accounting methodology.
+3. Separate explanatory presentation from financial calculation authority.
+4. Define a narrow first explainability slice with explicit provenance, unavailable states and regression boundaries.
+5. Reuse existing snapshot fields when sufficient; do not create a new backend projection until evidence proves an actual contract gap.
+6. Scope-lock one implementation Batch only after the audit converges.
 
 **BACKLOG**
 
-- Phase 3 portfolio explainability using existing day ledger;
 - Phase 4 strategy analytics using group snapshots;
 - Phase 5 trading analytics after lot-ledger semantics are proven;
 - Phase 6 UX convergence;
+- note-only mutation / skipped recalculation optimization if real usage demonstrates material value;
 - unrelated technical candidates above.
 
 **REJECT**
@@ -548,9 +677,9 @@ Do not promote without new evidence:
 
 ## 9. Next Actions
 
-1. Merge this docs-only Phase-1 Stable Checkpoint and verify exact-main CI/Pages if triggered.
+1. Merge this Phase-2.1 Stable Checkpoint documentation PR and verify exact-main CI/Pages if triggered.
 2. Re-read remote `main`, open PRs, recent commits, `AI_PROJECT_PLAYBOOK.md`, `README.md`, and this handoff.
-3. Scope-lock Phase 2 / Batch 2.1 before any runtime change.
-4. Start with evidence audit of `note` storage/write/read semantics and financial identity/recalculation boundaries.
-5. Choose one narrow implementation path; do not simultaneously open portfolio explainability, strategy analytics, or architecture refactoring.
-6. Require exact-head CI + independent review + post-main deployment verification before Phase 2 / Batch 2.1 closure.
+3. Open exactly one Primary Active Batch: **Phase 3 portfolio explainability audit**.
+4. Start from existing authoritative snapshot/day-ledger evidence and current user-facing questions; do not begin with new infrastructure.
+5. Converge candidate explanations into NOW / NEXT / BACKLOG / REJECT before any implementation.
+6. Require risk-proportional tests, exact-head review/CI, rollback and post-main verification for the first Phase 3 runtime Batch.
