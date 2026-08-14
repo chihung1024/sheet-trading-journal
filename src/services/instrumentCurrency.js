@@ -35,6 +35,13 @@ export const getCurrencyInputAffix = (currency) => {
 };
 
 export const formatNativeAmount = (amount, currency, fractionDigits = 2) => {
+  if (
+    amount === null
+    || amount === undefined
+    || typeof amount === 'boolean'
+    || (typeof amount === 'string' && amount.trim() === '')
+  ) return '—';
+
   const numeric = Number(amount);
   if (!Number.isFinite(numeric)) return '—';
 
