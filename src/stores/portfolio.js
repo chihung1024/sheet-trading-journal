@@ -216,6 +216,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     );
 
     const hasActiveCalculationIntent = () => {
+        if (snapshotPollActive) return true;
         if (triggerUpdatePromise) return true;
         if (calculationJob.value?.status === 'queued' || calculationJob.value?.status === 'running') return true;
         const pending = readPendingCalculationRequest();
