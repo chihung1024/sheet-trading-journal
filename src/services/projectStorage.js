@@ -5,6 +5,9 @@ export const PENDING_CALCULATION_STORAGE_KEY = 'pending_calculation_request';
 export const PENDING_CALCULATION_V2_STORAGE_PREFIX = 'pending_calculation_request.v2.';
 export const PENDING_RECORD_CREATE_V1_STORAGE_PREFIX = 'pending_record_create.v1.';
 export const RECORD_MUTATION_BARRIER_STORAGE_KEY = 'record_mutation_barrier.v1';
+export const AUTOMATIC_RECALCULATION_DIRTY_STORAGE_KEY = 'automatic_recalculation_dirty.v1';
+export const AUTOMATIC_RECALCULATION_CLEAN_STORAGE_KEY = 'automatic_recalculation_clean.v1';
+export const AUTOMATIC_RECALCULATION_COVERAGE_V1_STORAGE_PREFIX = 'automatic_recalculation_coverage.v1.';
 export const LEGACY_CACHED_RECORDS_STORAGE_KEY = 'cached_records';
 export const CONFIRMED_DIVIDENDS_STORAGE_KEY = 'confirmed_dividend_keys';
 export const USER_BENCHMARK_STORAGE_KEY = 'user_benchmark';
@@ -15,6 +18,8 @@ export const SENSITIVE_PROJECT_STORAGE_KEYS = Object.freeze([
   EMAIL_STORAGE_KEY,
   PENDING_CALCULATION_STORAGE_KEY,
   RECORD_MUTATION_BARRIER_STORAGE_KEY,
+  AUTOMATIC_RECALCULATION_DIRTY_STORAGE_KEY,
+  AUTOMATIC_RECALCULATION_CLEAN_STORAGE_KEY,
   LEGACY_CACHED_RECORDS_STORAGE_KEY,
   CONFIRMED_DIVIDENDS_STORAGE_KEY,
   USER_BENCHMARK_STORAGE_KEY,
@@ -23,6 +28,7 @@ export const SENSITIVE_PROJECT_STORAGE_KEYS = Object.freeze([
 export const SENSITIVE_PROJECT_STORAGE_PREFIXES = Object.freeze([
   PENDING_CALCULATION_V2_STORAGE_PREFIX,
   PENDING_RECORD_CREATE_V1_STORAGE_PREFIX,
+  AUTOMATIC_RECALCULATION_COVERAGE_V1_STORAGE_PREFIX,
 ]);
 
 function requireStorage(storage) {
