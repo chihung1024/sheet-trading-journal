@@ -113,8 +113,8 @@ test('portfolio fetch contract propagates failures and distinguishes fresh post-
   assert.match(store, /fetchAll error:[\s\S]*connectionStatus\.value = 'error';[\s\S]*throw error;/);
   assert.match(store, /job\.status === 'succeeded'[\s\S]*await fetchAllFresh\(\)/);
   assert.match(store, /isNewData \|\| isResetConfirmed[\s\S]*await fetchAllFresh\(\)/);
-  assert.match(store, /計算已完成，但最新資料載入失敗/);
-  assert.match(store, /已偵測到新快照，但載入失敗/);
+  assert.match(store, /計算已完成；最新資料暫時載入失敗，系統將自動重試/);
+  assert.match(store, /已偵測到新快照；載入暫時失敗，系統將自動重試/);
 });
 
 test('UI callers distinguish authentication, data-load failure, and real refresh success', async () => {

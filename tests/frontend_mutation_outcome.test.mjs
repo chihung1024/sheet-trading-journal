@@ -248,8 +248,8 @@ test('DividendManager consumes its own call-local outcome and preserves ambiguou
   assert.match(source, /if \(!isMutationCommitted\(outcome\)\) \{/);
   assert.match(source, /if \(isMutationAmbiguous\(outcome\)\) \{/);
   assert.doesNotMatch(source, /lastRecordMutationOutcome/);
-  assert.match(source, /伺服器可能已完成新增/);
-  assert.match(source, /勿直接再次提交/);
+  assert.match(source, /系統正在使用原交易識別碼自動確認/);
+  assert.match(source, /請勿重複提交/);
 
   const committedCheck = source.indexOf('if (!isMutationCommitted(outcome)) {');
   const ambiguousCheck = source.indexOf('if (isMutationAmbiguous(outcome)) {', committedCheck);
