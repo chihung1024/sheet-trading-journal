@@ -23,6 +23,14 @@ const wait = (delayMs, setTimeoutImpl) => new Promise(resolve => {
   setTimeoutImpl(resolve, delayMs);
 });
 
+const safeNotify = (notify, message, level) => {
+  try {
+    notify(message, level);
+  } catch {
+    // Recovery UX callbacks must never alter request/recovery semantics.
+  }
+};
+
 export const isRetryableDataReadFailure = ({
   pathname = '',
   method = '',
@@ -58,16 +66,26 @@ export const installDataReadSelfRecovery = ({
   }
 
   let stopped = false;
+  let episodeOwner = normalizeOwner(auth.user?.email);
   let attemptedForEpisode = false;
   let pendingFailure = null;
   let scheduled = false;
 
+  const resetEpisodeForOwner = owner => {
+    episodeOwner = normalizeOwner(owner);
+    attemptedForEpisode = false;
+    pendingFailure = null;
+  };
+
   const scheduleIfNeeded = () => {
+    const owner = normalizeOwner(auth.user?.email);
+    if (owner !== episodeOwner) resetEpisodeForOwner(owner);
     if (
       stopped
       || scheduled
       || attemptedForEpisode
       || !pendingFailure
+      || pendingFailure.owner !== owner
       || portfolio.portfolioReadStatus !== 'error'
     ) {
       return;
@@ -81,22 +99,23 @@ export const installDataReadSelfRecovery = ({
     void (async () => {
       try {
         await wait(retryDelayMs, setTimeoutImpl);
+        if (stopped || portfolio.portfolioReadStatus !== 'error') return;
+
+        const currentOwner = normalizeOwner(auth.user?.email);
+        if (!currentOwner || currentOwner !== failure.owner || !auth.token) return;
+        if (globalThis.navigator?.onLine === false) return;
+
+        safeNotify(notify, '最新資料讀取暫時失敗，系統正在自動重新連線一次', 'info');
+        try {
+          await portfolio.fetchAll();
+        } catch {
+          safeNotify(notify, '自動重新連線仍未成功；可使用「重新載入」再次嘗試', 'warning');
+        }
       } catch {
-        return;
+        // Timer/recovery helper failures are fail-closed and never escape globally.
       } finally {
         scheduled = false;
-      }
-      if (stopped || portfolio.portfolioReadStatus !== 'error') return;
-
-      const owner = normalizeOwner(auth.user?.email);
-      if (!owner || owner !== failure.owner || !auth.token) return;
-      if (globalThis.navigator?.onLine === false) return;
-
-      notify('最新資料讀取暫時失敗，系統正在自動重新連線一次', 'info');
-      try {
-        await portfolio.fetchAll();
-      } catch {
-        notify('自動重新連線仍未成功；可使用「重新載入」再次嘗試', 'warning');
+        if (!stopped && pendingFailure) scheduleIfNeeded();
       }
     })();
   };
@@ -105,11 +124,12 @@ export const installDataReadSelfRecovery = ({
     if (!isRetryableDataReadFailure(event) || stopped) return;
     const owner = normalizeOwner(auth.user?.email);
     if (!owner || !auth.token) return;
+    if (owner !== episodeOwner) resetEpisodeForOwner(owner);
     pendingFailure = Object.freeze({ owner, pathname: event.pathname });
     scheduleIfNeeded();
   });
 
-  const stopWatch = watch(
+  const stopStatusWatch = watch(
     () => portfolio.portfolioReadStatus,
     status => {
       if (status === 'loaded') {
@@ -121,10 +141,18 @@ export const installDataReadSelfRecovery = ({
     },
   );
 
+  const stopOwnerWatch = watch(
+    () => normalizeOwner(auth.user?.email),
+    owner => {
+      if (owner !== episodeOwner) resetEpisodeForOwner(owner);
+    },
+  );
+
   return () => {
     stopped = true;
     pendingFailure = null;
     if (typeof unsubscribe === 'function') unsubscribe();
-    if (typeof stopWatch === 'function') stopWatch();
+    if (typeof stopStatusWatch === 'function') stopStatusWatch();
+    if (typeof stopOwnerWatch === 'function') stopOwnerWatch();
   };
 };
