@@ -52,7 +52,12 @@ export const installCalculationTriggerAmbiguityRecovery = ({
       return;
     }
 
-    const contextualError = markRequestOutcome(event.error, 'POST');
+    let contextualError;
+    try {
+      contextualError = markRequestOutcome(event.error, 'POST');
+    } catch {
+      return;
+    }
     const triage = triageCalculationFailure({
       errorCode: contextualError?.apiCode || '',
       source: 'trigger',
@@ -78,7 +83,11 @@ export const installCalculationTriggerAmbiguityRecovery = ({
 
     const key = pending.key;
     attemptedKeys.add(key);
-    await wait(retryDelayMs, setTimeoutImpl);
+    try {
+      await wait(retryDelayMs, setTimeoutImpl);
+    } catch {
+      return;
+    }
     if (stopped) return;
 
     const currentOwner = normalizeOwner(auth.user?.email);
@@ -111,7 +120,7 @@ export const installCalculationTriggerAmbiguityRecovery = ({
   };
 
   const unsubscribe = subscribe(event => {
-    void handleFailure(event);
+    void handleFailure(event).catch(() => {});
   });
 
   return () => {
