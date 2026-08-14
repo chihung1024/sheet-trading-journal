@@ -1,3 +1,4 @@
+import math
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, computed_field, field_validator, model_validator
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any, Literal
@@ -91,6 +92,40 @@ class HoldingPosition(BaseModel):
     daily_pl_breakdown: Optional[Dict[str, float]] = None
 
 
+class TransactionPresentation(BaseModel):
+    """Version-1 authoritative presentation values for one D1 transaction record."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    record_id: int = Field(gt=0)
+    currency: Literal['TWD', 'USD', 'KRW', 'HKD', 'CNY', 'JPY', 'GBp', 'EUR']
+    # TWD per 1 native quote/cash-flow unit on the transaction date.
+    fx_rate: float = Field(gt=0)
+    # Signed account cash flow: BUY < 0; SELL/DIV normally > 0.
+    net_cashflow_native: float
+    net_cashflow_twd: float
+
+    @field_validator('fx_rate', 'net_cashflow_native', 'net_cashflow_twd')
+    @classmethod
+    def validate_finite_number(cls, value: float) -> float:
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            raise ValueError('transaction presentation values must be finite')
+        return numeric
+
+    @model_validator(mode='after')
+    def validate_fx_consistency(self) -> 'TransactionPresentation':
+        expected = self.net_cashflow_native * self.fx_rate
+        if not math.isclose(
+            self.net_cashflow_twd,
+            expected,
+            rel_tol=1e-12,
+            abs_tol=1e-9,
+        ):
+            raise ValueError('transaction presentation TWD cash flow does not match native cash flow and FX')
+        return self
+
+
 class DividendRecord(BaseModel):
     symbol: str
     ex_date: str
@@ -179,6 +214,17 @@ class PortfolioSnapshot(BaseModel):
     calculation_manifest: Optional[CalculationManifest] = Field(
         default=None,
         exclude_if=lambda value: value is None,
+    )
+
+    # Optional product presentation projection. Older snapshots omit both fields and
+    # remain valid; the browser must fail closed until a versioned projection exists.
+    transaction_presentation_version: Optional[Literal[1]] = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    transaction_presentations: List[TransactionPresentation] = Field(
+        default_factory=list,
+        exclude_if=lambda value: not value,
     )
     
     # 向下相容欄位 (代表 'all' 群組的總體數據)
