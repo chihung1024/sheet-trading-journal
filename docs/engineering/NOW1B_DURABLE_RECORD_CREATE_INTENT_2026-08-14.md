@@ -20,7 +20,7 @@ NOW-1B-A — rollback-safe backend transport — is **PRODUCTION VERIFIED**:
 
 The new path is the rollback-safe capability boundary. A runtime that does not contain the compatibility entry route returns 404 before record mutation. Frontend code must never fall back from this path to legacy `POST /api/records`.
 
-NOW-1B-B — durable browser create intent — is implemented in PR #231. Candidate exact head after functional-test correction: `9b13dc1f2cae53a2ec1ffa7b1a47c90663f47210`. Exact-head CI #783 / run `31763766650` is SUCCESS across Frontend contracts/build, Worker security/deployment tests, and Python tests. Merge/post-main verification remains the final gate.
+NOW-1B-B — durable browser create intent — is implemented in PR #231. The last code-bearing candidate `9b13dc1f2cae53a2ec1ffa7b1a47c90663f47210` passed CI #783 / run `31763766650` across Frontend contracts/build, Worker security/deployment tests, and Python tests. Handoff-only commits may advance the PR head; the exact current PR head and its CI must always be re-fetched before merge. Merge/post-main verification remains the final gate.
 
 ## Product objective
 
