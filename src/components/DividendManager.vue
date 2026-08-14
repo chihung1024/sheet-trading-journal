@@ -198,8 +198,9 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
 import {
   getDividendCurrency,
@@ -210,8 +211,10 @@ import {
   isMutationAmbiguous,
   isMutationCommitted,
 } from '../services/mutationOutcome.js';
+import { subscribeRecordCreateRecoverySuccess } from '../services/recordCreateRecoverySignal.js';
 
 const store = usePortfolioStore();
+const auth = useAuthStore();
 const { addToast } = useToast();
 
 const loading = ref(false);
@@ -325,6 +328,39 @@ const formatNumber = (val, d = 2) => {
   });
 };
 
+const normalizeRecoveryOwner = value => (
+  typeof value === 'string' ? value.trim().toLowerCase() : ''
+);
+
+const unsubscribeRecordCreateRecovery = subscribeRecordCreateRecoverySuccess(event => {
+  if (event.owner !== normalizeRecoveryOwner(auth.user?.email)) return;
+
+  let payload;
+  try {
+    payload = JSON.parse(event.body);
+  } catch {
+    return;
+  }
+
+  if (payload?.txn_type !== 'DIV' || payload?.tag !== 'Auto-Dividend') return;
+  const symbol = String(payload.symbol || '').trim().toUpperCase();
+  const txnDate = String(payload.txn_date || '').trim();
+  if (!symbol || !txnDate) return;
+
+  const matchingDividend = localDividends.value.find(div => (
+    String(div.symbol || '').trim().toUpperCase() === symbol
+    && String(div.ex_date || '').trim() === txnDate
+  ));
+  if (!matchingDividend) return;
+
+  const key = getDivKey(matchingDividend);
+  if (confirmedKeys.value.has(key)) return;
+  confirmedKeys.value.add(key);
+  saveConfirmedKeys();
+});
+
+onUnmounted(() => unsubscribeRecordCreateRecovery());
+
 // ✅ 大幅簡化配息確認流程：2 步驟完成
 const confirmDividend = async (div) => {
   const divKey = getDivKey(div);
@@ -413,7 +449,8 @@ const confirmDividend = async (div) => {
 .btn-refresh:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: white; transform: translateY(-1px); }
 .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 .spinning { display: inline-block; animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); }
+}
 .row-confirmed { opacity: 0.6; background: rgba(16, 185, 129, 0.05) !important; }
 .row-confirmed .date-display, .row-confirmed .symbol-tag, .row-confirmed .input-field, .row-confirmed .net-display { text-decoration: line-through; color: var(--text-sub) !important; }
 .symbol-wrapper { display: flex; flex-direction: column; align-items: center; gap: 4px; }
