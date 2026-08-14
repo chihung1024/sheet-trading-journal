@@ -81,6 +81,7 @@ export const installDataReadSelfRecovery = ({
   let attemptedForEpisode = false;
   let pendingFailure = null;
   let scheduled = false;
+  let verifiedLoadGeneration = 0;
 
   const resetEpisodeForOwner = owner => {
     episodeOwner = normalizeOwner(owner);
@@ -115,7 +116,13 @@ export const installDataReadSelfRecovery = ({
     void (async () => {
       try {
         await wait(retryDelayMs, setTimeoutImpl);
-        if (stopped || !failureHasRecoveryIntent(failure)) return;
+        if (
+          stopped
+          || failure.loadGeneration !== verifiedLoadGeneration
+          || !failureHasRecoveryIntent(failure)
+        ) {
+          return;
+        }
 
         const currentOwner = normalizeOwner(auth.user?.email);
         if (!currentOwner || currentOwner !== failure.owner || !auth.token) return;
@@ -145,6 +152,7 @@ export const installDataReadSelfRecovery = ({
       owner,
       pathname: event.pathname,
       dirtyRecordReadback: hasDirtyRecordReadbackIntent(storage, owner, event.pathname),
+      loadGeneration: verifiedLoadGeneration,
     });
     scheduleIfNeeded();
   });
@@ -153,6 +161,7 @@ export const installDataReadSelfRecovery = ({
     () => portfolio.portfolioReadStatus,
     status => {
       if (status === 'loaded') {
+        verifiedLoadGeneration += 1;
         attemptedForEpisode = false;
         pendingFailure = null;
         return;
