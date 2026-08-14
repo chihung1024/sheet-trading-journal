@@ -318,7 +318,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                 addToast('✅ 數據已更新完畢！', 'success');
             } catch (error) {
                 console.error('計算完成但重新載入資料失敗:', error);
-                addToast('⚠️ 計算已完成，但最新資料載入失敗，請手動刷新', 'warning');
+                addToast('⚠️ 計算已完成；最新資料暫時載入失敗，系統將自動重試', 'warning');
             }
         } else {
             addToast(`後端計算失敗 (${job.error_code || 'UNKNOWN'})`, 'error');
@@ -479,7 +479,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             return { refreshed: true, refreshError: null };
         } catch (refreshError) {
             console.error(`${action}已提交，但交易紀錄重新載入失敗:`, refreshError);
-            addToast(`${action}已完成，但畫面重新載入失敗；請重新整理確認最新紀錄`, 'warning');
+            addToast(`${action}已完成；最新交易紀錄暫時載入失敗，系統將自動重試`, 'warning');
             return { refreshed: false, refreshError };
         }
     };
@@ -832,7 +832,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
                             addToast(isResetConfirmed ? '✅ 所有資產數據已歸零' : '✅ 數據已更新完畢！', 'success');
                         } catch (error) {
                             console.error('新快照已產生但載入失敗:', error);
-                            addToast('⚠️ 已偵測到新快照，但載入失敗，請手動刷新', 'warning');
+                            addToast('⚠️ 已偵測到新快照；載入暫時失敗，系統將自動重試', 'warning');
                         }
                         return;
                     }
