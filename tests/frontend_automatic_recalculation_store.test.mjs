@@ -23,6 +23,19 @@ test('store declares one bounded debounce lane and durable automatic-recalculati
   assert.match(source, /settleAutomaticRecalculationJob/);
 });
 
+test('active calculation detection includes first-trade snapshot polling before other job signals', async () => {
+  const source = await readFile(sourceUrl, 'utf8');
+  const block = blockBetween(source, 'const hasActiveCalculationIntent = () => {', 'const scheduleAutomaticRecalculationFlush');
+  const snapshotAt = block.indexOf('if (snapshotPollActive) return true');
+  const triggerAt = block.indexOf('if (triggerUpdatePromise) return true');
+  const jobAt = block.indexOf("calculationJob.value?.status === 'queued'");
+
+  assert.equal(snapshotAt >= 0, true);
+  assert.equal(triggerAt > snapshotAt, true);
+  assert.equal(jobAt > triggerAt, true);
+  assert.match(block, /return Boolean\(pending\?\.jobId\)/);
+});
+
 test('confirmed create and recovered create become dirty only when first-trade server auto-update is absent', async () => {
   const source = await readFile(sourceUrl, 'utf8');
   const recovery = blockBetween(source, 'const recoverPendingRecordCreateIntent', 'const addRecord = async');
