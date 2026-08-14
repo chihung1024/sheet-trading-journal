@@ -150,6 +150,64 @@ test('missing or malformed current-engine manifest is repairable but malformed r
   assert.equal(malformedRecords.repairNeeded, false);
 });
 
+test('semantic repair fingerprints ignore updated_at churn', async () => {
+  const identity = await buildSourceRecordsIdentity(RECORDS);
+  const edited = RECORDS.map(record => (
+    record.id === 1 ? { ...record, Price: record.Price + 1 } : record
+  ));
+
+  const staleA = await assessSnapshotIntegrity(edited, snapshotFor(identity), {
+    expectedBenchmark: 'SPY',
+  });
+  const staleSnapshotB = snapshotFor(identity);
+  staleSnapshotB.updated_at = '2026-08-14T04:30:00Z';
+  const staleB = await assessSnapshotIntegrity(edited, staleSnapshotB, {
+    expectedBenchmark: 'SPY',
+  });
+  assert.equal(staleA.fingerprint, staleB.fingerprint);
+
+  const invalidA = await assessSnapshotIntegrity(RECORDS, {
+    updated_at: '2026-08-14T03:30:00Z',
+    calculation_manifest: { manifest_version: 1 },
+  }, { expectedBenchmark: 'SPY' });
+  const invalidB = await assessSnapshotIntegrity(RECORDS, {
+    updated_at: '2026-08-14T04:30:00Z',
+    calculation_manifest: { manifest_version: 1 },
+  }, { expectedBenchmark: 'SPY' });
+  assert.equal(invalidA.fingerprint, invalidB.fingerprint);
+
+  const benchmarkA = await assessSnapshotIntegrity(RECORDS, snapshotFor(identity, 'SPY'), {
+    expectedBenchmark: 'QQQ',
+  });
+  const benchmarkSnapshotB = snapshotFor(identity, 'SPY');
+  benchmarkSnapshotB.updated_at = '2026-08-14T04:30:00Z';
+  const benchmarkB = await assessSnapshotIntegrity(RECORDS, benchmarkSnapshotB, {
+    expectedBenchmark: 'QQQ',
+  });
+  assert.equal(benchmarkA.fingerprint, benchmarkB.fingerprint);
+});
+
+test('explicit future manifest contracts fail closed instead of being repaired by an older frontend', async () => {
+  const identity = await buildSourceRecordsIdentity(RECORDS);
+  const variants = [
+    snapshot => { snapshot.calculation_manifest.manifest_version = 2; },
+    snapshot => { snapshot.calculation_manifest.deterministic_identity.identity_version = 2; },
+    snapshot => { snapshot.calculation_manifest.deterministic_identity.source_records.canonicalization_version = 2; },
+    snapshot => { snapshot.calculation_manifest.deterministic_identity.runtime_config.canonicalization_version = 2; },
+  ];
+
+  for (const mutate of variants) {
+    const snapshot = snapshotFor({ ...identity });
+    mutate(snapshot);
+    const result = await assessSnapshotIntegrity(RECORDS, snapshot, {
+      expectedBenchmark: 'SPY',
+    });
+    assert.equal(result.status, SNAPSHOT_INTEGRITY_STATUS.UNSUPPORTED_MANIFEST);
+    assert.equal(result.repairNeeded, false);
+    assert.match(result.fingerprint, /^manifest-unsupported\|/);
+  }
+});
+
 test('empty authoritative record set needs no calculation repair', async () => {
   const result = await assessSnapshotIntegrity([], { updated_at: '' }, {
     expectedBenchmark: 'SPY',
