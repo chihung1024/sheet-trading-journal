@@ -118,7 +118,7 @@ test('verified mutation commit is separated from follow-up record refresh failur
 test('ambiguous mutation feedback is warning-level while definite rejection remains error-level', async () => {
   const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
   const start = source.indexOf('const recordMutationFailure');
-  const end = source.indexOf('const addRecord = async', start);
+  const end = source.indexOf('const postRecordCreateIntent', start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const block = source.slice(start, end);
@@ -128,17 +128,112 @@ test('ambiguous mutation feedback is warning-level while definite rejection rema
   assert.match(block, /return resolveRecordMutationOutcome\(outcome, options\)/);
 });
 
-test('ambiguous record POST is one-shot and is never auto-retried by the browser store', async () => {
+test('record create transport uses only rollback-safe idempotent path with exact stored key and body', async () => {
   const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
-  const start = source.indexOf('const addRecord = async');
-  const end = source.indexOf('\n    const updateRecord = async', start);
+  const start = source.indexOf('const postRecordCreateIntent');
+  const end = source.indexOf('const settleRecordCreateIntentFailure', start);
   const block = source.slice(start, end);
 
-  assert.equal((block.match(/fetchWithAuth\('\/api\/records'/g) || []).length, 1);
+  assert.match(block, /fetchWithAuth\('\/api\/records\/idempotent'/);
+  assert.match(block, /'Idempotency-Key': intent\.idempotencyKey/);
+  assert.match(block, /body: intent\.body/);
+  assert.doesNotMatch(block, /fetchWithAuth\('\/api\/records'/);
+  assert.doesNotMatch(block, /fallback/i);
+});
+
+test('addRecord persists durable intent before its one POST and clears replay eligibility before refresh', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const block = mutationBlock(source, 'addRecord', 'updateRecord = async');
+
+  const persistAt = block.indexOf('beginRecordCreateIntent(');
+  const postAt = block.indexOf('postRecordCreateIntent(intent)');
+  const completeAt = block.indexOf('completeRecordCreateIntent(');
+  const refreshAt = block.indexOf("refreshRecordsAfterCommittedMutation('新增交易'");
+  assert.equal(persistAt >= 0, true);
+  assert.equal(postAt > persistAt, true);
+  assert.equal(completeAt > postAt, true);
+  assert.equal(refreshAt > completeAt, true);
+  assert.equal((block.match(/postRecordCreateIntent\(intent\)/g) || []).length, 1);
   assert.doesNotMatch(block, /while\s*\(/);
   assert.doesNotMatch(block, /for\s*\(/);
-  assert.doesNotMatch(block, /retry/i);
-  assert.match(block, /recordMutationFailure\(error/);
+});
+
+test('ambiguous record POST remains one-shot and retains the exact durable intent for reload recovery', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const settleStart = source.indexOf('const settleRecordCreateIntentFailure');
+  const settleEnd = source.indexOf('const supersedePendingRecordCreateRecovery', settleStart);
+  const settleBlock = source.slice(settleStart, settleEnd);
+  assert.match(settleBlock, /error\?\.outcomeAmbiguous === true\) return/);
+
+  const addBlock = mutationBlock(source, 'addRecord', 'updateRecord = async');
+  assert.match(addBlock, /settleRecordCreateIntentFailure\(intent, error\)/);
+  assert.match(addBlock, /recordMutationFailure\(error/);
+  assert.doesNotMatch(addBlock, /retry/i);
+});
+
+test('reload recovery is bounded to one store-lifetime attempt and reuses the same persisted transport helper', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const start = source.indexOf('const recoverPendingRecordCreateIntent');
+  const end = source.indexOf('const addRecord = async', start);
+  const block = source.slice(start, end);
+
+  assert.match(block, /if \(didAttemptRecordCreateRecovery\) return false/);
+  assert.match(block, /didAttemptRecordCreateRecovery = true/);
+  assert.match(block, /readEligibleRecordCreateIntents\(localStorage, owner\)/);
+  assert.match(block, /json = await postRecordCreateIntent\(intent\)/);
+  assert.match(block, /completeRecordCreateIntent\(localStorage, owner, intent\.idempotencyKey\)/);
+  assert.doesNotMatch(block, /while\s*\(/);
+  assert.doesNotMatch(block, /setTimeout/);
+});
+
+test('explicit 4xx including rollback-safe 404 and idempotency 409 become terminal without key rotation or legacy fallback', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const settleStart = source.indexOf('const settleRecordCreateIntentFailure');
+  const settleEnd = source.indexOf('const supersedePendingRecordCreateRecovery', settleStart);
+  const block = source.slice(settleStart, settleEnd);
+
+  assert.match(block, /markRecordCreateIntentTerminal/);
+  assert.match(block, /error\?\.apiCode/);
+  assert.match(block, /error\?\.status/);
+  assert.doesNotMatch(block, /beginRecordCreateIntent/);
+  assert.doesNotMatch(block, /createOpaqueId/);
+
+  const transportStart = source.indexOf('const postRecordCreateIntent');
+  const transportEnd = source.indexOf('const settleRecordCreateIntentFailure', transportStart);
+  assert.doesNotMatch(source.slice(transportStart, transportEnd), /'\/api\/records'/);
+});
+
+test('token refresh recursion reuses the exact endpoint and options object so create key and body are stable', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const start = source.indexOf('const fetchWithAuth');
+  const end = source.indexOf('const resetData', start);
+  const block = source.slice(start, end);
+
+  assert.match(block, /if \(refreshed\) return fetchWithAuth\(endpoint, options, false\)/);
+  assert.doesNotMatch(block, /JSON\.stringify\(options/);
+});
+
+test('later update and delete supersede an eligible old create before their network mutation', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const updateBlock = mutationBlock(source, 'updateRecord', 'deleteRecord = async');
+  const deleteBlock = mutationBlock(source, 'deleteRecord', 'availableGroups = computed');
+
+  for (const [block, method] of [[updateBlock, 'PUT'], [deleteBlock, 'DELETE']]) {
+    const barrierAt = block.indexOf('supersedePendingRecordCreateRecovery()');
+    const requestAt = block.indexOf("fetchWithAuth('/api/records'");
+    assert.equal(barrierAt >= 0, true);
+    assert.equal(requestAt > barrierAt, true);
+    assert.match(block, new RegExp(`method: '${method}'`));
+  }
+});
+
+test('fetchAll attempts same-owner record-create recovery before reading records', async () => {
+  const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
+  const start = source.indexOf('const performFetchAll');
+  const end = source.indexOf('const fetchAll = createSingleFlight', start);
+  const block = source.slice(start, end);
+  assert.equal(block.indexOf('await recoverPendingRecordCreateIntent()') >= 0, true);
+  assert.equal(block.indexOf('await fetchRecords()') > block.indexOf('await recoverPendingRecordCreateIntent()'), true);
 });
 
 test('DividendManager consumes its own call-local outcome and preserves ambiguous POST semantics', async () => {
