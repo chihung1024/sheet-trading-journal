@@ -33,7 +33,7 @@ const buildPerformanceMetric = (summary, key, statusKey, reasonKey) => {
   return Object.freeze({ status: 'ok', reason: null, value, legacy: false });
 };
 
-const historyPeriod = (history) => {
+const historyRange = (history) => {
   if (!Array.isArray(history) || history.length === 0) {
     return Object.freeze({ startDate: null, endDate: null });
   }
@@ -53,11 +53,10 @@ const buildGroupRow = (name, group) => {
   const summary = group && typeof group === 'object' && !Array.isArray(group)
     ? group.summary
     : null;
-  const period = historyPeriod(group?.history);
 
   return Object.freeze({
     name,
-    period,
+    historyRange: historyRange(group?.history),
     totalValueTwd: finiteMetric(summary?.total_value),
     investedCapitalTwd: finiteMetric(summary?.invested_capital),
     totalPnlTwd: finiteMetric(summary?.total_pnl),
