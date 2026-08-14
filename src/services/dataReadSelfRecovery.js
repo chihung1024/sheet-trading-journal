@@ -1,5 +1,6 @@
 import { watch } from 'vue';
 import { subscribeRequestFailure } from './requestFailureSignal.js';
+import { readAutomaticRecalculationStatus } from './automaticRecalculationState.js';
 import {
   ApiHttpError,
   MalformedApiResponseError,
@@ -31,6 +32,15 @@ const safeNotify = (notify, message, level) => {
   }
 };
 
+const hasDirtyRecordReadbackIntent = (storage, owner, pathname) => {
+  if (pathname !== '/api/records' || !storage || !owner) return false;
+  try {
+    return readAutomaticRecalculationStatus(storage, owner).dirty === true;
+  } catch {
+    return false;
+  }
+};
+
 export const isRetryableDataReadFailure = ({
   pathname = '',
   method = '',
@@ -50,6 +60,7 @@ export const isRetryableDataReadFailure = ({
 export const installDataReadSelfRecovery = ({
   portfolio,
   auth,
+  storage = globalThis.localStorage,
   notify = () => {},
   retryDelayMs = DATA_READ_SELF_RECOVERY_DELAY_MS,
   setTimeoutImpl = setTimeout,
@@ -70,12 +81,18 @@ export const installDataReadSelfRecovery = ({
   let attemptedForEpisode = false;
   let pendingFailure = null;
   let scheduled = false;
+  let verifiedLoadGeneration = 0;
 
   const resetEpisodeForOwner = owner => {
     episodeOwner = normalizeOwner(owner);
     attemptedForEpisode = false;
     pendingFailure = null;
   };
+
+  const failureHasRecoveryIntent = failure => (
+    portfolio.portfolioReadStatus === 'error'
+    || failure?.dirtyRecordReadback === true
+  );
 
   const scheduleIfNeeded = () => {
     const owner = normalizeOwner(auth.user?.email);
@@ -86,7 +103,7 @@ export const installDataReadSelfRecovery = ({
       || attemptedForEpisode
       || !pendingFailure
       || pendingFailure.owner !== owner
-      || portfolio.portfolioReadStatus !== 'error'
+      || !failureHasRecoveryIntent(pendingFailure)
     ) {
       return;
     }
@@ -99,7 +116,13 @@ export const installDataReadSelfRecovery = ({
     void (async () => {
       try {
         await wait(retryDelayMs, setTimeoutImpl);
-        if (stopped || portfolio.portfolioReadStatus !== 'error') return;
+        if (
+          stopped
+          || failure.loadGeneration !== verifiedLoadGeneration
+          || !failureHasRecoveryIntent(failure)
+        ) {
+          return;
+        }
 
         const currentOwner = normalizeOwner(auth.user?.email);
         if (!currentOwner || currentOwner !== failure.owner || !auth.token) return;
@@ -125,7 +148,12 @@ export const installDataReadSelfRecovery = ({
     const owner = normalizeOwner(auth.user?.email);
     if (!owner || !auth.token) return;
     if (owner !== episodeOwner) resetEpisodeForOwner(owner);
-    pendingFailure = Object.freeze({ owner, pathname: event.pathname });
+    pendingFailure = Object.freeze({
+      owner,
+      pathname: event.pathname,
+      dirtyRecordReadback: hasDirtyRecordReadbackIntent(storage, owner, event.pathname),
+      loadGeneration: verifiedLoadGeneration,
+    });
     scheduleIfNeeded();
   });
 
@@ -133,6 +161,7 @@ export const installDataReadSelfRecovery = ({
     () => portfolio.portfolioReadStatus,
     status => {
       if (status === 'loaded') {
+        verifiedLoadGeneration += 1;
         attemptedForEpisode = false;
         pendingFailure = null;
         return;
