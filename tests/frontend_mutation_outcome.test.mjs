@@ -154,16 +154,18 @@ test('addRecord persists durable intent before its one POST and clears replay el
   assert.equal(completeAt > postAt, true);
   assert.equal(refreshAt > completeAt, true);
   assert.equal((block.match(/postRecordCreateIntent\(intent\)/g) || []).length, 1);
+  assert.match(block, /completeRecordCreateIntent\(localStorage, intent\.owner, intent\.idempotencyKey\)/);
   assert.doesNotMatch(block, /while\s*\(/);
   assert.doesNotMatch(block, /for\s*\(/);
 });
 
-test('ambiguous record POST remains one-shot and retains the exact durable intent for reload recovery', async () => {
+test('ambiguous record POST remains one-shot and retains the exact durable intent for recovery', async () => {
   const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
   const settleStart = source.indexOf('const settleRecordCreateIntentFailure');
   const settleEnd = source.indexOf('const supersedePendingRecordCreateRecovery', settleStart);
   const settleBlock = source.slice(settleStart, settleEnd);
   assert.match(settleBlock, /error\?\.outcomeAmbiguous === true\) return/);
+  assert.match(settleBlock, /intent\.owner/);
 
   const addBlock = mutationBlock(source, 'addRecord', 'updateRecord = async');
   assert.match(addBlock, /settleRecordCreateIntentFailure\(intent, error\)/);
@@ -171,17 +173,18 @@ test('ambiguous record POST remains one-shot and retains the exact durable inten
   assert.doesNotMatch(addBlock, /retry/i);
 });
 
-test('reload recovery is bounded to one store-lifetime attempt and reuses the same persisted transport helper', async () => {
+test('recovery is bounded once per intent per store lifetime and a later intent remains eligible', async () => {
   const source = await readFile(new URL('../src/stores/portfolio.js', import.meta.url), 'utf8');
   const start = source.indexOf('const recoverPendingRecordCreateIntent');
   const end = source.indexOf('const addRecord = async', start);
   const block = source.slice(start, end);
 
-  assert.match(block, /if \(didAttemptRecordCreateRecovery\) return false/);
-  assert.match(block, /didAttemptRecordCreateRecovery = true/);
   assert.match(block, /readEligibleRecordCreateIntents\(localStorage, owner\)/);
+  assert.match(block, /lastRecordCreateRecoveryKey === intent\.idempotencyKey/);
+  assert.match(block, /lastRecordCreateRecoveryKey = intent\.idempotencyKey/);
   assert.match(block, /json = await postRecordCreateIntent\(intent\)/);
-  assert.match(block, /completeRecordCreateIntent\(localStorage, owner, intent\.idempotencyKey\)/);
+  assert.match(block, /completeRecordCreateIntent\(localStorage, intent\.owner, intent\.idempotencyKey\)/);
+  assert.doesNotMatch(source, /didAttemptRecordCreateRecovery/);
   assert.doesNotMatch(block, /while\s*\(/);
   assert.doesNotMatch(block, /setTimeout/);
 });
@@ -193,6 +196,7 @@ test('explicit 4xx including rollback-safe 404 and idempotency 409 become termin
   const block = source.slice(settleStart, settleEnd);
 
   assert.match(block, /markRecordCreateIntentTerminal/);
+  assert.match(block, /intent\.owner/);
   assert.match(block, /error\?\.apiCode/);
   assert.match(block, /error\?\.status/);
   assert.doesNotMatch(block, /beginRecordCreateIntent/);
