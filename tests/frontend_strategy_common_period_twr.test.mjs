@@ -26,6 +26,11 @@ const group = (history, twr = 0) => ({
   history,
 });
 
+const twoPointHistory = (startTwr, endTwr) => ([
+  { date: '2026-01-02', twr: startTwr, twr_status: 'ok' },
+  { date: '2026-01-05', twr: endTwr, twr_status: 'ok' },
+]);
+
 test('common-period TWR uses the first and last exact shared reliable dates and existing linked-TWR rebasing', () => {
   const overview = buildStrategyGroupOverview({
     groups: {
@@ -119,12 +124,28 @@ test('duplicate history dates fail the common-period comparison closed instead o
   assert.equal(overview.commonPeriodTwr.reason, 'duplicate_history_date');
 });
 
+test('prototype-like user strategy names remain exact metric keys', () => {
+  const groups = Object.create(null);
+  groups['__proto__'] = group(twoPointHistory(10, 21), 21);
+  groups.constructor = group(twoPointHistory(5, 15.5), 15.5);
+
+  const overview = buildStrategyGroupOverview({ groups });
+  assert.equal(overview.commonPeriodTwr.status, 'ready');
+  assert.deepEqual(overview.groups.map(item => item.name).sort(), ['__proto__', 'constructor'].sort());
+
+  const proto = overview.groups.find(item => item.name === '__proto__');
+  const constructor = overview.groups.find(item => item.name === 'constructor');
+  approx(proto.commonPeriodTwr.value, ((1.21 / 1.10) - 1) * 100);
+  approx(constructor.commonPeriodTwr.value, ((1.155 / 1.05) - 1) * 100);
+});
+
 test('common-period strategy UI reuses TWR authority and does not become a ranking/accounting engine', async () => {
   const serviceSource = await readFile(new URL('../src/services/strategyGroupOverview.js', import.meta.url), 'utf8');
   const componentSource = await readFile(new URL('../src/components/StrategyGroupOverview.vue', import.meta.url), 'utf8');
 
   assert.match(serviceSource, /import \{ isTwrPointReliable, relativeTwrValue \} from '\.\/twrState\.js'/);
   assert.match(serviceSource, /relativeTwrValue\(rows\.get\(endDate\), rows\.get\(startDate\)\)/);
+  assert.match(serviceSource, /Object\.create\(null\)/);
   assert.doesNotMatch(serviceSource, /ModifiedDietz|cashflow|benchmark_twr|nearest|asof/i);
 
   assert.match(componentSource, /共同期間 TWR/);
