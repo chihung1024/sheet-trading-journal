@@ -65,7 +65,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     let calculationJobPollEpoch = 0;
     let triggerUpdatePromise = null;
     let didAttemptCalculationRecovery = false;
-    let didAttemptRecordCreateRecovery = false;
+    let lastRecordCreateRecoveryKey = null;
     let recordCreateRecoveryPromise = null;
 
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
@@ -391,7 +391,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         try {
             markRecordCreateIntentTerminal(
                 localStorage,
-                getRecordMutationOwner(),
+                intent.owner,
                 intent.idempotencyKey,
                 {
                     reason: error?.apiCode || (error?.status ? `HTTP_${error.status}` : error?.code || 'REJECTED'),
@@ -411,22 +411,21 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const recoverPendingRecordCreateIntent = async () => {
-        if (didAttemptRecordCreateRecovery) return false;
         const owner = getRecordMutationOwner();
         if (!owner) return false;
-        didAttemptRecordCreateRecovery = true;
         if (recordCreateRecoveryPromise) return recordCreateRecoveryPromise;
 
-        recordCreateRecoveryPromise = (async () => {
-            let intent;
-            try {
-                [intent] = readEligibleRecordCreateIntents(localStorage, owner);
-            } catch (error) {
-                console.warn('無法讀取待恢復新增交易狀態:', error);
-                return false;
-            }
-            if (!intent) return false;
+        let intent;
+        try {
+            [intent] = readEligibleRecordCreateIntents(localStorage, owner);
+        } catch (error) {
+            console.warn('無法讀取待恢復新增交易狀態:', error);
+            return false;
+        }
+        if (!intent || lastRecordCreateRecoveryKey === intent.idempotencyKey) return false;
+        lastRecordCreateRecoveryKey = intent.idempotencyKey;
 
+        recordCreateRecoveryPromise = (async () => {
             const { addToast } = useToast();
             let json;
             try {
@@ -446,7 +445,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }
 
             try {
-                completeRecordCreateIntent(localStorage, owner, intent.idempotencyKey);
+                completeRecordCreateIntent(localStorage, intent.owner, intent.idempotencyKey);
             } catch (error) {
                 console.warn('新增交易已由伺服器確認，但本機恢復狀態清除失敗:', error);
             }
@@ -498,7 +497,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         }
 
         try {
-            completeRecordCreateIntent(localStorage, getRecordMutationOwner(), intent.idempotencyKey);
+            completeRecordCreateIntent(localStorage, intent.owner, intent.idempotencyKey);
         } catch (error) {
             console.warn('新增交易已提交，但本機待處理狀態清除失敗:', error);
         }
