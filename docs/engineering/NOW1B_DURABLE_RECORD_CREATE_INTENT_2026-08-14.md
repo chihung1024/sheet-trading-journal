@@ -1,14 +1,26 @@
 # NOW-1B Durable Record Create Intent
 
-Date: 2026-08-14 Asia/Taipei
-Base: `771518f51eb98ce76a5d8cf7e7c4b1fe383ee982`
+Date: 2026-08-14 Asia/Taipei  
 Risk: R2 — browser persistence and record-create behavior.
 
 ## Current status
 
-The market-data incident that interrupted product work is closed. Normal product run `Update Portfolio Data #3270` production-exercised the generic exact-date same-provider recovery and completed all downstream validation, Daily PnL reconciliation, split-ledger parity, snapshot upload, and calculation-job completion successfully. Market-data work returns to passive watch.
+The market-data incident that interrupted product work is closed and remains passive watch. NOW-1B is the active product line.
 
-The active product line is NOW-1B: remove ambiguity from `POST /api/records` by consuming the already-live server-side record-create idempotency contract.
+NOW-1B-A — rollback-safe backend transport — is **PRODUCTION VERIFIED**:
+
+- compatibility path: `POST /api/records/idempotent`;
+- canonical runtime source: `a0213f05c64f8b1636711e5e3bfdea650f42f2df`;
+- Production Identity Evidence #17: run `31757896091`, artifact `9203733363`, PASS;
+- Deploy Worker #6: run `31759350109`, SUCCESS;
+- deployed version: `ea9c129f-6e8f-4071-be36-e22721f82ef8`;
+- post-deploy evidence artifact `9205266306`;
+- three consecutive full production-contract passes after propagation;
+- D1 schema remains 3 and no new migration was required.
+
+The new path is the rollback-safe capability boundary. A runtime that does not contain the compatibility entry route returns 404 before record mutation. Frontend code must never fall back from this path to legacy `POST /api/records`.
+
+NOW-1B-B — durable browser create intent — is implemented in PR #231. CI #783 / run `31763766650` proved the earlier code-bearing candidate across Frontend contracts/build, Worker security/deployment tests, and Python tests. A later R2 review refinement minimized terminal persistence; therefore the exact current PR head and a fresh exact-head CI must be re-fetched before merge. Merge/post-main verification remains the final gate.
 
 ## Product objective
 
@@ -19,59 +31,100 @@ one logical trade create
 -> timeout / token refresh / reload may occur
 -> recovery reuses the same key and payload
 -> verified replay/success produces one record
--> completed intent is cleared
+-> completed intent is cleared before follow-up UI refresh
 ```
 
 The user should not have to decide whether an ambiguous create probably succeeded before retrying.
 
-## Scope
+## Implemented persistence contract
 
-In scope: stable key generation, tenant-bound durable intent storage, persist-before-send, same-key replay after ambiguous transport outcomes, reload recovery, token-refresh-safe replay, terminal conflict handling, success cleanup, logout cleanup, cross-tab safety, bounded recovery, tests, and minimal handoff updates.
+Implementation owner: `src/services/recordCreateIntent.js`.
 
-Out of scope: financial formula changes, UPDATE/DELETE redesign, transaction-content fingerprint dedupe, broad schema/idempotency framework work, auth redesign, scheduler/queue work, provider redesign, ledger/Decimal/UUID work, and documentation-only expansion.
+- intent schema version: 1;
+- live recovery TTL: 24 hours;
+- dynamic intent prefix: `pending_record_create.v1.`;
+- fixed mutation barrier: `record_mutation_barrier.v1`;
+- storage key contains only the opaque idempotency key, never email/PII;
+- a **LIVE** intent is owner-validated and contains the immutable serialized request body required for exact replay;
+- a **TERMINAL** tombstone intentionally omits the transaction body and retains only version, owner, opaque key, barrier token, timestamps, state, and terminal reason;
+- secure random idempotency/barrier identifiers use `crypto.randomUUID()` or `crypto.getRandomValues()`;
+- persist operations are read-back verified before the caller may send the POST;
+- if terminal rewrite fails but removal remains available, the service removes the live intent so a definitely rejected create cannot later auto-replay;
+- malformed, cross-owner, unsupported-version, impossible-future, stale, terminal, or superseded intents fail closed;
+- logout removes both the barrier and every dynamic record-create intent through `clearSensitiveProjectStorage()`.
 
-## Correctness boundary: later record mutations supersede stale create replay
+Browser storage remains non-authoritative. D1 remains the transaction source of truth.
 
-A pending create may auto-replay only while no later explicit record mutation has superseded it. Starting a newer logical create or attempting UPDATE/DELETE establishes a durable local barrier for older pending create intents. A superseded intent must never auto-POST again. This prevents a stale ambiguous create from recreating a transaction after a later delete.
+## Network and recovery contract
 
-After verified create success, that key is never reused for a new logical create. This keeps the guarantee honest without adding a new backend tombstone subsystem.
+`src/stores/portfolio.js` now follows this order for a create:
 
-## Correctness boundary: frontend/backend capability coordination
+1. derive owner from the signed auth-store identity;
+2. rotate/persist the mutation barrier;
+3. serialize and persist the exact create intent;
+4. send one `POST /api/records/idempotent` with the stored `Idempotency-Key` and exact stored body;
+5. token refresh, when needed, recursively reuses the same endpoint/options object;
+6. verified success clears the exact intent before record refresh;
+7. a later record-refresh failure never changes the create back to ambiguous and never generates another logical create.
 
-Automatic stable-key recovery must not silently run against a backend runtime that does not support record-create idempotency. The implementation must use the narrowest reliable capability contract available. If a simple preflight has a mutation race, add only the minimum contract needed to fail closed; do not reopen broad backend architecture.
-
-## Persistence contract
-
-Use a dedicated service rather than ad-hoc Pinia storage calls. Stored values are tenant-validated; storage keys contain no email/PII. Malformed, cross-owner, unsupported-version, impossible-future, or superseded intents fail closed. Multiple intents may coexist, but recovery must be bounded and deterministic.
+Recovery is outside `addRecord()` so the normal create call never contains a blind retry loop. `fetchAll()` may recover the current same-owner eligible intent. Recovery is single-flight and bounded to at most one automatic attempt per intent key per store lifetime; a later distinct intent remains eligible. Reload starts a new bounded recovery opportunity for a still-live intent.
 
 ## Error semantics
 
-- verified success: committed; clear the exact intent and refresh records;
-- idempotency conflict: terminal; never rotate a new key automatically for the same logical submission;
-- explicit rejection: terminal for that intent;
-- timeout/network/server ambiguity after dispatch: retain exact intent/key for bounded recovery;
+- verified success: committed; clear the exact intent before refreshing records;
+- HTTP/application 4xx, including `IDEMPOTENCY_CONFLICT` and unsupported-path 404: terminal; never rotate a replacement key automatically for that logical submission; terminal persistence removes the transaction body;
+- timeout, network failure, 5xx, or other outcome that does not prove rollback: ambiguous; retain the exact LIVE intent/key/body for bounded recovery;
 - storage unavailable before POST: fail before mutation;
-- token refresh: any retry must preserve exact key and body.
+- token refresh: preserve exact key/body;
+- storage cleanup after a server-confirmed commit is best effort only; the same server idempotency key remains the safety net if the local LIVE entry survives unexpectedly.
+
+## Correctness boundary: later record mutations supersede stale create replay
+
+A pending create may auto-replay only while no later explicit record mutation has superseded it. Starting a newer logical create rotates the shared barrier. UPDATE/DELETE first check for an eligible pending create and, when present, rotate the barrier before their network mutation. Older intents remain non-replayable even though their historical storage entries may still exist until logout.
+
+This is a browser-side replay-eligibility fence, not a new distributed transaction protocol. It prevents future automatic replay from a superseded local intent. It does not claim to reorder a request that was already dispatched before another tab starts a later mutation. Server idempotency still protects duplicate create dispatches. A backend idempotency-tombstone/transaction-ordering subsystem remains out of scope unless production evidence demonstrates that stronger distributed ordering is required.
+
+## Correctness boundary: frontend/backend capability coordination
+
+A simple `/api/version` preflight was rejected because runtime rollback could occur between preflight and mutation. The dedicated compatibility path removes that TOCTOU: new runtime rewrites only the exact POST alias to canonical `/api/records`; old runtime rejects the alias before mutation. Frontend must not add a legacy fallback.
 
 ## Required regressions
 
+The PR carries both source-contract and executable storage-service regressions for:
+
 1. persist-before-send;
-2. same logical retry uses same key;
+2. same logical recovery uses the same key/body;
 3. distinct creates get distinct keys even for identical payloads;
-4. payload is immutable for a key;
-5. conflict does not rotate key;
-6. ambiguous failure retains intent;
-7. reload restores same-owner intent;
-8. cross-owner state cannot replay;
-9. logout clears create-intent state only;
-10. token refresh preserves key/body;
-11. later create/update/delete supersedes older replay eligibility;
-12. superseded intent cannot recreate after delete;
-13. recovery is bounded;
-14. unsupported backend capability fails closed;
-15. existing mutation-outcome callers remain compatible;
-16. no financial-engine or snapshot-calculation behavior changes.
+4. LIVE payload is immutable for a key;
+5. conflict/404 do not rotate a new key or fall back to the legacy endpoint;
+6. terminal tombstone removes the transaction body and remains non-replayable;
+7. terminal-write failure falls back to removing the LIVE intent when possible;
+8. ambiguous failure retains LIVE intent;
+9. same-owner reload/fetch recovery;
+10. cross-owner state cannot replay;
+11. logout clears create-intent/barrier state while preserving unrelated storage;
+12. token refresh preserves key/body;
+13. later create/update/delete supersede older replay eligibility;
+14. terminal/stale/malformed/future state fails closed;
+15. recovery is bounded per intent and has no tight retry loop;
+16. storage failure aborts before POST;
+17. existing mutation-outcome callers remain compatible;
+18. no financial-engine, snapshot-calculation, Worker, or D1 behavior change.
 
 ## Completion rule
 
-Close NOW-1B when normal retry/reload/token-refresh paths produce one logical record, stale replay cannot undo later user intent, unsupported backend capability fails closed, and the user no longer needs to reason about ambiguous POST outcomes. Then resume end-to-end Product Functionality Review rather than expanding idempotency infrastructure.
+Close NOW-1B-B after PR #231 is independently reviewed, merged, exact post-main CI passes, and the production Pages deployment for that merge succeeds. Do not create or delete a real-user transaction solely as a smoke test. The already-production-verified transport plus exact-head frontend regressions are the acceptance basis unless a dedicated isolated production test tenant becomes available without blocking product work.
+
+After closure, resume Phase 2 — Automatic Recalculation:
+
+```text
+confirmed mutation
+-> mark snapshot stale
+-> debounce/coalesce
+-> auto trigger one calculation intent
+-> poll durable job
+-> publish/read fresh snapshot
+-> UI refresh
+```
+
+Target UX: a normal transaction mutation should require zero manual “update portfolio” clicks.
