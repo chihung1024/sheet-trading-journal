@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-15 Asia/Taipei**  
-Current line: **Phase 3 Explainability OPTIMIZED FOR CURRENT REQUIREMENTS; Phase 4 Strategy Analytics OPTIMIZED FOR CURRENT REQUIREMENTS after Batch 4.2 Common-Period TWR CLOSED / PRODUCTION PAGES VERIFIED — next action is a Phase 6 UX Convergence Audit; Phase 5 lot/trade analytics remains BACKLOG until an authoritative production lot-ledger producer exists**
+Current line: **Phase 3 Explainability, Phase 4 Strategy Analytics, and Phase 6 UX Convergence are OPTIMIZED FOR CURRENT REQUIREMENTS; Batch 6.1 Data Sync Status UX and Batch 6.2 Operation/Recovery Toast Convergence are CLOSED / PRODUCTION PAGES VERIFIED — next action is a new product-function gap audit; Phase 5 lot/trade analytics remains BACKLOG until an authoritative production lot-ledger producer exists**
 
 ---
 
@@ -48,8 +48,11 @@ Current line: **Phase 3 Explainability OPTIMIZED FOR CURRENT REQUIREMENTS; Phase
 | Phase 3 / Batch 3.1 Daily P&L Explainability | CLOSED / PRODUCTION PAGES VERIFIED | PR #256 final head `fc57b221a9b2c0e3adf6c929c1db6caf5e6c9c22`; exact-head CI #904 SUCCESS; frozen review BLOCKER 0; merge `2f46516e2eee7f9ec653587bef8987260dfffb65`; post-main CI #905 + Pages #1538 SUCCESS |
 | Phase 3 Explainability Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | Current P&L explainability, holding-level P&L, TWR/XIRR reliability, and data-reliability UX cover the existing authoritative evidence; historical lot/trade attribution remains blocked on missing production producer |
 | Phase 4 / Batch 4.1 Strategy Group Overview | CLOSED / PRODUCTION PAGES VERIFIED | PR #258 final head `65e6e2710dc7a01cb17b5ee2d74ae91fe79136a1`; exact-head CI #911 SUCCESS; frozen R2 review BLOCKER 0; merge `6d0c7708e08bba41231063c6ca765b29c41766b6`; post-main CI #912 + Pages #1540 SUCCESS |
-| **Phase 4 / Batch 4.2 Exact Common-Period TWR** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #260 final head `8c6d34d818662474c0db34abb93dee5af57b4808`; final exact-head CI #917 SUCCESS; frozen R2 review BLOCKER 0; merge `6137030afe43a7dc2a4a3c8b813584fbd7144cae`; post-main CI #918 + Pages #1542 SUCCESS |
-| **Phase 4 Strategy Analytics Convergence** | **OPTIMIZED FOR CURRENT REQUIREMENTS** | Full-history descriptive overview + exact common-period reliable TWR now cover the high-value strategy comparison that can be derived from existing authoritative outputs without new financial methodology |
+| Phase 4 / Batch 4.2 Exact Common-Period TWR | CLOSED / PRODUCTION PAGES VERIFIED | PR #260 final head `8c6d34d818662474c0db34abb93dee5af57b4808`; final exact-head CI #917 SUCCESS; frozen R2 review BLOCKER 0; merge `6137030afe43a7dc2a4a3c8b813584fbd7144cae`; post-main CI #918 + Pages #1542 SUCCESS |
+| Phase 4 Strategy Analytics Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | Full-history descriptive overview + exact common-period reliable TWR cover the high-value strategy comparison that can be derived from existing authoritative outputs without new financial methodology |
+| **Phase 6 / Batch 6.1 Data Sync Status UX** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #262 final head `f50287da41dcc07023c5cb63f12e53c6e24883a6`; final exact-head CI #925 SUCCESS; frozen R2 review BLOCKER 0; merge `eab6a2e325238fc068b843d3218fdadd0705cf0e`; post-main CI #926 + Pages #1544 SUCCESS |
+| **Phase 6 / Batch 6.2 Operation/Recovery Toast Convergence** | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #263 final head `f2ae75bbc4fe5950648d477e351e96d7329545aa`; final exact-head CI #931 SUCCESS; frozen R2 review BLOCKER 0; merge `b922851cafd699193fe0b5f96d07178703eca96a`; post-main CI #932 + Pages #1545 SUCCESS |
+| **Phase 6 UX Convergence** | **OPTIMIZED FOR CURRENT REQUIREMENTS** | persistent status/reliability surfaces and transient global Toasts now use one product-level data-sync language while existing recovery/calculation state machines remain authoritative and unchanged |
 
 Do not reopen closed phases/batches without new material evidence.
 
@@ -59,26 +62,21 @@ Do not reopen closed phases/batches without new material evidence.
 
 Current verified runtime merge checkpoint:
 
-`6137030afe43a7dc2a4a3c8b813584fbd7144cae`
+`b922851cafd699193fe0b5f96d07178703eca96a`
 
 - **Phase 3 Explainability is OPTIMIZED FOR CURRENT REQUIREMENTS.**
-- **Phase 4 Strategy Analytics is OPTIMIZED FOR CURRENT REQUIREMENTS.** No Phase 4.3 runtime batch is currently justified.
-- **Phase 4 / Batch 4.2 Exact Common-Period TWR is CLOSED / PRODUCTION PAGES VERIFIED.**
-- Strategy Group Overview retains the Phase 4.1 alphabetic full-history snapshot view and now additionally shows a common-period TWR only when at least two named groups have at least two exact calendar dates that exist in every group and carry reliable TWR evidence.
-- Common-period TWR reuses the existing production `twrState.js` authority: `isTwrPointReliable()` determines eligibility and `relativeTwrValue(end, start)` rebases the already-published cumulative linked TWR. Browser code does not reimplement Modified Dietz, reconstruct cash flows, or recalculate portfolio accounting.
-- No nearest-date, as-of, interpolation, market-calendar fill, common-period XIRR/P&L, benchmark ranking, best/winner ranking, Sharpe, Sortino, MDD, or strategy score was introduced.
-- A malformed/duplicate history date, insufficient exact shared reliable dates, or invalid relative TWR fails the common-period comparison closed while preserving the safe Phase 4.1 full-history descriptive overview.
-- R2 review identified a user-defined group-name key edge (`__proto__` / `constructor`) in the new metric lookup; the lookup now uses a null-prototype dictionary and has a hostile-key regression.
-- Final PR head `8c6d34d818662474c0db34abb93dee5af57b4808`.
-- Final exact-head CI #917 / run `31830778223`: **SUCCESS**.
-- Frozen-diff R2 review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**.
-- Runtime merge: `6137030afe43a7dc2a4a3c8b813584fbd7144cae`.
-- Exact merge-SHA post-main CI #918 / run `31830934523`: **SUCCESS**.
-- Exact merge-SHA Pages #1542 / run `31830933197`: **SUCCESS**.
-- Final compare before merge: `behind_by=0`; runtime scope remained exactly three focused frontend/test files.
-- No Worker/API/auth change, D1/schema/migration/data change, Python financial-methodology change, retry/recovery change, store/App refactor, or production Worker deploy was required.
+- **Phase 4 Strategy Analytics is OPTIMIZED FOR CURRENT REQUIREMENTS.**
+- **Phase 6 UX Convergence is OPTIMIZED FOR CURRENT REQUIREMENTS.** No Phase 6.3 runtime batch is currently justified.
+- **Phase 6 / Batch 6.1 Data Sync Status UX is CLOSED / PRODUCTION PAGES VERIFIED.** Header and persistent reliability surfaces use product-level data freshness language instead of exposing `GitHub Actions`, trigger/polling/snapshot implementation terms.
+- `資料已同步` is not optimistic copy: it requires the existing exact-object `isSnapshotVerificationCurrent(rawData, records)` proof. `snapshotFreshness='loaded'` alone only produces `驗證資料中`.
+- Read-specific `portfolioReadStatus='error'` is authoritative over global connection recovery and any prior memory-only verification proof, preventing a contradictory green `資料已同步` state after the latest full portfolio read has failed.
+- **Phase 6 / Batch 6.2 Operation/Recovery Toast Convergence is CLOSED / PRODUCTION PAGES VERIFIED.** All global Toast producers still keep their existing internal lifecycle/error semantics; a single `useToast()` presentation boundary now converts normal user-visible snapshot/job/backend-calculation/trigger/idempotency terminology into data-update and safe-confirmation language.
+- The Toast adapter preserves actionable instructions such as `請勿重複送出`, automatic retry, reload/manual fallback, and maintenance escalation; it does not change controller decisions, retry counts, idempotency keys, polling, dirty generation, calculation jobs, or mutation lifecycle.
+- No Worker/API/auth change, D1/schema/migration/data change, Python financial-methodology change, calculation/recovery state-machine change, broad store refactor, or production Worker deployment was required for either Phase 6 batch.
+- Batch 6.1 final PR head `f50287da41dcc07023c5cb63f12e53c6e24883a6`; final exact-head CI #925 / run `31832923996`: **SUCCESS**; merge `eab6a2e325238fc068b843d3218fdadd0705cf0e`; post-main CI #926 + Pages #1544 SUCCESS.
+- Batch 6.2 final PR head `f2ae75bbc4fe5950648d477e351e96d7329545aa`; final exact-head CI #931 / run `31834418498`: **SUCCESS**; merge `b922851cafd699193fe0b5f96d07178703eca96a`; post-main CI #932 / run `31834581878` + Pages #1545 / run `31834580855`: **SUCCESS**.
 - Production Worker remains release `4.08`, API `2.61`, schema `3`.
-- Rollback is a normal revert of PR #260 / merge `6137030a...` or restore the previous Pages deployment.
+- Rollback is a normal revert of PR #263 / merge `b922851c...` and/or PR #262 / merge `eab6a2e3...`, or restore the prior Pages deployment. No schema/data/Python rollback is required.
 
 Stable product lifecycle remains:
 
@@ -91,6 +89,18 @@ record create durable intent
 → snapshot publication
 → browser source/benchmark integrity verification
 → bounded self-healing only when integrity evidence proves repair is safe
+```
+
+User-facing data-sync presentation boundary now remains:
+
+```text
+existing portfolio/recovery authorities
+→ portfolioReadStatus / connectionStatus / snapshotFreshness / isPolling
+→ exact snapshot+record verification proof
+→ pure persistent dataSyncPresentation state
+→ global useToast presentation adapter for transient messages
+→ product language only
+→ no duplicate lifecycle or optimistic freshness state
 ```
 
 Explainability / analytics authority boundary remains:
@@ -121,7 +131,7 @@ symbol
 
 ### User-facing verification boundary
 
-Repository CI, production build, and Pages deployment are verified. No real-user ledger mutation was created solely for smoke testing. Phase 4.2 is presentation-only over already-published group TWR history and the existing reviewed TWR reliability/rebasing contract: Python remains financial/performance authority; Worker/D1 remain persistence/API authority; frontend does not derive a new portfolio-return methodology.
+Repository CI, production build, and Pages deployment are verified. No real-user ledger mutation was created solely for smoke testing. Phase 6 changes are presentation-only over existing authoritative runtime states: they do not create a second freshness/recovery state machine and do not modify financial or persistence authority.
 
 ### 2A. Closed Batch — Phase 1 / Batch 1.1 Frontend Native Currency Contract
 
@@ -467,6 +477,104 @@ Rollback:
 - revert PR #260 / merge `6137030a...` or restore previous Pages deployment;
 - no Worker/schema/data/Python/persisted-state rollback required.
 
+### 2G. Closed Batch — Phase 6 / Batch 6.1 Data Sync Status UX
+
+**Primary Goal — SATISFIED / PRODUCTION PAGES VERIFIED**
+
+Normal users now see one truthful product-level data-sync state instead of having to interpret connection, snapshot, trigger and polling implementation details.
+
+Runtime:
+
+- `src/services/dataSyncPresentation.js`
+- `src/App.vue`
+- `src/services/dataReliability.js`
+
+Regression:
+
+- `tests/frontend_data_sync_presentation.test.mjs`
+- `tests/frontend_data_reliability.test.mjs`
+
+Behavior locked:
+
+- `載入資料中` while the full read is loading;
+- `最新資料讀取失敗` when `portfolioReadStatus='error'`, regardless of later unrelated API success or a prior verification proof;
+- `資料更新中` while calculation polling is active;
+- `連線異常` on global connection error when no read-specific error overrides it;
+- `資料待更新` on stale source evidence;
+- `資料已同步` only when the exact current snapshot+record pair has the existing verification proof;
+- `驗證資料中` for connected + loaded-but-unverified data;
+- no new persistent freshness state, timer, queue or recovery authority;
+- manual `觸發` action becomes `立即更新`; normal-flow `GitHub Actions`, polling and snapshot terminology is removed from App-level presentation;
+- persistent stale/read banner keeps fail-closed warning and actionable fallback but uses data-language rather than backend/snapshot language.
+
+Verification chronology:
+
+- initial CI #921: Worker + Python passed; Frontend failed 360/361 because an old reliability regression still required the wording `上一次成功載入的快照`; classified as stale copy-contract drift and corrected without runtime rollback;
+- R2 review found a real BLOCKER: global `connectionStatus` can return to `connected` after an unrelated API success even while `portfolioReadStatus='error'` remains authoritative for the failed latest full portfolio read; an old memory-only verification proof could otherwise contradict the persistent reliability banner;
+- fix: read-specific status now precedes polling/global connection/stale/verified presentation and has regression coverage;
+- empty accounts remain verifiable through the existing `EMPTY` snapshot integrity publication; no special-case freshness logic was added;
+- final exact head `f50287da41dcc07023c5cb63f12e53c6e24883a6`;
+- final exact-head CI #925 / `31832923996`: **SUCCESS**;
+- exact diff: 5 focused frontend/test files, `behind_by=0`;
+- frozen-diff R2 review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1**;
+- merge `eab6a2e325238fc068b843d3218fdadd0705cf0e`;
+- post-main CI #926: **SUCCESS**;
+- Pages #1544: **SUCCESS**;
+- Worker deploy/D1 migration/Python runtime change: NONE / NOT REQUIRED.
+
+Rollback:
+
+- revert PR #262 / merge `eab6a2e3...` or restore previous Pages deployment;
+- no Worker/schema/data/Python/persisted-state rollback required.
+
+### 2H. Closed Batch — Phase 6 / Batch 6.2 Operation/Recovery Toast Convergence
+
+**Primary Goal — SATISFIED / PRODUCTION PAGES VERIFIED**
+
+Normal transaction/update/recovery Toasts now use the same product-level data-sync language without rewriting the internal lifecycle producers that own debug and recovery evidence.
+
+Runtime:
+
+- `src/services/toastPresentation.js`
+- `src/composables/useToast.js`
+
+Regression:
+
+- `tests/frontend_operation_toast_presentation.test.mjs`
+
+Behavior locked:
+
+- all existing global controllers continue using the same `useToast().addToast` boundary;
+- the boundary transforms user-facing phrases such as snapshot/job/backend calculation/trigger/idempotency wording into data-update or safe-confirmation language;
+- mutation success, first-trade update, polling timeout/dedup, manual update, GroupManager fallback, calculation-complete/reload-failure, trigger ambiguity, record-create/dividend ambiguity, and calculation-failure recovery are covered;
+- actionable instructions remain: users are still told not to repeat uncertain writes, when automatic retry is occurring, when reload/manual fallback is available, and when maintenance contact is appropriate;
+- ordinary nontechnical messages pass through unchanged;
+- no producer/controller state or conditional branch was modified.
+
+Verification chronology:
+
+- initial exact head `22babe71a1a96c430e42c4aeecb72a37cdc27c4d`; CI #927: SUCCESS;
+- pre-freeze review found calculation-failure recovery paths still exposing `計算服務 / 持倉快照 / 現有快照`; added at the central presentation boundary with expanded regression;
+- follow-up review found GroupManager `後端重算觸發失敗`, dynamic `formatRequestError(action='觸發重算')`, and `計算已完成` reload-failure copy; added at the same boundary;
+- final exact head `f2ae75bbc4fe5950648d477e351e96d7329545aa`;
+- final exact-head CI #931 / `31834418498`: **SUCCESS**;
+- Frontend contracts + production build: PASS;
+- Python tests + branch coverage: PASS;
+- Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
+- final compare: `behind_by=0`, exactly 3 focused files;
+- frozen-diff R2 review: **PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0**;
+- merge `b922851cafd699193fe0b5f96d07178703eca96a`;
+- post-main CI #932 / `31834581878`: **SUCCESS**;
+- Pages #1545 / `31834580855`: **SUCCESS**;
+- Worker deploy: NOT REQUIRED / NOT RUN;
+- D1 migration: NOT REQUIRED / NOT RUN;
+- Python runtime change: NONE.
+
+Rollback:
+
+- revert PR #263 / merge `b922851c...` or restore previous Pages deployment;
+- no Worker/schema/data/Python/persisted-state rollback required.
+
 ---
 
 ## 3. Closed Batch — PR #247 Snapshot Integrity Record Contract
@@ -498,6 +606,63 @@ Explicitly unchanged:
 ---
 
 ## 4. Root Cause Log
+
+### 2026-08-15 — Internal lifecycle terminology leaked through the global Toast boundary
+
+**Symptom / Product Gap**  
+After the persistent header/banner status had been converged to `資料已同步 / 更新中 / 待更新`, common transaction and recovery Toasts could still say `持倉快照待重新計算`, `後端計算工作`, `觸發重算`, `原交易識別碼`, or `計算服務`, creating a mixed mental model during the most frequent user workflows.
+
+**Evidence**
+
+- portfolio mutations, calculation recovery, trigger ambiguity, record-create ambiguity, dividend ambiguity and data-read recovery all ultimately share `useToast().addToast`;
+- producer strings also serve useful internal/debug/audit purposes and are protected by existing tests;
+- editing every producer would touch the 40KB portfolio store and several mature recovery controllers solely for presentation.
+
+**Failure Point**  
+The global Toast presentation boundary rendered internal lifecycle messages verbatim.
+
+**Root Cause**  
+Presentation and operational/debug wording had no explicit boundary. Mature internal terminology therefore became user copy by accident.
+
+**Permanent Fix**
+
+- keep producer/controller control flow and internal wording intact;
+- add one pure deterministic `toastPresentation` adapter at `useToast()`;
+- cover common mutation/update/recovery paths while preserving actionable instructions;
+- ordinary product-language messages pass through unchanged.
+
+**Prevention**
+
+- new internal lifecycle Toast wording should either already be user-readable or add a presentation regression at the shared boundary;
+- do not edit recovery state machines merely to change wording.
+
+### 2026-08-15 — Header freshness language could overstate trust if it relied on loaded/global connection state
+
+**Symptom / Product Gap**  
+The Header exposed implementation terms such as `GitHub Actions`, `觸發`, polling and snapshot state. More importantly, using `snapshotFreshness='loaded'` or global connection state as “healthy” could overstate trust before cryptographic source verification completed.
+
+**Evidence**
+
+- Phase 1.2 already proved `loaded` occurs before source/benchmark integrity verification;
+- exact snapshot+records memory-only verification proof already exists;
+- `portfolioReadStatus` is deliberately separate from global `connectionStatus` because an unrelated API success can restore global connection state after a failed latest full portfolio read.
+
+**Failure Point**  
+Header presentation consumed infrastructure-oriented states directly instead of composing them into one product-level truth model.
+
+**Root Cause**  
+The application accumulated reliable internal state machines faster than the user-facing status model was simplified.
+
+**Permanent Fix**
+
+- pure `dataSyncPresentation` adapter over existing authorities;
+- only exact current verification proof can produce `資料已同步`;
+- read-specific failure prevents old proof/global connection recovery from creating false green status;
+- normal manual action becomes `立即更新`; stale/read copy is converged without changing recovery behavior.
+
+**Review finding / prevention**
+
+- R2 review specifically regressed `connected + portfolioReadStatus=error + verified=true` and `read error + polling` so read-specific failure cannot be masked.
 
 ### 2026-08-15 — Different strategy histories prevented a truthful same-period comparison
 
@@ -727,6 +892,74 @@ User observed both `快照待重算` and `持倉與績效快照待重新計算` 
 
 ## 5. Change Log / Verification
 
+### Phase 6 / Batch 6.2 — PR #263
+
+Implementation branch: `feat/phase6-operation-copy-convergence`  
+Base/recovery point: `eab6a2e325238fc068b843d3218fdadd0705cf0e`  
+Final PR head: `f2ae75bbc4fe5950648d477e351e96d7329545aa`  
+Main merge: `b922851cafd699193fe0b5f96d07178703eca96a`
+
+Scope:
+
+- `src/services/toastPresentation.js`
+- `src/composables/useToast.js`
+- `tests/frontend_operation_toast_presentation.test.mjs`
+
+Verification:
+
+- audit identified the single global Toast boundary and rejected direct edits to portfolio/recovery producers;
+- initial CI #927: SUCCESS;
+- pre-freeze review expanded complete calculation-failure recovery copy coverage;
+- follow-up review added GroupManager recalculation failure, dynamic trigger-recalculation error, and calculation-complete/reload-failure paths;
+- final exact-head CI #931 / `31834418498`: **SUCCESS**;
+- Frontend contracts + production build: PASS;
+- Python tests + branch coverage: PASS;
+- Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
+- exact diff: 3 focused files, `behind_by=0` before merge;
+- frozen-diff R2 review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 0;
+- post-main exact merge-SHA CI #932 / `31834581878`: **SUCCESS**;
+- Pages #1545 / `31834580855`: **SUCCESS**;
+- Worker deploy/D1 migration/Python runtime change: NONE / NOT REQUIRED.
+
+Rollback:
+
+- revert PR #263 / merge `b922851c...` or prior Pages deployment;
+- no Worker/schema/data/Python/persisted-state rollback required.
+
+### Phase 6 / Batch 6.1 — PR #262
+
+Implementation branch: `feat/phase6-data-sync-status-ux`  
+Base/recovery point: `1d84574fdd6cfc3307aa926fe7c867af25f742b9`  
+Final PR head: `f50287da41dcc07023c5cb63f12e53c6e24883a6`  
+Main merge: `eab6a2e325238fc068b843d3218fdadd0705cf0e`
+
+Scope:
+
+- `src/services/dataSyncPresentation.js`
+- `src/App.vue`
+- `src/services/dataReliability.js`
+- `tests/frontend_data_sync_presentation.test.mjs`
+- `tests/frontend_data_reliability.test.mjs`
+
+Verification:
+
+- initial CI #921 isolated a stale copy-contract test; Worker/Python remained green;
+- R2 review found read-specific failure could be masked by global connection recovery plus prior verification proof; fixed without adding store state;
+- final exact-head CI #925 / `31832923996`: **SUCCESS**;
+- Frontend contracts + production build: PASS;
+- Python tests + branch coverage: PASS;
+- Worker security/deployment + Recovery Evidence Gate + local D1 baseline: PASS;
+- exact diff: 5 focused frontend/test files, `behind_by=0` before merge;
+- frozen-diff R2 review: PASS — BLOCKER 0 / FOLLOW-UP 0 / BACKLOG 1;
+- post-main CI #926: **SUCCESS**;
+- Pages #1544: **SUCCESS**;
+- Worker deploy/D1 migration/Python runtime change: NONE / NOT REQUIRED.
+
+Rollback:
+
+- revert PR #262 / merge `eab6a2e3...` or prior Pages deployment;
+- no Worker/schema/data/Python/persisted-state rollback required.
+
 ### Phase 4 / Batch 4.2 — PR #260
 
 Implementation branch: `feat/phase4-common-period-twr`  
@@ -945,17 +1178,44 @@ Verification:
 
 ### Merge-method note
 
-Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head attempts). Repository policy was never modified or bypassed. Phase 1, Phase 2.1, Phase 3.1, Phase 4.1 and Phase 4.2 PRs used normal exact-head merges once this policy was established.
+Repository policy rejects squash merges (HTTP 405 observed on earlier exact-head attempts). Repository policy was never modified or bypassed. Phase 1, Phase 2.1, Phase 3.1, Phase 4.1, Phase 4.2, Phase 6.1 and Phase 6.2 PRs used normal exact-head merges once this policy was established.
 
 ### Deployment
 
-- Frontend Pages: **DEPLOYED / VERIFIED through #1542** for runtime merge `6137030a...`.
-- Production Worker: **NOT REQUIRED / NOT DEPLOYED** for Phase 4.2.
-- D1 migration: **NOT REQUIRED / NOT RUN** for Phase 4.2.
+- Frontend Pages: **DEPLOYED / VERIFIED through #1545** for runtime merge `b922851c...`.
+- Production Worker: **NOT REQUIRED / NOT DEPLOYED** for Phase 6.1/6.2.
+- D1 migration: **NOT REQUIRED / NOT RUN** for Phase 6.1/6.2.
 
 ---
 
 ## 6. Decision Log
+
+### D-2026-08-15-09 — Phase 6 UX Convergence is optimized for current requirements
+
+- **Evidence:** Batch 6.1 converged persistent Header/reliability status onto verified product-level data-sync truth; Batch 6.2 converged transient operation/recovery Toasts at the shared presentation boundary. Remaining UX candidates are isolated visual/copy refinements rather than material workflow gaps.
+- **Alternatives:** continue opening copy/style batches; broadly refactor store/controller messaging; stop and run a new product-function gap audit.
+- **Decision:** no Phase 6.3. Mark Phase 6 `OPTIMIZED FOR CURRENT REQUIREMENTS` and return to product-function discovery.
+- **Trade-off:** minor wording/visual polish remains possible, but product development is not delayed for diminishing-return UX work.
+- **Status:** LOCKED / CONVERGED.
+- **Reopen Condition:** new user evidence exposes a material workflow/status comprehension problem.
+
+### D-2026-08-15-08 — Internal operation messages remain producer-owned; Toast product copy is a presentation boundary
+
+- **Evidence:** all recovery/controllers share `useToast().addToast`; producer messages also serve debug/audit evidence; direct edits would span the large portfolio store and several mature recovery controllers solely for wording.
+- **Alternatives:** rewrite each producer; add a second recovery messaging state machine; central pure presentation adapter.
+- **Decision:** apply deterministic internal→product-language transformation only at the global Toast boundary. Do not alter control flow or internal evidence.
+- **Trade-off:** new internal terms may require adding a presentation mapping, but operational logic and debug provenance remain stable.
+- **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
+- **Reopen Condition:** Toast architecture changes or messages acquire structured semantic payloads that supersede text presentation mapping.
+
+### D-2026-08-15-07 — “Data synchronized” requires current verification proof and no read-specific failure
+
+- **Evidence:** `snapshotFreshness='loaded'` precedes cryptographic integrity proof; `connectionStatus` is global and may become connected after unrelated API success while the latest full portfolio read remains failed; current exact-object verification already exists.
+- **Alternatives:** show loaded/connected as healthy; create new persisted freshness state; derive presentation from existing authorities.
+- **Decision:** use a pure presentation truth table. `資料已同步` requires current exact snapshot+records verification proof; `portfolioReadStatus='error'` overrides prior proof/global connection recovery.
+- **Trade-off:** UI may stay in `驗證資料中` briefly after load, but never creates false confidence.
+- **Status:** LOCKED / IMPLEMENTED / PRODUCTION PAGES VERIFIED.
+- **Reopen Condition:** snapshot/read authority model materially changes.
 
 ### D-2026-08-15-06 — Phase 4 Strategy Analytics is optimized for current requirements
 
@@ -1057,14 +1317,14 @@ Status: **LOCKED**.
 
 - Phase 3 Explainability: **OPTIMIZED FOR CURRENT REQUIREMENTS**.
 - Phase 4 Strategy Analytics: **OPTIMIZED FOR CURRENT REQUIREMENTS**.
-- Phase 4 / Batch 4.2 Exact Common-Period TWR: **CLOSED / PRODUCTION PAGES VERIFIED**.
+- Phase 6 UX Convergence: **OPTIMIZED FOR CURRENT REQUIREMENTS**.
 - Phase 5 historical/lot-level trading analytics remains blocked from NOW because `lot_ledger` still lacks a reviewed production producer/semantics.
 
-The next product audit is **Phase 6 UX Convergence**. Its purpose is not broad visual redesign: it should identify where mature automatic recalculation, calculation-job, snapshot-freshness, recovery and connectivity machinery still leaks implementation details into normal user workflows. No runtime batch should open until that audit selects one narrow, high-value UX slice.
+The next step is a **new product-function gap audit**, not another infrastructure or UX-refactor phase. Candidate areas must be compared by real user value and existing evidence, including broker/transaction import automation, journal workflow depth, multi-market dividend workflow, and other daily-use product gaps. The audit must select at most one narrow next Batch; it must not assume any candidate is already approved.
 
 ### Current risk
 
-Cross-layer source and presentation contracts can drift if Worker/Python semantics change. Existing source-shape, cross-language, explainability, strategy-overview and common-period regressions materially reduce this risk; future changes must update contracts deliberately rather than weakening tests.
+Cross-layer source and presentation contracts can drift if Worker/Python semantics change. Existing source-shape, cross-language, explainability, strategy-overview, common-period, sync-presentation and Toast-presentation regressions materially reduce this risk; future changes must update contracts deliberately rather than weakening tests.
 
 ### Known non-blocking documentation/status drift
 
@@ -1087,7 +1347,8 @@ Do not promote without new evidence:
 10. note-only mutation / skipped recalculation optimization without measured product or compute evidence;
 11. historical/lot-level attribution until `lot_ledger` has a reviewed production producer and semantics;
 12. Sharpe/Sortino/MDD/strategy scoring until a separate product and financial-methodology requirement justifies them;
-13. common-period XIRR/P&L until an authoritative interval cash-flow/value contract or explicit methodology requirement exists.
+13. common-period XIRR/P&L until an authoritative interval cash-flow/value contract or explicit methodology requirement exists;
+14. broad rewrite of store/recovery producer messages when the current shared presentation boundaries are sufficient.
 
 ---
 
@@ -1097,18 +1358,19 @@ Do not promote without new evidence:
 
 - Phase 3 Explainability is **OPTIMIZED FOR CURRENT REQUIREMENTS**.
 - Phase 4 Strategy Analytics is **OPTIMIZED FOR CURRENT REQUIREMENTS**.
-- Phase 4 / Batch 4.2 runtime is **CLOSED / PRODUCTION PAGES VERIFIED**.
+- Phase 6 UX Convergence is **OPTIMIZED FOR CURRENT REQUIREMENTS**.
+- Batch 6.1 and 6.2 runtime are **CLOSED / PRODUCTION PAGES VERIFIED**.
 - Complete this docs-only Stable Checkpoint and verify exact-main CI/Pages if triggered.
-- Do not modify Batch 4.2 runtime during documentation closure.
+- Do not modify Phase 6 runtime during documentation closure.
 
-**NEXT — Phase 6 UX Convergence Audit, not automatic implementation**
+**NEXT — Product Function Gap Audit, not automatic implementation**
 
-1. Re-read the actual header/status banners, manual trigger controls, automatic recalculation state, calculation-job progress, snapshot freshness/recovery messaging, mobile behavior and PWA/update messaging.
-2. Identify implementation terms visible to normal users (`GitHub Actions`, `觸發`, polling/job/snapshot internals) and distinguish useful recovery information from engineering leakage.
-3. Map the normal user journey: record saved → calculation automatically starts → data updating → verified fresh; define the minimum user-facing state model needed to communicate this without hiding actionable failures.
-4. Preserve existing recovery/fail-closed semantics; the audit must not create a second state machine merely to simplify wording.
-5. Converge candidates into NOW / NEXT / BACKLOG / REJECT and select at most one narrow UX Batch if Benefit materially exceeds migration/regression risk.
-6. Prefer frontend presentation/convergence over new backend infrastructure unless audit evidence proves a backend contract is necessary.
+1. Re-read current end-to-end user journeys after Phase 1–6: manual transaction entry/import, journal use, dividend workflow, holdings/analytics, group strategy workflow, automatic update/recovery, and mobile behavior.
+2. Compare candidate gaps by frequency, user time saved, correctness risk, automation leverage, required new backend authority, and migration cost.
+3. Explicitly evaluate broker/transaction import automation, deeper journal workflow, and multi-market dividend workflow, but do not privilege them without evidence.
+4. Keep Phase 5 historical lot/trade analytics in BACKLOG unless an authoritative producer contract now exists.
+5. Converge all findings into NOW / NEXT / BACKLOG / REJECT and select exactly one next Primary Batch only if it has material product value.
+6. Prefer using existing authoritative contracts and automation; add backend/schema infrastructure only when the selected feature demonstrably requires it.
 
 **BACKLOG**
 
@@ -1117,10 +1379,12 @@ Do not promote without new evidence:
 - common-period XIRR/P&L unless an authoritative interval contract becomes available;
 - Sharpe/Sortino/MDD or strategy scoring only after a specific user/product requirement and methodology review;
 - note-only mutation / skipped recalculation optimization if real usage demonstrates material value;
-- unrelated technical candidates above.
+- staging/retry/governance candidates above;
+- minor Phase 6 wording/visual polish without new user evidence.
 
 **REJECT**
 
+- reopen Phase 6 merely to standardize every internal log/source string;
 - direct best/winner ranking using full-history metrics from different group ranges;
 - rank common-period TWR as a product “winner” without a separate product requirement;
 - nearest-date/as-of/interpolated strategy alignment when exact common dates are unavailable;
@@ -1145,11 +1409,11 @@ Do not promote without new evidence:
 
 ## 9. Next Actions
 
-1. Merge this Phase-4.2 Stable Checkpoint documentation PR and verify exact-main CI/Pages if triggered.
+1. Merge this Phase-6 Stable Checkpoint documentation PR and verify exact-main CI/Pages if triggered.
 2. Re-read remote `main`, open PRs, recent commits, `AI_PROJECT_PLAYBOOK.md`, `README.md`, and this handoff.
-3. Run one **Phase 6 UX Convergence Audit** before creating another runtime branch.
-4. Audit the normal save→automatic calculation→fresh data user journey and all visible status/trigger/recovery surfaces on desktop and mobile.
-5. Converge findings into NOW / NEXT / BACKLOG / REJECT; do not reopen Phase 3/4 or blocked lot-level Phase 5 work without new evidence.
-6. If one material UX slice exists, open exactly one narrow Batch with an explicit user-state contract and no duplicate recovery authority.
-7. Otherwise mark UX convergence optimized for current requirements and run a new product-function gap audit rather than performing technical refactors for their own sake.
-8. Any next R2+ runtime Batch again requires recovery point, focused diff, exact-head CI, frozen review, rollback and post-main verification.
+3. Run one **Product Function Gap Audit** before creating another runtime branch.
+4. Compare daily user workflows and candidate features by actual product benefit, automation leverage, correctness impact and implementation radius.
+5. Converge candidates into NOW / NEXT / BACKLOG / REJECT and choose one Primary Goal; Phase 5 remains blocked unless lot-level producer semantics materially change.
+6. Open exactly one narrow feature Batch after the audit, with explicit In Scope / Out of Scope / Expansion Trigger and Recovery Point.
+7. Any next R2+ runtime Batch again requires focused diff, exact-head CI, frozen review, rollback and post-main verification.
+8. If no candidate has material value, record `OPTIMIZED FOR CURRENT REQUIREMENTS` for the current product scope and stop rather than doing technical refactors for their own sake.
