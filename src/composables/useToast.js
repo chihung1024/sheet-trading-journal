@@ -1,11 +1,12 @@
 import { ref } from 'vue';
+import { presentToastMessage } from '../services/toastPresentation.js';
 
 const toasts = ref([]);
 
 export function useToast() {
   const addToast = (message, type = 'success') => {
     const id = Date.now() + Math.random();
-    toasts.value.push({ id, message, type });
+    toasts.value.push({ id, message: presentToastMessage(message), type });
     
     // 3秒後自動消失
     setTimeout(() => {
