@@ -1,188 +1,151 @@
 # TO-DO / UPDATE LIST — Product-First Current Handoff
 
-> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state overrides prose. Closed work is provenance, not an instruction to restart it.
+> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **Phase 4 trigger outcome ambiguity replay — final docs-bearing CI → merge → post-main CI/Pages**
+Current line: **Phase 5 bounded data read self-recovery — code complete → Draft PR / exact-head CI**
+
+---
 
 ## 0. Operating doctrine
 
-1. Product functionality and UX are highest priority.
-2. Fix generic root causes; parallel investigation must converge.
-3. Financial/data correctness is fail-closed.
-4. Keep one primary active batch.
-5. R2+ work requires exact-head CI, rollback, independent review and permanent handoff.
-6. Prefer invisible deterministic automation; **AI 管流程，不管帳**.
+1. Product functionality and user experience are highest priority.
+2. Fix generic root causes, not individual symptoms. Parallel investigation must converge.
+3. Financial/data correctness is fail-closed and may not be traded for convenience.
+4. Keep one primary active batch; do not reopen closed work without new material evidence.
+5. Preserve exact-head CI, rollback/recovery and permanent handoff for R2+ work.
+6. Prefer invisible automation when deterministic evidence permits it.
+7. AI may orchestrate workflow, but accounting/ledger truth remains deterministic rules — **AI 管流程，不管帳**.
 
-## 1. Authority map
+---
 
-Read in order:
+## 1. Current production truth
 
-1. `AI_PROJECT_PLAYBOOK.md`.
-2. `README.md`.
-3. this file.
-4. protected `main`, open PRs, exact-head CI, Pages/deployment state.
-5. `docs/engineering/PHASE4_TRIGGER_AMBIGUITY_REPLAY_2026-08-14.md` — active slice.
-6. `docs/engineering/PHASE4_FAILURE_TRIAGE_RECOVERY_2026-08-14.md` — closed terminal-failure recovery.
-7. Phase 3/Phase 2/NOW-1B engineering docs for inherited contracts.
+Protected main currently contains the complete closed automation chain through Phase 4:
 
-Do not collapse main SHA, Pages source, Worker runtime and deployment authority into one “current SHA”.
+- NOW-1B durable record-create intent — CLOSED.
+- Phase 2 automatic recalculation — CLOSED.
+- Phase 3 snapshot self-healing — CLOSED.
+- Phase 4 bounded terminal calculation failure recovery — CLOSED.
+- Phase 4 trigger outcome ambiguity replay — CLOSED.
 
-## 2. Closed product work
+Latest closed Phase 4 trigger ambiguity evidence:
 
-| Area | State | Closure evidence |
-|---|---|---|
-| Market-data malformed-row incident | CLOSED / PRODUCTION VERIFIED | passive watch only |
-| NOW-1B-A rollback-safe record-create transport | CLOSED / PRODUCTION VERIFIED | `/api/records/idempotent` live |
-| NOW-1B-B durable record-create intent | CLOSED | PR #231 `e7c94adc...`; CI #791 + Pages #1514 |
-| Phase 2 Automatic Recalculation | CLOSED | PR #232 `a458966...`; CI #799 + Pages #1515 |
-| Phase 3 Self-healing Snapshot | CLOSED | PR #233 `5706cb7463ad1e6e433ca9e852ff728ba0cc9c0e`; CI #807 + Pages #1516 |
-| Phase 4 terminal calculation failure recovery | **CLOSED** | PR #234 `3ed4711af539b7d60657adbec177607014b7a0e4`; CI #818 + Pages #1517 |
+- PR #235 ordinary merged as `b8d412559ef684bfb2b9197480898f140a92bd43`.
+- post-main CI #823 SUCCESS.
+- production Pages #1518 SUCCESS.
+- no Worker deployment or D1 change was required.
 
-Do not reopen broad OAuth/provider/Decimal/cash-ledger/stale-PUT/UUID/generalized-idempotency/backend-tombstone/distributed-ordering work without new production evidence.
+Do not reopen these closed phases without new material evidence.
 
-## 3. Inherited calculation lifecycle
+---
 
-```text
-confirmed mutation
--> durable dirty generation
--> debounce/coalesce
--> /api/trigger-update with stable idempotency key
--> calculation_jobs
--> exact generation coverage
--> polling/recovery
--> deterministic snapshot
-```
+## 2. Active Phase 5 slice
 
-Phase 3 can create one bounded dirty-generation repair handoff after proving snapshot staleness.
+Branch: `feat/phase5-read-self-recovery`
 
-Phase 4 terminal recovery can perform one cross-tab-exclusive new dispatch retry only for typed transient terminal job failures while the same dirty generation remains pending. Validation/reconciliation/configuration/unknown failures stop.
+Permanent design:
 
-## 4. ACTIVE — Phase 4 trigger outcome ambiguity replay
+`docs/engineering/PHASE5_BOUNDED_DATA_READ_SELF_RECOVERY_2026-08-14.md`
 
-PR: **#235 — `Phase 4: recover ambiguous calculation triggers`**  
-Branch: `feat/phase4-trigger-ambiguity-replay`  
-Base: verified main `3ed4711af539b7d60657adbec177607014b7a0e4`  
-Risk: **R2 Significant**.
+Product objective:
 
-Objective:
+> When a safe portfolio GET read fails transiently, attempt one invisible reconnect before asking the user to press the existing reliability banner's `重新載入` button.
 
-> If `/api/trigger-update` may have succeeded but its response is ambiguous, automatically confirm the original intent once with the **same existing Idempotency-Key and benchmark** instead of requiring reload/manual retry.
+### Recoverable exact paths
 
-### Backend safety proof
+- `GET /api/records`
+- `GET /api/portfolio`
+- `GET /api/user-settings`
 
-Worker `calculationJobsRepository.createOrGet(...)` is already owner/key idempotent. Existing key replay returns the existing job with `deduplicated: true` and does not dispatch GitHub Actions again.
+### Retryable evidence
 
-Therefore:
+- timeout;
+- malformed response/success evidence;
+- network `TypeError` / `NetworkError`;
+- explicit HTTP 5xx.
 
-- original never reached Worker → replay creates the one intended job;
-- queued/running response was lost → replay returns existing job;
-- dispatch failed after job creation → replay returns same failed job; closed Phase 4 terminal recovery may later decide whether one new-key retry is safe;
-- already succeeded → replay returns succeeded job.
+### Fail closed
 
-### Generic request failure evidence
+- mutation methods;
+- HTTP 4xx/client rejection;
+- external/user abort;
+- calculation-job polling routes;
+- unknown non-network errors;
+- signed-out state;
+- explicit browser offline state.
 
-`src/services/fetchDeadline.js` publishes generic failure evidence through `src/services/requestFailureSignal.js`:
+### Bounded episode semantics
 
-- pathname;
-- method;
-- normalized error object.
+- auto recovery only runs after `portfolioReadStatus === 'error'`;
+- 2-second backoff;
+- same signed owner + token + online state required at retry time;
+- one `portfolio.fetchAll()` automatic retry per failed episode;
+- a verified later `portfolioReadStatus === 'loaded'` resets the allowance;
+- failed auto retry leaves the existing DataReliabilityBanner/manual `重新載入` fallback intact;
+- no automatic loop.
 
-No token, Idempotency-Key, request body, owner or transaction payload is published. Subscriber failure cannot alter request semantics. External abort does not publish recovery evidence.
+### Cross-owner correction found during R2 review
 
-### Trigger-specific recovery controller
+Initial implementation used one controller-wide episode flag. During a 2-second backoff, switching accounts could cancel the old timer but accidentally consume the new account's one-attempt allowance.
 
-`src/services/calculationTriggerAmbiguityRecovery.js` filters exact POST `/api/trigger-update` only.
+Correction:
 
-Flow:
+- episode allowance is now owner-aware;
+- account change resets the episode allowance and clears old pending evidence;
+- old-owner timer cannot run under the new owner;
+- a new-owner pending failure can schedule after the old timer releases;
+- notification/timer helper failures are contained.
 
-1. classify failure using typed Phase 4 policy;
-2. require current signed owner and owner-bound pending calculation request;
-3. capture exact pending key + benchmark;
-4. one replay attempt per key per controller lifetime;
-5. wait 1.5 seconds;
-6. re-read owner, selected benchmark and shared pending generation;
-7. any drift/missing state → stop;
-8. otherwise call existing `portfolio.triggerUpdate(benchmark, {automatic:true, ambiguityReplay:true})`;
-9. store `getOrCreateIdempotencyKey()` reuses the existing key;
-10. second ambiguity cannot loop because the key is already marked attempted.
+---
 
-Non-trigger POSTs, including `/api/records/idempotent`, never enter this controller.
+## 3. Current implementation files
 
-### Trigger error policy refinement
+Expected active diff:
 
-Same-intent reconciliation allowed:
+- `src/services/dataReadSelfRecovery.js`
+- `src/main.js`
+- `tests/frontend_data_read_self_recovery.test.mjs`
+- `tests/frontend_data_read_self_recovery_bootstrap.test.mjs`
+- `docs/engineering/PHASE5_BOUNDED_DATA_READ_SELF_RECOVERY_2026-08-14.md`
+- this file.
 
-- outcome ambiguous with no explicit API code (timeout/network/malformed response evidence);
-- explicit `GITHUB_DISPATCH_TIMEOUT`;
-- explicit `GITHUB_DISPATCH_FAILED`.
+No Worker, D1/schema, Python-engine, finance, market-data, validation or reconciliation changes are expected.
 
-Explicit operations stop:
+---
 
-- `GITHUB_DISPATCH_NOT_CONFIGURED`;
-- `GITHUB_DISPATCH_INVALID_RESPONSE`;
-- `GITHUB_AUTH_FAILED`;
-- `GITHUB_PERMISSION_DENIED`;
-- `GITHUB_WORKFLOW_NOT_FOUND`;
-- `GITHUB_DISPATCH_REJECTED`.
-
-Explicit unknown API codes fail closed. HTTP 5xx alone cannot promote them into replayable status.
-
-### Conservative coverage rule
-
-A same-key replay that returns `deduplicated: true` does not claim Phase 2 dirty-generation coverage. A later redundant follow-up calculation is acceptable; falsely declaring a newer transaction generation clean is not.
-
-## 5. Verification chronology
-
-### CI #819 / run `31774399891`
-
-Initial code-bearing head `21ab3b9bb8295d49fdec00551255b0f1fb5f7d5a`: Frontend / Worker / Python SUCCESS.
-
-Tests cover transport/malformed-response evidence, external-abort suppression, same-key timeout replay, explicit allowlisted dispatch failure, explicit config/auth/workflow/unknown fail-closed behavior, owner/benchmark/pending drift, no-pending/no-new-key behavior, record-create isolation and bootstrap uniqueness.
-
-### Post-#819 adversarial refinement
-
-Controller classification/timer/subscriber failures were contained so no recovery helper can leak an unhandled promise rejection or change original request semantics.
-
-### CI #820 / run `31774482169`
-
-Code-bearing exact head `5527a60727413f40297bfa1a6c6f2a23378173f5`: **SUCCESS** across Frontend, Worker and Python.
-
-CI #820 proves code only. Permanent docs advance the branch, so a fresh docs-bearing exact-head CI is mandatory.
-
-## 6. Exact remaining gates
+## 4. Remaining gates
 
 Do autonomously unless GitHub/platform genuinely requires owner action:
 
-1. re-fetch PR #235 exact docs-bearing head;
-2. require fresh full CI on that exact head — do not merge using #820;
-3. compare against protected main; expected scope is trigger ambiguity services, narrow `fetchDeadline`/triage/bootstrap changes, tests, handoff docs and this file only;
-4. final R2 review must confirm:
-   - no Worker/D1/Python/finance drift;
-   - no new idempotency key generated by ambiguity recovery;
-   - exact owner/key/benchmark intent required before and after backoff;
-   - selected benchmark/pending generation drift cancels;
-   - one replay per key per controller lifetime;
-   - explicit non-allowlisted API codes fail closed;
-   - external abort is ignored;
-   - record-create/non-trigger routes are isolated;
-   - backend same-key replay cannot duplicate dispatch;
-   - deduplicated replay cannot falsely claim Phase 2 coverage;
-   - listener/controller failure cannot alter original request semantics;
-5. update PR #235 body with final head/CI/review;
-6. mark Ready;
-7. ordinary merge with expected head SHA;
-8. require post-main CI SUCCESS;
-9. require production Pages SUCCESS;
-10. no Worker deploy expected;
-11. no real-user ledger mutation solely for smoke testing.
+1. create Draft PR from `feat/phase5-read-self-recovery` to `main`;
+2. require exact-head full CI across Frontend, Worker and Python;
+3. if CI fails, RCA the single current failure; do not weaken safety gates;
+4. adversarial review must confirm:
+   - GET-only exact-path scope;
+   - one retry per failed episode;
+   - successful load resets allowance;
+   - 4xx/abort/non-read routes fail closed;
+   - owner switch cannot replay old-owner work or consume new-owner quota;
+   - offline state cancels retry;
+   - helper/notify failures cannot leak globally;
+   - no second data loader/cache/queue;
+   - existing manual reload remains fallback;
+5. final compare against protected `main`, `behind_by=0`;
+6. update PR body with exact head/CI/review evidence;
+7. mark Ready;
+8. ordinary merge with expected head SHA;
+9. require post-main CI SUCCESS;
+10. require production Pages SUCCESS;
+11. no Worker deploy expected;
+12. no real-user ledger mutation for smoke testing.
 
-Only then mark this slice CLOSED.
+Only then mark this Phase 5 slice CLOSED.
 
-## 7. Next-line rule
+---
 
-After #235 closure, independently reassess remaining user friction before starting Phase 5. Do not create a broad AI-agent layer by default. Any future AI/Ops automation may triage and orchestrate deterministic evidence, but must not infer or rewrite accounting truth.
+## 5. What not to do next
 
-## 8. Repository hygiene
+Do not convert Phase 5 into a broad AI-agent rewrite. After this read-self-recovery slice closes, independently identify the next highest-friction manual operation and automate only where deterministic evidence permits it.
 
-`tmp-do-not-create` is a zero-diff accidental branch with no unique commits or production effect. The current connector has no branch-delete action. Remove it later through GitHub UI when convenient; never block product work for this cleanup.
+Repository hygiene item `tmp-do-not-create` remains zero-diff/nonfunctional and must not block product work.
