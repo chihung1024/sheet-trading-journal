@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "baseline_sha": "c5b608bbbde1c13105f9dcb7d5ae8f789b9f4bae",
-  "review_date": "2026-08-06",
+  "review_date": "2026-08-14",
   "purpose": "Inventory current browser persistence so new keys cannot be introduced silently. Presence in this baseline is not a declaration that a key is safe.",
   "keys": [
     {
@@ -48,6 +48,15 @@
       "target_batch": "B07",
       "planned_action": "retain-only-as-opaque-tenant-bound-hint",
       "owner_paths": ["src/services/calculationJobState.js", "src/services/projectStorage.js", "src/stores/portfolio.js"]
+    },
+    {
+      "key": "record_mutation_barrier.v1",
+      "classification": "tenant-operation-recovery-barrier",
+      "authoritative": false,
+      "risk_ids": ["RISK-020", "RISK-038"],
+      "target_batch": "NOW-1B",
+      "planned_action": "retain-owner-validated-replay-barrier",
+      "owner_paths": ["src/services/recordCreateIntent.js", "src/services/projectStorage.js"]
     },
     {
       "key": "sheet_trading_journal.activeView",
