@@ -1,273 +1,188 @@
 # TO-DO / UPDATE LIST — Product-First Current Handoff
 
-> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
+> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state overrides prose. Closed work is provenance, not an instruction to restart it.
 
 Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **Phase 4 bounded calculation failure recovery — final docs-bearing CI → merge → post-main CI/Pages**
-
----
+Current line: **Phase 4 trigger outcome ambiguity replay — final docs-bearing CI → merge → post-main CI/Pages**
 
 ## 0. Operating doctrine
 
-1. Product functionality and user experience are highest priority.
-2. Fix generic root causes, not individual symptoms. Parallel investigation must converge.
-3. Financial/data correctness is fail-closed and may not be traded for convenience.
-4. Keep one primary active batch; do not reopen closed work without new material evidence.
-5. Preserve exact-head CI, rollback/recovery and permanent handoff for R2+ work.
-6. Prefer invisible automation when deterministic evidence permits it.
-7. AI may orchestrate workflow, but accounting/ledger truth remains deterministic rules — **AI 管流程，不管帳**.
+1. Product functionality and UX are highest priority.
+2. Fix generic root causes; parallel investigation must converge.
+3. Financial/data correctness is fail-closed.
+4. Keep one primary active batch.
+5. R2+ work requires exact-head CI, rollback, independent review and permanent handoff.
+6. Prefer invisible deterministic automation; **AI 管流程，不管帳**.
 
----
+## 1. Authority map
 
-## 1. Authority map for the next AI
-
-Reconstruct truth in this order:
+Read in order:
 
 1. `AI_PROJECT_PLAYBOOK.md`.
 2. `README.md`.
 3. this file.
-4. protected `main`, open PRs, exact-head CI and Pages state.
-5. `docs/engineering/PHASE4_FAILURE_TRIAGE_RECOVERY_2026-08-14.md` — active Phase 4 contract and RCAs.
-6. `docs/engineering/PHASE3_SELF_HEALING_SNAPSHOT_2026-08-14.md` — closed snapshot self-healing contract.
-7. `docs/engineering/PHASE2_AUTOMATIC_RECALCULATION_2026-08-14.md` — closed calculation lifecycle Phase 4 reuses.
-8. `docs/engineering/NOW1B_DURABLE_RECORD_CREATE_INTENT_2026-08-14.md` — closed durable-create boundary.
-9. Worker/D1/deployment contracts only when backend/deployment work is actually required.
+4. protected `main`, open PRs, exact-head CI, Pages/deployment state.
+5. `docs/engineering/PHASE4_TRIGGER_AMBIGUITY_REPLAY_2026-08-14.md` — active slice.
+6. `docs/engineering/PHASE4_FAILURE_TRIAGE_RECOVERY_2026-08-14.md` — closed terminal-failure recovery.
+7. Phase 3/Phase 2/NOW-1B engineering docs for inherited contracts.
 
-Do not collapse protected-main HEAD, Pages source, Worker runtime source, production authority and immutable evidence into one “current SHA”. Re-fetch before consequential actions.
+Do not collapse main SHA, Pages source, Worker runtime and deployment authority into one “current SHA”.
 
----
+## 2. Closed product work
 
-## 2. Product architecture that must remain intact
-
-```text
-Vue 3 / Vite SPA (Cloudflare Pages)
-  -> Cloudflare Worker API
-  -> D1 authoritative transaction DB
-
-transaction/update intent
-  -> calculation_jobs
-  -> GitHub Actions Python engine
-  -> market data / ledger / split / FX / FIFO / dividend / TWR / XIRR
-  -> fail-closed validation + reconciliation
-  -> deterministic snapshot manifest
-  -> browser poll/readback
-```
-
-D1 is authoritative for transactions. Browser persistence is bounded recovery/orchestration state only.
-
----
-
-## 3. Closed work — do not reopen by default
-
-| Area | State | Evidence |
+| Area | State | Closure evidence |
 |---|---|---|
-| Gate A–D / E0 / E1 lifecycle work | CLOSED | no current product blocker |
-| Market-data NaN/event-row incident | CLOSED / PRODUCTION VERIFIED | passive watch only |
-| Server record-create idempotency | LIVE | tenant-scoped replay/conflict contract |
-| NOW-1B-A rollback-safe create transport | CLOSED / PRODUCTION VERIFIED | `/api/records/idempotent` live |
-| NOW-1B-B durable create intent | CLOSED | PR #231 merged `e7c94adc...`; CI #791 + Pages #1514 PASS |
-| Phase 2 Automatic Recalculation | CLOSED | PR #232 merged `a458966...`; CI #799 + Pages #1515 PASS |
-| Phase 3 Self-healing Snapshot Lifecycle | **CLOSED** | PR #233 merged `5706cb7463ad1e6e433ca9e852ff728ba0cc9c0e`; post-main CI #807 + Pages #1516 PASS |
-| Old dedicated production create-smoke blocker | NOT A PRODUCT BLOCKER | do not hold product work for missing isolated tenant |
+| Market-data malformed-row incident | CLOSED / PRODUCTION VERIFIED | passive watch only |
+| NOW-1B-A rollback-safe record-create transport | CLOSED / PRODUCTION VERIFIED | `/api/records/idempotent` live |
+| NOW-1B-B durable record-create intent | CLOSED | PR #231 `e7c94adc...`; CI #791 + Pages #1514 |
+| Phase 2 Automatic Recalculation | CLOSED | PR #232 `a458966...`; CI #799 + Pages #1515 |
+| Phase 3 Self-healing Snapshot | CLOSED | PR #233 `5706cb7463ad1e6e433ca9e852ff728ba0cc9c0e`; CI #807 + Pages #1516 |
+| Phase 4 terminal calculation failure recovery | **CLOSED** | PR #234 `3ed4711af539b7d60657adbec177607014b7a0e4`; CI #818 + Pages #1517 |
 
-Do not restart broad OAuth/provider/Decimal/cash-ledger/stale-PUT/UUID/generalized-idempotency/backend-tombstone/distributed-ordering redesign without new production evidence.
+Do not reopen broad OAuth/provider/Decimal/cash-ledger/stale-PUT/UUID/generalized-idempotency/backend-tombstone/distributed-ordering work without new production evidence.
 
----
-
-## 4. Closed lifecycle Phase 4 must reuse
-
-Phase 2 already provides:
+## 3. Inherited calculation lifecycle
 
 ```text
 confirmed mutation
 -> durable dirty generation
 -> debounce/coalesce
--> /api/trigger-update
+-> /api/trigger-update with stable idempotency key
 -> calculation_jobs
 -> exact generation coverage
 -> polling/recovery
--> fresh snapshot
+-> deterministic snapshot
 ```
 
-Phase 3 already provides:
+Phase 3 can create one bounded dirty-generation repair handoff after proving snapshot staleness.
 
-```text
-successful full read
--> deterministic snapshot/source identity proof
--> missing/stale/benchmark mismatch classification
--> one bounded repair handoff into Phase 2
-```
+Phase 4 terminal recovery can perform one cross-tab-exclusive new dispatch retry only for typed transient terminal job failures while the same dirty generation remains pending. Validation/reconciliation/configuration/unknown failures stop.
 
-Phase 4 must not create another calculation queue or reinterpret financial truth.
+## 4. ACTIVE — Phase 4 trigger outcome ambiguity replay
 
----
-
-## 5. Phase 4 bounded calculation failure recovery — ACTIVE
-
-PR: **#234 — `Phase 4: bounded calculation failure recovery`**  
-Branch: `feat/phase4-failure-triage-recovery`  
-Base: Phase 3 verified main `5706cb7463ad1e6e433ca9e852ff728ba0cc9c0e`  
+PR: **#235 — `Phase 4: recover ambiguous calculation triggers`**  
+Branch: `feat/phase4-trigger-ambiguity-replay`  
+Base: verified main `3ed4711af539b7d60657adbec177607014b7a0e4`  
 Risk: **R2 Significant**.
 
-Product objective:
+Objective:
 
-> A known transient terminal calculation failure may receive one safe automatic retry only when the same Phase 2 dirty generation still proves pending calculation intent. Integrity/validation/unknown failures stop automatically.
+> If `/api/trigger-update` may have succeeded but its response is ambiguous, automatically confirm the original intent once with the **same existing Idempotency-Key and benchmark** instead of requiring reload/manual retry.
 
-### Typed triage policy
+### Backend safety proof
 
-Retryable policy allowlist:
+Worker `calculationJobsRepository.createOrGet(...)` is already owner/key idempotent. Existing key replay returns the existing job with `deduplicated: true` and does not dispatch GitHub Actions again.
 
-- `GITHUB_DISPATCH_TIMEOUT`
-- `GITHUB_DISPATCH_FAILED`
-- `RECORDS_API_FAILED`
-- `SETTINGS_API_FAILED`
-- `MARKET_DATA_FAILED`
-- `SNAPSHOT_UPLOAD_FAILED`
+Therefore:
 
-Fail closed:
+- original never reached Worker → replay creates the one intended job;
+- queued/running response was lost → replay returns existing job;
+- dispatch failed after job creation → replay returns same failed job; closed Phase 4 terminal recovery may later decide whether one new-key retry is safe;
+- already succeeded → replay returns succeeded job.
 
-- `RECORD_VALIDATION_FAILED` → user action;
-- `RECONCILIATION_FAILED`, `SNAPSHOT_VALIDATION_FAILED` → integrity stop;
-- `CONFIGURATION_FAILED` → operations stop;
-- generic/multiple/unknown/unrecognized → unknown stop.
+### Generic request failure evidence
 
-Unknown codes are never auto-promoted to retryable.
+`src/services/fetchDeadline.js` publishes generic failure evidence through `src/services/requestFailureSignal.js`:
 
-### Actual wired scope
+- pathname;
+- method;
+- normalized error object.
 
-This first slice wires **terminal failed calculation jobs observed through `portfolio.calculationJob`**.
+No token, Idempotency-Key, request body, owner or transaction payload is published. Subscriber failure cannot alter request semantics. External abort does not publish recovery evidence.
 
-The pure policy understands ambiguous idempotent trigger outcomes and `GITHUB_DISPATCH_*`, but trigger-request failure recovery is **not wired in this slice**. Do not claim it as completed functionality.
+### Trigger-specific recovery controller
 
-### Durable recovery state
+`src/services/calculationTriggerAmbiguityRecovery.js` filters exact POST `/api/trigger-update` only.
 
-Fixed key: `calculation_failure_recovery.v1`.
+Flow:
 
-Contains only:
+1. classify failure using typed Phase 4 policy;
+2. require current signed owner and owner-bound pending calculation request;
+3. capture exact pending key + benchmark;
+4. one replay attempt per key per controller lifetime;
+5. wait 1.5 seconds;
+6. re-read owner, selected benchmark and shared pending generation;
+7. any drift/missing state → stop;
+8. otherwise call existing `portfolio.triggerUpdate(benchmark, {automatic:true, ambiguityReplay:true})`;
+9. store `getOrCreateIdempotencyKey()` reuses the existing key;
+10. second ambiguity cannot loop because the key is already marked attempted.
 
-- normalized owner;
-- opaque Phase 2 dirty-generation token;
-- opaque contender `claimId`;
-- attempt count = 1;
-- typed error code;
-- claim timestamp.
+Non-trigger POSTs, including `/api/records/idempotent`, never enter this controller.
 
-No transaction payload; non-authoritative. Logout cleanup removes it. Browser persistence inventory explicitly reviews it.
+### Trigger error policy refinement
 
-### Cross-tab exclusive claim
+Same-intent reconciliation allowed:
 
-`claimAutomaticFailureRetry()` uses contender write + 75 ms settle + shared read-back. Two tabs may contend, but only the tab whose exact `claimId` still owns the record can proceed.
+- outcome ambiguous with no explicit API code (timeout/network/malformed response evidence);
+- explicit `GITHUB_DISPATCH_TIMEOUT`;
+- explicit `GITHUB_DISPATCH_FAILED`.
 
-This was added after R2 review found synchronous read→write could let two tabs believe they both owned the single retry.
+Explicit operations stop:
 
-### 5-second recovery backoff
+- `GITHUB_DISPATCH_NOT_CONFIGURED`;
+- `GITHUB_DISPATCH_INVALID_RESPONSE`;
+- `GITHUB_AUTH_FAILED`;
+- `GITHUB_PERMISSION_DENIED`;
+- `GITHUB_WORKFLOW_NOT_FOUND`;
+- `GITHUB_DISPATCH_REJECTED`.
 
-The winning tab waits 5 seconds and cancels retry if:
+Explicit unknown API codes fail closed. HTTP 5xx alone cannot promote them into replayable status.
 
-- controller stopped;
-- signed owner changed;
-- dirty generation cleaned or token changed;
-- shared durable `pendingCalculationRequest` exists because another tab/lifecycle already took over;
-- local calculation job is queued/running.
+### Conservative coverage rule
 
-Otherwise it calls the existing:
+A same-key replay that returns `deduplicated: true` does not claim Phase 2 dirty-generation coverage. A later redundant follow-up calculation is acceptable; falsely declaring a newer transaction generation clean is not.
 
-`portfolio.triggerUpdate(..., { automatic: true })`
+## 5. Verification chronology
 
-No second queue/retry loop is introduced.
+### CI #819 / run `31774399891`
 
-A won claim is intentionally not refunded if later cancelled. This is conservative: it may reduce automation in a race but cannot create multiple automatic retries for one generation.
+Initial code-bearing head `21ab3b9bb8295d49fdec00551255b0f1fb5f7d5a`: Frontend / Worker / Python SUCCESS.
 
----
+Tests cover transport/malformed-response evidence, external-abort suppression, same-key timeout replay, explicit allowlisted dispatch failure, explicit config/auth/workflow/unknown fail-closed behavior, owner/benchmark/pending drift, no-pending/no-new-key behavior, record-create isolation and bootstrap uniqueness.
 
-## 6. Phase 4 verification chronology
+### Post-#819 adversarial refinement
 
-### CI #808 / run `31773099401`
+Controller classification/timer/subscriber failures were contained so no recovery helper can leak an unhandled promise rejection or change original request semantics.
 
-- new recovery behavior tests passed;
-- Worker PASS;
-- Frontend 269/270 PASS;
-- only failure: new fixed localStorage key was not yet in reviewed persistence inventory.
+### CI #820 / run `31774482169`
 
-Correction: add `calculation_failure_recovery.v1` to existing baseline. Scanner was not weakened.
+Code-bearing exact head `5527a60727413f40297bfa1a6c6f2a23378173f5`: **SUCCESS** across Frontend, Worker and Python.
 
-### CI #809 / run `31773169153`
+CI #820 proves code only. Permanent docs advance the branch, so a fresh docs-bearing exact-head CI is mandatory.
 
-Exact head `70cb34d258f986de81cf81f4c07188b6e23a8ebe`: SUCCESS across Frontend, Worker and Python.
-
-### Post-#809 R2 adversarial review
-
-Found two real cross-tab races:
-
-1. retry claim was not exclusive across tabs;
-2. stale failed tab could retry after another tab already wrote a durable pending calculation job.
-
-Corrections:
-
-- opaque claimId + settle/read-back exclusive winner;
-- backoff now yields to shared `readPendingCalculationRequest`.
-
-### CI #815 / run `31773455151`
-
-Code-bearing exact head `2f21b25205253030f1044e8a117d26ef633652b6`: **SUCCESS** across Frontend, Worker and Python.
-
-CI #815 proves the code-bearing candidate only. This handoff/documentation advances the branch head, so a fresh docs-bearing exact-head CI is mandatory before merge.
-
----
-
-## 7. Exact remaining Phase 4 gates
+## 6. Exact remaining gates
 
 Do autonomously unless GitHub/platform genuinely requires owner action:
 
-1. re-fetch PR #234 exact current docs-bearing head;
-2. require a fresh full CI on that exact head — do not merge using CI #815;
-3. compare against protected `main`;
-4. expected final scope is only the Phase 4 service/controller/bootstrap/tests/storage-governance/handoff files; no Worker/D1/Python-engine/finance drift;
-5. final R2 review must confirm:
-   - typed allowlist only;
-   - validation/reconciliation/snapshot-validation/config/unknown fail closed;
-   - dirty generation required;
-   - exactly one confirmed retry claim per generation across tabs/reloads;
-   - failed storage/random/claim confirmation grants no retry;
-   - newer/clean generation, owner change, local active job and shared pending job cancel backoff;
-   - no second queue or retry loop;
-   - existing triggerUpdate/Phase2 lifecycle remains authoritative;
-   - no transaction payload in recovery storage;
-   - logout cleanup and persistence inventory coverage;
-   - exactly one production bootstrap controller;
-   - trigger-request failure recovery remains out of wired scope;
-6. update PR #234 body with final head/CI/scope/review;
-7. mark Ready;
-8. ordinary merge with expected head SHA;
-9. require post-main CI SUCCESS;
-10. require production Pages SUCCESS;
-11. no Worker deploy expected;
-12. no real-user ledger mutation solely for smoke testing.
+1. re-fetch PR #235 exact docs-bearing head;
+2. require fresh full CI on that exact head — do not merge using #820;
+3. compare against protected main; expected scope is trigger ambiguity services, narrow `fetchDeadline`/triage/bootstrap changes, tests, handoff docs and this file only;
+4. final R2 review must confirm:
+   - no Worker/D1/Python/finance drift;
+   - no new idempotency key generated by ambiguity recovery;
+   - exact owner/key/benchmark intent required before and after backoff;
+   - selected benchmark/pending generation drift cancels;
+   - one replay per key per controller lifetime;
+   - explicit non-allowlisted API codes fail closed;
+   - external abort is ignored;
+   - record-create/non-trigger routes are isolated;
+   - backend same-key replay cannot duplicate dispatch;
+   - deduplicated replay cannot falsely claim Phase 2 coverage;
+   - listener/controller failure cannot alter original request semantics;
+5. update PR #235 body with final head/CI/review;
+6. mark Ready;
+7. ordinary merge with expected head SHA;
+8. require post-main CI SUCCESS;
+9. require production Pages SUCCESS;
+10. no Worker deploy expected;
+11. no real-user ledger mutation solely for smoke testing.
 
-Only then mark this Phase 4 first slice **CLOSED**.
+Only then mark this slice CLOSED.
 
----
+## 7. Next-line rule
 
-## 8. Next line after closure
+After #235 closure, independently reassess remaining user friction before starting Phase 5. Do not create a broad AI-agent layer by default. Any future AI/Ops automation may triage and orchestrate deterministic evidence, but must not infer or rewrite accounting truth.
 
-Do not automatically jump into a broad “AI agent” rewrite.
+## 8. Repository hygiene
 
-After #234 post-main CI + Pages closure, independently review whether the next highest-value Phase 4 slice is:
-
-1. safe trigger-request ambiguity recovery using the already-typed policy, or
-2. richer deterministic failure presentation/triage, or
-3. Phase 5 Ops Autopilot.
-
-Choose based on actual remaining user friction and production evidence. Any AI layer remains orchestration only and cannot infer/rewrite accounting truth.
-
----
-
-## 9. Repository hygiene note
-
-A zero-diff branch named `tmp-do-not-create` was accidentally created earlier pointing at historical main. It has no unique commits and no production effect. Current connector lacks a branch-delete action. Do **not** let this nonfunctional cleanup block product work; remove it later through repository UI when convenient.
-
----
-
-## 10. Historical provenance
-
-Closed details remain in Git history, merged PRs, engineering docs, governance evidence and workflow artifacts. This file is intentionally converged to answer one operational question accurately: **what should the next AI do now without breaking the product?**
+`tmp-do-not-create` is a zero-diff accidental branch with no unique commits or production effect. The current connector has no branch-delete action. Remove it later through GitHub UI when convenient; never block product work for this cleanup.
