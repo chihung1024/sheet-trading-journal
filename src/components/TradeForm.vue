@@ -311,7 +311,7 @@ const resetForm = () => {
     form.qty = ''; 
     form.price = ''; 
     form.fee = ''; 
-    form.tax = ''; 
+    form.tax = '';
     form.total_amount = '';
     form.tag = ''; 
     form.txn_type = 'BUY';
@@ -387,7 +387,7 @@ defineExpose({ setupForm, resetForm });
 .panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
 .mode-badge { font-size: 0.75rem; background: var(--warning); color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
 
-/* 根據模式切換 */
+/* 交易類型切換 (Segmented Control) */
 .trade-type-switch { 
     display: flex; 
     background: var(--bg-secondary); 
