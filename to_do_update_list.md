@@ -3,7 +3,7 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose. Historical plans are provenance, not instructions to restart closed work.
 
 Last updated: **2026-08-14 Asia/Taipei**  
-Current line: **User-reported product defect batch ACTIVE on PR #245; runtime code frozen pending docs-bearing CI / merge gates**
+Current line: **PR #245 three user-reported defects CLOSED / PRODUCTION PAGES VERIFIED → no runtime batch active; resume evidence-driven product / UX audit**
 
 ---
 
@@ -39,108 +39,77 @@ Current line: **User-reported product defect batch ACTIVE on PR #245; runtime co
 | Record-create recovery UI completion | CLOSED / PRODUCTION PAGES VERIFIED | PR #242 `268a7b31c1354da67857c910b7dbea7f4d602112`; final PR CI #854, post-main CI #855 + Pages #1525 SUCCESS |
 | Phase 5 closure handoff | CLOSED | PR #243 `74351c863bcceb061a10d85ed673f6611d2e1faa`; post-main CI #857 + Pages #1526 SUCCESS |
 | Restored-session read recovery copy | CLOSED / PRODUCTION PAGES VERIFIED | PR #244 `f00c5616a1d9eca819e6c7cccda181fe6be322e8`; final PR CI #858, post-main CI #859 + Pages #1527 SUCCESS |
+| Three user-reported product defects | **CLOSED / PRODUCTION PAGES VERIFIED** | PR #245 `112c9b7b0d93ea49547f3cd005f4a5024f152bd5`; final PR CI #864, post-main CI #865 + Pages #1528 SUCCESS |
 
 Do not reopen closed phases without new material evidence.
 
 ---
 
-## 2. Current production baseline before active PR #245
+## 2. Current production baseline
 
-Protected `main`:
+Protected `main` after PR #245:
 
-`f00c5616a1d9eca819e6c7cccda181fe6be322e8`
+`112c9b7b0d93ea49547f3cd005f4a5024f152bd5`
 
-PR #244 is merged/closed and production-active on Pages.
+PR #245 is merged/closed and production-active on Pages.
 
-No runtime feature/recovery batch was active before the user reported the three defects below.
+There is currently **no runtime feature batch active**.
 
----
-
-## 3. ACTIVE — PR #245 user-reported product defects
-
-Branch:
-
-`fix/product-audit-three-user-defects`
-
-Draft PR:
-
-`#245 — fix: close stale snapshot, desktop overlap, and TWR baseline defects`
-
-### A. Successful backend calculation but snapshot remains stale
-
-Production evidence:
-
-- `Update Portfolio Data #3275` / run `31792620418` SUCCESS on production main;
-- calculation/upload and result-reporting both succeeded;
-- UI nevertheless could remain in `持倉與績效快照待重新計算`.
-
-Root cause class:
-
-- Phase 3 may create a newer durable dirty generation while the successful calculation/fresh-read lifecycle is still unwinding;
-- a loaded transition during in-flight snapshot reconciliation could be coalesced away;
-- the new dirty token could therefore miss a later lifecycle edge that re-offers it to Phase 2.
-
-Fix:
-
-- preserve loaded rerun requests during in-flight reconciliation;
-- one bounded post-success full-read handoff per same-owner dirty token when stale state is still proven;
-- re-enter existing `fetchAll()` only; Phase 2 remains calculation scheduler;
-- do not hide or forcibly clear stale state.
-
-### B. Desktop right transaction panel overlaps banners/notices
-
-Root cause class:
-
-- panel was `position: fixed` to viewport even though its aside belongs to the workspace grid;
-- content above the grid could not push it down.
-
-Fix:
-
-- desktop panel becomes grid-flow `position: sticky`;
-- width derives from the grid rail rather than a second hardcoded viewport geometry;
-- relevant horizontal overflow uses `clip` so sticky semantics remain viewport-based;
-- mobile fixed sheet remains unchanged.
-
-### C. TWR strategy and benchmark start from different dates
-
-Root cause class:
-
-- benchmark was independently rebased from the selected baseline row;
-- strategy correctly stayed null until reliable TWR existed;
-- benchmark could therefore start earlier than strategy.
-
-Fix:
-
-- shared first common reliable strategy + finite benchmark anchor;
-- both series start from that same date and are rebased to 0%;
-- benchmark does not extend through a later unreliable strategy interval;
-- missing benchmark values fail closed and are never coerced from `null` to numeric zero;
-- Python TWR / financial methodology unchanged.
-
-### Code-bearing verification
-
-Code-bearing head before permanent docs:
-
-`7ebba7c0e6a6b3344dee9abce1bb20b5cfbdf61c`
-
-CI #862 / run `31795590198`: **SUCCESS** across Frontend contracts/build, Worker/D1 tests and Python tests/coverage.
-
-Independent R2 review: **PASS / 0 BLOCKER**.
-
-Permanent engineering handoff:
+Permanent engineering handoff for the latest product defect batch:
 
 `docs/engineering/PRODUCT_AUDIT_THREE_USER_DEFECTS_2026-08-14.md`
 
-### Remaining closure gates
+### Closed behavior from PR #245
 
-1. obtain latest docs-bearing head;
-2. confirm final compare against protected `main`, `behind_by=0`, expected code/tests/docs only;
-3. require fresh exact-head full CI SUCCESS;
-4. update PR #245 final evidence and keep R2 PASS / 0 blocker;
-5. mark Ready;
-6. ordinary merge with expected head SHA;
-7. require post-main CI SUCCESS and Pages build/report/deploy SUCCESS for exact merge SHA;
-8. no Worker deployment or D1 migration expected.
+1. **Snapshot stale after successful calculation**
+   - a loaded transition arriving during in-flight snapshot reconciliation is not lost;
+   - if a successful calculation is followed by a still-proven stale snapshot and same-owner durable dirty generation, one bounded full-read lifecycle handoff re-offers that generation to existing Phase 2 scheduling;
+   - stale state is never hidden or force-cleared.
+
+2. **Desktop trade-panel overlap**
+   - desktop transaction rail participates in the workspace grid and uses sticky positioning rather than viewport-fixed positioning;
+   - banners/notices above the grid can push the rail down naturally;
+   - mobile fixed-sheet behavior is unchanged.
+
+3. **TWR / benchmark mismatched starting point**
+   - comparison begins at the first common reliable strategy + finite benchmark row;
+   - both series are rebased to 0% on the same date;
+   - benchmark does not extend through unreliable strategy intervals;
+   - missing benchmark values fail closed instead of being coerced to zero;
+   - Python/financial methodology is unchanged.
+
+---
+
+## 3. ACTIVE STATE — evidence-driven product / UX audit
+
+This is an audit state, not permission for a broad refactor.
+
+Select the next product batch only from:
+
+- a reproducible user-facing defect;
+- production logs/jobs showing a repeated failure class;
+- a current open product issue whose acceptance is not already implemented;
+- a measurable normal-use path requiring unnecessary user actions that the existing automation lifecycle cannot already recover.
+
+Before writing code, verify the candidate against current `main` and existing tests so old roadmap items are not reimplemented.
+
+### Already reviewed and intentionally not promoted without new evidence
+
+1. **Generalized UPDATE / DELETE outcome-ambiguity durable intents**
+   - technically possible, but would expand mutation authority;
+   - do not implement without real user/production evidence.
+
+2. **Calculation polling beyond 20 minutes**
+   - observed normal update runs complete far below the current limit;
+   - do not add long-running polling machinery for a theoretical case.
+
+3. **Broad cross-group dividend pending filtering**
+   - Python already derives confirmed DIV state authoritatively;
+   - frontend global symbol/date filtering risks incorrect group semantics.
+
+4. **Staging Worker/D1 issue #97**
+   - infrastructure, not current user-facing functionality;
+   - keep deferred unless needed to deliver a concrete product change safely or explicitly reprioritized.
 
 ---
 
@@ -171,17 +140,6 @@ Never weaken:
 
 ---
 
-## 5. Deferred / evidence-gated candidates
-
-Do not promote without new material evidence:
-
-1. generalized UPDATE / DELETE outcome-ambiguity durable intents;
-2. calculation polling beyond 20 minutes;
-3. broad cross-group dividend pending filtering;
-4. staging Worker/D1 issue #97 unless required to deliver a concrete product change safely or explicitly reprioritized.
-
----
-
-## 6. Repository hygiene
+## 5. Repository hygiene
 
 Old Draft PRs #225/#227 and completed issue #79 are closed. Zero-diff abandoned branches are nonfunctional hygiene only; remove through a supported branch-delete path when convenient and never block product work for them.
