@@ -64,11 +64,16 @@ test('create intent persists barrier and immutable serialized body before networ
   assert.equal(intent.idempotencyKey, 'intent-0000000000001');
   assert.equal(intent.barrierToken, 'barrier-000000000001');
   assert.equal(Object.isFrozen(intent), true);
-  assert.equal(storage.getItem(RECORD_MUTATION_BARRIER_STORAGE_KEY)?.includes(OWNER), true);
-  assert.equal(
-    storage.getItem(`${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${intent.idempotencyKey}`)?.includes(intent.body),
-    true,
+
+  const storedBarrier = JSON.parse(storage.getItem(RECORD_MUTATION_BARRIER_STORAGE_KEY));
+  const storedIntent = JSON.parse(
+    storage.getItem(`${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${intent.idempotencyKey}`),
   );
+  assert.equal(storedBarrier.owner, OWNER);
+  assert.equal(storedBarrier.token, intent.barrierToken);
+  assert.equal(storedIntent.owner, OWNER);
+  assert.equal(storedIntent.idempotencyKey, intent.idempotencyKey);
+  assert.equal(storedIntent.body, intent.body);
 });
 
 test('identical legitimate creates receive distinct keys and only the newest barrier remains replay eligible', () => {
