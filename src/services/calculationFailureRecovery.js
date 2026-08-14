@@ -37,16 +37,26 @@ const INTEGRITY_STOP_CODES = new Set([
 
 const OPERATIONS_STOP_CODES = new Set([
   'CONFIGURATION_FAILED',
+  'GITHUB_DISPATCH_NOT_CONFIGURED',
+  'GITHUB_DISPATCH_INVALID_RESPONSE',
+  'GITHUB_AUTH_FAILED',
+  'GITHUB_PERMISSION_DENIED',
+  'GITHUB_WORKFLOW_NOT_FOUND',
+  'GITHUB_DISPATCH_REJECTED',
 ]);
 
 const normalizeOwner = value => (
   typeof value === 'string' ? value.trim().toLowerCase() : ''
 );
 
-const normalizeErrorCode = value => {
+const normalizeExplicitErrorCode = value => {
   const code = typeof value === 'string' ? value.trim().toUpperCase() : '';
-  return ERROR_CODE_RE.test(code) ? code : 'UNKNOWN_CALCULATION_FAILED';
+  return ERROR_CODE_RE.test(code) ? code : '';
 };
+
+const normalizeErrorCode = value => (
+  normalizeExplicitErrorCode(value) || 'UNKNOWN_CALCULATION_FAILED'
+);
 
 const requireStorage = (storage) => {
   if (
@@ -121,18 +131,10 @@ export const triageCalculationFailure = ({
   source = 'job',
   outcomeAmbiguous = false,
 } = {}) => {
-  const code = normalizeErrorCode(errorCode);
+  const explicitCode = normalizeExplicitErrorCode(errorCode);
+  const code = explicitCode || 'UNKNOWN_CALCULATION_FAILED';
   const normalizedSource = source === 'trigger' ? 'trigger' : 'job';
 
-  if (normalizedSource === 'trigger' && outcomeAmbiguous === true) {
-    return Object.freeze({
-      classification: FAILURE_RECOVERY_CLASS.RETRYABLE_TRANSIENT,
-      retryable: true,
-      errorCode: code,
-      source: normalizedSource,
-      reason: 'idempotent_trigger_outcome_ambiguous',
-    });
-  }
   if (RETRYABLE_CODES.has(code)) {
     return Object.freeze({
       classification: FAILURE_RECOVERY_CLASS.RETRYABLE_TRANSIENT,
@@ -169,12 +171,27 @@ export const triageCalculationFailure = ({
       reason: 'service_configuration_failed',
     });
   }
+  if (
+    normalizedSource === 'trigger'
+    && outcomeAmbiguous === true
+    && explicitCode === ''
+  ) {
+    return Object.freeze({
+      classification: FAILURE_RECOVERY_CLASS.RETRYABLE_TRANSIENT,
+      retryable: true,
+      errorCode: code,
+      source: normalizedSource,
+      reason: 'idempotent_trigger_outcome_ambiguous',
+    });
+  }
   return Object.freeze({
     classification: FAILURE_RECOVERY_CLASS.UNKNOWN_STOP,
     retryable: false,
     errorCode: code,
     source: normalizedSource,
-    reason: 'not_allowlisted_for_automatic_retry',
+    reason: explicitCode
+      ? 'explicit_error_not_allowlisted_for_automatic_retry'
+      : 'not_allowlisted_for_automatic_retry',
   });
 };
 
