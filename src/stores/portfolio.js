@@ -18,6 +18,13 @@ import {
     fetchAllRecordPages,
 } from '../services/recordPagination';
 import { clearLegacyRecordCache } from '../services/projectStorage';
+import {
+    beginRecordCreateIntent,
+    completeRecordCreateIntent,
+    markRecordCreateIntentTerminal,
+    readEligibleRecordCreateIntents,
+    rotateRecordMutationBarrier,
+} from '../services/recordCreateIntent.js';
 import { readApiJson } from '../services/apiResponse';
 import {
     formatRequestError,
@@ -58,6 +65,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     let calculationJobPollEpoch = 0;
     let triggerUpdatePromise = null;
     let didAttemptCalculationRecovery = false;
+    let didAttemptRecordCreateRecovery = false;
+    let recordCreateRecoveryPromise = null;
 
     const selectedBenchmark = ref(localStorage.getItem('user_benchmark') || 'SPY');
     const currentGroup = ref('all');
@@ -65,6 +74,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const getAuth = () => useAuthStore();
     const getToken = () => getAuth().token;
     const getCalculationOwner = () => getAuth().user?.email || '';
+    const getRecordMutationOwner = () => getAuth().user?.email || '';
 
     const markSnapshotStale = () => {
         snapshotFreshness.value = 'stale';
@@ -296,6 +306,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     };
 
     const performFetchAll = async () => {
+        await recoverPendingRecordCreateIntent();
         resumePendingCalculationJob();
         clearLegacyRecordCache(localStorage);
         loading.value = true;
@@ -367,15 +378,108 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         return resolveRecordMutationOutcome(outcome, options);
     };
 
+    const postRecordCreateIntent = (intent) => fetchWithAuth('/api/records/idempotent', {
+        method: 'POST',
+        headers: {
+            'Idempotency-Key': intent.idempotencyKey,
+        },
+        body: intent.body,
+    });
+
+    const settleRecordCreateIntentFailure = (intent, error) => {
+        if (!intent || error?.outcomeAmbiguous === true) return;
+        try {
+            markRecordCreateIntentTerminal(
+                localStorage,
+                getRecordMutationOwner(),
+                intent.idempotencyKey,
+                {
+                    reason: error?.apiCode || (error?.status ? `HTTP_${error.status}` : error?.code || 'REJECTED'),
+                },
+            );
+        } catch (storageError) {
+            console.warn('無法保存新增交易終止狀態:', storageError);
+        }
+    };
+
+    const supersedePendingRecordCreateRecovery = () => {
+        const owner = getRecordMutationOwner();
+        const pending = readEligibleRecordCreateIntents(localStorage, owner);
+        if (pending.length === 0) return false;
+        rotateRecordMutationBarrier(localStorage, owner);
+        return true;
+    };
+
+    const recoverPendingRecordCreateIntent = async () => {
+        if (didAttemptRecordCreateRecovery) return false;
+        const owner = getRecordMutationOwner();
+        if (!owner) return false;
+        didAttemptRecordCreateRecovery = true;
+        if (recordCreateRecoveryPromise) return recordCreateRecoveryPromise;
+
+        recordCreateRecoveryPromise = (async () => {
+            let intent;
+            try {
+                [intent] = readEligibleRecordCreateIntents(localStorage, owner);
+            } catch (error) {
+                console.warn('無法讀取待恢復新增交易狀態:', error);
+                return false;
+            }
+            if (!intent) return false;
+
+            const { addToast } = useToast();
+            let json;
+            try {
+                json = await postRecordCreateIntent(intent);
+            } catch (error) {
+                settleRecordCreateIntentFailure(intent, error);
+                if (isExplicitServerRejection(error)) {
+                    addToast('先前未確認的新增交易無法安全恢復，已停止自動重試', 'error');
+                }
+                return false;
+            }
+
+            if (!json?.success) {
+                const error = unconfirmedMutationError('恢復新增交易');
+                settleRecordCreateIntentFailure(intent, error);
+                return false;
+            }
+
+            try {
+                completeRecordCreateIntent(localStorage, owner, intent.idempotencyKey);
+            } catch (error) {
+                console.warn('新增交易已由伺服器確認，但本機恢復狀態清除失敗:', error);
+            }
+            markSnapshotStale();
+            addToast('已自動確認先前未完成回應的新增交易', 'success');
+            if (json.auto_update) handleAutoUpdateSignal('🚀 已恢復第一筆交易，系統正自動啟動背景計算...');
+            return true;
+        })().finally(() => {
+            recordCreateRecoveryPromise = null;
+        });
+
+        return recordCreateRecoveryPromise;
+    };
+
     const addRecord = async (formData, options = {}) => {
         const { addToast } = useToast();
+        let intent;
+        try {
+            intent = beginRecordCreateIntent(localStorage, getRecordMutationOwner(), formData);
+        } catch (error) {
+            error.outcomeAmbiguous = false;
+            return recordMutationFailure(error, {
+                action: '新增交易',
+                method: 'POST',
+                fallback: '新增失敗',
+            }, addToast, options);
+        }
+
         let json;
         try {
-            json = await fetchWithAuth('/api/records', {
-                method: 'POST',
-                body: JSON.stringify(formData)
-            });
+            json = await postRecordCreateIntent(intent);
         } catch (error) {
+            settleRecordCreateIntentFailure(intent, error);
             return recordMutationFailure(error, {
                 action: '新增交易',
                 method: 'POST',
@@ -385,6 +489,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
         if (!json?.success) {
             const error = unconfirmedMutationError('新增交易');
+            settleRecordCreateIntentFailure(intent, error);
             return recordMutationFailure(error, {
                 action: '新增交易',
                 method: 'POST',
@@ -392,6 +497,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
             }, addToast, options);
         }
 
+        try {
+            completeRecordCreateIntent(localStorage, getRecordMutationOwner(), intent.idempotencyKey);
+        } catch (error) {
+            console.warn('新增交易已提交，但本機待處理狀態清除失敗:', error);
+        }
         markSnapshotStale();
         addToast('新增成功；持倉快照待重新計算', 'success');
         const refresh = await refreshRecordsAfterCommittedMutation('新增交易', addToast);
@@ -405,6 +515,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     const updateRecord = async (formData, options = {}) => {
         const { addToast } = useToast();
+        try {
+            supersedePendingRecordCreateRecovery();
+        } catch (error) {
+            error.outcomeAmbiguous = false;
+            return recordMutationFailure(error, {
+                action: '更新交易',
+                method: 'PUT',
+                fallback: '更新失敗',
+            }, addToast, options);
+        }
+
         let json;
         try {
             json = await fetchWithAuth('/api/records', {
@@ -440,6 +561,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     const deleteRecord = async (id, options = {}) => {
         const { addToast } = useToast();
+        try {
+            supersedePendingRecordCreateRecovery();
+        } catch (error) {
+            error.outcomeAmbiguous = false;
+            return recordMutationFailure(error, {
+                action: '刪除交易',
+                method: 'DELETE',
+                fallback: '刪除失敗',
+            }, addToast, options);
+        }
+
         let json;
         try {
             json = await fetchWithAuth('/api/records', {
