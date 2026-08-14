@@ -2,17 +2,17 @@
   "schema_version": 1,
   "authority_id": "PRODUCTION-ACTIVATION-AUTHORITY",
   "status": "ready",
-  "authorized_source_sha": "842e5667b6ae3e75ea947f9ed08d7a8344337f9d",
-  "approved_at": "2026-08-13T07:31:23.000Z",
+  "authorized_source_sha": "a0213f05c64f8b1636711e5e3bfdea650f42f2df",
+  "approved_at": "2026-08-14T00:52:45.000Z",
   "required_checks": {
     "production_frontend_explicit_environment": "passed",
     "production_frontend_live_contract": "passed",
     "production_d1_identity": "passed"
   },
   "evidence": {
-    "production_frontend_explicit_environment": "docs/governance/evidence/production-activation/now1a_r_842e566_production_frontend_explicit_environment.json",
-    "production_frontend_live_contract": "docs/governance/evidence/production-activation/now1a_r_842e566_production_frontend_live_contract.json",
-    "production_d1_identity": "docs/governance/evidence/production-activation/now1a_r_842e566_production_d1_identity.json"
+    "production_frontend_explicit_environment": "docs/governance/evidence/production-activation/now1b_r_a0213f05_production_frontend_explicit_environment.json",
+    "production_frontend_live_contract": "docs/governance/evidence/production-activation/now1b_r_a0213f05_production_frontend_live_contract.json",
+    "production_d1_identity": "docs/governance/evidence/production-activation/now1b_r_a0213f05_production_d1_identity.json"
   },
-  "notes": "NOW-1A exact-R production activation authority derived from reviewer-protected GET-only Production Identity Evidence #16, Production Identity Evidence run 31658614001 (#16); artifact 9165344610; sha256:b3273cf207d0a84fdbdaef298c4794d4f955cadd1059ac437eab456bc86cce9a, for exact runtime source 842e5667b6ae3e75ea947f9ed08d7a8344337f9d. Exact R remains main-reachable; the deployment-relevance review through main f26253fbd3c91527499250db544d4d520e92de74 found no Worker/D1/manifest/migration/deploy-path drift. Deploy Worker remains separately subject to protected-main authority re-fetches, production runtime preconditions, D1 identity, stable full-contract propagation, and post-deploy verification."
+  "notes": "Evidence #17 authorizes this exact source."
 }
