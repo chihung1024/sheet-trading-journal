@@ -43,9 +43,17 @@
   - 未實現損益（Unrealized P&L）
   - 總損益（Total P&L）
   - ROI（投資報酬率）
+  - 當日損益（Daily P&L），可展開查看目前群組的逐檔來源與價格 / 匯率 / 配息 / 交易執行 / 費稅分項
   - TWR（時間加權報酬率；日切分 linked returns，含可靠性狀態）
   - XIRR（個人年化報酬率 / IRR；含可用性與估值日 provenance）
   - 勝率 / 持倉數 / 交易筆數
+
+- **當日損益來源（Daily P&L Explainability）**
+  - 在「當日損益」卡片使用明確的「查看損益來源」按鈕，桌機、觸控與鍵盤皆可操作
+  - 依目前選取群組顯示逐檔損益貢獻，並依絕對影響排序
+  - 顯示計算引擎已發布的價格、匯率、配息、交易執行、費稅分項，不在瀏覽器重算投資組合會計
+  - 若 day ledger 缺失、格式異常、重複標的或與已發布總額無法對帳，明細會 fail closed，不猜測歸因
+  - 畫面金額四捨五入至 TWD 整數；原始未四捨五入數值仍是對帳依據
 
 - **績效曲線圖（Performance Chart）**
   - 投資組合 vs. Benchmark 歷史表現
@@ -188,6 +196,7 @@
   - GitHub Actions 定期或被觸發執行
   - `main.py` 為入口，呼叫 `journal_engine/` 計算投資組合快照
   - 市價/匯率主要來源：Yahoo Finance（或封裝的 market client）
+  - Daily P&L 由 Python 計算引擎產生並先對帳，再把群組 `day_ledger` 與 summary 發布給前端；前端 explainability 只做 fail-closed 驗證與呈現
 
 - **資料儲存**
   - Cloudflare D1（SQLite）存放各使用者快照、交易資料（依 Worker/API 實作）
@@ -202,7 +211,8 @@
 
 - `src/`：Vue 前端
   - `components/`：現行 Vue 元件
-    - `StatsGrid.vue`：績效卡片
+    - `StatsGrid.vue`：績效卡片與 Daily P&L explainability 入口
+    - `DailyPnlExplanation.vue`：逐檔當日損益來源明細
     - `PerformanceChart.vue`：績效曲線圖
     - `HoldingsTable.vue`：持倉明細表
     - `RecordList.vue`：交易紀錄列表
@@ -213,7 +223,7 @@
     - `skeletons/`：載入骨架屏
   - `stores/`：Pinia 狀態管理
   - `composables/`：可重用邏輯（例如 `useMarketHoursRefresh` / `useDarkMode` / `usePWA` / `useTokenRefresh` / `useToast`）
-  - `services/`：前端資料/狀態語意（例如 benchmark / TWR reliability）
+  - `services/`：前端資料/狀態語意（例如 benchmark / TWR reliability / Daily P&L explainability）
   - `App.vue`：主應用程式
 - `public/`：PWA / CSP headers 等靜態資源
 - `worker-entry.js`：Cloudflare Worker 部署入口
@@ -239,6 +249,13 @@
 - `Commission` / `Tax`：同交易原生報價單位的費用與稅（會被正規化成正值再納入計算）
 - `Tag`：策略標籤（用於群組）
 - `Note`：交易備註 / 投資理由；屬於日誌 metadata，不納入金融快照的 canonical source identity。
+
+### 當日損益解釋資料（概念）
+
+- 每個群組快照可包含 `day_ledger`，其逐檔資料由 Python Daily P&L reconciler 產生。
+- 現行 explainability 使用已發布的 `price_pnl_twd`、`fx_pnl_twd`、`dividend_income_twd`、`execution_pnl_twd`、`fee_tax_pnl_twd` 與 `total_pnl_twd`。
+- 前端不從交易紀錄、持倉或價格自行重建這些損益；若 authoritative evidence 不足或無法對帳，就不顯示詳細歸因。
+- `lot_ledger` 目前沒有 production producer，因此不應把 current-day `day_ledger` 延伸解讀成歷史逐筆 / lot attribution。
 
 ---
 
@@ -363,6 +380,7 @@ python main.py
 - 多幣別**估值/FX**能力與各市場**股息稅務政策**是兩件事：目前自動 pending 股息只明確支援 TWD 0% / USD 30%；其他市場需以實際 `DIV` 或後續審查政策處理，不會自動猜測。
 - `us_pnl_twd` 是為舊 snapshot/API 相容而保留的欄位名稱；在 currency-aware 引擎中實際代表非 TWD（海外）價格/交易分量，前端以「海外」呈現。
 - 自動盤中 refresh 的 market-stage 排程目前仍以台股 / 美股時段為主；支援外幣估值不代表已新增所有海外交易所的盤中 refresh 時段。
+- Daily P&L explainability 只解釋目前群組已發布的 current-day `day_ledger`；它不是歷史 lot/trade attribution，且 authoritative evidence 不足時會直接不提供明細。
 - XIRR 對非傳統現金流可能存在多個數學根；目前會標示 ambiguity，但不替使用者選擇「經濟上唯一正確」的根。
 - TWR 的既有 numeric chain 為 backward compatibility 保留；若新 metadata 標示 `undefined`，該日之後的 numeric TWR 不能視為可信績效，前端會 fail closed。真正的 intraday Modified Dietz 權重仍需更細的交易時間資料才能建模。
 - 任意區間單一數字績效可直接以同一公式整段計算，或沿用日子期間連結結果（需在報表層定義口徑）。
