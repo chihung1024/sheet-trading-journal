@@ -90,6 +90,32 @@ test('a newly created calculation job can cover and clean the exact captured gen
   assert.equal(storage.getItem(`${AUTOMATIC_RECALCULATION_COVERAGE_V1_STORAGE_PREFIX}${JOB_1}`), null);
 });
 
+test('current benchmark job may cover an older dirty token created under a different benchmark', () => {
+  const storage = new MemoryStorage();
+  const generation = markAutomaticRecalculationDirty(storage, OWNER, 'SPY', {
+    now: NOW,
+    createToken: tokens('dirty-generation-0001'),
+  });
+
+  assert.equal(markAutomaticRecalculationCoverage(storage, OWNER, generation, {
+    id: JOB_1,
+    benchmark: 'QQQ',
+    deduplicated: false,
+  }, { now: NOW + 1 }), true);
+
+  const coverage = JSON.parse(
+    storage.getItem(`${AUTOMATIC_RECALCULATION_COVERAGE_V1_STORAGE_PREFIX}${JOB_1}`),
+  );
+  assert.equal(coverage.benchmark, 'QQQ');
+  assert.equal(settleAutomaticRecalculationJob(storage, OWNER, JOB_1, {
+    succeeded: true,
+    now: NOW + 2,
+  }).dirty, false);
+  const clean = JSON.parse(storage.getItem(AUTOMATIC_RECALCULATION_CLEAN_STORAGE_KEY));
+  assert.equal(clean.token, generation.token);
+  assert.equal(clean.benchmark, 'QQQ');
+});
+
 test('mutation during a running job remains dirty after the older covered job succeeds', () => {
   const storage = new MemoryStorage();
   const first = markAutomaticRecalculationDirty(storage, OWNER, 'SPY', {
