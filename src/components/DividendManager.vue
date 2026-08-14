@@ -353,7 +353,7 @@ const confirmDividend = async (div) => {
   processingKey.value = divKey;
   
   try {
-    // 🎯 Step 1: 直接添加配息記錄（資料庫會自動處理重複）
+    // 透過共用 addRecord durable idempotency lifecycle 新增配息記錄
     const taxInfo = finalTax > 0 ? `稅金:${currency} ${formatNumber(finalTax, 2)}` : '';
     const record = {
       txn_date: div.ex_date,
@@ -373,7 +373,7 @@ const confirmDividend = async (div) => {
       if (isMutationAmbiguous(outcome)) {
         confirmedKeys.value.delete(divKey);
         saveConfirmedKeys();
-        addToast('配息入帳結果不確定；伺服器可能已完成新增。請先刷新交易紀錄確認，勿直接再次提交。', 'warning');
+        addToast('配息入帳回應不確定；系統正在使用原交易識別碼自動確認，請勿重複提交。', 'warning');
         return;
       }
       throw new Error('無法新增記錄');
@@ -387,7 +387,7 @@ const confirmDividend = async (div) => {
       addToast('⏳ 正在重新計算數據，請稍候...', 'info');
     } catch (triggerError) {
       console.error('⚠️ 觸發計算失敗:', triggerError);
-      addToast('⚠️ 配息已入帳，但自動更新失敗，請手動點擊「更新數據」', 'warning');
+      addToast('⚠️ 配息已入帳；重新計算狀態將由系統持續追蹤與恢復，無需重複操作。', 'warning');
     }
     
   } catch (e) {
