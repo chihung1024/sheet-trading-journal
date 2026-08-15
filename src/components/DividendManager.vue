@@ -222,6 +222,7 @@
 import { ref, watch, computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
+import { buildDividendEventIdempotencyKey } from '../../shared/dividendEventIdentity.js';
 import {
   getDividendCurrency,
   getDividendDefaultTax,
@@ -236,6 +237,7 @@ import {
   isMutationAmbiguous,
   isMutationCommitted,
 } from '../services/mutationOutcome.js';
+import { withRecordCreateIdempotencyKey } from '../services/recordCreateIntent.js';
 
 const store = usePortfolioStore();
 const { addToast } = useToast();
@@ -360,7 +362,11 @@ const confirmDividend = async (div) => {
   
   try {
     const taxInfo = finalTax > 0 ? `稅金:${currency} ${formatNumber(finalTax, 2)}` : '';
-    const record = {
+    const idempotencyKey = await buildDividendEventIdempotencyKey({
+      symbol: div.symbol,
+      date: div.ex_date,
+    });
+    const record = withRecordCreateIdempotencyKey({
       txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
@@ -370,13 +376,22 @@ const confirmDividend = async (div) => {
       tax: 0,
       tag: 'Auto-Dividend',
       note: taxInfo
-    };
+    }, idempotencyKey);
 
     const outcome = await store.addRecord(record, { returnOutcome: true });
     
     if (!isMutationCommitted(outcome)) {
       if (isMutationAmbiguous(outcome)) {
         addToast('配息入帳回應不確定；系統正在使用原交易識別碼自動確認，請勿重複提交。', 'warning');
+        return;
+      }
+      if (outcome?.error?.apiCode === 'DIVIDEND_EVENT_CONFLICT') {
+        try {
+          await store.fetchRecords();
+        } catch (readError) {
+          console.error('❌ 配息事件已存在但最新交易紀錄載入失敗:', readError);
+          addToast('此配息已有交易紀錄；最新紀錄暫時載入失敗，請勿重複提交。', 'warning');
+        }
         return;
       }
       throw new Error('無法新增記錄');
@@ -388,8 +403,14 @@ const confirmDividend = async (div) => {
         divKey,
       ]);
     }
-    
-    addToast(`${div.symbol} 配息已保存 (${currency} ${formatNumber(netAmount)})`, 'success');
+
+    const wasDeduplicated = outcome.response?.deduplicated === true;
+    addToast(
+      wasDeduplicated
+        ? `${div.symbol} 配息已由既有交易紀錄確認`
+        : `${div.symbol} 配息已保存 (${currency} ${formatNumber(netAmount)})`,
+      'success',
+    );
     
     try {
       await store.triggerUpdate();
