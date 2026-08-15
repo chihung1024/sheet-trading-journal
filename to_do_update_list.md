@@ -5,7 +5,7 @@
 > The complete pre-Phase-7 verbose handoff is preserved byte-for-byte at `docs/archive/to_do_update_list_through_phase6.md`. Use that archive only when historical Root Cause / PR chronology is needed; do not restart closed work from archived plans.
 
 Last updated: **2026-08-15 Asia/Taipei**  
-Current line: **Phase 10 product roadmap is adopted in this order: 10.1 Transaction Entry UX Convergence → 10.2 Dividend Workflow Productization → 10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support. Phase 10.1A Transaction Entry Information Hierarchy & Validation Clarity is CLOSED / PRODUCTION PAGES VERIFIED. No runtime batch is active; the next action is a bounded product audit for a possible Phase 10.1B Symbol Entry / Autocomplete / Normalization UX batch. All other new directions, including Phase 7.2 background Flex sync and an Action Center, are deferred until the approved Phase 10 roadmap is re-evaluated.**
+Current line: **Phase 10 product roadmap remains 10.1 Transaction Entry UX Convergence → 10.2 Dividend Workflow Productization → 10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support. Phase 10.1A Transaction Entry Information Hierarchy & Validation Clarity and Phase 10.1B Known Symbol Suggestions & Entry Feedback are CLOSED / PRODUCTION PAGES VERIFIED; Phase 10.1 is OPTIMIZED FOR CURRENT REQUIREMENTS. No runtime batch is active. NEXT is a bounded product-first audit for Phase 10.2 Dividend Workflow Productization. Phase 7.2 background Flex sync, Action Center and other new directions remain deferred until the approved Phase 10 roadmap is re-evaluated.**
 
 ---
 
@@ -26,7 +26,7 @@ Current line: **Phase 10 product roadmap is adopted in this order: 10.1 Transact
 
 Current protected-main / production Pages checkpoint:
 
-`0ca4f890c0771755d907d725069612dc62e6e774`
+`7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a`
 
 Current production Worker runtime checkpoint:
 
@@ -36,7 +36,20 @@ Current Phase 9.2 production-activation control-plane checkpoint:
 
 `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
 
-Production verification for Phase 10.1A:
+Production verification for Phase 10.1B:
+
+- PR #277 final exact head `991969064b7fb07ded36c0783de80e81d9da30f5`
+- exact-head canonical CI #994 / run `31892093012`: **SUCCESS**
+- frozen review `4944098383`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
+- final risk classification: **R1 Local / Low Risk**
+- merge `7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a`
+- post-main CI #995 / run `31892175857`: **SUCCESS**
+- Pages #1559 / run `31892175529`: **SUCCESS**
+- Phase 10.1B changed only frontend Symbol suggestion presentation, a pure known-symbol projection and focused regression coverage
+- no Yahoo/ticker search service, suffix guessing, Symbol validity authority, localStorage Symbol cache, Worker/D1/Python/auth/dividend/IBKR/financial-methodology change, or production Worker deployment
+- production Worker therefore remains exact runtime `9b9f09f5079c59750219c73e23002a7ab8d2f33e`, release `4.08`, API `2.61`, schema `3`
+
+Production verification for Phase 10.1A remains:
 
 - PR #275 final exact head `db9f448e8598edec7cc362f4c1e9539aecbec7a9`
 - exact-head canonical CI #990 / run `31891157545`: **SUCCESS**
@@ -45,7 +58,6 @@ Production verification for Phase 10.1A:
 - post-main CI #991 / run `31891228649`: **SUCCESS**
 - Pages #1557 / run `31891227897`: **SUCCESS**
 - Phase 10.1A changed only frontend transaction-entry presentation/validation plus focused regression coverage; no Worker, D1, Python, auth, dividend-event, IBKR-import, or financial-methodology change
-- production Worker therefore remains exact runtime `9b9f09f5079c59750219c73e23002a7ab8d2f33e`, release `4.08`, API `2.61`, schema `3`
 
 Production verification for Phase 9.2 remains:
 
@@ -80,6 +92,8 @@ Current product state:
 - **Phase 9.1 Dividend Confirmation Source of Truth — CLOSED / PRODUCTION PAGES VERIFIED**
 - **Phase 9.2 Deterministic Dividend Event Identity — CLOSED / PRODUCTION VERIFIED**
 - **Phase 10.1A Transaction Entry Information Hierarchy & Validation Clarity — CLOSED / PRODUCTION PAGES VERIFIED**
+- **Phase 10.1B Known Symbol Suggestions & Entry Feedback — CLOSED / PRODUCTION PAGES VERIFIED**
+- **Phase 10.1 Transaction Entry UX Convergence — OPTIMIZED FOR CURRENT REQUIREMENTS**
 - **No runtime batch is currently active.**
 
 Important production verification boundaries:
@@ -90,6 +104,7 @@ Important production verification boundaries:
 - A real authenticated browser write using the new importer has **not** been falsely claimed where no such write evidence exists. Treat user-browser import/write smoke as an optional production evidence point.
 - Phase 9.1 established authoritative `DIV` records as confirmation truth. Phase 9.2 closes the independent reload/tab/device create race with deterministic event identity while preserving that same confirmation authority; browser-local confirmation state is still not authoritative.
 - Phase 10.1A is a frontend UX convergence batch only. It preserves the existing record-create/recovery lifecycle and existing `buildRecordPayload()` price/amount derivation semantics.
+- Phase 10.1B suggestions are derived only from already-loaded `store.records`. They are a convenience projection, not ticker validity, market identity, currency, transaction or financial authority; a new non-empty Yahoo Symbol remains freely enterable.
 
 ---
 
@@ -117,6 +132,8 @@ Important production verification boundaries:
 | Phase 9.1 Dividend Confirmation Source of Truth | CLOSED / PRODUCTION PAGES VERIFIED | PR #270 merge `6bc509e4...`; exact-head CI #974; frozen review `4943784529`; post-main CI #975 + Pages #1552 |
 | Phase 9.2 Deterministic Dividend Event Identity | CLOSED / PRODUCTION VERIFIED | PR #272 merge `9b9f09f5...`; CI #982/#983; Pages #1554; review `4943920254`; Evidence #18; PR #273 merge `3e1ef4e5...`; CI #984/#985; Pages #1555; Deploy Worker #7 SUCCESS |
 | Phase 10.1A Transaction Entry Information Hierarchy & Validation Clarity | CLOSED / PRODUCTION PAGES VERIFIED | PR #275 exact head `db9f448e...`; CI #990; review `4944065869`; merge `0ca4f890...`; post-main CI #991 + Pages #1557 |
+| Phase 10.1B Known Symbol Suggestions & Entry Feedback | CLOSED / PRODUCTION PAGES VERIFIED | PR #277 exact head `99196906...`; CI #994; review `4944098383`; merge `7e3dd9e5...`; post-main CI #995 + Pages #1559 |
+| Phase 10.1 Transaction Entry UX Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | 10.1A hierarchy/validation + 10.1B known-symbol suggestion gap closed without new transaction or market authority |
 
 The detailed pre-Phase-7 PR-by-PR Root Cause / Decision / Verification / Rollback ledger remains at `docs/archive/to_do_update_list_through_phase6.md`.
 
@@ -201,7 +218,9 @@ Python pending dividend event (symbol + ex_date)
 ### 3F. Transaction-entry UX authority
 
 ```text
-user-visible entry fields
+already-loaded tenant-scoped store.records
+→ pure recent-first known-Symbol suggestion projection (presentation only)
+→ user selects a known Symbol OR freely enters a new Symbol
 → existing TradeForm acceptance predicates
 → existing buildRecordPayload() normalization / price derivation
 → existing store.addRecord() / updateRecord()
@@ -212,7 +231,10 @@ user-visible entry fields
 - BUY / SELL actions are journal-recording actions, not broker order submission.
 - The editable `total_amount` surface is labeled `成交金額（未含費稅）`; if both price and amount are present, existing payload logic keeps price authoritative.
 - Field-specific errors preserve the prior required-input predicates rather than introducing a second validation/accounting engine.
-- Future 10.1 work must continue to reuse the same durable mutation lifecycle unless fresh evidence proves a product defect there.
+- Phase 10.1B known-Symbol suggestions use `trim + uppercase`, recent-first deduplication and case-insensitive prefix matching only for the suggestion surface.
+- Suggestions do not validate a ticker, infer a market suffix, choose a currency, or block a new non-empty Symbol; the shared existing native-currency contract remains separate.
+- No Symbol suggestion list is persisted into localStorage or fetched from a new remote service.
+- Future transaction-entry work must continue to reuse the same durable mutation lifecycle unless fresh evidence proves a product defect there.
 
 ---
 
@@ -528,9 +550,61 @@ Rollback:
 
 Revert PR #275 / merge `0ca4f890...` or restore the previous Pages build. No Worker, schema, D1-data, or Python rollback is required.
 
-Accepted next audit:
+Audit result:
 
-Phase 10.1 remains the active product line, but **no 10.1B runtime batch is pre-approved by this closeout**. The next bounded audit should verify the actual Symbol entry experience against the README/current product claims, especially autocomplete/suggestions, normalization feedback, market/currency affordance and keyboard/mobile speed. Implement only a concrete evidenced gap; do not rebuild the form architecture.
+The bounded Symbol-entry audit found one concrete product/documentation gap: README promised autocomplete suggestions while the form had only a plain text input. That gap is closed by Phase 10.1B below without widening into remote ticker lookup, suffix inference or a new market authority.
+
+### 6B. Batch 10.1B — Known Symbol Suggestions & Entry Feedback
+
+**State: CLOSED / PRODUCTION PAGES VERIFIED**
+
+Primary product goal:
+
+Close the documented Symbol-entry suggestion gap using information already available to the signed-in user, while preserving unrestricted entry of new Yahoo Symbols and every existing transaction/accounting authority.
+
+Root cause / evidence:
+
+- README documented Symbol autocomplete suggestions.
+- `TradeForm.vue` was still a plain text Symbol input with no suggestion surface.
+- the existing authenticated records load already supplies tenant-scoped records in deterministic recent-first order, so a new ticker-search API, credential, market database or browser-local symbol cache was unnecessary.
+
+Implementation:
+
+- added pure `symbolSuggestions.js` projection over already-loaded `store.records`.
+- known Symbols are `trim + uppercase` normalized for suggestion comparison/display, deduplicated by first occurrence and kept in record/recent order.
+- query matching is case-insensitive prefix matching only; it never guesses or appends a market suffix.
+- empty input may show the most recent known Symbols; the default list is bounded to eight entries.
+- Symbol input now exposes an accessible combobox/listbox/option surface with pointer/touch selection and ArrowUp / ArrowDown / Enter / Escape keyboard interaction.
+- helper text explicitly states suggestions come from existing transaction history and that a new Yahoo Symbol may still be typed directly.
+- choosing a suggestion invokes the existing SELL holding-group check; it does not create a separate validation or mutation path.
+
+Explicitly unchanged:
+
+- the Symbol required predicate remains only non-empty input; suggestion selection is not mandatory.
+- no ticker validity assertion, Yahoo search, remote symbol service, suffix guessing or new native-currency authority.
+- no localStorage Symbol suggestion/cache authority.
+- no `buildRecordPayload()` price/amount or Symbol persistence semantic change.
+- no `store.addRecord()` / `store.updateRecord()` / durable recovery / automatic recalculation change.
+- no Worker, D1 schema/data, authentication, Python financial methodology, dividend event identity or IBKR importer change.
+
+Verification:
+
+- branch final exact head `991969064b7fb07ded36c0783de80e81d9da30f5`; diff exactly `TradeForm.vue` + pure service + focused test file, behind by 0.
+- pure focused suggestion tests: PASS for normalization/recent-first deduplication, prefix matching/no suffix guessing, bounds and invalid collection handling.
+- PR #277 exact-head canonical CI #994 / run `31892093012`: SUCCESS.
+- frozen review `4944098383`: PASS / BLOCKER 0 / FOLLOW-UP 0; final risk R1.
+- merge `7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a`.
+- post-main CI #995 / run `31892175857`: SUCCESS.
+- Pages #1559 / run `31892175529`: SUCCESS.
+- no production Worker deployment or D1 migration was required.
+
+Rollback:
+
+Revert PR #277 / merge `7e3dd9e5...` or restore the previous Pages build. No Worker, schema, D1-data, Python or financial-data rollback is required.
+
+Stable checkpoint result:
+
+**Phase 10.1 Transaction Entry UX Convergence is OPTIMIZED FOR CURRENT REQUIREMENTS.** The verified entry-hierarchy/validation and known-Symbol suggestion gaps are closed without creating new accounting, ticker, market or persistence authority. Reopen only for fresh user/production evidence.
 
 ---
 
@@ -538,34 +612,35 @@ Phase 10.1 remains the active product line, but **no 10.1B runtime batch is pre-
 
 ### NOW
 
-No runtime batch is active. Phase 10.1A is closed and production Pages verified.
+No runtime batch is active. Phase 10.1A and 10.1B are closed / production Pages verified; Phase 10.1 is optimized for current requirements.
 
 Useful user-browser evidence points, not coding blockers:
 
-1. normal reload of the production Pages bundle and verify the transaction panel shows the new recording terminology and field-specific errors;
-2. verify mobile Qty remains prominent while Fee/Tax are compact and readable;
-3. verify dividend rows already represented by authoritative DIV records show `已入帳` consistently;
-4. optionally exercise one real IBKR importer preview/write/replay flow when a safe sample is available.
+1. normal reload of the production Pages bundle and verify the Symbol field shows recent known-Symbol suggestions and still accepts a brand-new Yahoo Symbol directly;
+2. verify pointer/touch plus ArrowUp / ArrowDown / Enter / Escape interactions are comfortable on desktop/mobile;
+3. verify the transaction panel still shows Phase 10.1A recording terminology, field-specific validation and compact Qty/Fee/Tax layout;
+4. verify dividend rows already represented by authoritative DIV records show `已入帳` consistently;
+5. optionally exercise one real IBKR importer preview/write/replay flow when a safe sample is available.
 
 Only reopen closed batches if fresh production evidence contradicts the deployed contracts.
 
-### NEXT — bounded Phase 10.1 product audit
+### NEXT — bounded Phase 10.2 product audit
 
-Audit **Symbol Entry / Autocomplete / Normalization UX** before selecting Phase 10.1B runtime scope.
+Proceed to a product-first audit for **Phase 10.2 — Dividend Workflow Productization** before selecting any new runtime batch.
 
-Audit questions:
+Audit questions should stay at the user-workflow layer first:
 
-- README/product claim versus actual autocomplete/suggestion behavior;
-- normalization feedback for Yahoo-style symbols such as `2330.TW` without guessing suffixes;
-- whether existing native-currency detection can be surfaced more clearly without creating a second market/currency authority;
-- keyboard-first and mobile entry friction;
-- whether recent-symbol assistance has enough value to justify browser-local convenience state without becoming financial authority.
+- whether pending / confirmed / `已保存，等待同步` states are understandable without exposing internal recovery mechanics;
+- whether ex-date, pay-date, amount, tax and native-currency provenance are presented at the right decision points without changing the established accounting model;
+- whether confirmation/edit/delete actions clearly communicate what becomes an authoritative `DIV` journal record;
+- whether mobile density, sorting/filtering and action placement make upcoming/confirmed dividends easy to manage;
+- whether any apparent duplicate/retry issue is already solved by Phase 9.2 and therefore should not be reimplemented in UI state.
 
-If the audit proves a bounded high-value gap, define one Phase 10.1B batch with explicit unchanged semantics and rollback. Otherwise close Phase 10.1 and proceed to **Phase 10.2 Dividend Workflow Productization**.
+If the audit proves one bounded high-value gap, define a Phase 10.2A batch with explicit financial/authority boundaries and rollback. Do not pre-approve a dividend-tax/accounting methodology change merely because the product line is next.
 
-After Phase 10.1, the approved roadmap remains:
+After Phase 10.2, the approved roadmap remains:
 
-`10.2 Dividend Workflow Productization → 10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support`
+`10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support`
 
 **Phase 7.2 IBKR Flex/background synchronization**, Action Center / Daily Command Center and other new directions are deferred for later discussion; they are not current NEXT work.
 
@@ -584,6 +659,8 @@ After Phase 10.1, the approved roadmap remains:
 - do not store IBKR password/token in D1 or frontend localStorage
 - do not give the current Worker system principal record-write authority merely to automate Phase 7.2
 - do not guess broker account identity or Yahoo market suffix
+- do not turn known-Symbol suggestions into ticker-validity authority or require suggestion selection before entry
+- do not add a remote ticker search/market database merely to expand Phase 10.1 without new product evidence
 - do not use `note` as replay/idempotency identity
 - do not bulk-delete legacy note metadata simply because the UI no longer needs it
 - do not rebuild Worker/Python/store architecture without evidence
@@ -608,7 +685,9 @@ After Phase 10.1, the approved roadmap remains:
 
 | Purpose | Checkpoint |
 |---|---|
-| Current protected main / production Pages after Phase 10.1A | `0ca4f890c0771755d907d725069612dc62e6e774` |
+| Current protected main / production Pages after Phase 10.1B | `7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a` |
+| Before Phase 10.1B / Phase 10.1A stable docs checkpoint | `b6c48bd0f0979a5889f7f34d008004f67556b5bb` |
+| Phase 10.1A runtime / production Pages | `0ca4f890c0771755d907d725069612dc62e6e774` |
 | Before Phase 10.1A / Phase 9.2 docs stable checkpoint | `11c832c9a21b68bd7a2bd5a472b073239975a4be` |
 | Phase 9.2 production activation control plane | `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e` |
 | Current production Worker runtime / Phase 9.2 | `9b9f09f5079c59750219c73e23002a7ab8d2f33e` |
