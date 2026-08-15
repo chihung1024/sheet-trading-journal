@@ -122,7 +122,13 @@ const postIntentWithRefresh = async (
     return await postIntentOnce(intent, token, { apiBaseUrl, fetchImpl });
   } catch (error) {
     if (error?.status !== 401 || typeof refreshToken !== 'function') throw error;
-    const refreshed = await refreshToken();
+    let refreshed = false;
+    try {
+      refreshed = await refreshToken();
+    } catch (refreshError) {
+      error.refreshError = refreshError;
+      throw error;
+    }
     token = getToken();
     if (refreshed !== true || !token) throw error;
     return postIntentOnce(intent, token, { apiBaseUrl, fetchImpl });
@@ -161,20 +167,13 @@ export const createIbkrRecord = async (
     entry.idempotencyKey,
   );
 
+  let response;
   try {
-    const response = await postIntentWithRefresh(intent, {
+    response = await postIntentWithRefresh(intent, {
       getToken,
       refreshToken,
       apiBaseUrl,
       fetchImpl,
-    });
-    completeRecordCreateIntent(storage, intent.owner, intent.idempotencyKey);
-    return Object.freeze({
-      committed: true,
-      outcomeAmbiguous: false,
-      deduplicated: response?.deduplicated === true,
-      recordId: response?.record_id ?? null,
-      response,
     });
   } catch (cause) {
     const error = markRequestOutcome(cause, 'POST');
@@ -192,6 +191,22 @@ export const createIbkrRecord = async (
     }
     throw error;
   }
+
+  let recoveryStateError = null;
+  try {
+    completeRecordCreateIntent(storage, intent.owner, intent.idempotencyKey);
+  } catch (error) {
+    recoveryStateError = error;
+  }
+
+  return Object.freeze({
+    committed: true,
+    outcomeAmbiguous: false,
+    deduplicated: response?.deduplicated === true,
+    recordId: response?.record_id ?? null,
+    response,
+    recoveryStateError,
+  });
 };
 
 export const __test = Object.freeze({
