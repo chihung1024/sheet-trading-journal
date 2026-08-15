@@ -7,20 +7,21 @@
                 市值總計: <strong>{{ formatNumber(totalMarketValue) }}</strong> TWD
             </div>
         </div>
-        
+
         <div class="header-controls">
             <div class="search-box">
                 <span class="search-icon">🔍</span>
-                <input 
-                    type="text" 
-                    v-model="searchQuery" 
+                <input
+                    type="text"
+                    v-model="searchQuery"
                     placeholder="搜尋股票代碼..."
                     class="search-input"
+                    aria-label="搜尋持倉代碼"
                 >
             </div>
-            
+
             <div class="filter-group">
-                <select v-model="filterStatus" class="filter-select">
+                <select v-model="filterStatus" class="filter-select" aria-label="持倉損益篩選">
                     <option value="all">全部持倉</option>
                     <option value="profit">獲利中</option>
                     <option value="loss">虧損中</option>
@@ -28,7 +29,62 @@
             </div>
         </div>
     </div>
-    
+
+    <section
+        v-if="concentration.status === 'ok'"
+        class="concentration-panel"
+        aria-label="持倉集中度決策快照"
+    >
+        <div class="concentration-header">
+            <div>
+                <span class="concentration-eyebrow">Portfolio Decision Support</span>
+                <h4>持倉集中度</h4>
+            </div>
+            <span class="group-scope">{{ concentrationGroupLabel }}</span>
+        </div>
+
+        <div class="concentration-content">
+            <div class="concentration-metrics">
+                <div class="concentration-metric">
+                    <span class="metric-label">最大持倉</span>
+                    <strong>{{ concentration.largest.symbol }}</strong>
+                    <span class="metric-value">{{ formatPercent(concentration.largest.weight) }}</span>
+                </div>
+                <div class="concentration-metric">
+                    <span class="metric-label">前 3 大合計</span>
+                    <strong>{{ formatPercent(concentration.top3Weight) }}</strong>
+                    <span class="metric-caption">目前群組持倉市值</span>
+                </div>
+                <div class="concentration-metric">
+                    <span class="metric-label">正市值持倉</span>
+                    <strong>{{ concentration.positionCount }} 檔</strong>
+                    <span class="metric-caption">不含零市值列</span>
+                </div>
+            </div>
+
+            <div class="concentration-list" aria-label="主要持倉權重">
+                <div v-for="position in concentration.topPositions" :key="position.symbol" class="concentration-row">
+                    <div class="concentration-line">
+                        <span class="position-symbol">{{ position.symbol }}</span>
+                        <span class="position-weight">{{ formatPercent(position.weight) }}</span>
+                    </div>
+                    <div class="weight-track" aria-hidden="true">
+                        <div class="weight-fill" :style="{ width: `${Math.min(position.weight, 100)}%` }"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <p class="concentration-note">
+            僅反映目前群組已發布持倉的 TWD 市值比例，不含現金；這是集中度事實呈現，不是風險評級、目標配置或買賣建議。
+        </p>
+    </section>
+
+    <div v-else-if="concentration.status === 'unavailable'" class="concentration-unavailable" role="status">
+        <strong>集中度暫不顯示</strong>
+        <span>持倉市值與摘要總值目前無法一致對帳，系統不猜測權重。</span>
+    </div>
+
     <div class="table-container desktop-view" ref="tableContainer">
         <table>
             <thead>
@@ -51,6 +107,13 @@
                     <th @click="sortBy('market_value_twd')" class="text-right sortable sticky-th">
                         市值(TWD) <span class="sort-icon">{{ getSortIcon('market_value_twd') }}</span>
                     </th>
+                    <th
+                        @click="sortBy('weight')"
+                        class="text-right sortable sticky-th"
+                        title="目前群組已發布持倉市值占比；不含現金"
+                    >
+                        權重 <span class="sort-icon">{{ getSortIcon('weight') }}</span>
+                    </th>
                     <th @click="sortBy('daily_pl_twd')" class="text-right sortable sticky-th">
                         當日損益 <span class="sort-icon">{{ getSortIcon('daily_pl_twd') }}</span>
                     </th>
@@ -64,14 +127,14 @@
             </thead>
             <tbody>
                  <tr v-if="filteredHoldings.length === 0">
-                    <td colspan="9" class="empty-state">
+                    <td colspan="10" class="empty-state">
                         <div class="empty-icon">📊</div>
                         <div>目前無持倉數據</div>
                     </td>
                 </tr>
-                <tr 
-                    v-for="h in visibleHoldings" 
-                    :key="h.symbol" 
+                <tr
+                    v-for="h in visibleHoldings"
+                    :key="h.symbol"
                     class="row-item"
                     @click="highlightRow(h.symbol)"
                     :class="{ 'highlighted': highlightedSymbol === h.symbol }"
@@ -97,6 +160,7 @@
                         </div>
                     </td>
                     <td class="text-right font-num font-bold">{{ formatNumber(h.market_value_twd, 0) }}</td>
+                    <td class="text-right font-num weight-cell">{{ formatHoldingWeight(h) }}</td>
                     <td class="text-right font-num" :class="getTrendClass(h.daily_pl_twd)">
                         {{ h.daily_pl_twd >= 0 ? '+' : '' }}{{ formatNumber(h.daily_pl_twd, 0) }}
                     </td>
@@ -118,10 +182,10 @@
             <div class="empty-icon">📊</div>
             <div>目前無持倉數據</div>
         </div>
-        
-        <div 
-            v-for="h in visibleHoldings" 
-            :key="h.symbol + '_mob'" 
+
+        <div
+            v-for="h in visibleHoldings"
+            :key="h.symbol + '_mob'"
             class="mobile-card"
             @click="highlightRow(h.symbol)"
         >
@@ -129,6 +193,7 @@
                 <div class="m-symbol-group">
                     <span class="m-symbol">{{ h.symbol }}</span>
                     <span class="currency-badge">{{ h.currency || 'USD' }}</span>
+                    <span v-if="concentration.status === 'ok'" class="weight-badge">{{ formatHoldingWeight(h) }}</span>
                     <span class="m-fire" v-if="h.pnl_percent > 50">🔥</span>
                 </div>
                 <div class="m-price-group">
@@ -177,7 +242,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="scroll-hint" v-if="filteredHoldings.length > displayLimit">
         顯示 {{ visibleHoldings.length }} / {{ filteredHoldings.length }} 筆
     </div>
@@ -187,10 +252,14 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import {
+    buildPortfolioConcentrationSnapshot,
+    getHoldingWeight,
+} from '../services/portfolioConcentration.js';
 
 const store = usePortfolioStore();
 const tableContainer = ref(null);
-const sortKey = ref('market_value_twd'); 
+const sortKey = ref('market_value_twd');
 const sortOrder = ref('desc');
 const searchQuery = ref('');
 const filterStatus = ref('all');
@@ -207,28 +276,51 @@ const formatNumber = (num, d=0) => {
     return Number(num).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 };
 
+const formatPercent = value => `${Number(value || 0).toFixed(2)}%`;
+
 const totalMarketValue = computed(() => {
-    return store.holdings.reduce((sum, h) => sum + (h.market_value_twd || 0), 0);
+    return store.holdings.reduce((sum, h) => sum + (Number(h.market_value_twd) || 0), 0);
 });
+
+const concentration = computed(() => buildPortfolioConcentrationSnapshot(
+    store.holdings,
+    store.stats.total_value,
+));
+
+const concentrationGroupLabel = computed(() => (
+    store.currentGroup === 'all' ? '全部持倉' : `策略：${store.currentGroup}`
+));
+
+const formatHoldingWeight = holding => {
+    const weight = getHoldingWeight(concentration.value, holding?.symbol);
+    return weight == null ? '--' : formatPercent(weight);
+};
 
 const filteredHoldings = computed(() => {
     let result = store.holdings;
-    
+
     if (searchQuery.value) {
-        result = result.filter(h => 
+        result = result.filter(h =>
             h.symbol.toLowerCase().includes(searchQuery.value.toLowerCase())
         );
     }
-    
+
     if (filterStatus.value === 'profit') {
         result = result.filter(h => (h.pnl_twd || 0) > 0);
     } else if (filterStatus.value === 'loss') {
         result = result.filter(h => (h.pnl_twd || 0) < 0);
     }
-    
+
     return [...result].sort((a, b) => {
-        let valA = a[sortKey.value];
-        let valB = b[sortKey.value];
+        let valA;
+        let valB;
+        if (sortKey.value === 'weight') {
+            valA = getHoldingWeight(concentration.value, a.symbol);
+            valB = getHoldingWeight(concentration.value, b.symbol);
+        } else {
+            valA = a[sortKey.value];
+            valB = b[sortKey.value];
+        }
         if (typeof valA === 'string') {
             return sortOrder.value === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
         }
@@ -302,12 +394,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.card-header { 
-    display: flex; 
-    justify-content: space-between; 
+.card-header {
+    display: flex;
+    justify-content: space-between;
     align-items: flex-end;
-    margin-bottom: 16px; 
-    padding-bottom: 16px; 
+    margin-bottom: 16px;
+    padding-bottom: 16px;
     border-bottom: 1px solid var(--border-color);
     flex-wrap: wrap;
     gap: 16px;
@@ -317,20 +409,41 @@ onUnmounted(() => {
 
 h3 { margin: 0; font-size: 1.125rem; }
 
-.summary-info { 
-    font-family: 'JetBrains Mono', monospace; 
-    font-size: 0.95rem; 
-    background: var(--bg-secondary); 
-    padding: 6px 12px; 
-    border-radius: 6px; 
+.summary-info {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    background: var(--bg-secondary);
+    padding: 6px 12px;
+    border-radius: 6px;
     color: var(--text-main);
     border: 1px solid var(--border-color);
     display: inline-block;
 }
 
+.concentration-panel { margin: 0 0 18px; padding: 16px 18px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); }
+.concentration-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.concentration-eyebrow { display: block; margin-bottom: 3px; color: var(--text-sub); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.concentration-header h4 { margin: 0; color: var(--text-main); font-size: 1rem; }
+.group-scope { padding: 4px 9px; border-radius: 999px; background: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border-color); font-size: 0.72rem; font-weight: 650; }
+.concentration-content { display: grid; grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1.1fr); gap: 18px; }
+.concentration-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-content: start; }
+.concentration-metric { min-width: 0; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); }
+.metric-label, .metric-caption { display: block; color: var(--text-sub); font-size: 0.68rem; }
+.concentration-metric strong { display: block; margin: 4px 0 2px; color: var(--text-main); font-size: 0.95rem; overflow-wrap: anywhere; }
+.metric-value { color: var(--primary); font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 700; }
+.concentration-list { display: flex; flex-direction: column; gap: 8px; }
+.concentration-line { display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; }
+.position-symbol { color: var(--text-main); font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.position-weight { color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+.weight-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--bg-card); }
+.weight-fill { height: 100%; border-radius: inherit; background: var(--primary); }
+.concentration-note { margin: 12px 0 0; color: var(--text-sub); font-size: 0.72rem; line-height: 1.5; }
+.concentration-unavailable { display: flex; flex-direction: column; gap: 4px; margin: 0 0 18px; padding: 12px 14px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-sub); font-size: 0.8rem; }
+.concentration-unavailable strong { color: var(--warning); }
+
 .search-box { position: relative; width: 220px; }
 .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-sub); pointer-events: none; }
-.search-input { width: 100%; padding: 8px 10px 8px 32px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.95rem; background: var(--bg-secondary); color: var(--text-main); }
+.search-input { width: 100%; box-sizing: border-box; padding: 8px 10px 8px 32px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.95rem; background: var(--bg-secondary); color: var(--text-main); }
 .search-input:focus { outline: none; border-color: var(--primary); background: var(--bg-card); }
 
 .filter-select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-main); font-size: 0.95rem; cursor: pointer; }
@@ -346,6 +459,8 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .symbol-text { font-weight: 700; color: var(--primary); font-family: 'JetBrains Mono', monospace; }
 .symbol-badge { margin-left: 6px; font-size: 0.8rem; }
 .currency-badge { margin-left: 6px; padding: 2px 5px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: var(--bg-secondary); color: var(--text-sub); border: 1px solid var(--border-color); vertical-align: middle; }
+.weight-badge { margin-left: 6px; padding: 2px 6px; border-radius: 999px; font-size: 0.68rem; font-weight: 700; background: rgba(59, 130, 246, 0.1); color: var(--primary); border: 1px solid rgba(59, 130, 246, 0.2); }
+.weight-cell { color: var(--primary); font-weight: 700; }
 .price-change { font-size: 0.85rem; margin-top: 2px; }
 
 .text-right { text-align: right; }
@@ -395,15 +510,21 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .empty-state { text-align: center; padding: 40px; color: var(--text-sub); }
 .empty-icon { font-size: 2.5rem; margin-bottom: 8px; opacity: 0.5; }
 
+@media (max-width: 900px) {
+    .concentration-content { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 768px) {
     .desktop-view { display: none; }
     .mobile-view { display: block; }
-    
+
     .card-header { flex-direction: column; align-items: stretch; gap: 12px; }
     .header-left { flex-direction: row; justify-content: space-between; align-items: center; }
     .summary-info { font-size: 0.85rem; padding: 4px 8px; margin: 0; }
     .header-controls { flex-direction: column; width: 100%; }
     .search-box { width: 100%; }
     .filter-select { width: 100%; }
+    .concentration-header { flex-direction: column; gap: 7px; }
+    .concentration-metrics { grid-template-columns: 1fr; }
 }
 </style>
