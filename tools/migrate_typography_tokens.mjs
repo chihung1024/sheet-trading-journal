@@ -20,7 +20,7 @@ const normalizeRem = (raw, unit) => {
   return unit === 'px' ? value / 16 : value;
 };
 
-const iconSelector = selector => /(?:logo-icon|icon-box|title-icon|empty-icon|label-icon|refresh-icon|filter-icon|toast-icon|fab-btn|btn-close-sheet|theme-toggle|market-badge|spinner(?:-sm)?|\.dot\b|btn-icon\b|empty-icon)/i.test(selector);
+const iconSelector = selector => /(?:logo-icon|icon-box|title-icon|empty-icon|label-icon|refresh-icon|filter-icon|toast-icon|fab-btn|btn-close-sheet|theme-toggle|market-badge|spinner(?:-sm)?|\.dot\b|btn-icon\b)/i.test(selector);
 const metricSelector = selector => /(?:stat-value|summary-value|published-total|contributor-total|net-display|command-summary-value|m-amount|m-price\b|m-footer-val|daily-pnl-block\s+\.stat-value)/i.test(selector);
 const titleSelector = selector => /(?:\bh[1-4]\b|panel-title|chart-title|gm-title|gm-section-title|strategy-name|history-title|empty-text|allocation-heading\s+strong|concentration-header\s+h4)/i.test(selector);
 const controlSelector = selector => /(?:button|input|select|textarea|\bbtn[-_]|switch-btn|toggle-pills|time-pills|quick-tag|filter-select|search-input|form-input|input-field|show-more-btn|detail-link|command-toggle|select-group-btn)/i.test(selector);
@@ -74,15 +74,88 @@ const migrateStyleBlocks = source => source.replace(
   (match, open, css, close) => `${open}${migrateCss(css)}${close}`,
 );
 
-const files = [...collectVueFiles(SRC), path.join(ROOT, 'index.html')];
+const replaceRequired = (source, from, to, label) => {
+  if (!source.includes(from)) return source;
+  console.log(`semantic correction: ${label}`);
+  return source.replace(from, to);
+};
+
+const applySemanticCorrections = (file, source) => {
+  const relative = path.relative(ROOT, file).replaceAll('\\', '/');
+  let out = source;
+
+  if (relative === 'src/App.vue') {
+    out = out.replace(
+      /body \{([^{}]*?)font-size:\s*var\(--type-emphasis\);/,
+      (match, before) => `body {${before}font-size: var(--type-body);`,
+    );
+    out = out.replace(
+      /(\.action-trigger-btn span:first-child \{[^{}]*?font-size:)\s*var\(--type-section\);/,
+      '$1 var(--icon-md);',
+    );
+  }
+
+  if (relative === 'src/components/RecordList.vue') {
+    out = replaceRequired(
+      out,
+      '代碼 / 策略 <span class="sort-icon">{{ getSortIcon(\'symbol\') }}</span>',
+      '代碼 / 策略 / 備註 <span class="sort-icon">{{ getSortIcon(\'symbol\') }}</span>',
+      'RecordList header owns journal summary with symbol/strategy',
+    );
+    out = replaceRequired(
+      out,
+      '                    <th>備註</th>\n',
+      '',
+      'remove empty desktop note column',
+    );
+    out = out.replaceAll('colspan="8"', 'colspan="7"');
+    out = replaceRequired(
+      out,
+      '                                <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">\n                                    <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>\n                                </div>\n',
+      '                                <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">\n                                    <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>\n                                </div>\n                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>\n',
+      'inline journal summary below symbol and strategy tags',
+    );
+    out = replaceRequired(
+      out,
+      '                        <td class="note-cell">\n                            <span v-if="r.note" class="note-preview">{{ r.note }}</span>\n                            <span v-else class="note-empty">—</span>\n                        </td>\n',
+      '',
+      'remove standalone journal table cell',
+    );
+    out = replaceRequired(
+      out,
+      '.symbol-cell { min-width: 135px; }\n',
+      '.symbol-cell { min-width: 0; }\n',
+      'allow combined symbol/strategy/journal column to flex',
+    );
+    out = replaceRequired(
+      out,
+      '.note-cell { min-width: 180px; max-width: 320px; }\n.note-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; color: var(--text-main); line-height: 1.4; }\n.note-empty { color: var(--text-sub); }\n',
+      '.record-note-inline { display: block; width: 100%; min-width: 0; color: var(--text-sub); font-size: var(--type-label); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n',
+      'replace standalone note styles with inline journal summary',
+    );
+  }
+
+  return out;
+};
+
+const files = collectVueFiles(SRC);
 let changed = 0;
 for (const file of files) {
   const before = fs.readFileSync(file, 'utf8');
-  const after = migrateStyleBlocks(before);
+  const migrated = migrateStyleBlocks(before);
+  const after = applySemanticCorrections(file, migrated);
   if (after === before) continue;
   fs.writeFileSync(file, after);
   changed += 1;
   console.log(`migrated ${path.relative(ROOT, file)}`);
 }
 
-console.log(`typography migration changed ${changed} file(s)`);
+/* index.html is a boot screen that renders before the app design system is guaranteed
+   to be available. Keep two explicit boot-only sizes instead of creating a second token authority. */
+const indexPath = path.join(ROOT, 'index.html');
+let indexSource = fs.readFileSync(indexPath, 'utf8');
+indexSource = indexSource.replace('font-size: var(--type-metric);', 'font-size: 2rem;');
+indexSource = indexSource.replace('font-size: var(--type-body);', 'font-size: 0.875rem;');
+fs.writeFileSync(indexPath, indexSource);
+
+console.log(`typography migration changed ${changed} Vue file(s)`);
