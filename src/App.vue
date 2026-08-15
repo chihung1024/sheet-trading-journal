@@ -109,6 +109,11 @@
 
           <!-- 總覽：Stats + 圖表 -->
           <section v-if="activeView === 'overview'" class="section-overview">
+            <DailyCommandCenter
+              v-if="!portfolioStore.loading"
+              @navigate="activeView = $event"
+            />
+
             <div class="section-stats">
               <StatsGrid v-if="!portfolioStore.loading" />
               <StatsGridSkeleton v-else />
@@ -209,6 +214,7 @@ import { isSnapshotVerificationCurrent } from './services/snapshotVerification.j
 
 import LoginOverlay from './components/LoginOverlay.vue';
 import DataReliabilityBanner from './components/DataReliabilityBanner.vue';
+import DailyCommandCenter from './components/DailyCommandCenter.vue';
 import StatsGrid from './components/StatsGrid.vue';
 import PerformanceChart from './components/PerformanceChart.vue';
 import TradeForm from './components/TradeForm.vue';
