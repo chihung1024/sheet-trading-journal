@@ -34,10 +34,11 @@ test('execution fields now precede strategy tags in the DOM flow', () => {
   const priceAt = source.indexOf('成交單價');
   const qtyAt = source.indexOf('股數 Shares');
   const feeAt = source.indexOf('手續費 Fee');
+  const amountAt = source.indexOf('成交金額（未含費稅');
   const tagsAt = source.indexOf('策略群組 (Tags)');
   const noteAt = source.indexOf('id="trade-note"');
   assert.ok(symbolAt >= 0 && dateAt > symbolAt && priceAt > dateAt && qtyAt > priceAt);
-  assert.ok(feeAt > qtyAt && tagsAt > feeAt && noteAt > tagsAt);
+  assert.ok(feeAt > qtyAt && amountAt > feeAt && tagsAt > amountAt && noteAt > tagsAt);
 });
 
 test('required-entry validation is field-specific without changing the existing acceptance predicates', () => {
