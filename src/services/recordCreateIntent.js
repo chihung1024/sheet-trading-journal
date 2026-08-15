@@ -168,6 +168,7 @@ export const beginRecordCreateIntent = (
   {
     now = Date.now(),
     createOpaqueId = defaultCreateOpaqueId,
+    idempotencyKey = null,
   } = {},
 ) => {
   const target = requireStorage(storage);
@@ -193,21 +194,24 @@ export const beginRecordCreateIntent = (
   }
 
   const barrier = rotateRecordMutationBarrier(target, normalizedOwner, { now, createOpaqueId });
-  const idempotencyKey = assertOpaqueId(createOpaqueId(), 'Record-create idempotency key');
+  const resolvedIdempotencyKey = assertOpaqueId(
+    idempotencyKey === null ? createOpaqueId() : idempotencyKey,
+    'Record-create idempotency key',
+  );
   const intent = {
     version: RECORD_CREATE_INTENT_VERSION,
     owner: normalizedOwner,
-    idempotencyKey,
+    idempotencyKey: resolvedIdempotencyKey,
     body,
     barrierToken: barrier.token,
     createdAt: now,
     state: RECORD_CREATE_INTENT_STATE.LIVE,
   };
-  verifiedSetJson(target, intentStorageKey(idempotencyKey), intent);
+  verifiedSetJson(target, intentStorageKey(resolvedIdempotencyKey), intent);
 
   const currentBarrier = readBarrier(target, normalizedOwner);
   if (!currentBarrier || currentBarrier.token !== barrier.token) {
-    target.removeItem(intentStorageKey(idempotencyKey));
+    target.removeItem(intentStorageKey(resolvedIdempotencyKey));
     const error = new Error('Record-create intent was superseded before it could be sent');
     error.name = 'RecordCreateIntentSupersededError';
     error.outcomeAmbiguous = false;
