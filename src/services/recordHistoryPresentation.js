@@ -42,6 +42,8 @@ export const recordMatchesHistoryFilters = (record, {
   dateTo = '',
   currentGroup = 'all',
 } = {}) => {
+  if (getHistoryDateRangeError({ dateFrom, dateTo })) return false;
+
   const normalizedQuery = String(query || '').trim().toLocaleLowerCase();
   const normalizedType = String(type || 'ALL').toUpperCase();
   const recordDate = normalizeRecordDate(record?.txn_date);
