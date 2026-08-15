@@ -297,7 +297,7 @@ test('semantic HTTP path returns replay success for exact payload and conflict f
   assert.equal(rows.length, 1);
 });
 
-test('reserved dividend key must match the validated Symbol + Date event and invalid auth falls back to canonical handling', async () => {
+test('reserved dividend key must match its event and authentication failure cannot fall through to generic create', async () => {
   const { db, rows } = createDividendDb();
   const wrongKey = await buildDividendEventIdempotencyKey({ symbol: 'AMD', date: BASE_RECORD.txn_date });
   const deps = {
@@ -327,6 +327,7 @@ test('reserved dividend key must match the validated Symbol + Date event and inv
       },
     },
   );
-  assert.equal(rejectedAuth, null);
+  assert.equal(rejectedAuth.status, 401);
+  assert.equal((await rejectedAuth.json()).error_meta.code, 'UNAUTHORIZED');
   assert.equal(rows.length, 0);
 });
