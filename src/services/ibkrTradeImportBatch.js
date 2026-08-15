@@ -6,7 +6,10 @@ const requireFunction = (value, label) => {
 const freezeResult = value => Object.freeze({
   ...value,
   failure: value.failure ? Object.freeze(value.failure) : null,
-  sync: Object.freeze(value.sync),
+  sync: Object.freeze({
+    ...value.sync,
+    recoveryWarnings: Object.freeze(value.sync.recoveryWarnings || []),
+  }),
 });
 
 export const runIbkrTradeImportBatch = async (
@@ -28,6 +31,7 @@ export const runIbkrTradeImportBatch = async (
   let created = 0;
   let replayed = 0;
   let failure = null;
+  const recoveryWarnings = [];
 
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
@@ -41,6 +45,14 @@ export const runIbkrTradeImportBatch = async (
       processed += 1;
       if (outcome.deduplicated === true) replayed += 1;
       else created += 1;
+      if (outcome.recoveryStateError) {
+        recoveryWarnings.push(Object.freeze({
+          index,
+          entry,
+          error: outcome.recoveryStateError,
+          deduplicated: outcome.deduplicated === true,
+        }));
+      }
     } catch (error) {
       failure = {
         index,
@@ -82,6 +94,7 @@ export const runIbkrTradeImportBatch = async (
     readbackError,
     updateAttempted,
     updateError,
+    recoveryWarnings,
   };
 
   if (failure) {
@@ -96,9 +109,11 @@ export const runIbkrTradeImportBatch = async (
     });
   }
 
+  const hasSyncWarning = Boolean(readbackError || updateError || recoveryWarnings.length > 0);
+
   if (created === 0) {
     return freezeResult({
-      status: readbackError ? 'replayed_with_sync_warning' : 'replayed',
+      status: hasSyncWarning ? 'replayed_with_sync_warning' : 'replayed',
       total: entries.length,
       processed,
       created,
@@ -109,7 +124,7 @@ export const runIbkrTradeImportBatch = async (
   }
 
   return freezeResult({
-    status: readbackError || updateError ? 'committed_with_sync_warning' : 'committed',
+    status: hasSyncWarning ? 'committed_with_sync_warning' : 'committed',
     total: entries.length,
     processed,
     created,
