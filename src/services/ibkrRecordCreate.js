@@ -135,6 +135,25 @@ const postIntentWithRefresh = async (
   }
 };
 
+const settleConfirmedIntent = (storage, intent) => {
+  try {
+    completeRecordCreateIntent(storage, intent.owner, intent.idempotencyKey);
+    return null;
+  } catch (cleanupError) {
+    try {
+      markRecordCreateIntentTerminal(
+        storage,
+        intent.owner,
+        intent.idempotencyKey,
+        { reason: 'CONFIRMED_COMMIT_CLEANUP_DEGRADED' },
+      );
+    } catch (tombstoneError) {
+      cleanupError.tombstoneError = tombstoneError;
+    }
+    return cleanupError;
+  }
+};
+
 export const createIbkrRecord = async (
   entry,
   {
@@ -192,20 +211,13 @@ export const createIbkrRecord = async (
     throw error;
   }
 
-  let recoveryStateError = null;
-  try {
-    completeRecordCreateIntent(storage, intent.owner, intent.idempotencyKey);
-  } catch (error) {
-    recoveryStateError = error;
-  }
-
   return Object.freeze({
     committed: true,
     outcomeAmbiguous: false,
     deduplicated: response?.deduplicated === true,
     recordId: response?.record_id ?? null,
     response,
-    recoveryStateError,
+    recoveryStateError: settleConfirmedIntent(storage, intent),
   });
 };
 
@@ -215,4 +227,5 @@ export const __test = Object.freeze({
   normalizeApiBaseUrl,
   postIntentOnce,
   postIntentWithRefresh,
+  settleConfirmedIntent,
 });
