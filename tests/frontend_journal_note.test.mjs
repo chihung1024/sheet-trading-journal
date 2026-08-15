@@ -53,11 +53,13 @@ test('TradeForm adds journal metadata without changing the established financial
   assert.match(source, /total_amount:\s*'',\s*\n\s*tag:\s*''\s*\n\}\);/);
 });
 
-test('RecordList renders notes and searches symbol, tag, or note on desktop/mobile', () => {
+test('RecordList renders notes and shared history filtering still searches symbol, tag, or note', () => {
   const source = read('src/components/RecordList.vue');
+  const historyPresentation = read('src/services/recordHistoryPresentation.js');
 
   assert.match(source, /placeholder="搜尋代碼、標籤或備註\.\.\."/);
-  assert.match(source, /\[r\.symbol, r\.tag, r\.note\]/);
+  assert.match(source, /recordMatchesHistoryFilters\(r, historyFilters\.value\)/);
+  assert.match(historyPresentation, /\[record\?\.symbol, record\?\.tag, record\?\.note\]/);
   assert.match(source, /class="note-preview"[^>]*>{{ r\.note }}/);
   assert.match(source, /v-if="r\.note" class="m-note">{{ r\.note }}/);
   assert.match(source, /<th>備註<\/th>/);
