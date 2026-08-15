@@ -62,9 +62,10 @@ test('RecordDetailPanel presents stored journal facts without becoming a financi
 
 test('desktop journal summary is integrated with symbol and strategy instead of reserving an empty Note column', () => {
   const source = read('src/components/RecordList.vue');
+  const inlineJournalSummaries = source.match(/class="record-note-inline">{{ r\.note }}<\/span>/g) || [];
 
   assert.match(source, /代碼 \/ 策略 \/ 備註/);
-  assert.match(source, /class="record-note-inline">{{ r\.note }}/);
+  assert.equal(inlineJournalSummaries.length, 1, 'desktop journal summary must render exactly once');
   assert.doesNotMatch(source, /<th>備註<\/th>/);
   assert.doesNotMatch(source, /class="note-cell"/);
   assert.doesNotMatch(source, /class="note-preview">{{ r\.note }}/);
