@@ -39,6 +39,14 @@
   --type-line-tight: 1.25;
   --type-line-body: 1.5;
   --type-line-reading: 1.6;
+
+  /* Decorative/icon size authority. Icons are intentionally separate from text scale. */
+  --icon-xs: 0.875rem;
+  --icon-sm: 1rem;
+  --icon-md: 1.125rem;
+  --icon-lg: 1.25rem;
+  --icon-xl: 1.5rem;
+  --icon-empty: 2rem;
   
   /* 邊框與裝飾 */
   --border-color: #e2e8f0;  /* Slate 200 */
