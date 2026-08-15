@@ -69,8 +69,8 @@ export const beginIbkrRecordCreateIntent = async (
   return intent;
 };
 
-const postIntentOnce = async (intent, token, { fetchImpl = globalThis.fetch } = {}) => {
-  const { json } = await fetchWithDeadline(
+const postIntentOnce = async (intent, token, { fetchImpl = globalThis.fetch } = {}) => (
+  fetchWithDeadline(
     `${CONFIG.API_BASE_URL}${RECORD_ENDPOINT}`,
     {
       method: 'POST',
@@ -86,9 +86,8 @@ const postIntentOnce = async (intent, token, { fetchImpl = globalThis.fetch } = 
       fetchImpl,
       responseHandler: response => readApiJson(response, { endpoint: RECORD_ENDPOINT }),
     },
-  );
-  return json;
-};
+  )
+);
 
 const postIntentWithRefresh = async (intent, auth, options = {}) => {
   let token = auth?.token;
