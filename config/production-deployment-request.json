@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "now1b-transport-a0213f05-20260814t0100z",
-  "source_sha": "a0213f05c64f8b1636711e5e3bfdea650f42f2df",
-  "requested_at": "2026-08-14T01:00:30.000Z",
-  "reason": "NOW-1B compatibility transport production activation after exact-source evidence #17 and refreshed authority."
+  "request_id": "phase9-2-9b9f09f-20260815t1359z",
+  "source_sha": "9b9f09f5079c59750219c73e23002a7ab8d2f33e",
+  "requested_at": "2026-08-15T13:59:20.000Z",
+  "reason": "Phase 9.2 deterministic dividend event identity production activation after exact-source Production Identity Evidence #18 and post-main CI/Pages verification."
 }
