@@ -54,7 +54,7 @@ export const buildDividendWorkflowSections = (
   return Object.freeze({
     pending: pendingRecentFirst,
     awaiting: awaitingRecentFirst,
-    active: [...pendingRecentFirst, ...awaitingRecentFirst],
+    active: sortDividendRowsRecentFirst([...pendingRecentFirst, ...awaitingRecentFirst]),
     confirmed: confirmedRecentFirst,
   });
 };
