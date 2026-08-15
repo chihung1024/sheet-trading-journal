@@ -154,13 +154,6 @@
                                     <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>
                                 </div>
                                 <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
-                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
-                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
-                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
-                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
-                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
-                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
-                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
                             </div>
                         </td>
                         <td>
