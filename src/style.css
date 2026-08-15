@@ -24,6 +24,21 @@
   --text-main: #0f172a;     /* Slate 900 - 深黑藍 */
   --text-sub: #64748b;      /* Slate 500 - 次要灰 */
   --text-inverse: #ffffff;
+
+  /* Typography authority
+     Components must consume these semantic roles instead of inventing local scales. */
+  --type-caption: 0.75rem;
+  --type-label: 0.8125rem;
+  --type-body: 0.875rem;
+  --type-control: 0.875rem;
+  --type-emphasis: 0.9375rem;
+  --type-section: 1.0625rem;
+  --type-page: 1.125rem;
+  --type-metric-sm: 1.25rem;
+  --type-metric: clamp(1.45rem, 1.45vw, 1.75rem);
+  --type-line-tight: 1.25;
+  --type-line-body: 1.5;
+  --type-line-reading: 1.6;
   
   /* 邊框與裝飾 */
   --border-color: #e2e8f0;  /* Slate 200 */
@@ -92,8 +107,8 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-app);
   color: var(--text-main);
-  line-height: 1.6;
-  font-size: 16px;
+  line-height: var(--type-line-body);
+  font-size: var(--type-body);
   
   /* 平滑字體渲染 */
   -webkit-font-smoothing: antialiased;
@@ -105,6 +120,17 @@ body {
   /* 移除手機版點擊高亮 */
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Semantic typography primitives. */
+.type-caption { font-size: var(--type-caption); line-height: var(--type-line-body); }
+.type-label { font-size: var(--type-label); line-height: var(--type-line-tight); }
+.type-body { font-size: var(--type-body); line-height: var(--type-line-body); }
+.type-control { font-size: var(--type-control); line-height: var(--type-line-tight); }
+.type-emphasis { font-size: var(--type-emphasis); line-height: var(--type-line-tight); }
+.type-section { font-size: var(--type-section); line-height: var(--type-line-tight); }
+.type-page { font-size: var(--type-page); line-height: var(--type-line-tight); }
+.type-metric-sm { font-size: var(--type-metric-sm); line-height: 1.15; }
+.type-metric { font-size: var(--type-metric); line-height: 1.12; }
 
 /* 數據字體 (表格、金額、圖表) */
 code, pre, .font-num {
