@@ -1,19 +1,6 @@
-const normalizeSymbol = value => (
-  typeof value === 'string' ? value.trim().toUpperCase() : ''
-);
+import { buildDividendEventKey } from '../../shared/dividendEventIdentity.js';
 
-const normalizeDate = value => {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : '';
-};
-
-export const buildDividendEventKey = ({ symbol, date } = {}) => {
-  const normalizedSymbol = normalizeSymbol(symbol);
-  const normalizedDate = normalizeDate(date);
-  if (!normalizedSymbol || !normalizedDate) return null;
-  return `${normalizedSymbol}_${normalizedDate}`;
-};
+export { buildDividendEventKey } from '../../shared/dividendEventIdentity.js';
 
 export const getPendingDividendEventKey = dividend => buildDividendEventKey({
   symbol: dividend?.symbol,
