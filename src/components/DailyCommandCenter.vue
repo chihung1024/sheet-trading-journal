@@ -235,7 +235,7 @@ const typeLabel = type => ({
 .command-summary-item { min-width: 0; padding: 10px 12px; border-right: 1px solid var(--border-color); }
 .command-summary-item:last-child { border-right: 0; }
 .command-summary-label { display: block; color: var(--text-sub); font-size: var(--type-caption); font-weight: 700; margin-bottom: 3px; }
-.command-summary-value { display: block; color: var(--text-main); font-family: 'JetBrains Mono', monospace; font-size: var(--type-metric-sm); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-summary-value { display: block; color: var(--text-main); font-family: 'JetBrains Mono', monospace; font-size: var(--type-emphasis); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .command-details { margin-top: 12px; }
 .command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .command-card { min-width: 0; padding: 13px 14px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); }

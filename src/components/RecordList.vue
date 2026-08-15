@@ -698,7 +698,7 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .m-card-body { margin-bottom: 12px; }
 .m-main-info { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; gap: 12px; }
 .m-symbol { font-size: var(--type-section); font-weight: 700; color: var(--primary); }
-.m-amount { font-size: var(--type-metric-sm); font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.m-amount { font-size: var(--type-emphasis); font-weight: 700; font-family: 'JetBrains Mono', monospace; }
 .mobile-tags { margin: 4px 0 8px; }
 .m-twd-note { text-align: right; margin-bottom: 4px; }
 .m-sub-info { display: flex; justify-content: space-between; gap: 8px; font-size: var(--type-label); color: var(--text-sub); }

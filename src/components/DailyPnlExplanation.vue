@@ -177,7 +177,7 @@ const pnlClass = (value) => {
 .published-total {
   flex: none;
   font-family: 'JetBrains Mono', monospace;
-  font-size: var(--type-metric-sm);
+  font-size: var(--type-emphasis);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -322,7 +322,7 @@ const pnlClass = (value) => {
   }
 
   .published-total {
-    font-size: var(--type-metric-sm);
+    font-size: var(--type-emphasis);
   }
 
   .component-summary {
@@ -357,7 +357,7 @@ const pnlClass = (value) => {
   }
 
   .contributor-total {
-    font-size: var(--type-metric-sm);
+    font-size: var(--type-emphasis);
   }
 
   .contributor-components {

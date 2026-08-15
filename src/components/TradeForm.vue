@@ -712,7 +712,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
     gap: 4px; 
 }
 .remove-tag { 
-    background: none; border: none; cursor: pointer; color: var(--text-sub); font-size: var(--type-label); line-height: 1; padding: 0 4px; display: flex; align-items: center; 
+    background: none; border: none; cursor: pointer; color: var(--text-sub); font-size: var(--icon-sm); line-height: 1; padding: 0 4px; display: flex; align-items: center; 
 }
 .remove-tag:hover { color: var(--danger); }
 .tag-input-field { border: none; outline: none; background: transparent; flex: 1; min-width: 80px; padding: 4px; height: auto; }
@@ -773,7 +773,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .summary-header { display: flex; justify-content: space-between; align-items: center; color: var(--text-sub); }
 .summary-label { font-size: var(--type-label); font-weight: 600; }
 .summary-input-wrapper { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; }
-.currency-symbol { font-size: var(--type-label); color: var(--text-main); font-weight: 500; }
+.currency-symbol { font-size: var(--type-metric-sm); color: var(--text-main); font-weight: 500; }
 .summary-value { 
     background: transparent; 
     border: none; 

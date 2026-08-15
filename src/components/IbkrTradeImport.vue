@@ -442,7 +442,7 @@ const formatNumber = (value, digits = 2) => {
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: var(--type-control);
+  font-size: var(--icon-md);
 }
 .dialog-state { padding: 2rem 1.25rem; text-align: center; }
 .summary-grid {

@@ -499,7 +499,7 @@ const confirmDividend = async (div) => {
 .dividend-entry-help { padding: 12px 24px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-sub); font-size: var(--type-label); line-height: 1.55; }
 .dividend-entry-help strong { color: var(--text-main); }
 .queue-section-label { padding: 10px 24px; color: var(--text-sub); background: var(--bg-card); border-bottom: 1px solid var(--border-color); font-size: var(--type-label); font-weight: 700; }
-.btn-refresh { width: 36px; height: 36px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: var(--type-control); transition: all 0.2s; }
+.btn-refresh { width: 36px; height: 36px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: var(--icon-md); transition: all 0.2s; }
 .btn-refresh:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: white; transform: translateY(-1px); }
 .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 .spinning { display: inline-block; animation: spin 1s linear infinite; }
@@ -530,7 +530,7 @@ td { padding: 16px 20px; vertical-align: middle; }
 .input-field::placeholder { color: var(--text-sub); opacity: 0.5; }
 .input-tax { width: 100px; }
 .tax-rate { font-size: var(--type-caption); font-weight: 700; color: var(--warning); background: rgba(245, 158, 11, 0.1); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
-.net-display { display: inline-flex; padding: 8px 16px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05)); border-radius: 6px; font-size: var(--type-metric-sm); font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--success); justify-content: center; align-items: center; }
+.net-display { display: inline-flex; padding: 8px 16px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05)); border-radius: 6px; font-size: var(--type-emphasis); font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--success); justify-content: center; align-items: center; }
 .action-buttons { display: flex; gap: 8px; align-items: center; justify-content: center; }
 .btn-action { width: 36px; height: 36px; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: var(--type-control); transition: all 0.2s; flex-shrink: 0; }
 .btn-confirm { background: var(--success); color: white; }

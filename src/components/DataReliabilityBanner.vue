@@ -108,7 +108,7 @@ const retryLoad = async () => {
 }
 
 .reliability-issue strong {
-  font-size: var(--type-body);
+  font-size: var(--type-emphasis);
 }
 
 .reliability-issue span {

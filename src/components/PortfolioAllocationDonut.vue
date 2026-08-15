@@ -105,7 +105,7 @@ const formatPercent = value => `${Number(value || 0).toFixed(2)}%`;
 
 .allocation-heading > div { min-width: 0; }
 .allocation-label { display: block; color: var(--text-sub); font-size: var(--type-caption); margin-bottom: 2px; }
-.allocation-heading strong { color: var(--text-main); font-size: var(--type-section); }
+.allocation-heading strong { color: var(--text-main); font-size: var(--type-emphasis); }
 .allocation-count { flex: none; color: var(--text-sub); font-size: var(--type-caption); }
 
 .allocation-body {

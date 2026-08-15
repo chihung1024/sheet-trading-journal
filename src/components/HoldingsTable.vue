@@ -493,7 +493,7 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .m-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--border-color); }
 .m-symbol { font-size: var(--type-section); font-weight: 700; color: var(--primary); font-family: 'JetBrains Mono', monospace; }
 .m-price-group { text-align: right; }
-.m-price { display: block; font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: var(--type-metric-sm); }
+.m-price { display: block; font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: var(--type-emphasis); }
 .m-change { font-size: var(--type-body); font-weight: 500; }
 
 .m-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
@@ -506,7 +506,7 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .m-footer-item { display: flex; align-items: baseline; gap: 6px; }
 .m-footer-item.right { flex-direction: row-reverse; }
 .m-footer-label { font-size: var(--type-label); color: var(--text-sub); }
-.m-footer-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: var(--type-metric-sm); }
+.m-footer-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: var(--type-emphasis); }
 .m-divider { width: 1px; height: 16px; background: var(--border-color); }
 
 .scroll-hint { text-align: center; padding: 12px; font-size: var(--type-label); color: var(--text-sub); }

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
 /* =========================================
    1. Design Tokens (CSS Variables)
    ========================================= */
@@ -30,7 +32,7 @@
   --type-caption: 0.8125rem;
   --type-label: 0.875rem;
   --type-body: 0.9375rem;
-  --type-control: 0.875rem;
+  --type-control: 1rem;
   --type-emphasis: 1rem;
   --type-section: 1.125rem;
   --type-page: 1.125rem;

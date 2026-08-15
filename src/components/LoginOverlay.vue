@@ -264,7 +264,7 @@ onUnmounted(() => {
 }
 
 .logo {
-  font-size: var(--type-metric);
+  font-size: var(--icon-empty);
   display: block;
 }
 
@@ -298,7 +298,7 @@ onUnmounted(() => {
 }
 
 .error-icon {
-  font-size: var(--type-section);
+  font-size: var(--icon-lg);
 }
 
 .error-content strong {
@@ -330,7 +330,7 @@ onUnmounted(() => {
 }
 
 .lock-icon {
-  font-size: var(--type-body);
+  font-size: var(--icon-sm);
 }
 
 /* 響應式設計 */
