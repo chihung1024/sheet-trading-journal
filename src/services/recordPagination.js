@@ -1,3 +1,5 @@
+import { extractIbkrUserJournalNote } from './ibkrJournalNote.js';
+
 const DEFAULT_LIMIT = 1_000;
 const DEFAULT_MAX_PAGES = 100;
 const DEFAULT_MAX_RECORDS = 100_000;
@@ -23,6 +25,11 @@ function normalizeRecordId(record) {
     throw new Error('record.id must be a positive integer');
   }
   return String(id);
+}
+
+function projectBrowserRecord(record) {
+  const note = extractIbkrUserJournalNote(record.note);
+  return note === record.note ? record : { ...record, note };
 }
 
 export function buildRecordsPageEndpoint({ limit = DEFAULT_LIMIT, cursor = null } = {}) {
@@ -67,7 +74,7 @@ export async function fetchAllRecordPages(fetchPage, options = {}) {
       const id = normalizeRecordId(record);
       if (seenRecordIds.has(id)) throw new Error(`duplicate record id detected: ${id}`);
       seenRecordIds.add(id);
-      records.push(record);
+      records.push(projectBrowserRecord(record));
       if (records.length > maxRecords) {
         throw new Error(`record count exceeded ${maxRecords}`);
       }
