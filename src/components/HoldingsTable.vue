@@ -62,6 +62,8 @@
                 </div>
             </div>
 
+            <PortfolioAllocationDonut :snapshot="concentration" />
+
             <div class="concentration-list" aria-label="主要持倉權重">
                 <div v-for="position in concentration.topPositions" :key="position.symbol" class="concentration-row">
                     <div class="concentration-line">
@@ -252,6 +254,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import PortfolioAllocationDonut from './PortfolioAllocationDonut.vue';
 import {
     buildPortfolioConcentrationSnapshot,
     getHoldingWeight,
@@ -425,13 +428,13 @@ h3 { margin: 0; font-size: 1.125rem; }
 .concentration-eyebrow { display: block; margin-bottom: 3px; color: var(--text-sub); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .concentration-header h4 { margin: 0; color: var(--text-main); font-size: 1rem; }
 .group-scope { padding: 4px 9px; border-radius: 999px; background: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border-color); font-size: 0.72rem; font-weight: 650; }
-.concentration-content { display: grid; grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1.1fr); gap: 18px; }
+.concentration-content { display: grid; grid-template-columns: minmax(230px, 0.85fr) minmax(280px, 0.95fr) minmax(300px, 1.2fr); gap: 14px; align-items: start; }
 .concentration-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-content: start; }
 .concentration-metric { min-width: 0; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); }
 .metric-label, .metric-caption { display: block; color: var(--text-sub); font-size: 0.68rem; }
 .concentration-metric strong { display: block; margin: 4px 0 2px; color: var(--text-main); font-size: 0.95rem; overflow-wrap: anywhere; }
 .metric-value { color: var(--primary); font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 700; }
-.concentration-list { display: flex; flex-direction: column; gap: 8px; }
+.concentration-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px 4px; }
 .concentration-line { display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; }
 .position-symbol { color: var(--text-main); font-family: 'JetBrains Mono', monospace; font-weight: 700; }
 .position-weight { color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
@@ -510,8 +513,14 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .empty-state { text-align: center; padding: 40px; color: var(--text-sub); }
 .empty-icon { font-size: 2.5rem; margin-bottom: 8px; opacity: 0.5; }
 
+@media (max-width: 1250px) {
+    .concentration-content { grid-template-columns: minmax(250px, 1fr) minmax(280px, 1fr); }
+    .concentration-list { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+}
+
 @media (max-width: 900px) {
     .concentration-content { grid-template-columns: 1fr; }
+    .concentration-list { grid-column: auto; display: flex; }
 }
 
 @media (max-width: 768px) {
