@@ -28,10 +28,19 @@ test('shared typography, spacing and control tokens are defined', () => {
   }
 });
 
-test('transaction note presentation is bounded without hiding full-detail authority', () => {
+test('transaction note presentation is compact on desktop while mobile retains a readable summary', () => {
   assert.match(css, /\.section-records \.desktop-view table\s*\{[\s\S]*table-layout:\s*fixed/);
-  assert.match(css, /\.section-records \.note-preview,[\s\S]*-webkit-line-clamp:\s*2/);
+  assert.match(css, /\.section-records \.desktop-view th:nth-child\(7\)\s*\{\s*width:\s*14%/);
+  assert.match(css, /\.section-records \.note-preview\s*\{[\s\S]*-webkit-line-clamp:\s*1/);
+  assert.match(css, /\.section-records \.m-note-preview\s*\{[\s\S]*-webkit-line-clamp:\s*2/);
   assert.doesNotMatch(css, /display:\s*none[^}]*note/i);
+});
+
+test('group management uses the same title, control and table density hierarchy', () => {
+  assert.match(css, /\.section-groups \.gm-title/);
+  assert.match(css, /\.section-groups \.gm-select-wrap select/);
+  assert.match(css, /\.section-groups \.gm-table th/);
+  assert.match(css, /\.section-groups \.gm-table td/);
 });
 
 test('overview cards share a responsive density contract', () => {
