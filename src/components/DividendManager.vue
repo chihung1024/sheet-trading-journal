@@ -387,10 +387,10 @@ const confirmDividend = async (div) => {
       }
       if (outcome?.error?.apiCode === 'DIVIDEND_EVENT_CONFLICT') {
         try {
-          await store.fetchAll();
+          await store.fetchRecords();
         } catch (readError) {
-          console.error('❌ 配息事件已存在但最新資料載入失敗:', readError);
-          addToast('此配息已有交易紀錄；最新資料暫時載入失敗，請勿重複提交。', 'warning');
+          console.error('❌ 配息事件已存在但最新交易紀錄載入失敗:', readError);
+          addToast('此配息已有交易紀錄；最新紀錄暫時載入失敗，請勿重複提交。', 'warning');
         }
         return;
       }
