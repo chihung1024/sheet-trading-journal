@@ -439,45 +439,9 @@ onUnmounted(() => {
 
 :root {
   --layout-max: 1920px;
-  --bg-app: #f8fafc;
-  --bg-card: #ffffff;
-  --bg-secondary: #f1f5f9;
-  --primary: #3b82f6;
-  --primary-dark: #2563eb;
-  --text-main: #0f172a;
-  --text-sub: #64748b;
-  --border-color: #e2e8f0;
-  --success: #10b981;
-  --danger: #ef4444;
-  --warning: #f59e0b;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.08);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --radius: 16px;
-  --radius-sm: 8px;
   --header-height: 64px;
   --space-desktop: 20px;
 }
-
-html.dark {
-  --bg-app: #0f172a;
-  --bg-card: #1e293b;
-  --bg-secondary: #334155;
-  --primary: #60a5fa;
-  --primary-dark: #3b82f6;
-  --text-main: #f1f5f9;
-  --text-sub: #94a3b8;
-  --border-color: #334155;
-  --success: #34d399;
-  --danger: #f87171;
-  --warning: #fbbf24;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
-}
-
-* { box-sizing: border-box; }
-html, body { overflow-x: hidden; }
-body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Inter', sans-serif; margin: 0; font-size: var(--type-body); line-height: 1.5; -webkit-tap-highlight-color: transparent; }
 
 /* Header Optimization */
 .top-nav { background: var(--bg-card); border-bottom: 1px solid var(--border-color); padding: 0 24px; height: var(--header-height); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; transition: background 0.3s; }
