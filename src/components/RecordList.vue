@@ -7,53 +7,90 @@
                 {{ showFilters ? '收起篩選' : '顯示篩選' }} <span class="filter-icon">🌪️</span>
             </button>
         </div>
-        
+
         <div class="toolbar" :class="{ 'mobile-expanded': showFilters }">
              <div class="search-box">
                 <span class="icon">🔍</span>
-                <input 
-                    type="text" 
-                    v-model="searchQuery" 
-                    placeholder="搜尋代碼、標籤或備註..." 
+                <input
+                    type="text"
+                    v-model="searchQuery"
+                    placeholder="搜尋代碼、標籤或備註..."
                     class="search-input"
+                    aria-label="搜尋交易紀錄"
                 >
              </div>
-             
+
              <div class="filters-wrapper" v-show="!isMobile || showFilters">
                  <div class="filters">
-                     <select v-model="filterType" class="filter-select">
+                     <select v-model="filterType" class="filter-select" aria-label="交易類型">
                         <option value="ALL">所有類型</option>
                         <option value="BUY">買入</option>
                         <option value="SELL">賣出</option>
                         <option value="DIV">配息</option>
                     </select>
-                    
-                    <select v-model="filterYear" class="filter-select">
-                        <option value="ALL">所有年份</option>
-                        <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
-                    </select>
-                    
-                    <select v-model="itemsPerPage" class="filter-select">
+
+                    <div class="filter-date-range" :class="{ invalid: dateRangeError }">
+                        <span class="filter-label">日期</span>
+                        <input
+                            type="date"
+                            v-model="dateFrom"
+                            class="filter-date-input"
+                            :max="dateTo || undefined"
+                            aria-label="開始日期"
+                        >
+                        <span class="date-separator">→</span>
+                        <input
+                            type="date"
+                            v-model="dateTo"
+                            class="filter-date-input"
+                            :min="dateFrom || undefined"
+                            aria-label="結束日期"
+                        >
+                    </div>
+
+                    <select v-model="itemsPerPage" class="filter-select" aria-label="每頁筆數">
                         <option :value="10">每頁 10 筆</option>
                         <option :value="20">每頁 20 筆</option>
                         <option :value="50">每頁 50 筆</option>
                         <option :value="100">每頁 100 筆</option>
                     </select>
+
+                    <button
+                        v-if="hasLocalFilters"
+                        type="button"
+                        class="btn-clear-filters"
+                        @click="clearLocalFilters"
+                    >
+                        清除篩選
+                    </button>
                  </div>
              </div>
 
              <IbkrTradeImport />
-             
+
              <button class="btn-refresh" @click="refreshData" :disabled="isRefreshing">
                 <span class="refresh-icon" :class="{ spinning: isRefreshing }">↺</span>
                 <span class="btn-text">刷新</span>
              </button>
         </div>
+
+        <div v-if="hasFilterContext || dateRangeError" class="filter-context" aria-live="polite">
+            <span class="filter-result-count">顯示 {{ processedRecords.length }} / {{ store.records.length }} 筆</span>
+            <span
+                v-for="item in filterContextItems"
+                :key="item.key"
+                class="filter-context-chip"
+                :class="{ fixed: item.fixed }"
+            >
+                {{ item.label }}
+            </span>
+            <span v-if="dateRangeError" class="filter-error">{{ dateRangeError }}</span>
+        </div>
     </div>
 
     <div class="stats-summary">
         <div class="stat-item">
-            <span class="stat-label">總交易</span>
+            <span class="stat-label">顯示筆數</span>
             <span class="stat-value">{{ processedRecords.length }}</span>
         </div>
         <div class="stat-item">
@@ -78,7 +115,7 @@
                         日期 <span class="sort-icon">{{ getSortIcon('txn_date') }}</span>
                     </th>
                     <th @click="sortBy('symbol')" class="sortable">
-                        代碼 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
+                        代碼 / 策略 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
                     </th>
                     <th @click="sortBy('txn_type')" class="sortable">
                         類型 <span class="sort-icon">{{ getSortIcon('txn_type') }}</span>
@@ -100,11 +137,11 @@
                 <tr v-if="paginatedRecords.length === 0">
                     <td colspan="8" class="empty-state">
                         <div class="empty-icon">📋</div>
-                        <div>無符合條件的紀錄</div>
+                        <div>{{ dateRangeError ? '請修正日期範圍' : '無符合條件的紀錄' }}</div>
                     </td>
                 </tr>
-                <tr 
-                    v-for="r in paginatedRecords" 
+                <tr
+                    v-for="r in paginatedRecords"
                     :key="r.id"
                     class="record-row"
                     :class="{ 'editing': editingId === r.id }"
@@ -112,8 +149,13 @@
                     <td class="date-cell">
                         <span class="date-text">{{ formatDate(r.txn_date) }}</span>
                     </td>
-                    <td>
-                        <span class="symbol-badge">{{ r.symbol }}</span>
+                    <td class="symbol-cell">
+                        <div class="symbol-stack">
+                            <span class="symbol-badge">{{ r.symbol }}</span>
+                            <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">
+                                <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>
+                            </div>
+                        </div>
                     </td>
                     <td>
                         <span class="type-badge" :class="r.txn_type.toLowerCase()">
@@ -148,12 +190,12 @@
     <div class="mobile-view">
         <div v-if="paginatedRecords.length === 0" class="empty-state">
             <div class="empty-icon">📋</div>
-            <div>無符合條件的紀錄</div>
+            <div>{{ dateRangeError ? '請修正日期範圍' : '無符合條件的紀錄' }}</div>
         </div>
 
-        <div 
-            v-for="r in paginatedRecords" 
-            :key="'mob_'+r.id" 
+        <div
+            v-for="r in paginatedRecords"
+            :key="'mob_'+r.id"
             class="mobile-card"
             :class="{ 'editing': editingId === r.id }"
         >
@@ -163,11 +205,14 @@
                     {{ getTypeLabel(r.txn_type) }}
                 </span>
             </div>
-            
+
             <div class="m-card-body">
                 <div class="m-main-info">
                     <span class="m-symbol">{{ r.symbol }}</span>
                     <span class="m-amount">{{ formatRecordNativeAmount(r, 2) }}</span>
+                </div>
+                <div v-if="getRecordTags(r).length > 0" class="record-tags mobile-tags" aria-label="策略標籤">
+                    <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>
                 </div>
                 <div
                     v-if="getRecordCurrency(r) !== 'TWD'"
@@ -202,10 +247,10 @@
     <div class="pagination" v-if="totalPages > 1">
         <button class="page-btn" @click="goToPage(1)" :disabled="currentPage === 1">«</button>
         <button class="page-btn" @click="prevPage" :disabled="currentPage === 1">←</button>
-        
+
         <div class="page-numbers">
-            <button 
-                v-for="page in visiblePages" 
+            <button
+                v-for="page in visiblePages"
                 :key="page"
                 class="page-number"
                 :class="{ active: page === currentPage }"
@@ -214,10 +259,10 @@
                 {{ page }}
             </button>
         </div>
-        
+
         <button class="page-btn" @click="nextPage" :disabled="currentPage === totalPages">→</button>
         <button class="page-btn" @click="goToPage(totalPages)" :disabled="currentPage === totalPages">»</button>
-        
+
         <span class="page-info">
             {{ currentPage }} / {{ totalPages }}
         </span>
@@ -238,6 +283,13 @@ import {
     resolveSettlementAmountNative,
     resolveTransactionValuation,
 } from '../services/transactionValuation.js';
+import {
+    getHistoryDateRangeError,
+    getRecordTags,
+    hasLocalHistoryFilters,
+    normalizeRecordDate,
+    recordMatchesHistoryFilters,
+} from '../services/recordHistoryPresentation.js';
 
 const store = usePortfolioStore();
 const { addToast } = useToast();
@@ -246,7 +298,8 @@ const emit = defineEmits(['edit']);
 const tableRef = ref(null);
 const searchQuery = ref('');
 const filterType = ref('ALL');
-const filterYear = ref('ALL');
+const dateFrom = ref('');
+const dateTo = ref('');
 const currentPage = ref(1);
 const itemsPerPage = ref(20);
 const sortKey = ref('txn_date');
@@ -254,13 +307,12 @@ const sortOrder = ref('desc');
 const isRefreshing = ref(false);
 const editingId = ref(null);
 
-// 手機版狀態
 const isMobile = ref(false);
 const showFilters = ref(false);
 
 const updateMedia = () => {
     isMobile.value = window.innerWidth < 768;
-    if (!isMobile.value) showFilters.value = true; // 桌面預設展開
+    if (!isMobile.value) showFilters.value = true;
 };
 
 onMounted(() => {
@@ -272,21 +324,12 @@ onUnmounted(() => {
     window.removeEventListener('resize', updateMedia);
 });
 
-// 格式化函數
 const formatNumber = (num, d=2) => {
     if (num === undefined || num === null || isNaN(num)) return '0.00';
     return Number(num).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 };
 
-// 修正：日期格式改為 YYYY-MM-DD
-const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
+const formatDate = (dateStr) => normalizeRecordDate(dateStr) || String(dateStr || '');
 
 const getTypeLabel = (type) => {
     const labels = { 'BUY': '買入', 'SELL': '賣出', 'DIV': '配息' };
@@ -327,9 +370,36 @@ const getTwdPresentation = (record) => {
     return `${prefix}NT$${formatNumber(valuation.settlementAmountTwd, 0)}`;
 };
 
-const availableYears = computed(() => {
-    const years = new Set(store.records.map(r => r.txn_date.substring(0, 4)));
-    return Array.from(years).sort().reverse();
+const historyFilters = computed(() => ({
+    query: searchQuery.value,
+    type: filterType.value,
+    dateFrom: dateFrom.value,
+    dateTo: dateTo.value,
+    currentGroup: store.currentGroup,
+}));
+
+const dateRangeError = computed(() => getHistoryDateRangeError(historyFilters.value));
+const hasLocalFilters = computed(() => hasLocalHistoryFilters(historyFilters.value));
+const hasFilterContext = computed(() => hasLocalFilters.value || store.currentGroup !== 'all');
+
+const filterContextItems = computed(() => {
+    const items = [];
+    if (store.currentGroup !== 'all') {
+        items.push({ key: 'group', label: `策略群組：${store.currentGroup}`, fixed: true });
+    }
+    const query = searchQuery.value.trim();
+    if (query) items.push({ key: 'query', label: `搜尋：${query}`, fixed: false });
+    if (filterType.value !== 'ALL') {
+        items.push({ key: 'type', label: `類型：${getTypeLabel(filterType.value)}`, fixed: false });
+    }
+    if (dateFrom.value || dateTo.value) {
+        items.push({
+            key: 'date',
+            label: `日期：${dateFrom.value || '最早'} → ${dateTo.value || '最新'}`,
+            fixed: false,
+        });
+    }
+    return items;
 });
 
 const buyCount = computed(() => processedRecords.value.filter(r => r.txn_type === 'BUY').length);
@@ -350,21 +420,10 @@ const getSortIcon = (key) => {
     return sortOrder.value === 'asc' ? '↑' : '↓';
 };
 
-const normalizeSearchText = value => String(value || '').toLocaleLowerCase();
-
 const processedRecords = computed(() => {
-    const query = searchQuery.value.trim().toLocaleLowerCase();
-    let result = store.records.filter(r => {
-        const matchSearch = !query || [r.symbol, r.tag, r.note].some(value => normalizeSearchText(value).includes(query));
-        const matchType = filterType.value === 'ALL' || r.txn_type === filterType.value;
-        const matchYear = filterYear.value === 'ALL' || r.txn_date.startsWith(filterYear.value);
-        let matchGroup = true;
-        if (store.currentGroup !== 'all') {
-            const tags = (r.tag || '').split(/[,;]/).map(t => t.trim());
-            matchGroup = tags.includes(store.currentGroup);
-        }
-        return matchSearch && matchType && matchYear && matchGroup;
-    });
+    if (dateRangeError.value) return [];
+
+    const result = store.records.filter(r => recordMatchesHistoryFilters(r, historyFilters.value));
 
     result.sort((a, b) => {
         let valA, valB;
@@ -382,7 +441,9 @@ const processedRecords = computed(() => {
             valB = b[sortKey.value];
         }
         if (sortKey.value === 'txn_date') {
-            return sortOrder.value === 'asc' ? new Date(valA) - new Date(valB) : new Date(valB) - new Date(valA);
+            return sortOrder.value === 'asc'
+                ? String(valA || '').localeCompare(String(valB || ''))
+                : String(valB || '').localeCompare(String(valA || ''));
         }
         if (typeof valA === 'string') {
             return sortOrder.value === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
@@ -432,9 +493,15 @@ const nextPage = () => { if (currentPage.value < totalPages.value) { currentPage
 const goToPage = (page) => { if (page !== '...' && page >= 1 && page <= totalPages.value) { currentPage.value = page; scrollToTop(); } };
 
 const scrollToTop = () => {
-    // 簡單的頂部滾動
     const el = document.querySelector('.section-records');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
+};
+
+const clearLocalFilters = () => {
+    searchQuery.value = '';
+    filterType.value = 'ALL';
+    dateFrom.value = '';
+    dateTo.value = '';
 };
 
 const refreshData = async () => {
@@ -460,7 +527,7 @@ const deleteRecord = async (id) => {
     await store.deleteRecord(id);
 };
 
-watch([searchQuery, filterType, filterYear, itemsPerPage], () => { currentPage.value = 1; });
+watch([searchQuery, filterType, dateFrom, dateTo, itemsPerPage], () => { currentPage.value = 1; });
 watch(() => store.currentGroup, () => { currentPage.value = 1; });
 </script>
 
@@ -473,14 +540,27 @@ watch(() => store.currentGroup, () => { currentPage.value = 1; });
 .toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: var(--bg-secondary); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); transition: all 0.3s ease; }
 .search-box { position: relative; flex: 1 1 200px; min-width: 180px; }
 .search-box .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-sub); pointer-events: none; }
-.search-input { width: 100%; padding: 10px 10px 10px 36px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: var(--bg-card); color: var(--text-main); }
+.search-input { width: 100%; box-sizing: border-box; padding: 10px 10px 10px 36px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: var(--bg-card); color: var(--text-main); }
 .search-input:focus { outline: none; border-color: var(--primary); }
 
 .filters-wrapper { display: flex; flex-wrap: wrap; gap: 12px; }
-.filters { display: flex; gap: 12px; flex-wrap: wrap; }
-.filter-select { padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); font-size: 0.95rem; color: var(--text-main); cursor: pointer; }
+.filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.filter-select, .filter-date-input { padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); font-size: 0.9rem; color: var(--text-main); }
+.filter-select { cursor: pointer; }
+.filter-date-range { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); }
+.filter-date-range.invalid { border-color: var(--danger); }
+.filter-date-range .filter-date-input { border: 0; padding: 6px 4px; min-width: 130px; }
+.filter-date-input:focus { outline: none; }
+.filter-label { font-size: 0.78rem; font-weight: 700; color: var(--text-sub); white-space: nowrap; }
+.date-separator { color: var(--text-sub); font-size: 0.8rem; }
+.btn-clear-filters { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; color: var(--text-sub); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-clear-filters:hover { border-color: var(--primary); color: var(--primary); background: var(--bg-secondary); }
+.filter-context { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); font-size: 0.8rem; }
+.filter-result-count { color: var(--text-sub); font-weight: 600; }
+.filter-context-chip { padding: 4px 9px; border-radius: 999px; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); }
+.filter-context-chip.fixed { color: var(--primary); border-color: rgba(59, 130, 246, 0.35); }
+.filter-error { color: var(--danger); font-weight: 700; }
 
-/* 修正：統一刷新按鈕樣式 */
 .btn-refresh {
   margin-left: auto;
   background: var(--bg-card);
@@ -528,7 +608,6 @@ watch(() => store.currentGroup, () => { currentPage.value = 1; });
   to { transform: rotate(360deg); }
 }
 
-/* Stats Summary */
 .stats-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-sm); }
 .stat-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .stat-label { font-size: 0.8rem; color: var(--text-sub); font-weight: 600; text-transform: uppercase; }
@@ -537,7 +616,6 @@ watch(() => store.currentGroup, () => { currentPage.value = 1; });
 .stat-value.text-success { color: var(--success); }
 .stat-value.text-warning { color: var(--warning); }
 
-/* Desktop Table */
 .table-container { overflow-x: auto; border-radius: var(--radius-sm); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
 th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: 0.85rem; font-weight: 700; white-space: nowrap; background: var(--bg-secondary); }
@@ -545,7 +623,11 @@ th.sortable { cursor: pointer; }
 td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
 .record-row:hover { background-color: var(--bg-secondary); }
 .date-cell { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--text-sub); }
+.symbol-cell { min-width: 135px; }
+.symbol-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
 .symbol-badge { font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--primary); }
+.record-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-chip { display: inline-flex; align-items: center; max-width: 160px; padding: 2px 7px; border-radius: 999px; background: rgba(99, 102, 241, 0.09); color: var(--text-sub); border: 1px solid rgba(99, 102, 241, 0.18); font-size: 0.7rem; font-weight: 650; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .record-twd-note, .m-twd-note { margin-top: 2px; color: var(--text-sub); font-size: 0.75rem; font-weight: 500; }
 .record-twd-note.unavailable, .m-twd-note.unavailable { color: var(--warning); }
 .note-cell { min-width: 180px; max-width: 320px; }
@@ -561,7 +643,6 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .btn-icon { border: none; background: var(--bg-secondary); cursor: pointer; color: var(--text-sub); font-size: 1rem; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
 .btn-icon:hover { background: var(--bg-card); border: 1px solid var(--border-color); }
 
-/* Mobile Card View */
 .mobile-view { display: none; }
 .mobile-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 12px; padding: 16px; transition: transform 0.2s; }
 .mobile-card:active { transform: scale(0.99); background: var(--bg-secondary); }
@@ -571,12 +652,13 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .type-badge.sm { font-size: 0.75rem; padding: 2px 6px; }
 
 .m-card-body { margin-bottom: 12px; }
-.m-main-info { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.m-main-info { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; gap: 12px; }
 .m-symbol { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
 .m-amount { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.mobile-tags { margin: 4px 0 8px; }
 .m-twd-note { text-align: right; margin-bottom: 4px; }
 
-.m-sub-info { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-sub); }
+.m-sub-info { display: flex; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: var(--text-sub); }
 .m-fee { font-size: 0.75rem; color: var(--text-sub); opacity: 0.7; }
 .m-note { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-main); font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 
@@ -586,13 +668,11 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .btn-action.delete { color: var(--danger); }
 .m-divider { width: 1px; background: var(--border-color); }
 
-/* Pagination */
 .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 24px; }
 .page-btn, .page-number { min-width: 32px; height: 32px; border: 1px solid var(--border-color); background: var(--bg-card); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-sub); font-size: 0.9rem; }
 .page-number.active { background: var(--primary); color: white; border-color: var(--primary); }
 .page-info { font-size: 0.9rem; color: var(--text-sub); margin-left: 8px; font-family: 'JetBrains Mono', monospace; }
 
-/* Utilities */
 .mobile-only { display: none; }
 .desktop-only { display: inline-block; }
 .text-right { text-align: right; }
@@ -601,25 +681,36 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .empty-state { text-align: center; padding: 40px; color: var(--text-sub); }
 .empty-icon { font-size: 2rem; margin-bottom: 8px; opacity: 0.5; }
 
-/* RWD Media Queries */
 @media (max-width: 768px) {
     .desktop-view { display: none; }
     .mobile-view { display: block; }
     .mobile-only { display: flex; }
     .desktop-only { display: none; }
-    
+
     .toolbar { padding: 12px; gap: 12px; align-items: stretch; }
-    .toolbar:not(.mobile-expanded) .filters-wrapper { display: none; } /* 預設隱藏篩選 */
-    
+    .toolbar:not(.mobile-expanded) .filters-wrapper { display: none; }
+
     .filters-wrapper { width: 100%; flex-direction: column; }
-    .filters { flex-direction: column; width: 100%; }
-    .filter-select { width: 100%; }
-    
+    .filters { flex-direction: column; width: 100%; align-items: stretch; }
+    .filter-select { width: 100%; box-sizing: border-box; }
+    .filter-date-range { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); width: 100%; box-sizing: border-box; }
+    .filter-date-range .filter-date-input { min-width: 0; width: 100%; box-sizing: border-box; }
+    .btn-clear-filters { width: 100%; }
+    .filter-context { margin-top: -4px; }
+
     .btn-refresh { padding: 10px; min-width: 42px; }
-    .btn-text { display: none; } /* 手機版隱藏文字 */
+    .btn-text { display: none; }
     .refresh-icon { font-size: 1.2rem; }
-    
+
     .stats-summary { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .stat-value { font-size: 1.2rem; }
+}
+
+@media (max-width: 480px) {
+    .filter-date-range { grid-template-columns: 1fr; gap: 4px; padding: 8px; }
+    .date-separator { display: none; }
+    .filter-label { margin-bottom: 2px; }
+    .filter-date-range .filter-date-input { border: 1px solid var(--border-color); padding: 8px; }
+    .m-sub-info { flex-direction: column; }
 }
 </style>
