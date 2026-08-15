@@ -74,7 +74,7 @@ const migrateStyleBlocks = source => source.replace(
   (match, open, css, close) => `${open}${migrateCss(css)}${close}`,
 );
 
-const replaceRequired = (source, from, to, label) => {
+const replaceOnce = (source, from, to, label) => {
   if (!source.includes(from)) return source;
   console.log(`semantic correction: ${label}`);
   return source.replace(from, to);
@@ -96,38 +96,37 @@ const applySemanticCorrections = (file, source) => {
   }
 
   if (relative === 'src/components/RecordList.vue') {
-    out = replaceRequired(
+    const noteLine = '                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>\n';
+    while (out.includes(noteLine + noteLine)) {
+      out = out.replaceAll(noteLine + noteLine, noteLine);
+    }
+
+    out = replaceOnce(
       out,
       '代碼 / 策略 <span class="sort-icon">{{ getSortIcon(\'symbol\') }}</span>',
       '代碼 / 策略 / 備註 <span class="sort-icon">{{ getSortIcon(\'symbol\') }}</span>',
       'RecordList header owns journal summary with symbol/strategy',
     );
-    out = replaceRequired(
-      out,
-      '                    <th>備註</th>\n',
-      '',
-      'remove empty desktop note column',
-    );
+    out = replaceOnce(out, '                    <th>備註</th>\n', '', 'remove empty desktop note column');
     out = out.replaceAll('colspan="8"', 'colspan="7"');
-    out = replaceRequired(
-      out,
-      '                                <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">\n                                    <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>\n                                </div>\n',
-      '                                <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">\n                                    <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>\n                                </div>\n                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>\n',
-      'inline journal summary below symbol and strategy tags',
-    );
-    out = replaceRequired(
+
+    if (!out.includes(noteLine)) {
+      out = replaceOnce(
+        out,
+        '                                <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">\n                                    <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>\n                                </div>\n',
+        '                                <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">\n                                    <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>\n                                </div>\n' + noteLine,
+        'inline journal summary below symbol and strategy tags',
+      );
+    }
+
+    out = replaceOnce(
       out,
       '                        <td class="note-cell">\n                            <span v-if="r.note" class="note-preview">{{ r.note }}</span>\n                            <span v-else class="note-empty">—</span>\n                        </td>\n',
       '',
       'remove standalone journal table cell',
     );
-    out = replaceRequired(
-      out,
-      '.symbol-cell { min-width: 135px; }\n',
-      '.symbol-cell { min-width: 0; }\n',
-      'allow combined symbol/strategy/journal column to flex',
-    );
-    out = replaceRequired(
+    out = replaceOnce(out, '.symbol-cell { min-width: 135px; }\n', '.symbol-cell { min-width: 0; }\n', 'allow combined journal column to flex');
+    out = replaceOnce(
       out,
       '.note-cell { min-width: 180px; max-width: 320px; }\n.note-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; color: var(--text-main); line-height: 1.4; }\n.note-empty { color: var(--text-sub); }\n',
       '.record-note-inline { display: block; width: 100%; min-width: 0; color: var(--text-sub); font-size: var(--type-label); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n',
