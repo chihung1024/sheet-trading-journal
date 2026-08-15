@@ -5,7 +5,7 @@
 > The complete pre-Phase-7 verbose handoff is preserved byte-for-byte at `docs/archive/to_do_update_list_through_phase6.md`. Use that archive only when historical Root Cause / PR chronology is needed; do not restart closed work from archived plans.
 
 Last updated: **2026-08-15 Asia/Taipei**  
-Current line: **Phase 3 Explainability, Phase 4 Strategy Analytics, and Phase 6 UX Convergence are OPTIMIZED FOR CURRENT REQUIREMENTS. Phase 7.1/7.1A/7.1B, Phase 8.1, Phase 9.1, and Phase 9.2 Deterministic Dividend Event Identity are CLOSED / PRODUCTION VERIFIED. No runtime batch is active. Phase 7.2 background Flex sync remains separately gated on credential/security design; no next runtime batch is selected without a product-first audit.**
+Current line: **Phase 10 product roadmap is adopted in this order: 10.1 Transaction Entry UX Convergence → 10.2 Dividend Workflow Productization → 10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support. Phase 10.1A Transaction Entry Information Hierarchy & Validation Clarity is CLOSED / PRODUCTION PAGES VERIFIED. No runtime batch is active; the next action is a bounded product audit for a possible Phase 10.1B Symbol Entry / Autocomplete / Normalization UX batch. All other new directions, including Phase 7.2 background Flex sync and an Action Center, are deferred until the approved Phase 10 roadmap is re-evaluated.**
 
 ---
 
@@ -24,15 +24,30 @@ Current line: **Phase 3 Explainability, Phase 4 Strategy Analytics, and Phase 6 
 
 ## 1. Current authoritative stable state
 
-Current verified runtime merge checkpoint:
+Current protected-main / production Pages checkpoint:
+
+`0ca4f890c0771755d907d725069612dc62e6e774`
+
+Current production Worker runtime checkpoint:
 
 `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
 
-Current protected-main control-plane checkpoint:
+Current Phase 9.2 production-activation control-plane checkpoint:
 
 `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
 
-Production verification for Phase 9.2:
+Production verification for Phase 10.1A:
+
+- PR #275 final exact head `db9f448e8598edec7cc362f4c1e9539aecbec7a9`
+- exact-head canonical CI #990 / run `31891157545`: **SUCCESS**
+- frozen review `4944065869`: **PASS / BLOCKER 0**
+- merge `0ca4f890c0771755d907d725069612dc62e6e774`
+- post-main CI #991 / run `31891228649`: **SUCCESS**
+- Pages #1557 / run `31891227897`: **SUCCESS**
+- Phase 10.1A changed only frontend transaction-entry presentation/validation plus focused regression coverage; no Worker, D1, Python, auth, dividend-event, IBKR-import, or financial-methodology change
+- production Worker therefore remains exact runtime `9b9f09f5079c59750219c73e23002a7ab8d2f33e`, release `4.08`, API `2.61`, schema `3`
+
+Production verification for Phase 9.2 remains:
 
 - runtime PR #272 final exact head `82be8f48daa95765c7052d304e6d1db3f98b8d08`; exact-head canonical CI #982: **SUCCESS**
 - frozen R2 review `4943920254`: **PASS / BLOCKER 0**
@@ -64,6 +79,7 @@ Current product state:
 - **Phase 8.1 Responsive Daily P&L Density — CLOSED / PRODUCTION PAGES VERIFIED**
 - **Phase 9.1 Dividend Confirmation Source of Truth — CLOSED / PRODUCTION PAGES VERIFIED**
 - **Phase 9.2 Deterministic Dividend Event Identity — CLOSED / PRODUCTION VERIFIED**
+- **Phase 10.1A Transaction Entry Information Hierarchy & Validation Clarity — CLOSED / PRODUCTION PAGES VERIFIED**
 - **No runtime batch is currently active.**
 
 Important production verification boundaries:
@@ -73,6 +89,7 @@ Important production verification boundaries:
 - Phase 7.1A was added so account-less sources can use an explicit non-sensitive Import Profile as stable replay scope without fabricating Account ID.
 - A real authenticated browser write using the new importer has **not** been falsely claimed where no such write evidence exists. Treat user-browser import/write smoke as an optional production evidence point.
 - Phase 9.1 established authoritative `DIV` records as confirmation truth. Phase 9.2 closes the independent reload/tab/device create race with deterministic event identity while preserving that same confirmation authority; browser-local confirmation state is still not authoritative.
+- Phase 10.1A is a frontend UX convergence batch only. It preserves the existing record-create/recovery lifecycle and existing `buildRecordPayload()` price/amount derivation semantics.
 
 ---
 
@@ -99,6 +116,7 @@ Important production verification boundaries:
 | Phase 8.1 Responsive Daily P&L Density | CLOSED / PRODUCTION PAGES VERIFIED | PR #269 merge `f7e47744...`; post-main CI #971 + Pages #1551 |
 | Phase 9.1 Dividend Confirmation Source of Truth | CLOSED / PRODUCTION PAGES VERIFIED | PR #270 merge `6bc509e4...`; exact-head CI #974; frozen review `4943784529`; post-main CI #975 + Pages #1552 |
 | Phase 9.2 Deterministic Dividend Event Identity | CLOSED / PRODUCTION VERIFIED | PR #272 merge `9b9f09f5...`; CI #982/#983; Pages #1554; review `4943920254`; Evidence #18; PR #273 merge `3e1ef4e5...`; CI #984/#985; Pages #1555; Deploy Worker #7 SUCCESS |
+| Phase 10.1A Transaction Entry Information Hierarchy & Validation Clarity | CLOSED / PRODUCTION PAGES VERIFIED | PR #275 exact head `db9f448e...`; CI #990; review `4944065869`; merge `0ca4f890...`; post-main CI #991 + Pages #1557 |
 
 The detailed pre-Phase-7 PR-by-PR Root Cause / Decision / Verification / Rollback ledger remains at `docs/archive/to_do_update_list_through_phase6.md`.
 
@@ -179,6 +197,22 @@ Python pending dividend event (symbol + ex_date)
 - Existing manual DIV records also block a second automatic row; different payload conflicts fail closed instead of silently merging cashflows.
 - Deleting or editing away the event row releases only the stale row-backed semantic reservation needed for a legitimate later reconfirmation.
 - Do not restore localStorage confirmation fallback.
+
+### 3F. Transaction-entry UX authority
+
+```text
+user-visible entry fields
+→ existing TradeForm acceptance predicates
+→ existing buildRecordPayload() normalization / price derivation
+→ existing store.addRecord() / updateRecord()
+→ durable record-create / recovery / recalculation lifecycle
+```
+
+- Phase 10.1A changes presentation and validation clarity, not transaction accounting semantics.
+- BUY / SELL actions are journal-recording actions, not broker order submission.
+- The editable `total_amount` surface is labeled `成交金額（未含費稅）`; if both price and amount are present, existing payload logic keeps price authoritative.
+- Field-specific errors preserve the prior required-input predicates rather than introducing a second validation/accounting engine.
+- Future 10.1 work must continue to reuse the same durable mutation lifecycle unless fresh evidence proves a product defect there.
 
 ---
 
@@ -434,28 +468,106 @@ Stable checkpoint result:
 
 ---
 
-## 6. NOW / NEXT / BACKLOG / REJECT
+## 6. Phase 10 — Product UX roadmap
+
+Approved product order:
+
+1. **Phase 10.1 — Transaction Entry UX Convergence**
+2. **Phase 10.2 — Dividend Workflow Productization**
+3. **Phase 10.3 — Journal / Transaction History UX Convergence**
+4. **Phase 10.4 — Portfolio Decision Support**
+5. All other new directions are deferred until this roadmap is re-evaluated.
+
+The sequence is intentional: **entry → dividend workflow → history/journal management → decision support**. Do not insert a broad Action Center or privileged broker-background architecture ahead of this roadmap without fresh product evidence and an explicit roadmap decision.
+
+### 6A. Batch 10.1A — Transaction Entry Information Hierarchy & Validation Clarity
+
+**State: CLOSED / PRODUCTION PAGES VERIFIED**
+
+Primary product goal:
+
+Improve the highest-frequency manual transaction-entry flow while preserving established record persistence, accounting semantics, durable create/recovery and automatic recalculation.
+
+Verified product gaps:
+
+- BUY / SELL submit labels sounded like real broker order placement even though the UI records journal transactions.
+- Tags interrupted the primary execution-data flow.
+- `total_amount` was labeled as a generic transaction total even though current frontend behavior uses it as an alternative execution subtotal for price derivation when price is absent; D1 persists qty/price/fee/tax, not `total_amount`.
+- one generic `請填寫完整資料` toast did not identify the missing input.
+- mobile stacked Qty/Fee/Tax as three full-width rows, unnecessarily lengthening the trade sheet.
+
+Implementation:
+
+- BUY / SELL actions are now `記錄買進` / `記錄賣出`, with an explicit note that this UI does not send broker orders.
+- core execution fields and the execution-amount surface precede Tags and Journal Note.
+- amount is labeled `成交金額（未含費稅）` and explains the existing price-vs-amount precedence.
+- field-specific error presentation reuses the existing required-input predicates for Symbol, Qty, price-or-amount and SELL group selection.
+- mobile keeps Qty full-width and Fee/Tax side-by-side at normal mobile widths, with a <=380px single-column fallback.
+- focused regression coverage locks terminology, amount semantics, DOM information hierarchy, validation predicates and mobile layout.
+
+Explicitly unchanged:
+
+- `buildRecordPayload()` price/amount derivation logic
+- `store.addRecord()` / `store.updateRecord()`
+- durable record-create intent, recovery and automatic recalculation
+- Worker, D1 schema/data, authentication and Python financial methodology
+- dividend event identity / confirmation authority
+- IBKR importer
+
+Verification:
+
+- PR #275 final exact head `db9f448e8598edec7cc362f4c1e9539aecbec7a9`
+- exact-head CI #990 / run `31891157545`: SUCCESS
+- frozen review `4944065869`: PASS / BLOCKER 0
+- merge `0ca4f890c0771755d907d725069612dc62e6e774`
+- post-main CI #991 / run `31891228649`: SUCCESS
+- Pages #1557 / run `31891227897`: SUCCESS
+- no production Worker deployment or D1 migration was required
+
+Rollback:
+
+Revert PR #275 / merge `0ca4f890...` or restore the previous Pages build. No Worker, schema, D1-data, or Python rollback is required.
+
+Accepted next audit:
+
+Phase 10.1 remains the active product line, but **no 10.1B runtime batch is pre-approved by this closeout**. The next bounded audit should verify the actual Symbol entry experience against the README/current product claims, especially autocomplete/suggestions, normalization feedback, market/currency affordance and keyboard/mobile speed. Implement only a concrete evidenced gap; do not rebuild the form architecture.
+
+---
+
+## 7. NOW / NEXT / BACKLOG / REJECT
 
 ### NOW
 
-No runtime batch is active.
+No runtime batch is active. Phase 10.1A is closed and production Pages verified.
 
 Useful user-browser evidence points, not coding blockers:
 
-1. normal reload of the production Pages bundle;
-2. verify dividend rows already represented by authoritative DIV records show `已入帳` consistently;
-3. verify a committed write with temporarily unavailable readback shows `已保存，等待同步` rather than falsely claiming confirmation;
-4. optionally verify legacy IBKR machine-only notes no longer occupy the Journal column and exercise one real importer preview/write/replay flow when a safe sample is available.
+1. normal reload of the production Pages bundle and verify the transaction panel shows the new recording terminology and field-specific errors;
+2. verify mobile Qty remains prominent while Fee/Tax are compact and readable;
+3. verify dividend rows already represented by authoritative DIV records show `已入帳` consistently;
+4. optionally exercise one real IBKR importer preview/write/replay flow when a safe sample is available.
 
 Only reopen closed batches if fresh production evidence contradicts the deployed contracts.
 
-### NEXT — product-first audit before any new runtime implementation
+### NEXT — bounded Phase 10.1 product audit
 
-No new runtime batch is selected at this checkpoint. Phase 9.2 is closed.
+Audit **Symbol Entry / Autocomplete / Normalization UX** before selecting Phase 10.1B runtime scope.
 
-**Phase 7.2 — IBKR Flex/background synchronization feasibility** remains a separate candidate, gated on an independent audit of credential ownership, secret storage, account identity, write authority, scheduling/retry ownership, and user-visible reconciliation policy. Prefer user-auth/on-demand sync if it can deliver equivalent UX without a privileged background writer.
+Audit questions:
 
-Any other next batch must first demonstrate a concrete product/UX gap or fresh production evidence. Do not create maintenance work merely to keep development moving.
+- README/product claim versus actual autocomplete/suggestion behavior;
+- normalization feedback for Yahoo-style symbols such as `2330.TW` without guessing suffixes;
+- whether existing native-currency detection can be surfaced more clearly without creating a second market/currency authority;
+- keyboard-first and mobile entry friction;
+- whether recent-symbol assistance has enough value to justify browser-local convenience state without becoming financial authority.
+
+If the audit proves a bounded high-value gap, define one Phase 10.1B batch with explicit unchanged semantics and rollback. Otherwise close Phase 10.1 and proceed to **Phase 10.2 Dividend Workflow Productization**.
+
+After Phase 10.1, the approved roadmap remains:
+
+`10.2 Dividend Workflow Productization → 10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support`
+
+**Phase 7.2 IBKR Flex/background synchronization**, Action Center / Daily Command Center and other new directions are deferred for later discussion; they are not current NEXT work.
 
 ### BACKLOG
 
@@ -463,6 +575,7 @@ Any other next batch must first demonstrate a concrete product/UX gap or fresh p
 - Phase 5 historical lot/trade attribution: blocked until authoritative production lot-ledger producer exists
 - common-period XIRR / Sharpe / Sortino / MDD / strategy scoring: requires a separately reviewed financial methodology; not justified by current product evidence
 - richer broker types (DIV/options/futures/FX) only after STK import usage proves value
+- Phase 7.2 background Flex sync feasibility and an eventual Action Center remain deferred roadmap candidates, not active implementation work
 
 ### REJECT / DO NOT DO NOW
 
@@ -474,10 +587,11 @@ Any other next batch must first demonstrate a concrete product/UX gap or fresh p
 - do not use `note` as replay/idempotency identity
 - do not bulk-delete legacy note metadata simply because the UI no longer needs it
 - do not rebuild Worker/Python/store architecture without evidence
+- do not turn Phase 10.1 UX work into a new accounting, validation, market-detection or transaction-mutation engine
 
 ---
 
-## 7. Fresh-session startup checklist
+## 8. Fresh-session startup checklist
 
 1. Read `AI_PROJECT_PLAYBOOK.md`.
 2. Read `README.md`.
@@ -486,15 +600,18 @@ Any other next batch must first demonstrate a concrete product/UX gap or fresh p
 5. Re-read fresh GitHub `main`, open PRs, latest CI and Pages before modifying anything.
 6. If user reports an active production symptom, treat that screenshot/log/runtime result as newer evidence than this prose.
 7. Keep one Primary Active Batch and preserve the recovery point before code-bearing work.
+8. Follow the approved Phase 10 order unless the user explicitly reprioritizes it.
 
 ---
 
-## 8. Current stable recovery points
+## 9. Current stable recovery points
 
 | Purpose | Checkpoint |
 |---|---|
-| Current protected-main control plane after Phase 9.2 activation | `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e` |
-| Current production runtime / Phase 9.2 | `9b9f09f5079c59750219c73e23002a7ab8d2f33e` |
+| Current protected main / production Pages after Phase 10.1A | `0ca4f890c0771755d907d725069612dc62e6e774` |
+| Before Phase 10.1A / Phase 9.2 docs stable checkpoint | `11c832c9a21b68bd7a2bd5a472b073239975a4be` |
+| Phase 9.2 production activation control plane | `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e` |
+| Current production Worker runtime / Phase 9.2 | `9b9f09f5079c59750219c73e23002a7ab8d2f33e` |
 | Before Phase 9.2 / Phase 9.1 stable runtime | `6bc509e4e0fd6671b036cb63ea8e210152609f8c` |
 | Before Phase 9.1 / Phase 8.1 stable runtime | `f7e47744399ed31a701f67f8d7e52ab393c2c6b2` |
 | Before Phase 8.1 / Phase 7.1B stable runtime | `1f82c9c5e5033e3d51cfb94267982d3fad7d618e` |
