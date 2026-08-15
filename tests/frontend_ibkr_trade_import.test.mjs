@@ -39,12 +39,13 @@ test('aggregates multiple IBKR stock fills by account+order using weighted avera
   assert.deepEqual(entry.source.tradeIds, ['T1', 'T2']);
   assert.equal(entry.idempotencyKey, 'IBKR~ORDER~20260814~U123~487287953~NVDA~BUY');
   assert.match(entry.record.note, /source=IBKR/);
-  assert.match(entry.record.note, /account_id=U123/);
+  assert.doesNotMatch(entry.record.note, /account/i);
+  assert.doesNotMatch(entry.record.note, /U123/);
   assert.match(entry.record.note, /order_id=487287953/);
   assert.match(entry.record.note, /fill_count=2/);
 });
 
-test('sectioned Trades CSV uses Statement Account fallback and SELL/SLD aliases', () => {
+test('sectioned Trades CSV uses a unique Statement Account fallback and SELL/SLD aliases', () => {
   const csv = [
     'Statement,Header,Field Name,Field Value',
     'Statement,Data,Account,U777',
@@ -62,6 +63,22 @@ test('sectioned Trades CSV uses Statement Account fallback and SELL/SLD aliases'
     txn_date: '2026-08-14', symbol: 'AMD', txn_type: 'SELL', qty: 20, price: 150,
     fee: 1.25, tax: 0, tag: '', note: parsed.entries[0].record.note,
   });
+});
+
+test('multiple Statement Account values cannot be used as an implicit fallback for account-less trade rows', () => {
+  const csv = [
+    'Statement,Header,Field Name,Field Value',
+    'Statement,Data,Account,U111',
+    'Statement,Data,Account,U222',
+    'Trades,Header,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,Comm/Fee,Buy/Sell,Order ID,Trade ID,Level of Detail,DataDiscriminator',
+    'Trades,Data,STK,USD,AAPL,20260814;101500,1,200,-0.50,BUY,90001,TR90001,EXECUTION,EXECUTION',
+  ].join('\n');
+
+  const parsed = parseIbkrTradeCsv(csv);
+  assert.equal(parsed.status, 'invalid');
+  assert.equal(parsed.entries.length, 0);
+  assert.equal(parsed.warnings[0].code, 'MISSING_COLUMNS');
+  assert.match(parsed.warnings[0].message, /accountId/);
 });
 
 test('Order summary/discriminator rows are ignored and do not taint real execution fills', () => {
@@ -106,6 +123,7 @@ test('conflicting TradeID taints the whole related order and cannot revive on a 
   assert.equal(parsed.status, 'invalid');
   assert.equal(parsed.warnings.some(item => item.code === 'CONFLICTING_TRADE_ID'), true);
   assert.equal(parsed.warnings.some(item => item.code === 'ORDER_TAINTED'), true);
+  assert.equal(parsed.warnings.some(item => /U123/.test(item.message)), false);
 });
 
 test('an invalid execution fill taints its entire order instead of importing an incomplete aggregate', () => {
@@ -117,6 +135,7 @@ test('an invalid execution fill taints its entire order instead of importing an 
   assert.equal(parsed.entries.length, 0);
   assert.equal(parsed.warnings.some(item => item.code === 'INVALID_QUANTITY_OR_PRICE'), true);
   assert.equal(parsed.warnings.some(item => item.code === 'ORDER_TAINTED'), true);
+  assert.equal(parsed.warnings.some(item => /U123/.test(item.message)), false);
 });
 
 test('same broker order number in different accounts remains two independent durable identities', () => {
@@ -139,6 +158,7 @@ test('same order id with mixed symbol/side/date/currency is rejected as one unsa
   ].join('\n'));
   assert.equal(parsed.entries.length, 0);
   assert.equal(parsed.warnings.some(item => item.code === 'ORDER_IDENTITY_CONFLICT'), true);
+  assert.equal(parsed.warnings.some(item => /U123/.test(item.message)), false);
 });
 
 test('non-STK and currency/symbol mismatches remain preview warnings and are never importable', () => {
@@ -191,5 +211,7 @@ test('parser remains pure and does not call API/store/browser persistence', asyn
   assert.match(source, /IDEMPOTENCY_KEY_RE/);
   assert.match(source, /accountId/);
   assert.match(source, /ORDER_TAINTED/);
+  assert.match(source, /clientaccountid/);
+  assert.match(source, /uniqueAccounts\.length === 1/);
   assert.match(source, /不自動猜測市場 suffix/);
 });
