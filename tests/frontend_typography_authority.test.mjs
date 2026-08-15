@@ -132,6 +132,18 @@ test('component font-size declarations only consume approved semantic text or ic
   }
 });
 
+test('primary data tables use label headers and body rows rather than page-level emphasis sizes', () => {
+  for (const relative of ['components/HoldingsTable.vue', 'components/RecordList.vue']) {
+    const source = fs.readFileSync(path.join(SRC, relative), 'utf8');
+    const css = styleBlocks(source).join('\n');
+    assert.match(css, /th\s*\{[^}]*font-size:\s*var\(--type-label\)/s, `${relative} table header should use label scale`);
+    assert.match(css, /td\s*\{[^}]*font-size:\s*var\(--type-body\)/s, `${relative} table body should use body scale`);
+  }
+
+  const records = fs.readFileSync(path.join(SRC, 'components', 'RecordList.vue'), 'utf8');
+  assert.match(records, /\.stat-value\s*\{[^}]*font-size:\s*var\(--type-metric-sm\)/s);
+});
+
 test('cross-page consistency stylesheet is layout-only and cannot become a typography override layer again', () => {
   const css = fs.readFileSync(path.join(SRC, 'styles', 'product-consistency.css'), 'utf8');
   assert.doesNotMatch(css, /font-size\s*:/i);
