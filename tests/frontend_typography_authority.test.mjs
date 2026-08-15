@@ -67,6 +67,40 @@ test('src/style.css is the only typography and icon-size token definition author
   }
 });
 
+test('App shell cannot redefine base design tokens or body typography', () => {
+  const app = fs.readFileSync(path.join(SRC, 'App.vue'), 'utf8');
+  const css = styleBlocks(app).join('\n');
+  const baseTokens = [
+    '--bg-app',
+    '--bg-card',
+    '--bg-secondary',
+    '--primary',
+    '--primary-dark',
+    '--text-main',
+    '--text-sub',
+    '--border-color',
+    '--success',
+    '--danger',
+    '--warning',
+    '--shadow-sm',
+    '--shadow-card',
+    '--shadow-lg',
+    '--radius',
+    '--radius-sm',
+  ];
+
+  for (const token of baseTokens) {
+    assert.doesNotMatch(
+      css,
+      new RegExp(`${token.replaceAll('-', '\\-')}\\s*:`),
+      `App.vue must consume ${token} from src/style.css instead of redefining it`,
+    );
+  }
+  assert.doesNotMatch(css, /body\s*\{[^}]*font-size\s*:/s);
+  assert.match(css, /--layout-max\s*:/);
+  assert.match(css, /--header-height\s*:/);
+});
+
 test('Vue component styles cannot invent numeric font-size values', () => {
   const numericFontSize = /font-size\s*:\s*[0-9]*\.?[0-9]+(?:rem|px|em|%)/i;
 
