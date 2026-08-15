@@ -115,7 +115,7 @@
                         日期 <span class="sort-icon">{{ getSortIcon('txn_date') }}</span>
                     </th>
                     <th @click="sortBy('symbol')" class="sortable">
-                        代碼 / 策略 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
+                        代碼 / 策略 / 備註 <span class="sort-icon">{{ getSortIcon('symbol') }}</span>
                     </th>
                     <th @click="sortBy('txn_type')" class="sortable">
                         類型 <span class="sort-icon">{{ getSortIcon('txn_type') }}</span>
@@ -129,13 +129,12 @@
                     >
                         總額 <span class="sort-icon">{{ getSortIcon('total_amount_twd') }}</span>
                     </th>
-                    <th>備註</th>
                     <th class="text-right">操作</th>
                 </tr>
             </thead>
             <tbody>
                 <tr v-if="paginatedRecords.length === 0">
-                    <td colspan="8" class="empty-state">
+                    <td colspan="7" class="empty-state">
                         <div class="empty-icon">📋</div>
                         <div>{{ dateRangeError ? '請修正日期範圍' : '無符合條件的紀錄' }}</div>
                     </td>
@@ -154,6 +153,7 @@
                                 <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">
                                     <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>
                                 </div>
+                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
                             </div>
                         </td>
                         <td>
@@ -173,10 +173,6 @@
                                 {{ getTwdPresentation(r) }}
                             </div>
                         </td>
-                        <td class="note-cell">
-                            <span v-if="r.note" class="note-preview">{{ r.note }}</span>
-                            <span v-else class="note-empty">—</span>
-                        </td>
                         <td class="text-right actions">
                             <button
                                 class="btn-icon view"
@@ -193,7 +189,7 @@
                         </td>
                     </tr>
                     <tr v-if="isRecordExpanded(r.id)" class="record-detail-row">
-                        <td colspan="8">
+                        <td colspan="7">
                             <RecordDetailPanel :record="r" :panel-id="getRecordDetailId(r.id)" />
                         </td>
                     </tr>
@@ -673,16 +669,14 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .record-row.expanded { background-color: var(--bg-secondary); }
 .record-detail-row td { padding: 8px 12px 16px; background: var(--bg-card); }
 .date-cell { font-family: 'JetBrains Mono', monospace; font-size: var(--type-label); color: var(--text-sub); }
-.symbol-cell { min-width: 135px; }
+.symbol-cell { min-width: 0; }
 .symbol-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
 .symbol-badge { font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--primary); }
 .record-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .tag-chip { display: inline-flex; align-items: center; max-width: 160px; padding: 2px 7px; border-radius: 999px; background: rgba(99, 102, 241, 0.09); color: var(--text-sub); border: 1px solid rgba(99, 102, 241, 0.18); font-size: var(--type-caption); font-weight: 650; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .record-twd-note, .m-twd-note { margin-top: 2px; color: var(--text-sub); font-size: var(--type-caption); font-weight: 500; }
 .record-twd-note.unavailable, .m-twd-note.unavailable { color: var(--warning); }
-.note-cell { min-width: 180px; max-width: 320px; }
-.note-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; color: var(--text-main); line-height: 1.4; }
-.note-empty { color: var(--text-sub); }
+.record-note-inline { display: block; width: 100%; min-width: 0; color: var(--text-sub); font-size: var(--type-label); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .type-badge { font-size: var(--type-label); padding: 4px 8px; border-radius: 6px; font-weight: 600; display: inline-block; }
 .type-badge.buy { background: rgba(59, 130, 246, 0.1); color: var(--primary); }

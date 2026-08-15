@@ -477,7 +477,7 @@ html.dark {
 
 * { box-sizing: border-box; }
 html, body { overflow-x: hidden; }
-body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Inter', sans-serif; margin: 0; font-size: var(--type-emphasis); line-height: 1.5; -webkit-tap-highlight-color: transparent; }
+body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Inter', sans-serif; margin: 0; font-size: var(--type-body); line-height: 1.5; -webkit-tap-highlight-color: transparent; }
 
 /* Header Optimization */
 .top-nav { background: var(--bg-card); border-bottom: 1px solid var(--border-color); padding: 0 24px; height: var(--header-height); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; transition: background 0.3s; }
@@ -738,7 +738,7 @@ body { background-color: var(--bg-app); color: var(--text-main); font-family: 'I
   .refresh-timer { display: none; }
 
   .action-trigger-btn { padding: 8px; border-radius: 50%; justify-content: center; width: 36px; height: 36px; }
-  .action-trigger-btn span:first-child { margin: 0; font-size: var(--type-section); }
+  .action-trigger-btn span:first-child { margin: 0; font-size: var(--icon-md); }
 
   .toast-container { bottom: 90px; right: 16px; left: 16px; }
   .toast { width: 100%; min-width: auto; }
