@@ -140,49 +140,64 @@
                         <div>{{ dateRangeError ? '請修正日期範圍' : '無符合條件的紀錄' }}</div>
                     </td>
                 </tr>
-                <tr
-                    v-for="r in paginatedRecords"
-                    :key="r.id"
-                    class="record-row"
-                    :class="{ 'editing': editingId === r.id }"
-                >
-                    <td class="date-cell">
-                        <span class="date-text">{{ formatDate(r.txn_date) }}</span>
-                    </td>
-                    <td class="symbol-cell">
-                        <div class="symbol-stack">
-                            <span class="symbol-badge">{{ r.symbol }}</span>
-                            <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">
-                                <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>
+                <template v-for="r in paginatedRecords" :key="r.id">
+                    <tr
+                        class="record-row"
+                        :class="{ 'editing': editingId === r.id, 'expanded': isRecordExpanded(r.id) }"
+                    >
+                        <td class="date-cell">
+                            <span class="date-text">{{ formatDate(r.txn_date) }}</span>
+                        </td>
+                        <td class="symbol-cell">
+                            <div class="symbol-stack">
+                                <span class="symbol-badge">{{ r.symbol }}</span>
+                                <div v-if="getRecordTags(r).length > 0" class="record-tags" aria-label="策略標籤">
+                                    <span v-for="tag in getRecordTags(r)" :key="tag" class="tag-chip">{{ tag }}</span>
+                                </div>
                             </div>
-                        </div>
-                    </td>
-                    <td>
-                        <span class="type-badge" :class="r.txn_type.toLowerCase()">
-                            {{ getTypeLabel(r.txn_type) }}
-                        </span>
-                    </td>
-                    <td class="text-right font-num">{{ formatNumber(r.qty, 2) }}</td>
-                    <td class="text-right font-num">{{ formatNativeAmount(getRecordAvgPrice(r), getRecordCurrency(r), 4) }}</td>
-                    <td class="text-right font-num font-bold">
-                        <div>{{ formatRecordNativeAmount(r, 2) }}</div>
-                        <div
-                            v-if="getRecordCurrency(r) !== 'TWD'"
-                            class="record-twd-note"
-                            :class="{ unavailable: getTotalAmountTWD(r) == null }"
-                        >
-                            {{ getTwdPresentation(r) }}
-                        </div>
-                    </td>
-                    <td class="note-cell">
-                        <span v-if="r.note" class="note-preview" :title="r.note">{{ r.note }}</span>
-                        <span v-else class="note-empty">—</span>
-                    </td>
-                    <td class="text-right actions">
-                        <button class="btn-icon edit" @click="editRecord(r)" title="編輯">✎</button>
-                        <button class="btn-icon delete" @click="deleteRecord(r.id)" title="刪除">✕</button>
-                    </td>
-                </tr>
+                        </td>
+                        <td>
+                            <span class="type-badge" :class="r.txn_type.toLowerCase()">
+                                {{ getTypeLabel(r.txn_type) }}
+                            </span>
+                        </td>
+                        <td class="text-right font-num">{{ formatNumber(r.qty, 2) }}</td>
+                        <td class="text-right font-num">{{ formatNativeAmount(getRecordAvgPrice(r), getRecordCurrency(r), 4) }}</td>
+                        <td class="text-right font-num font-bold">
+                            <div>{{ formatRecordNativeAmount(r, 2) }}</div>
+                            <div
+                                v-if="getRecordCurrency(r) !== 'TWD'"
+                                class="record-twd-note"
+                                :class="{ unavailable: getTotalAmountTWD(r) == null }"
+                            >
+                                {{ getTwdPresentation(r) }}
+                            </div>
+                        </td>
+                        <td class="note-cell">
+                            <span v-if="r.note" class="note-preview">{{ r.note }}</span>
+                            <span v-else class="note-empty">—</span>
+                        </td>
+                        <td class="text-right actions">
+                            <button
+                                class="btn-icon view"
+                                @click="toggleRecordDetails(r.id)"
+                                :aria-expanded="isRecordExpanded(r.id)"
+                                :aria-controls="getRecordDetailId(r.id)"
+                                :aria-label="isRecordExpanded(r.id) ? '收合完整交易明細' : '查看完整交易明細'"
+                                :title="isRecordExpanded(r.id) ? '收合交易明細' : '查看完整交易明細'"
+                            >
+                                {{ isRecordExpanded(r.id) ? '▴' : '▾' }}
+                            </button>
+                            <button class="btn-icon edit" @click="editRecord(r)" title="編輯">✎</button>
+                            <button class="btn-icon delete" @click="deleteRecord(r.id)" title="刪除">✕</button>
+                        </td>
+                    </tr>
+                    <tr v-if="isRecordExpanded(r.id)" class="record-detail-row">
+                        <td colspan="8">
+                            <RecordDetailPanel :record="r" :panel-id="getRecordDetailId(r.id)" />
+                        </td>
+                    </tr>
+                </template>
             </tbody>
         </table>
     </div>
@@ -197,7 +212,7 @@
             v-for="r in paginatedRecords"
             :key="'mob_'+r.id"
             class="mobile-card"
-            :class="{ 'editing': editingId === r.id }"
+            :class="{ 'editing': editingId === r.id, 'expanded': isRecordExpanded(r.id) }"
         >
             <div class="m-card-header">
                 <span class="m-date">{{ formatDate(r.txn_date) }}</span>
@@ -226,13 +241,30 @@
                         {{ formatNumber(r.qty, 2) }} 股 @ {{ formatNativeAmount(getRecordAvgPrice(r), getRecordCurrency(r), 2) }}
                     </span>
                     <span class="m-fee" v-if="r.fee > 0 || r.tax > 0">
-                        ({{ getRecordCurrency(r) }} 費: {{ (r.fee||0) + (r.tax||0) }})
+                        ({{ getRecordCurrency(r) }} 費稅: {{ (r.fee||0) + (r.tax||0) }})
                     </span>
                 </div>
-                <div v-if="r.note" class="m-note">{{ r.note }}</div>
+                <div v-if="r.note" class="m-note m-note-preview">{{ r.note }}</div>
             </div>
 
+            <RecordDetailPanel
+                v-if="isRecordExpanded(r.id)"
+                :record="r"
+                :panel-id="getRecordDetailId(r.id)"
+                class="mobile-detail-panel"
+            />
+
             <div class="m-card-actions">
+                <button
+                    class="btn-action view"
+                    @click="toggleRecordDetails(r.id)"
+                    :aria-expanded="isRecordExpanded(r.id)"
+                    :aria-controls="getRecordDetailId(r.id)"
+                    :aria-label="isRecordExpanded(r.id) ? '收合完整交易明細' : '查看完整交易明細'"
+                >
+                    {{ isRecordExpanded(r.id) ? '▴ 收合明細' : '▾ 查看明細' }}
+                </button>
+                <div class="m-divider"></div>
                 <button class="btn-action edit" @click="editRecord(r)">
                     ✎ 編輯
                 </button>
@@ -275,6 +307,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import IbkrTradeImport from './IbkrTradeImport.vue';
+import RecordDetailPanel from './RecordDetailPanel.vue';
 import {
     detectNativeCurrency,
     formatNativeAmount,
@@ -306,6 +339,7 @@ const sortKey = ref('txn_date');
 const sortOrder = ref('desc');
 const isRefreshing = ref(false);
 const editingId = ref(null);
+const expandedRecordId = ref(null);
 
 const isMobile = ref(false);
 const showFilters = ref(false);
@@ -370,6 +404,13 @@ const getTwdPresentation = (record) => {
     return `${prefix}NT$${formatNumber(valuation.settlementAmountTwd, 0)}`;
 };
 
+const getRecordDetailId = (id) => `record-detail-${id}`;
+const isRecordExpanded = (id) => expandedRecordId.value === id;
+const collapseRecordDetails = () => { expandedRecordId.value = null; };
+const toggleRecordDetails = (id) => {
+    expandedRecordId.value = isRecordExpanded(id) ? null : id;
+};
+
 const historyFilters = computed(() => ({
     query: searchQuery.value,
     type: filterType.value,
@@ -407,6 +448,7 @@ const sellCount = computed(() => processedRecords.value.filter(r => r.txn_type =
 const divCount = computed(() => processedRecords.value.filter(r => r.txn_type === 'DIV').length);
 
 const sortBy = (key) => {
+    collapseRecordDetails();
     if (sortKey.value === key) {
         sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
     } else {
@@ -488,9 +530,27 @@ const visiblePages = computed(() => {
     return pages;
 });
 
-const prevPage = () => { if (currentPage.value > 1) { currentPage.value--; scrollToTop(); } };
-const nextPage = () => { if (currentPage.value < totalPages.value) { currentPage.value++; scrollToTop(); } };
-const goToPage = (page) => { if (page !== '...' && page >= 1 && page <= totalPages.value) { currentPage.value = page; scrollToTop(); } };
+const prevPage = () => {
+    if (currentPage.value > 1) {
+        collapseRecordDetails();
+        currentPage.value--;
+        scrollToTop();
+    }
+};
+const nextPage = () => {
+    if (currentPage.value < totalPages.value) {
+        collapseRecordDetails();
+        currentPage.value++;
+        scrollToTop();
+    }
+};
+const goToPage = (page) => {
+    if (page !== '...' && page >= 1 && page <= totalPages.value) {
+        collapseRecordDetails();
+        currentPage.value = page;
+        scrollToTop();
+    }
+};
 
 const scrollToTop = () => {
     const el = document.querySelector('.section-records');
@@ -498,6 +558,7 @@ const scrollToTop = () => {
 };
 
 const clearLocalFilters = () => {
+    collapseRecordDetails();
     searchQuery.value = '';
     filterType.value = 'ALL';
     dateFrom.value = '';
@@ -505,6 +566,7 @@ const clearLocalFilters = () => {
 };
 
 const refreshData = async () => {
+    collapseRecordDetails();
     isRefreshing.value = true;
     try {
         await store.fetchRecords();
@@ -517,6 +579,7 @@ const refreshData = async () => {
 };
 
 const editRecord = (record) => {
+    collapseRecordDetails();
     editingId.value = record.id;
     emit('edit', record);
     setTimeout(() => { editingId.value = null; }, 2000);
@@ -524,11 +587,18 @@ const editRecord = (record) => {
 
 const deleteRecord = async (id) => {
     if (!confirm("確定要刪除這筆紀錄嗎？")) return;
+    if (isRecordExpanded(id)) collapseRecordDetails();
     await store.deleteRecord(id);
 };
 
-watch([searchQuery, filterType, dateFrom, dateTo, itemsPerPage], () => { currentPage.value = 1; });
-watch(() => store.currentGroup, () => { currentPage.value = 1; });
+watch([searchQuery, filterType, dateFrom, dateTo, itemsPerPage], () => {
+    collapseRecordDetails();
+    currentPage.value = 1;
+});
+watch(() => store.currentGroup, () => {
+    collapseRecordDetails();
+    currentPage.value = 1;
+});
 </script>
 
 <style scoped>
@@ -579,34 +649,12 @@ watch(() => store.currentGroup, () => { currentPage.value = 1; });
   white-space: nowrap;
 }
 
-.btn-refresh:hover:not(:disabled) {
-  color: var(--primary);
-  border-color: var(--primary);
-  background: var(--bg-secondary);
-}
-
-.btn-refresh:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.refresh-icon {
-  font-size: 1.1rem;
-  display: inline-block;
-}
-
-.refresh-icon.spinning {
-  animation: spin 1s linear infinite;
-}
-
-.btn-text {
-  font-family: inherit;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
+.btn-refresh:hover:not(:disabled) { color: var(--primary); border-color: var(--primary); background: var(--bg-secondary); }
+.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+.refresh-icon { font-size: 1.1rem; display: inline-block; }
+.refresh-icon.spinning { animation: spin 1s linear infinite; }
+.btn-text { font-family: inherit; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .stats-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-sm); }
 .stat-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -622,6 +670,8 @@ th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border
 th.sortable { cursor: pointer; }
 td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
 .record-row:hover { background-color: var(--bg-secondary); }
+.record-row.expanded { background-color: var(--bg-secondary); }
+.record-detail-row td { padding: 8px 12px 16px; background: var(--bg-card); }
 .date-cell { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--text-sub); }
 .symbol-cell { min-width: 135px; }
 .symbol-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
@@ -642,28 +692,29 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
 .btn-icon { border: none; background: var(--bg-secondary); cursor: pointer; color: var(--text-sub); font-size: 1rem; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
 .btn-icon:hover { background: var(--bg-card); border: 1px solid var(--border-color); }
+.btn-icon.view { color: var(--primary); }
 
 .mobile-view { display: none; }
 .mobile-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 12px; padding: 16px; transition: transform 0.2s; }
 .mobile-card:active { transform: scale(0.99); background: var(--bg-secondary); }
-
+.mobile-card.expanded { background: var(--bg-secondary); }
 .m-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .m-date { font-size: 0.85rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 .type-badge.sm { font-size: 0.75rem; padding: 2px 6px; }
-
 .m-card-body { margin-bottom: 12px; }
 .m-main-info { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; gap: 12px; }
 .m-symbol { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
 .m-amount { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
 .mobile-tags { margin: 4px 0 8px; }
 .m-twd-note { text-align: right; margin-bottom: 4px; }
-
 .m-sub-info { display: flex; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: var(--text-sub); }
 .m-fee { font-size: 0.75rem; color: var(--text-sub); opacity: 0.7; }
 .m-note { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-main); font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-
+.m-note-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+.mobile-detail-panel { margin: 0 0 14px; }
 .m-card-actions { display: flex; border-top: 1px solid var(--border-color); margin: 0 -16px -16px -16px; }
-.btn-action { flex: 1; border: none; background: transparent; padding: 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer; color: var(--text-sub); }
+.btn-action { flex: 1; border: none; background: transparent; padding: 12px 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; color: var(--text-sub); }
+.btn-action.view { color: var(--primary); }
 .btn-action.edit { color: var(--primary); }
 .btn-action.delete { color: var(--danger); }
 .m-divider { width: 1px; background: var(--border-color); }
@@ -689,7 +740,6 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
 
     .toolbar { padding: 12px; gap: 12px; align-items: stretch; }
     .toolbar:not(.mobile-expanded) .filters-wrapper { display: none; }
-
     .filters-wrapper { width: 100%; flex-direction: column; }
     .filters { flex-direction: column; width: 100%; align-items: stretch; }
     .filter-select { width: 100%; box-sizing: border-box; }
@@ -697,11 +747,9 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size
     .filter-date-range .filter-date-input { min-width: 0; width: 100%; box-sizing: border-box; }
     .btn-clear-filters { width: 100%; }
     .filter-context { margin-top: -4px; }
-
     .btn-refresh { padding: 10px; min-width: 42px; }
     .btn-text { display: none; }
     .refresh-icon { font-size: 1.2rem; }
-
     .stats-summary { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .stat-value { font-size: 1.2rem; }
 }
