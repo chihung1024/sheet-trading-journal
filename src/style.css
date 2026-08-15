@@ -24,13 +24,15 @@
   --text-inverse: #ffffff;
 
   /* Typography authority.
-     Components consume semantic roles instead of inventing local numeric scales. */
-  --type-caption: 0.75rem;
-  --type-label: 0.8125rem;
-  --type-body: 0.875rem;
+     Components consume semantic roles instead of inventing local numeric scales.
+     The reading scale is intentionally tight: 13 / 14 / 15 / 16 / 18px,
+     while only true KPI metrics may expand responsively to 23–28px. */
+  --type-caption: 0.8125rem;
+  --type-label: 0.875rem;
+  --type-body: 0.9375rem;
   --type-control: 0.875rem;
-  --type-emphasis: 0.9375rem;
-  --type-section: 1.0625rem;
+  --type-emphasis: 1rem;
+  --type-section: 1.125rem;
   --type-page: 1.125rem;
   --type-metric-sm: 1.25rem;
   --type-metric: clamp(1.45rem, 1.45vw, 1.75rem);
