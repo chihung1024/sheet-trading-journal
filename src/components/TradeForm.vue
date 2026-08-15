@@ -17,18 +17,53 @@
 
     <div class="form-grid">
         <div class="form-group full">
-            <label>交易標的 Symbol</label>
-            <div class="input-wrapper">
+            <label for="trade-symbol">交易標的 Symbol</label>
+            <div class="input-wrapper symbol-input-wrapper">
                 <input 
+                    id="trade-symbol"
                     type="text" 
                     v-model="form.symbol" 
+                    @focus="openSymbolSuggestions"
+                    @input="handleSymbolInput"
                     @change="checkHoldings" 
+                    @blur="closeSymbolSuggestions"
+                    @keydown="handleSymbolKeydown"
                     placeholder="如: NVDA, TSLA, 2330.TW" 
                     :disabled="isEditing" 
                     :aria-invalid="validationAttempted && !!validationErrors.symbol"
+                    :aria-expanded="showSymbolSuggestions"
+                    :aria-activedescendant="activeSymbolSuggestionId || undefined"
+                    aria-autocomplete="list"
+                    aria-haspopup="listbox"
+                    aria-controls="trade-symbol-suggestions"
+                    aria-describedby="trade-symbol-help"
+                    role="combobox"
+                    autocomplete="off"
                     class="input-lg uppercase bold-text"
                 >
+                <div
+                    v-if="showSymbolSuggestions"
+                    id="trade-symbol-suggestions"
+                    class="symbol-suggestions"
+                    role="listbox"
+                    aria-label="最近使用的交易標的"
+                >
+                    <div
+                        v-for="(symbol, index) in symbolSuggestions"
+                        :id="`trade-symbol-suggestion-${index}`"
+                        :key="symbol"
+                        :class="['symbol-suggestion', { active: index === activeSymbolSuggestionIndex }]"
+                        role="option"
+                        :aria-selected="index === activeSymbolSuggestionIndex"
+                        @pointerdown.prevent="selectSymbolSuggestion(symbol)"
+                        @mouseenter="activeSymbolSuggestionIndex = index"
+                    >
+                        <span class="symbol-suggestion-code">{{ symbol }}</span>
+                        <span class="symbol-suggestion-meta">曾使用</span>
+                    </div>
+                </div>
             </div>
+            <p v-if="!isEditing" id="trade-symbol-help" class="field-help">建議來自你既有的交易紀錄；仍可直接輸入新的 Yahoo Symbol。</p>
             <p v-if="validationAttempted && validationErrors.symbol" class="field-error" role="alert">{{ validationErrors.symbol }}</p>
         </div>
         
@@ -178,6 +213,7 @@ import {
     detectNativeCurrency,
     getCurrencyInputAffix,
 } from '../services/instrumentCurrency.js';
+import { buildKnownSymbolSuggestions } from '../services/symbolSuggestions.js';
 import { subscribeRecordCreateRecoverySuccess } from '../services/recordCreateRecoverySignal.js';
 
 const emit = defineEmits(['submitted']);
@@ -193,6 +229,9 @@ let unresolvedCreateBody = null;
 const tagInput = ref('');
 const selectedSellGroups = ref([]);
 const holdingGroups = ref([]);
+const symbolInputFocused = ref(false);
+const symbolSuggestionsDismissed = ref(false);
+const activeSymbolSuggestionIndex = ref(-1);
 
 // Keep the long-standing financial form declaration stable; journal-only metadata
 // is attached additively so existing transaction/idempotency contracts remain intact.
@@ -213,6 +252,18 @@ Object.assign(form, journalDefaults);
 const normalizedSymbol = computed(() => String(form.symbol || '').trim().toUpperCase());
 const transactionCurrency = computed(() => detectNativeCurrency(normalizedSymbol.value));
 const transactionCurrencySymbol = computed(() => getCurrencyInputAffix(transactionCurrency.value));
+const symbolSuggestions = computed(() => buildKnownSymbolSuggestions(store.records, form.symbol));
+const showSymbolSuggestions = computed(() => (
+    !isEditing.value
+    && symbolInputFocused.value
+    && !symbolSuggestionsDismissed.value
+    && symbolSuggestions.value.length > 0
+));
+const activeSymbolSuggestionId = computed(() => (
+    showSymbolSuggestions.value && activeSymbolSuggestionIndex.value >= 0
+        ? `trade-symbol-suggestion-${activeSymbolSuggestionIndex.value}`
+        : ''
+));
 
 const submitButtonText = computed(() => {
     switch(form.txn_type) {
@@ -250,6 +301,27 @@ const firstValidationError = computed(() => (
     || ''
 ));
 
+const resetSymbolSuggestionNavigation = () => {
+    activeSymbolSuggestionIndex.value = -1;
+};
+
+const openSymbolSuggestions = () => {
+    symbolInputFocused.value = true;
+    symbolSuggestionsDismissed.value = false;
+    resetSymbolSuggestionNavigation();
+};
+
+const handleSymbolInput = () => {
+    symbolSuggestionsDismissed.value = false;
+    resetSymbolSuggestionNavigation();
+};
+
+const closeSymbolSuggestions = () => {
+    symbolInputFocused.value = false;
+    symbolSuggestionsDismissed.value = false;
+    resetSymbolSuggestionNavigation();
+};
+
 const checkHoldings = () => {
     if (form.txn_type === 'SELL' && form.symbol) {
         holdingGroups.value = store.getGroupsWithHolding(form.symbol.toUpperCase());
@@ -260,6 +332,47 @@ const checkHoldings = () => {
         }
     } else {
         holdingGroups.value = [];
+    }
+};
+
+const selectSymbolSuggestion = (symbol) => {
+    form.symbol = symbol;
+    symbolInputFocused.value = false;
+    symbolSuggestionsDismissed.value = false;
+    resetSymbolSuggestionNavigation();
+    checkHoldings();
+};
+
+const handleSymbolKeydown = (event) => {
+    if (event.key === 'Escape') {
+        if (showSymbolSuggestions.value) event.preventDefault();
+        symbolSuggestionsDismissed.value = true;
+        resetSymbolSuggestionNavigation();
+        return;
+    }
+
+    if (!showSymbolSuggestions.value) return;
+
+    const count = symbolSuggestions.value.length;
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeSymbolSuggestionIndex.value = (
+            activeSymbolSuggestionIndex.value + 1
+        ) % count;
+        return;
+    }
+
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeSymbolSuggestionIndex.value = activeSymbolSuggestionIndex.value <= 0
+            ? count - 1
+            : activeSymbolSuggestionIndex.value - 1;
+        return;
+    }
+
+    if (event.key === 'Enter' && activeSymbolSuggestionIndex.value >= 0) {
+        event.preventDefault();
+        selectSymbolSuggestion(symbolSuggestions.value[activeSymbolSuggestionIndex.value]);
     }
 };
 
@@ -369,6 +482,9 @@ const resetForm = () => {
     holdingGroups.value = [];
     selectedSellGroups.value = [];
     tagInput.value = '';
+    symbolInputFocused.value = false;
+    symbolSuggestionsDismissed.value = false;
+    resetSymbolSuggestionNavigation();
 };
 
 const setupForm = (r) => {
@@ -378,6 +494,9 @@ const setupForm = (r) => {
     editingId.value = r.id;
     Object.keys(form).forEach(k => form[k] = r[k]);
     form.note = r.note || '';
+    symbolInputFocused.value = false;
+    symbolSuggestionsDismissed.value = false;
+    resetSymbolSuggestionNavigation();
     checkHoldings();
 };
 
@@ -513,6 +632,42 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .font-num { font-family: 'JetBrains Mono', monospace; }
 .uppercase { text-transform: uppercase; }
 .bold-text { font-weight: 700; }
+
+/* Symbol suggestions */
+.symbol-input-wrapper { position: relative; }
+.symbol-suggestions {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-card);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+    padding: 6px;
+}
+.symbol-suggestion {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 42px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    user-select: none;
+}
+.symbol-suggestion:hover,
+.symbol-suggestion.active { background: var(--bg-secondary); }
+.symbol-suggestion-code {
+    color: var(--text-main);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+}
+.symbol-suggestion-meta { color: var(--text-sub); font-size: 0.75rem; }
 
 /* 帶前綴的輸入框 */
 .input-with-prefix { position: relative; }
