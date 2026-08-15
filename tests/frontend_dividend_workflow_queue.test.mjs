@@ -15,7 +15,7 @@ const readDividendManager = () => fs.readFileSync(DIVIDEND_MANAGER_PATH, 'utf8')
 
 const row = (symbol, exDate) => ({ symbol, ex_date: exDate });
 
-test('dividend workflow partitions pending, awaiting readback, and authoritative confirmed rows', () => {
+test('dividend workflow partitions statuses while keeping one recent-first active queue', () => {
   const rows = [
     row('OLD', '2026-01-02'),
     row('NEW', '2026-08-14'),
@@ -29,7 +29,7 @@ test('dividend workflow partitions pending, awaiting readback, and authoritative
 
   assert.deepEqual(sections.pending.map(item => item.symbol), ['NEW', 'OLD']);
   assert.deepEqual(sections.awaiting.map(item => item.symbol), ['SYNC']);
-  assert.deepEqual(sections.active.map(item => item.symbol), ['NEW', 'OLD', 'SYNC']);
+  assert.deepEqual(sections.active.map(item => item.symbol), ['NEW', 'SYNC', 'OLD']);
   assert.deepEqual(sections.confirmed.map(item => item.symbol), ['DONE']);
 });
 
@@ -62,6 +62,7 @@ test('DividendManager renders the active queue separately from collapsed confirm
   assert.match(source, /const showConfirmedHistory = ref\(false\)/);
   assert.match(source, /v-for="div in activeDividendRows"/);
   assert.match(source, /v-for="div in confirmedDividendRows"/);
+  assert.match(source, /待處理佇列 · 最新除息日優先/);
   assert.match(source, /已入帳歷史/);
   assert.match(source, /:aria-expanded="showConfirmedHistory"/);
   assert.match(source, /實際 DIV 金額與備註請以交易紀錄中的權威交易為準/);
