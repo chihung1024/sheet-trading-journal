@@ -7,18 +7,18 @@
           <h3>配息入帳確認</h3>
           <span class="subtitle" v-if="localDividends.length > 0">
             {{ pendingCount }} 筆待處理
-            <span v-if="confirmedCount > 0" class="confirmed-badge">
-              / {{ confirmedCount }} 筆已入帳
-            </span>
             <span v-if="awaitingReadbackCount > 0" class="awaiting-badge">
               / {{ awaitingReadbackCount }} 筆已保存待同步
+            </span>
+            <span v-if="confirmedCount > 0" class="confirmed-badge">
+              / {{ confirmedCount }} 筆已入帳
             </span>
           </span>
         </div>
       </div>
-      <button 
-        class="btn-refresh" 
-        @click="fetchDividends" 
+      <button
+        class="btn-refresh"
+        @click="fetchDividends"
         :disabled="loading"
         title="刷新配息資訊"
       >
@@ -26,13 +26,26 @@
       </button>
     </div>
 
-    <div v-if="localDividends.length > 0" class="dividend-entry-help">
+    <div v-if="activeDividendRows.length > 0" class="dividend-entry-help">
       <strong>入帳口徑：</strong>
       稅前配息總額 − 預扣稅金 = 實際入帳淨額。預設值來自系統估算，請依券商實際資料核對；確認後會以除息日建立 DIV 交易，交易金額為淨額。
     </div>
 
-    <div class="desktop-table">
-      <div v-if="localDividends.length > 0" class="table-wrapper">
+    <div v-if="localDividends.length === 0" class="empty-state">
+      <div class="empty-icon">💤</div>
+      <p class="empty-text">目前沒有可自動估算的待確認配息</p>
+      <p class="empty-hint">需人工確認的資料會顯示在上方資料警示</p>
+    </div>
+
+    <div v-else-if="activeDividendRows.length === 0" class="empty-state queue-clear-state">
+      <div class="empty-icon">✓</div>
+      <p class="empty-text">目前沒有待處理配息</p>
+      <p class="empty-hint" v-if="confirmedCount > 0">已入帳歷史預設收合，可於下方展開查看</p>
+    </div>
+
+    <div v-if="activeDividendRows.length > 0" class="desktop-table">
+      <div class="queue-section-label">待處理佇列 · 最新除息日優先</div>
+      <div class="table-wrapper">
         <table>
           <thead>
             <tr>
@@ -45,33 +58,29 @@
             </tr>
           </thead>
           <tbody>
-            <tr 
-              v-for="div in localDividends" 
-              :key="getDivKey(div)" 
+            <tr
+              v-for="div in activeDividendRows"
+              :key="getDivKey(div)"
               class="table-row"
-              :class="{
-                'row-confirmed': isConfirmed(div),
-                'row-awaiting': isAwaitingReadback(div),
-              }"
+              :class="{ 'row-awaiting': isAwaitingReadback(div) }"
             >
               <td class="text-center">
                 <div class="date-display">{{ formatFullDate(div.ex_date) }}</div>
               </td>
-              
+
               <td class="text-center">
                 <div class="symbol-wrapper">
                   <span class="symbol-tag">{{ div.symbol }}</span>
-                  <span v-if="isConfirmed(div)" class="confirmed-label">✓ 已入帳</span>
-                  <span v-else-if="isAwaitingReadback(div)" class="syncing-label">✓ 已保存，等待同步</span>
+                  <span v-if="isAwaitingReadback(div)" class="syncing-label">✓ 已保存，等待同步</span>
                 </div>
               </td>
-              
+
               <td class="text-center">
                 <div class="input-group">
                   <span class="input-currency">{{ getDividendCurrency(div) }}</span>
-                  <input 
-                    type="number" 
-                    v-model.number="div.amount" 
+                  <input
+                    type="number"
+                    v-model.number="div.amount"
                     class="input-field"
                     step="0.01"
                     min="0"
@@ -81,12 +90,12 @@
                   >
                 </div>
               </td>
-              
+
               <td class="text-center">
                 <div class="input-group">
-                  <input 
-                    type="number" 
-                    v-model.number="div.tax" 
+                  <input
+                    type="number"
+                    v-model.number="div.tax"
                     class="input-field input-tax"
                     step="0.01"
                     min="0"
@@ -97,21 +106,18 @@
                   <span class="tax-rate">{{ getDividendEntryTaxRate(div) }}%</span>
                 </div>
               </td>
-              
+
               <td class="text-center">
                 <div class="net-display">
                   {{ formatNumber(getDividendEntryAmounts(div).net, 2) }}
                 </div>
               </td>
-              
+
               <td class="text-center">
                 <div class="action-buttons">
-                  <button 
-                    class="btn-action btn-confirm" 
-                    :class="{
-                      'btn-confirmed': isConfirmed(div),
-                      'btn-awaiting': isAwaitingReadback(div),
-                    }"
+                  <button
+                    class="btn-action btn-confirm"
+                    :class="{ 'btn-awaiting': isAwaitingReadback(div) }"
                     @click="confirmDividend(div)"
                     :disabled="processingKey === getDivKey(div) || isInteractionLocked(div)"
                     :title="getConfirmationTitle(div)"
@@ -126,53 +132,36 @@
           </tbody>
         </table>
       </div>
-      
-      <div v-else class="empty-state">
-        <div class="empty-icon">💤</div>
-        <p class="empty-text">目前沒有可自動估算的待確認配息</p>
-        <p class="empty-hint">需人工確認的資料會顯示在上方資料警示</p>
-      </div>
     </div>
 
-    <div class="mobile-cards">
-      <div v-if="localDividends.length === 0" class="empty-state">
-        <div class="empty-icon">💤</div>
-        <p class="empty-text">目前沒有可自動估算的待確認配息</p>
-        <p class="empty-hint">需人工確認的資料會顯示在上方資料警示</p>
-      </div>
-
-      <div v-else class="cards-container">
-        <div 
-          v-for="div in localDividends" 
-          :key="'m_' + getDivKey(div)" 
+    <div v-if="activeDividendRows.length > 0" class="mobile-cards">
+      <div class="queue-section-label">待處理佇列 · 最新除息日優先</div>
+      <div class="cards-container">
+        <div
+          v-for="div in activeDividendRows"
+          :key="'m_' + getDivKey(div)"
           class="dividend-card"
-          :class="{
-            'card-confirmed': isConfirmed(div),
-            'card-awaiting': isAwaitingReadback(div),
-          }"
+          :class="{ 'card-awaiting': isAwaitingReadback(div) }"
         >
           <div class="card-header">
             <div class="card-info">
               <span class="symbol-tag">{{ div.symbol }}</span>
               <span class="date-text">{{ formatFullDate(div.ex_date) }}</span>
             </div>
-            <span v-if="isConfirmed(div)" class="confirmed-badge-mobile">
-              ✓ 已入帳
-            </span>
-            <span v-else-if="isAwaitingReadback(div)" class="awaiting-badge-mobile">
+            <span v-if="isAwaitingReadback(div)" class="awaiting-badge-mobile">
               ✓ 已保存，等待同步
             </span>
           </div>
-          
+
           <div class="card-body">
             <div class="form-row">
               <label class="form-label">
                 <span class="label-icon">💵</span>
                 稅前配息總額 ({{ getDividendCurrency(div) }})
               </label>
-              <input 
-                type="number" 
-                v-model.number="div.amount" 
+              <input
+                type="number"
+                v-model.number="div.amount"
                 class="form-input"
                 step="0.01"
                 min="0"
@@ -180,16 +169,16 @@
                 :disabled="isInteractionLocked(div)"
               >
             </div>
-            
+
             <div class="form-row">
               <label class="form-label">
                 <span class="label-icon">📝</span>
                 預扣稅金 ({{ getDividendCurrency(div) }})
                 <span class="tax-badge">{{ getDividendEntryTaxRate(div) }}%</span>
               </label>
-              <input 
-                type="number" 
-                v-model.number="div.tax" 
+              <input
+                type="number"
+                v-model.number="div.tax"
                 class="form-input"
                 step="0.01"
                 min="0"
@@ -197,7 +186,7 @@
                 :disabled="isInteractionLocked(div)"
               >
             </div>
-            
+
             <div class="net-summary">
               <span class="summary-label">實際入帳淨額</span>
               <span class="summary-value">
@@ -206,19 +195,15 @@
               </span>
             </div>
           </div>
-          
+
           <div class="card-footer">
-            <button 
-              class="btn-card btn-submit" 
-              :class="{
-                'btn-submitted': isConfirmed(div),
-                'btn-awaiting': isAwaitingReadback(div),
-              }"
+            <button
+              class="btn-card btn-submit"
+              :class="{ 'btn-awaiting': isAwaitingReadback(div) }"
               @click="confirmDividend(div)"
               :disabled="processingKey === getDivKey(div) || isInteractionLocked(div)"
             >
               <span v-if="processingKey === getDivKey(div)" class="spinner"></span>
-              <span v-else-if="isConfirmed(div)">✓ 已入帳</span>
               <span v-else-if="isAwaitingReadback(div)">✓ 已保存，等待同步</span>
               <span v-else>✓ 確認建立 DIV 交易</span>
             </button>
@@ -226,6 +211,50 @@
         </div>
       </div>
     </div>
+
+    <section v-if="confirmedCount > 0" class="confirmed-history-section">
+      <button
+        class="history-toggle"
+        type="button"
+        @click="showConfirmedHistory = !showConfirmedHistory"
+        :aria-expanded="showConfirmedHistory"
+      >
+        <span class="history-toggle-main">
+          <span class="history-title">已入帳歷史</span>
+          <span class="history-count">{{ confirmedCount }} 筆</span>
+        </span>
+        <span class="history-toggle-action">{{ showConfirmedHistory ? '收合' : '展開' }} {{ showConfirmedHistory ? '▴' : '▾' }}</span>
+      </button>
+
+      <div v-if="showConfirmedHistory" class="history-content">
+        <p class="history-hint">依最新除息日排序；實際 DIV 金額與備註請以交易紀錄中的權威交易為準。</p>
+
+        <div class="desktop-history">
+          <div class="history-row history-row-header">
+            <span>除息日</span>
+            <span>代碼</span>
+            <span>狀態</span>
+            <span>交易明細</span>
+          </div>
+          <div v-for="div in confirmedDividendRows" :key="'h_' + getDivKey(div)" class="history-row">
+            <span class="date-display">{{ formatFullDate(div.ex_date) }}</span>
+            <span><span class="symbol-tag">{{ div.symbol }}</span></span>
+            <span class="confirmed-label">✓ 已入帳</span>
+            <span class="history-detail">請至交易紀錄查看 DIV</span>
+          </div>
+        </div>
+
+        <div class="mobile-history">
+          <div v-for="div in confirmedDividendRows" :key="'hm_' + getDivKey(div)" class="history-mobile-row">
+            <div>
+              <span class="symbol-tag">{{ div.symbol }}</span>
+              <span class="date-text">{{ formatFullDate(div.ex_date) }}</span>
+            </div>
+            <span class="confirmed-label">✓ 已入帳</span>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -247,6 +276,7 @@ import {
   getPendingDividendEventKey,
   isDividendConfirmedByRecords,
 } from '../services/dividendConfirmation.js';
+import { buildDividendWorkflowSections } from '../services/dividendWorkflowPresentation.js';
 import {
   isMutationAmbiguous,
   isMutationCommitted,
@@ -260,6 +290,7 @@ const loading = ref(false);
 const processingKey = ref(null);
 const localDividends = ref([]);
 const committedAwaitingReadbackKeys = ref(new Set());
+const showConfirmedHistory = ref(false);
 
 const getDivKey = (div) => (
   getPendingDividendEventKey(div)
@@ -271,11 +302,16 @@ const isConfirmed = (div) => isDividendConfirmedByRecords(div, confirmedDividend
 const isAwaitingReadback = (div) => committedAwaitingReadbackKeys.value.has(getDivKey(div));
 const isInteractionLocked = (div) => isConfirmed(div) || isAwaitingReadback(div);
 
-const pendingCount = computed(() => localDividends.value.filter(d => !isInteractionLocked(d)).length);
-const confirmedCount = computed(() => localDividends.value.filter(d => isConfirmed(d)).length);
-const awaitingReadbackCount = computed(() => localDividends.value.filter(d => (
-  !isConfirmed(d) && isAwaitingReadback(d)
-)).length);
+const workflowSections = computed(() => buildDividendWorkflowSections(
+  localDividends.value,
+  confirmedDividendKeys.value,
+  committedAwaitingReadbackKeys.value,
+));
+const activeDividendRows = computed(() => workflowSections.value.active);
+const confirmedDividendRows = computed(() => workflowSections.value.confirmed);
+const pendingCount = computed(() => workflowSections.value.pending.length);
+const confirmedCount = computed(() => workflowSections.value.confirmed.length);
+const awaitingReadbackCount = computed(() => workflowSections.value.awaiting.length);
 
 watch(confirmedDividendKeys, (confirmed) => {
   if (committedAwaitingReadbackKeys.value.size === 0) return;
@@ -322,8 +358,9 @@ const fetchDividends = async () => {
 
 const formatFullDate = (dateStr) => {
   if (!dateStr) return '';
-  const date = new Date(dateStr);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const [year, month, day] = String(dateStr).split('-');
+  if (!year || !month || !day) return String(dateStr);
+  return `${year}-${month}-${day}`;
 };
 
 const formatNumber = (val, d = 2) => {
@@ -341,7 +378,7 @@ const getConfirmationTitle = (div) => {
 
 const confirmDividend = async (div) => {
   const divKey = getDivKey(div);
-  
+
   if (isConfirmed(div)) {
     addToast('此配息已由交易紀錄確認入帳', 'info');
     return;
@@ -351,7 +388,7 @@ const confirmDividend = async (div) => {
     addToast('此配息已保存，正在等待最新交易紀錄同步', 'info');
     return;
   }
-  
+
   if (processingKey.value === divKey) return;
 
   const validationError = getDividendEntryValidationError(div);
@@ -374,11 +411,11 @@ const confirmDividend = async (div) => {
     `實際入帳淨額：${currency} ${formatNumber(netAmount)}`,
     '交易紀錄將以上述除息日與淨額入帳。',
   ].join('\n');
-  
+
   if (!confirm(confirmationMessage)) return;
-  
+
   processingKey.value = divKey;
-  
+
   try {
     // Keep the persisted note token stable across frontend versions because the
     // deterministic dividend event payload hash includes note.
@@ -400,7 +437,7 @@ const confirmDividend = async (div) => {
     }, idempotencyKey);
 
     const outcome = await store.addRecord(record, { returnOutcome: true });
-    
+
     if (!isMutationCommitted(outcome)) {
       if (isMutationAmbiguous(outcome)) {
         addToast('配息入帳回應不確定；系統正在使用原交易識別碼自動確認，請勿重複提交。', 'warning');
@@ -432,7 +469,7 @@ const confirmDividend = async (div) => {
         : `${div.symbol} DIV 交易已保存（淨額 ${currency} ${formatNumber(netAmount)}）`,
       'success',
     );
-    
+
     try {
       await store.triggerUpdate();
       addToast('⏳ 正在重新計算數據，請稍候...', 'info');
@@ -440,7 +477,7 @@ const confirmDividend = async (div) => {
       console.error('⚠️ 觸發計算失敗:', triggerError);
       addToast('⚠️ 配息已保存；重新計算狀態將由系統持續追蹤與恢復，無需重複操作。', 'warning');
     }
-    
+
   } catch (e) {
     console.error('❌ 配息確認失敗:', e);
     addToast(`入帳失敗: ${e.message || '未知錯誤'}`, 'error');
@@ -461,24 +498,19 @@ const confirmDividend = async (div) => {
 .awaiting-badge { color: var(--warning); font-weight: 600; }
 .dividend-entry-help { padding: 12px 24px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-sub); font-size: 0.8rem; line-height: 1.55; }
 .dividend-entry-help strong { color: var(--text-main); }
+.queue-section-label { padding: 10px 24px; color: var(--text-sub); background: var(--bg-card); border-bottom: 1px solid var(--border-color); font-size: 0.78rem; font-weight: 700; }
 .btn-refresh { width: 36px; height: 36px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.125rem; transition: all 0.2s; }
 .btn-refresh:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: white; transform: translateY(-1px); }
 .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 .spinning { display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.row-confirmed { opacity: 0.6; background: rgba(16, 185, 129, 0.05) !important; }
-.row-confirmed .date-display, .row-confirmed .symbol-tag, .row-confirmed .input-field, .row-confirmed .net-display { text-decoration: line-through; color: var(--text-sub) !important; }
 .row-awaiting { background: rgba(245, 158, 11, 0.05) !important; }
 .symbol-wrapper { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .confirmed-label { display: inline-block; font-size: 0.7rem; font-weight: 700; color: var(--success); background: rgba(16, 185, 129, 0.1); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
 .syncing-label { display: inline-block; font-size: 0.7rem; font-weight: 700; color: var(--warning); background: rgba(245, 158, 11, 0.1); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
-.btn-confirmed { background: var(--success) !important; opacity: 0.6; cursor: not-allowed !important; }
 .btn-awaiting { background: var(--warning) !important; opacity: 0.75; cursor: not-allowed !important; }
-.card-confirmed { opacity: 0.7; background: rgba(16, 185, 129, 0.05) !important; }
 .card-awaiting { background: rgba(245, 158, 11, 0.05) !important; }
-.confirmed-badge-mobile { font-size: 0.75rem; font-weight: 700; color: var(--success); background: rgba(16, 185, 129, 0.15); padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
 .awaiting-badge-mobile { font-size: 0.75rem; font-weight: 700; color: var(--warning); background: rgba(245, 158, 11, 0.15); padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
-.btn-submitted { background: var(--success) !important; opacity: 0.7; cursor: not-allowed !important; }
 .desktop-table { display: block; }
 .table-wrapper { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
@@ -488,7 +520,6 @@ tbody .table-row:hover { background: var(--bg-secondary); }
 tbody .table-row:last-child { border-bottom: none; }
 td { padding: 16px 20px; vertical-align: middle; }
 .text-center { text-align: center; }
-.text-right { text-align: right; }
 .date-display { font-size: 0.9rem; font-weight: 600; color: var(--text-main); font-family: 'JetBrains Mono', monospace; }
 .symbol-tag { display: inline-block; padding: 6px 12px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05)); color: var(--primary); border-radius: 6px; font-size: 0.875rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em; }
 .input-group { display: flex; align-items: center; gap: 8px; justify-content: center; }
@@ -506,23 +537,23 @@ td { padding: 16px 20px; vertical-align: middle; }
 .btn-confirm:hover:not(:disabled) { background: #059669; transform: scale(1.05); }
 .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
 .spinner { width: 16px; height: 16px; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
-.empty-state { padding: 60px 24px; text-align: center; }
-.empty-icon { font-size: 4rem; margin-bottom: 16px; animation: bounce 2s ease-in-out infinite; }
-@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-.empty-text { font-size: 1.125rem; font-weight: 600; color: var(--text-main); margin: 0 0 8px 0; }
+.empty-state { padding: 48px 24px; text-align: center; }
+.queue-clear-state { border-bottom: 1px solid var(--border-color); }
+.empty-icon { font-size: 3rem; margin-bottom: 12px; }
+.empty-text { font-size: 1.05rem; font-weight: 600; color: var(--text-main); margin: 0 0 8px 0; }
 .empty-hint { font-size: 0.9rem; color: var(--text-sub); margin: 0; }
 .mobile-cards { display: none; }
 .cards-container { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
 .dividend-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; transition: all 0.2s; }
 .card-header { padding: 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-card); display: flex; justify-content: space-between; align-items: center; }
 .card-info { display: flex; align-items: center; gap: 12px; }
-.date-text { font-size: 0.85rem; font-weight: 600; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+.date-text { font-size: 0.85rem; font-weight: 600; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; margin-left: 8px; }
 .card-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
 .form-row { display: flex; flex-direction: column; gap: 8px; }
 .form-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.03em; }
 .label-icon { font-size: 1rem; }
 .tax-badge { margin-left: auto; font-size: 0.75rem; font-weight: 700; color: var(--warning); background: rgba(245, 158, 11, 0.1); padding: 2px 8px; border-radius: 4px; }
-.form-input { width: 100%; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; text-align: right; font-size: 1.125rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; color: var(--text-main); transition: all 0.2s; }
+.form-input { width: 100%; box-sizing: border-box; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; text-align: right; font-size: 1.125rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; color: var(--text-main); transition: all 0.2s; }
 .form-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 .form-input:disabled { opacity: 0.5; cursor: not-allowed; background: var(--bg-secondary); }
 .net-summary { display: flex; justify-content: space-between; align-items: center; padding: 16px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05)); border-radius: 8px; margin-top: 4px; }
@@ -534,17 +565,35 @@ td { padding: 16px 20px; vertical-align: middle; }
 .btn-submit { background: var(--success); color: white; }
 .btn-submit:hover:not(:disabled) { background: #059669; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(16, 185, 129, 0.2); }
 .btn-card:disabled { opacity: 0.5; cursor: not-allowed; }
+.confirmed-history-section { border-top: 1px solid var(--border-color); background: var(--bg-card); }
+.history-toggle { width: 100%; border: 0; background: transparent; color: var(--text-main); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; }
+.history-toggle:hover { background: var(--bg-secondary); }
+.history-toggle-main { display: flex; align-items: center; gap: 10px; }
+.history-title { font-size: 0.9rem; font-weight: 700; }
+.history-count { font-size: 0.75rem; color: var(--success); background: rgba(16, 185, 129, 0.1); padding: 2px 8px; border-radius: 999px; }
+.history-toggle-action { font-size: 0.78rem; color: var(--text-sub); }
+.history-content { border-top: 1px solid var(--border-color); }
+.history-hint { margin: 0; padding: 10px 24px; font-size: 0.78rem; line-height: 1.5; color: var(--text-sub); background: var(--bg-secondary); }
+.desktop-history { display: block; }
+.history-row { display: grid; grid-template-columns: 160px 120px 120px minmax(180px, 1fr); gap: 12px; align-items: center; padding: 12px 24px; border-top: 1px solid var(--border-color); font-size: 0.85rem; }
+.history-row-header { color: var(--text-sub); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: var(--bg-secondary); border-top: 0; }
+.history-detail { color: var(--text-sub); }
+.mobile-history { display: none; }
 @media (max-width: 1024px) {
-  .desktop-table { display: none; }
-  .mobile-cards { display: block; }
+  .desktop-table, .desktop-history { display: none; }
+  .mobile-cards, .mobile-history { display: block; }
   .dm-header { padding: 16px; }
-  .dividend-entry-help { padding: 10px 16px; }
+  .dividend-entry-help, .history-hint { padding: 10px 16px; }
+  .queue-section-label { padding: 10px 16px; }
+  .history-toggle { padding: 14px 16px; }
   .title-icon { width: 36px; height: 36px; font-size: 1.125rem; }
   .dm-title h3 { font-size: 1rem; }
+  .history-mobile-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border-color); }
 }
 @media (max-width: 480px) {
   .cards-container { padding: 12px; gap: 12px; }
   .card-header, .card-body, .card-footer { padding: 12px; }
   .summary-value { font-size: 1.25rem; }
+  .history-mobile-row { padding: 10px 12px; }
 }
 </style>
