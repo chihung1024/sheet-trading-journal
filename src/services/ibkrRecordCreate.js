@@ -1,4 +1,5 @@
 import { readApiJson } from './apiResponse.js';
+import { extractIbkrUserJournalNote } from './ibkrJournalNote.js';
 import {
   beginRecordCreateIntent,
   completeRecordCreateIntent,
@@ -46,7 +47,12 @@ const sanitizeIbkrRecordForPersistence = (record) => {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new TypeError('IBKR record must be an object');
   }
-  const note = String(record.note || '')
+  // Strip the full legacy IBKR envelope first because execution timestamps use
+  // `YYYYMMDD;HHMMSS`, where the semicolon is data rather than a note separator.
+  const userJournalNote = extractIbkrUserJournalNote(String(record.note || ''));
+  // Keep the older privacy fallback for any account-style assignment that may
+  // appear outside a recognized legacy envelope.
+  const note = userJournalNote
     .split(';')
     .map(part => part.trim())
     .filter(Boolean)

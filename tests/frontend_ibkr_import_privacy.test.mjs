@@ -32,14 +32,11 @@ const successResponse = body => new Response(JSON.stringify(body), {
   headers: { 'Content-Type': 'application/json' },
 });
 
-test('full IBKR account identifier is removed from persistent record metadata but remains part of hashed replay identity', async () => {
+test('account and machine metadata stay out of persistent journal note while replay identity remains account-scoped', async () => {
   const sanitized = __test.sanitizeIbkrRecordForPersistence(entry.record);
   assert.equal(sanitized.symbol, 'NVDA');
-  assert.match(sanitized.note, /source=IBKR/);
-  assert.match(sanitized.note, /currency=USD/);
-  assert.match(sanitized.note, /order_id=487287953/);
-  assert.doesNotMatch(sanitized.note, /account/i);
-  assert.doesNotMatch(JSON.stringify(sanitized), /U1234567/);
+  assert.equal(sanitized.note, '');
+  assert.doesNotMatch(JSON.stringify(sanitized), /U1234567|source=IBKR|currency=USD|order_id=/i);
 
   const durableKey = await __test.hashImportIdentity(entry.idempotencyKey);
   const otherAccountKey = await __test.hashImportIdentity(
@@ -63,6 +60,5 @@ test('full IBKR account identifier is removed from persistent record metadata bu
   });
 
   assert.ok(postedBody);
-  assert.doesNotMatch(postedBody, /U1234567/);
-  assert.doesNotMatch(postedBody, /account_id/i);
+  assert.doesNotMatch(postedBody, /U1234567|account_id|source=IBKR|currency=USD|order_id=/i);
 });

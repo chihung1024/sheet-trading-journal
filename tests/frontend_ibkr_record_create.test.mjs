@@ -42,6 +42,7 @@ const ENTRY = Object.freeze({
     note: 'source=IBKR; order_id=487287953',
   }),
 });
+const PERSISTED_RECORD = Object.freeze({ ...ENTRY.record, note: '' });
 
 const successResponse = body => new Response(JSON.stringify(body), {
   status: 200,
@@ -67,24 +68,24 @@ test('IBKR import identity hashes deterministically into the existing durable op
   assert.doesNotMatch(first, /~/);
 });
 
-test('durable IBKR intent preserves exact record body, random barrier, and deterministic record key', async () => {
+test('durable IBKR intent preserves exact sanitized record body, random barrier, and deterministic record key', async () => {
   const storage = new MemoryStorage();
   const intent = await beginIbkrRecordCreateIntent(storage, OWNER, ENTRY.record, ENTRY.idempotencyKey);
   const expectedKey = await __test.hashImportIdentity(ENTRY.idempotencyKey);
 
   assert.equal(intent.owner, OWNER);
-  assert.equal(intent.body, JSON.stringify(ENTRY.record));
+  assert.equal(intent.body, JSON.stringify(PERSISTED_RECORD));
   assert.equal(intent.idempotencyKey, expectedKey);
   assert.notEqual(intent.barrierToken, expectedKey);
   assert.match(intent.barrierToken, /^[A-Za-z0-9._-]{16,128}$/);
   assert.equal(JSON.parse(storage.getItem(RECORD_MUTATION_BARRIER_STORAGE_KEY)).token, intent.barrierToken);
   assert.equal(
     JSON.parse(storage.getItem(`${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${expectedKey}`)).body,
-    JSON.stringify(ENTRY.record),
+    JSON.stringify(PERSISTED_RECORD),
   );
 });
 
-test('confirmed IBKR create sends exact durable key/body and clears pending intent', async () => {
+test('confirmed IBKR create sends exact durable key/sanitized body and clears pending intent', async () => {
   const storage = new MemoryStorage();
   const requests = [];
   const result = await createIbkrRecord(ENTRY, writerOptions({
@@ -102,7 +103,7 @@ test('confirmed IBKR create sends exact durable key/body and clears pending inte
   assert.equal(requests.length, 1);
   assert.equal(requests[0].url, `${API_BASE_URL}/api/records`);
   assert.equal(requests[0].init.method, 'POST');
-  assert.equal(requests[0].init.body, JSON.stringify(ENTRY.record));
+  assert.equal(requests[0].init.body, JSON.stringify(PERSISTED_RECORD));
   assert.equal(requests[0].init.headers.Authorization, 'Bearer token-a');
   assert.equal(
     requests[0].init.headers['Idempotency-Key'],
@@ -194,7 +195,7 @@ test('refresh failure after definite 401 preserves the original definite rejecti
   assert.equal(Object.hasOwn(terminal, 'body'), false);
 });
 
-test('definite 409 rejection tombstones body while ambiguous network failure preserves live replay intent', async () => {
+test('definite 409 rejection tombstones body while ambiguous network failure preserves live sanitized replay intent', async () => {
   const rejectedStorage = new MemoryStorage();
   await assert.rejects(
     createIbkrRecord(ENTRY, writerOptions({
@@ -229,5 +230,5 @@ test('definite 409 rejection tombstones body while ambiguous network failure pre
     ambiguousStorage.getItem(`${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${durableKey}`),
   );
   assert.equal(live.state, 'live');
-  assert.equal(live.body, JSON.stringify(ENTRY.record));
+  assert.equal(live.body, JSON.stringify(PERSISTED_RECORD));
 });
