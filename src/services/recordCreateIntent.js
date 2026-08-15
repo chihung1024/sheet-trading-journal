@@ -13,6 +13,7 @@ export const RECORD_CREATE_INTENT_STATE = Object.freeze({
 
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const OPAQUE_ID_RE = /^[A-Za-z0-9._-]{16,128}$/;
+const RECORD_CREATE_IDEMPOTENCY_KEY = Symbol('recordCreateIdempotencyKey');
 
 const requireStorage = (storage) => {
   if (
@@ -48,6 +49,20 @@ const assertOpaqueId = (value, label) => {
     throw new Error(`${label} must be a stable opaque identifier`);
   }
   return value;
+};
+
+export const withRecordCreateIdempotencyKey = (payload, idempotencyKey) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new TypeError('Record-create payload must be an object');
+  }
+  const decorated = { ...payload };
+  Object.defineProperty(decorated, RECORD_CREATE_IDEMPOTENCY_KEY, {
+    value: assertOpaqueId(idempotencyKey, 'Record-create idempotency key'),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return decorated;
 };
 
 const verifiedSetJson = (storage, key, value) => {
@@ -193,9 +208,15 @@ export const beginRecordCreateIntent = (
     throw error;
   }
 
+  const markedKey = payload?.[RECORD_CREATE_IDEMPOTENCY_KEY] ?? null;
+  if (idempotencyKey !== null && markedKey !== null && idempotencyKey !== markedKey) {
+    throw new Error('Record-create idempotency metadata is inconsistent');
+  }
+  const requestedKey = idempotencyKey ?? markedKey;
+
   const barrier = rotateRecordMutationBarrier(target, normalizedOwner, { now, createOpaqueId });
   const resolvedIdempotencyKey = assertOpaqueId(
-    idempotencyKey === null ? createOpaqueId() : idempotencyKey,
+    requestedKey === null ? createOpaqueId() : requestedKey,
     'Record-create idempotency key',
   );
   const intent = {
