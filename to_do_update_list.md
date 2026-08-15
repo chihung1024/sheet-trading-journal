@@ -5,7 +5,7 @@
 > The complete pre-Phase-7 verbose handoff is preserved byte-for-byte at `docs/archive/to_do_update_list_through_phase6.md`. Use that archive only when historical Root Cause / PR chronology is needed; do not restart closed work from archived plans.
 
 Last updated: **2026-08-15 Asia/Taipei**  
-Current line: **Phase 3 Explainability, Phase 4 Strategy Analytics, and Phase 6 UX Convergence are OPTIMIZED FOR CURRENT REQUIREMENTS. Phase 7.1/7.1A/7.1B, Phase 8.1 Responsive Daily P&L Density, and Phase 9.1 Dividend Confirmation Source of Truth are PRODUCTION PAGES VERIFIED. No runtime batch is active. The next product candidate is Phase 9.2 deterministic dividend event identity across reload/tab/device; Phase 7.2 background Flex sync remains separately gated on credential/security design.**
+Current line: **Phase 3 Explainability, Phase 4 Strategy Analytics, and Phase 6 UX Convergence are OPTIMIZED FOR CURRENT REQUIREMENTS. Phase 7.1/7.1A/7.1B, Phase 8.1, Phase 9.1, and Phase 9.2 Deterministic Dividend Event Identity are CLOSED / PRODUCTION VERIFIED. No runtime batch is active. Phase 7.2 background Flex sync remains separately gated on credential/security design; no next runtime batch is selected without a product-first audit.**
 
 ---
 
@@ -26,14 +26,29 @@ Current line: **Phase 3 Explainability, Phase 4 Strategy Analytics, and Phase 6 
 
 Current verified runtime merge checkpoint:
 
-`6bc509e4e0fd6671b036cb63ea8e210152609f8c`
+`9b9f09f5079c59750219c73e23002a7ab8d2f33e`
 
-Production verification for this checkpoint:
+Current protected-main control-plane checkpoint:
 
-- post-main CI #975 / run `31883287847`: **SUCCESS**
-- GitHub Pages #1552 / run `31883287083`: **SUCCESS**
-- no Worker deployment or D1 migration was required for Phase 8.1 or Phase 9.1
-- production Worker remains release `4.08`, API `2.61`, schema `3`
+`3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
+
+Production verification for Phase 9.2:
+
+- runtime PR #272 final exact head `82be8f48daa95765c7052d304e6d1db3f98b8d08`; exact-head canonical CI #982: **SUCCESS**
+- frozen R2 review `4943920254`: **PASS / BLOCKER 0**
+- runtime merge `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
+- runtime post-main CI #983: **SUCCESS**
+- runtime Pages #1554: **SUCCESS**
+- Production Identity Evidence #18 / run `31888643879`: **SUCCESS**; artifact `9247940460`; digest `sha256:0cdf3e83ff2450ba3aa83ffa226ac9df9b61980421372520e3e4e1379de54f7a`
+- activation PR #273 exact head `fda54c6c3c9b4f045a3e51976d076e742f850f30`; exact-head CI #984: **SUCCESS**; frozen review `4943976191`: **PASS / BLOCKER 0**
+- activation merge `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
+- activation post-main CI #985 / run `31888823633`: **SUCCESS**
+- activation Pages #1555 / run `31888823270`: **SUCCESS**
+- Production Deployment Dispatch Broker #4 / run `31888823649`: **SUCCESS**
+- Deploy Worker #7 / run `31888830988`: **SUCCESS**
+- post-deploy evidence artifact `9248000489`; digest `sha256:912d203dc8e692a3c403a7efa22653276b3f5dc10adeec85810303fc4358c08c`
+- deployed Worker evidence reports exact `source_commit=9b9f09f5079c59750219c73e23002a7ab8d2f33e`, version/health HTTP 200, anonymous records HTTP 401, production origins allowed, staging/localhost origins rejected
+- production Worker remains release `4.08`, API `2.61`, schema `3`; Phase 9.2 required no D1 schema migration
 
 Current product state:
 
@@ -48,6 +63,7 @@ Current product state:
 - **Phase 7.1B IBKR Metadata / Journal-Note Separation — CLOSED / PRODUCTION PAGES VERIFIED**
 - **Phase 8.1 Responsive Daily P&L Density — CLOSED / PRODUCTION PAGES VERIFIED**
 - **Phase 9.1 Dividend Confirmation Source of Truth — CLOSED / PRODUCTION PAGES VERIFIED**
+- **Phase 9.2 Deterministic Dividend Event Identity — CLOSED / PRODUCTION VERIFIED**
 - **No runtime batch is currently active.**
 
 Important production verification boundaries:
@@ -56,7 +72,7 @@ Important production verification boundaries:
 - The assistant also read real IBKR executions through the connected IBKR connector and confirmed real multi-fill orders are available, but that connector does not expose the broker Account ID.
 - Phase 7.1A was added so account-less sources can use an explicit non-sensitive Import Profile as stable replay scope without fabricating Account ID.
 - A real authenticated browser write using the new importer has **not** been falsely claimed where no such write evidence exists. Treat user-browser import/write smoke as an optional production evidence point.
-- Phase 9.1 verifies the deployed code/Pages authority contract. A reload or another device can still race before a new DIV record becomes visible; that durable event-identity gap is explicitly Phase 9.2, not a reason to restore localStorage confirmation authority.
+- Phase 9.1 established authoritative `DIV` records as confirmation truth. Phase 9.2 closes the independent reload/tab/device create race with deterministic event identity while preserving that same confirmation authority; browser-local confirmation state is still not authoritative.
 
 ---
 
@@ -82,6 +98,7 @@ Important production verification boundaries:
 | Phase 7.1B Metadata / Journal-Note Separation | CLOSED / PRODUCTION PAGES VERIFIED | PR #267 merge `1f82c9c5...`; exact-head CI #966; post-main CI #967 + Pages #1549 |
 | Phase 8.1 Responsive Daily P&L Density | CLOSED / PRODUCTION PAGES VERIFIED | PR #269 merge `f7e47744...`; post-main CI #971 + Pages #1551 |
 | Phase 9.1 Dividend Confirmation Source of Truth | CLOSED / PRODUCTION PAGES VERIFIED | PR #270 merge `6bc509e4...`; exact-head CI #974; frozen review `4943784529`; post-main CI #975 + Pages #1552 |
+| Phase 9.2 Deterministic Dividend Event Identity | CLOSED / PRODUCTION VERIFIED | PR #272 merge `9b9f09f5...`; CI #982/#983; Pages #1554; review `4943920254`; Evidence #18; PR #273 merge `3e1ef4e5...`; CI #984/#985; Pages #1555; Deploy Worker #7 SUCCESS |
 
 The detailed pre-Phase-7 PR-by-PR Root Cause / Decision / Verification / Rollback ledger remains at `docs/archive/to_do_update_list_through_phase6.md`.
 
@@ -145,6 +162,8 @@ No browser XIRR reconstruction, new accounting method or risk score without a se
 
 ```text
 Python pending dividend event (symbol + ex_date)
+→ deterministic automatic-create event identity (`dividend.v1.<sha256>`)
+→ tenant-scoped durable record-create path
 → authoritative browser store.records
 → DIV record with normalized symbol + txn_date
 → confirmed / 已入帳
@@ -154,7 +173,12 @@ Python pending dividend event (symbol + ex_date)
 - DividendManager does not use record-create recovery signals as a second confirmation state.
 - A definitely committed create whose records readback is not yet visible may enter only a current-page memory lock: `已保存，等待同步`.
 - Ambiguous POST outcomes remain owned by the existing durable record-create recovery lifecycle.
-- Cross-reload/tab/device event deduplication requires Phase 9.2 durable dividend identity; do not solve it with localStorage confirmation fallback.
+- Automatic confirmation create identity is deterministic and versioned as `dividend.v1.<sha256>` from normalized `Symbol + ex_date`; tenant scoping is enforced by the authenticated record-create path.
+- A current same-tenant `DIV Symbol + txn_date` record blocks a second automatic dividend row, including independent reload/tab/device attempts.
+- The actual `DIV` row remains the only `已入帳` authority; deterministic idempotency is replay protection, not confirmation state.
+- Existing manual DIV records also block a second automatic row; different payload conflicts fail closed instead of silently merging cashflows.
+- Deleting or editing away the event row releases only the stale row-backed semantic reservation needed for a legitimate later reconfirmation.
+- Do not restore localStorage confirmation fallback.
 
 ---
 
@@ -333,11 +357,80 @@ Verification:
 
 Accepted follow-up:
 
-Phase 9.1 deliberately does not provide durable event-level deduplication across a page reload, another tab, or another device before the authoritative DIV record is observed. Generic record-create idempotency protects one durable create intent, not the semantic dividend event across independent new intents. This is Phase 9.2.
+Phase 9.1 deliberately did not provide durable event-level deduplication across a page reload, another tab, or another device before the authoritative DIV record was observed. Generic record-create idempotency protected one durable create intent, not the semantic dividend event across independent new intents. This follow-up is closed by Phase 9.2 below.
 
 Rollback:
 
 Revert PR #270 / merge `6bc509e4...` or restore the prior Pages build. No Worker/schema/data/Python rollback is required.
+
+### 5C. Batch 9.2 — Deterministic Dividend Event Identity
+
+**State: CLOSED / PRODUCTION VERIFIED**
+
+Primary product goal:
+
+Prevent two independent browser sessions/devices from creating duplicate automatic `DIV` rows for the same pending dividend event before either client observes the authoritative server record.
+
+Root cause:
+
+Phase 9.1 correctly made `store.records` / server `DIV` rows the only confirmation authority, but generic durable record-create intentionally generates a new idempotency key for every independent create intent. Therefore two devices could each create a distinct intent for the same semantic dividend event during the readback/synchronization window.
+
+Scope-locked identity:
+
+- canonical event = normalized `Symbol + ex_date`
+- identity is versioned and hashed as `dividend.v1.<sha256>`
+- this matches the existing Python confirmed-dividend `Symbol + Date` semantics
+- shares, amount/gross/net, withholding/tax, currency and FX are derived/mutable values and are not part of immutable event identity
+- tenant scoping remains the verified authenticated user boundary and existing idempotency hash
+- invalid/insufficient event identity fails closed
+
+Implementation:
+
+- shared dividend-event identity module used by browser and Worker semantic path
+- non-enumerable record-create transport metadata carries the deterministic key through the existing durable intent lifecycle without entering the JSON record body
+- generic/manual record creates retain their existing random per-intent identity
+- deployment-entry semantic handler reuses canonical Google authentication/origin policy
+- one transactional D1 `batch()` gates insertion on absence of an existing same-tenant `DIV Symbol + txn_date`
+- exact replay succeeds idempotently
+- same event with a different payload or an existing manual DIV fails closed with `DIVIDEND_EVENT_CONFLICT` and creates no duplicate
+- an edited-away deterministic row releases only its stale semantic reservation; delete then reconfirm remains possible
+- conflict reconciliation performs record-scoped `fetchRecords()` only, avoiding unrelated snapshot/settings/recovery/recalculation work
+
+Explicitly unchanged:
+
+- no D1 schema migration or global `(user,symbol,date)` unique constraint
+- no Python dividend/tax/TWR/XIRR/accounting methodology change
+- no localStorage confirmation authority
+- no retry loop or second browser confirmation state
+- no IBKR DIV importer/background broker synchronization
+
+Verification and production activation:
+
+- PR #272 final exact head `82be8f48daa95765c7052d304e6d1db3f98b8d08`
+- exact-head canonical CI #982: SUCCESS
+- frozen R2 review `4943920254`: PASS / BLOCKER 0
+- runtime merge `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
+- post-main CI #983 + Pages #1554: SUCCESS
+- Production Identity Evidence #18 / run `31888643879`: SUCCESS; artifact `9247940460`; digest `sha256:0cdf3e83ff2450ba3aa83ffa226ac9df9b61980421372520e3e4e1379de54f7a`
+- activation PR #273 exact head `fda54c6c3c9b4f045a3e51976d076e742f850f30`
+- activation exact-head CI #984: SUCCESS
+- activation frozen review `4943976191`: PASS / BLOCKER 0
+- activation merge `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
+- post-main CI #985 + Pages #1555: SUCCESS
+- Production Deployment Dispatch Broker #4 / run `31888823649`: SUCCESS
+- Deploy Worker #7 / run `31888830988`: SUCCESS
+- post-deploy artifact `9248000489`; digest `sha256:912d203dc8e692a3c403a7efa22653276b3f5dc10adeec85810303fc4358c08c`
+- production evidence: exact runtime source `9b9f09f5079c59750219c73e23002a7ab8d2f33e`, release `4.08`, API `2.61`, schema `3`, version/health 200, anonymous records 401, production CORS allowed and staging/localhost CORS rejected
+
+Rollback:
+
+- frontend/runtime rollback: revert PR #272 and restore the prior Pages build
+- Worker rollback: redeploy the prior last-known-good main-reachable Worker source through the existing protected production activation/deployment flow
+- no schema/data rollback is required because Phase 9.2 added no D1 migration
+
+Stable checkpoint result:
+
+**Phase 9.2 is CLOSED / PRODUCTION VERIFIED.** The cross-session/device duplicate-confirmation gap identified by Phase 9.1 is closed without restoring browser-local authority or changing financial methodology.
 
 ---
 
@@ -356,25 +449,13 @@ Useful user-browser evidence points, not coding blockers:
 
 Only reopen closed batches if fresh production evidence contradicts the deployed contracts.
 
-### NEXT — requires a bounded product design before implementation
+### NEXT — product-first audit before any new runtime implementation
 
-**Phase 9.2 — Deterministic Dividend Event Identity**
-
-Primary problem:
-
-Prevent the same semantic dividend event from being created twice when independent new create intents are generated before the first DIV record becomes visible, including reload/tab/device races.
-
-Design constraints:
-
-- authoritative journal records remain the source of confirmed state
-- reuse the existing durable idempotency infrastructure where possible
-- event identity must be deterministic, tenant-scoped, versioned, and derived from an authoritative dividend event contract
-- do not use localStorage confirmation state as durable deduplication
-- do not silently merge two genuinely distinct dividend cashflows without evidence that the current engine can distinguish them
-- no financial methodology change
-- one bounded R2 batch with explicit rollback and concurrency regressions
+No new runtime batch is selected at this checkpoint. Phase 9.2 is closed.
 
 **Phase 7.2 — IBKR Flex/background synchronization feasibility** remains a separate candidate, gated on an independent audit of credential ownership, secret storage, account identity, write authority, scheduling/retry ownership, and user-visible reconciliation policy. Prefer user-auth/on-demand sync if it can deliver equivalent UX without a privileged background writer.
+
+Any other next batch must first demonstrate a concrete product/UX gap or fresh production evidence. Do not create maintenance work merely to keep development moving.
 
 ### BACKLOG
 
@@ -386,7 +467,7 @@ Design constraints:
 ### REJECT / DO NOT DO NOW
 
 - do not restore `confirmed_dividend_keys` or another browser-local value as confirmation authority
-- do not solve Phase 9.2 with retry loops or a UI-only duplicate check
+- do not reopen Phase 9.2 with retry loops, UI-only duplicate checks, or browser-local confirmation authority without new contradictory production evidence
 - do not store IBKR password/token in D1 or frontend localStorage
 - do not give the current Worker system principal record-write authority merely to automate Phase 7.2
 - do not guess broker account identity or Yahoo market suffix
@@ -412,7 +493,9 @@ Design constraints:
 
 | Purpose | Checkpoint |
 |---|---|
-| Current runtime + Phase 9.1 | `6bc509e4e0fd6671b036cb63ea8e210152609f8c` |
+| Current protected-main control plane after Phase 9.2 activation | `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e` |
+| Current production runtime / Phase 9.2 | `9b9f09f5079c59750219c73e23002a7ab8d2f33e` |
+| Before Phase 9.2 / Phase 9.1 stable runtime | `6bc509e4e0fd6671b036cb63ea8e210152609f8c` |
 | Before Phase 9.1 / Phase 8.1 stable runtime | `f7e47744399ed31a701f67f8d7e52ab393c2c6b2` |
 | Before Phase 8.1 / Phase 7.1B stable runtime | `1f82c9c5e5033e3d51cfb94267982d3fad7d618e` |
 | Before 7.1B note separation | `df2c383a447ca1ea058b46ee4dc3a4e7dfd62838` |
