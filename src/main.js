@@ -15,9 +15,10 @@ import { installCalculationTriggerAmbiguityRecovery } from './services/calculati
 import { installRecordCreateAmbiguityRecovery } from './services/recordCreateAmbiguityRecovery.js';
 import { installDataReadSelfRecovery } from './services/dataReadSelfRecovery.js';
 
-// 引入全域樣式與動畫 (順序很重要：先動畫，後主樣式)
+// 引入全域樣式與動畫 (順序很重要：先動畫、主樣式，再套產品一致性層)
 import './styles/animations.css';
-import './style.css'; // ✅ 新增：引入 Phase 15 定義的全域樣式與變數
+import './style.css';
+import './styles/product-consistency.css';
 
 const app = createApp(App);
 const pinia = createPinia();
