@@ -4,8 +4,8 @@
 >
 > Detailed Phase 1–6 chronology remains at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
-Last updated: **2026-08-15 Asia/Taipei**  
-Current line: **The user-approved Phase 10 roadmap is COMPLETE / OPTIMIZED FOR CURRENT REQUIREMENTS: 10.1 Transaction Entry UX Convergence → 10.2 Dividend Workflow Productization → 10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support. No runtime batch is active. No new product direction is selected. Per user instruction, all remaining directions are deferred until later discussion. Reopen a completed Phase 10 product line only for fresh material production/user evidence.**
+Last updated: **2026-08-16 Asia/Taipei**  
+Current line: **Phase 11 Daily Portfolio Command Center / Action Center is OPTIMIZED FOR CURRENT REQUIREMENTS after Phase 11.1 Daily Command Snapshot. No runtime batch is active. The bounded post-11.1 audit found no justified 11.2: DataReliabilityBanner already owns reliability/retry attention, and there is no proven semantic contract that every missing Journal Note or other optional field is a user action item. Phase 12 IBKR Sync Automation and all other directions remain deferred until later user discussion/reprioritization.**
 
 ---
 
@@ -18,7 +18,7 @@ Current line: **The user-approved Phase 10 roadmap is COMPLETE / OPTIMIZED FOR C
 5. R2+ requires exact-head CI, recovery point, frozen review and permanent handoff. High-consequence R1 surfaces still use canonical CI.
 6. Prefer deterministic automation. **AI 管流程，不管帳**.
 7. Technical work belongs in NOW only when required by the active product goal; optional cleanup/debug must converge.
-8. Do not reopen closed phases without new material user/production evidence.
+8. Do not reopen closed phases without fresh material user/production evidence.
 9. Preserve recovery points; never use destructive git against unknown work.
 10. When no approved runtime direction remains, stop rather than inventing technical work.
 
@@ -28,9 +28,9 @@ Current line: **The user-approved Phase 10 roadmap is COMPLETE / OPTIMIZED FOR C
 
 ### Current production checkpoints
 
-Production Pages runtime after Phase 10.4A:
+Production Pages runtime after Phase 11.1:
 
-`6e1f3207bc8e9aa778ebe819f4a053d08cc66f1a`
+`cb4ae5d09753d0b559b33e3c7448e857cf0016e9`
 
 Production Worker runtime:
 
@@ -60,34 +60,38 @@ A docs-only closeout merge may advance repository `main` without changing produc
 - **Phase 10.2 Dividend Workflow Productization — OPTIMIZED FOR CURRENT REQUIREMENTS**
 - **Phase 10.3 Journal / Transaction History UX Convergence — OPTIMIZED FOR CURRENT REQUIREMENTS**
 - **Phase 10.4 Portfolio Decision Support — OPTIMIZED FOR CURRENT REQUIREMENTS**
-- **User-approved Phase 10 roadmap — COMPLETE / NO RUNTIME BATCH ACTIVE**
+- **Phase 10 roadmap — COMPLETE**
+- **Phase 11 Daily Portfolio Command Center / Action Center — OPTIMIZED FOR CURRENT REQUIREMENTS**
+- **No runtime batch active**
 
 ### Recent immutable evidence
 
+#### Phase 11.1 — Daily Command Snapshot
+
+- PR #289 final exact head `3680d1b1749a552056c9910a0d6a3e616120f4cc`
+- exact-head canonical CI #1022 / run `31897365290`: **SUCCESS**
+- frozen review `4944307999`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
+- final risk: **R1 Local / Low Risk**
+- merge `cb4ae5d09753d0b559b33e3c7448e857cf0016e9`
+- post-main CI #1023 / run `31897451236`: **SUCCESS**
+- Pages #1571 / run `31897450481`: **SUCCESS**
+- App integration is +6 lines only; runtime branch changed exactly App + new command component + pure composition service + focused test
+- no Worker/D1/Python/auth/IBKR/mutation/calculation-lifecycle/market-data change; no Worker deployment
+
 #### Phase 10.4A — Portfolio Concentration Decision Snapshot
 
-- PR #287 final exact head `0912147c671e3afea005af4e8dd0c37f5f1d9b3d`
-- exact-head canonical CI #1018 / run `31895710611`: **SUCCESS**
-- frozen review `4944247685`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
-- final risk: **R1 Local / Low Risk**
+- PR #287 exact head `0912147c671e3afea005af4e8dd0c37f5f1d9b3d`
+- exact-head CI #1018 / run `31895710611`: **SUCCESS**
+- review `4944247685`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
 - merge `6e1f3207bc8e9aa778ebe819f4a053d08cc66f1a`
-- post-main CI #1019 / run `31895795774`: **SUCCESS**
-- Pages #1569 / run `31895794975`: **SUCCESS**
-- changed only Holdings presentation, pure concentration projection and focused regression coverage
-- no Worker/D1/Python/auth/IBKR/dividend/financial-methodology change; no Worker deployment
+- post-main CI #1019 + Pages #1569: **SUCCESS**
 
-#### Phase 10.3B / 10.3A
+#### Phase 10.3 / 10.2 / 10.1
 
 - 10.3B PR #285 exact head `99713d2d90d20c8b9e8175c62db1e0de3e6dd686`; CI #1014; review `4944221472`; merge `e30433b260dc928c067f0c5c0721bd22ad89d216`; post-main CI #1015 + Pages #1567: **SUCCESS**
 - 10.3A PR #283 exact head `ff22b79a34da6b3386dc87740e74b53abf7e7000`; CI #1008; review `4944195104`; merge `d1e799570c70381864db3ed4cfe0e9129d2a6bac`; post-main CI #1009 + Pages #1565: **SUCCESS**
-
-#### Phase 10.2B / 10.2A
-
 - 10.2B PR #281 exact head `2449ede597c5cc3a6eadd3e698b4c17a63b172a5`; CI #1004; review `4944167995`; merge `7c670a6c9c015c689add4ce742a4941d74e76e38`; post-main CI #1005 + Pages #1563: **SUCCESS**
 - 10.2A PR #279 exact head `c383e4aa4c7a26d88890189f4f48c0e3f4105bc2`; CI #998; review `4944126543`; merge `7fbdc86e9b59861ba9c33ba8e145913fcbe225e6`; post-main CI #999 + Pages #1561: **SUCCESS**
-
-#### Phase 10.1B / 10.1A
-
 - 10.1B PR #277 exact head `991969064b7fb07ded36c0783de80e81d9da30f5`; CI #994; review `4944098383`; merge `7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a`; post-main CI #995 + Pages #1559: **SUCCESS**
 - 10.1A PR #275 exact head `db9f448e8598edec7cc362f4c1e9539aecbec7a9`; CI #990; review `4944065869`; merge `0ca4f890c0771755d907d725069612dc62e6e774`; post-main CI #991 + Pages #1557: **SUCCESS**
 
@@ -101,7 +105,7 @@ A docs-only closeout merge may advance repository `main` without changing produc
 - post-deploy artifact `9248000489`; digest `sha256:912d203dc8e692a3c403a7efa22653276b3f5dc10adeec85810303fc4358c08c`
 - Worker release `4.08`, API `2.61`, schema `3`
 
-Earlier Phase 7–9 closure evidence remains recoverable from repository history and prior handoff checkpoints. Detailed Phase 1–6 chronology remains in the archive.
+Earlier Phase 7–9 evidence remains recoverable from repository history and prior checkpoints. Phase 1–6 chronology remains in the archive.
 
 ---
 
@@ -134,18 +138,13 @@ symbol
 
 No nearest-date guessing or hard-coded FX fallback.
 
-### Transaction entry
-
-Known-Symbol suggestions are convenience from already-loaded records only. No ticker-validity authority, suffix guessing, remote Symbol database or localStorage Symbol cache. Existing TradeForm/buildRecordPayload/add-update mutation lifecycle remains authoritative.
-
 ### Dividend
 
 - actual same-tenant DIV row is the only `已入帳` authority;
 - no browser-local confirmation authority;
 - event identity remains versioned `dividend.v1.<sha256>` from normalized Symbol + ex_date;
 - automatic DIV remains qty=1, price=net, fee/tax=0, tag=`Auto-Dividend`;
-- tax-note token remains stable because payload hashing includes note;
-- no pay-date inference;
+- no inferred pay-date or unreviewed tax policy;
 - confirmed-history presentation never reconstructs actual cashflow from market estimates.
 
 ### Journal / Transaction History
@@ -154,36 +153,47 @@ Known-Symbol suggestions are convenience from already-loaded records only. No ti
 store.records
 → global currentGroup scope
 → pure Symbol/Tag/Note query + type + inclusive date range
-→ sort / pagination
-→ compact summary
-→ optional page-memory read-only full detail
-→ separate existing Edit/Delete lifecycle
+→ compact summary / optional page-memory full detail
+→ existing Edit/Delete lifecycle
 ```
 
 No note-only persistence bypass, no localStorage filter/detail authority, no historical lot inference from current-day `day_ledger`, and no second valuation engine.
 
-### Portfolio Decision Support after Phase 10.4A
+### Portfolio concentration
 
 ```text
-current-group published holdings[].market_value_twd
+current-group holdings[].market_value_twd
 + authoritative summary.total_value
-→ browser reconciliation gate
+→ reconciliation gate
 → factual holding weights / largest holding / Top-3 concentration
 → presentation only
 ```
 
+No cash inference, risk threshold, risk score, target allocation, forecast or buy/sell recommendation.
+
+### Daily Command Center after Phase 11.1
+
+```text
+existing reviewed Daily P&L explanation
++ Phase 10.4A reconciled concentration
++ current-group pending dividend candidates
++ all authoritative records
+→ pure dailyCommandCenter composition
+→ Overview summary + navigation only
+```
+
 Rules:
 
-- positive holding market values must reconcile to authoritative summary total or concentration is unavailable;
-- duplicate normalized Symbols and invalid/negative market values fail closed;
-- zero market-value residual rows are excluded from the denominator and are not treated as cash;
-- figures explicitly exclude cash because the current model has no explicit cash asset;
-- desktop/mobile holding weights use the same pure projection;
-- no threshold such as “overweight” or “dangerous concentration” is encoded;
-- no risk score, target allocation, rebalance advice, forecast, expected return, Sharpe/Sortino/MDD or buy/sell recommendation;
-- existing Daily P&L explainability remains the authority for current-day contribution facts;
-- existing Strategy Analytics remains the authority for reviewed group-performance facts;
-- strategy tags may overlap, so group current values must not be silently converted into mutually-exclusive allocation percentages without a separately proven semantic contract.
+- daily contributor/detractor is selected only from `buildDailyPnlExplanation()` rows after its existing day-ledger and summary reconciliation;
+- if daily explanation is unavailable, Command Center does not infer drivers;
+- concentration is shown only when Phase 10.4A projection is `ok`;
+- pending dividend attention uses current-group pending candidates but confirmation remains all-records authoritative DIV event identity;
+- Command Center does not copy DividendManager page-memory awaiting-readback state;
+- recent transaction follows existing deterministic recent-first records and current-group Tag semantics;
+- no new durable attention/task state, localStorage, retry engine or mutation path;
+- navigation reuses App `activeView` only;
+- global reliability/retry authority remains `DataReliabilityBanner`; do not duplicate it as another Command Center state machine;
+- no risk score, forecast, target allocation, rebalance advice or AI-generated ledger facts.
 
 ### IBKR import
 
@@ -191,34 +201,36 @@ User-provided file → local preview/validation → stable broker account or exp
 
 ---
 
-## 3. User-approved Phase 10 roadmap — closure
+## 3. Product roadmap status
 
-1. **Phase 10.1 Transaction Entry UX Convergence — OPTIMIZED**
-   - 10.1A: recording terminology, information hierarchy, field-specific validation, mobile density.
-   - 10.1B: recent known-Symbol suggestions without new market/ticker authority.
+### Phase 10 — COMPLETE
 
-2. **Phase 10.2 Dividend Workflow Productization — OPTIMIZED**
-   - 10.2A: explicit gross / withholding / net entry contract and safe validation.
-   - 10.2B: recent actionable dividend queue + default-collapsed authoritative confirmed history.
+1. Transaction Entry UX Convergence — OPTIMIZED
+2. Dividend Workflow Productization — OPTIMIZED
+3. Journal / Transaction History UX Convergence — OPTIMIZED
+4. Portfolio Decision Support — OPTIMIZED
 
-3. **Phase 10.3 Journal / Transaction History UX Convergence — OPTIMIZED**
-   - 10.3A: visible strategy context, inclusive date retrieval, active filter/group transparency.
-   - 10.3B: accessible read-only full transaction/journal detail without entering Edit mode.
+### Phase 11 — Daily Portfolio Command Center / Action Center — OPTIMIZED
 
-4. **Phase 10.4 Portfolio Decision Support — OPTIMIZED**
-   - 10.4A: fail-closed current-group holding weights and concentration snapshot.
-   - Post-10.4A bounded audit found no additional high-frequency gap that can be added without duplicating existing explainability/strategy analytics or introducing unreviewed financial methodology.
+#### 11.1 Daily Command Snapshot — CLOSED / PRODUCTION PAGES VERIFIED
 
-### Phase 10.4 closure decision
+Overview now answers four daily questions from existing authoritative facts:
 
-- “Where am I concentrated?” is now answered from reconciled published holding values.
-- “What drove today?” is already answered by existing Daily P&L explainability.
-- “How are strategy groups performing?” is already answered by Strategy Analytics.
-- Advanced risk scores, forecasts, target allocation/rebalancing and Sharpe/Sortino/MDD require separate reviewed methodology and are not justified merely to enlarge decision support.
-- Strategy tags can overlap; no mutually-exclusive strategy allocation chart is inferred without a proven non-overlap contract.
-- Cash exposure is not inferred because there is no explicit cash asset.
+1. **What drove today?** — published/reconciled Daily P&L + strongest positive/negative Symbol.
+2. **Where am I concentrated?** — largest holding + Top-3 concentration from Phase 10.4A.
+3. **What dividend still lacks an authoritative DIV record?** — current-group pending candidate count and latest candidate.
+4. **What was my latest transaction in this strategy scope?** — recent-first record using existing group semantics.
 
-**Phase 10.4 is OPTIMIZED FOR CURRENT REQUIREMENTS. The complete user-approved Phase 10 roadmap is now COMPLETE.**
+Navigation leads to Holdings / Dividends / Records through the existing view state. Desktop uses a compact 2-column grid; mobile uses one column.
+
+#### Post-11.1 bounded audit — no 11.2 justified now
+
+- Data reliability, stale/read failures and retry actions already have a dedicated global authority: `DataReliabilityBanner`.
+- Repeating those states inside the Command Center would create duplicate attention semantics without product benefit.
+- Missing Journal Note / optional metadata is not automatically an actionable defect; no proven user rule says every record requires a note.
+- Existing daily explainability, concentration, dividend queue and recent transaction now cover the evidence-backed daily command use cases.
+
+**Phase 11 is OPTIMIZED FOR CURRENT REQUIREMENTS. Reopen only for fresh user/production evidence.**
 
 ---
 
@@ -226,29 +238,26 @@ User-provided file → local preview/validation → stable broker account or exp
 
 ### NOW
 
-No runtime batch active. Production Pages runtime is `6e1f3207...`; production Worker remains `9b9f09f5...`.
+No runtime batch active. Production Pages runtime is `cb4ae5d09753d0b559b33e3c7448e857cf0016e9`; production Worker remains `9b9f09f5079c59750219c73e23002a7ab8d2f33e`.
 
 Optional browser evidence, not blockers:
 
-1. verify Holdings shows desktop/mobile weights and concentration snapshot for normal reconciled data;
-2. verify current-group switching updates the concentration scope;
-3. verify no concentration percentage is shown when holdings/summary cannot reconcile;
-4. verify Transaction History and Dividend Workflow remain comfortable after their Phase 10 changes.
+1. verify Daily Command Center density on desktop/mobile with real account data;
+2. verify group switching updates daily drivers, concentration, pending dividends and latest record consistently;
+3. verify command cards navigate to Holdings / Dividends / Records without altering calculation state;
+4. verify unavailable daily/concentration facts remain fail-closed rather than showing guessed values.
 
-### DEFERRED — discuss before starting
+### DEFERRED — discuss/reprioritize before starting
 
-Per user instruction, no new runtime direction is selected after Phase 10. Remaining candidates require later discussion/reprioritization, including:
+- **Phase 12 — IBKR Sync Automation / former Phase 7.2 background Flex feasibility**;
+- Phase 13 — Transaction History Power Tools / bulk edit-export only with usage evidence;
+- Phase 14 — Authoritative Historical Lot Ledger after a trustworthy producer exists;
+- Phase 15 — Advanced Portfolio Analytics (Sharpe/Sortino/MDD etc.) after methodology review;
+- Phase 16 — AI Portfolio / Journal Intelligence over deterministic structured facts only;
+- richer IBKR transaction types;
+- physical cleanup of legacy machine notes.
 
-- Phase 7.2 background IBKR/Flex sync feasibility;
-- Action Center / Daily Command Center;
-- Transaction History bulk edit/export;
-- richer IBKR types;
-- physical cleanup of legacy machine notes;
-- Phase 5 historical lot/trade attribution after authoritative producer exists;
-- common-period Sharpe/Sortino/MDD/scoring or other new financial methodology;
-- portfolio forecasts, target allocation or rebalancing recommendations.
-
-Do not autonomously start any of these solely because Phase 10 is complete.
+Do not autonomously start Phase 12+ solely because Phase 11 is complete; user discussion/reprioritization is required.
 
 ---
 
@@ -266,7 +275,8 @@ Do not autonomously start any of these solely because Phase 10 is complete.
 - no second browser valuation/accounting/FX engine;
 - no historical lot attribution from current-day `day_ledger`;
 - no invented risk score, forecast or investment recommendation without reviewed methodology;
-- no strategy allocation percentages from overlapping groups unless non-overlap semantics are explicitly proven.
+- no strategy allocation percentages from overlapping groups unless non-overlap semantics are explicitly proven;
+- no second reliability/action-state machine inside Daily Command Center while DataReliabilityBanner owns that concern.
 
 ---
 
@@ -277,9 +287,9 @@ Do not autonomously start any of these solely because Phase 10 is complete.
 3. Re-read fresh main/open PR/CI/Pages before modifications.
 4. Treat new user screenshots/logs/production symptoms as newer than prose.
 5. If the user selects a new product direction, keep one Primary Active Batch and preserve its recovery point.
-6. Reopen completed Phase 10 work only for fresh material evidence.
+6. Reopen completed Phase 10/11 work only for fresh material evidence.
 7. Debug same-class impact + regression prevention.
-8. Do not start deferred work until the user discusses/reprioritizes it.
+8. Do not start Phase 12+ until the user discusses/reprioritizes it.
 
 ---
 
@@ -287,8 +297,9 @@ Do not autonomously start any of these solely because Phase 10 is complete.
 
 | Purpose | Checkpoint |
 |---|---|
+| Phase 11.1 runtime / production Pages | `cb4ae5d09753d0b559b33e3c7448e857cf0016e9` |
+| Before Phase 11.1 / completed Phase 10 docs checkpoint | `c0773fbc4c63397262e0889b0466c280ca36b7ae` |
 | Phase 10.4A runtime / production Pages | `6e1f3207bc8e9aa778ebe819f4a053d08cc66f1a` |
-| Before Phase 10.4A / Phase 10.3 docs checkpoint | `ec0eb8277442c14b1290e887c0b92957af6392ee` |
 | Phase 10.3B runtime | `e30433b260dc928c067f0c5c0721bd22ad89d216` |
 | Phase 10.3A runtime | `d1e799570c70381864db3ed4cfe0e9129d2a6bac` |
 | Phase 10.2B runtime | `7c670a6c9c015c689add4ce742a4941d74e76e38` |
