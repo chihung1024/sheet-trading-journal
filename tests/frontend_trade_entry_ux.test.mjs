@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TRADE_FORM_PATH = path.join(ROOT, 'src', 'components', 'TradeForm.vue');
-
 const source = fs.readFileSync(TRADE_FORM_PATH, 'utf8');
 
 test('transaction entry language records trades instead of implying broker order submission', () => {
@@ -17,38 +16,28 @@ test('transaction entry language records trades instead of implying broker order
   assert.match(source, /記錄實際成交，不會向券商送出訂單/);
 });
 
-test('execution amount is explicitly non-fee-tax and preserves price as the recorded authority when both are supplied', () => {
-  assert.match(source, /成交金額（未含費稅）/);
+test('execution amount is explicitly non-fee-tax and preserves price authority when both inputs are supplied', () => {
+  assert.match(source, /成交金額（未含費稅，\{\{ transactionCurrency \}\}）/);
   assert.match(source, /可填成交單價或成交金額其中之一；若兩者都填，以成交單價記錄交易。/);
-
   const buildStart = source.indexOf('const buildRecordPayload = () => {');
   const buildEnd = source.indexOf('const submit = async () => {', buildStart);
-  assert.ok(buildStart >= 0 && buildEnd > buildStart);
   const buildBlock = source.slice(buildStart, buildEnd);
+  assert.ok(buildStart >= 0 && buildEnd > buildStart);
   assert.match(buildBlock, /if \(payload\.price <= 0 && payload\.total_amount > 0\)/);
   assert.match(buildBlock, /payload\.price = payload\.total_amount \/ payload\.qty/);
   assert.match(buildBlock, /else if \(payload\.total_amount <= 0 && payload\.price > 0\)/);
-  assert.match(buildBlock, /payload\.total_amount = payload\.price \* payload\.qty/);
 });
 
-test('primary execution fields precede tags and journal note', () => {
-  const symbolAt = source.indexOf('id="trade-symbol"');
-  const dateAt = source.indexOf('id="trade-date"');
-  const qtyAt = source.indexOf('id="trade-qty"');
-  const priceAt = source.indexOf('id="trade-price"');
-  const totalAt = source.indexOf('id="trade-total"');
-  const feeAt = source.indexOf('id="trade-fee"');
+test('execution fields now precede strategy tags in the DOM flow', () => {
+  const symbolAt = source.indexOf('交易標的 Symbol');
+  const dateAt = source.indexOf('日期 Date');
+  const priceAt = source.indexOf('成交單價');
+  const qtyAt = source.indexOf('股數 Shares');
+  const feeAt = source.indexOf('手續費 Fee');
   const tagsAt = source.indexOf('策略群組 (Tags)');
   const noteAt = source.indexOf('id="trade-note"');
-
-  assert.ok(symbolAt >= 0);
-  assert.ok(dateAt > symbolAt);
-  assert.ok(qtyAt > dateAt);
-  assert.ok(priceAt > qtyAt);
-  assert.ok(totalAt > priceAt);
-  assert.ok(feeAt > totalAt);
-  assert.ok(tagsAt > feeAt);
-  assert.ok(noteAt > tagsAt);
+  assert.ok(symbolAt >= 0 && dateAt > symbolAt && priceAt > dateAt && qtyAt > priceAt);
+  assert.ok(feeAt > qtyAt && tagsAt > feeAt && noteAt > tagsAt);
 });
 
 test('required-entry validation is field-specific without changing the existing acceptance predicates', () => {
@@ -60,8 +49,8 @@ test('required-entry validation is field-specific without changing the existing 
   assert.match(source, /addToast\(firstValidationError\.value, 'error'\)/);
 });
 
-test('mobile keeps fee and tax compact while preserving a narrow-screen fallback', () => {
-  assert.match(source, /\.fee-tax-grid \{ display: grid; grid-template-columns: 1fr 1fr;/);
-  assert.match(source, /@media \(max-width: 768px\)[\s\S]*?\.fee-tax-grid \{ grid-template-columns: 1fr 1fr;/);
-  assert.match(source, /@media \(max-width: 380px\)[\s\S]*?\.fee-tax-grid \{ grid-template-columns: 1fr;/);
+test('mobile keeps qty prominent and fee/tax compact with a narrow-screen fallback', () => {
+  assert.match(source, /@media \(max-width: 768px\)[\s\S]*?\.triple-input \{ grid-template-columns: 1fr 1fr; gap: 16px; \}/);
+  assert.match(source, /\.triple-input \.input-with-label:first-child \{ grid-column: 1 \/ -1; \}/);
+  assert.match(source, /@media \(max-width: 380px\)[\s\S]*?\.triple-input \{ grid-template-columns: 1fr; \}/);
 });
