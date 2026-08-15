@@ -138,7 +138,7 @@ const pnlClass = (value) => {
 <style scoped>
 .daily-pnl-explanation {
   margin-top: 16px;
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   background: var(--bg-card);
@@ -150,7 +150,7 @@ const pnlClass = (value) => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .eyebrow {
@@ -185,15 +185,15 @@ const pnlClass = (value) => {
 .component-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 7px;
+  margin-bottom: 10px;
 }
 
 .component-chip {
   display: inline-flex;
   gap: 6px;
   align-items: center;
-  padding: 6px 9px;
+  padding: 5px 8px;
   border-radius: 8px;
   background: var(--bg-secondary);
   color: var(--text-sub);
@@ -203,22 +203,26 @@ const pnlClass = (value) => {
 .component-chip strong,
 .component-detail strong {
   font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
 }
 
 .explanation-copy {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   color: var(--text-sub);
   font-size: 0.78rem;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .contributor-list {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  align-items: start;
   gap: 8px;
 }
 
 .contributor-row {
-  padding: 11px 12px;
+  min-width: 0;
+  padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
   background: var(--bg-secondary);
@@ -229,6 +233,7 @@ const pnlClass = (value) => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .symbol-block {
@@ -239,7 +244,12 @@ const pnlClass = (value) => {
   color: var(--text-main);
 }
 
+.symbol-block strong {
+  overflow-wrap: anywhere;
+}
+
 .currency-badge {
+  flex: none;
   padding: 2px 6px;
   border-radius: 999px;
   border: 1px solid var(--border-color);
@@ -252,20 +262,24 @@ const pnlClass = (value) => {
   flex: none;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 .contributor-components {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 5px 12px;
   margin-top: 7px;
   color: var(--text-sub);
   font-size: 0.75rem;
 }
 
 .component-detail {
-  display: inline-flex;
-  gap: 4px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .no-component-change {
@@ -276,8 +290,8 @@ const pnlClass = (value) => {
 
 .show-more-btn {
   width: 100%;
-  margin-top: 10px;
-  padding: 8px 10px;
+  margin-top: 9px;
+  padding: 7px 10px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: transparent;
@@ -297,13 +311,14 @@ const pnlClass = (value) => {
 @media (max-width: 768px) {
   .daily-pnl-explanation {
     margin-top: 12px;
-    padding: 14px;
+    padding: 12px;
   }
 
   .explanation-header {
     align-items: flex-start;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
+    margin-bottom: 10px;
   }
 
   .published-total {
@@ -318,14 +333,35 @@ const pnlClass = (value) => {
     padding: 5px 7px;
   }
 
+  .contributor-list {
+    grid-template-columns: 1fr;
+  }
+
+  .contributor-row {
+    padding: 9px 10px;
+  }
+
   .contributor-main {
     align-items: flex-start;
   }
 
   .contributor-components {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 5px 10px;
+  }
+}
+
+@media (max-width: 420px) {
+  .contributor-main {
+    gap: 8px;
+  }
+
+  .contributor-total {
+    font-size: 0.84rem;
+  }
+
+  .contributor-components {
+    grid-template-columns: 1fr;
   }
 }
 </style>
