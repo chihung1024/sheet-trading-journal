@@ -13,6 +13,7 @@
             <span class="btn-text">{{ t === 'BUY' ? '買進' : t === 'SELL' ? '賣出' : '股息' }}</span>
         </button>
     </div>
+    <p class="entry-context">記錄實際成交，不會向券商送出訂單</p>
 
     <div class="form-grid">
         <div class="form-group full">
@@ -24,11 +25,81 @@
                     @change="checkHoldings" 
                     placeholder="如: NVDA, TSLA, 2330.TW" 
                     :disabled="isEditing" 
+                    :aria-invalid="validationAttempted && !!validationErrors.symbol"
                     class="input-lg uppercase bold-text"
                 >
             </div>
+            <p v-if="validationAttempted && validationErrors.symbol" class="field-error" role="alert">{{ validationErrors.symbol }}</p>
         </div>
         
+        <div class="form-group">
+            <label>日期 Date</label>
+            <input type="date" v-model="form.txn_date" class="input-md">
+        </div>
+        
+        <div class="form-group">
+            <label>成交單價 ({{ transactionCurrency }})</label>
+            <div class="input-with-prefix">
+                <span class="prefix">{{ transactionCurrencySymbol }}</span>
+                <input 
+                    type="number" 
+                    v-model="form.price" 
+                    placeholder="0.00" 
+                    class="input-md font-num" 
+                    step="0.0001"
+                    inputmode="decimal"
+                    :aria-invalid="validationAttempted && !!validationErrors.executionValue"
+                >
+            </div>
+            <p v-if="validationAttempted && validationErrors.executionValue" class="field-error" role="alert">{{ validationErrors.executionValue }}</p>
+        </div>
+
+        <div class="form-group full shares-fee-row">
+            <div class="triple-input">
+                <div class="input-with-label">
+                    <label>股數 Shares</label>
+                    <input 
+                        type="number" 
+                        v-model="form.qty" 
+                        placeholder="0" 
+                        class="input-md font-num" 
+                        step="0.0001"
+                        inputmode="decimal"
+                        :aria-invalid="validationAttempted && !!validationErrors.qty"
+                    >
+                    <p v-if="validationAttempted && validationErrors.qty" class="field-error" role="alert">{{ validationErrors.qty }}</p>
+                </div>
+                <div class="input-with-label">
+                    <label>手續費 Fee</label>
+                    <input type="number" v-model="form.fee" placeholder="0" class="font-num" step="0.01" inputmode="decimal">
+                </div>
+                <div class="input-with-label">
+                    <label>稅金 Tax</label>
+                    <input type="number" v-model="form.tax" placeholder="0" class="font-num" step="0.01" inputmode="decimal">
+                </div>
+            </div>
+        </div>
+
+        <div class="summary-box form-group full">
+            <div class="summary-header">
+                <span class="summary-label">成交金額（未含費稅，{{ transactionCurrency }}）</span>
+                <span class="calc-icon">🧮</span>
+            </div>
+            <div class="summary-input-wrapper">
+                <span class="currency-symbol">{{ transactionCurrencySymbol }}</span>
+                <input 
+                    type="number" 
+                    v-model="form.total_amount" 
+                    class="summary-value" 
+                    step="0.01" 
+                    placeholder="0.00"
+                    inputmode="decimal"
+                    :aria-invalid="validationAttempted && !!validationErrors.executionValue"
+                >
+            </div>
+            <p class="field-help">可填成交單價或成交金額其中之一；若兩者都填，以成交單價記錄交易。</p>
+        </div>
+
         <div class="form-group full">
             <label>策略群組 (Tags)</label>
             
@@ -44,6 +115,7 @@
                         <span class="tag-name">{{ g }}</span>
                     </label>
                 </div>
+                <p v-if="validationAttempted && validationErrors.sellGroups" class="field-error" role="alert">{{ validationErrors.sellGroups }}</p>
             </div>
             
             <div class="tag-input-container" :class="{ disabled: form.txn_type === 'SELL' && holdingGroups.length > 0 }">
@@ -69,50 +141,6 @@
                 <button type="button" v-for="t in commonTags" :key="t" @click="pushTag(t)" class="quick-tag">+ {{ t }}</button>
             </div>
         </div>
-        
-        <div class="form-group">
-            <label>日期 Date</label>
-            <input type="date" v-model="form.txn_date" class="input-md">
-        </div>
-        
-        <div class="form-group">
-            <label>成交單價 ({{ transactionCurrency }})</label>
-            <div class="input-with-prefix">
-                <span class="prefix">{{ transactionCurrencySymbol }}</span>
-                <input 
-                    type="number" 
-                    v-model="form.price" 
-                    placeholder="0.00" 
-                    class="input-md font-num" 
-                    step="0.0001"
-                    inputmode="decimal"
-                >
-            </div>
-        </div>
-
-        <div class="form-group full shares-fee-row">
-            <div class="triple-input">
-                <div class="input-with-label">
-                    <label>股數 Shares</label>
-                    <input 
-                        type="number" 
-                        v-model="form.qty" 
-                        placeholder="0" 
-                        class="input-md font-num" 
-                        step="0.0001"
-                        inputmode="decimal"
-                    >
-                </div>
-                <div class="input-with-label">
-                    <label>手續費 Fee</label>
-                    <input type="number" v-model="form.fee" placeholder="0" class="font-num" step="0.01" inputmode="decimal">
-                </div>
-                <div class="input-with-label">
-                    <label>稅金 Tax</label>
-                    <input type="number" v-model="form.tax" placeholder="0" class="font-num" step="0.01" inputmode="decimal">
-                </div>
-            </div>
-        </div>
 
         <div class="form-group full note-group">
             <div class="note-label-row">
@@ -127,24 +155,6 @@
                 rows="4"
                 placeholder="記錄進場理由、風險、交易計畫或事後檢討…"
             ></textarea>
-        </div>
-    </div>
-
-    <div class="summary-box">
-        <div class="summary-header">
-            <span class="summary-label">交易總金額 ({{ transactionCurrency }})</span>
-            <span class="calc-icon">🧮</span>
-        </div>
-        <div class="summary-input-wrapper">
-            <span class="currency-symbol">{{ transactionCurrencySymbol }}</span>
-            <input 
-                type="number" 
-                v-model="form.total_amount" 
-                class="summary-value" 
-                step="0.01" 
-                placeholder="0.00"
-                inputmode="decimal"
-            >
         </div>
     </div>
     
@@ -177,6 +187,7 @@ const { addToast } = useToast();
 const loading = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
+const validationAttempted = ref(false);
 let unresolvedCreateBody = null;
 
 const tagInput = ref('');
@@ -205,10 +216,10 @@ const transactionCurrencySymbol = computed(() => getCurrencyInputAffix(transacti
 
 const submitButtonText = computed(() => {
     switch(form.txn_type) {
-        case 'BUY': return '送出買單';
-        case 'SELL': return '送出賣單';
+        case 'BUY': return '記錄買進';
+        case 'SELL': return '記錄賣出';
         case 'DIV': return '記錄股息';
-        default: return '送出';
+        default: return '記錄交易';
     }
 });
 
@@ -219,6 +230,25 @@ const tagsArray = computed(() => {
 const commonTags = computed(() => {
     return store.availableGroups.filter(g => g !== 'all' && !tagsArray.value.includes(g));
 });
+
+const validationErrors = computed(() => ({
+    symbol: !form.symbol ? '請輸入交易標的 Symbol' : '',
+    qty: !form.qty ? '請輸入股數' : '',
+    executionValue: (!form.price && !form.total_amount) ? '請輸入成交單價或成交金額' : '',
+    sellGroups: (
+        form.txn_type === 'SELL'
+        && holdingGroups.value.length > 0
+        && selectedSellGroups.value.length === 0
+    ) ? '請勾選要賣出的群組' : '',
+}));
+
+const firstValidationError = computed(() => (
+    validationErrors.value.symbol
+    || validationErrors.value.qty
+    || validationErrors.value.executionValue
+    || validationErrors.value.sellGroups
+    || ''
+));
 
 const checkHoldings = () => {
     if (form.txn_type === 'SELL' && form.symbol) {
@@ -284,13 +314,9 @@ const buildRecordPayload = () => {
 };
 
 const submit = async () => {
-    if (!form.symbol || !form.qty || (!form.price && !form.total_amount)) { 
-        addToast("請填寫完整資料", "error"); 
-        return; 
-    }
-    
-    if (form.txn_type === 'SELL' && holdingGroups.value.length > 0 && selectedSellGroups.value.length === 0) {
-        addToast("請勾選要賣出的群組", "error");
+    validationAttempted.value = true;
+    if (firstValidationError.value) {
+        addToast(firstValidationError.value, 'error');
         return;
     }
     
@@ -327,6 +353,7 @@ const submit = async () => {
 
 const resetForm = () => {
     unresolvedCreateBody = null;
+    validationAttempted.value = false;
     isEditing.value = false; 
     editingId.value = null;
     form.txn_date = formatLocalCalendarDate();
@@ -346,6 +373,7 @@ const resetForm = () => {
 
 const setupForm = (r) => {
     unresolvedCreateBody = null;
+    validationAttempted.value = false;
     isEditing.value = true; 
     editingId.value = r.id;
     Object.keys(form).forEach(k => form[k] = r[k]);
@@ -411,6 +439,7 @@ defineExpose({ setupForm, resetForm });
 
 .panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
 .mode-badge { font-size: 0.75rem; background: var(--warning); color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.entry-context { margin: -14px 0 18px; color: var(--text-sub); font-size: 0.78rem; }
 
 /* 交易類型切換 (Segmented Control) */
 .trade-type-switch { 
@@ -468,7 +497,7 @@ input {
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
     font-size: 1rem; 
-    width: 100%; 
+    width: 100%;
     box-sizing: border-box; 
     font-family: 'Inter', sans-serif;
     transition: all 0.2s; 
@@ -479,6 +508,7 @@ input {
 
 input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 0.7; }
+input[aria-invalid="true"] { border-color: var(--danger); }
 
 .font-num { font-family: 'JetBrains Mono', monospace; }
 .uppercase { text-transform: uppercase; }
@@ -488,6 +518,8 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
 .input-with-prefix { position: relative; }
 .prefix { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 .input-with-prefix input { padding-left: 38px; }
+.field-help { margin: 0; color: var(--text-sub); font-size: 0.75rem; line-height: 1.45; }
+.field-error { margin: 0; color: var(--danger); font-size: 0.78rem; font-weight: 600; line-height: 1.4; }
 
 /* 雙欄輸入 (費用) */
 .dual-input { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -645,6 +677,7 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     }
     
     .panel-header { display: none; } /* 手機版通常有 Sheet Header，隱藏內部標題 */
+    .entry-context { margin-top: -12px; }
     
     .form-grid { 
         grid-template-columns: 1fr; /* 強制單欄 */
@@ -658,8 +691,9 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     
     .dual-input { gap: 16px; }
     
-    /* 手機版：三欄改為單欄，標籤靠左 */
-    .triple-input { grid-template-columns: 1fr; gap: 16px; }
+    /* 手機版：股數整列，費用與稅金並排，減少表單高度 */
+    .triple-input { grid-template-columns: 1fr 1fr; gap: 16px; }
+    .triple-input .input-with-label:first-child { grid-column: 1 / -1; }
     .triple-input .input-with-label { align-items: flex-start; }
     .triple-input .input-with-label label { text-align: left; }
     .triple-input .input-with-label input { text-align: left; }
@@ -667,5 +701,10 @@ input:disabled { background: var(--bg-secondary); cursor: not-allowed; opacity: 
     .summary-value { font-size: 2rem; }
     
     .switch-btn { padding: 12px; }
+}
+
+@media (max-width: 380px) {
+    .triple-input { grid-template-columns: 1fr; }
+    .triple-input .input-with-label:first-child { grid-column: auto; }
 }
 </style>
