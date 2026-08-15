@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **Phase 11 Daily Portfolio Command Center / Action Center is OPTIMIZED FOR CURRENT REQUIREMENTS after Phase 11.1 Daily Command Snapshot. No runtime batch is active. The bounded post-11.1 audit found no justified 11.2: DataReliabilityBanner already owns reliability/retry attention, and there is no proven semantic contract that every missing Journal Note or other optional field is a user action item. Phase 12 IBKR Sync Automation and all other directions remain deferred until later user discussion/reprioritization.**
+Current line: **Phase 11 Daily Portfolio Command Center / Action Center is OPTIMIZED FOR CURRENT REQUIREMENTS after Phase 11.1 Daily Command Snapshot. No runtime batch is active. The user explicitly deprioritized the former Phase 12 IBKR Sync Automation because IBKR is broker-specific and not relevant to every user. IBKR automation is now an optional broker-integration backlog item, not the default next phase. The next product direction must be re-ranked by cross-user coverage, usage frequency and core UX value rather than phase-number sequence.**
 
 ---
 
@@ -21,6 +21,7 @@ Current line: **Phase 11 Daily Portfolio Command Center / Action Center is OPTIM
 8. Do not reopen closed phases without fresh material user/production evidence.
 9. Preserve recovery points; never use destructive git against unknown work.
 10. When no approved runtime direction remains, stop rather than inventing technical work.
+11. **Do not treat phase numbering as automatic priority.** Rank new product work by cross-user applicability, frequency of use, product/UX impact and evidence. Broker-specific integrations must not displace higher-value universal functionality merely because they are next numerically.
 
 ---
 
@@ -62,7 +63,8 @@ A docs-only closeout merge may advance repository `main` without changing produc
 - **Phase 10.4 Portfolio Decision Support — OPTIMIZED FOR CURRENT REQUIREMENTS**
 - **Phase 10 roadmap — COMPLETE**
 - **Phase 11 Daily Portfolio Command Center / Action Center — OPTIMIZED FOR CURRENT REQUIREMENTS**
-- **No runtime batch active**
+- **Former Phase 12 IBKR Sync Automation — SKIPPED AS DEFAULT NEXT PHASE / OPTIONAL BROKER-SPECIFIC BACKLOG**
+- **No runtime batch active; next product phase not yet selected**
 
 ### Recent immutable evidence
 
@@ -199,6 +201,8 @@ Rules:
 
 User-provided file → local preview/validation → stable broker account or explicit non-sensitive Import Profile → deterministic replay key → existing authenticated record-create. No IBKR credentials in D1/localStorage and no system-principal record writes.
 
+IBKR-specific automation remains optional integration work. It must not become a prerequisite for core journal functionality or the default product roadmap because users may use other brokers or manual entry/import workflows.
+
 ---
 
 ## 3. Product roadmap status
@@ -232,6 +236,18 @@ Navigation leads to Holdings / Dividends / Records through the existing view sta
 
 **Phase 11 is OPTIMIZED FOR CURRENT REQUIREMENTS. Reopen only for fresh user/production evidence.**
 
+### Former Phase 12 — IBKR Sync Automation — SKIPPED AS DEFAULT NEXT PHASE
+
+User decision on 2026-08-16:
+
+- IBKR is not used by every user;
+- broker-specific automation therefore does not justify default next-phase priority;
+- existing IBKR file-import functionality remains intact and supported;
+- background/Flex automation may be revisited later only as an optional integration when there is explicit user demand;
+- skipping this roadmap slot does **not** mean the next project must be renamed Phase 13. The next phase should be selected and numbered after product re-prioritization.
+
+**Next-phase selection principle:** prefer functionality that benefits the broad user base and materially improves frequent journal/portfolio workflows before broker-specific integrations.
+
 ---
 
 ## 4. NOW / DEFERRED
@@ -240,6 +256,14 @@ Navigation leads to Holdings / Dividends / Records through the existing view sta
 
 No runtime batch active. Production Pages runtime is `cb4ae5d09753d0b559b33e3c7448e857cf0016e9`; production Worker remains `9b9f09f5079c59750219c73e23002a7ab8d2f33e`.
 
+Next runtime direction is intentionally unselected. Before opening a new batch, perform a bounded product audit and rank candidates by:
+
+1. cross-user applicability;
+2. frequency / friction in normal use;
+3. direct product-functionality or UX improvement;
+4. ability to reuse authoritative existing facts without adding unnecessary financial methodology;
+5. implementation risk and maintenance cost only after the product-value criteria above.
+
 Optional browser evidence, not blockers:
 
 1. verify Daily Command Center density on desktop/mobile with real account data;
@@ -247,17 +271,17 @@ Optional browser evidence, not blockers:
 3. verify command cards navigate to Holdings / Dividends / Records without altering calculation state;
 4. verify unavailable daily/concentration facts remain fail-closed rather than showing guessed values.
 
-### DEFERRED — discuss/reprioritize before starting
+### OPTIONAL / DEFERRED — discuss/reprioritize before starting
 
-- **Phase 12 — IBKR Sync Automation / former Phase 7.2 background Flex feasibility**;
-- Phase 13 — Transaction History Power Tools / bulk edit-export only with usage evidence;
-- Phase 14 — Authoritative Historical Lot Ledger after a trustworthy producer exists;
-- Phase 15 — Advanced Portfolio Analytics (Sharpe/Sortino/MDD etc.) after methodology review;
-- Phase 16 — AI Portfolio / Journal Intelligence over deterministic structured facts only;
+- **IBKR Sync Automation / former Phase 12 / former Phase 7.2 background Flex feasibility — broker-specific optional backlog, not next by default**;
+- Transaction History Power Tools / bulk edit-export only with usage evidence;
+- Authoritative Historical Lot Ledger after a trustworthy producer exists;
+- Advanced Portfolio Analytics (Sharpe/Sortino/MDD etc.) after methodology review;
+- AI Portfolio / Journal Intelligence over deterministic structured facts only;
 - richer IBKR transaction types;
 - physical cleanup of legacy machine notes.
 
-Do not autonomously start Phase 12+ solely because Phase 11 is complete; user discussion/reprioritization is required.
+Do not infer priority from the old Phase 12/13/14/15/16 numbering. Re-rank future work from current product evidence and user coverage before assigning the next phase number.
 
 ---
 
@@ -276,7 +300,8 @@ Do not autonomously start Phase 12+ solely because Phase 11 is complete; user di
 - no historical lot attribution from current-day `day_ledger`;
 - no invented risk score, forecast or investment recommendation without reviewed methodology;
 - no strategy allocation percentages from overlapping groups unless non-overlap semantics are explicitly proven;
-- no second reliability/action-state machine inside Daily Command Center while DataReliabilityBanner owns that concern.
+- no second reliability/action-state machine inside Daily Command Center while DataReliabilityBanner owns that concern;
+- no broker-specific integration promoted to core-roadmap priority solely because of phase numbering.
 
 ---
 
@@ -289,7 +314,8 @@ Do not autonomously start Phase 12+ solely because Phase 11 is complete; user di
 5. If the user selects a new product direction, keep one Primary Active Batch and preserve its recovery point.
 6. Reopen completed Phase 10/11 work only for fresh material evidence.
 7. Debug same-class impact + regression prevention.
-8. Do not start Phase 12+ until the user discusses/reprioritizes it.
+8. Treat IBKR Sync Automation as optional broker-specific backlog unless the user explicitly reprioritizes it.
+9. Select the next phase from current cross-user product evidence; do not auto-advance old numerical roadmap labels.
 
 ---
 
