@@ -17,7 +17,7 @@ const ALIASES = Object.freeze({
   dateTime: ['datetime', 'dateandtime', 'tradetime', 'executedatetime'],
   orderId: ['iborderid', 'orderid'],
   tradeId: ['tradeid', 'executionid', 'execid'],
-  accountId: ['accountid', 'account', 'accountnumber', 'accountcode'],
+  accountId: ['accountid', 'clientaccountid', 'account', 'accountnumber', 'accountcode'],
   level: ['levelofdetail', 'detaillevel'],
   discriminator: ['datadiscriminator', 'discriminator'],
 });
@@ -61,13 +61,16 @@ function columnsFor(headers) {
 }
 
 function statementAccount(rows) {
-  const row = rows.find(candidate => (
-    text(candidate[0]).toLowerCase() === 'statement'
-    && text(candidate[1]).toLowerCase() === 'data'
-    && headerKey(candidate[2]) === 'account'
-    && text(candidate[3])
-  ));
-  return row ? text(row[3]).toUpperCase() : '';
+  const accounts = rows
+    .filter(candidate => (
+      text(candidate[0]).toLowerCase() === 'statement'
+      && text(candidate[1]).toLowerCase() === 'data'
+      && headerKey(candidate[2]) === 'account'
+      && text(candidate[3])
+    ))
+    .map(candidate => text(candidate[3]).toUpperCase());
+  const uniqueAccounts = [...new Set(accounts)];
+  return uniqueAccounts.length === 1 ? uniqueAccounts[0] : '';
 }
 
 function extractTradeTable(rows) {
@@ -141,6 +144,12 @@ function sourceIdentity(item, columns, fallbackAccountId = '') {
     ? `${orderId ? 'ORDER' : 'TRADE'}:${accountId}:${orderId || tradeId}`
     : null;
   return { accountId, orderId, tradeId, groupKey };
+}
+
+function groupLabel(groupKey) {
+  const parts = text(groupKey).split(':');
+  if (parts.length < 3) return 'IBKR order';
+  return `${parts[0]}:${parts.slice(2).join(':')}`;
 }
 
 function stableTradeFingerprint(trade) {
@@ -242,7 +251,7 @@ function idempotencyKeyFor(trade, tradeIds) {
 function noteFor(trade, fills, tradeIds) {
   const times = [...new Set(fills.map(fill => fill.dateTime).filter(Boolean))].sort();
   return [
-    'source=IBKR', `account_id=${trade.accountId}`, `currency=${trade.currency}`,
+    'source=IBKR', `currency=${trade.currency}`,
     'security_type=STK', 'aggregation=order', `trade_date=${trade.tradeDate}`,
     trade.orderId ? `order_id=${trade.orderId}` : null,
     `fill_count=${fills.length}`,
@@ -293,7 +302,7 @@ function aggregate(trades, initialTaintedGroups = new Set()) {
   for (const [groupKey, fills] of groups) {
     const first = fills[0];
     if (taintedGroups.has(groupKey)) {
-      warnings.push(warning(first.rowNumber, 'ORDER_TAINTED', `${groupKey} 含不完整或衝突成交明細，整筆略過`));
+      warnings.push(warning(first.rowNumber, 'ORDER_TAINTED', `${groupLabel(groupKey)} 含不完整或衝突成交明細，整筆略過`));
       continue;
     }
     const sameIdentity = fills.every(fill => (
@@ -304,7 +313,7 @@ function aggregate(trades, initialTaintedGroups = new Set()) {
       && fill.currency === first.currency
     ));
     if (!sameIdentity) {
-      warnings.push(warning(first.rowNumber, 'ORDER_IDENTITY_CONFLICT', `${groupKey} 含不同帳戶/日期/代碼/方向/幣別，整筆略過`));
+      warnings.push(warning(first.rowNumber, 'ORDER_IDENTITY_CONFLICT', `${groupLabel(groupKey)} 含不同帳戶/日期/代碼/方向/幣別，整筆略過`));
       continue;
     }
     const qty = fills.reduce((sum, fill) => sum + fill.quantity, 0);
@@ -312,7 +321,7 @@ function aggregate(trades, initialTaintedGroups = new Set()) {
     const tradeIds = fills.map(fill => fill.tradeId).filter(Boolean).sort();
     const idempotencyKey = idempotencyKeyFor(first, tradeIds);
     if (!idempotencyKey || !(qty > 0) || !Number.isFinite(weighted)) {
-      warnings.push(warning(first.rowNumber, 'INVALID_ORDER_AGGREGATE', `${groupKey} 無法建立安全聚合或 durable identity`));
+      warnings.push(warning(first.rowNumber, 'INVALID_ORDER_AGGREGATE', `${groupLabel(groupKey)} 無法建立安全聚合或 durable identity`));
       continue;
     }
     entries.push(Object.freeze({
@@ -397,4 +406,5 @@ export const __test = Object.freeze({
   csvRows,
   dateOnly,
   statementAccount,
+  groupLabel,
 });
