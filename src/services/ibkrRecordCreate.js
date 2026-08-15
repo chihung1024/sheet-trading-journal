@@ -1,5 +1,3 @@
-import { CONFIG } from '../config';
-import { useAuthStore } from '../stores/auth';
 import { readApiJson } from './apiResponse.js';
 import {
   beginRecordCreateIntent,
@@ -69,9 +67,23 @@ export const beginIbkrRecordCreateIntent = async (
   return intent;
 };
 
-const postIntentOnce = async (intent, token, { fetchImpl = globalThis.fetch } = {}) => (
+const normalizeApiBaseUrl = (value) => {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('API base URL is required for IBKR import');
+  }
+  return value.trim().replace(/\/$/, '');
+};
+
+const postIntentOnce = async (
+  intent,
+  token,
+  {
+    apiBaseUrl,
+    fetchImpl = globalThis.fetch,
+  } = {},
+) => (
   fetchWithDeadline(
-    `${CONFIG.API_BASE_URL}${RECORD_ENDPOINT}`,
+    `${normalizeApiBaseUrl(apiBaseUrl)}${RECORD_ENDPOINT}`,
     {
       method: 'POST',
       headers: {
@@ -89,8 +101,17 @@ const postIntentOnce = async (intent, token, { fetchImpl = globalThis.fetch } = 
   )
 );
 
-const postIntentWithRefresh = async (intent, auth, options = {}) => {
-  let token = auth?.token;
+const postIntentWithRefresh = async (
+  intent,
+  {
+    getToken,
+    refreshToken,
+    apiBaseUrl,
+    fetchImpl = globalThis.fetch,
+  } = {},
+) => {
+  if (typeof getToken !== 'function') throw new TypeError('getToken must be a function');
+  let token = getToken();
   if (!token) {
     const error = new Error('請先登入');
     error.outcomeAmbiguous = false;
@@ -98,13 +119,13 @@ const postIntentWithRefresh = async (intent, auth, options = {}) => {
   }
 
   try {
-    return await postIntentOnce(intent, token, options);
+    return await postIntentOnce(intent, token, { apiBaseUrl, fetchImpl });
   } catch (error) {
-    if (error?.status !== 401 || typeof auth?.refreshToken !== 'function') throw error;
-    const refreshed = await auth.refreshToken();
-    token = auth?.token;
+    if (error?.status !== 401 || typeof refreshToken !== 'function') throw error;
+    const refreshed = await refreshToken();
+    token = getToken();
     if (refreshed !== true || !token) throw error;
-    return postIntentOnce(intent, token, options);
+    return postIntentOnce(intent, token, { apiBaseUrl, fetchImpl });
   }
 };
 
@@ -112,20 +133,27 @@ export const createIbkrRecord = async (
   entry,
   {
     storage = globalThis.localStorage,
-    auth = useAuthStore(),
+    owner,
+    getToken,
+    refreshToken,
+    apiBaseUrl,
     fetchImpl = globalThis.fetch,
   } = {},
 ) => {
   if (!entry || typeof entry !== 'object' || !entry.record || typeof entry.idempotencyKey !== 'string') {
     throw new TypeError('A validated IBKR import entry is required');
   }
-  if (!auth?.token) {
+  if (typeof owner !== 'string' || !owner.trim()) {
+    const error = new Error('請先登入');
+    error.outcomeAmbiguous = false;
+    throw error;
+  }
+  if (typeof getToken !== 'function' || !getToken()) {
     const error = new Error('請先登入');
     error.outcomeAmbiguous = false;
     throw error;
   }
 
-  const owner = auth?.user?.email || '';
   const intent = await beginIbkrRecordCreateIntent(
     storage,
     owner,
@@ -134,7 +162,12 @@ export const createIbkrRecord = async (
   );
 
   try {
-    const response = await postIntentWithRefresh(intent, auth, { fetchImpl });
+    const response = await postIntentWithRefresh(intent, {
+      getToken,
+      refreshToken,
+      apiBaseUrl,
+      fetchImpl,
+    });
     completeRecordCreateIntent(storage, intent.owner, intent.idempotencyKey);
     return Object.freeze({
       committed: true,
@@ -164,6 +197,7 @@ export const createIbkrRecord = async (
 export const __test = Object.freeze({
   hashImportIdentity,
   createIntentIdFactory,
+  normalizeApiBaseUrl,
   postIntentOnce,
   postIntentWithRefresh,
 });
