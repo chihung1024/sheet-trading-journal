@@ -655,16 +655,16 @@ watch(() => store.currentGroup, () => {
 .stats-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-sm); }
 .stat-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .stat-label { font-size: var(--type-label); color: var(--text-sub); font-weight: 600; text-transform: uppercase; }
-.stat-value { font-size: var(--type-metric); font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text-main); }
+.stat-value { font-size: var(--type-metric-sm); font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text-main); }
 .stat-value.text-primary { color: var(--primary); }
 .stat-value.text-success { color: var(--success); }
 .stat-value.text-warning { color: var(--warning); }
 
 .table-container { overflow-x: auto; border-radius: var(--radius-sm); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: var(--type-body); font-weight: 700; white-space: nowrap; background: var(--bg-secondary); }
+th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: var(--type-label); font-weight: 700; white-space: nowrap; background: var(--bg-secondary); }
 th.sortable { cursor: pointer; }
-td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--type-emphasis); }
+td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--type-body); }
 .record-row:hover { background-color: var(--bg-secondary); }
 .record-row.expanded { background-color: var(--bg-secondary); }
 .record-detail-row td { padding: 8px 12px 16px; background: var(--bg-card); }

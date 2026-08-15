@@ -453,9 +453,9 @@ h3 { margin: 0; font-size: var(--type-section); }
 
 .table-container { overflow-x: auto; max-height: 600px; overflow-y: auto; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: var(--type-body); font-weight: 600; background: var(--bg-card); z-index: 10; white-space: nowrap; }
+th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: var(--type-label); font-weight: 600; background: var(--bg-card); z-index: 10; white-space: nowrap; }
 .sticky-th { position: sticky; top: 0; }
-td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--type-emphasis); }
+td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--type-body); }
 .row-item { transition: background 0.2s; cursor: pointer; }
 .row-item:hover { background-color: var(--bg-secondary); }
 
