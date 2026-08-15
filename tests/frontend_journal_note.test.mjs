@@ -48,20 +48,21 @@ test('TradeForm adds journal metadata without changing the established financial
   assert.match(source, /form\.note\s*=\s*''/);
   assert.match(source, /form\.note\s*=\s*r\.note\s*\|\|\s*''/);
 
-  // Preserve the long-standing financial form declaration used by existing
-  // idempotency/recovery regressions; journal metadata is additive.
   assert.match(source, /total_amount:\s*'',\s*\n\s*tag:\s*''\s*\n\}\);/);
 });
 
-test('RecordList renders notes and shared history filtering still searches symbol, tag, or note', () => {
+test('RecordList keeps note summaries searchable while RecordDetailPanel exposes the full note', () => {
   const source = read('src/components/RecordList.vue');
+  const detail = read('src/components/RecordDetailPanel.vue');
   const historyPresentation = read('src/services/recordHistoryPresentation.js');
 
   assert.match(source, /placeholder="搜尋代碼、標籤或備註\.\.\."/);
   assert.match(source, /recordMatchesHistoryFilters\(r, historyFilters\.value\)/);
   assert.match(historyPresentation, /\[record\?\.symbol, record\?\.tag, record\?\.note\]/);
-  assert.match(source, /class="note-preview"[^>]*>{{ r\.note }}/);
-  assert.match(source, /v-if="r\.note" class="m-note">{{ r\.note }}/);
+  assert.match(source, /class="note-preview">{{ r\.note }}/);
+  assert.match(source, /v-if="r\.note" class="m-note m-note-preview">{{ r\.note }}/);
+  assert.match(detail, /v-if="record\.note" class="detail-note">{{ record\.note }}/);
+  assert.match(detail, /white-space: pre-wrap/);
   assert.match(source, /<th>備註<\/th>/);
   assert.match(source, /colspan="8"/);
 });
