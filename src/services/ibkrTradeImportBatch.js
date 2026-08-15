@@ -64,8 +64,12 @@ export const runIbkrTradeImportBatch = async (
     }
   }
 
+  // A server-side replay is already authoritative evidence that the same tenant/key/payload
+  // exists. Do not replace the current records array for a replay-only batch: snapshot
+  // verification is deliberately bound to the exact records array and a no-op import must
+  // not invalidate that proof. Read back only when the ledger actually changed or may have.
   const ledgerMayHaveChanged = created > 0 || failure?.outcomeAmbiguous === true;
-  const shouldRefresh = processed > 0 || ledgerMayHaveChanged;
+  const shouldRefresh = ledgerMayHaveChanged;
   let readbackError = null;
   let updateError = null;
   let readbackAttempted = false;
