@@ -15,6 +15,7 @@ import {
 
 const RECORD_ENDPOINT = '/api/records';
 const IMPORT_ID_RE = /^IBKR~/;
+const SENSITIVE_NOTE_FIELD_RE = /^(?:account(?:_?id|_?number)?|client_?account_?id)\s*=/i;
 
 const secureOpaqueId = () => {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -41,6 +42,19 @@ const hashImportIdentity = async (importIdentity) => {
   return `ibkr.${hex}`;
 };
 
+const sanitizeIbkrRecordForPersistence = (record) => {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new TypeError('IBKR record must be an object');
+  }
+  const note = String(record.note || '')
+    .split(';')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .filter(part => !SENSITIVE_NOTE_FIELD_RE.test(part))
+    .join('; ');
+  return Object.freeze({ ...record, note });
+};
+
 const createIntentIdFactory = (durableKey) => {
   let call = 0;
   return () => {
@@ -58,9 +72,12 @@ export const beginIbkrRecordCreateIntent = async (
   importIdentity,
 ) => {
   const durableKey = await hashImportIdentity(importIdentity);
-  const intent = beginRecordCreateIntent(storage, owner, record, {
-    createOpaqueId: createIntentIdFactory(durableKey),
-  });
+  const intent = beginRecordCreateIntent(
+    storage,
+    owner,
+    sanitizeIbkrRecordForPersistence(record),
+    { createOpaqueId: createIntentIdFactory(durableKey) },
+  );
   if (intent.idempotencyKey !== durableKey) {
     throw new Error('IBKR durable record-create key was not preserved');
   }
@@ -223,6 +240,7 @@ export const createIbkrRecord = async (
 
 export const __test = Object.freeze({
   hashImportIdentity,
+  sanitizeIbkrRecordForPersistence,
   createIntentIdFactory,
   normalizeApiBaseUrl,
   postIntentOnce,
