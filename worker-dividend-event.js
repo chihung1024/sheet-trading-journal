@@ -247,7 +247,14 @@ export const tryHandleDividendEventCreate = async (
   }
 
   const email = await authenticateUser(request, env, ctx, canonicalWorker);
-  if (!email) return null;
+  if (!email) {
+    return withEntryCors(
+      apiResponse(false, 'Authentication required', 401, 'UNAUTHORIZED', requestId),
+      request,
+      env,
+      canonicalTest,
+    );
+  }
 
   try {
     const body = normalizeSpecialPayload(await readJsonBody(request));
