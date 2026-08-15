@@ -108,12 +108,12 @@ const retryLoad = async () => {
 }
 
 .reliability-issue strong {
-  font-size: 0.93rem;
+  font-size: var(--type-body);
 }
 
 .reliability-issue span {
   color: var(--text-sub);
-  font-size: 0.86rem;
+  font-size: var(--type-body);
 }
 
 .retry-button {

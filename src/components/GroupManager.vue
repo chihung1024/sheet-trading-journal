@@ -345,13 +345,13 @@ const saveSelections = async () => {
 
 .gm-title {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--type-section);
 }
 
 .gm-subtitle {
   margin: 6px 0 0;
   color: var(--text-sub);
-  font-size: 0.9rem;
+  font-size: var(--type-label);
 }
 
 .gm-section {
@@ -374,12 +374,12 @@ const saveSelections = async () => {
 
 .gm-section-title {
   margin: 0;
-  font-size: 0.98rem;
+  font-size: var(--type-section);
 }
 
 .gm-section-hint,
 .gm-empty-hint {
-  font-size: 0.82rem;
+  font-size: var(--type-label);
   color: var(--text-sub);
 }
 
@@ -404,14 +404,14 @@ const saveSelections = async () => {
 }
 
 .group-label {
-  font-size: 0.78rem;
+  font-size: var(--type-label);
   color: var(--text-sub);
 }
 
 .group-name {
   font-family: 'JetBrains Mono', monospace;
   color: var(--primary);
-  font-size: 0.9rem;
+  font-size: var(--type-body);
   font-weight: 700;
 }
 
@@ -446,7 +446,7 @@ const saveSelections = async () => {
 }
 
 .gm-select-wrap label {
-  font-size: 0.8rem;
+  font-size: var(--type-control);
   color: var(--text-sub);
 }
 
@@ -476,7 +476,7 @@ const saveSelections = async () => {
 .gm-help {
   margin: 0;
   color: var(--text-sub);
-  font-size: 0.85rem;
+  font-size: var(--type-label);
 }
 
 .gm-metrics {
@@ -486,7 +486,7 @@ const saveSelections = async () => {
 }
 
 .gm-counter {
-  font-size: 0.8rem;
+  font-size: var(--type-label);
   color: var(--text-sub);
   font-family: 'JetBrains Mono', monospace;
   border: 1px solid var(--border-color);
@@ -522,7 +522,7 @@ const saveSelections = async () => {
 .gm-table td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border-color);
-  font-size: 0.9rem;
+  font-size: var(--type-body);
   white-space: nowrap;
 }
 
@@ -532,7 +532,7 @@ const saveSelections = async () => {
   z-index: 1;
   background: var(--bg-secondary);
   color: var(--text-sub);
-  font-size: 0.78rem;
+  font-size: var(--type-label);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -584,7 +584,7 @@ const saveSelections = async () => {
 }
 
 .type-badge {
-  font-size: 0.76rem;
+  font-size: var(--type-caption);
   padding: 3px 8px;
   border-radius: 999px;
   font-weight: 700;
@@ -627,7 +627,7 @@ const saveSelections = async () => {
 
 .gm-no-change {
   color: var(--text-sub);
-  font-size: 0.9rem;
+  font-size: var(--type-body);
 }
 
 .text-right {

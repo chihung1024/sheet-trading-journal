@@ -351,7 +351,7 @@ const getPnlBgClass = (val) => {
 }
 
 .stat-label { 
-    font-size: 0.9rem; 
+    font-size: var(--type-label); 
     color: var(--text-sub); 
     font-weight: 600; 
     text-transform: uppercase;
@@ -366,7 +366,7 @@ const getPnlBgClass = (val) => {
     display: flex; 
     align-items: center; 
     justify-content: center; 
-    font-size: 1.25rem;
+    font-size: var(--icon-lg);
     transition: transform 0.2s ease, background 0.2s;
 }
 
@@ -400,7 +400,7 @@ const getPnlBgClass = (val) => {
 
 .stat-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.8rem;
+    font-size: var(--type-metric);
     font-weight: 700;
     color: var(--text-main);
     line-height: 1.1;
@@ -408,7 +408,7 @@ const getPnlBgClass = (val) => {
 }
 
 .stat-value.big {
-    font-size: 2.2rem;
+    font-size: var(--type-metric);
 }
 
 .primary-block .stat-value.big {
@@ -420,14 +420,14 @@ const getPnlBgClass = (val) => {
 
 .stat-sub-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1rem;
+    font-size: var(--type-emphasis);
     font-weight: 600;
     opacity: 0.85;
     margin-top: 4px;
 }
 
 .unit-text, .percent { 
-    font-size: 0.85rem; 
+    font-size: var(--type-body); 
     color: var(--text-sub); 
     font-weight: 500; 
 }
@@ -435,7 +435,7 @@ const getPnlBgClass = (val) => {
 .stat-footer {
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
-    font-size: 0.85rem;
+    font-size: var(--type-label);
     display: flex; 
     align-items: center; 
     justify-content: space-between;
@@ -455,7 +455,7 @@ const getPnlBgClass = (val) => {
     color: var(--text-main);
     cursor: pointer;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: var(--type-caption);
     font-weight: 600;
     white-space: nowrap;
 }
@@ -487,13 +487,13 @@ const getPnlBgClass = (val) => {
 .text-green { color: var(--success); }
 .text-red { color: var(--danger); }
 .text-sub { color: var(--text-sub); }
-.text-xs { font-size: 0.8rem; }
+.text-xs { font-size: var(--type-label); }
 
 .badge { 
     padding: 2px 8px; 
     border-radius: 6px; 
     font-weight: 600; 
-    font-size: 0.8rem; 
+    font-size: var(--type-label); 
     display: inline-flex; 
     align-items: center; 
 }
@@ -513,7 +513,7 @@ const getPnlBgClass = (val) => {
         grid-template-columns: repeat(2, 1fr);
         gap: 16px;
     } 
-    .stat-value.big { font-size: 2rem; }
+    .stat-value.big { font-size: var(--type-metric); }
 }
 
 @media (max-width: 768px) { 
@@ -555,22 +555,22 @@ const getPnlBgClass = (val) => {
     }
     
     .daily-pnl-block .stat-value {
-        font-size: 1.8rem;
+        font-size: var(--type-metric);
     }
 
     .stat-top { margin-bottom: 8px; }
-    .stat-label { font-size: 0.75rem; }
+    .stat-label { font-size: var(--type-caption); }
     
     .icon-box { 
         width: 30px; 
         height: 30px;
-        font-size: 1rem;
+        font-size: var(--icon-sm);
         border-radius: 8px;
     }
     
-    .stat-value { font-size: 1.4rem; }
-    .stat-value.big { font-size: 1.8rem; }
-    .stat-sub-value { font-size: 0.9rem; }
+    .stat-value { font-size: var(--type-metric); }
+    .stat-value.big { font-size: var(--type-metric); }
+    .stat-sub-value { font-size: var(--type-body); }
     
     .stat-footer { 
         padding-top: 8px; 

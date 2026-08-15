@@ -556,9 +556,9 @@ defineExpose({ setupForm, resetForm });
     margin-bottom: 20px;
 }
 
-.panel-title { margin: 0; font-size: 1.25rem; color: var(--text-main); font-weight: 700; }
-.mode-badge { font-size: 0.75rem; background: var(--warning); color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
-.entry-context { margin: -14px 0 18px; color: var(--text-sub); font-size: 0.78rem; }
+.panel-title { margin: 0; font-size: var(--type-page); color: var(--text-main); font-weight: 700; }
+.mode-badge { font-size: var(--type-caption); background: var(--warning); color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.entry-context { margin: -14px 0 18px; color: var(--text-sub); font-size: var(--type-label); }
 
 /* 交易類型切換 (Segmented Control) */
 .trade-type-switch { 
@@ -579,7 +579,7 @@ defineExpose({ setupForm, resetForm });
     cursor: pointer; 
     border-radius: 8px; 
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
-    font-size: 0.95rem; 
+    font-size: var(--type-control); 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -608,14 +608,14 @@ defineExpose({ setupForm, resetForm });
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-group.full { grid-column: span 2; }
 
-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-left: 2px; }
+label { font-size: var(--type-label); color: var(--text-sub); font-weight: 600; margin-left: 2px; }
 
 /* 輸入框通用樣式 */
 input { 
     padding: 12px 14px; 
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
-    font-size: 1rem; 
+    font-size: var(--type-control); 
     width: 100%;
     box-sizing: border-box; 
     font-family: 'Inter', sans-serif;
@@ -667,24 +667,24 @@ input[aria-invalid="true"] { border-color: var(--danger); }
     font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
 }
-.symbol-suggestion-meta { color: var(--text-sub); font-size: 0.75rem; }
+.symbol-suggestion-meta { color: var(--text-sub); font-size: var(--type-caption); }
 
 /* 帶前綴的輸入框 */
 .input-with-prefix { position: relative; }
 .prefix { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 .input-with-prefix input { padding-left: 38px; }
-.field-help { margin: 0; color: var(--text-sub); font-size: 0.75rem; line-height: 1.45; }
-.field-error { margin: 0; color: var(--danger); font-size: 0.78rem; font-weight: 600; line-height: 1.4; }
+.field-help { margin: 0; color: var(--text-sub); font-size: var(--type-caption); line-height: 1.45; }
+.field-error { margin: 0; color: var(--danger); font-size: var(--type-label); font-weight: 600; line-height: 1.4; }
 
 /* 雙欄輸入 (費用) */
 .dual-input { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .input-with-label { display: flex; flex-direction: column; }
-.sub-label { font-size: 0.75rem; color: var(--text-sub); text-align: center; margin-top: 4px; }
+.sub-label { font-size: var(--type-caption); color: var(--text-sub); text-align: center; margin-top: 4px; }
 
 /* 三欄均分輸入 (股數、手續費、稅金) - 桌機版 */
 .triple-input { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .triple-input .input-with-label { align-items: center; }
-.triple-input .input-with-label label { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; margin-bottom: 8px; text-align: center; }
+.triple-input .input-with-label label { font-size: var(--type-control); color: var(--text-sub); font-weight: 600; margin-bottom: 8px; text-align: center; }
 .triple-input .input-with-label input { text-align: center; }
 
 /* 標籤輸入區 */
@@ -705,14 +705,14 @@ input[aria-invalid="true"] { border-color: var(--danger); }
     color: var(--primary); 
     padding: 4px 8px 4px 12px; 
     border-radius: 6px; 
-    font-size: 0.9rem; 
+    font-size: var(--type-label); 
     font-weight: 600; 
     display: flex; 
     align-items: center; 
     gap: 4px; 
 }
 .remove-tag { 
-    background: none; border: none; cursor: pointer; color: var(--text-sub); font-size: 1.1rem; line-height: 1; padding: 0 4px; display: flex; align-items: center; 
+    background: none; border: none; cursor: pointer; color: var(--text-sub); font-size: var(--type-label); line-height: 1; padding: 0 4px; display: flex; align-items: center; 
 }
 .remove-tag:hover { color: var(--danger); }
 .tag-input-field { border: none; outline: none; background: transparent; flex: 1; min-width: 80px; padding: 4px; height: auto; }
@@ -720,7 +720,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .quick-tags { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-tag { 
     font-family: inherit;
-    font-size: 0.8rem; 
+    font-size: var(--type-control); 
     color: var(--text-sub); 
     border: 1px solid var(--border-color); 
     padding: 4px 10px; 
@@ -732,7 +732,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .quick-tag:hover { border-color: var(--primary); color: var(--primary); background: rgba(59, 130, 246, 0.05); }
 
 .note-label-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.note-count { font-size: 0.75rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+.note-count { font-size: var(--type-caption); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 .note-textarea {
     width: 100%;
     min-height: 96px;
@@ -742,7 +742,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
     resize: vertical;
     box-sizing: border-box;
     font-family: 'Inter', sans-serif;
-    font-size: 1rem;
+    font-size: var(--type-control);
     line-height: 1.5;
     color: var(--text-main);
     background: var(--bg-card);
@@ -753,11 +753,11 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 /* 賣出提示 (Smart Sell) */
 .smart-sell-options { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px; }
 .hint-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-.hint-text { font-size: 0.85rem; color: var(--warning); font-weight: 600; }
+.hint-text { font-size: var(--type-label); color: var(--warning); font-weight: 600; }
 .checkbox-group { display: flex; gap: 12px; flex-wrap: wrap; }
 .tag-checkbox { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
 .tag-checkbox input { width: 18px; height: 18px; margin: 0; }
-.tag-name { font-size: 0.95rem; font-weight: 500; }
+.tag-name { font-size: var(--type-label); font-weight: 500; }
 
 /* 總金額摘要 (Calculator Style) */
 .summary-box { 
@@ -771,14 +771,14 @@ input[aria-invalid="true"] { border-color: var(--danger); }
     gap: 8px;
 }
 .summary-header { display: flex; justify-content: space-between; align-items: center; color: var(--text-sub); }
-.summary-label { font-size: 0.9rem; font-weight: 600; }
+.summary-label { font-size: var(--type-label); font-weight: 600; }
 .summary-input-wrapper { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; }
-.currency-symbol { font-size: 1.5rem; color: var(--text-main); font-weight: 500; }
+.currency-symbol { font-size: var(--type-label); color: var(--text-main); font-weight: 500; }
 .summary-value { 
     background: transparent; 
     border: none; 
     text-align: right; 
-    font-size: 2.2rem; 
+    font-size: var(--type-metric); 
     font-weight: 700; 
     color: var(--text-main); 
     padding: 0; 
@@ -799,7 +799,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
     font-weight: 600; 
     cursor: pointer; 
     transition: all 0.2s; 
-    font-size: 1.05rem; 
+    font-size: var(--type-emphasis); 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -842,7 +842,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
     .form-group.full { grid-column: span 1; }
     
     /* 輸入框更加寬大舒適 */
-    input, .note-textarea { font-size: 1.1rem; padding: 14px; }
+    input, .note-textarea { font-size: var(--type-control); padding: 14px; }
     
     .dual-input { gap: 16px; }
     
@@ -853,7 +853,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
     .triple-input .input-with-label label { text-align: left; }
     .triple-input .input-with-label input { text-align: left; }
     
-    .summary-value { font-size: 2rem; }
+    .summary-value { font-size: var(--type-metric); }
     
     .switch-btn { padding: 12px; }
 }

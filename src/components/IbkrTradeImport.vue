@@ -436,13 +436,13 @@ const formatNumber = (value, digits = 2) => {
   border-bottom: 0;
 }
 .dialog-header h3 { margin: 0; }
-.file-name { margin: 0.25rem 0 0; color: var(--text-secondary, #64748b); font-size: 0.85rem; }
+.file-name { margin: 0.25rem 0 0; color: var(--text-secondary, #64748b); font-size: var(--type-body); }
 .close-button {
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: var(--type-control);
 }
 .dialog-state { padding: 2rem 1.25rem; text-align: center; }
 .summary-grid {
@@ -460,7 +460,7 @@ const formatNumber = (value, digits = 2) => {
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 10px;
 }
-.summary-item strong { font-size: 1.15rem; }
+.summary-item strong { font-size: var(--type-section); }
 .summary-item.good strong { color: #15803d; }
 .summary-item.warning strong { color: #b45309; }
 .profile-section,
@@ -479,7 +479,7 @@ const formatNumber = (value, digits = 2) => {
 .profile-error {
   margin: 0.35rem 0 0;
   line-height: 1.5;
-  font-size: 0.84rem;
+  font-size: var(--type-label);
 }
 .profile-copy p,
 .profile-active { color: var(--text-secondary, #64748b); }
@@ -511,7 +511,7 @@ const formatNumber = (value, digits = 2) => {
 .preview-section h4,
 .warning-section h4 { margin: 0 0 0.6rem; }
 .preview-table-wrap { overflow-x: auto; }
-.preview-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.preview-table { width: 100%; border-collapse: collapse; font-size: var(--type-body); }
 .preview-table th,
 .preview-table td {
   padding: 0.55rem 0.6rem;
@@ -528,7 +528,7 @@ const formatNumber = (value, digits = 2) => {
 }
 .warning-section ul { margin: 0; padding-left: 1.25rem; }
 .warning-section li { margin: 0.3rem 0; line-height: 1.45; }
-.more-note { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
+.more-note { color: var(--text-secondary, #64748b); font-size: var(--type-label); }
 .result-box {
   padding: 0.85rem 1rem;
   border-radius: 10px;
