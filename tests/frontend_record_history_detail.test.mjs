@@ -16,7 +16,7 @@ test('RecordList exposes one page-memory read-only detail expansion on desktop a
   assert.match(source, /:aria-expanded="isRecordExpanded\(r\.id\)"/);
   assert.match(source, /:aria-controls="getRecordDetailId\(r\.id\)"/);
   assert.match(source, /:aria-label="isRecordExpanded\(r\.id\) \? '收合完整交易明細' : '查看完整交易明細'"/);
-  assert.match(source, /<td colspan="8">\s*<RecordDetailPanel/s);
+  assert.match(source, /<td colspan="7">\s*<RecordDetailPanel/s);
   assert.match(source, /<RecordDetailPanel\s+v-if="isRecordExpanded\(r\.id\)"/s);
   assert.match(source, /查看完整交易明細/);
   assert.match(source, /查看明細/);
@@ -60,11 +60,20 @@ test('RecordDetailPanel presents stored journal facts without becoming a financi
   assert.doesNotMatch(source, /usePortfolioStore|resolveTransactionValuation|resolveSettlementAmountNative|fetch\(|fetchWithAuth|addRecord|updateRecord|deleteRecord|localStorage/);
 });
 
-test('main history summaries stay compact now that full details are explicit', () => {
+test('desktop journal summary is integrated with symbol and strategy instead of reserving an empty Note column', () => {
   const source = read('src/components/RecordList.vue');
 
-  assert.match(source, /class="note-preview">{{ r\.note }}/);
+  assert.match(source, /代碼 \/ 策略 \/ 備註/);
+  assert.match(source, /class="record-note-inline">{{ r\.note }}/);
+  assert.doesNotMatch(source, /<th>備註<\/th>/);
+  assert.doesNotMatch(source, /class="note-cell"/);
+  assert.doesNotMatch(source, /class="note-preview">{{ r\.note }}/);
+  assert.match(source, /record-note-inline[^}]*white-space:\s*nowrap/s);
+});
+
+test('mobile journal summary remains compact while full note stays available in detail panel', () => {
+  const source = read('src/components/RecordList.vue');
   assert.match(source, /class="m-note m-note-preview">{{ r\.note }}/);
-  assert.match(source, /-webkit-line-clamp: 2/);
-  assert.doesNotMatch(source, /class="note-preview" :title="r\.note"/);
+  assert.match(source, /\.m-note-preview[^}]*-webkit-line-clamp:\s*2/s);
+  assert.doesNotMatch(source, /class="m-note m-note-preview" :title="r\.note"/);
 });
