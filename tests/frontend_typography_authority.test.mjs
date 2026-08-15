@@ -43,12 +43,15 @@ const ICON_TOKENS = [
 ];
 
 const ALLOWED_FONT_TOKENS = new Set([...TYPE_TOKENS, ...ICON_TOKENS]);
+const GOOGLE_FONT_SOURCE = 'https://fonts.googleapis.com/css2?family=Inter';
 
-test('src/style.css is the only typography and icon-size token definition authority', () => {
+test('src/style.css is the only typography, font-source, and icon-size authority', () => {
   const designSystem = fs.readFileSync(path.join(SRC, 'style.css'), 'utf8');
   for (const token of ALLOWED_FONT_TOKENS) {
     assert.match(designSystem, new RegExp(`${token.replaceAll('-', '\\-')}\\s*:`));
   }
+  assert.match(designSystem, /@import url\('https:\/\/fonts\.googleapis\.com\/css2\?family=Inter/);
+  assert.match(designSystem, /--type-control:\s*1rem;/, 'control/input text stays 16px for touch readability and mobile zoom avoidance');
 
   const otherSources = [
     ...collectVueFiles(SRC),
@@ -64,6 +67,7 @@ test('src/style.css is the only typography and icon-size token definition author
         `${path.relative(ROOT, file)} must consume ${token}, not redefine it`,
       );
     }
+    assert.ok(!source.includes(GOOGLE_FONT_SOURCE), `${path.relative(ROOT, file)} must not define the font source`);
   }
 });
 
