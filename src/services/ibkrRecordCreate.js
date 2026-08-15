@@ -47,13 +47,17 @@ const sanitizeIbkrRecordForPersistence = (record) => {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new TypeError('IBKR record must be an object');
   }
-  const noteWithoutSensitiveAccountFields = String(record.note || '')
+  // Strip the full legacy IBKR envelope first because execution timestamps use
+  // `YYYYMMDD;HHMMSS`, where the semicolon is data rather than a note separator.
+  const userJournalNote = extractIbkrUserJournalNote(String(record.note || ''));
+  // Keep the older privacy fallback for any account-style assignment that may
+  // appear outside a recognized legacy envelope.
+  const note = userJournalNote
     .split(';')
     .map(part => part.trim())
     .filter(Boolean)
     .filter(part => !SENSITIVE_NOTE_FIELD_RE.test(part))
     .join('; ');
-  const note = extractIbkrUserJournalNote(noteWithoutSensitiveAccountFields);
   return Object.freeze({ ...record, note });
 };
 
