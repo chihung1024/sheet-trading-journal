@@ -12,12 +12,18 @@ import {
 } from '../src/services/projectStorage.js';
 
 class MemoryStorage {
-  constructor() { this.values = new Map(); }
+  constructor() {
+    this.values = new Map();
+    this.failRemove = false;
+  }
   get length() { return this.values.size; }
   key(index) { return [...this.values.keys()][index] ?? null; }
   getItem(key) { return this.values.has(String(key)) ? this.values.get(String(key)) : null; }
   setItem(key, value) { this.values.set(String(key), String(value)); }
-  removeItem(key) { this.values.delete(String(key)); }
+  removeItem(key) {
+    if (this.failRemove) throw new Error('remove unavailable');
+    this.values.delete(String(key));
+  }
 }
 
 const OWNER = 'user@example.com';
@@ -92,6 +98,7 @@ test('confirmed IBKR create sends exact durable key/body and clears pending inte
   assert.equal(result.committed, true);
   assert.equal(result.deduplicated, false);
   assert.equal(result.recordId, 99);
+  assert.equal(result.recoveryStateError, null);
   assert.equal(requests.length, 1);
   assert.equal(requests[0].url, `${API_BASE_URL}/api/records`);
   assert.equal(requests[0].init.method, 'POST');
@@ -103,6 +110,28 @@ test('confirmed IBKR create sends exact durable key/body and clears pending inte
   );
   assert.equal(
     storage.getItem(`${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${requests[0].init.headers['Idempotency-Key']}`),
+    null,
+  );
+});
+
+test('post-commit local cleanup failure preserves confirmed ledger truth and reports recovery-state warning', async () => {
+  const storage = new MemoryStorage();
+  const durableKey = await __test.hashImportIdentity(ENTRY.idempotencyKey);
+  const resultPromise = createIbkrRecord(ENTRY, writerOptions({
+    storage,
+    fetchImpl: async () => {
+      storage.failRemove = true;
+      return successResponse({ success: true, deduplicated: false, record_id: 100 });
+    },
+  }));
+  const result = await resultPromise;
+
+  assert.equal(result.committed, true);
+  assert.equal(result.outcomeAmbiguous, false);
+  assert.equal(result.recordId, 100);
+  assert.match(result.recoveryStateError?.message || '', /remove unavailable/);
+  assert.notEqual(
+    storage.getItem(`${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${durableKey}`),
     null,
   );
 });
@@ -138,6 +167,31 @@ test('401 refresh retries the same durable intent exactly once with the refreshe
   assert.equal(call, 2);
   assert.equal(keys[0], keys[1]);
   assert.deepEqual(tokens, ['Bearer expired-token', 'Bearer fresh-token']);
+});
+
+test('refresh failure after definite 401 preserves the original definite rejection classification', async () => {
+  const storage = new MemoryStorage();
+  await assert.rejects(
+    createIbkrRecord(ENTRY, writerOptions({
+      storage,
+      refreshToken: async () => { throw new Error('refresh offline'); },
+      fetchImpl: async () => new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    })),
+    error => (
+      error?.status === 401
+      && error?.outcomeAmbiguous === false
+      && error?.refreshError?.message === 'refresh offline'
+    ),
+  );
+  const durableKey = await __test.hashImportIdentity(ENTRY.idempotencyKey);
+  const terminal = JSON.parse(
+    storage.getItem(`${PENDING_RECORD_CREATE_V1_STORAGE_PREFIX}${durableKey}`),
+  );
+  assert.equal(terminal.state, 'terminal');
+  assert.equal(Object.hasOwn(terminal, 'body'), false);
 });
 
 test('definite 409 rejection tombstones body while ambiguous network failure preserves live replay intent', async () => {
