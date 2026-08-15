@@ -85,9 +85,10 @@ const applySemanticCorrections = (file, source) => {
   let out = source;
 
   if (relative === 'src/App.vue') {
+    const appStyleAuthority = `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');\n\n:root {\n  --layout-max: 1920px;\n  --header-height: 64px;\n  --space-desktop: 20px;\n}\n\n/* Header Optimization */`;
     out = out.replace(
-      /body \{([^{}]*?)font-size:\s*var\(--type-emphasis\);/,
-      (match, before) => `body {${before}font-size: var(--type-body);`,
+      /@import url\('https:\/\/fonts\.googleapis\.com\/css2\?family=Inter:wght@400;500;600;700&family=JetBrains\+Mono:wght@400;500;700&display=swap'\);\n\n:root \{[\s\S]*?\/\* Header Optimization \*\//,
+      appStyleAuthority,
     );
     out = out.replace(
       /(\.action-trigger-btn span:first-child \{[^{}]*?font-size:)\s*var\(--type-section\);/,
