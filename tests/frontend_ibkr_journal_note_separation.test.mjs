@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
   extractIbkrUserJournalNote,
   hasLegacyIbkrMachineNote,
 } from '../src/services/ibkrJournalNote.js';
+import { __test as writerTest } from '../src/services/ibkrRecordCreate.js';
 import { parseIbkrTradeCsv } from '../src/services/ibkrTradeImport.js';
+import { fetchAllRecordPages } from '../src/services/recordPagination.js';
 
 const legacyNote = [
   'source=IBKR',
@@ -47,7 +48,7 @@ test('metadata key matching is case-insensitive but does not delete unknown assi
   assert.equal(extractIbkrUserJournalNote(note), 'thesis=長期持有; 自訂文字');
 });
 
-test('new IBKR parser no longer uses user note as a machine metadata transport', () => {
+test('new importer may keep provenance in memory but persistence strips it before POST/durable intent', () => {
   const csv = [
     'AccountID,AssetClass,Symbol,BuySell,Quantity,TradePrice,IBCommission,Taxes,CurrencyPrimary,TradeDate,IBOrderID,TradeID,DateTime,LevelOfDetail,DataDiscriminator',
     'U123,STK,NVDA,BUY,10,100,-1,0,USD,2026-08-14,487287953,T1,20260814;093001,EXECUTION,EXECUTION',
@@ -55,22 +56,55 @@ test('new IBKR parser no longer uses user note as a machine metadata transport',
   const parsed = parseIbkrTradeCsv(csv);
   assert.equal(parsed.status, 'ready');
   assert.equal(parsed.entries.length, 1);
-  assert.equal(parsed.entries[0].record.note, '');
   assert.match(parsed.entries[0].idempotencyKey, /^IBKR~/);
+
+  const persisted = writerTest.sanitizeIbkrRecordForPersistence(parsed.entries[0].record);
+  assert.equal(persisted.note, '');
+  assert.equal(persisted.symbol, 'NVDA');
 });
 
-test('records read boundary, persistence boundary, and journal UI use the shared note projection', async () => {
-  const [pagination, writer, recordList, tradeForm] = await Promise.all([
-    readFile(new URL('../src/services/recordPagination.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/services/ibkrRecordCreate.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/components/RecordList.vue', import.meta.url), 'utf8'),
-    readFile(new URL('../src/components/TradeForm.vue', import.meta.url), 'utf8'),
-  ]);
+test('persistence boundary keeps human text while removing IBKR envelope and account identifiers', () => {
+  const record = {
+    symbol: 'NVDA',
+    note: `source=IBKR; account_id=U1234567; currency=USD; order_id=42; 交易想法：突破後續抱`,
+  };
+  const sanitized = writerTest.sanitizeIbkrRecordForPersistence(record);
+  assert.equal(sanitized.note, '交易想法：突破後續抱');
+  assert.doesNotMatch(JSON.stringify(sanitized), /U1234567|source=IBKR|order_id=/i);
+});
 
-  assert.match(pagination, /extractIbkrUserJournalNote/);
-  assert.match(writer, /extractIbkrUserJournalNote/);
-  assert.match(recordList, /r\.note/);
-  assert.match(tradeForm, /form\.note\s*=\s*r\.note\s*\|\|\s*''/);
-  assert.doesNotMatch(recordList, /source=IBKR/);
-  assert.doesNotMatch(tradeForm, /source=IBKR/);
+test('records read boundary projects legacy D1 metadata before any journal UI consumes it', async () => {
+  const records = await fetchAllRecordPages(async () => ({
+    success: true,
+    data: [
+      {
+        id: 1,
+        txn_date: '2026-08-14',
+        symbol: 'NVDA',
+        txn_type: 'BUY',
+        qty: 1,
+        price: 100,
+        fee: 0,
+        tax: 0,
+        tag: '',
+        note: legacyNote,
+      },
+      {
+        id: 2,
+        txn_date: '2026-08-14',
+        symbol: 'AMD',
+        txn_type: 'BUY',
+        qty: 1,
+        price: 100,
+        fee: 0,
+        tax: 0,
+        tag: '',
+        note: `${legacyNote}; 人工備註：等財報`,
+      },
+    ],
+    page: { limit: 1000, count: 2, has_more: false, next_cursor: null },
+  }));
+
+  assert.equal(records[0].note, '');
+  assert.equal(records[1].note, '人工備註：等財報');
 });
