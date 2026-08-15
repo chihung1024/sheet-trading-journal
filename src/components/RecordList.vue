@@ -158,6 +158,7 @@
                                 <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
                                 <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
                                 <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
+                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>
                             </div>
                         </td>
                         <td>
