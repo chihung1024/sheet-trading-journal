@@ -1,8 +1,16 @@
-const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export const normalizeRecordDate = value => {
   const text = String(value || '').trim();
-  return DATE_ONLY_RE.test(text) ? text : '';
+  const match = DATE_ONLY_RE.exec(text);
+  if (!match) return '';
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1) return '';
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day <= daysInMonth ? text : '';
 };
 
 export const getRecordTags = record => {
