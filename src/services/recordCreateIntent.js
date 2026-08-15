@@ -13,6 +13,7 @@ export const RECORD_CREATE_INTENT_STATE = Object.freeze({
 
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const OPAQUE_ID_RE = /^[A-Za-z0-9._-]{16,128}$/;
+const RECORD_CREATE_IDEMPOTENCY_KEY = Symbol('recordCreateIdempotencyKey');
 
 const requireStorage = (storage) => {
   if (
@@ -48,6 +49,20 @@ const assertOpaqueId = (value, label) => {
     throw new Error(`${label} must be a stable opaque identifier`);
   }
   return value;
+};
+
+export const withRecordCreateIdempotencyKey = (payload, idempotencyKey) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new TypeError('Record-create payload must be an object');
+  }
+  const decorated = { ...payload };
+  Object.defineProperty(decorated, RECORD_CREATE_IDEMPOTENCY_KEY, {
+    value: assertOpaqueId(idempotencyKey, 'Record-create idempotency key'),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return decorated;
 };
 
 const verifiedSetJson = (storage, key, value) => {
@@ -168,6 +183,7 @@ export const beginRecordCreateIntent = (
   {
     now = Date.now(),
     createOpaqueId = defaultCreateOpaqueId,
+    idempotencyKey = null,
   } = {},
 ) => {
   const target = requireStorage(storage);
@@ -192,22 +208,31 @@ export const beginRecordCreateIntent = (
     throw error;
   }
 
+  const markedKey = payload?.[RECORD_CREATE_IDEMPOTENCY_KEY] ?? null;
+  if (idempotencyKey !== null && markedKey !== null && idempotencyKey !== markedKey) {
+    throw new Error('Record-create idempotency metadata is inconsistent');
+  }
+  const requestedKey = idempotencyKey ?? markedKey;
+
   const barrier = rotateRecordMutationBarrier(target, normalizedOwner, { now, createOpaqueId });
-  const idempotencyKey = assertOpaqueId(createOpaqueId(), 'Record-create idempotency key');
+  const resolvedIdempotencyKey = assertOpaqueId(
+    requestedKey === null ? createOpaqueId() : requestedKey,
+    'Record-create idempotency key',
+  );
   const intent = {
     version: RECORD_CREATE_INTENT_VERSION,
     owner: normalizedOwner,
-    idempotencyKey,
+    idempotencyKey: resolvedIdempotencyKey,
     body,
     barrierToken: barrier.token,
     createdAt: now,
     state: RECORD_CREATE_INTENT_STATE.LIVE,
   };
-  verifiedSetJson(target, intentStorageKey(idempotencyKey), intent);
+  verifiedSetJson(target, intentStorageKey(resolvedIdempotencyKey), intent);
 
   const currentBarrier = readBarrier(target, normalizedOwner);
   if (!currentBarrier || currentBarrier.token !== barrier.token) {
-    target.removeItem(intentStorageKey(idempotencyKey));
+    target.removeItem(intentStorageKey(resolvedIdempotencyKey));
     const error = new Error('Record-create intent was superseded before it could be sent');
     error.name = 'RecordCreateIntentSupersededError';
     error.outcomeAmbiguous = false;
