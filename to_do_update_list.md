@@ -1,32 +1,36 @@
 # TO-DO / UPDATE LIST — Product-First Current Handoff
 
-> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state and machine-readable contracts override prose.
+> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state, current PR/CI/Pages status and machine-readable contracts override prose.
 >
-> The complete pre-Phase-7 verbose handoff is preserved byte-for-byte at `docs/archive/to_do_update_list_through_phase6.md`. Use that archive only when historical Root Cause / PR chronology is needed; do not restart closed work from archived plans.
+> The complete pre-Phase-7 verbose handoff is preserved at `docs/archive/to_do_update_list_through_phase6.md`. Use that archive only when historical Root Cause / PR chronology is needed; do not restart closed work from archived plans.
 
 Last updated: **2026-08-15 Asia/Taipei**  
-Current line: **Phase 10 product roadmap remains 10.1 Transaction Entry UX Convergence → 10.2 Dividend Workflow Productization → 10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support. Phase 10.1 is OPTIMIZED FOR CURRENT REQUIREMENTS. Phase 10.2A Dividend Gross/Tax/Net Semantics & Confirmation Clarity is CLOSED / PRODUCTION PAGES VERIFIED. No runtime batch is active. Phase 10.2 remains the current product line; NEXT is a bounded audit of dividend queue prioritization / confirmed-history density before deciding whether a 10.2B runtime batch is justified. Phase 7.2 background Flex sync, Action Center and other new directions remain deferred until the approved Phase 10 roadmap is re-evaluated.**
+Current line: **Approved Phase 10 order is 10.1 Transaction Entry UX Convergence → 10.2 Dividend Workflow Productization → 10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support. Phase 10.1 and Phase 10.2 are OPTIMIZED FOR CURRENT REQUIREMENTS. No runtime batch is active. NEXT is a bounded product-first Phase 10.3 audit, starting from verified Transaction History information-hierarchy / filtering gaps. Phase 7.2 background broker sync, Action Center and all other directions remain deferred until the approved Phase 10 roadmap is completed or explicitly reprioritized.**
 
 ---
 
 ## 0. Operating doctrine
 
 1. Product functionality and UX are highest priority.
-2. One Primary Active Batch at a time; every batch must be independently verifiable, committable and rollbackable.
+2. Keep one Primary Active Batch; supporting read-only research may proceed while a gate is running, but do not open a second implementation batch.
 3. Debug by evidence: Reproduce → Evidence → Hypotheses → Trace → Isolate → Root Cause → Impact → Fix → Regression → Prevention.
-4. Financial/data correctness is fail-closed. Browser presentation must not create a second accounting or FX engine.
-5. R2+ work requires exact-head CI, rollback/recovery, frozen independent review and permanent handoff.
-6. Prefer invisible deterministic automation. **AI 管流程，不管帳**; do not request/store broker or login secrets when an existing user-auth boundary can be reused.
-7. Technical work belongs in NOW only when it directly supports functionality, correctness, reliability, performance, security or maintainability required by the active product goal.
-8. Do not reopen closed phases without new material production/user evidence.
+4. Fix root causes and inspect the same class of failure; do not patch only the reported point.
+5. Financial/data correctness is fail-closed. Browser presentation must not become a second accounting, FX, tax or market-data engine.
+6. R2+ work requires exact-head CI, rollback/recovery, frozen review and permanent handoff. Lower-risk work still needs canonical CI when it sits on a high-consequence workflow.
+7. Prefer invisible deterministic automation. **AI 管流程，不管帳**; do not request/store broker or login secrets when an existing user-auth boundary can be reused.
+8. Technical work belongs in NOW only when it directly supports the active product goal. Nonessential refactors/cleanup must converge instead of becoming a roadmap.
+9. Do not reopen closed phases without new material user/production evidence.
+10. Preserve a recovery point before code-bearing work; never use destructive git against unknown work.
 
 ---
 
 ## 1. Current authoritative stable state
 
-Current protected-main / production Pages checkpoint:
+### 1A. Current product/runtime checkpoints
 
-`7fbdc86e9b59861ba9c33ba8e145913fcbe225e6`
+Current production Pages runtime checkpoint after Phase 10.2B:
+
+`7c670a6c9c015c689add4ce742a4941d74e76e38`
 
 Current production Worker runtime checkpoint:
 
@@ -36,59 +40,9 @@ Current Phase 9.2 production-activation control-plane checkpoint:
 
 `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
 
-Production verification for Phase 10.2A:
+The stable-checkpoint documentation merge after `7c670a6c...` may advance repository `main` without changing runtime/Worker behavior. Always read fresh remote `main` before new work.
 
-- PR #279 final exact head `c383e4aa4c7a26d88890189f4f48c0e3f4105bc2`
-- exact-head canonical CI #998 / run `31892772530`: **SUCCESS**
-- frozen review `4944126543`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
-- final risk classification: **R2 Moderate**
-- merge `7fbdc86e9b59861ba9c33ba8e145913fcbe225e6`
-- post-main CI #999 / run `31892844446`: **SUCCESS**
-- Pages #1561 / run `31892844089`: **SUCCESS**
-- Phase 10.2A changed only frontend dividend-entry presentation/validation, the shared dividend presentation helper and focused regression coverage
-- persisted deterministic automatic-DIV payload semantics remain qty=1, price=net, fee/tax=0, tag=`Auto-Dividend`; existing tax-note token format remains unchanged for cross-version payload-hash compatibility
-- no Worker, D1, Python, auth, IBKR, reviewed withholding policy, event identity, schema or financial-methodology change; no production Worker deployment was required
-- production Worker therefore remains exact runtime `9b9f09f5079c59750219c73e23002a7ab8d2f33e`, release `4.08`, API `2.61`, schema `3`
-
-Production verification for Phase 10.1B remains:
-
-- PR #277 final exact head `991969064b7fb07ded36c0783de80e81d9da30f5`
-- exact-head canonical CI #994 / run `31892093012`: **SUCCESS**
-- frozen review `4944098383`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
-- final risk classification: **R1 Local / Low Risk**
-- merge `7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a`
-- post-main CI #995 / run `31892175857`: **SUCCESS**
-- Pages #1559 / run `31892175529`: **SUCCESS**
-- Phase 10.1B changed only frontend Symbol suggestion presentation, a pure known-symbol projection and focused regression coverage
-
-Production verification for Phase 10.1A remains:
-
-- PR #275 final exact head `db9f448e8598edec7cc362f4c1e9539aecbec7a9`
-- exact-head canonical CI #990 / run `31891157545`: **SUCCESS**
-- frozen review `4944065869`: **PASS / BLOCKER 0**
-- merge `0ca4f890c0771755d907d725069612dc62e6e774`
-- post-main CI #991 / run `31891228649`: **SUCCESS**
-- Pages #1557 / run `31891227897`: **SUCCESS**
-
-Production verification for Phase 9.2 remains:
-
-- runtime PR #272 final exact head `82be8f48daa95765c7052d304e6d1db3f98b8d08`; exact-head canonical CI #982: **SUCCESS**
-- frozen R2 review `4943920254`: **PASS / BLOCKER 0**
-- runtime merge `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
-- runtime post-main CI #983: **SUCCESS**
-- runtime Pages #1554: **SUCCESS**
-- Production Identity Evidence #18 / run `31888643879`: **SUCCESS**; artifact `9247940460`; digest `sha256:0cdf3e83ff2450ba3aa83ffa226ac9df9b61980421372520e3e4e1379de54f7a`
-- activation PR #273 exact head `fda54c6c3c9b4f045a3e51976d076e742f850f30`; exact-head CI #984: **SUCCESS**; frozen review `4943976191`: **PASS / BLOCKER 0**
-- activation merge `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
-- activation post-main CI #985 / run `31888823633`: **SUCCESS**
-- activation Pages #1555 / run `31888823270`: **SUCCESS**
-- Production Deployment Dispatch Broker #4 / run `31888823649`: **SUCCESS**
-- Deploy Worker #7 / run `31888830988`: **SUCCESS**
-- post-deploy evidence artifact `9248000489`; digest `sha256:912d203dc8e692a3c403a7efa22653276b3f5dc10adeec85810303fc4358c08c`
-- deployed Worker evidence reports exact `source_commit=9b9f09f5079c59750219c73e23002a7ab8d2f33e`, version/health HTTP 200, anonymous records HTTP 401, production origins allowed, staging/localhost origins rejected
-- production Worker remains release `4.08`, API `2.61`, schema `3`; Phase 9.2 required no D1 schema migration
-
-Current product state:
+### 1B. Current product states
 
 - **Phase 1 Multi-Market Transaction Experience — CLOSED / PRODUCTION VERIFIED**
 - **Phase 2 Trading Journal Note UX — CLOSED / PRODUCTION VERIFIED**
@@ -106,55 +60,99 @@ Current product state:
 - **Phase 10.1B Known Symbol Suggestions & Entry Feedback — CLOSED / PRODUCTION PAGES VERIFIED**
 - **Phase 10.1 Transaction Entry UX Convergence — OPTIMIZED FOR CURRENT REQUIREMENTS**
 - **Phase 10.2A Dividend Gross/Tax/Net Semantics & Confirmation Clarity — CLOSED / PRODUCTION PAGES VERIFIED**
-- **Phase 10.2 Dividend Workflow Productization — ACTIVE PRODUCT LINE / NO RUNTIME BATCH ACTIVE**
+- **Phase 10.2B Dividend Action Queue & Confirmed History Density — CLOSED / PRODUCTION PAGES VERIFIED**
+- **Phase 10.2 Dividend Workflow Productization — OPTIMIZED FOR CURRENT REQUIREMENTS**
+- **No runtime batch is currently active.**
 
-Important production verification boundaries:
+### 1C. Most recent verification evidence
 
-- Repository contracts, exact-head CI, post-main CI and Pages deployment are verified.
-- The assistant also read real IBKR executions through the connected IBKR connector and confirmed real multi-fill orders are available, but that connector does not expose the broker Account ID.
-- Phase 7.1A was added so account-less sources can use an explicit non-sensitive Import Profile as stable replay scope without fabricating Account ID.
-- A real authenticated browser write using the new importer has **not** been falsely claimed where no such write evidence exists. Treat user-browser import/write smoke as an optional production evidence point.
-- Phase 9.1 established authoritative `DIV` records as confirmation truth. Phase 9.2 closes the independent reload/tab/device create race with deterministic event identity while preserving that same confirmation authority; browser-local confirmation state is still not authoritative.
-- Phase 10.1A preserves the existing record-create/recovery lifecycle and existing `buildRecordPayload()` price/amount derivation semantics.
-- Phase 10.1B suggestions are derived only from already-loaded `store.records`; they are convenience presentation, not ticker validity or market authority.
-- Phase 10.2A does not change the reviewed withholding model. Pending `total_gross`, published net, currency and tax provenance still come from the existing engine. The UI now labels the editable amount according to its real gross semantics and validates gross/tax combinations before producing the same net DIV payload.
-- Current pending producer does not populate a usable `pay_date` in the confirmation workflow. README was corrected rather than adding or guessing a payment date.
+Phase 10.2B:
+
+- PR #281 final exact head `2449ede597c5cc3a6eadd3e698b4c17a63b172a5`
+- exact-head canonical CI #1004 / run `31893757694`: **SUCCESS**
+- frozen review `4944167995`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
+- final risk classification: **R1 Local / Low Risk**
+- merge `7c670a6c9c015c689add4ce742a4941d74e76e38`
+- post-main CI #1005 / run `31893865494`: **SUCCESS**
+- Pages #1563 / run `31893864842`: **SUCCESS**
+- changed only `DividendManager.vue`, a pure dividend-workflow presentation projection, and focused frontend regression coverage
+- no Worker, D1, Python, auth, IBKR, schema, reviewed withholding-policy or financial-methodology change
+- no production Worker deployment; Worker remains `9b9f09f5...`, release `4.08`, API `2.61`, schema `3`
+
+Phase 10.2A:
+
+- PR #279 final exact head `c383e4aa4c7a26d88890189f4f48c0e3f4105bc2`
+- exact-head CI #998 / run `31892772530`: **SUCCESS**
+- frozen review `4944126543`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
+- risk: **R2 Moderate**
+- merge `7fbdc86e9b59861ba9c33ba8e145913fcbe225e6`
+- post-main CI #999 / run `31892844446`: **SUCCESS**
+- Pages #1561 / run `31892844089`: **SUCCESS**
+
+Phase 10.1B:
+
+- PR #277 exact head `991969064b7fb07ded36c0783de80e81d9da30f5`
+- CI #994 / run `31892093012`: **SUCCESS**
+- frozen review `4944098383`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
+- merge `7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a`
+- post-main CI #995 + Pages #1559: **SUCCESS**
+
+Phase 10.1A:
+
+- PR #275 exact head `db9f448e8598edec7cc362f4c1e9539aecbec7a9`
+- CI #990: **SUCCESS**
+- frozen review `4944065869`: **PASS / BLOCKER 0**
+- merge `0ca4f890c0771755d907d725069612dc62e6e774`
+- post-main CI #991 + Pages #1557: **SUCCESS**
+
+Phase 9.2 production activation remains:
+
+- runtime PR #272 final exact head `82be8f48daa95765c7052d304e6d1db3f98b8d08`
+- exact-head CI #982: **SUCCESS**
+- frozen review `4943920254`: **PASS / BLOCKER 0**
+- runtime merge `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
+- post-main CI #983 + Pages #1554: **SUCCESS**
+- Production Identity Evidence #18 / run `31888643879`: **SUCCESS**; artifact `9247940460`; digest `sha256:0cdf3e83ff2450ba3aa83ffa226ac9df9b61980421372520e3e4e1379de54f7a`
+- activation PR #273 exact head `fda54c6c3c9b4f045a3e51976d076e742f850f30`; CI #984 **SUCCESS**; review `4943976191` **PASS / BLOCKER 0**
+- activation merge `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
+- post-main CI #985 + Pages #1555: **SUCCESS**
+- Production Deployment Dispatch Broker #4 / run `31888823649`: **SUCCESS**
+- Deploy Worker #7 / run `31888830988`: **SUCCESS**
+- post-deploy evidence artifact `9248000489`; digest `sha256:912d203dc8e692a3c403a7efa22653276b3f5dc10adeec85810303fc4358c08c`
+- deployed evidence reports exact Worker source `9b9f09f5...`, version/health 200, anonymous records 401, production origins allowed and staging/localhost rejected
 
 ---
 
 ## 2. Closed / optimized product index
 
-| Product area | State | Primary closure evidence |
+| Product area | State | Primary evidence |
 |---|---|---|
-| Durable record-create + automatic recalculation/recovery chain | CLOSED / PRODUCTION VERIFIED | PRs #231–#245; detailed chronology preserved in archive |
-| Snapshot freshness API/manifest contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #247 merge `cc51ebc2...`; post-main CI #872 + Pages #1530 |
+| Durable record-create + automatic recalculation/recovery chain | CLOSED / PRODUCTION VERIFIED | PRs #231–#245; detailed chronology in archive |
+| Snapshot freshness API/manifest contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #247 merge `cc51ebc2...`; CI #872 + Pages #1530 |
 | Phase 1.1 Native Currency Contract | CLOSED / PRODUCTION PAGES VERIFIED | PR #249 merge `4ce9c8fc...`; CI #879 + Pages #1532 |
 | Phase 1.2 Authoritative Transaction Valuation | CLOSED / PRODUCTION PAGES VERIFIED | PR #251 merge `92f78af6...`; CI #892 + Pages #1534 |
 | Phase 2.1 Trading Journal Note UX | CLOSED / PRODUCTION PAGES VERIFIED | PR #254 merge `7d0dbe2d...`; CI #899 + Pages #1536 |
 | Phase 3.1 Daily P&L Explainability | CLOSED / PRODUCTION PAGES VERIFIED | PR #256 merge `2f46516e...`; CI #905 + Pages #1538 |
-| Phase 3 Explainability Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | authoritative current-day/holding/TWR-XIRR reliability surfaces complete |
 | Phase 4.1 Strategy Group Overview | CLOSED / PRODUCTION PAGES VERIFIED | PR #258 merge `6d0c7708...`; CI #912 + Pages #1540 |
 | Phase 4.2 Exact Common-Period TWR | CLOSED / PRODUCTION PAGES VERIFIED | PR #260 merge `6137030a...`; CI #918 + Pages #1542 |
-| Phase 4 Strategy Analytics Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | no new financial methodology justified |
 | Phase 6.1 Data Sync Status UX | CLOSED / PRODUCTION PAGES VERIFIED | PR #262 merge `eab6a2e3...`; CI #926 + Pages #1544 |
 | Phase 6.2 Operation/Recovery Toast Convergence | CLOSED / PRODUCTION PAGES VERIFIED | PR #263 merge `b922851c...`; CI #932 + Pages #1545 |
-| Phase 6 UX Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | persistent + transient sync language converged without lifecycle duplication |
-| Phase 7.1 IBKR Stock Trade File Import | PRODUCTION CODE/PAGES VERIFIED | PR #265 merge `b925b1b8...`; post-main CI #959 + Pages #1547 |
-| Phase 7.1A Stable Import Profile Scope | CLOSED / PRODUCTION PAGES VERIFIED | PR #266 merge `df2c383a...`; exact-head CI #961; post-main CI #962 + Pages #1548 |
-| Phase 7.1B Metadata / Journal-Note Separation | CLOSED / PRODUCTION PAGES VERIFIED | PR #267 merge `1f82c9c5...`; exact-head CI #966; post-main CI #967 + Pages #1549 |
-| Phase 8.1 Responsive Daily P&L Density | CLOSED / PRODUCTION PAGES VERIFIED | PR #269 merge `f7e47744...`; post-main CI #971 + Pages #1551 |
-| Phase 9.1 Dividend Confirmation Source of Truth | CLOSED / PRODUCTION PAGES VERIFIED | PR #270 merge `6bc509e4...`; exact-head CI #974; review `4943784529`; post-main CI #975 + Pages #1552 |
-| Phase 9.2 Deterministic Dividend Event Identity | CLOSED / PRODUCTION VERIFIED | PR #272 merge `9b9f09f5...`; CI #982/#983; Pages #1554; review `4943920254`; Evidence #18; PR #273 merge `3e1ef4e5...`; CI #984/#985; Pages #1555; Deploy Worker #7 SUCCESS |
-| Phase 10.1A Transaction Entry Information Hierarchy & Validation Clarity | CLOSED / PRODUCTION PAGES VERIFIED | PR #275 exact head `db9f448e...`; CI #990; review `4944065869`; merge `0ca4f890...`; post-main CI #991 + Pages #1557 |
-| Phase 10.1B Known Symbol Suggestions & Entry Feedback | CLOSED / PRODUCTION PAGES VERIFIED | PR #277 exact head `99196906...`; CI #994; review `4944098383`; merge `7e3dd9e5...`; post-main CI #995 + Pages #1559 |
-| Phase 10.1 Transaction Entry UX Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | hierarchy/validation + known-symbol suggestion gaps closed without new transaction/market authority |
-| Phase 10.2A Dividend Gross/Tax/Net Semantics & Confirmation Clarity | CLOSED / PRODUCTION PAGES VERIFIED | PR #279 exact head `c383e4aa...`; CI #998; review `4944126543`; merge `7fbdc86e...`; post-main CI #999 + Pages #1561 |
-
-The detailed pre-Phase-7 PR-by-PR Root Cause / Decision / Verification / Rollback ledger remains at `docs/archive/to_do_update_list_through_phase6.md`.
+| Phase 7.1 IBKR Stock Trade File Import | PRODUCTION CODE/PAGES VERIFIED | PR #265 merge `b925b1b8...`; CI #959 + Pages #1547 |
+| Phase 7.1A Stable Import Profile Scope | CLOSED / PRODUCTION PAGES VERIFIED | PR #266 merge `df2c383a...`; CI #961/#962 + Pages #1548 |
+| Phase 7.1B Metadata / Journal-Note Separation | CLOSED / PRODUCTION PAGES VERIFIED | PR #267 merge `1f82c9c5...`; CI #966/#967 + Pages #1549 |
+| Phase 8.1 Responsive Daily P&L Density | CLOSED / PRODUCTION PAGES VERIFIED | PR #269 merge `f7e47744...`; CI #971 + Pages #1551 |
+| Phase 9.1 Dividend Confirmation Source of Truth | CLOSED / PRODUCTION PAGES VERIFIED | PR #270 merge `6bc509e4...`; CI #974/#975 + Pages #1552; review `4943784529` |
+| Phase 9.2 Deterministic Dividend Event Identity | CLOSED / PRODUCTION VERIFIED | PR #272 merge `9b9f09f5...`; production activation via PR #273 + Deploy Worker #7 |
+| Phase 10.1A Entry Hierarchy & Validation | CLOSED / PRODUCTION PAGES VERIFIED | PR #275 merge `0ca4f890...`; CI #990/#991 + Pages #1557 |
+| Phase 10.1B Known Symbol Suggestions | CLOSED / PRODUCTION PAGES VERIFIED | PR #277 merge `7e3dd9e5...`; CI #994/#995 + Pages #1559 |
+| Phase 10.1 Transaction Entry UX Convergence | OPTIMIZED FOR CURRENT REQUIREMENTS | 10.1A + 10.1B |
+| Phase 10.2A Dividend Gross/Tax/Net Semantics | CLOSED / PRODUCTION PAGES VERIFIED | PR #279 merge `7fbdc86e...`; CI #998/#999 + Pages #1561 |
+| Phase 10.2B Dividend Action Queue & Confirmed History Density | CLOSED / PRODUCTION PAGES VERIFIED | PR #281 merge `7c670a6c...`; CI #1004/#1005 + Pages #1563 |
+| Phase 10.2 Dividend Workflow Productization | OPTIMIZED FOR CURRENT REQUIREMENTS | 10.2A + 10.2B; no evidence justifies a 10.2C |
 
 ---
 
-## 3. Stable product lifecycle and authority boundaries
+## 3. Stable authority boundaries
 
 ### 3A. Mutation / calculation lifecycle
 
@@ -169,7 +167,7 @@ record create durable intent
 → bounded self-healing only when evidence proves repair is safe
 ```
 
-Do not create a parallel broker-specific calculation or recovery state machine.
+Do not create a parallel broker-, dividend- or UI-specific calculation/recovery state machine.
 
 ### 3B. Financial / FX presentation authority
 
@@ -194,7 +192,7 @@ portfolioReadStatus / connectionStatus / snapshotFreshness / isPolling
 → product language only
 ```
 
-`資料已同步` requires the existing exact-object verification proof. `snapshotFreshness='loaded'` alone is not sufficient.
+`資料已同步` requires existing exact-object verification proof. `snapshotFreshness='loaded'` alone is not sufficient.
 
 ### 3D. Explainability / strategy analytics authority
 
@@ -208,466 +206,243 @@ Python canonical calculation/reconciliation
 
 No browser XIRR reconstruction, new accounting method or risk score without a separately approved methodology batch.
 
-### 3E. Dividend confirmation / entry authority
+### 3E. Dividend confirmation / entry / workflow authority
 
 ```text
 Python pending dividend event + reviewed policy
-→ published gross / net / currency / ex_date
+→ published ex_date / gross / net / currency
 → frontend entry contract: gross − withholding tax = net
 → validate gross > 0, tax >= 0, tax <= gross
 → deterministic automatic-create identity (`Symbol + ex_date`)
 → existing DIV payload (qty=1, price=net, fee/tax=0, Auto-Dividend)
 → tenant-scoped durable record-create path
-→ authoritative browser store.records
-→ DIV record with normalized symbol + txn_date
+→ authoritative store.records DIV row
 → confirmed / 已入帳
+→ pure workflow projection for queue/history presentation
 ```
 
-- `confirmed_dividend_keys` is not a product authority.
-- DividendManager does not use record-create recovery signals as a second confirmation state.
-- A definitely committed create whose records readback is not yet visible may enter only a current-page memory lock: `已保存，等待同步`.
-- Ambiguous POST outcomes remain owned by the existing durable record-create recovery lifecycle.
-- Automatic confirmation create identity remains versioned `dividend.v1.<sha256>` from normalized `Symbol + ex_date`; gross/tax/net remain payload values, not event identity.
-- The actual `DIV` row remains the only `已入帳` authority; deterministic idempotency is replay protection, not confirmation state.
-- Phase 10.2A is a UI/input contract correction, not a new tax engine: default values still originate in the reviewed Python output.
-- `amount` is gross, `tax` is withholding tax, and persisted automatic `DIV price` remains the resulting net cashflow.
-- The persisted tax-note token format is intentionally stable across 10.2A because Phase 9.2 payload hashing includes note.
-- `pay_date` is not guessed, inferred or added to event identity when the current producer does not publish it.
-- Do not restore localStorage confirmation fallback or invent browser-side dividend accounting.
+Rules:
+
+- `confirmed_dividend_keys` / localStorage is not product authority.
+- The actual same-tenant `DIV Symbol + txn_date` row remains the only `已入帳` authority.
+- A definitely committed create whose records readback is not yet visible may use only the existing current-page memory lock `已保存，等待同步`.
+- Ambiguous POST outcomes remain owned by durable record-create same-key recovery.
+- Automatic event identity remains `dividend.v1.<sha256>` from normalized `Symbol + ex_date`; gross/tax/net/currency/shares are payload/derived values, not event identity.
+- Existing manual DIV rows block a second automatic row; different payload conflicts fail closed via `DIVIDEND_EVENT_CONFLICT`.
+- Deleting or editing away the event row releases only its stale row-backed semantic reservation for legitimate reconfirmation.
+- `amount` means gross; `tax` means withholding tax; persisted automatic `DIV price` remains resulting net cashflow.
+- Persisted automatic-DIV tax-note token format remains stable because Phase 9.2 payload hashing includes note.
+- `pay_date` is not guessed or added to event identity when current producer does not publish it.
+- Phase 10.2B queue/history state is a pure projection: pending + awaiting rows are recent-first in the active queue; confirmed rows are recent-first and default-collapsed.
+- Confirmed-history display deliberately does **not** reconstruct actual cashflow from market estimates; exact amount/note remains the authoritative DIV transaction in Transaction History.
+- Do not add another persisted filter/status authority merely for presentation convenience.
 
 ### 3F. Transaction-entry UX authority
 
 ```text
 already-loaded tenant-scoped store.records
-→ pure recent-first known-Symbol suggestion projection (presentation only)
-→ user selects a known Symbol OR freely enters a new Symbol
+→ pure recent-first known-Symbol suggestions
+→ user selects known Symbol OR freely enters new Symbol
 → existing TradeForm acceptance predicates
 → existing buildRecordPayload() normalization / price derivation
 → existing store.addRecord() / updateRecord()
-→ durable record-create / recovery / recalculation lifecycle
+→ durable mutation / recovery / recalculation lifecycle
 ```
 
-- BUY / SELL actions are journal-recording actions, not broker order submission.
-- The editable `total_amount` surface is labeled `成交金額（未含費稅）`; if both price and amount are present, existing payload logic keeps price authoritative.
-- Field-specific errors preserve prior required-input predicates rather than introducing a second validation/accounting engine.
-- Phase 10.1B known-Symbol suggestions use `trim + uppercase`, recent-first deduplication and case-insensitive prefix matching only for the suggestion surface.
-- Suggestions do not validate a ticker, infer a market suffix, choose a currency, or block a new non-empty Symbol.
-- No Symbol suggestion list is persisted into localStorage or fetched from a new remote service.
+- BUY/SELL actions are journal recording, not broker order submission.
+- `total_amount` is `成交金額（未含費稅）`; existing payload price precedence is unchanged.
+- Known-Symbol suggestions are convenience only: no ticker validity, suffix guessing, currency authority or remote symbol database.
+- No Symbol suggestion list is persisted into localStorage.
+
+### 3G. IBKR import authority
+
+```text
+user-provided IBKR CSV / Flex-style trade file
+→ local preview/validation
+→ stable account or explicit non-sensitive Import Profile scope
+→ deterministic opaque source replay key
+→ existing authenticated record-create path
+→ existing calculation lifecycle
+```
+
+- No IBKR password/token storage.
+- No system-principal record-write authority.
+- STK execution import only unless a future product batch explicitly expands scope.
+- Do not guess Account ID or Yahoo suffix.
 
 ---
 
 ## 4. Phase 7 — IBKR import product line
 
-### 4A. Batch 7.1 — Safe IBKR Stock Trade File Import
+### 4A. Phase 7.1 — Safe IBKR Stock Trade File Import
 
 **State: PRODUCTION CODE/PAGES VERIFIED**
 
-Primary product goal:
+Implemented product contract:
 
-Replace manual D1/SQL entry of IBKR stock executions with a preview-first, replay-safe logged-in browser import while reusing existing durable record-create and calculation authorities.
-
-Implemented contract:
-
-- direct CSV and IBKR sectioned `Trades,Header` / `Trades,Data`
+- direct CSV and IBKR `Trades,Header` / `Trades,Data`
 - STK BUY/BOT and SELL/SLD only
 - order-level multi-fill aggregation with quantity-weighted average price
 - commission/tax aggregation
-- exact ticker/currency contract; unsupported market mapping fails closed rather than guessing Yahoo suffixes
-- execution rows only; order summary rows excluded
-- invalid fill taints the whole order
-- duplicate TradeID deduplicates only when identical; conflicting TradeID blocks the related order
-- deterministic broker-source replay identity → SHA-256 opaque durable `Idempotency-Key`
-- logged-in user `POST /api/records` only; no system-principal write authority added
-- replay-only batch is a true no-op: no records-array replacement and no unnecessary calculation
-- new writes converge to at most one final readback/update lifecycle
-- post-commit readback/update warning is distinct from ledger-write failure
-- partial write failure reports committed/replayed counts and permits safe same-file replay
-- Account ID and import-profile labels do not persist in journal note/body metadata
+- exact ticker/currency mapping; unsupported mapping fails closed
+- invalid fill taints whole order; duplicate TradeID deduplicates only when identical
+- deterministic broker-source replay identity → SHA-256 durable `Idempotency-Key`
+- logged-in user `POST /api/records` only
+- replay-only batch is a no-op; new writes converge to at most one final readback/update lifecycle
+- partial write failure reports committed/replayed counts and supports safe replay
 
-Production evidence:
+Evidence: PR #265 merge `b925b1b80c852008e8eaf95bbb21cada874be070`; exact-head/post-main CI #958/#959; Pages #1547.
 
-- PR #265 merged as `b925b1b80c852008e8eaf95bbb21cada874be070`
-- final exact-head CI #958 SUCCESS before merge
-- independent frozen R2/R3 review: BLOCKER 0
-- post-main CI #959 SUCCESS
-- Pages #1547 SUCCESS
-
-Out of scope retained:
-
-- IBKR credential/token storage
-- scheduled/background Flex sync
-- system-principal record writes
-- options/futures/FX/DIV import
-- exchange/suffix guessing
-- bulk Worker endpoint
-
-### 4B. Batch 7.1A — Stable Import Profile Scope
+### 4B. Phase 7.1A — Stable Import Profile Scope
 
 **State: CLOSED / PRODUCTION PAGES VERIFIED**
 
-Root cause:
+When Account ID is unavailable, an explicit non-sensitive Import Profile may provide stable replay scope. It is normalized and hashed into an opaque versioned profile identity; the raw label remains memory-only. No account + no profile fails closed. Multiple distinct real accounts + one profile fails closed.
 
-The connected IBKR ChatGPT/API surface exposes real executions/order/trade IDs but does not expose broker Account ID, while IBKR OrderId alone is not a safe durable cross-account identity.
+Evidence: PR #266 merge `df2c383a447ca1ea058b46ee4dc3a4e7dfd62838`; CI #961/#962; Pages #1548.
 
-Solution:
-
-- optional explicit user Import Profile acts as a non-sensitive account-scope alias
-- normalized profile is SHA-256-derived into a versioned opaque `PROFILE_<32hex>` scope
-- raw profile label remains memory-only
-- no account + no profile → fail closed
-- no account + profile → allowed
-- one real account + profile → profile may intentionally provide a common replay scope
-- multiple distinct real accounts + one profile → fail closed
-- changing profile invalidates current preview until the file is rechecked
-- no profile→broker-account database or new credential architecture
-
-Evidence:
-
-- PR #266 exact head `34438203c99c7de7a8b82a291b7ee0a34610c325`
-- exact-head CI #961 SUCCESS
-- frozen independent review BLOCKER 0
-- merge `df2c383a447ca1ea058b46ee4dc3a4e7dfd62838`
-- post-main CI #962 + Pages #1548 SUCCESS
-
-Accepted limitation:
-
-Reusing the same Import Profile name for two different single-account sources explicitly declares them the same replay scope. Persisting a profile/account mapping is not currently justified.
-
-### 4C. Batch 7.1B — IBKR Metadata / Journal-Note Separation
+### 4C. Phase 7.1B — Metadata / Journal-Note Separation
 
 **State: CLOSED / PRODUCTION PAGES VERIFIED**
 
-User evidence:
+Machine IBKR provenance no longer occupies user-visible Journal Note. A pure projection strips only known `source=IBKR` machine fields and preserves unknown/human text. New imports apply the same projection before persistence. Legacy raw D1 notes were intentionally not bulk-mutated.
 
-Transaction History showed long strings such as:
+Evidence: PR #267 merge `1f82c9c5e5033e3d51cfb94267982d3fad7d618e`; CI #966/#967; Pages #1549; review `4943370397`.
 
-```text
-source=IBKR; currency=USD; security_type=STK; aggregation=order;
-trade_date=...; order_id=...; fill_count=...; ...
-```
-
-These are import-machine metadata, not useful Journal notes. Earlier D1 Console imports also stored equivalent provenance in `records.note`.
-
-Root cause:
-
-`records.note` was serving two unrelated roles: human journal note and IBKR provenance. Durable replay safety has already moved to the Worker/D1 idempotency contract, so provenance does not need to occupy user-visible note.
-
-Solution:
-
-- new pure `ibkrJournalNote` projection is anchored by an exact `source=IBKR` segment
-- only a known whitelist of machine fields is removed
-- unknown/human text is always preserved
-- real `executed_at=YYYYMMDD;HHMMSS(|...)` tokens are removed before general semicolon parsing so time fragments cannot leak as fake user text
-- all records pass through this projection once at the API-records→browser boundary; display, search, edit and other consumers therefore agree without component-specific hacks
-- IBKR writer applies the same projection before durable intent/POST persistence
-- durable pending body, first POST body and ambiguous replay body all contain the same cleaned note
-- ordinary non-IBKR notes are untouched
-- no production D1 bulk update was performed
-
-Expected user-visible behavior after the deployed bundle is loaded:
-
-- legacy pure IBKR machine note → UI displays `—`
-- legacy machine metadata + human text → UI displays only the human text
-- new IBKR imports → machine provenance is not persisted in `records.note`
-- old raw D1 metadata remains server-side until an explicit future cleanup decision; this is intentional and does not affect financial snapshot identity
-
-Evidence:
-
-- PR #267 final exact head `a5efaa712690ea49fafc3c109aa2e70ac914aebf`
-- final exact-head CI #966 / run `31874807899`: SUCCESS
-- frozen independent R2 review `4943370397`: BLOCKER 0 / FOLLOW-UP 0
-- merge `1f82c9c5e5033e3d51cfb94267982d3fad7d618e`
-- post-main CI #967 / run `31874893699`: SUCCESS
-- Pages #1549 / run `31874893468`: SUCCESS
-
-Rollback:
-
-Revert PR #267 / merge `1f82c9c5...` or restore prior Pages deployment. No Worker/schema/data/Python rollback is required. Because this batch did not bulk-edit D1, rollback does not need a data repair procedure.
+Deferred: Phase 7.2 background Flex synchronization. Do not move it ahead of current Phase 10 roadmap.
 
 ---
 
 ## 5. Phase 8–9 — UX density and dividend authority
 
-### 5A. Batch 8.1 — Responsive Daily P&L Density
+### 5A. Phase 8.1 — Responsive Daily P&L Density
 
 **State: CLOSED / PRODUCTION PAGES VERIFIED**
 
-Product goal:
+Responsive Daily P&L explainability density was improved without changing accounting values/methodology.
 
-Improve responsive daily P&L explainability density without changing accounting values or financial methodology.
+Evidence: PR #269 merge `f7e47744399ed31a701f67f8d7e52ab393c2c6b2`; post-main CI #971; Pages #1551.
 
-Evidence:
-
-- PR #269 merged as `f7e47744399ed31a701f67f8d7e52ab393c2c6b2`
-- post-main CI #971: SUCCESS
-- Pages #1551: SUCCESS
-
-### 5B. Batch 9.1 — Dividend Confirmation Source of Truth
+### 5B. Phase 9.1 — Dividend Confirmation Source of Truth
 
 **State: CLOSED / PRODUCTION PAGES VERIFIED**
 
-Root cause:
+Root cause: browser-local `confirmed_dividend_keys` could diverge from Python/server DIV truth across devices/reloads.
 
-The Python engine already treats a dividend as confirmed when an authoritative `DIV` transaction exists for the same normalized `Symbol + Date`, while DividendManager separately persisted `confirmed_dividend_keys` and consumed a recovery signal as browser-local confirmation state. That created a second, device-local authority which could diverge from the journal across reloads/devices.
+Solution: confirmed/pending state derives from `store.records` DIV rows matching normalized `Symbol + txn_date`; localStorage authority and recovery-signal confirmation authority were removed. Definite commit/readback delay uses only memory lock.
 
-Solution:
+Evidence: PR #270 exact head `d503d43f9d489935f28528126479b36935315cfe`; CI #974; review `4943784529`; merge `6bc509e4e0fd6671b036cb63ea8e210152609f8c`; CI #975 + Pages #1552.
 
-- added a pure dividend confirmation projection matching the existing engine `DIV record → Symbol + txn_date` identity
-- `DividendManager` derives confirmed/pending/disabled state from `store.records`
-- removed localStorage confirmed-dividend reads/writes from product logic
-- removed DividendManager recovery-signal confirmation authority
-- committed-but-not-yet-observed records use only a memory-only `已保存，等待同步` safety lock
-- ambiguous POST remains owned by existing durable record-create same-key recovery
-- no dividend amount/tax calculation, XIRR/TWR, Worker, D1, schema, or Python financial methodology change
-
-Verification:
-
-- PR #270 final exact head `d503d43f9d489935f28528126479b36935315cfe`
-- exact-head canonical CI #974 / run `31879309549`: SUCCESS
-- frozen independent R2 review `4943784529`: BLOCKER 0 / FOLLOW-UP 1
-- merge `6bc509e4e0fd6671b036cb63ea8e210152609f8c`
-- post-main CI #975 / run `31883287847`: SUCCESS
-- Pages #1552 / run `31883287083`: SUCCESS
-
-Accepted follow-up:
-
-Phase 9.1 deliberately did not provide durable event-level deduplication across a page reload, another tab, or another device before the authoritative DIV record was observed. Generic record-create idempotency protected one durable create intent, not the semantic dividend event across independent new intents. This follow-up is closed by Phase 9.2 below.
-
-Rollback:
-
-Revert PR #270 / merge `6bc509e4...` or restore the prior Pages build. No Worker/schema/data/Python rollback is required.
-
-### 5C. Batch 9.2 — Deterministic Dividend Event Identity
+### 5C. Phase 9.2 — Deterministic Dividend Event Identity
 
 **State: CLOSED / PRODUCTION VERIFIED**
 
-Primary product goal:
+Root cause: generic per-intent idempotency did not prevent two independent clients creating distinct automatic intents for the same semantic dividend before either observed the DIV row.
 
-Prevent two independent browser sessions/devices from creating duplicate automatic `DIV` rows for the same pending dividend event before either client observes the authoritative server record.
+Solution: normalized `Symbol + ex_date` → versioned `dividend.v1.<sha256>` semantic identity, tenant-scoped durable create, transactional D1 absence gate, replay success, different-payload/manual conflict fail-closed, edit-away/delete reconfirm support. Confirmation truth remains the DIV row.
 
-Root cause:
-
-Phase 9.1 correctly made `store.records` / server `DIV` rows the only confirmation authority, but generic durable record-create intentionally generates a new idempotency key for every independent create intent. Therefore two devices could each create a distinct intent for the same semantic dividend event during the readback/synchronization window.
-
-Scope-locked identity:
-
-- canonical event = normalized `Symbol + ex_date`
-- identity is versioned and hashed as `dividend.v1.<sha256>`
-- this matches the existing Python confirmed-dividend `Symbol + Date` semantics
-- shares, amount/gross/net, withholding/tax, currency and FX are derived/mutable values and are not part of immutable event identity
-- tenant scoping remains the verified authenticated user boundary and existing idempotency hash
-- invalid/insufficient event identity fails closed
-
-Implementation:
-
-- shared dividend-event identity module used by browser and Worker semantic path
-- non-enumerable record-create transport metadata carries the deterministic key through the existing durable intent lifecycle without entering the JSON record body
-- generic/manual record creates retain their existing random per-intent identity
-- deployment-entry semantic handler reuses canonical Google authentication/origin policy
-- one transactional D1 `batch()` gates insertion on absence of an existing same-tenant `DIV Symbol + txn_date`
-- exact replay succeeds idempotently
-- same event with a different payload or an existing manual DIV fails closed with `DIVIDEND_EVENT_CONFLICT` and creates no duplicate
-- an edited-away deterministic row releases only its stale semantic reservation; delete then reconfirm remains possible
-- conflict reconciliation performs record-scoped `fetchRecords()` only, avoiding unrelated snapshot/settings/recovery/recalculation work
-
-Explicitly unchanged:
-
-- no D1 schema migration or global `(user,symbol,date)` unique constraint
-- no Python dividend/tax/TWR/XIRR/accounting methodology change
-- no localStorage confirmation authority
-- no retry loop or second browser confirmation state
-- no IBKR DIV importer/background broker synchronization
-
-Verification and production activation:
-
-- PR #272 final exact head `82be8f48daa95765c7052d304e6d1db3f98b8d08`
-- exact-head canonical CI #982: SUCCESS
-- frozen R2 review `4943920254`: PASS / BLOCKER 0
-- runtime merge `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
-- post-main CI #983 + Pages #1554: SUCCESS
-- Production Identity Evidence #18 / run `31888643879`: SUCCESS; artifact `9247940460`; digest `sha256:0cdf3e83ff2450ba3aa83ffa226ac9df9b61980421372520e3e4e1379de54f7a`
-- activation PR #273 exact head `fda54c6c3c9b4f045a3e51976d076e742f850f30`
-- activation exact-head CI #984: SUCCESS
-- activation frozen review `4943976191`: PASS / BLOCKER 0
-- activation merge `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
-- post-main CI #985 + Pages #1555: SUCCESS
-- Production Deployment Dispatch Broker #4 / run `31888823649`: SUCCESS
-- Deploy Worker #7 / run `31888830988`: SUCCESS
-- post-deploy artifact `9248000489`; digest `sha256:912d203dc8e692a3c403a7efa22653276b3f5dc10adeec85810303fc4358c08c`
-- production evidence: exact runtime source `9b9f09f5079c59750219c73e23002a7ab8d2f33e`, release `4.08`, API `2.61`, schema `3`, version/health 200, anonymous records 401, production CORS allowed and staging/localhost CORS rejected
-
-Rollback:
-
-- frontend/runtime rollback: revert PR #272 and restore the prior Pages build
-- Worker rollback: redeploy the prior last-known-good main-reachable Worker source through the existing protected production activation/deployment flow
-- no schema/data rollback is required because Phase 9.2 added no D1 migration
-
-Stable checkpoint result:
-
-**Phase 9.2 is CLOSED / PRODUCTION VERIFIED.** The cross-session/device duplicate-confirmation gap identified by Phase 9.1 is closed without restoring browser-local authority or changing financial methodology.
+Production evidence is preserved in §1C. No D1 schema migration was required.
 
 ---
 
-## 6. Phase 10 — Product UX roadmap
+## 6. Phase 10 — Approved Product UX roadmap
 
-Approved product order:
+Approved order:
 
-1. **Phase 10.1 — Transaction Entry UX Convergence**
-2. **Phase 10.2 — Dividend Workflow Productization**
-3. **Phase 10.3 — Journal / Transaction History UX Convergence**
+1. **Phase 10.1 — Transaction Entry UX Convergence — OPTIMIZED**
+2. **Phase 10.2 — Dividend Workflow Productization — OPTIMIZED**
+3. **Phase 10.3 — Journal / Transaction History UX Convergence — CURRENT NEXT**
 4. **Phase 10.4 — Portfolio Decision Support**
-5. All other new directions are deferred until this roadmap is re-evaluated.
+5. Everything else waits for later discussion.
 
-The sequence is intentional: **entry → dividend workflow → history/journal management → decision support**. Do not insert a broad Action Center or privileged broker-background architecture ahead of this roadmap without fresh product evidence and an explicit roadmap decision.
+The sequence remains intentional: **entry → dividend workflow → history/journal management → decision support**.
 
-### 6A. Batch 10.1A — Transaction Entry Information Hierarchy & Validation Clarity
-
-**State: CLOSED / PRODUCTION PAGES VERIFIED**
-
-Primary product goal:
-
-Improve the highest-frequency manual transaction-entry flow while preserving established record persistence, accounting semantics, durable create/recovery and automatic recalculation.
-
-Verified product gaps:
-
-- BUY / SELL submit labels sounded like real broker order placement even though the UI records journal transactions.
-- Tags interrupted the primary execution-data flow.
-- `total_amount` was labeled as a generic transaction total even though current frontend behavior uses it as an alternative execution subtotal for price derivation when price is absent; D1 persists qty/price/fee/tax, not `total_amount`.
-- one generic `請填寫完整資料` toast did not identify the missing input.
-- mobile stacked Qty/Fee/Tax as three full-width rows, unnecessarily lengthening the trade sheet.
-
-Implementation:
-
-- BUY / SELL actions are now `記錄買進` / `記錄賣出`, with an explicit note that this UI does not send broker orders.
-- core execution fields and the execution-amount surface precede Tags and Journal Note.
-- amount is labeled `成交金額（未含費稅）` and explains the existing price-vs-amount precedence.
-- field-specific error presentation reuses the existing required-input predicates for Symbol, Qty, price-or-amount and SELL group selection.
-- mobile keeps Qty full-width and Fee/Tax side-by-side at normal mobile widths, with a <=380px single-column fallback.
-- focused regression coverage locks terminology, amount semantics, DOM information hierarchy, validation predicates and mobile layout.
-
-Explicitly unchanged:
-
-- `buildRecordPayload()` price/amount derivation logic
-- `store.addRecord()` / `store.updateRecord()`
-- durable record-create intent, recovery and automatic recalculation
-- Worker, D1 schema/data, authentication and Python financial methodology
-- dividend event identity / confirmation authority
-- IBKR importer
-
-Verification:
-
-- PR #275 final exact head `db9f448e8598edec7cc362f4c1e9539aecbec7a9`
-- exact-head CI #990 / run `31891157545`: SUCCESS
-- frozen review `4944065869`: PASS / BLOCKER 0
-- merge `0ca4f890c0771755d907d725069612dc62e6e774`
-- post-main CI #991 / run `31891228649`: SUCCESS
-- Pages #1557 / run `31891227897`: SUCCESS
-
-Rollback:
-
-Revert PR #275 / merge `0ca4f890...` or restore the previous Pages build. No Worker, schema, D1-data, or Python rollback is required.
-
-### 6B. Batch 10.1B — Known Symbol Suggestions & Entry Feedback
+### 6A. Phase 10.1A — Transaction Entry Information Hierarchy & Validation Clarity
 
 **State: CLOSED / PRODUCTION PAGES VERIFIED**
 
-Primary product goal:
+- BUY/SELL actions changed to journal-recording language.
+- Core execution fields precede Tag/Journal Note.
+- amount surface clarified as `成交金額（未含費稅）` without changing price/amount payload semantics.
+- field-specific validation reuses existing predicates.
+- mobile Qty/Fee/Tax density improved.
 
-Close the documented Symbol-entry suggestion gap using information already available to the signed-in user, while preserving unrestricted entry of new Yahoo Symbols and every existing transaction/accounting authority.
+Evidence: PR #275 / `0ca4f890...`; CI #990/#991; Pages #1557; review `4944065869`.
 
-Root cause / evidence:
-
-- README documented Symbol autocomplete suggestions.
-- `TradeForm.vue` was still a plain text Symbol input with no suggestion surface.
-- the existing authenticated records load already supplies tenant-scoped records in deterministic recent-first order, so a new ticker-search API, credential, market database or browser-local symbol cache was unnecessary.
-
-Implementation:
-
-- added pure `symbolSuggestions.js` projection over already-loaded `store.records`.
-- known Symbols are `trim + uppercase` normalized for suggestion comparison/display, deduplicated by first occurrence and kept in record/recent order.
-- query matching is case-insensitive prefix matching only; it never guesses or appends a market suffix.
-- empty input may show the most recent known Symbols; the default list is bounded to eight entries.
-- Symbol input now exposes an accessible combobox/listbox/option surface with pointer/touch selection and ArrowUp / ArrowDown / Enter / Escape keyboard interaction.
-- helper text explicitly states suggestions come from existing transaction history and that a new Yahoo Symbol may still be typed directly.
-- choosing a suggestion invokes the existing SELL holding-group check; it does not create a separate validation or mutation path.
-
-Explicitly unchanged:
-
-- the Symbol required predicate remains only non-empty input; suggestion selection is not mandatory.
-- no ticker validity assertion, Yahoo search, remote symbol service, suffix guessing or new native-currency authority.
-- no localStorage Symbol suggestion/cache authority.
-- no `buildRecordPayload()` price/amount or Symbol persistence semantic change.
-- no `store.addRecord()` / `store.updateRecord()` / durable recovery / automatic recalculation change.
-- no Worker, D1 schema/data, authentication, Python financial methodology, dividend event identity or IBKR importer change.
-
-Verification:
-
-- branch final exact head `991969064b7fb07ded36c0783de80e81d9da30f5`; diff exactly `TradeForm.vue` + pure service + focused test file, behind by 0.
-- PR #277 exact-head canonical CI #994 / run `31892093012`: SUCCESS.
-- frozen review `4944098383`: PASS / BLOCKER 0 / FOLLOW-UP 0; final risk R1.
-- merge `7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a`.
-- post-main CI #995 / run `31892175857`: SUCCESS.
-- Pages #1559 / run `31892175529`: SUCCESS.
-
-Stable checkpoint result:
-
-**Phase 10.1 Transaction Entry UX Convergence is OPTIMIZED FOR CURRENT REQUIREMENTS.** Reopen only for fresh user/production evidence.
-
-### 6C. Batch 10.2A — Dividend Gross/Tax/Net Semantics & Confirmation Clarity
+### 6B. Phase 10.1B — Known Symbol Suggestions & Entry Feedback
 
 **State: CLOSED / PRODUCTION PAGES VERIFIED**
 
-Primary product goal:
+- suggestions derive only from already-loaded tenant records
+- trim+uppercase, recent-first dedupe, prefix matching, bounded list
+- accessible pointer/touch/keyboard listbox interaction
+- new Yahoo Symbol remains freely enterable
+- no remote ticker service, suffix guessing or ticker-validity authority
 
-Prevent correct broker dividend data from being converted into an incorrect journal cashflow because the editable gross field was labeled as though it were already the actual paid amount.
+Evidence: PR #277 / `7e3dd9e5...`; CI #994/#995; Pages #1559; review `4944098383`.
+
+Stable result: **Phase 10.1 OPTIMIZED FOR CURRENT REQUIREMENTS.**
+
+### 6C. Phase 10.2A — Dividend Gross/Tax/Net Semantics & Confirmation Clarity
+
+**State: CLOSED / PRODUCTION PAGES VERIFIED**
 
 Root cause:
 
-- `DividendManager` initialized editable `amount` from engine `total_gross`.
-- editable `tax` defaulted from `total_gross - published net`.
-- persisted automatic DIV `price` was `amount - tax`.
-- desktop and mobile nevertheless labeled `amount` as `實發總額`, which strongly implies a net/paid value and could cause a user to enter broker net receipt there and then have withholding subtracted a second time.
-- the same missing entry contract allowed negative tax or tax greater than gross in the browser even though the semantic Worker requires automatic DIV price to be non-negative.
+- editable `amount` came from engine `total_gross`, `tax` from gross-minus-net, and persisted DIV price was `amount - tax`, but UI labeled amount `實發總額`.
+- entering a broker net receipt into that field could subtract tax twice.
+- browser also allowed negative tax / tax > gross before the Worker rejected resulting invalid semantics.
+
+Solution:
+
+- explicit `稅前配息總額 − 預扣稅金 = 實際入帳淨額`
+- gross > 0, tax >= 0, tax <= gross
+- desktop/mobile terminology converged
+- confirmation shows ex-date/gross/tax/net and explicit DIV outcome
+- payload/event/tax-policy/accounting authorities remain unchanged
+
+Evidence: PR #279 / `7fbdc86e...`; CI #998/#999; Pages #1561; review `4944126543`.
+
+### 6D. Phase 10.2B — Dividend Action Queue & Confirmed History Density
+
+**State: CLOSED / PRODUCTION PAGES VERIFIED**
+
+Primary product evidence:
+
+- engine dividend history accumulates across historical ex-dates;
+- DividendManager previously rendered pending, awaiting-readback and confirmed events in one full table/card stream;
+- confirmed rows are non-actionable yet consumed full desktop rows/mobile cards, so current work becomes harder to find as history grows.
 
 Implementation:
 
-- one shared frontend entry contract now projects gross, withholding tax, net and displayed tax rate.
-- desktop and mobile use explicit `稅前配息總額` / `預扣稅金` / `實際入帳淨額` language.
-- helper copy states that defaults are system estimates and should be checked against broker actuals.
-- validation blocks gross <= 0, tax < 0 and tax > gross before confirmation.
-- tax == gross remains allowed, matching the existing Worker non-negative-price contract rather than inventing a new tax policy.
-- the confirmation dialog now shows ex-date, gross, withholding tax and net, and says the DIV journal row is created using ex-date + net amount.
-- the action is named `確認建立 DIV 交易`, making the authoritative outcome explicit.
+- pure workflow projection partitions pending / awaiting-readback / authoritative confirmed rows using existing identity/confirmation keys.
+- active queue combines pending + awaiting and sorts the combined collection by ex-date recent-first.
+- a review found and fixed the first candidate's inconsistency where pending rows were concatenated before awaiting rows despite UI promising `最新除息日優先`; focused regression locks the corrected combined ordering.
+- desktop/mobile editable workflow renders only active rows.
+- confirmed rows move to a default-collapsed compact history, recent-first.
+- history explicitly directs exact DIV amount/note to Transaction History; it does not reuse market estimates as confirmed cashflow.
+- no persisted new status/filter authority.
 
-Compatibility / authority preservation:
+Compatibility:
 
-- default pending values still come from existing reviewed Python dividend output.
-- reviewed withholding rates are unchanged.
-- deterministic event identity remains normalized `Symbol + ex_date`.
-- automatic DIV body remains qty=1, price=net, fee=0, tax=0, tag=`Auto-Dividend`.
-- persisted `稅金:<currency> <amount>` note token format remains unchanged; this prevents cross-version ambiguous replay from drifting the Phase 9.2 payload hash.
-- actual DIV record remains the sole confirmed/`已入帳` authority.
-- existing conflict/readback/memory-lock/durable recovery lifecycle is unchanged.
-- existing post-save recalculation lifecycle is unchanged because no product evidence justified widening this batch into a lifecycle refactor.
-- no pay-date is guessed or introduced; README was corrected to current producer/UI truth.
+- `store.records` DIV row still owns `已入帳`.
+- current-page awaiting readback remains memory-only.
+- deterministic event identity/payload/tax-note token unchanged.
+- existing create/conflict/readback/recovery/recalculation unchanged.
+- no Python/Worker/D1/auth/IBKR/financial methodology change.
 
-Verification:
+Evidence:
 
-- branch final exact head `c383e4aa4c7a26d88890189f4f48c0e3f4105bc2`; diff exactly DividendManager + dividendPresentation helper + focused tests, behind by 0.
-- exact-head canonical CI #998 / run `31892772530`: SUCCESS.
-- frozen review `4944126543`: PASS / BLOCKER 0 / FOLLOW-UP 0; final risk R2 Moderate.
-- merge `7fbdc86e9b59861ba9c33ba8e145913fcbe225e6`.
-- post-main CI #999 / run `31892844446`: SUCCESS.
-- Pages #1561 / run `31892844089`: SUCCESS.
-- no production Worker deployment or D1 migration was required.
+- PR #281 exact head `2449ede597c5cc3a6eadd3e698b4c17a63b172a5`
+- CI #1004 / run `31893757694`: SUCCESS
+- frozen review `4944167995`: PASS / BLOCKER 0 / FOLLOW-UP 0
+- merge `7c670a6c9c015c689add4ce742a4941d74e76e38`
+- post-main CI #1005 / run `31893865494`: SUCCESS
+- Pages #1563 / run `31893864842`: SUCCESS
 
-Rollback:
+Stable result:
 
-Revert PR #279 / merge `7fbdc86e...` or restore the previous Pages build. No Worker, schema, D1-data, Python or financial-data rollback is required.
-
-Stable checkpoint result:
-
-**Phase 10.2A is CLOSED / PRODUCTION PAGES VERIFIED.** The gross/tax/net ambiguity and the matching frontend/server validation gap are closed without changing dividend accounting, reviewed tax policy or deterministic event identity.
+**Phase 10.2 Dividend Workflow Productization is OPTIMIZED FOR CURRENT REQUIREMENTS.** The evidence-backed input-semantic and queue/history-density gaps are closed. Do not invent Phase 10.2C without fresh production/user evidence.
 
 ---
 
@@ -675,67 +450,69 @@ Stable checkpoint result:
 
 ### NOW
 
-No runtime batch is active. Phase 10.2A is closed / production Pages verified. Phase 10.2 remains the current product line pending one more bounded workflow audit.
+No runtime batch is active. Phase 10.2 is closed/optimized; production Pages runtime is `7c670a6c...`; production Worker remains `9b9f09f5...`.
 
-Useful user-browser evidence points, not coding blockers:
+Optional user-browser evidence, not coding blockers:
 
-1. reload production Pages and verify dividend confirmation labels clearly read as gross / withholding tax / actual net;
-2. verify entering negative tax or tax greater than gross is blocked before any DIV journal write;
-3. verify the confirmation prompt shows ex-date + gross + tax + net and makes clear that a DIV transaction will be created;
-4. verify previously confirmed rows remain `已入帳` based on records and ambiguous/reload flows do not invite duplicate submission;
-5. optionally exercise one real IBKR importer preview/write/replay flow when a safe sample is available.
+1. confirm latest pending/awaiting dividend rows appear first on desktop/mobile;
+2. confirm `已入帳歷史` is collapsed by default and expands cleanly;
+3. confirm gross/tax/net labels and invalid-tax blocking remain clear;
+4. confirm existing DIV rows still control `已入帳` after reload;
+5. optionally exercise one real IBKR file preview/write/replay flow when convenient.
 
-Only reopen closed batches if fresh production evidence contradicts the deployed contracts.
+### NEXT — Phase 10.3 bounded product-first audit
 
-### NEXT — bounded Phase 10.2 queue/history audit
+Proceed to **Phase 10.3 — Journal / Transaction History UX Convergence**.
 
-Audit whether the current dividend work queue remains efficient as history grows before selecting any Phase 10.2B runtime scope.
+Already verified from current `RecordList.vue`:
 
-Verified audit context so far:
+- desktop table currently renders Date / Symbol / Type / Qty / Unit Price / Total / Note / Actions;
+- mobile cards render Date / Type / Symbol / Amount / Qty@Price / Fee+Tax / optional Note / Edit/Delete;
+- **Tag / strategy context is not visibly rendered in either desktop or mobile record rows**, even though search already matches `r.tag` and group membership is central to portfolio strategy workflow;
+- current RecordList controls provide text search, transaction type, **year** and page size; README currently says `日期區間篩選`, which is not the implemented RecordList control;
+- current group filtering is applied implicitly through `store.currentGroup`, rather than being explained as a RecordList-local control;
+- edit/delete already reuse existing mutation lifecycle and must remain authoritative; do not rebuild them merely for redesign.
 
-- the engine's dividend history is accumulated over historical ex-dates and includes both pending and confirmed semantic events;
-- `DividendManager` currently maps that published list directly and renders pending, confirmed and awaiting-readback states in one collection;
-- the component exposes counts but no explicit pending-first projection, status filter, collapse policy or confirmed-history density control.
+Audit questions before selecting 10.3A:
 
-Questions to answer before implementation:
+1. What is the minimum information hierarchy that makes Symbol + Type + Strategy Tag + Journal Note readable without overloading desktop/mobile?
+2. Is the first high-value fix `Tag/Journal Context visibility + accurate filter controls`, rather than a broad visual rewrite?
+3. Does a real date-from/date-to filter materially improve common journal retrieval versus simply correcting README to `年份`? Implement functionality only if workflow value is demonstrated.
+4. Should active filters have a visible summary/clear action so users know why records disappeared, especially on mobile?
+5. Can DIV history's “go to Transaction History” need be served by existing type/search controls or a small presentation affordance without creating cross-component hidden state?
+6. Preserve transaction valuation/FX fail-closed rules; redesign must not recalculate financial values.
+7. Avoid bulk mutation/export/lot analytics unless a separate evidence-backed product batch justifies them.
 
-- do unconfirmed actionable rows remain immediately visible when confirmed history becomes long, especially on mobile;
-- should presentation order be pending/awaiting first and recent-first within state, without mutating engine order or authority;
-- is a minimal `待處理 / 已入帳` filter or collapsed confirmed-history section materially better than adding a broader dividend dashboard;
-- can this remain a pure presentation projection over the existing list and record truth, with no new persistence or financial state;
-- is there enough product value to justify a 10.2B, or should Phase 10.2 close and advance to 10.3.
+If the audit confirms one bounded high-value gap, define **Phase 10.3A** with explicit UX scope and no financial-methodology changes. Do not pre-approve a multi-feature rewrite simply because the user called the product line a “大改版”; deliver it through independently testable batches.
 
-Do not implement sorting/filtering merely because the capability is absent. Select a 10.2B only if the audit demonstrates concrete workflow benefit with bounded scope.
-
-After Phase 10.2, the approved roadmap remains:
-
-`10.3 Journal / Transaction History UX Convergence → 10.4 Portfolio Decision Support`
-
-**Phase 7.2 IBKR Flex/background synchronization**, Action Center / Daily Command Center and other new directions are deferred for later discussion; they are not current NEXT work.
+After Phase 10.3, proceed to **Phase 10.4 Portfolio Decision Support**.
 
 ### BACKLOG
 
-- physical D1 cleanup of legacy IBKR machine-only `note` values: only after explicit dry-run → count → representative sample → user approval; current browser projection already solves UX without destructive mutation
+- physical D1 cleanup of legacy IBKR machine-only notes: only after explicit dry-run → count → sample → approval; browser projection already solves UX without destructive mutation
 - Phase 5 historical lot/trade attribution: blocked until authoritative production lot-ledger producer exists
-- common-period XIRR / Sharpe / Sortino / MDD / strategy scoring: requires a separately reviewed financial methodology; not justified by current product evidence
-- richer broker types (DIV/options/futures/FX) only after STK import usage proves value
-- Phase 7.2 background Flex sync feasibility and an eventual Action Center remain deferred roadmap candidates, not active implementation work
+- common-period XIRR / Sharpe / Sortino / MDD / strategy scoring: separate reviewed financial methodology required
+- richer IBKR types (DIV/options/futures/FX) only after current import usage proves value
+- Phase 7.2 background Flex sync feasibility
+- Action Center / Daily Command Center
 
 ### REJECT / DO NOT DO NOW
 
-- do not restore `confirmed_dividend_keys` or another browser-local value as confirmation authority
-- do not reopen Phase 9.2 with retry loops, UI-only duplicate checks, or browser-local confirmation authority without new contradictory production evidence
-- do not invent or infer pay-date when the current producer does not publish one
-- do not reinterpret `amount` as net while also subtracting tax; gross/tax/net must remain explicit
-- do not change reviewed dividend withholding policy as part of UX work
-- do not change the persisted automatic-DIV tax-note token casually; it participates in deterministic payload hashing
-- do not store IBKR password/token in D1 or frontend localStorage
-- do not give the current Worker system principal record-write authority merely to automate Phase 7.2
-- do not guess broker account identity or Yahoo market suffix
-- do not turn known-Symbol suggestions into ticker-validity authority or require suggestion selection before entry
-- do not use `note` as replay/idempotency identity
-- do not bulk-delete legacy note metadata simply because the UI no longer needs it
+- do not restore `confirmed_dividend_keys` or any browser-local confirmation authority
+- do not reopen Phase 9.2 with retry loops or UI-only duplicate checks without contradictory production evidence
+- do not invent/infer pay-date
+- do not reinterpret dividend gross as net and subtract tax again
+- do not change reviewed withholding policy as part of UX work
+- do not casually change automatic-DIV tax-note token; it participates in deterministic payload hashing
+- do not store IBKR credentials/tokens in D1/localStorage
+- do not give the Worker system principal record-write authority merely for background sync
+- do not guess broker account identity or Yahoo suffix
+- do not turn known-Symbol suggestions into ticker validity
+- do not use Note as replay/idempotency identity
+- do not bulk-delete legacy metadata merely because UI hides it
 - do not rebuild Worker/Python/store architecture without evidence
+- do not turn Transaction History redesign into a second valuation/accounting/FX engine
+- do not implement historical lot attribution from current-day `day_ledger`
 
 ---
 
@@ -743,12 +520,14 @@ After Phase 10.2, the approved roadmap remains:
 
 1. Read `AI_PROJECT_PLAYBOOK.md`.
 2. Read `README.md`.
-3. Read this current handoff.
-4. Read `docs/archive/to_do_update_list_through_phase6.md` only when historical details are needed.
+3. Read this handoff.
+4. Read `docs/archive/to_do_update_list_through_phase6.md` only when historical Phase 1–6 detail is needed.
 5. Re-read fresh GitHub `main`, open PRs, latest CI and Pages before modifying anything.
-6. If user reports an active production symptom, treat that screenshot/log/runtime result as newer evidence than this prose.
-7. Keep one Primary Active Batch and preserve the recovery point before code-bearing work.
-8. Follow the approved Phase 10 order unless the user explicitly reprioritizes it.
+6. If the user reports a production symptom, treat that screenshot/log/runtime result as newer evidence than prose.
+7. Keep one Primary Active Batch and preserve the recovery point.
+8. Follow approved Phase 10 order unless user explicitly reprioritizes.
+9. When debugging, inspect same-class impact and add regression prevention.
+10. Close technically optional work once the product goal is verified; do not let process/debug become the product roadmap.
 
 ---
 
@@ -756,19 +535,19 @@ After Phase 10.2, the approved roadmap remains:
 
 | Purpose | Checkpoint |
 |---|---|
-| Current protected main / production Pages after Phase 10.2A | `7fbdc86e9b59861ba9c33ba8e145913fcbe225e6` |
-| Before Phase 10.2A / Phase 10.1B docs stable checkpoint | `639ffe06f7e13ecc42063115e40dbd0de57aff5a` |
+| Phase 10.2B runtime / production Pages | `7c670a6c9c015c689add4ce742a4941d74e76e38` |
+| Before Phase 10.2B / Phase 10.2A docs checkpoint | `d2bc8cea8b036f6153ccfd533e5ab22f2d78e491` |
+| Phase 10.2A runtime / production Pages | `7fbdc86e9b59861ba9c33ba8e145913fcbe225e6` |
+| Before Phase 10.2A / Phase 10.1B docs checkpoint | `639ffe06f7e13ecc42063115e40dbd0de57aff5a` |
 | Phase 10.1B runtime / production Pages | `7e3dd9e5cf1ea4ec19ddcc6e4f8ed5aaf713b32a` |
-| Before Phase 10.1B / Phase 10.1A stable docs checkpoint | `b6c48bd0f0979a5889f7f34d008004f67556b5bb` |
 | Phase 10.1A runtime / production Pages | `0ca4f890c0771755d907d725069612dc62e6e774` |
-| Before Phase 10.1A / Phase 9.2 docs stable checkpoint | `11c832c9a21b68bd7a2bd5a472b073239975a4be` |
 | Phase 9.2 production activation control plane | `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e` |
-| Current production Worker runtime / Phase 9.2 | `9b9f09f5079c59750219c73e23002a7ab8d2f33e` |
-| Before Phase 9.2 / Phase 9.1 stable runtime | `6bc509e4e0fd6671b036cb63ea8e210152609f8c` |
-| Before Phase 9.1 / Phase 8.1 stable runtime | `f7e47744399ed31a701f67f8d7e52ab393c2c6b2` |
-| Before Phase 8.1 / Phase 7.1B stable runtime | `1f82c9c5e5033e3d51cfb94267982d3fad7d618e` |
-| Before 7.1B note separation | `df2c383a447ca1ea058b46ee4dc3a4e7dfd62838` |
-| Before 7.1A import profile | `b925b1b80c852008e8eaf95bbb21cada874be070` |
+| Production Worker / Phase 9.2 runtime | `9b9f09f5079c59750219c73e23002a7ab8d2f33e` |
+| Phase 9.1 stable runtime | `6bc509e4e0fd6671b036cb63ea8e210152609f8c` |
+| Phase 8.1 stable runtime | `f7e47744399ed31a701f67f8d7e52ab393c2c6b2` |
+| Phase 7.1B runtime | `1f82c9c5e5033e3d51cfb94267982d3fad7d618e` |
+| Before 7.1B | `df2c383a447ca1ea058b46ee4dc3a4e7dfd62838` |
+| Phase 7.1 runtime | `b925b1b80c852008e8eaf95bbb21cada874be070` |
 | Phase 6 stable runtime | `b922851cafd699193fe0b5f96d07178703eca96a` |
 
-Historical recovery points through Phase 6 are preserved in the archived handoff.
+Historical recovery points through Phase 6 remain in the archive.
