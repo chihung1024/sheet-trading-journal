@@ -21,6 +21,7 @@ class MemoryStorage {
 }
 
 const OWNER = 'user@example.com';
+const API_BASE_URL = 'https://api.example.test';
 const ENTRY = Object.freeze({
   idempotencyKey: 'IBKR~ORDER~20260814~U123~487287953~NVDA~BUY',
   record: Object.freeze({
@@ -39,6 +40,15 @@ const ENTRY = Object.freeze({
 const successResponse = body => new Response(JSON.stringify(body), {
   status: 200,
   headers: { 'Content-Type': 'application/json' },
+});
+
+const writerOptions = ({ storage, fetchImpl, getToken = () => 'token-a', refreshToken = async () => false }) => ({
+  storage,
+  owner: OWNER,
+  getToken,
+  refreshToken,
+  apiBaseUrl: API_BASE_URL,
+  fetchImpl,
 });
 
 test('IBKR import identity hashes deterministically into the existing durable opaque-key alphabet', async () => {
@@ -71,20 +81,19 @@ test('durable IBKR intent preserves exact record body, random barrier, and deter
 test('confirmed IBKR create sends exact durable key/body and clears pending intent', async () => {
   const storage = new MemoryStorage();
   const requests = [];
-  const auth = { token: 'token-a', user: { email: OWNER }, refreshToken: async () => false };
-  const result = await createIbkrRecord(ENTRY, {
+  const result = await createIbkrRecord(ENTRY, writerOptions({
     storage,
-    auth,
     fetchImpl: async (url, init) => {
       requests.push({ url, init });
       return successResponse({ success: true, deduplicated: false, record_id: 99 });
     },
-  });
+  }));
 
   assert.equal(result.committed, true);
   assert.equal(result.deduplicated, false);
   assert.equal(result.recordId, 99);
   assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, `${API_BASE_URL}/api/records`);
   assert.equal(requests[0].init.method, 'POST');
   assert.equal(requests[0].init.body, JSON.stringify(ENTRY.record));
   assert.equal(requests[0].init.headers.Authorization, 'Bearer token-a');
@@ -102,18 +111,15 @@ test('401 refresh retries the same durable intent exactly once with the refreshe
   const storage = new MemoryStorage();
   const keys = [];
   const tokens = [];
-  const auth = {
-    token: 'expired-token',
-    user: { email: OWNER },
-    async refreshToken() {
-      this.token = 'fresh-token';
+  let token = 'expired-token';
+  let call = 0;
+  const result = await createIbkrRecord(ENTRY, writerOptions({
+    storage,
+    getToken: () => token,
+    refreshToken: async () => {
+      token = 'fresh-token';
       return true;
     },
-  };
-  let call = 0;
-  const result = await createIbkrRecord(ENTRY, {
-    storage,
-    auth,
     fetchImpl: async (_url, init) => {
       call += 1;
       keys.push(init.headers['Idempotency-Key']);
@@ -126,7 +132,7 @@ test('401 refresh retries the same durable intent exactly once with the refreshe
       }
       return successResponse({ success: true, deduplicated: true, record_id: 99 });
     },
-  });
+  }));
 
   assert.equal(result.deduplicated, true);
   assert.equal(call, 2);
@@ -136,11 +142,9 @@ test('401 refresh retries the same durable intent exactly once with the refreshe
 
 test('definite 409 rejection tombstones body while ambiguous network failure preserves live replay intent', async () => {
   const rejectedStorage = new MemoryStorage();
-  const auth = { token: 'token', user: { email: OWNER }, refreshToken: async () => false };
   await assert.rejects(
-    createIbkrRecord(ENTRY, {
+    createIbkrRecord(ENTRY, writerOptions({
       storage: rejectedStorage,
-      auth,
       fetchImpl: async () => new Response(JSON.stringify({
         success: false,
         error: 'conflict',
@@ -149,7 +153,7 @@ test('definite 409 rejection tombstones body while ambiguous network failure pre
         status: 409,
         headers: { 'Content-Type': 'application/json' },
       }),
-    }),
+    })),
     error => error?.status === 409 && error?.outcomeAmbiguous === false,
   );
   const durableKey = await __test.hashImportIdentity(ENTRY.idempotencyKey);
@@ -161,11 +165,10 @@ test('definite 409 rejection tombstones body while ambiguous network failure pre
 
   const ambiguousStorage = new MemoryStorage();
   await assert.rejects(
-    createIbkrRecord(ENTRY, {
+    createIbkrRecord(ENTRY, writerOptions({
       storage: ambiguousStorage,
-      auth,
       fetchImpl: async () => { throw new Error('network lost'); },
-    }),
+    })),
     error => error?.outcomeAmbiguous === true,
   );
   const live = JSON.parse(
