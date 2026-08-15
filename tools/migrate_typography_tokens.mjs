@@ -98,9 +98,7 @@ const applySemanticCorrections = (file, source) => {
 
   if (relative === 'src/components/RecordList.vue') {
     const noteLine = '                                <span v-if="r.note" class="record-note-inline">{{ r.note }}</span>\n';
-    while (out.includes(noteLine + noteLine)) {
-      out = out.replaceAll(noteLine + noteLine, noteLine);
-    }
+    while (out.includes(noteLine + noteLine)) out = out.replaceAll(noteLine + noteLine, noteLine);
 
     out = replaceOnce(
       out,
@@ -132,6 +130,30 @@ const applySemanticCorrections = (file, source) => {
       '.note-cell { min-width: 180px; max-width: 320px; }\n.note-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; color: var(--text-main); line-height: 1.4; }\n.note-empty { color: var(--text-sub); }\n',
       '.record-note-inline { display: block; width: 100%; min-width: 0; color: var(--text-sub); font-size: var(--type-label); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n',
       'replace standalone note styles with inline journal summary',
+    );
+
+    out = out.replace(
+      '.stat-value { font-size: var(--type-metric); font-weight: 700;',
+      '.stat-value { font-size: var(--type-metric-sm); font-weight: 700;',
+    );
+    out = out.replace(
+      'th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: var(--type-body);',
+      'th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: var(--type-label);',
+    );
+    out = out.replace(
+      'td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--type-emphasis); }',
+      'td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--type-body); }',
+    );
+  }
+
+  if (relative === 'src/components/HoldingsTable.vue') {
+    out = out.replace(
+      'th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: var(--type-body);',
+      'th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-color); color: var(--text-sub); font-size: var(--type-label);',
+    );
+    out = out.replace(
+      'td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--type-emphasis); }',
+      'td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--type-body); }',
     );
   }
 
