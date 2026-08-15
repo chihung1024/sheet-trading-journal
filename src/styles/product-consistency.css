@@ -1,4 +1,4 @@
-/* Phase 13.1A — cross-page visual consistency foundation.
+/* Phase 13.1 — cross-page visual consistency foundation.
    Presentation only: no financial, persistence, or navigation authority lives here. */
 
 :root {
@@ -71,7 +71,8 @@
 
 .card h3,
 .card-header h3,
-.daily-command h2 {
+.daily-command h2,
+.section-groups .gm-title {
   font-size: var(--ui-font-section) !important;
   line-height: var(--ui-line-tight);
   letter-spacing: -0.01em;
@@ -88,7 +89,10 @@ button {
 .filter-date-input,
 .btn-refresh,
 .btn-clear-filters,
-.action-trigger-btn {
+.action-trigger-btn,
+.section-groups .gm-select-wrap select,
+.section-groups .group-item input,
+.section-groups .btn-sm {
   min-height: var(--ui-control-height);
 }
 
@@ -161,7 +165,7 @@ button {
   line-height: 1.15 !important;
 }
 
-/* Holdings and records: same toolbar and table density. */
+/* Holdings, records and dividends: same toolbar and table density. */
 .section-holdings .card-header,
 .section-records .card-header,
 .section-dividends .card-header {
@@ -197,26 +201,36 @@ button {
   vertical-align: middle;
 }
 
-/* Transaction history: stop Note from becoming a wide empty visual band. */
+/* Transaction history: Note stays scannable without becoming a wide empty band. */
 .section-records .desktop-view table {
   table-layout: fixed;
 }
 
 .section-records .desktop-view th:nth-child(1) { width: 11%; }
-.section-records .desktop-view th:nth-child(2) { width: 15%; }
+.section-records .desktop-view th:nth-child(2) { width: 20%; }
 .section-records .desktop-view th:nth-child(3) { width: 8%; }
 .section-records .desktop-view th:nth-child(4) { width: 8%; }
-.section-records .desktop-view th:nth-child(5) { width: 11%; }
-.section-records .desktop-view th:nth-child(6) { width: 15%; }
-.section-records .desktop-view th:nth-child(7) { width: 22%; }
-.section-records .desktop-view th:nth-child(8) { width: 10%; }
+.section-records .desktop-view th:nth-child(5) { width: 12%; }
+.section-records .desktop-view th:nth-child(6) { width: 18%; }
+.section-records .desktop-view th:nth-child(7) { width: 14%; }
+.section-records .desktop-view th:nth-child(8) { width: 9%; }
 
 .section-records .note-cell {
   min-width: 0;
   color: var(--text-sub);
+  font-size: var(--ui-font-small) !important;
 }
 
-.section-records .note-preview,
+.section-records .note-preview {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
 .section-records .m-note-preview {
   display: -webkit-box !important;
   -webkit-box-orient: vertical;
@@ -228,12 +242,53 @@ button {
 }
 
 .section-records .note-empty {
+  display: inline-block;
   color: var(--text-sub);
-  opacity: 0.55;
+  opacity: 0.42;
 }
 
 .section-records .actions {
   white-space: nowrap;
+}
+
+/* Group management follows the same page-title, control and table hierarchy. */
+.section-groups .gm-card {
+  gap: var(--ui-page-gap) !important;
+}
+
+.section-groups .gm-subtitle,
+.section-groups .gm-help {
+  font-size: var(--ui-font-small) !important;
+  line-height: var(--ui-line-body);
+}
+
+.section-groups .gm-section {
+  padding: var(--ui-space-4) !important;
+}
+
+.section-groups .gm-section-title {
+  font-size: var(--ui-font-body) !important;
+  line-height: var(--ui-line-tight);
+}
+
+.section-groups .gm-section-hint,
+.section-groups .gm-empty-hint,
+.section-groups .gm-select-wrap label,
+.section-groups .gm-counter {
+  font-size: var(--ui-font-caption) !important;
+}
+
+.section-groups .gm-table th {
+  padding: 11px var(--ui-table-pad-x) !important;
+  font-size: var(--ui-table-header-size) !important;
+  line-height: 1.25;
+}
+
+.section-groups .gm-table td {
+  padding: var(--ui-table-pad-y) var(--ui-table-pad-x) !important;
+  font-size: var(--ui-table-body-size) !important;
+  line-height: 1.4;
+  vertical-align: middle;
 }
 
 /* Laptop/tablet: keep density stable instead of shrinking individual areas arbitrarily. */
@@ -244,8 +299,8 @@ button {
     --ui-table-pad-x: 11px;
   }
 
-  .section-records .desktop-view th:nth-child(2) { width: 16%; }
-  .section-records .desktop-view th:nth-child(7) { width: 20%; }
+  .section-records .desktop-view th:nth-child(2) { width: 21%; }
+  .section-records .desktop-view th:nth-child(7) { width: 13%; }
 }
 
 @media (max-width: 900px) {
@@ -283,5 +338,9 @@ button {
 
   .section-records .m-note-preview {
     -webkit-line-clamp: 2;
+  }
+
+  .section-groups .gm-section {
+    padding: var(--ui-space-3) !important;
   }
 }
