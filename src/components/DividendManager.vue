@@ -8,7 +8,10 @@
           <span class="subtitle" v-if="localDividends.length > 0">
             {{ pendingCount }} 筆待處理
             <span v-if="confirmedCount > 0" class="confirmed-badge">
-              / {{ confirmedCount }} 筆已確認
+              / {{ confirmedCount }} 筆已入帳
+            </span>
+            <span v-if="awaitingReadbackCount > 0" class="awaiting-badge">
+              / {{ awaitingReadbackCount }} 筆已保存待同步
             </span>
           </span>
         </div>
@@ -41,7 +44,10 @@
               v-for="div in localDividends" 
               :key="getDivKey(div)" 
               class="table-row"
-              :class="{ 'row-confirmed': isConfirmed(div) }"
+              :class="{
+                'row-confirmed': isConfirmed(div),
+                'row-awaiting': isAwaitingReadback(div),
+              }"
             >
               <td class="text-center">
                 <div class="date-display">{{ formatFullDate(div.ex_date) }}</div>
@@ -51,6 +57,7 @@
                 <div class="symbol-wrapper">
                   <span class="symbol-tag">{{ div.symbol }}</span>
                   <span v-if="isConfirmed(div)" class="confirmed-label">✓ 已入帳</span>
+                  <span v-else-if="isAwaitingReadback(div)" class="syncing-label">✓ 已保存，等待同步</span>
                 </div>
               </td>
               
@@ -63,7 +70,7 @@
                     class="input-field"
                     step="0.01"
                     placeholder="0.00"
-                    :disabled="isConfirmed(div)"
+                    :disabled="isInteractionLocked(div)"
                   >
                 </div>
               </td>
@@ -76,7 +83,7 @@
                     class="input-field input-tax"
                     step="0.01"
                     placeholder="0.00"
-                    :disabled="isConfirmed(div)"
+                    :disabled="isInteractionLocked(div)"
                   >
                   <span class="tax-rate">{{ getTaxRate(div) }}%</span>
                 </div>
@@ -92,12 +99,16 @@
                 <div class="action-buttons">
                   <button 
                     class="btn-action btn-confirm" 
-                    :class="{ 'btn-confirmed': isConfirmed(div) }"
+                    :class="{
+                      'btn-confirmed': isConfirmed(div),
+                      'btn-awaiting': isAwaitingReadback(div),
+                    }"
                     @click="confirmDividend(div)"
-                    :disabled="processingKey === getDivKey(div) || isConfirmed(div)"
-                    :title="isConfirmed(div) ? '已確認入帳' : '確認入帳'"
+                    :disabled="processingKey === getDivKey(div) || isInteractionLocked(div)"
+                    :title="getConfirmationTitle(div)"
                   >
                     <span v-if="processingKey === getDivKey(div)" class="spinner"></span>
+                    <span v-else-if="isAwaitingReadback(div)">…</span>
                     <span v-else>✓</span>
                   </button>
                 </div>
@@ -126,7 +137,10 @@
           v-for="div in localDividends" 
           :key="'m_' + getDivKey(div)" 
           class="dividend-card"
-          :class="{ 'card-confirmed': isConfirmed(div) }"
+          :class="{
+            'card-confirmed': isConfirmed(div),
+            'card-awaiting': isAwaitingReadback(div),
+          }"
         >
           <div class="card-header">
             <div class="card-info">
@@ -135,6 +149,9 @@
             </div>
             <span v-if="isConfirmed(div)" class="confirmed-badge-mobile">
               ✓ 已入帳
+            </span>
+            <span v-else-if="isAwaitingReadback(div)" class="awaiting-badge-mobile">
+              ✓ 已保存，等待同步
             </span>
           </div>
           
@@ -150,7 +167,7 @@
                 class="form-input"
                 step="0.01"
                 placeholder="輸入總額"
-                :disabled="isConfirmed(div)"
+                :disabled="isInteractionLocked(div)"
               >
             </div>
             
@@ -166,7 +183,7 @@
                 class="form-input"
                 step="0.01"
                 placeholder="輸入稅金"
-                :disabled="isConfirmed(div)"
+                :disabled="isInteractionLocked(div)"
               >
             </div>
             
@@ -182,12 +199,16 @@
           <div class="card-footer">
             <button 
               class="btn-card btn-submit" 
-              :class="{ 'btn-submitted': isConfirmed(div) }"
+              :class="{
+                'btn-submitted': isConfirmed(div),
+                'btn-awaiting': isAwaitingReadback(div),
+              }"
               @click="confirmDividend(div)"
-              :disabled="processingKey === getDivKey(div) || isConfirmed(div)"
+              :disabled="processingKey === getDivKey(div) || isInteractionLocked(div)"
             >
               <span v-if="processingKey === getDivKey(div)" class="spinner"></span>
               <span v-else-if="isConfirmed(div)">✓ 已入帳</span>
+              <span v-else-if="isAwaitingReadback(div)">✓ 已保存，等待同步</span>
               <span v-else>✓ 確認入帳</span>
             </button>
           </div>
@@ -198,9 +219,8 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
-import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
 import {
   getDividendCurrency,
@@ -208,57 +228,50 @@ import {
   getDividendNetNative,
 } from '../services/dividendPresentation.js';
 import {
+  buildConfirmedDividendKeySet,
+  getPendingDividendEventKey,
+  isDividendConfirmedByRecords,
+} from '../services/dividendConfirmation.js';
+import {
   isMutationAmbiguous,
   isMutationCommitted,
 } from '../services/mutationOutcome.js';
-import { subscribeRecordCreateRecoverySuccess } from '../services/recordCreateRecoverySignal.js';
 
 const store = usePortfolioStore();
-const auth = useAuthStore();
 const { addToast } = useToast();
 
 const loading = ref(false);
 const processingKey = ref(null);
 const localDividends = ref([]);
-const confirmedKeys = ref(new Set());
+const committedAwaitingReadbackKeys = ref(new Set());
 
-const STORAGE_KEY = 'confirmed_dividend_keys';
+const getDivKey = (div) => (
+  getPendingDividendEventKey(div)
+  || `INVALID_${String(div?.symbol || '')}_${String(div?.ex_date || '')}`
+);
 
-const getDivKey = (div) => `${div.symbol}_${div.ex_date}`;
+const confirmedDividendKeys = computed(() => buildConfirmedDividendKeySet(store.records));
+const isConfirmed = (div) => isDividendConfirmedByRecords(div, confirmedDividendKeys.value);
+const isAwaitingReadback = (div) => committedAwaitingReadbackKeys.value.has(getDivKey(div));
+const isInteractionLocked = (div) => isConfirmed(div) || isAwaitingReadback(div);
 
-const loadConfirmedKeys = () => {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) confirmedKeys.value = new Set(JSON.parse(stored));
-  } catch (e) {
-    confirmedKeys.value = new Set();
+const pendingCount = computed(() => localDividends.value.filter(d => !isInteractionLocked(d)).length);
+const confirmedCount = computed(() => localDividends.value.filter(d => isConfirmed(d)).length);
+const awaitingReadbackCount = computed(() => localDividends.value.filter(d => (
+  !isConfirmed(d) && isAwaitingReadback(d)
+)).length);
+
+watch(confirmedDividendKeys, (confirmed) => {
+  if (committedAwaitingReadbackKeys.value.size === 0) return;
+  const remaining = new Set(
+    [...committedAwaitingReadbackKeys.value].filter(key => !confirmed.has(key)),
+  );
+  if (remaining.size !== committedAwaitingReadbackKeys.value.size) {
+    committedAwaitingReadbackKeys.value = remaining;
   }
-};
+});
 
-const saveConfirmedKeys = () => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(confirmedKeys.value)));
-  } catch (e) {
-    console.error('保存已確認配息失敗:', e);
-  }
-};
-
-onMounted(() => loadConfirmedKeys());
-
-const getTaxRate = (div) => {
-  const amount = Number(div.amount) || 0;
-  const tax = Number(div.tax) || 0;
-  return amount === 0 ? 0 : Math.round((tax / amount) * 100);
-};
-
-const isConfirmed = (div) => confirmedKeys.value.has(getDivKey(div));
-
-const pendingCount = computed(() => localDividends.value.filter(d => !isConfirmed(d)).length);
-const confirmedCount = computed(() => confirmedKeys.value.size);
-
-// ✅ 合併為單一 watch，統一處理 pending_dividends 和 records 更新
-watch(() => [store.pending_dividends, store.records], ([newPending, newRecords]) => {
-  // 更新本地配息列表
+watch(() => store.pending_dividends, (newPending) => {
   if (newPending && newPending.length > 0) {
     localDividends.value = newPending.map(d => {
       const gross = Number(d.total_gross) || 0;
@@ -276,30 +289,6 @@ watch(() => [store.pending_dividends, store.records], ([newPending, newRecords])
     });
   } else {
     localDividends.value = [];
-  }
-  
-  // 清理已刪除配息的確認狀態
-  if (newRecords && newRecords.length > 0) {
-    const divRecordKeys = new Set(
-      newRecords.filter(r => r.txn_type === 'DIV').map(r => `${r.symbol}_${r.txn_date}`)
-    );
-    const originalSize = confirmedKeys.value.size;
-    confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => divRecordKeys.has(key)));
-    
-    if (confirmedKeys.value.size !== originalSize) {
-      saveConfirmedKeys();
-    }
-  }
-  
-  // 清空已確認但不在待處理列表中的 keys
-  if (newPending) {
-    const pendingKeys = new Set(newPending.map(d => getDivKey(d)));
-    const originalSize = confirmedKeys.value.size;
-    confirmedKeys.value = new Set([...confirmedKeys.value].filter(key => pendingKeys.has(key)));
-    
-    if (confirmedKeys.value.size !== originalSize) {
-      saveConfirmedKeys();
-    }
   }
 }, { immediate: true, deep: true });
 
@@ -328,45 +317,28 @@ const formatNumber = (val, d = 2) => {
   });
 };
 
-const normalizeRecoveryOwner = value => (
-  typeof value === 'string' ? value.trim().toLowerCase() : ''
-);
+const getTaxRate = (div) => {
+  const amount = Number(div.amount) || 0;
+  const tax = Number(div.tax) || 0;
+  return amount === 0 ? 0 : Math.round((tax / amount) * 100);
+};
 
-const unsubscribeRecordCreateRecovery = subscribeRecordCreateRecoverySuccess(event => {
-  if (event.owner !== normalizeRecoveryOwner(auth.user?.email)) return;
+const getConfirmationTitle = (div) => {
+  if (isConfirmed(div)) return '已由交易紀錄確認入帳';
+  if (isAwaitingReadback(div)) return '交易已保存，等待最新交易紀錄同步';
+  return '確認入帳';
+};
 
-  let payload;
-  try {
-    payload = JSON.parse(event.body);
-  } catch {
-    return;
-  }
-
-  if (payload?.txn_type !== 'DIV' || payload?.tag !== 'Auto-Dividend') return;
-  const symbol = String(payload.symbol || '').trim().toUpperCase();
-  const txnDate = String(payload.txn_date || '').trim();
-  if (!symbol || !txnDate) return;
-
-  const matchingDividend = localDividends.value.find(div => (
-    String(div.symbol || '').trim().toUpperCase() === symbol
-    && String(div.ex_date || '').trim() === txnDate
-  ));
-  if (!matchingDividend) return;
-
-  const key = getDivKey(matchingDividend);
-  if (confirmedKeys.value.has(key)) return;
-  confirmedKeys.value.add(key);
-  saveConfirmedKeys();
-});
-
-onUnmounted(() => unsubscribeRecordCreateRecovery());
-
-// ✅ 大幅簡化配息確認流程：2 步驟完成
 const confirmDividend = async (div) => {
   const divKey = getDivKey(div);
   
-  if (confirmedKeys.value.has(divKey)) {
-    addToast('此配息已確認入帳', 'info');
+  if (isConfirmed(div)) {
+    addToast('此配息已由交易紀錄確認入帳', 'info');
+    return;
+  }
+
+  if (isAwaitingReadback(div)) {
+    addToast('此配息已保存，正在等待最新交易紀錄同步', 'info');
     return;
   }
   
@@ -384,19 +356,16 @@ const confirmDividend = async (div) => {
   
   if (!confirm(`確認將 ${div.symbol} 的配息 ${currency} ${formatNumber(netAmount)} 入帳嗎？`)) return;
   
-  confirmedKeys.value.add(divKey);
-  saveConfirmedKeys();
   processingKey.value = divKey;
   
   try {
-    // 透過共用 addRecord durable idempotency lifecycle 新增配息記錄
     const taxInfo = finalTax > 0 ? `稅金:${currency} ${formatNumber(finalTax, 2)}` : '';
     const record = {
       txn_date: div.ex_date,
       symbol: div.symbol,
       txn_type: 'DIV',
-      qty: 1,  // 簡化：統一使用 1
-      price: netAmount,  // 淨額直接作為價格
+      qty: 1,
+      price: netAmount,
       fee: 0,
       tax: 0,
       tag: 'Auto-Dividend',
@@ -407,29 +376,31 @@ const confirmDividend = async (div) => {
     
     if (!isMutationCommitted(outcome)) {
       if (isMutationAmbiguous(outcome)) {
-        confirmedKeys.value.delete(divKey);
-        saveConfirmedKeys();
         addToast('配息入帳回應不確定；系統正在使用原交易識別碼自動確認，請勿重複提交。', 'warning');
         return;
       }
       throw new Error('無法新增記錄');
     }
+
+    if (!outcome.refreshed || !isConfirmed(div)) {
+      committedAwaitingReadbackKeys.value = new Set([
+        ...committedAwaitingReadbackKeys.value,
+        divKey,
+      ]);
+    }
     
-    addToast(`${div.symbol} 配息已入帳 (${currency} ${formatNumber(netAmount)})`, 'success');
+    addToast(`${div.symbol} 配息已保存 (${currency} ${formatNumber(netAmount)})`, 'success');
     
-    // 🎯 Step 2: 觸發後端計算
     try {
       await store.triggerUpdate();
       addToast('⏳ 正在重新計算數據，請稍候...', 'info');
     } catch (triggerError) {
       console.error('⚠️ 觸發計算失敗:', triggerError);
-      addToast('⚠️ 配息已入帳；重新計算狀態將由系統持續追蹤與恢復，無需重複操作。', 'warning');
+      addToast('⚠️ 配息已保存；重新計算狀態將由系統持續追蹤與恢復，無需重複操作。', 'warning');
     }
     
   } catch (e) {
     console.error('❌ 配息確認失敗:', e);
-    confirmedKeys.value.delete(divKey);
-    saveConfirmedKeys();
     addToast(`入帳失敗: ${e.message || '未知錯誤'}`, 'error');
   } finally {
     processingKey.value = null;
@@ -445,6 +416,7 @@ const confirmDividend = async (div) => {
 .dm-title h3 { margin: 0; font-size: 1.125rem; font-weight: 700; color: var(--text-main); letter-spacing: -0.01em; }
 .subtitle { font-size: 0.8rem; color: var(--text-sub); font-weight: 500; }
 .confirmed-badge { color: var(--success); font-weight: 600; }
+.awaiting-badge { color: var(--warning); font-weight: 600; }
 .btn-refresh { width: 36px; height: 36px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.125rem; transition: all 0.2s; }
 .btn-refresh:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: white; transform: translateY(-1px); }
 .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -452,11 +424,16 @@ const confirmDividend = async (div) => {
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .row-confirmed { opacity: 0.6; background: rgba(16, 185, 129, 0.05) !important; }
 .row-confirmed .date-display, .row-confirmed .symbol-tag, .row-confirmed .input-field, .row-confirmed .net-display { text-decoration: line-through; color: var(--text-sub) !important; }
+.row-awaiting { background: rgba(245, 158, 11, 0.05) !important; }
 .symbol-wrapper { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .confirmed-label { display: inline-block; font-size: 0.7rem; font-weight: 700; color: var(--success); background: rgba(16, 185, 129, 0.1); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.syncing-label { display: inline-block; font-size: 0.7rem; font-weight: 700; color: var(--warning); background: rgba(245, 158, 11, 0.1); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
 .btn-confirmed { background: var(--success) !important; opacity: 0.6; cursor: not-allowed !important; }
+.btn-awaiting { background: var(--warning) !important; opacity: 0.75; cursor: not-allowed !important; }
 .card-confirmed { opacity: 0.7; background: rgba(16, 185, 129, 0.05) !important; }
+.card-awaiting { background: rgba(245, 158, 11, 0.05) !important; }
 .confirmed-badge-mobile { font-size: 0.75rem; font-weight: 700; color: var(--success); background: rgba(16, 185, 129, 0.15); padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
+.awaiting-badge-mobile { font-size: 0.75rem; font-weight: 700; color: var(--warning); background: rgba(245, 158, 11, 0.15); padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
 .btn-submitted { background: var(--success) !important; opacity: 0.7; cursor: not-allowed !important; }
 .desktop-table { display: block; }
 .table-wrapper { overflow-x: auto; }
