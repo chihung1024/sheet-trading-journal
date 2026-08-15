@@ -51,7 +51,7 @@ test('TradeForm adds journal metadata without changing the established financial
   assert.match(source, /total_amount:\s*'',\s*\n\s*tag:\s*''\s*\n\}\);/);
 });
 
-test('RecordList keeps note summaries searchable while RecordDetailPanel exposes the full note', () => {
+test('RecordList keeps journal searchable and compact while RecordDetailPanel exposes the full note', () => {
   const source = read('src/components/RecordList.vue');
   const detail = read('src/components/RecordDetailPanel.vue');
   const historyPresentation = read('src/services/recordHistoryPresentation.js');
@@ -59,12 +59,13 @@ test('RecordList keeps note summaries searchable while RecordDetailPanel exposes
   assert.match(source, /placeholder="搜尋代碼、標籤或備註\.\.\."/);
   assert.match(source, /recordMatchesHistoryFilters\(r, historyFilters\.value\)/);
   assert.match(historyPresentation, /\[record\?\.symbol, record\?\.tag, record\?\.note\]/);
-  assert.match(source, /class="note-preview">{{ r\.note }}/);
+  assert.match(source, /class="record-note-inline">{{ r\.note }}/);
   assert.match(source, /v-if="r\.note" class="m-note m-note-preview">{{ r\.note }}/);
   assert.match(detail, /v-if="record\.note" class="detail-note">{{ record\.note }}/);
   assert.match(detail, /white-space: pre-wrap/);
-  assert.match(source, /<th>備註<\/th>/);
-  assert.match(source, /colspan="8"/);
+  assert.match(source, /代碼 \/ 策略 \/ 備註/);
+  assert.doesNotMatch(source, /<th>備註<\/th>/);
+  assert.match(source, /colspan="7"/);
 });
 
 test('changing note alone does not change the financial snapshot source identity', async () => {

@@ -264,12 +264,12 @@ onUnmounted(() => {
 }
 
 .logo {
-  font-size: 3rem;
+  font-size: var(--icon-empty);
   display: block;
 }
 
 .login-card h1 {
-  font-size: 1.75rem;
+  font-size: var(--type-page);
   font-weight: 800;
   color: #1e293b;
   margin: 0 0 8px 0;
@@ -278,7 +278,7 @@ onUnmounted(() => {
 
 .subtitle {
   color: #64748b;
-  font-size: 1rem;
+  font-size: var(--type-label);
   margin: 0;
   font-weight: 500;
 }
@@ -294,11 +294,11 @@ onUnmounted(() => {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  font-size: 0.9rem;
+  font-size: var(--type-body);
 }
 
 .error-icon {
-  font-size: 1.2rem;
+  font-size: var(--icon-lg);
 }
 
 .error-content strong {
@@ -321,7 +321,7 @@ onUnmounted(() => {
 
 .footer-text {
   color: #94a3b8;
-  font-size: 0.85rem;
+  font-size: var(--type-label);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -330,7 +330,7 @@ onUnmounted(() => {
 }
 
 .lock-icon {
-  font-size: 0.9rem;
+  font-size: var(--icon-sm);
 }
 
 /* 響應式設計 */
@@ -348,15 +348,15 @@ onUnmounted(() => {
   }
 
   .logo {
-    font-size: 2.5rem;
+    font-size: var(--type-metric);
   }
 
   .login-card h1 {
-    font-size: 1.5rem;
+    font-size: var(--type-page);
   }
 
   .subtitle {
-    font-size: 0.9rem;
+    font-size: var(--type-label);
   }
 }
 </style>

@@ -104,9 +104,9 @@ const formatPercent = value => `${Number(value || 0).toFixed(2)}%`;
 }
 
 .allocation-heading > div { min-width: 0; }
-.allocation-label { display: block; color: var(--text-sub); font-size: 0.68rem; margin-bottom: 2px; }
-.allocation-heading strong { color: var(--text-main); font-size: 0.88rem; }
-.allocation-count { flex: none; color: var(--text-sub); font-size: 0.68rem; }
+.allocation-label { display: block; color: var(--text-sub); font-size: var(--type-caption); margin-bottom: 2px; }
+.allocation-heading strong { color: var(--text-main); font-size: var(--type-emphasis); }
+.allocation-count { flex: none; color: var(--text-sub); font-size: var(--type-caption); }
 
 .allocation-body {
   display: grid;
@@ -138,14 +138,14 @@ const formatPercent = value => `${Number(value || 0).toFixed(2)}%`;
   background: var(--bg-card);
   text-align: center;
 }
-.donut-center strong { font-family: 'JetBrains Mono', monospace; color: var(--text-main); font-size: 0.78rem; }
-.donut-center span { color: var(--text-sub); font-size: 0.62rem; }
+.donut-center strong { font-family: 'JetBrains Mono', monospace; color: var(--text-main); font-size: var(--type-label); }
+.donut-center span { color: var(--text-sub); font-size: var(--type-caption); }
 
 .allocation-legend { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-.legend-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 6px; align-items: center; min-width: 0; font-size: 0.68rem; }
+.legend-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 6px; align-items: center; min-width: 0; font-size: var(--type-caption); }
 .legend-swatch { width: 8px; height: 8px; border-radius: 50%; }
 .legend-symbol { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
-.legend-row strong { color: var(--text-main); font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; }
+.legend-row strong { color: var(--text-main); font-family: 'JetBrains Mono', monospace; font-size: var(--type-caption); }
 
 @media (max-width: 1200px) {
   .allocation-body { grid-template-columns: 105px minmax(0, 1fr); }

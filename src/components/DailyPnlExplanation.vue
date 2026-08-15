@@ -156,7 +156,7 @@ const pnlClass = (value) => {
 .eyebrow {
   margin: 0 0 4px;
   color: var(--text-sub);
-  font-size: 0.75rem;
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -165,19 +165,19 @@ const pnlClass = (value) => {
 .explanation-header h3 {
   margin: 0;
   color: var(--text-main);
-  font-size: 1.05rem;
+  font-size: var(--type-section);
 }
 
 .explanation-period {
   margin: 4px 0 0;
   color: var(--text-sub);
-  font-size: 0.8rem;
+  font-size: var(--type-label);
 }
 
 .published-total {
   flex: none;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 1.05rem;
+  font-size: var(--type-emphasis);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -197,7 +197,7 @@ const pnlClass = (value) => {
   border-radius: 8px;
   background: var(--bg-secondary);
   color: var(--text-sub);
-  font-size: 0.78rem;
+  font-size: var(--type-label);
 }
 
 .component-chip strong,
@@ -209,7 +209,7 @@ const pnlClass = (value) => {
 .explanation-copy {
   margin-bottom: 10px;
   color: var(--text-sub);
-  font-size: 0.78rem;
+  font-size: var(--type-label);
   line-height: 1.45;
 }
 
@@ -254,14 +254,14 @@ const pnlClass = (value) => {
   border-radius: 999px;
   border: 1px solid var(--border-color);
   color: var(--text-sub);
-  font-size: 0.7rem;
+  font-size: var(--type-caption);
   font-weight: 600;
 }
 
 .contributor-total {
   flex: none;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9rem;
+  font-size: var(--type-metric-sm);
   white-space: nowrap;
 }
 
@@ -271,7 +271,7 @@ const pnlClass = (value) => {
   gap: 5px 12px;
   margin-top: 7px;
   color: var(--text-sub);
-  font-size: 0.75rem;
+  font-size: var(--type-caption);
 }
 
 .component-detail {
@@ -285,7 +285,7 @@ const pnlClass = (value) => {
 .no-component-change {
   margin-top: 7px;
   color: var(--text-sub);
-  font-size: 0.75rem;
+  font-size: var(--type-caption);
 }
 
 .show-more-btn {
@@ -298,7 +298,7 @@ const pnlClass = (value) => {
   color: var(--text-main);
   cursor: pointer;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--type-control);
 }
 
 .show-more-btn:hover {
@@ -322,7 +322,7 @@ const pnlClass = (value) => {
   }
 
   .published-total {
-    font-size: 1rem;
+    font-size: var(--type-emphasis);
   }
 
   .component-summary {
@@ -357,7 +357,7 @@ const pnlClass = (value) => {
   }
 
   .contributor-total {
-    font-size: 0.84rem;
+    font-size: var(--type-emphasis);
   }
 
   .contributor-components {

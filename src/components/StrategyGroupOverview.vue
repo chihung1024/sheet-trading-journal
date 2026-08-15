@@ -191,7 +191,7 @@ const metricClass = (metric) => (
 .eyebrow {
   margin: 0 0 4px;
   color: var(--text-sub);
-  font-size: 0.72rem;
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -205,7 +205,7 @@ const metricClass = (metric) => (
 .snapshot-time {
   margin: 5px 0 0;
   color: var(--text-sub);
-  font-size: 0.78rem;
+  font-size: var(--type-label);
 }
 
 .group-count {
@@ -214,7 +214,7 @@ const metricClass = (metric) => (
   border-radius: 999px;
   background: var(--bg-secondary);
   color: var(--text-sub);
-  font-size: 0.75rem;
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
@@ -225,7 +225,7 @@ const metricClass = (metric) => (
   padding: 10px 12px;
   border-radius: 10px;
   color: var(--text-sub);
-  font-size: 0.8rem;
+  font-size: var(--type-label);
   line-height: 1.55;
 }
 
@@ -249,7 +249,7 @@ const metricClass = (metric) => (
 .common-period-card strong {
   color: var(--text-main);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
+  font-size: var(--type-label);
 }
 
 .common-period-card p {
@@ -307,7 +307,7 @@ const metricClass = (metric) => (
 
 .strategy-name {
   color: var(--text-main);
-  font-size: 1rem;
+  font-size: var(--type-section);
   overflow-wrap: anywhere;
 }
 
@@ -316,7 +316,7 @@ const metricClass = (metric) => (
   border-radius: 999px;
   background: rgba(59, 130, 246, 0.12);
   color: var(--primary);
-  font-size: 0.68rem;
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
@@ -329,7 +329,7 @@ const metricClass = (metric) => (
   color: var(--text-main);
   cursor: pointer;
   font: inherit;
-  font-size: 0.72rem;
+  font-size: var(--type-control);
   font-weight: 700;
 }
 
@@ -349,7 +349,7 @@ const metricClass = (metric) => (
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-sub);
-  font-size: 0.75rem;
+  font-size: var(--type-caption);
 }
 
 .history-range strong {
@@ -373,14 +373,14 @@ const metricClass = (metric) => (
 .metric-item dt {
   margin-bottom: 4px;
   color: var(--text-sub);
-  font-size: 0.72rem;
+  font-size: var(--type-caption);
 }
 
 .metric-item dd {
   margin: 0;
   color: var(--text-main);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.84rem;
+  font-size: var(--type-label);
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -389,7 +389,7 @@ const metricClass = (metric) => (
   display: block;
   margin-top: 3px;
   color: var(--text-sub);
-  font-size: 0.67rem;
+  font-size: var(--type-caption);
 }
 
 .metric-unavailable {

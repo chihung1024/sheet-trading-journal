@@ -99,11 +99,19 @@ test('dividend attention remains records-authoritative and recent transaction re
   assert.equal(income.recentRecord.id, 7);
 });
 
-test('DailyCommandCenter composes existing reviewed services and stays presentation-only', () => {
+test('DailyCommandCenter stays presentation-only while becoming compact by default', () => {
   const service = read('src/services/dailyCommandCenter.js');
   const component = read('src/components/DailyCommandCenter.vue');
   const combined = `${service}\n${component}`;
 
+  assert.match(component, /const isExpanded = ref\(false\)/);
+  assert.match(component, /:aria-expanded="isExpanded"/);
+  assert.match(component, /aria-controls="daily-command-details"/);
+  assert.match(component, /v-if="isExpanded" id="daily-command-details"/);
+  assert.match(component, /class="command-summary"/);
+  assert.match(component, /Top 3 集中度/);
+  assert.match(component, /待核對配息/);
+  assert.match(component, /最近交易/);
   assert.match(component, /buildDailyPnlExplanation/);
   assert.match(component, /buildPortfolioConcentrationSnapshot/);
   assert.match(service, /buildConfirmedDividendKeySet/);
@@ -116,6 +124,14 @@ test('DailyCommandCenter composes existing reviewed services and stays presentat
   assert.match(component, /emit\('navigate', 'records'\)/);
 
   assert.doesNotMatch(combined, /fetch\(|localStorage|addRecord|updateRecord|deleteRecord|riskScore|targetWeight|rebalance|forecast/i);
+});
+
+test('DailyCommandCenter collapses expanded detail when current group changes', () => {
+  const component = read('src/components/DailyCommandCenter.vue');
+  assert.match(
+    component,
+    /watch\(\s*\(\) => store\.currentGroup,[\s\S]*isExpanded\.value = false;/,
+  );
 });
 
 test('Overview mounts the command center and routes its navigation through existing activeView state', () => {

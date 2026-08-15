@@ -73,10 +73,10 @@ test('date-range validation is explicit and local filter state excludes global g
   assert.equal(hasLocalHistoryFilters({ currentGroup: 'Growth' }), false);
 });
 
-test('RecordList exposes strategy context and explicit date/filter state on desktop and mobile', () => {
+test('RecordList exposes strategy, journal, and explicit date/filter state on desktop and mobile', () => {
   const source = read('src/components/RecordList.vue');
 
-  assert.match(source, /代碼 \/ 策略/);
+  assert.match(source, /代碼 \/ 策略 \/ 備註/);
   assert.match(source, /v-model="dateFrom"/);
   assert.match(source, /v-model="dateTo"/);
   assert.match(source, /aria-label="開始日期"/);
@@ -85,6 +85,7 @@ test('RecordList exposes strategy context and explicit date/filter state on desk
   assert.match(source, /getRecordTags\(r\)/);
   assert.match(source, /class="record-tags"/);
   assert.match(source, /class="record-tags mobile-tags"/);
+  assert.match(source, /class="record-note-inline">{{ r\.note }}/);
   assert.match(source, /策略群組：\$\{store\.currentGroup\}/);
   assert.match(source, /clearLocalFilters/);
   assert.match(source, /顯示筆數/);
@@ -92,14 +93,14 @@ test('RecordList exposes strategy context and explicit date/filter state on desk
   assert.doesNotMatch(source, /filterYear|availableYears/);
 });
 
-test('Phase 10.3A preserves authoritative valuation and mutation paths', () => {
+test('Phase 10.3A valuation and mutation authorities remain unchanged by the Phase 13.2 presentation refactor', () => {
   const source = read('src/components/RecordList.vue');
 
   assert.match(source, /resolveTransactionValuation\(store\.rawData, record\)/);
   assert.match(source, /store\.snapshotFreshness !== 'loaded'/);
   assert.match(source, /emit\('edit', record\)/);
   assert.match(source, /await store\.deleteRecord\(id\)/);
-  assert.match(source, /<th>備註<\/th>/);
-  assert.match(source, /colspan="8"/);
+  assert.doesNotMatch(source, /<th>備註<\/th>/);
+  assert.match(source, /colspan="7"/);
   assert.doesNotMatch(source, /fxRateMap|getFxRateByDate|Math\.abs\(r\.fee\)|Math\.abs\(r\.tax\)/);
 });

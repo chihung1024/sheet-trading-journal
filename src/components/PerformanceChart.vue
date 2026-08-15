@@ -497,40 +497,40 @@ onUnmounted(() => {
 .chart-header { margin-bottom: 12px; display: flex; flex-direction: column; gap: 12px; }
 .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 .title-group { display: flex; align-items: center; gap: 12px; }
-.chart-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main); padding-left: 12px; border-left: 4px solid var(--primary); }
-.loading-badge { font-size: 0.8rem; color: var(--primary); display: flex; align-items: center; gap: 6px; }
+.chart-title { margin: 0; font-size: var(--type-section); font-weight: 700; color: var(--text-main); padding-left: 12px; border-left: 4px solid var(--primary); }
+.loading-badge { font-size: var(--type-label); color: var(--primary); display: flex; align-items: center; gap: 6px; }
 .spinner-sm { width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
 .toggle-pills-scroll, .time-pills-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; max-width: 100%; }
 .toggle-pills-scroll::-webkit-scrollbar, .time-pills-scroll::-webkit-scrollbar { display: none; }
 .toggle-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
-.toggle-pills button { border: none; background: transparent; padding: 6px 14px; font-size: 0.9rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; font-weight: 500; }
+.toggle-pills button { border: none; background: transparent; padding: 6px 14px; font-size: var(--type-control); border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; font-weight: 500; }
 .toggle-pills button.active { background: var(--bg-card); color: var(--primary); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 .controls-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 .time-pills { display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 3px; gap: 2px; white-space: nowrap; }
-.time-pills button { border: none; background: transparent; padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; }
+.time-pills button { border: none; background: transparent; padding: 6px 12px; font-size: var(--type-control); border-radius: 6px; color: var(--text-sub); cursor: pointer; transition: all 0.2s; }
 .time-pills button:hover { color: var(--text-main); }
 .time-pills button.active { background: var(--bg-card); color: var(--text-main); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 .right-controls { display: flex; gap: 10px; align-items: flex-start; }
 .benchmark-selector { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 360px; }
 .benchmark-control-row { display: flex; align-items: center; gap: 6px; }
-.benchmark-status { font-size: 0.72rem; line-height: 1.35; text-align: right; color: var(--text-sub); }
+.benchmark-status { font-size: var(--type-caption); line-height: 1.35; text-align: right; color: var(--text-sub); }
 .benchmark-status.applied { color: var(--success); }
 .benchmark-status.pending { color: #d97706; }
 .benchmark-status.unknown { color: var(--text-sub); }
-.control-label { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); }
+.control-label { font-size: var(--type-label); font-weight: 600; color: var(--text-sub); }
 .input-group-merged { display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; background: var(--bg-card); }
-.benchmark-input { border: none; padding: 4px 8px; width: 72px; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; text-transform: uppercase; background: transparent; color: var(--text-main); text-align: center; }
+.benchmark-input { border: none; padding: 4px 8px; width: 72px; font-family: 'JetBrains Mono', monospace; font-size: var(--type-control); text-transform: uppercase; background: transparent; color: var(--text-main); text-align: center; }
 .benchmark-input:focus { outline: none; background: var(--bg-secondary); }
 .btn-icon-apply { border: none; background: var(--bg-secondary); color: var(--success); cursor: pointer; padding: 0 8px; font-weight: bold; border-left: 1px solid var(--border-color); }
 .btn-icon-apply:disabled { color: var(--text-sub); cursor: not-allowed; }
 .date-range-selector { display: flex; align-items: center; gap: 6px; background: var(--bg-secondary); padding: 4px 8px; border-radius: 6px; }
-.date-input { border: none; background: transparent; font-size: 0.85rem; width: 110px; color: var(--text-main); font-family: 'JetBrains Mono', monospace; }
-.date-sep { font-size: 0.8rem; color: var(--text-sub); }
+.date-input { border: none; background: transparent; font-size: var(--type-control); width: 110px; color: var(--text-main); font-family: 'JetBrains Mono', monospace; }
+.date-sep { font-size: var(--type-label); color: var(--text-sub); }
 .canvas-box { flex-grow: 1; position: relative; width: 100%; height: 450px; overflow: hidden; } 
-.no-data-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); color: var(--text-sub); font-size: 1rem; }
+.no-data-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); color: var(--text-sub); font-size: var(--type-emphasis); }
 .chart-footer { margin-top: 8px; text-align: right; border-top: 1px solid var(--border-color); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
-.twr-reliability-warning { font-size: 0.75rem; color: var(--warning); }
-.info-text { font-size: 0.75rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
+.twr-reliability-warning { font-size: var(--type-caption); color: var(--warning); }
+.info-text { font-size: var(--type-caption); color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
 @media (max-width: 768px) {
     .inner-chart-layout { padding: 16px; }
     .header-top { flex-direction: column; align-items: flex-start; gap: 12px; }
