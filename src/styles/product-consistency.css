@@ -1,113 +1,57 @@
-/* Phase 13.2 — cross-page typography and density convergence.
-   Presentation only: no financial, persistence, recovery, or navigation authority lives here. */
+/* Phase 13.2 — cross-page layout/density contract.
+   Typography authority lives only in src/style.css and component semantic tokens.
+   This layer intentionally contains no font-size rules and no financial/persistence authority. */
 
 :root {
-  --ui-font-caption: 0.75rem;
-  --ui-font-small: 0.8125rem;
-  --ui-font-body: 0.875rem;
-  --ui-font-control: 0.875rem;
-  --ui-font-emphasis: 0.9375rem;
-  --ui-font-section: 1.0625rem;
-  --ui-font-page: 1.125rem;
-  --ui-font-metric-sm: 1.25rem;
-  --ui-font-metric: clamp(1.45rem, 1.45vw, 1.75rem);
-
-  --ui-line-tight: 1.25;
-  --ui-line-body: 1.5;
-
   --ui-space-1: 4px;
   --ui-space-2: 8px;
   --ui-space-3: 12px;
   --ui-space-4: 16px;
   --ui-space-5: 20px;
   --ui-space-6: 24px;
-
   --ui-page-gap: 18px;
   --ui-card-padding: clamp(16px, 1.35vw, 20px);
   --ui-control-height: 40px;
   --ui-table-pad-y: 11px;
   --ui-table-pad-x: 14px;
-  --ui-table-header-size: var(--ui-font-small);
-  --ui-table-body-size: var(--ui-font-body);
 }
 
-/* App shell: one navigation/control scale before entering page content. */
+/* App-level rhythm. */
 .content-container {
-  gap: var(--ui-page-gap) !important;
-  padding-top: var(--ui-page-gap) !important;
+  gap: var(--ui-page-gap);
+  padding-top: var(--ui-page-gap);
 }
 
 .main-column,
 .section-overview {
-  gap: var(--ui-page-gap) !important;
-}
-
-.top-nav .nav-brand h1 {
-  font-size: var(--ui-font-page) !important;
-}
-
-.top-nav .selector-label,
-.top-nav .refresh-timer,
-.top-nav .auto-refresh-indicator,
-.top-nav .status-indicator,
-.top-nav .select-wrapper select,
-.top-nav .action-trigger-btn {
-  font-size: var(--ui-font-control) !important;
+  gap: var(--ui-page-gap);
 }
 
 .mobile-tabs {
   min-height: 50px;
   align-items: center;
-  gap: var(--ui-space-2) !important;
-  padding: var(--ui-space-2) !important;
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-2);
 }
 
 .tab-item {
   min-height: 36px;
-  padding: 7px 12px !important;
-  font-size: var(--ui-font-control) !important;
-  line-height: var(--ui-line-tight);
+  padding: 7px 12px;
 }
 
-.tab-badge,
-.badge {
-  font-size: var(--ui-font-caption) !important;
-}
-
-/* Shared surfaces, headings and controls. */
 .card,
 .daily-command,
 .chart-wrapper,
 .strategy-overview-card {
-  border-radius: var(--radius) !important;
+  border-radius: var(--radius);
 }
 
 .card {
-  padding: var(--ui-card-padding) !important;
+  padding: var(--ui-card-padding);
 }
 
 .chart-wrapper.chart-full {
-  padding: 0 !important;
-}
-
-.card h3,
-.card-header h3,
-.daily-command h2,
-.section-groups .gm-title,
-.section-groups .overview-header h3,
-.section-charts .chart-title,
-.section-dividends .dm-title h3,
-.mobile-sheet-header h3 {
-  font-size: var(--ui-font-section) !important;
-  line-height: var(--ui-line-tight) !important;
-  letter-spacing: -0.01em;
-}
-
-input,
-select,
-button,
-textarea {
-  font-size: var(--ui-font-control);
+  padding: 0;
 }
 
 .search-input,
@@ -118,256 +62,85 @@ textarea {
 .action-trigger-btn,
 .section-groups .gm-select-wrap select,
 .section-groups .group-item input,
-.section-groups .btn-sm {
-  min-height: var(--ui-control-height);
-}
-
-/* Global reliability surface. */
-.reliability-banner .reliability-issue strong {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-.reliability-banner .reliability-issue span {
-  font-size: var(--ui-font-small) !important;
-  line-height: var(--ui-line-body);
-}
-
+.section-groups .btn-sm,
 .reliability-banner .retry-button {
   min-height: var(--ui-control-height);
-  font-size: var(--ui-font-control) !important;
 }
 
-/* Overview — compact command summary + KPI cards share one hierarchy. */
+/* Overview density. Daily Command Center is compact by default. */
 .section-overview .daily-command {
-  padding: var(--ui-card-padding) !important;
+  padding: var(--ui-card-padding);
 }
 
 .section-overview .command-header {
-  margin-bottom: var(--ui-space-3) !important;
-}
-
-.section-overview .command-eyebrow,
-.section-overview .command-summary-label {
-  font-size: var(--ui-font-caption) !important;
-}
-
-.section-overview .command-header p,
-.section-overview .authority-note,
-.section-overview .card-note,
-.section-overview .empty-copy {
-  font-size: var(--ui-font-small) !important;
-  line-height: var(--ui-line-body) !important;
-}
-
-.section-overview .scope-chip,
-.section-overview .command-toggle,
-.section-overview .detail-link,
-.section-overview .card-label {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-overview .command-summary-value,
-.section-overview .card-heading strong {
-  font-size: var(--ui-font-emphasis) !important;
-  line-height: var(--ui-line-tight);
+  margin-bottom: var(--ui-space-3);
 }
 
 .section-overview .command-summary-item {
-  padding: 10px 12px !important;
+  padding: 10px 12px;
 }
 
 .section-overview .command-details {
-  margin-top: var(--ui-space-3) !important;
+  margin-top: var(--ui-space-3);
 }
 
 .section-overview .command-grid {
-  gap: var(--ui-space-3) !important;
+  gap: var(--ui-space-3);
 }
 
 .section-overview .command-card {
   min-height: 112px;
-  padding: 13px 15px !important;
+  padding: 13px 15px;
   display: flex;
   flex-direction: column;
 }
 
 .section-overview .card-heading {
-  margin-bottom: var(--ui-space-2) !important;
-}
-
-.section-overview .driver-row,
-.section-overview .primary-fact {
-  font-size: var(--ui-font-body) !important;
+  margin-bottom: var(--ui-space-2);
 }
 
 .section-overview .detail-link {
-  margin-top: auto !important;
-  padding-top: var(--ui-space-3) !important;
+  margin-top: auto;
+  padding-top: var(--ui-space-3);
 }
 
 .section-overview .stats-grid {
-  gap: var(--ui-page-gap) !important;
+  gap: var(--ui-page-gap);
 }
 
 .section-overview .stat-block {
-  padding: var(--ui-card-padding) !important;
+  padding: var(--ui-card-padding);
   min-height: 140px;
 }
 
-.section-overview .stat-label,
-.section-overview .footer-desc,
-.section-overview .f-label,
-.section-overview .unit-text,
-.section-overview .badge,
-.section-overview .explain-btn {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-overview .stat-value,
-.section-overview .stat-value.big,
-.section-overview .daily-pnl-block .stat-value {
-  font-size: var(--ui-font-metric) !important;
-  line-height: 1.12 !important;
-}
-
-.section-overview .stat-sub-value {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-/* Expanded Daily P&L explanation. */
-.section-overview .daily-pnl-explanation .eyebrow,
-.section-overview .daily-pnl-explanation .currency-badge {
-  font-size: var(--ui-font-caption) !important;
-}
-
-.section-overview .daily-pnl-explanation h3,
-.section-overview .daily-pnl-explanation .published-total {
-  font-size: var(--ui-font-section) !important;
-}
-
-.section-overview .daily-pnl-explanation .explanation-period,
-.section-overview .daily-pnl-explanation .component-chip,
-.section-overview .daily-pnl-explanation .explanation-copy,
-.section-overview .daily-pnl-explanation .contributor-components,
-.section-overview .daily-pnl-explanation .no-component-change,
-.section-overview .daily-pnl-explanation .show-more-btn {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-overview .daily-pnl-explanation .contributor-total {
-  font-size: var(--ui-font-body) !important;
-}
-
-/* Chart page and overview chart: controls should not create a second text scale. */
-.section-charts .toggle-pills button,
-.section-charts .time-pills button,
-.section-charts .benchmark-input,
-.section-charts .date-input,
-.section-charts .control-label {
-  font-size: var(--ui-font-control) !important;
-}
-
-.section-charts .loading-badge,
-.section-charts .benchmark-status,
-.section-charts .date-sep,
-.section-charts .twr-reliability-warning,
-.section-charts .info-text {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-charts .no-data-overlay {
-  font-size: var(--ui-font-body) !important;
-}
-
-/* Holdings — concentration, donut, tables and mobile cards use the shared scale. */
+/* Holdings, records and dividends share one toolbar/table density. */
 .section-holdings .card-header,
 .section-records .card-header,
 .section-dividends .card-header {
-  gap: var(--ui-space-3) !important;
-  margin-bottom: var(--ui-space-4) !important;
-  padding-bottom: var(--ui-space-4) !important;
-}
-
-.section-holdings .summary-info,
-.section-holdings .search-input,
-.section-holdings .filter-select {
-  font-size: var(--ui-font-control) !important;
-}
-
-.section-holdings .concentration-eyebrow,
-.section-holdings .metric-label,
-.section-holdings .metric-caption,
-.section-holdings .allocation-label,
-.section-holdings .allocation-count {
-  font-size: var(--ui-font-caption) !important;
-}
-
-.section-holdings .concentration-header h4,
-.section-holdings .allocation-heading strong,
-.section-holdings .concentration-metric strong {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-.section-holdings .group-scope,
-.section-holdings .metric-value,
-.section-holdings .concentration-line,
-.section-holdings .concentration-note,
-.section-holdings .concentration-unavailable,
-.section-holdings .legend-row,
-.section-holdings .legend-row strong,
-.section-holdings .donut-center strong {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-holdings .donut-center span {
-  font-size: var(--ui-font-caption) !important;
-}
-
-.section-holdings .search-input,
-.section-holdings .filter-select,
-.section-records .search-input,
-.section-records .filter-select,
-.section-records .filter-date-input,
-.section-dividends .search-input,
-.section-dividends .filter-select {
-  font-size: var(--ui-font-control) !important;
+  gap: var(--ui-space-3);
+  margin-bottom: var(--ui-space-4);
+  padding-bottom: var(--ui-space-4);
 }
 
 .section-holdings .desktop-view th,
 .section-records .desktop-view th,
-.section-dividends .desktop-view th {
-  padding: 11px var(--ui-table-pad-x) !important;
-  font-size: var(--ui-table-header-size) !important;
+.section-dividends .desktop-view th,
+.section-groups .gm-table th {
+  padding: 11px var(--ui-table-pad-x);
   line-height: 1.25;
 }
 
 .section-holdings .desktop-view td,
 .section-records .desktop-view td,
-.section-dividends .desktop-view td {
-  padding: var(--ui-table-pad-y) var(--ui-table-pad-x) !important;
-  font-size: var(--ui-table-body-size) !important;
+.section-dividends .desktop-view td,
+.section-groups .gm-table td {
+  padding: var(--ui-table-pad-y) var(--ui-table-pad-x);
   line-height: 1.4;
   vertical-align: middle;
 }
 
-.section-holdings .price-change,
-.section-holdings .roi-badge,
-.section-holdings .scroll-hint,
-.section-holdings .m-label,
-.section-holdings .m-change,
-.section-holdings .m-badge-sm,
-.section-holdings .m-footer-label {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-holdings .m-symbol,
-.section-holdings .m-price,
-.section-holdings .m-val,
-.section-holdings .m-footer-val {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-/* Transaction history — journal summary lives with Symbol/Strategy, not in an empty column. */
+/* Transaction history: journal summary is part of Symbol/Strategy context.
+   Seven desktop columns remain after removing the standalone Note column. */
 .section-records .desktop-view table {
   table-layout: fixed;
 }
@@ -380,223 +153,19 @@ textarea {
 .section-records .desktop-view th:nth-child(6) { width: 20%; }
 .section-records .desktop-view th:nth-child(7) { width: 12%; }
 
-.section-records .stats-summary .stat-label,
-.section-records .filter-label,
-.section-records .tag-chip,
-.section-records .record-twd-note,
-.section-records .record-note-inline,
-.section-records .detail-eyebrow,
-.section-records .detail-label,
-.section-records .detail-authority-note {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-records .stats-summary .stat-value {
-  font-size: var(--ui-font-metric-sm) !important;
-}
-
-.section-records .filter-context,
-.section-records .page-btn,
-.section-records .page-number,
-.section-records .page-info,
-.section-records .date-cell,
-.section-records .type-badge,
-.section-records .btn-action,
-.section-records .m-date,
-.section-records .m-sub-info,
-.section-records .detail-date,
-.section-records .detail-tag,
-.section-records .detail-empty {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-records .record-note-inline {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  color: var(--text-sub);
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.section-records .m-symbol,
-.section-records .m-amount,
-.section-records .detail-header h4,
-.section-records .detail-value {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-.section-records .m-note {
-  margin-top: var(--ui-space-2) !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: var(--text-sub) !important;
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-records .m-note-preview {
-  display: -webkit-box !important;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  overflow-wrap: anywhere;
-  line-height: 1.45;
-}
-
 .section-records .actions {
   white-space: nowrap;
 }
 
-/* Dividends — confirmation table, mobile cards and history use the same semantic sizes. */
-.section-dividends .subtitle,
-.section-dividends .dividend-entry-help,
-.section-dividends .queue-section-label,
-.section-dividends .history-title,
-.section-dividends .history-toggle-action,
-.section-dividends .history-hint,
-.section-dividends .history-row,
-.section-dividends .date-display,
-.section-dividends .symbol-tag,
-.section-dividends .input-field,
-.section-dividends .form-label,
-.section-dividends .summary-label,
-.section-dividends .btn-card {
-  font-size: var(--ui-font-small) !important;
-}
-
-.section-dividends thead th,
-.section-dividends .history-row-header,
-.section-dividends .input-currency,
-.section-dividends .tax-rate,
-.section-dividends .confirmed-label,
-.section-dividends .syncing-label,
-.section-dividends .history-count,
-.section-dividends .value-currency {
-  font-size: var(--ui-font-caption) !important;
-}
-
-.section-dividends .net-display,
-.section-dividends .form-input {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-.section-dividends .summary-value {
-  font-size: var(--ui-font-metric-sm) !important;
-}
-
-.section-dividends .empty-text {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-.section-dividends .empty-hint {
-  font-size: var(--ui-font-small) !important;
-}
-
-/* Group analytics + group management. */
-.section-groups .strategy-overview-card,
+/* Group management follows the same page rhythm without owning typography. */
 .section-groups .gm-card {
-  font-size: var(--ui-font-body);
-}
-
-.section-groups .eyebrow,
-.section-groups .snapshot-time,
-.section-groups .group-count,
-.section-groups .current-badge,
-.section-groups .history-range,
-.section-groups .metric-item dt,
-.section-groups .metric-item small,
-.section-groups .gm-section-hint,
-.section-groups .gm-empty-hint,
-.section-groups .gm-select-wrap label,
-.section-groups .gm-counter,
-.section-groups .group-label {
-  font-size: var(--ui-font-caption) !important;
-}
-
-.section-groups .comparability-note,
-.section-groups .common-period-card,
-.section-groups .common-period-unavailable,
-.section-groups .gm-subtitle,
-.section-groups .gm-help,
-.section-groups .history-range strong,
-.section-groups .metric-item dd,
-.section-groups .select-group-btn,
-.section-groups .group-name,
-.section-groups .type-badge {
-  font-size: var(--ui-font-small) !important;
-  line-height: var(--ui-line-body);
-}
-
-.section-groups .strategy-name,
-.section-groups .gm-section-title {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-.section-groups .gm-card {
-  gap: var(--ui-page-gap) !important;
+  gap: var(--ui-page-gap);
 }
 
 .section-groups .gm-section {
-  padding: var(--ui-space-4) !important;
+  padding: var(--ui-space-4);
 }
 
-.section-groups .gm-table th {
-  padding: 11px var(--ui-table-pad-x) !important;
-  font-size: var(--ui-table-header-size) !important;
-  line-height: 1.25;
-}
-
-.section-groups .gm-table td {
-  padding: var(--ui-table-pad-y) var(--ui-table-pad-x) !important;
-  font-size: var(--ui-table-body-size) !important;
-  line-height: 1.4;
-  vertical-align: middle;
-}
-
-/* Desktop transaction side panel follows the same hierarchy instead of its own oversized scale. */
-.side-column .trade-panel .panel-title {
-  font-size: var(--ui-font-section) !important;
-}
-
-.side-column .trade-panel .entry-context,
-.side-column .trade-panel label,
-.side-column .trade-panel .hint-text,
-.side-column .trade-panel .summary-label,
-.side-column .trade-panel .quick-tag,
-.side-column .trade-panel .tag-chip,
-.side-column .trade-panel .tag-name {
-  font-size: var(--ui-font-small) !important;
-}
-
-.side-column .trade-panel input,
-.side-column .trade-panel textarea,
-.side-column .trade-panel .switch-btn,
-.side-column .trade-panel .btn {
-  font-size: var(--ui-font-emphasis) !important;
-}
-
-.side-column .trade-panel .field-help,
-.side-column .trade-panel .field-error,
-.side-column .trade-panel .sub-label,
-.side-column .trade-panel .note-count,
-.side-column .trade-panel .symbol-suggestion-meta,
-.side-column .trade-panel .mode-badge {
-  font-size: var(--ui-font-caption) !important;
-}
-
-.side-column .trade-panel .summary-value {
-  font-size: var(--ui-font-metric) !important;
-}
-
-.side-column .trade-panel .currency-symbol {
-  font-size: var(--ui-font-metric-sm) !important;
-}
-
-/* Laptop/tablet: preserve the hierarchy; only density changes. */
 @media (max-width: 1200px) {
   :root {
     --ui-page-gap: 16px;
@@ -622,11 +191,10 @@ textarea {
   :root {
     --ui-page-gap: 14px;
     --ui-card-padding: 14px;
-    --ui-font-metric: 1.5rem;
   }
 
   .content-container {
-    padding-top: var(--ui-page-gap) !important;
+    padding-top: var(--ui-page-gap);
   }
 
   .mobile-tabs {
@@ -634,7 +202,7 @@ textarea {
   }
 
   .section-overview .command-grid {
-    gap: var(--ui-space-2) !important;
+    gap: var(--ui-space-2);
   }
 
   .section-overview .stat-block {
@@ -642,17 +210,6 @@ textarea {
   }
 
   .section-groups .gm-section {
-    padding: var(--ui-space-3) !important;
-  }
-
-  .mobile-sheet .trade-panel input,
-  .mobile-sheet .trade-panel textarea,
-  .mobile-sheet .trade-panel .switch-btn,
-  .mobile-sheet .trade-panel .btn {
-    font-size: var(--ui-font-emphasis) !important;
-  }
-
-  .mobile-sheet .trade-panel .summary-value {
-    font-size: var(--ui-font-metric) !important;
+    padding: var(--ui-space-3);
   }
 }
