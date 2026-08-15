@@ -4,7 +4,7 @@
       <div class="dm-title">
         <div class="title-icon">💰</div>
         <div>
-          <h3>待確認配息</h3>
+          <h3>配息入帳確認</h3>
           <span class="subtitle" v-if="localDividends.length > 0">
             {{ pendingCount }} 筆待處理
             <span v-if="confirmedCount > 0" class="confirmed-badge">
@@ -26,6 +26,11 @@
       </button>
     </div>
 
+    <div v-if="localDividends.length > 0" class="dividend-entry-help">
+      <strong>入帳口徑：</strong>
+      稅前配息總額 − 預扣稅金 = 實際入帳淨額。預設值來自系統估算，請依券商實際資料核對；確認後會以除息日建立 DIV 交易，交易金額為淨額。
+    </div>
+
     <div class="desktop-table">
       <div v-if="localDividends.length > 0" class="table-wrapper">
         <table>
@@ -33,9 +38,9 @@
             <tr>
               <th width="120">除息日</th>
               <th width="100">代碼</th>
-              <th class="text-center" width="180">實發總額</th>
-              <th class="text-center" width="160">稅金</th>
-              <th class="text-center" width="140">淨額</th>
+              <th class="text-center" width="180">稅前總額</th>
+              <th class="text-center" width="160">預扣稅金</th>
+              <th class="text-center" width="140">入帳淨額</th>
               <th width="100">操作</th>
             </tr>
           </thead>
@@ -69,8 +74,10 @@
                     v-model.number="div.amount" 
                     class="input-field"
                     step="0.01"
+                    min="0"
                     placeholder="0.00"
                     :disabled="isInteractionLocked(div)"
+                    aria-label="稅前配息總額"
                   >
                 </div>
               </td>
@@ -82,16 +89,18 @@
                     v-model.number="div.tax" 
                     class="input-field input-tax"
                     step="0.01"
+                    min="0"
                     placeholder="0.00"
                     :disabled="isInteractionLocked(div)"
+                    aria-label="預扣稅金"
                   >
-                  <span class="tax-rate">{{ getTaxRate(div) }}%</span>
+                  <span class="tax-rate">{{ getDividendEntryTaxRate(div) }}%</span>
                 </div>
               </td>
               
               <td class="text-center">
                 <div class="net-display">
-                  {{ formatNumber((div.amount || 0) - (div.tax || 0), 2) }}
+                  {{ formatNumber(getDividendEntryAmounts(div).net, 2) }}
                 </div>
               </td>
               
@@ -159,14 +168,15 @@
             <div class="form-row">
               <label class="form-label">
                 <span class="label-icon">💵</span>
-                實發總額 ({{ getDividendCurrency(div) }})
+                稅前配息總額 ({{ getDividendCurrency(div) }})
               </label>
               <input 
                 type="number" 
                 v-model.number="div.amount" 
                 class="form-input"
                 step="0.01"
-                placeholder="輸入總額"
+                min="0"
+                placeholder="輸入稅前總額"
                 :disabled="isInteractionLocked(div)"
               >
             </div>
@@ -175,13 +185,14 @@
               <label class="form-label">
                 <span class="label-icon">📝</span>
                 預扣稅金 ({{ getDividendCurrency(div) }})
-                <span class="tax-badge">{{ getTaxRate(div) }}%</span>
+                <span class="tax-badge">{{ getDividendEntryTaxRate(div) }}%</span>
               </label>
               <input 
                 type="number" 
                 v-model.number="div.tax" 
                 class="form-input"
                 step="0.01"
+                min="0"
                 placeholder="輸入稅金"
                 :disabled="isInteractionLocked(div)"
               >
@@ -191,7 +202,7 @@
               <span class="summary-label">實際入帳淨額</span>
               <span class="summary-value">
                 <span class="value-currency">{{ getDividendCurrency(div) }}</span>
-                {{ formatNumber((div.amount || 0) - (div.tax || 0), 2) }}
+                {{ formatNumber(getDividendEntryAmounts(div).net, 2) }}
               </span>
             </div>
           </div>
@@ -209,7 +220,7 @@
               <span v-if="processingKey === getDivKey(div)" class="spinner"></span>
               <span v-else-if="isConfirmed(div)">✓ 已入帳</span>
               <span v-else-if="isAwaitingReadback(div)">✓ 已保存，等待同步</span>
-              <span v-else>✓ 確認入帳</span>
+              <span v-else>✓ 確認建立 DIV 交易</span>
             </button>
           </div>
         </div>
@@ -226,6 +237,9 @@ import { buildDividendEventIdempotencyKey } from '../../shared/dividendEventIden
 import {
   getDividendCurrency,
   getDividendDefaultTax,
+  getDividendEntryAmounts,
+  getDividendEntryTaxRate,
+  getDividendEntryValidationError,
   getDividendNetNative,
 } from '../services/dividendPresentation.js';
 import {
@@ -319,16 +333,10 @@ const formatNumber = (val, d = 2) => {
   });
 };
 
-const getTaxRate = (div) => {
-  const amount = Number(div.amount) || 0;
-  const tax = Number(div.tax) || 0;
-  return amount === 0 ? 0 : Math.round((tax / amount) * 100);
-};
-
 const getConfirmationTitle = (div) => {
   if (isConfirmed(div)) return '已由交易紀錄確認入帳';
   if (isAwaitingReadback(div)) return '交易已保存，等待最新交易紀錄同步';
-  return '確認入帳';
+  return '確認建立 DIV 交易';
 };
 
 const confirmDividend = async (div) => {
@@ -345,22 +353,35 @@ const confirmDividend = async (div) => {
   }
   
   if (processingKey.value === divKey) return;
-  
-  const finalAmount = Number(div.amount) || 0;
-  const finalTax = Number(div.tax) || 0;
-  const netAmount = finalAmount - finalTax;
-  const currency = getDividendCurrency(div);
-  
-  if (finalAmount === 0) {
-    addToast('請輸入實發總額', 'error');
+
+  const validationError = getDividendEntryValidationError(div);
+  if (validationError) {
+    addToast(validationError, 'error');
     return;
   }
+
+  const {
+    gross: finalGross,
+    tax: finalTax,
+    net: netAmount,
+  } = getDividendEntryAmounts(div);
+  const currency = getDividendCurrency(div);
+  const confirmationMessage = [
+    `確認建立 ${div.symbol} 的 DIV 交易？`,
+    `除息日：${formatFullDate(div.ex_date)}`,
+    `稅前配息總額：${currency} ${formatNumber(finalGross)}`,
+    `預扣稅金：${currency} ${formatNumber(finalTax)}`,
+    `實際入帳淨額：${currency} ${formatNumber(netAmount)}`,
+    '交易紀錄將以上述除息日與淨額入帳。',
+  ].join('\n');
   
-  if (!confirm(`確認將 ${div.symbol} 的配息 ${currency} ${formatNumber(netAmount)} 入帳嗎？`)) return;
+  if (!confirm(confirmationMessage)) return;
   
   processingKey.value = divKey;
   
   try {
+    // Keep the persisted note token stable across frontend versions because the
+    // deterministic dividend event payload hash includes note.
     const taxInfo = finalTax > 0 ? `稅金:${currency} ${formatNumber(finalTax, 2)}` : '';
     const idempotencyKey = await buildDividendEventIdempotencyKey({
       symbol: div.symbol,
@@ -407,8 +428,8 @@ const confirmDividend = async (div) => {
     const wasDeduplicated = outcome.response?.deduplicated === true;
     addToast(
       wasDeduplicated
-        ? `${div.symbol} 配息已由既有交易紀錄確認`
-        : `${div.symbol} 配息已保存 (${currency} ${formatNumber(netAmount)})`,
+        ? `${div.symbol} 配息已由既有 DIV 交易確認`
+        : `${div.symbol} DIV 交易已保存（淨額 ${currency} ${formatNumber(netAmount)}）`,
       'success',
     );
     
@@ -438,6 +459,8 @@ const confirmDividend = async (div) => {
 .subtitle { font-size: 0.8rem; color: var(--text-sub); font-weight: 500; }
 .confirmed-badge { color: var(--success); font-weight: 600; }
 .awaiting-badge { color: var(--warning); font-weight: 600; }
+.dividend-entry-help { padding: 12px 24px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-sub); font-size: 0.8rem; line-height: 1.55; }
+.dividend-entry-help strong { color: var(--text-main); }
 .btn-refresh { width: 36px; height: 36px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.125rem; transition: all 0.2s; }
 .btn-refresh:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: white; transform: translateY(-1px); }
 .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -515,6 +538,7 @@ td { padding: 16px 20px; vertical-align: middle; }
   .desktop-table { display: none; }
   .mobile-cards { display: block; }
   .dm-header { padding: 16px; }
+  .dividend-entry-help { padding: 10px 16px; }
   .title-icon { width: 36px; height: 36px; font-size: 1.125rem; }
   .dm-title h3 { font-size: 1rem; }
 }
