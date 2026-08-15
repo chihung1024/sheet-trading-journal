@@ -80,6 +80,26 @@
             </div>
         </div>
 
+        <div class="summary-box form-group full">
+            <div class="summary-header">
+                <span class="summary-label">成交金額（未含費稅，{{ transactionCurrency }}）</span>
+                <span class="calc-icon">🧮</span>
+            </div>
+            <div class="summary-input-wrapper">
+                <span class="currency-symbol">{{ transactionCurrencySymbol }}</span>
+                <input 
+                    type="number" 
+                    v-model="form.total_amount" 
+                    class="summary-value" 
+                    step="0.01" 
+                    placeholder="0.00"
+                    inputmode="decimal"
+                    :aria-invalid="validationAttempted && !!validationErrors.executionValue"
+                >
+            </div>
+            <p class="field-help">可填成交單價或成交金額其中之一；若兩者都填，以成交單價記錄交易。</p>
+        </div>
+
         <div class="form-group full">
             <label>策略群組 (Tags)</label>
             
@@ -136,26 +156,6 @@
                 placeholder="記錄進場理由、風險、交易計畫或事後檢討…"
             ></textarea>
         </div>
-    </div>
-
-    <div class="summary-box">
-        <div class="summary-header">
-            <span class="summary-label">成交金額（未含費稅，{{ transactionCurrency }}）</span>
-            <span class="calc-icon">🧮</span>
-        </div>
-        <div class="summary-input-wrapper">
-            <span class="currency-symbol">{{ transactionCurrencySymbol }}</span>
-            <input 
-                type="number" 
-                v-model="form.total_amount" 
-                class="summary-value" 
-                step="0.01" 
-                placeholder="0.00"
-                inputmode="decimal"
-                :aria-invalid="validationAttempted && !!validationErrors.executionValue"
-            >
-        </div>
-        <p class="field-help">可填成交單價或成交金額其中之一；若兩者都填，以成交單價記錄交易。</p>
     </div>
     
     <div class="action-buttons">
@@ -497,7 +497,7 @@ input {
     border: 1px solid var(--border-color); 
     border-radius: 8px; 
     font-size: 1rem; 
-    width: 100%; 
+    width: 100%;
     box-sizing: border-box; 
     font-family: 'Inter', sans-serif;
     transition: all 0.2s; 
