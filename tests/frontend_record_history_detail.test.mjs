@@ -15,6 +15,7 @@ test('RecordList exposes one page-memory read-only detail expansion on desktop a
   assert.match(source, /const toggleRecordDetails = \(id\) =>/);
   assert.match(source, /:aria-expanded="isRecordExpanded\(r\.id\)"/);
   assert.match(source, /:aria-controls="getRecordDetailId\(r\.id\)"/);
+  assert.match(source, /:aria-label="isRecordExpanded\(r\.id\) \? '收合完整交易明細' : '查看完整交易明細'"/);
   assert.match(source, /<td colspan="8">\s*<RecordDetailPanel/s);
   assert.match(source, /<RecordDetailPanel\s+v-if="isRecordExpanded\(r\.id\)"/s);
   assert.match(source, /查看完整交易明細/);
