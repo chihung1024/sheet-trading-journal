@@ -1,4 +1,5 @@
 import { detectNativeCurrency } from './instrumentCurrency.js';
+import { isIbkrImportProfileScope } from './ibkrImportProfile.js';
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_ROWS = 10000;
@@ -60,26 +61,31 @@ function columnsFor(headers) {
   return Object.fromEntries(Object.entries(ALIASES).map(([key, names]) => [key, findColumn(headers, names)]));
 }
 
-function statementAccount(rows) {
-  const accounts = rows
+function statementAccounts(rows) {
+  return [...new Set(rows
     .filter(candidate => (
       text(candidate[0]).toLowerCase() === 'statement'
       && text(candidate[1]).toLowerCase() === 'data'
       && headerKey(candidate[2]) === 'account'
       && text(candidate[3])
     ))
-    .map(candidate => text(candidate[3]).toUpperCase());
-  const uniqueAccounts = [...new Set(accounts)];
+    .map(candidate => text(candidate[3]).toUpperCase()))];
+}
+
+function statementAccount(rows) {
+  const uniqueAccounts = statementAccounts(rows);
   return uniqueAccounts.length === 1 ? uniqueAccounts[0] : '';
 }
 
 function extractTradeTable(rows) {
-  const fallbackAccountId = statementAccount(rows);
+  const statementAccountIds = statementAccounts(rows);
+  const fallbackAccountId = statementAccountIds.length === 1 ? statementAccountIds[0] : '';
   const section = rows.findIndex(row => text(row[0]).toLowerCase() === 'trades' && text(row[1]).toLowerCase() === 'header');
   if (section >= 0) {
     return {
       format: 'ibkr-sectioned',
       fallbackAccountId,
+      statementAccountIds,
       headers: rows[section].slice(2),
       data: rows.slice(section + 1)
         .map((row, index) => ({ rowNumber: section + index + 2, row }))
@@ -90,9 +96,21 @@ function extractTradeTable(rows) {
   return {
     format: 'direct-csv',
     fallbackAccountId: '',
+    statementAccountIds: [],
     headers: rows[0] || [],
     data: rows.slice(1).map((values, index) => ({ rowNumber: index + 2, values })),
   };
+}
+
+function actualAccountIds(table, columns) {
+  const accounts = new Set(table.statementAccountIds || []);
+  if (columns.accountId >= 0) {
+    for (const item of table.data) {
+      const value = text(item.values[columns.accountId]).toUpperCase();
+      if (value) accounts.add(value);
+    }
+  }
+  return [...accounts];
 }
 
 function finiteNumber(value) {
@@ -135,15 +153,23 @@ function rowReader(item, columns) {
   return key => columns[key] >= 0 ? text(item.values[columns[key]]) : '';
 }
 
-function sourceIdentity(item, columns, fallbackAccountId = '') {
+function sourceIdentity(item, columns, fallbackAccountId = '', accountScope = '') {
   const read = rowReader(item, columns);
   const accountId = (read('accountId') || fallbackAccountId).toUpperCase();
+  const scopeId = accountScope || accountId;
   const orderId = read('orderId');
   const tradeId = read('tradeId');
-  const groupKey = accountId && (orderId || tradeId)
-    ? `${orderId ? 'ORDER' : 'TRADE'}:${accountId}:${orderId || tradeId}`
+  const groupKey = scopeId && (orderId || tradeId)
+    ? `${orderId ? 'ORDER' : 'TRADE'}:${scopeId}:${orderId || tradeId}`
     : null;
-  return { accountId, orderId, tradeId, groupKey };
+  return {
+    accountId,
+    scopeId,
+    scopeMode: accountScope ? 'profile' : 'account',
+    orderId,
+    tradeId,
+    groupKey,
+  };
 }
 
 function groupLabel(groupKey) {
@@ -154,15 +180,15 @@ function groupLabel(groupKey) {
 
 function stableTradeFingerprint(trade) {
   return JSON.stringify([
-    trade.accountId, trade.assetClass, trade.symbol, trade.side, trade.quantity, trade.price,
+    trade.scopeId, trade.accountId, trade.assetClass, trade.symbol, trade.side, trade.quantity, trade.price,
     trade.fee, trade.tax, trade.currency, trade.tradeDate,
     trade.orderId, trade.tradeId, trade.dateTime,
   ]);
 }
 
-function parseTrade(item, columns, fallbackAccountId) {
+function parseTrade(item, columns, fallbackAccountId, accountScope) {
   const read = rowReader(item, columns);
-  const source = sourceIdentity(item, columns, fallbackAccountId);
+  const source = sourceIdentity(item, columns, fallbackAccountId, accountScope);
   const level = read('level').toUpperCase();
   const discriminator = read('discriminator').toUpperCase();
   if (
@@ -172,8 +198,8 @@ function parseTrade(item, columns, fallbackAccountId) {
     return { skip: warning(item.rowNumber, 'NON_EXECUTION_ROW', '非成交明細列，已略過'), taintKey: null };
   }
 
-  if (!source.accountId) {
-    return { skip: warning(item.rowNumber, 'MISSING_ACCOUNT_ID', '缺少 IBKR Account ID，無法建立跨帳戶安全識別'), taintKey: null };
+  if (!source.scopeId) {
+    return { skip: warning(item.rowNumber, 'MISSING_ACCOUNT_ID', '缺少 IBKR Account ID 或匯入設定檔，無法建立跨帳戶安全識別'), taintKey: null };
   }
 
   const assetClass = read('assetClass').toUpperCase().replace(/\s+/g, '');
@@ -218,6 +244,8 @@ function parseTrade(item, columns, fallbackAccountId) {
   return { trade: Object.freeze({
     rowNumber: item.rowNumber,
     accountId: source.accountId,
+    scopeId: source.scopeId,
+    scopeMode: source.scopeMode,
     assetClass: 'STK',
     symbol: rawSymbol,
     side,
@@ -242,7 +270,7 @@ function idempotencyKeyFor(trade, tradeIds) {
   const kind = trade.orderId ? 'ORDER' : 'TRADE';
   const identity = trade.orderId || tradeIds[0];
   const key = [
-    'IBKR', kind, trade.tradeDate.replace(/-/g, ''), keyPart(trade.accountId),
+    'IBKR', kind, trade.tradeDate.replace(/-/g, ''), keyPart(trade.scopeId),
     keyPart(identity), keyPart(trade.symbol), trade.side,
   ].join('~');
   return IDEMPOTENCY_KEY_RE.test(key) ? key : null;
@@ -271,7 +299,7 @@ function aggregate(trades, initialTaintedGroups = new Set()) {
       candidates.push(trade);
       continue;
     }
-    const tradeIdentity = `${trade.accountId}:${trade.tradeId}`;
+    const tradeIdentity = `${trade.scopeId}:${trade.tradeId}`;
     const state = tradeIdState.get(tradeIdentity);
     if (!state) {
       tradeIdState.set(tradeIdentity, {
@@ -306,7 +334,7 @@ function aggregate(trades, initialTaintedGroups = new Set()) {
       continue;
     }
     const sameIdentity = fills.every(fill => (
-      fill.accountId === first.accountId
+      fill.scopeId === first.scopeId
       && fill.tradeDate === first.tradeDate
       && fill.symbol === first.symbol
       && fill.side === first.side
@@ -339,6 +367,8 @@ function aggregate(trades, initialTaintedGroups = new Set()) {
       }),
       source: Object.freeze({
         accountId: first.accountId,
+        scopeId: first.scopeId,
+        scopeMode: first.scopeMode,
         orderId: first.orderId || null,
         tradeIds: Object.freeze(tradeIds),
         currency: first.currency,
@@ -350,8 +380,9 @@ function aggregate(trades, initialTaintedGroups = new Set()) {
   return { entries, warnings };
 }
 
-export function parseIbkrTradeCsv(input) {
+export function parseIbkrTradeCsv(input, { accountScope = '' } = {}) {
   const source = typeof input === 'string' ? input : '';
+  const normalizedAccountScope = text(accountScope).toUpperCase();
   const invalid = (code, message, format = null, rows = 0) => Object.freeze({
     status: 'invalid', format, entries: Object.freeze([]),
     warnings: Object.freeze([warning(null, code, message)]),
@@ -359,6 +390,9 @@ export function parseIbkrTradeCsv(input) {
   });
   if (!source.trim()) return invalid('EMPTY_FILE', '檔案為空');
   if (new TextEncoder().encode(source).byteLength > MAX_FILE_BYTES) return invalid('FILE_TOO_LARGE', '檔案超過大小上限');
+  if (normalizedAccountScope && !isIbkrImportProfileScope(normalizedAccountScope)) {
+    return invalid('INVALID_PROFILE_SCOPE', '匯入設定檔識別碼無效');
+  }
 
   let rows;
   try { rows = csvRows(source); } catch { return invalid('INVALID_CSV', 'CSV 格式不完整'); }
@@ -366,18 +400,28 @@ export function parseIbkrTradeCsv(input) {
 
   const table = extractTradeTable(rows);
   const columns = columnsFor(table.headers);
+  const accounts = actualAccountIds(table, columns);
+  if (normalizedAccountScope && accounts.length > 1) {
+    return invalid(
+      'PROFILE_MULTI_ACCOUNT_CONFLICT',
+      '同一匯入設定檔不可覆蓋多個不同 IBKR Account ID；請分帳戶匯出或不要使用設定檔',
+      table.format,
+      table.data.length,
+    );
+  }
+
   const required = ['assetClass', 'symbol', 'side', 'quantity', 'price', 'currency'];
   const missing = required.filter(key => columns[key] < 0);
   if (columns.tradeDate < 0 && columns.dateTime < 0) missing.push('tradeDate/dateTime');
   if (columns.orderId < 0 && columns.tradeId < 0) missing.push('orderId/tradeId');
-  if (columns.accountId < 0 && !table.fallbackAccountId) missing.push('accountId');
+  if (!normalizedAccountScope && columns.accountId < 0 && !table.fallbackAccountId) missing.push('accountId');
   if (missing.length) return invalid('MISSING_COLUMNS', `缺少必要欄位：${missing.join(', ')}`, table.format, table.data.length);
 
   const trades = [];
   const warnings = [];
   const taintedGroups = new Set();
   for (const item of table.data.slice(0, MAX_ROWS)) {
-    const parsed = parseTrade(item, columns, table.fallbackAccountId);
+    const parsed = parseTrade(item, columns, table.fallbackAccountId, normalizedAccountScope);
     if (parsed.trade) trades.push(parsed.trade);
     if (parsed.skip) warnings.push(parsed.skip);
     if (parsed.taintKey) taintedGroups.add(parsed.taintKey);
@@ -406,5 +450,7 @@ export const __test = Object.freeze({
   csvRows,
   dateOnly,
   statementAccount,
+  statementAccounts,
+  actualAccountIds,
   groupLabel,
 });
