@@ -56,6 +56,8 @@ test('history filtering composes query, type, inclusive date range, and current 
   assert.equal(recordMatchesHistoryFilters(record, { dateTo: '2026-08-14' }), false);
   assert.equal(recordMatchesHistoryFilters(record, { type: 'SELL' }), false);
   assert.equal(recordMatchesHistoryFilters(record, { currentGroup: 'Income' }), false);
+  assert.equal(recordMatchesHistoryFilters(record, { dateFrom: '2026-02-29' }), false);
+  assert.equal(recordMatchesHistoryFilters(record, { dateFrom: '2026-08-20', dateTo: '2026-08-10' }), false);
 });
 
 test('date-range validation is explicit and local filter state excludes global group scope', () => {
