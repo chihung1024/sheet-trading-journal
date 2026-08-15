@@ -1,7 +1,8 @@
 const MAX_PROFILE_NAME_LENGTH = 64;
 const PROFILE_SCOPE_PREFIX = 'PROFILE_';
+const PROFILE_SCOPE_HEX_LENGTH = 32;
 const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F]/;
-const PROFILE_SCOPE_RE = /^PROFILE_[A-F0-9]{64}$/;
+const PROFILE_SCOPE_RE = /^PROFILE_[A-F0-9]{32}$/;
 
 export function normalizeIbkrImportProfileName(value) {
   const displayName = String(value ?? '')
@@ -33,8 +34,8 @@ export async function deriveIbkrImportProfile(value) {
   const canonical = canonicalProfileName(displayName);
   const payload = new TextEncoder().encode(`IBKR_IMPORT_PROFILE_V1\0${canonical}`);
   const digest = await globalThis.crypto.subtle.digest('SHA-256', payload);
-  const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('').toUpperCase();
-  const scopeId = `${PROFILE_SCOPE_PREFIX}${hex}`;
+  const fullHex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('').toUpperCase();
+  const scopeId = `${PROFILE_SCOPE_PREFIX}${fullHex.slice(0, PROFILE_SCOPE_HEX_LENGTH)}`;
   if (!PROFILE_SCOPE_RE.test(scopeId)) {
     throw new Error('匯入設定檔識別碼建立失敗');
   }
@@ -47,6 +48,7 @@ export const isIbkrImportProfileScope = value => PROFILE_SCOPE_RE.test(String(va
 export const __test = Object.freeze({
   MAX_PROFILE_NAME_LENGTH,
   PROFILE_SCOPE_PREFIX,
+  PROFILE_SCOPE_HEX_LENGTH,
   PROFILE_SCOPE_RE,
   canonicalProfileName,
 });
