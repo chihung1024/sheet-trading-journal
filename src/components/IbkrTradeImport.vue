@@ -58,9 +58,45 @@
               </div>
             </div>
 
+            <div class="profile-section">
+              <div class="profile-copy">
+                <label for="ibkr-import-profile"><strong>匯入設定檔（選填）</strong></label>
+                <p>
+                  如果來源沒有 IBKR Account ID，請輸入一個你固定使用的設定檔名稱，例如「IBKR 主帳戶」。
+                  同一帳戶之後改用 Flex CSV 時請使用相同名稱，才能沿用同一組防重複識別。
+                </p>
+              </div>
+              <div class="profile-controls">
+                <input
+                  id="ibkr-import-profile"
+                  v-model="profileName"
+                  type="text"
+                  maxlength="64"
+                  autocomplete="off"
+                  :disabled="reading || importing"
+                  placeholder="例如：IBKR 主帳戶"
+                  @input="markProfileDirty"
+                >
+                <button
+                  type="button"
+                  class="secondary-button profile-apply"
+                  :disabled="reading || importing || !fileContents || !profileDirty"
+                  @click="rebuildPreview"
+                >重新檢查</button>
+              </div>
+              <p v-if="profileError" class="profile-error" role="alert">{{ profileError }}</p>
+              <p v-else-if="profileDirty" class="profile-dirty" role="status">
+                設定檔已變更；請先重新檢查，確認預覽後才能匯入。
+              </p>
+              <p v-else-if="activeProfileName" class="profile-active">
+                目前使用設定檔：<strong>{{ activeProfileName }}</strong>。名稱只存在本次畫面記憶體，不寫入交易備註或 Account ID 欄位。
+              </p>
+            </div>
+
             <div class="safety-note">
               目前只匯入可安全辨識的 <strong>STK BUY / SELL</strong> 成交；同一 Order 的多個 fills 會合併。
-              無法確認帳戶、代碼、幣別或成交完整性的資料不會寫入。
+              無法確認帳戶或設定檔 scope、代碼、幣別或成交完整性的資料不會寫入。
+              單一設定檔不能覆蓋含多個不同 Account ID 的檔案。
             </div>
 
             <div v-if="preview.entries.length > 0" class="preview-section">
@@ -70,7 +106,7 @@
                   <thead>
                     <tr>
                       <th>日期</th>
-                      <th>帳戶</th>
+                      <th>帳戶 / 設定檔</th>
                       <th>代碼</th>
                       <th>類型</th>
                       <th class="number">股數</th>
@@ -81,7 +117,7 @@
                   <tbody>
                     <tr v-for="entry in preview.entries.slice(0, 50)" :key="entry.idempotencyKey">
                       <td>{{ entry.record.txn_date }}</td>
-                      <td>{{ maskAccount(entry.source.accountId) }}</td>
+                      <td>{{ scopeDisplay(entry) }}</td>
                       <td><strong>{{ entry.record.symbol }}</strong></td>
                       <td>{{ entry.record.txn_type === 'BUY' ? '買入' : '賣出' }}</td>
                       <td class="number">{{ formatNumber(entry.record.qty, 4) }}</td>
@@ -122,7 +158,7 @@
               v-if="preview && !result"
               type="button"
               class="primary-button"
-              :disabled="importing || preview.entries.length === 0"
+              :disabled="importing || profileDirty || preview.entries.length === 0"
               @click="confirmImport"
             >
               {{ importing ? `匯入中 ${progressText}` : `確認匯入 ${preview.entries.length} 筆` }}
@@ -140,6 +176,7 @@ import { CONFIG } from '../config.js';
 import { useToast } from '../composables/useToast';
 import { useAuthStore } from '../stores/auth';
 import { usePortfolioStore } from '../stores/portfolio';
+import { deriveIbkrImportProfile } from '../services/ibkrImportProfile.js';
 import { createIbkrRecord } from '../services/ibkrRecordCreate.js';
 import { parseIbkrTradeCsv } from '../services/ibkrTradeImport.js';
 import { runIbkrTradeImportBatch } from '../services/ibkrTradeImportBatch.js';
@@ -153,6 +190,11 @@ const showDialog = ref(false);
 const reading = ref(false);
 const importing = ref(false);
 const fileName = ref('');
+const fileContents = ref('');
+const profileName = ref('');
+const activeProfileName = ref('');
+const profileDirty = ref(false);
+const profileError = ref('');
 const preview = ref(null);
 const result = ref(null);
 const progress = ref({ current: 0, total: 0 });
@@ -208,6 +250,11 @@ const resetState = () => {
   reading.value = false;
   importing.value = false;
   fileName.value = '';
+  fileContents.value = '';
+  profileName.value = '';
+  activeProfileName.value = '';
+  profileDirty.value = false;
+  profileError.value = '';
   preview.value = null;
   result.value = null;
   progress.value = { current: 0, total: 0 };
@@ -219,6 +266,33 @@ const closeDialog = () => {
   resetState();
 };
 
+const markProfileDirty = () => {
+  profileDirty.value = true;
+  profileError.value = '';
+};
+
+const rebuildPreview = async ({ notifyIfEmpty = true } = {}) => {
+  if (!fileContents.value || importing.value) return;
+  reading.value = true;
+  result.value = null;
+  profileError.value = '';
+  try {
+    const profile = await deriveIbkrImportProfile(profileName.value);
+    preview.value = parseIbkrTradeCsv(fileContents.value, { accountScope: profile.scopeId });
+    activeProfileName.value = profile.displayName;
+    profileDirty.value = false;
+    if (notifyIfEmpty && preview.value.entries.length === 0) {
+      addToast('這份 IBKR 檔案沒有可安全匯入的股票成交', 'warning');
+    }
+  } catch (error) {
+    activeProfileName.value = '';
+    profileError.value = error?.message || '匯入設定檔無法套用';
+    profileDirty.value = true;
+  } finally {
+    reading.value = false;
+  }
+};
+
 const handleFileChange = async (event) => {
   const file = event.target?.files?.[0];
   if (fileInput.value) fileInput.value.value = '';
@@ -226,14 +300,10 @@ const handleFileChange = async (event) => {
 
   resetState();
   showDialog.value = true;
-  reading.value = true;
   fileName.value = file.name || 'IBKR CSV';
   try {
-    const contents = await file.text();
-    preview.value = parseIbkrTradeCsv(contents);
-    if (preview.value.entries.length === 0) {
-      addToast('這份 IBKR 檔案沒有可安全匯入的股票成交', 'warning');
-    }
+    fileContents.value = await file.text();
+    await rebuildPreview({ notifyIfEmpty: true });
   } catch (error) {
     preview.value = {
       status: 'invalid',
@@ -241,13 +311,11 @@ const handleFileChange = async (event) => {
       warnings: [{ rowNumber: null, code: 'FILE_READ_FAILED', message: '檔案無法讀取，請重新匯出 CSV 後再試' }],
       summary: { rows: 0, importable: 0, skipped: 1 },
     };
-  } finally {
-    reading.value = false;
   }
 };
 
 const confirmImport = async () => {
-  if (importing.value || !preview.value?.entries?.length) return;
+  if (importing.value || profileDirty.value || !preview.value?.entries?.length) return;
   importing.value = true;
   result.value = null;
   progress.value = { current: 0, total: preview.value.entries.length };
@@ -300,6 +368,13 @@ const maskAccount = (accountId) => {
   if (!value) return '—';
   if (value.length <= 4) return value;
   return `•••${value.slice(-4)}`;
+};
+
+const scopeDisplay = (entry) => {
+  const account = maskAccount(entry?.source?.accountId);
+  if (!activeProfileName.value) return account;
+  if (account === '—') return `設定檔：${activeProfileName.value}`;
+  return `${account} · 設定檔：${activeProfileName.value}`;
 };
 
 const formatNumber = (value, digits = 2) => {
@@ -388,10 +463,45 @@ const formatNumber = (value, digits = 2) => {
 .summary-item strong { font-size: 1.15rem; }
 .summary-item.good strong { color: #15803d; }
 .summary-item.warning strong { color: #b45309; }
+.profile-section,
 .safety-note,
 .preview-section,
 .warning-section,
 .result-box { margin: 1rem 1.25rem; }
+.profile-section {
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+}
+.profile-copy p,
+.profile-active,
+.profile-dirty,
+.profile-error {
+  margin: 0.35rem 0 0;
+  line-height: 1.5;
+  font-size: 0.84rem;
+}
+.profile-copy p,
+.profile-active { color: var(--text-secondary, #64748b); }
+.profile-dirty { color: #b45309; }
+.profile-error { color: #b91c1c; }
+.profile-controls {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 0.65rem;
+}
+.profile-controls input {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-color, #d5d9e2);
+  border-radius: 8px;
+  background: var(--card-bg, #fff);
+  color: inherit;
+}
+.profile-apply { white-space: nowrap; }
 .safety-note {
   padding: 0.75rem 0.9rem;
   border-radius: 10px;
@@ -446,6 +556,7 @@ const formatNumber = (value, digits = 2) => {
   .dialog-backdrop { align-items: flex-end; padding: 0; }
   .import-dialog { width: 100%; max-height: 92vh; border-radius: 14px 14px 0 0; }
   .summary-grid { grid-template-columns: 1fr; gap: 0.5rem; }
+  .profile-controls { align-items: stretch; flex-direction: column; }
   .dialog-actions { position: sticky; bottom: 0; background: var(--card-bg, #fff); }
   .primary-button, .secondary-button { flex: 1; }
 }

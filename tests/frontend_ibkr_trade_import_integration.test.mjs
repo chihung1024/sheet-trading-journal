@@ -88,9 +88,10 @@ test('IBKR import UI is preview-first and delegates writes without direct record
   assert.match(recordList, /import IbkrTradeImport from ['"]\.\/IbkrTradeImport\.vue['"]/);
   assert.match(recordList, /<IbkrTradeImport\s*\/>/);
 
-  assert.match(component, /parseIbkrTradeCsv\(contents\)/);
+  assert.match(component, /deriveIbkrImportProfile\(profileName\.value\)/);
+  assert.match(component, /parseIbkrTradeCsv\(fileContents\.value, \{ accountScope: profile\.scopeId \}\)/);
   assert.match(component, /v-if="preview && !result"/);
-  assert.match(component, /:disabled="importing \|\| preview\.entries\.length === 0"/);
+  assert.match(component, /:disabled="importing \|\| profileDirty \|\| preview\.entries\.length === 0"/);
   assert.match(component, /runIbkrTradeImportBatch\(preview\.value\.entries/);
   assert.match(component, /createIbkrRecord\(entry/);
   assert.match(component, /refreshRecords:\s*\(\) => portfolioStore\.fetchRecords\(\)/);
