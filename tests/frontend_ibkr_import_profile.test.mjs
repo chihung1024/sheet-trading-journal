@@ -19,7 +19,7 @@ const row = ({ account = null, symbol = 'VFLO', side = 'BUY', qty = '10', price 
   return account === null ? values.join(',') : [account, ...values].join(',');
 };
 
-test('profile names normalize predictably but the raw label never becomes the scope id', async () => {
+test('profile names normalize predictably but the raw label never becomes the bounded scope id', async () => {
   assert.equal(normalizeIbkrImportProfileName('  Main   IBKR  '), 'Main IBKR');
   const first = await deriveIbkrImportProfile('Main IBKR');
   const replay = await deriveIbkrImportProfile(' main   ibkr ');
@@ -29,8 +29,24 @@ test('profile names normalize predictably but the raw label never becomes the sc
   assert.equal(first.scopeId, replay.scopeId);
   assert.notEqual(first.scopeId, other.scopeId);
   assert.equal(isIbkrImportProfileScope(first.scopeId), true);
-  assert.match(first.scopeId, /^PROFILE_[A-F0-9]{64}$/);
+  assert.match(first.scopeId, /^PROFILE_[A-F0-9]{32}$/);
   assert.doesNotMatch(first.scopeId, /MAIN|IBKR/);
+});
+
+test('bounded profile scope leaves enough room for the existing 128-character import identity contract', async () => {
+  const profile = await deriveIbkrImportProfile('Primary connector');
+  const parsed = parseIbkrTradeCsv([
+    noAccountHeader,
+    row({
+      symbol: 'ABCDEFGHIJKLMNOPQRSTUVWX',
+      order: '',
+      trade: 'EXECUTION-ID-12345678901234567890',
+    }),
+  ].join('\n'), { accountScope: profile.scopeId });
+
+  assert.equal(parsed.status, 'ready');
+  assert.equal(parsed.entries.length, 1);
+  assert.ok(parsed.entries[0].idempotencyKey.length <= 128);
 });
 
 test('account-less connector-derived CSV stays fail-closed without a profile', () => {
