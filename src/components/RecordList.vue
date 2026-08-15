@@ -183,6 +183,7 @@
                                 @click="toggleRecordDetails(r.id)"
                                 :aria-expanded="isRecordExpanded(r.id)"
                                 :aria-controls="getRecordDetailId(r.id)"
+                                :aria-label="isRecordExpanded(r.id) ? '收合完整交易明細' : '查看完整交易明細'"
                                 :title="isRecordExpanded(r.id) ? '收合交易明細' : '查看完整交易明細'"
                             >
                                 {{ isRecordExpanded(r.id) ? '▴' : '▾' }}
@@ -259,6 +260,7 @@
                     @click="toggleRecordDetails(r.id)"
                     :aria-expanded="isRecordExpanded(r.id)"
                     :aria-controls="getRecordDetailId(r.id)"
+                    :aria-label="isRecordExpanded(r.id) ? '收合完整交易明細' : '查看完整交易明細'"
                 >
                     {{ isRecordExpanded(r.id) ? '▴ 收合明細' : '▾ 查看明細' }}
                 </button>
