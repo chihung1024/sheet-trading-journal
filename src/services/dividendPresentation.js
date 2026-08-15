@@ -26,3 +26,35 @@ export const getDividendDefaultTax = (dividend = {}) => {
   const net = getDividendNetNative(dividend);
   return Math.max(0, gross - net);
 };
+
+export const getDividendEntryAmounts = (dividend = {}) => {
+  const gross = asFiniteNumber(dividend?.amount);
+  const tax = asFiniteNumber(dividend?.tax);
+  return Object.freeze({
+    gross,
+    tax,
+    net: gross - tax,
+  });
+};
+
+export const getDividendEntryTaxRate = (dividend = {}) => {
+  const { gross, tax } = getDividendEntryAmounts(dividend);
+  if (gross <= 0) return 0;
+  return Math.round((tax / gross) * 100);
+};
+
+export const getDividendEntryValidationError = (dividend = {}) => {
+  const rawGross = Number(dividend?.amount);
+  const rawTax = Number(dividend?.tax);
+
+  if (!Number.isFinite(rawGross) || rawGross <= 0) {
+    return '請輸入大於 0 的稅前配息總額';
+  }
+  if (!Number.isFinite(rawTax) || rawTax < 0) {
+    return '預扣稅金不可小於 0';
+  }
+  if (rawTax > rawGross) {
+    return '預扣稅金不可大於稅前配息總額';
+  }
+  return '';
+};
