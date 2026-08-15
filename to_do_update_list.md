@@ -1,27 +1,26 @@
 # TO-DO / UPDATE LIST — Product-First Current Handoff
 
-> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote state, open PRs, CI/Pages and machine-readable contracts override prose.
+> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote main/open PR/CI/Pages and machine-readable contracts override prose.
 >
 > Detailed Phase 1–6 chronology remains at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **Phase 13 Cross-Page UX Consistency & Holdings Visualization is OPTIMIZED FOR CURRENT REQUIREMENTS after 13.1A–13.1C. No runtime batch is active. Holdings now has reconciled bar + donut allocation views; transaction Note density and cross-page typography/spacing are converged. Sector / industry / sub-industry allocation is intentionally not implemented until an authoritative metadata producer exists. Former Phase 12 IBKR Sync Automation remains optional broker-specific backlog, not the default next phase.**
+Current line: **Phase 13 Cross-Page UX Consistency is OPTIMIZED FOR CURRENT REQUIREMENTS after Phase 13.2 completed the typography root fix. No runtime batch is active. Daily Command Center is compact-by-default, Transaction History no longer reserves a standalone empty Note column, and `src/style.css` is now the single base design-system / typography authority. Sector / industry allocation remains intentionally deferred until authoritative classification metadata exists. Former Phase 12 IBKR Sync Automation remains optional broker-specific backlog.**
 
 ---
 
 ## 0. Operating doctrine
 
 1. Product functionality and UX are highest priority.
-2. One Primary Active Batch. Read-only supporting audit may run while gates execute, but no second implementation batch.
-3. Debug by evidence and root cause; inspect same-class impact and add regression/prevention.
-4. Financial/data correctness is fail-closed. Browser presentation must not become a second accounting, FX, tax or market-data engine.
-5. R2+ requires exact-head CI, recovery point, frozen review and permanent handoff. High-consequence R1 surfaces still use canonical CI.
+2. Keep one Primary Active Batch. Read-only audit may run while gates execute, but do not implement a second batch in parallel.
+3. Debug by evidence and root cause. Inspect same-class impact and add regression/prevention rather than symptom-only patches.
+4. Financial/data correctness is fail-closed. Browser presentation must never become a second accounting, FX, tax, recovery or market-data authority.
+5. Important work uses exact-head CI, recovery point, frozen review and permanent handoff.
 6. Prefer deterministic automation. **AI 管流程，不管帳**.
 7. Technical work belongs in NOW only when required by the active product goal; optional cleanup/debug must converge.
 8. Do not reopen closed phases without fresh material user/production evidence.
-9. Preserve recovery points; never use destructive git against unknown work.
-10. When no approved runtime direction remains, stop rather than inventing technical work.
-11. Do not treat phase numbering as automatic priority. Rank work by cross-user applicability, frequency of use, product/UX impact and evidence. Broker-specific integrations must not displace higher-value universal functionality merely because they are next numerically.
+9. Do not treat phase numbering as priority. Rank by cross-user applicability, frequency, product/UX impact and evidence.
+10. When no approved runtime direction remains, stop instead of inventing technical work.
 
 ---
 
@@ -29,11 +28,11 @@ Current line: **Phase 13 Cross-Page UX Consistency & Holdings Visualization is O
 
 ### Production checkpoints
 
-Production Pages runtime after Phase 13.1C:
+Production Pages runtime after Phase 13.2:
 
-`1d94596f4711027eae2b91343ea77b62aa87f715`
+`dc5abadf4012234233f43ccb05f2f986effc4c2c`
 
-Production Worker runtime remains:
+Production Worker runtime remains unchanged:
 
 `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
 
@@ -59,86 +58,176 @@ A docs-only closeout merge may advance repository `main` without changing produc
 - Phase 11 Daily Portfolio Command Center / Action Center — OPTIMIZED FOR CURRENT REQUIREMENTS
 - Former Phase 12 IBKR Sync Automation — SKIPPED AS DEFAULT NEXT PHASE / OPTIONAL BROKER-SPECIFIC BACKLOG
 - **Phase 13 Cross-Page UX Consistency & Holdings Visualization — OPTIMIZED FOR CURRENT REQUIREMENTS**
-- **No runtime batch active; next product phase is intentionally unselected**
+- **No runtime batch active; next product phase intentionally unselected**
 
 ---
 
 ## 2. Phase 13 immutable evidence
 
-### Phase 13.1A — Cross-Page Visual Consistency Foundation
+### Phase 13.1A — Initial Cross-Page Visual Consistency Foundation
 
-Product result:
+What it achieved:
 
-- shared typography, spacing, control-height, card and table-density tokens in `src/styles/product-consistency.css`;
-- consistent rhythm across Overview / Chart shell / Holdings / Records / Dividends, with global card/input/button scale also inherited by the transaction side panel;
-- Daily Command Center and Stats cards use one visual hierarchy;
-- Record History Note width was initially bounded and full-note authority remained the existing read-only detail panel;
-- no financial/data/mutation authority changed.
+- introduced a cross-page presentation layer for spacing, card density, controls and table density;
+- improved visual rhythm across Overview / Charts / Holdings / Records / Dividends / Groups;
+- did not change financial/data authorities.
+
+Important correction from later production evidence:
+
+- 13.1A did **not** fully solve typography architecture;
+- `App.vue`, component-scoped CSS and `product-consistency.css` still simultaneously controlled font sizes;
+- the later consistency stylesheet relied on `!important` overrides, so typography authority remained split.
 
 Evidence:
 
-- PR #292 final exact head `e6e5ca009542e6367e0148d461ed047e18be7790`
-- exact-head CI #1028 / run `31900437897`: **SUCCESS**
-- frozen review `4944420384`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
-- merge `0714ac880d28a5ecacd8fa57e8fb1c40b7e0937f`
-- post-main CI #1029 / run `31900492133`: **SUCCESS**
-- Pages #1574 / run `31900491307`: **SUCCESS**
+- PR #292 merge `0714ac880d28a5ecacd8fa57e8fb1c40b7e0937f`
+- exact-head CI #1028 SUCCESS
+- post-main CI #1029 SUCCESS
+- Pages #1574 SUCCESS
 
 ### Phase 13.1B — Holdings Allocation Visualization
 
 Product result:
 
-- existing Top-holdings bar ranking is preserved;
-- new accessible donut visualization gives a whole-portfolio composition view;
-- donut consumes only Phase 10.4A reconciled `concentration.weightsBySymbol`;
-- projection validates non-negative finite weights and total ~=100%; otherwise fails closed;
-- default presentation shows up to 7 named holdings plus one explicit `其他（N 檔）` remainder;
-- concentration panel is responsive across wide desktop / laptop / tablet / mobile;
-- no raw-holdings recalculation, cash inference, risk score or recommendation.
+- existing Top-holdings bar ranking preserved;
+- accessible donut provides whole-portfolio composition;
+- donut consumes only Phase 10.4A reconciled `weightsBySymbol`;
+- invalid/unreconciled weights fail closed;
+- no cash inference, risk score, target allocation or recommendation.
 
 Evidence:
 
-- PR #293 final exact head `d74e6a7a5a733e47454770fd934250747fad2217`
-- exact-head CI #1030 / run `31900699522`: **SUCCESS**
-- frozen review `4944429266`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
-- merge `7d0558a176fd6088acb3d32ae49a250bf9b53034`
-- post-main CI #1031 / run `31900753660`: **SUCCESS**
-- Pages #1575 / run `31900752622`: **SUCCESS**
+- PR #293 merge `7d0558a176fd6088acb3d32ae49a250bf9b53034`
+- exact-head CI #1030 SUCCESS
+- post-main CI #1031 SUCCESS
+- Pages #1575 SUCCESS
 
-### Phase 13.1C — Record / Group Density Convergence
+### Phase 13.1C — Initial Record / Group Density Convergence
 
 Product result:
 
-- desktop Transaction History Note column reduced from 22% to 14%; freed width goes to Symbol / Strategy and transaction-value fields;
-- desktop Note summary becomes one-line scan text; mobile remains two lines;
-- full Journal Note remains available in `RecordDetailPanel`; no note content is hidden from the deliberate read path;
-- Group Management uses the shared title / helper / control / table-density scale without changing its mutation behavior;
-- no RecordList / GroupManager business logic changed.
+- desktop Note column initially narrowed;
+- desktop summary reduced to one line, mobile retained two lines;
+- full Note remained in `RecordDetailPanel`;
+- Group Management adopted shared spacing/table density.
+
+Production evidence then showed the standalone Note column still produced a visually unbalanced empty band. This was subsequently root-fixed in 13.2 rather than receiving another width-only patch.
 
 Evidence:
 
-- PR #294 final exact head `f5675766a248d920f26bd8c3c61b68c6c2ab9596`
-- exact-head CI #1032 / run `31900878683`: **SUCCESS**
-- frozen review `4944435897`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
-- merge `1d94596f4711027eae2b91343ea77b62aa87f715`
-- post-main CI #1033 / run `31900926986`: **SUCCESS**
-- Pages #1576 / run `31900926571`: **SUCCESS**
+- PR #294 merge `1d94596f4711027eae2b91343ea77b62aa87f715`
+- exact-head CI #1032 SUCCESS
+- post-main CI #1033 SUCCESS
+- Pages #1576 SUCCESS
 
-### Phase 13 bounded post-audit
+### Phase 13.2 — Typography Authority Root Fix & Information Density Convergence
 
-No further runtime batch is justified now.
+#### Root cause
 
-- Overview / chart shell / holdings / records / dividends / groups share the same global visual tokens and responsive rhythm.
-- Transaction side panel inherits the global card / input / button scale; no structural mismatch justifies a separate rewrite.
-- Record Note layout now addresses the supplied production screenshot root cause without mixing read and edit intent.
-- Holdings allocation now has both precise rank comparison (bars) and whole-composition view (donut).
-- sector / industry / sub-industry is a **data-contract gap, not a chart gap**: current `HoldingPosition` / snapshot publishes no such fields, and repository audit found no authoritative sector/industry producer or metadata profile path.
+Production screenshots showed the apparent font-size problem was architectural, not a few bad selectors:
 
-**Phase 13 is OPTIMIZED FOR CURRENT REQUIREMENTS. Reopen for fresh production/user evidence or when authoritative classification metadata exists.**
+1. `src/style.css` was nominally the design-token file but originally had no semantic typography scale;
+2. `App.vue` independently redefined base colors/surfaces/shadows and body typography;
+3. individual Vue scoped styles hard-coded many arbitrary numeric font sizes;
+4. `product-consistency.css` later tried to normalize them with selector overrides and `!important`.
+
+This created multiple simultaneous sources of truth and guaranteed future drift.
+
+#### Root fix
+
+`src/style.css` is now the **single base design-system / font-source / typography authority**.
+
+Semantic type roles:
+
+```text
+caption      13px
+label        14px
+body         15px
+control      16px
+emphasis     16px
+section      18px
+page         18px
+metric-sm    20px
+metric       responsive ~23–28px
+```
+
+Rules now enforced:
+
+- all Vue component `font-size` declarations consume approved `--type-*` or `--icon-*` semantic tokens;
+- Vue component scoped CSS may not invent numeric `font-size` values;
+- `App.vue` may keep layout variables only and may not redefine base design tokens/body typography;
+- Google font source belongs to `src/style.css`, not App/component styles;
+- `product-consistency.css` is layout/density only: **no `font-size`, no `--ui-font-*`, no `!important`**;
+- primary data tables use label-scale headers and body-scale rows;
+- controls/input text stay at 16px for readability and mobile-browser zoom safety;
+- `tests/frontend_typography_authority.test.mjs` prevents regression of the split-authority architecture.
+
+#### Daily Command Center
+
+- default state is now compact rather than permanently occupying the top half of Overview;
+- compact row exposes four high-value facts: daily P&L, Top-3 concentration, pending dividends, recent transaction;
+- details remain available through an accessible inline disclosure with `aria-expanded` / controlled region;
+- group change collapses stale expanded detail;
+- no localStorage or new decision/accounting authority.
+
+#### Transaction History journal layout
+
+Desktop changed from 8 columns to 7:
+
+```text
+日期 | 代碼/策略/備註 | 類型 | 股數 | 單價 | 總額 | 操作
+```
+
+- standalone Note column removed;
+- one-line Journal summary is colocated with Symbol / Strategy context;
+- no note means no reserved empty visual band;
+- full Journal Note remains in existing read-only `RecordDetailPanel`;
+- mobile retains compact two-line Note summary;
+- search/filter/edit/delete/detail/valuation authorities remain unchanged.
+
+#### Migration hygiene
+
+One-time branch-only codemods/workflows were used to mechanically migrate existing numeric styles and validate semantics. They were deleted before the final PR candidate. No migration workflow/tool and no boot-screen side effect entered the final PR/main.
+
+#### Evidence
+
+- PR #296 final exact head `6cf9b8f77a7b0ac125766cb49c8ce7f4575415a3`
+- exact-head CI #1043 / run `31903218119`: **SUCCESS**
+- frozen review `4944535588`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
+- merge `dc5abadf4012234233f43ccb05f2f986effc4c2c`
+- post-main CI #1044 / run `31903346284`: **SUCCESS**
+- Pages #1578 / run `31903345303`: **SUCCESS**
+- no Worker/D1/Python/accounting/FX runtime change
+
+### Phase 13 closeout conclusion
+
+**Phase 13 is OPTIMIZED FOR CURRENT REQUIREMENTS.**
+
+Do not reopen typography by adding another cross-page override layer. Future visual changes must use/extend semantic design tokens at the single authority, then consume those roles in components.
 
 ---
 
 ## 3. Stable authority boundaries
+
+### Design system / typography
+
+```text
+src/style.css
+→ base palette/surfaces/radius/shadows
+→ font source
+→ semantic --type-* / --icon-* roles
+→ component-scoped presentation consumes roles
+
+src/styles/product-consistency.css
+→ spacing / dimensions / responsive density only
+```
+
+Do not:
+
+- introduce arbitrary numeric component font sizes;
+- redefine base design tokens inside `App.vue` or components;
+- create another typography override stylesheet;
+- use `!important` as the normal typography convergence mechanism.
 
 ### Mutation / calculation
 
@@ -181,64 +270,55 @@ No nearest-date guessing or hard-coded browser FX fallback.
 store.records
 → global currentGroup scope
 → pure Symbol/Tag/Note query + type + inclusive date range
-→ compact desktop/mobile summary
+→ desktop Symbol/Strategy/Journal summary or mobile card
 → optional page-memory full detail
 → existing Edit/Delete lifecycle
 ```
 
-- desktop Note one-line summary and mobile two-line summary are presentation only;
+- Journal summary placement is presentation only;
 - `RecordDetailPanel` remains the deliberate full-note read surface;
 - no note-only persistence bypass or filter/detail localStorage authority;
 - no historical lot inference from current-day `day_ledger`;
 - no second valuation engine.
 
-### Portfolio concentration / allocation presentation
+### Portfolio concentration / allocation
 
 ```text
 current-group holdings[].market_value_twd
 + authoritative summary.total_value
 → Phase 10.4A reconciliation gate
 → weightsBySymbol / largest / Top-3 / top positions
-→ bar ranking + Phase 13 donut presentation
+→ bar ranking + donut presentation
 ```
 
-Rules:
-
-- donut does not independently calculate holding weights;
-- donut fails closed when concentration is unavailable or weights do not reconcile;
-- holdings percentages exclude cash because no explicit cash asset exists;
-- no risk threshold, score, target allocation, forecast or buy/sell recommendation;
-- no sector / industry allocation until classification metadata has an authoritative producer, provenance, coverage and update policy.
+- donut does not independently calculate weights;
+- percentages exclude cash because no explicit cash asset exists;
+- no risk threshold, score, target allocation, forecast or recommendation;
+- no sector / industry allocation until classification metadata has authoritative provenance and coverage.
 
 ### Daily Command Center
 
-Existing reviewed Daily P&L explanation + reconciled concentration + pending dividend candidates + authoritative records → pure summary/navigation only. Global reliability/retry authority remains `DataReliabilityBanner`; Command Center does not create another state machine.
+Existing reviewed Daily P&L explanation + reconciled concentration + pending dividend candidates + authoritative records → compact summary/navigation only. Global reliability/retry authority remains `DataReliabilityBanner`.
 
-### IBKR import
+### IBKR
 
-User-provided file → local preview/validation → stable broker account or explicit non-sensitive Import Profile → deterministic replay key → existing authenticated record-create. No IBKR credentials in D1/localStorage and no system-principal record writes. IBKR automation remains optional integration work.
+IBKR file import remains supported, but background/Flex automation is optional broker-specific backlog. Do not prioritize it over universal user functionality solely because of phase numbering.
 
 ---
 
 ## 4. Sector / industry visualization decision
 
-User requested discussion of parent-sector / sub-sector proportions.
+Current `HoldingPosition` / snapshot does not publish authoritative `sector`, `industry` or `sub_industry`, and repository audit found no trustworthy classification producer.
 
-Current evidence:
+Therefore do not hard-code Symbol → sector maps in the browser and do not infer classifications from strategy Tags.
 
-- `HoldingPosition` does not publish `sector`, `industry`, `sub_industry` or equivalent classification metadata;
-- repo-wide audit found no authoritative sector/industry enrichment producer;
-- current market-data path is valuation / price / FX oriented, not a classified security-master contract.
+A future implementation is valid only after one of these contracts is deliberately selected:
 
-Therefore do **not** hard-code Symbol → sector mappings in the browser and do not infer classifications from strategy Tags.
+1. authoritative security metadata producer publishes classification + source + as-of + coverage;
+2. explicit user-owned taxonomy is introduced and clearly labeled as user-defined;
+3. reviewed external enrichment provider is cached with provenance and uncovered holdings remain explicit `未分類`.
 
-A future implementation becomes valid only after one of these contracts is deliberately selected:
-
-1. authoritative metadata producer publishes `sector`, `industry`, source, as-of and coverage with each holding or a versioned security master;
-2. explicit user-owned classifications are introduced and clearly labeled as user taxonomy rather than market truth;
-3. an external enrichment provider is reviewed, cached with provenance, and missing coverage remains explicit `未分類`.
-
-Once that data contract exists, sector parent / industry child visualization can be added without changing portfolio accounting.
+Once that authority exists, sector donut / treemap / parent→child drill-down can be added without changing portfolio accounting.
 
 ---
 
@@ -248,15 +328,15 @@ Once that data contract exists, sector parent / industry child visualization can
 
 No runtime batch active.
 
-Production Pages runtime: `1d94596f4711027eae2b91343ea77b62aa87f715`  
+Production Pages runtime: `dc5abadf4012234233f43ccb05f2f986effc4c2c`  
 Production Worker: `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
 
 Optional browser evidence, not blockers:
 
-1. verify new donut density and legend with real 19+ position account on wide desktop and mobile;
-2. verify Record History Note column no longer dominates empty rows and full detail remains readable;
-3. verify Group Management controls remain comfortable on tablet/mobile;
-4. verify group switching updates concentration bars and donut from the same reconciled projection.
+1. compare Overview compact Daily Command density on wide desktop / tablet / mobile;
+2. verify semantic type scale on Overview / Charts / Holdings / Records / Dividends / Groups / transaction panel;
+3. confirm Transaction History has no empty Note band and full Note remains readable in detail;
+4. confirm holdings donut/bar and group switching still use the same reconciled projection.
 
 ### Universal product candidates for future discussion
 
@@ -265,9 +345,9 @@ Re-rank rather than blindly advancing phase numbers:
 - **Account / Cash Ledger Foundation** — explicit cash, deposits, withdrawals and truthful account NAV semantics;
 - **Transaction Timeline Integrity** — authoritative same-day execution timestamp / sequence;
 - **User Data Portability / Backup** — user-facing export, backup/restore and data-rights workflows;
-- **Broker-neutral Universal Import** — CSV mapping / preview / validation / deterministic create independent of a specific broker;
+- **Broker-neutral Universal Import** — CSV mapping / preview / validation / deterministic create independent of one broker;
 - **Authoritative Historical Lot Ledger** — only after a trustworthy producer exists;
-- **Advanced Portfolio Analytics** — Sharpe / Sortino / MDD etc. only after methodology and account-value scope are reviewed;
+- **Advanced Portfolio Analytics** — Sharpe / Sortino / MDD etc. only after methodology/account-value scope are reviewed;
 - **AI Journal Intelligence** — interpretation/summarization over deterministic facts, never AI accounting.
 
 ### Optional / broker-specific backlog
@@ -291,8 +371,9 @@ Re-rank rather than blindly advancing phase numbers:
 - no historical lot attribution from current-day `day_ledger`;
 - no invented risk score, forecast or investment recommendation without reviewed methodology;
 - no strategy allocation percentages from overlapping groups unless non-overlap semantics are proven;
-- no sector/industry classification guessed from symbol names, frontend hard-coded maps or strategy Tags;
-- no second reliability/action-state machine inside Daily Command Center.
+- no sector/industry classification guessed from symbol names, frontend maps or strategy Tags;
+- no second reliability/action-state machine inside Daily Command Center;
+- no new arbitrary numeric component `font-size` or typography `!important` override layer.
 
 ---
 
@@ -304,8 +385,9 @@ Re-rank rather than blindly advancing phase numbers:
 4. Keep one Primary Active Batch and preserve its recovery point.
 5. Reopen Phase 10/11/13 only for fresh material evidence.
 6. Debug same-class impact + regression prevention.
-7. Do not start IBKR automation merely because it was formerly numbered Phase 12.
-8. If adding sector/industry charts, first prove the classification metadata authority and coverage.
+7. If changing typography, edit/extend semantic roles in `src/style.css`; do not create another override authority.
+8. Do not start IBKR automation merely because it was formerly numbered Phase 12.
+9. If adding sector/industry charts, first prove classification metadata authority and coverage.
 
 ---
 
@@ -313,11 +395,12 @@ Re-rank rather than blindly advancing phase numbers:
 
 | Purpose | Checkpoint |
 |---|---|
-| Phase 13.1C runtime / production Pages | `1d94596f4711027eae2b91343ea77b62aa87f715` |
-| Phase 13.1B runtime / production Pages | `7d0558a176fd6088acb3d32ae49a250bf9b53034` |
-| Phase 13.1A runtime / production Pages | `0714ac880d28a5ecacd8fa57e8fb1c40b7e0937f` |
+| Phase 13.2 typography root fix / production Pages | `dc5abadf4012234233f43ccb05f2f986effc4c2c` |
+| Phase 13.1C runtime | `1d94596f4711027eae2b91343ea77b62aa87f715` |
+| Phase 13.1B runtime | `7d0558a176fd6088acb3d32ae49a250bf9b53034` |
+| Phase 13.1A runtime | `0714ac880d28a5ecacd8fa57e8fb1c40b7e0937f` |
 | Phase 12-skip roadmap docs checkpoint | `6af1ec3c84a10ee049c6b5440a14e5eb8cb6567c` |
-| Phase 11.1 runtime / production Pages | `cb4ae5d09753d0b559b33e3c7448e857cf0016e9` |
+| Phase 11.1 runtime | `cb4ae5d09753d0b559b33e3c7448e857cf0016e9` |
 | Completed Phase 10 docs checkpoint | `c0773fbc4c63397262e0889b0466c280ca36b7ae` |
 | Phase 10.4A runtime | `6e1f3207bc8e9aa778ebe819f4a053d08cc66f1a` |
 | Phase 10.3B runtime | `e30433b260dc928c067f0c5c0721bd22ad89d216` |
