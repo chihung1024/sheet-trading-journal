@@ -42,14 +42,16 @@ test('new and replayed rows are counted while a created batch performs one readb
   assert.deepEqual(fixture.calls, { create: 2, refresh: 1, update: 1 });
 });
 
-test('replay-only batch refreshes ledger view but never starts a new portfolio update', async () => {
+test('replay-only batch changes neither records identity nor portfolio calculation state', async () => {
   const fixture = deps(async () => committed(true));
   const result = await runIbkrTradeImportBatch(entries, fixture.options);
 
   assert.equal(result.status, 'replayed');
   assert.equal(result.created, 0);
   assert.equal(result.replayed, 2);
-  assert.deepEqual(fixture.calls, { create: 2, refresh: 1, update: 0 });
+  assert.equal(result.sync.readbackAttempted, false);
+  assert.equal(result.sync.updateAttempted, false);
+  assert.deepEqual(fixture.calls, { create: 2, refresh: 0, update: 0 });
 });
 
 test('definite partial failure stops later writes but still syncs a committed prefix exactly once', async () => {
@@ -114,12 +116,13 @@ test('update failure after confirmed writes is a sync warning rather than a fals
   assert.deepEqual(fixture.calls, { create: 2, refresh: 1, update: 1 });
 });
 
-test('replay-only readback failure remains replay truth and does not create a calculation job', async () => {
+test('replay-only batch never calls readback even if that dependency would currently fail', async () => {
   const fixture = deps(async () => committed(true), { refreshError: new Error('readback unavailable') });
   const result = await runIbkrTradeImportBatch(entries, fixture.options);
 
-  assert.equal(result.status, 'replayed_with_sync_warning');
+  assert.equal(result.status, 'replayed');
   assert.equal(result.created, 0);
   assert.equal(result.replayed, 2);
-  assert.deepEqual(fixture.calls, { create: 2, refresh: 1, update: 0 });
+  assert.equal(result.sync.readbackError, null);
+  assert.deepEqual(fixture.calls, { create: 2, refresh: 0, update: 0 });
 });
