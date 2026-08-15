@@ -1,4 +1,5 @@
 import { readApiJson } from './apiResponse.js';
+import { extractIbkrUserJournalNote } from './ibkrJournalNote.js';
 import {
   beginRecordCreateIntent,
   completeRecordCreateIntent,
@@ -46,12 +47,13 @@ const sanitizeIbkrRecordForPersistence = (record) => {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new TypeError('IBKR record must be an object');
   }
-  const note = String(record.note || '')
+  const noteWithoutSensitiveAccountFields = String(record.note || '')
     .split(';')
     .map(part => part.trim())
     .filter(Boolean)
     .filter(part => !SENSITIVE_NOTE_FIELD_RE.test(part))
     .join('; ');
+  const note = extractIbkrUserJournalNote(noteWithoutSensitiveAccountFields);
   return Object.freeze({ ...record, note });
 };
 
