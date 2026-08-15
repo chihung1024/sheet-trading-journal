@@ -114,23 +114,23 @@ test('TradeForm completes only the matching unresolved create and preserves user
   assert.match(source, /onUnmounted\(\(\) => unsubscribeRecordCreateRecovery\(\)\)/);
 });
 
-test('DividendManager only closes an Auto-Dividend pending row for the same signed owner', async () => {
+test('DividendManager confirmation is derived from server DIV records, not recovery-signal or local-storage state', async () => {
   const source = await readSource('../src/components/DividendManager.vue');
 
-  assert.match(source, /useAuthStore/);
-  assert.match(source, /subscribeRecordCreateRecoverySuccess/);
-  assert.match(source, /event\.owner !== normalizeRecoveryOwner\(auth\.user\?\.email\)/);
-  assert.match(source, /JSON\.parse\(event\.body\)/);
-  assert.match(source, /payload\?\.txn_type !== 'DIV' \|\| payload\?\.tag !== 'Auto-Dividend'/);
-  assert.match(source, /localDividends\.value\.find/);
-  assert.match(source, /confirmedKeys\.value\.add\(key\)/);
-  assert.match(source, /saveConfirmedKeys\(\)/);
-  assert.match(source, /onUnmounted\(\(\) => unsubscribeRecordCreateRecovery\(\)\)/);
+  assert.match(source, /buildConfirmedDividendKeySet/);
+  assert.match(source, /isDividendConfirmedByRecords/);
+  assert.match(source, /const confirmedDividendKeys = computed\(\(\) => buildConfirmedDividendKeySet\(store\.records\)\)/);
+  assert.match(source, /const isConfirmed = \(div\) => isDividendConfirmedByRecords\(div, confirmedDividendKeys\.value\)/);
 
-  const listenerStart = source.indexOf('const unsubscribeRecordCreateRecovery');
-  const listenerEnd = source.indexOf('// ✅ 大幅簡化配息確認流程', listenerStart);
-  const listener = source.slice(listenerStart, listenerEnd);
-  assert.doesNotMatch(listener, /store\.addRecord/);
-  assert.doesNotMatch(listener, /store\.triggerUpdate/);
-  assert.doesNotMatch(listener, /fetchAll/);
+  assert.doesNotMatch(source, /useAuthStore/);
+  assert.doesNotMatch(source, /subscribeRecordCreateRecoverySuccess/);
+  assert.doesNotMatch(source, /confirmed_dividend_keys/);
+  assert.doesNotMatch(source, /loadConfirmedKeys|saveConfirmedKeys/);
+  assert.doesNotMatch(source, /confirmedKeys\.value\.(add|delete)/);
+
+  // A committed write whose records refresh is temporarily unavailable may only
+  // enter the memory-only safety lock; it must not be promoted to confirmation.
+  assert.match(source, /const committedAwaitingReadbackKeys = ref\(new Set\(\)\)/);
+  assert.match(source, /if \(!outcome\.refreshed \|\| !isConfirmed\(div\)\)/);
+  assert.match(source, /已保存，等待同步/);
 });
