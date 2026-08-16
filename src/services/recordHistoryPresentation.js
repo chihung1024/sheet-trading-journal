@@ -1,4 +1,37 @@
+import { detectNativeCurrency } from './instrumentCurrency.js';
+
 const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const STORED_CURRENCY_RE = /^(?:[A-Z]{3}|GBp)$/;
+const EVENT_SOURCE_LABELS = Object.freeze({
+  MANUAL: '手動記錄',
+  IBKR: 'IBKR',
+  IMPORT: '檔案匯入',
+  SYSTEM: '系統產生',
+});
+
+const optionalText = value => String(value ?? '').trim();
+
+export const getStoredRecordCurrency = record => {
+  const value = optionalText(record?.currency);
+  return STORED_CURRENCY_RE.test(value) ? value : '';
+};
+
+export const getRecordDisplayCurrency = record => (
+  getStoredRecordCurrency(record) || detectNativeCurrency(record?.symbol)
+);
+
+export const getEventSourceLabel = value => {
+  const normalized = optionalText(value).toUpperCase();
+  if (!normalized) return '';
+  return EVENT_SOURCE_LABELS[normalized] || '未識別來源';
+};
+
+export const hasRecordEventMetadata = record => (
+  getStoredRecordCurrency(record) !== ''
+  || optionalText(record?.executed_at) !== ''
+  || optionalText(record?.execution_sequence) !== ''
+  || optionalText(record?.event_source) !== ''
+);
 
 export const normalizeRecordDate = value => {
   const text = String(value || '').trim();
