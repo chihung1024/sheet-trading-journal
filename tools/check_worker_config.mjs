@@ -8,7 +8,8 @@ const [
   worker,
   baselineMigration,
   calculationJobsMigration,
-  latestMigration,
+  activationMigration,
+  timelineExpandMigration,
 ] = await Promise.all([
   readFile("worker-manifest.json", "utf8"),
   readFile("config/deployment-environments.json", "utf8"),
@@ -18,6 +19,7 @@ const [
   readFile("migrations/0001_baseline.sql", "utf8"),
   readFile("migrations/0002_calculation_jobs.sql", "utf8"),
   readFile("migrations/0003_record_create_idempotency.sql", "utf8"),
+  readFile("migrations/0004_record_timeline_metadata_expand.sql", "utf8"),
 ]);
 const manifest = JSON.parse(manifestRaw);
 const environmentContract = JSON.parse(environmentContractRaw);
@@ -82,9 +84,18 @@ expect(worker, `const REQUIRED_SCHEMA_VERSION = ${manifest.schemaVersion}`, "Wor
 expect(baselineMigration, `schema_version, release_version`, "schema metadata columns");
 expect(baselineMigration, `VALUES (1, 1, '4.05'`, "baseline schema metadata row");
 expect(calculationJobsMigration, `CREATE TABLE IF NOT EXISTS calculation_jobs`, "calculation jobs table");
-expect(latestMigration, `schema_version = ${manifest.schemaVersion}`, "latest schema version update");
-expect(latestMigration, `release_version = '${manifest.releaseVersion}'`, "latest release version update");
-expect(latestMigration, `CREATE UNIQUE INDEX IF NOT EXISTS idx_records_user_create_idempotency`, "record-create idempotency index");
+expect(activationMigration, `schema_version = ${manifest.schemaVersion}`, "active schema version update");
+expect(activationMigration, `release_version = '${manifest.releaseVersion}'`, "active release version update");
+expect(activationMigration, `CREATE UNIQUE INDEX IF NOT EXISTS idx_records_user_create_idempotency`, "record-create idempotency index");
+for (const column of ["currency", "executed_at", "execution_sequence", "event_source"]) {
+  expect(timelineExpandMigration, `ALTER TABLE records ADD COLUMN ${column} TEXT;`, `R2.2A ${column} expansion`);
+}
+if (/UPDATE\s+schema_metadata/i.test(timelineExpandMigration)) {
+  errors.push("R2.2A expand-only migration must not activate a new Worker/schema contract");
+}
+if (/\b(DEFAULT|NOT\s+NULL)\b/i.test(timelineExpandMigration.replace(/^--.*$/gm, ""))) {
+  errors.push("R2.2A metadata columns must remain nullable with no fabricated defaults");
+}
 
 if (!config.includes('database_id = "00000000-0000-0000-0000-000000000000"')) {
   errors.push("Tracked wrangler.toml must retain the safe local-only D1 sentinel");
@@ -96,7 +107,7 @@ if (errors.length) {
   console.error(errors.map((error) => `- ${error}`).join("\n"));
   process.exit(1);
 }
-console.log("Worker manifest, environment identity, deployment entry, Wrangler config, and migrations are synchronized.");
+console.log("Worker manifest, active schema contract, expand-only timeline metadata, environment identity, and Wrangler config are synchronized.");
 
 function expect(content, needle, label) {
   if (!content.includes(needle)) errors.push(`Missing or inconsistent ${label}: ${needle}`);

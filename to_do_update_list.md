@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. Roadmap V2 is active. R2 Ledger Truth v2 has started with R2.1 Event / Timeline Contract Audit; R2.2 capture/persistence is the next implementation batch after R2.1 merge gates close.**
+Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 Event / Timeline Contract Audit is CLOSED / VERIFIED. R2.2A nullable timeline-metadata storage expansion is VERIFIED on frozen substantive head `11fce6e3bff4520a48998f039ac3c6e20c8843eb` in PR #306; final handoff-head CI/merge and production D1 expansion verification remain before R2.2B API activation.**
 
 ---
 
@@ -62,13 +62,31 @@ Phase 9.2 production activation control plane remains:
 
 `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
 
-Latest repository baseline re-read before R2.1:
+R2.1 authoritative repository checkpoint:
 
-- `main = 6a50e3d3d69906ab891e27ed6a37211f8b786a67`
-- open PRs at R2.1 start = `0`
-- main CI #1065 = **SUCCESS**
-- Pages #1584 = **SUCCESS**
-- R2 recovery/work branch = `feat/r2-ledger-truth-v2`
+- merged PR #305 — `docs: establish R2 ledger event contract baseline`;
+- substantive head `5eac7a4aaad4214f98882fb107972577008b7280`;
+- merge/main checkpoint `6ff2a0852f716970c485fd20f78139d246c07309`;
+- exact-head CI #1069 / run `31932472434`: **SUCCESS**;
+- frozen review `4945618191`: **PASS / BLOCKER 0 / FOLLOW-UP 0**;
+- post-main CI #1070: **SUCCESS**;
+- Pages #1585: **SUCCESS**;
+- no runtime/schema activation in R2.1.
+
+R2.2A recovery/current branch:
+
+- recovery base: exact `main@6ff2a0852f716970c485fd20f78139d246c07309`;
+- branch: `feat/r2-2a-timeline-metadata-expand`;
+- Draft PR: #306;
+- substantive frozen head: `11fce6e3bff4520a48998f039ac3c6e20c8843eb`;
+- exact-head CI #1071 / run `31932538495`: **SUCCESS**;
+- Frontend contracts/build: **SUCCESS**;
+- Python tests: **SUCCESS**;
+- Worker security/deployment tests: **SUCCESS**;
+- local D1 migration + legacy INSERT compatibility: **SUCCESS**;
+- frozen review `4945633945`: **PASS / BLOCKER 0 / FOLLOW-UP 1**;
+- no Worker/API/frontend/Python calculation behavior change;
+- production D1 expansion: **NOT YET APPLIED** until PR #306 merge + deployment gate.
 
 A later docs-only merge may advance repository `main` without changing product runtime. Always re-read fresh remote truth.
 
@@ -91,8 +109,9 @@ A later docs-only merge may advance repository `main` without changing product r
 - Independent technical-debt root-cause cleanup TD-A / TD-B — CLOSED / PRODUCTION VERIFIED
 - **R1 Decision Cockpit — CLOSED / PRODUCTION VERIFIED**
 - **R2 Ledger Truth v2 — ACTIVE**
-- **R2.1 Event / Timeline Contract Audit — CONTRACT BASELINE WRITTEN; merge gates pending**
-- **R2.2 Capture / Persistence Foundation — NEXT after R2.1 closeout**
+- **R2.1 Event / Timeline Contract Audit — CLOSED / VERIFIED**
+- **R2.2A Nullable Timeline Metadata Storage Expansion — VERIFIED / PR #306 merge mechanics active**
+- **R2.2B Metadata API Activation + Writer Semantics — NEXT after R2.2A production D1 verification**
 
 ---
 
@@ -192,7 +211,7 @@ Design one backward-compatible canonical event model able to represent:
 
 Do not make exact time mandatory for old/manual records. Existing records must remain valid.
 
-#### R2.1 — Event / Timeline Contract Audit
+#### R2.1 — Event / Timeline Contract Audit — CLOSED / VERIFIED
 
 Detailed contract: `docs/engineering/R2_LEDGER_TRUTH_V2_EVENT_CONTRACT_AUDIT_2026-08-16.md`.
 
@@ -228,7 +247,87 @@ R2.1 scope classification:
 - BACKLOG: broker background sync and richer provenance references until R3 reconciliation needs them;
 - REJECT: parsing `note`, fake timestamps, partial-coverage chronology, early NAV cutover, unrelated cleanup.
 
-No Worker/D1/Python/UI runtime behavior changes belong to R2.1.
+R2.1 closeout:
+
+- PR #305 merged to `main@6ff2a0852f716970c485fd20f78139d246c07309`;
+- exact-head CI #1069: **SUCCESS**;
+- frozen review: **PASS / BLOCKER 0**;
+- post-main CI #1070 and Pages #1585: **SUCCESS**;
+- no Worker/D1/Python/UI runtime behavior changed.
+
+#### R2.2A — Nullable Timeline Metadata Storage Expansion — VERIFIED / MERGE MECHANICS ACTIVE
+
+Primary Goal:
+
+> establish additive physical storage for R2.1 transaction metadata without activating a new Worker/API/schema contract or changing any existing user/calculation behavior.
+
+Scope lock:
+
+- **In Scope:** D1 nullable columns, local migration tests, legacy-row compatibility, configuration gate for expand-only semantics.
+- **Out of Scope:** Worker CRUD metadata, idempotency hash v2, manual/IBKR writers, UI display, Python ordering, cash/NAV, unrelated refactoring.
+- **Risk:** R2 financial data contract, but runtime behavior radius intentionally minimized.
+
+Files:
+
+- `migrations/0004_record_timeline_metadata_expand.sql`
+- `tools/test_d1_schema.mjs`
+- `tools/check_worker_config.mjs`
+- this handoff closeout
+
+Implementation:
+
+- adds nullable `currency TEXT`;
+- adds nullable `executed_at TEXT`;
+- adds nullable `execution_sequence TEXT`;
+- adds nullable `event_source TEXT`;
+- no defaults and no `NOT NULL` — unknown remains unknown;
+- `0004` deliberately does **not** update `schema_metadata`, so the active schema-v3 Worker remains compatible and authoritative;
+- `execution_sequence` is frozen as TEXT for the persistence layer to avoid lossy JavaScript/SQLite numeric coercion and preserve source/reviewed-adapter ordering tokens; R2.2A does not authorize lexical/numeric sorting on this field;
+- no index added because no production query consumes these fields yet.
+
+Root cause / decision:
+
+The current D1 test/config control plane ties active schema metadata to the Worker manifest. Physically adding nullable columns and simultaneously advancing the Worker schema contract would collapse the R2.1-required two-stage rollout. The selected expand→activate pattern instead lets production D1 gain backward-compatible columns first while the old Worker continues to operate unchanged. R2.2B can then activate metadata API semantics only after storage exists and is verified.
+
+Verification:
+
+- branch recovery base: `main@6ff2a0852f716970c485fd20f78139d246c07309`;
+- substantive exact head: `11fce6e3bff4520a48998f039ac3c6e20c8843eb`;
+- PR #306 CI #1071 / run `31932538495`: **SUCCESS**;
+- Frontend contracts/build: **SUCCESS**;
+- Python compile/tests/coverage gate: **SUCCESS**;
+- Worker test suites/config/recovery gate: **SUCCESS**;
+- local D1 applies all migrations: **SUCCESS**;
+- local D1 verifies all four new columns are TEXT, nullable, no-default: **SUCCESS**;
+- old-shape BUY record INSERT without metadata: **SUCCESS**, all new fields read back NULL;
+- frozen independent review `4945633945`: **PASS / BLOCKER 0 / FOLLOW-UP 1**.
+
+Regression / prevention:
+
+- config test rejects any `UPDATE schema_metadata` in the expand-only migration;
+- config test rejects accidental `DEFAULT` or `NOT NULL` constraints in the new columns;
+- D1 test proves old writers remain valid;
+- current Worker record projections ignore the new columns, so existing reads/writes/calculation remain unchanged.
+
+Rollback:
+
+- before production migration: close/revert PR #306;
+- after additive production migration: do not destructively drop columns as an emergency rollback; the last-known-good Worker can continue to ignore them. Leave unused nullable columns until a separately reviewed cleanup.
+
+R2.2A remaining merge/deploy mechanics:
+
+1. final handoff-only head must pass exact-head CI;
+2. confirm final diff contains no substantive change after frozen review;
+3. mark PR #306 Ready and squash merge exact head;
+4. verify post-main CI/Pages;
+5. use existing protected deployment workflow to apply production D1 migration before any Worker activation;
+6. verify production D1 migration/health evidence;
+7. only then open R2.2B.
+
+R2.2A review FOLLOW-UP → **NEXT / R2.2B**:
+
+- preserve pre-upgrade create-idempotency compatibility: if all metadata is absent/null, canonical payload hashing must remain byte-for-byte/effectively identical to the legacy hash input; if any authoritative metadata is present, use a versioned extended fingerprint so same idempotency key + different metadata conflicts;
+- same-event amendments should preserve omitted metadata, while changes that alter event identity/order must clear or revalidate stale chronology/provenance rather than silently trust old browser state.
 
 #### R2 cash/account truth
 
@@ -260,14 +359,16 @@ Prefer additive/shadow computation and reconciliation first. Do not immediately 
 
 A safe R2 sequence is:
 
-1. canonical event/timeline contract + backward compatibility — **R2.1 current**;
-2. capture/persist optional transaction execution metadata and timeline presentation without calculation ordering switch — **R2.2 next**;
-3. explicit cash event storage/model;
-4. shadow cash ledger calculation;
-5. reconciliation and migration UX;
-6. only then review account NAV / account-level performance cutover.
+1. canonical event/timeline contract + backward compatibility — **R2.1 CLOSED / VERIFIED**;
+2. physical nullable transaction metadata expansion — **R2.2A VERIFIED / merge+production migration pending**;
+3. metadata API activation + writer/idempotency/amendment semantics — **R2.2B NEXT**;
+4. timeline/detail presentation + shadow Python metadata transport, still without calculation-order activation;
+5. explicit cash event storage/model;
+6. shadow cash ledger calculation;
+7. reconciliation and migration UX;
+8. only then review account NAV / account-level performance cutover.
 
-R2.2 must itself keep execution-order activation behind a later evidence gate; storing a timestamp does not automatically authorize the accounting engine to use it.
+R2.2 must itself keep execution-order activation behind a later evidence gate; storing a timestamp/sequence does not automatically authorize the accounting engine to use it.
 
 ---
 
@@ -347,6 +448,8 @@ source/manual facts
 
 `note` is user Journal content, not execution chronology/provenance storage. `id`/`created_at` remain deterministic database facts but must not be presented as broker execution time.
 
+R2.2A physical storage is not API/accounting authority. Until R2.2B is activated, the schema-v3 Worker continues to ignore these nullable columns.
+
 ### Overview presentation
 
 ```text
@@ -424,6 +527,8 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 - no reconstruction of financial chronology from free-form `note`;
 - no use of `created_at` or record `id` as fake execution timestamp;
 - no calculation-order activation from partial timestamp coverage;
+- no generic lexical/numeric ordering of `execution_sequence` before a reviewed source/comparator contract;
+- no R2.2A Worker/API activation before production storage expansion is verified;
 - no historical lot attribution from current-day `day_ledger`;
 - no sector/industry classification guessed from symbol names, frontend maps or strategy Tags;
 - no invented risk score, forecast or investment recommendation without reviewed methodology;
@@ -445,18 +550,22 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 
 ### Current Batch
 
-`R2.1 — Event / Timeline Contract Audit`
+`R2.2A — Nullable Timeline Metadata Storage Expansion`
 
 In scope:
 
-- architecture/data-flow evidence;
-- first-class optional transaction metadata contract;
-- backward compatibility and activation gates;
+- additive nullable D1 storage;
+- old-writer compatibility;
+- migration/config regression guards;
+- exact-head PR review/merge;
+- production D1 migration verification;
 - handoff/update documentation.
 
 Out of scope:
 
-- D1/Worker deployment;
+- metadata API activation;
+- idempotency v2 and amendment semantics;
+- manual/IBKR metadata writes;
 - cash events/NAV;
 - calculation ordering changes;
 - broker sync;
@@ -464,18 +573,20 @@ Out of scope:
 
 Verification required before closeout:
 
-- exact-head CI;
-- frozen independent review;
-- exact-head merge;
-- post-main CI/Pages verification.
+- substantive exact-head CI — **DONE / #1071 SUCCESS**;
+- frozen independent review — **DONE / PASS / BLOCKER 0**;
+- final handoff exact-head CI;
+- exact-head squash merge;
+- post-main CI/Pages verification;
+- production D1 expand migration + health verification.
 
-### Next Action after R2.1 closeout
+### Next Action after R2.2A closeout
 
-`R2.2 — Capture / Persistence Foundation`
+`R2.2B — Metadata API Activation + Writer Semantics`
 
 Narrow objective:
 
-> add backward-compatible optional event metadata through D1/Worker/import/manual-compatible paths and transaction detail/timeline presentation, while leaving authoritative portfolio calculation ordering unchanged until a separate coverage/amendment gate proves it safe.
+> activate backward-compatible read/write support for the four optional metadata fields only after physical storage is verified, with versioned idempotency hashing, stale-metadata-safe amendment behavior, authoritative-only timestamp/sequence validation, and no Python calculation-order switch.
 
 ---
 
@@ -489,4 +600,4 @@ Narrow objective:
 6. Debug same-class impact + regression prevention.
 7. Overview changes must preserve `OverviewPage` as the page-level orchestration boundary and reuse reviewed domain services.
 8. Typography changes must extend semantic roles at the design-system authority; canvas uses the approved bridge.
-9. R2 is active. R2.1 establishes the event/timeline contract; after its merge gates close, continue only with **R2.2 Capture / Persistence Foundation** before any cash/NAV or calculation-order activation.
+9. R2 is active. R2.1 is closed. Continue **R2.2A only through final merge + production D1 verification**; then open **R2.2B Metadata API Activation + Writer Semantics**. Do not activate cash/NAV or calculation chronology from partial metadata coverage.
