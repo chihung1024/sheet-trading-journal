@@ -30,7 +30,19 @@ jobs:
         run: node tools/fix_td_b_codemod_parser.mjs
       - name: Apply bounded cleanup
         run: node tools/td_b_design_semantic_cleanup.mjs
-      - name: Validate frontend contracts
+      - name: Gate semantic typography bridge
+        run: node --test tests/frontend_design_typography_bridge.test.mjs
+      - name: Gate portfolio terminology
+        if: always()
+        run: node --test tests/frontend_portfolio_terminology.test.mjs
+      - name: Gate existing strategy terminology contract
+        if: always()
+        run: node --test tests/frontend_strategy_group_overview.test.mjs
+      - name: Gate existing typography authority
+        if: always()
+        run: node --test tests/frontend_typography_authority.test.mjs
+      - name: Validate full frontend contracts
+        if: always()
         run: npm run test:frontend
       - name: Validate production build
         run: npm run build
