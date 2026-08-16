@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. Roadmap V2 is active; R2 Ledger Truth v2 is the next selected product capability.**
+Current line: **R2 Ledger Truth v2 is ACTIVE. R2.1 Canonical Event Contract baseline is the single Primary Active Batch on `feat/r2-ledger-truth-contract`; no schema/runtime activation is authorized in this batch.**
 
 ---
 
@@ -37,6 +37,16 @@ Target:
 `13b6558e48fc703afc8b9d1572ec696d104eccb2`
 
 This is a recovery/governance checkpoint, not a Worker/API/schema version.
+
+### Current repository / R2 recovery point
+
+Fresh remote truth at R2.1 start:
+
+- `main`: `6a50e3d3d69906ab891e27ed6a37211f8b786a67` — docs-only R1 checkpoint merge;
+- latest main CI #1065 / run `31929100112`: **SUCCESS**;
+- latest Pages #1584 / run `31929101168`: **SUCCESS**;
+- open PRs at R2.1 start: **none**;
+- R2.1 feature/recovery branch: `feat/r2-ledger-truth-contract`, created from exact `main@6a50e3d3d69906ab891e27ed6a37211f8b786a67`.
 
 ### Current production product runtime
 
@@ -82,7 +92,7 @@ A later docs-only merge may advance repository `main` without changing product r
 - Phase 13 Cross-Page UX Consistency & Holdings Visualization — OPTIMIZED FOR CURRENT REQUIREMENTS
 - Independent technical-debt root-cause cleanup TD-A / TD-B — CLOSED / PRODUCTION VERIFIED
 - **R1 Decision Cockpit — CLOSED / PRODUCTION VERIFIED**
-- **R2 Ledger Truth v2 — NEXT SELECTED PRODUCT CAPABILITY**
+- **R2 Ledger Truth v2 — ACTIVE / R2.1 Canonical Event Contract baseline**
 
 ---
 
@@ -157,7 +167,7 @@ Legacy daily-return presentation fallback is preserved: published `daily_pnl_roi
 
 ---
 
-### R2 — Ledger Truth v2 — NEXT
+### R2 — Ledger Truth v2 — ACTIVE
 
 Purpose: establish a truthful account/event foundation before building account-level analytics, universal restore/import, or AI portfolio interpretation.
 
@@ -218,6 +228,39 @@ A safe R2 sequence is:
 4. shadow cash ledger calculation;
 5. reconciliation and migration UX;
 6. only then review account NAV / account-level performance cutover.
+
+#### R2.1 — Canonical Event Contract baseline — ACTIVE
+
+Primary Goal: freeze the minimum truthful data contract and compatibility architecture before any schema change.
+
+Scope lock:
+
+- **In Scope:** manual record path, Worker records/idempotency, IBKR source identity/provenance, dividend semantic identity, record ordering/pagination, Python ingestion and ledger-integrity compatibility.
+- **Out of Scope:** D1 migration, Worker/API behavior changes, production deploy, cash/NAV UI, broker automation.
+- **Allowed Investigation:** same-class identity/timeline/currency/provenance contracts.
+- **Expansion Trigger:** only data-corruption, duplicate-event, privacy/auth or production-accounting risk.
+- **Risk Class:** R2.
+
+Root-cause findings:
+
+1. `records` is a trade-specific production projection: database/Worker/Python all assume `BUY/SELL/DIV`; direct cash types would break current accounting ingestion.
+2. Current same-day deterministic ordering uses date + record ID but explicitly is not broker chronology; R2 must preserve date-only truth where exact sequence is unknown.
+3. IBKR already observes structured account/profile scope, Order/Trade IDs, currency and execution DateTime before projecting into legacy records.
+4. IBKR machine provenance is intentionally stripped from journal `note` for privacy; future provenance must be structured and privacy-safe.
+5. Dividend flow already demonstrates that domain/source identity and transport idempotency are related but distinct concerns.
+
+Working decision baseline:
+
+- introduce a future additive canonical ledger-event plane rather than extending cash subtypes into `records`;
+- keep `records` as the production BUY/SELL/DIV compatibility projection until explicit cutover gates pass;
+- separate canonical `event_id`, source identity and HTTP/write idempotency;
+- exact execution timestamp/sequence remains optional and authoritative-only;
+- new native cash/value events require explicit currency; unresolved legacy facts remain unresolved rather than guessed;
+- cash events never masquerade as legacy trade records.
+
+Detailed contract: `docs/R2_LEDGER_TRUTH_V2_CONTRACT.md`.
+
+Verification state for this branch is recorded only after the exact-head commit/PR CI and independent review complete. Until then R2.1 is **ACTIVE / NOT CLOSED**.
 
 ---
 
@@ -363,7 +406,10 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 - no invented risk score, forecast or investment recommendation without reviewed methodology;
 - no new arbitrary numeric Vue/CSS or Chart.js typography scale;
 - no blanket deletion of forensic archives, tombstones or compatibility fields;
-- no IBKR-specific automation path that bypasses the future Universal Data Gateway.
+- no IBKR-specific automation path that bypasses the future Universal Data Gateway;
+- no direct `CASH_*` expansion inside legacy `records.txn_type` without reopening the R2.1 architecture decision with materially new evidence;
+- no use of record ID / `created_at` as claimed broker execution chronology;
+- no reuse of transport `Idempotency-Key` as the universal canonical economic event ID.
 
 ---
 
@@ -377,4 +423,4 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 6. Debug same-class impact + regression prevention.
 7. Overview changes must preserve `OverviewPage` as the page-level orchestration boundary and reuse reviewed domain services.
 8. Typography changes must extend semantic roles at the design-system authority; canvas uses the approved bridge.
-9. R1 is closed. The next selected product capability is **R2 Ledger Truth v2**; start with a fresh architecture/data-contract audit before any schema activation.
+9. R1 is closed. **R2.1 Canonical Event Contract baseline is the current Primary Active Batch.** Read `docs/R2_LEDGER_TRUTH_V2_CONTRACT.md`; do not activate a schema or production runtime until this R2 contract batch passes exact-head CI and independent review.
