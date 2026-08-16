@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. Roadmap V2 is active; R2 Ledger Truth v2 is the next selected product capability.**
+Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. Roadmap V2 is active. R2 Ledger Truth v2 has started with R2.1 Event / Timeline Contract Audit; R2.2 capture/persistence is the next implementation batch after R2.1 merge gates close.**
 
 ---
 
@@ -62,6 +62,14 @@ Phase 9.2 production activation control plane remains:
 
 `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
 
+Latest repository baseline re-read before R2.1:
+
+- `main = 6a50e3d3d69906ab891e27ed6a37211f8b786a67`
+- open PRs at R2.1 start = `0`
+- main CI #1065 = **SUCCESS**
+- Pages #1584 = **SUCCESS**
+- R2 recovery/work branch = `feat/r2-ledger-truth-v2`
+
 A later docs-only merge may advance repository `main` without changing product runtime. Always re-read fresh remote truth.
 
 ### Product state
@@ -82,7 +90,9 @@ A later docs-only merge may advance repository `main` without changing product r
 - Phase 13 Cross-Page UX Consistency & Holdings Visualization — OPTIMIZED FOR CURRENT REQUIREMENTS
 - Independent technical-debt root-cause cleanup TD-A / TD-B — CLOSED / PRODUCTION VERIFIED
 - **R1 Decision Cockpit — CLOSED / PRODUCTION VERIFIED**
-- **R2 Ledger Truth v2 — NEXT SELECTED PRODUCT CAPABILITY**
+- **R2 Ledger Truth v2 — ACTIVE**
+- **R2.1 Event / Timeline Contract Audit — CONTRACT BASELINE WRITTEN; merge gates pending**
+- **R2.2 Capture / Persistence Foundation — NEXT after R2.1 closeout**
 
 ---
 
@@ -157,7 +167,7 @@ Legacy daily-return presentation fallback is preserved: published `daily_pnl_roi
 
 ---
 
-### R2 — Ledger Truth v2 — NEXT
+### R2 — Ledger Truth v2 — ACTIVE
 
 Purpose: establish a truthful account/event foundation before building account-level analytics, universal restore/import, or AI portfolio interpretation.
 
@@ -181,6 +191,44 @@ Design one backward-compatible canonical event model able to represent:
 - compatibility with existing BUY / SELL / DIV records.
 
 Do not make exact time mandatory for old/manual records. Existing records must remain valid.
+
+#### R2.1 — Event / Timeline Contract Audit
+
+Detailed contract: `docs/engineering/R2_LEDGER_TRUTH_V2_EVENT_CONTRACT_AUDIT_2026-08-16.md`.
+
+Primary evidence:
+
+- durable `records` schema remains date-level plus create-idempotency hashes;
+- Worker create/update validation still accepts only the legacy transaction payload;
+- `main.prepare_transactions()` supplies `Date -> id` deterministic ingest order but no first-class execution metadata;
+- Gate C already proved that `Date -> id` is a deterministic ledger order, not broker chronology, and explicitly rejected reconstructing execution order from free-form `note`;
+- IBKR parsing already sees `Currency`, `DateTime`, `OrderID` and `TradeID`, but current persistence sanitization removes the legacy machine-note envelope before the user Journal Note is stored.
+
+Root cause:
+
+> the project lacks one canonical optional transaction-event metadata envelope between import adapters, Worker/D1, Python and presentation.
+
+R2.1 accepted contract:
+
+- existing BUY / SELL / DIV records remain valid without new metadata;
+- future transaction metadata is additive and nullable;
+- first implementation candidates are `currency`, `executed_at`, `execution_sequence`, `event_source`;
+- no fabricated timestamp/default timezone for legacy/manual records;
+- aggregated multi-fill imports do not invent one exact timestamp unless the adapter has a reviewed unambiguous policy;
+- individual timestamps may be captured/displayed, but **partial timestamp coverage must not activate authoritative calculation chronology**;
+- capture/persistence and calculation-order activation are separate gates;
+- future create payload hashing must include metadata that changes durable event meaning;
+- legacy-compatible updates must not silently erase metadata, and amended records must not leave stale ordering evidence trusted by calculation;
+- cash event storage remains a later R2.3 decision instead of widening the current `records.txn_type` constraint in this batch.
+
+R2.1 scope classification:
+
+- NOW: contract, backward compatibility, coverage-aware ordering, mutation/idempotency gates;
+- NEXT: additive capture/persistence + timeline/detail presentation + shadow Python transport;
+- BACKLOG: broker background sync and richer provenance references until R3 reconciliation needs them;
+- REJECT: parsing `note`, fake timestamps, partial-coverage chronology, early NAV cutover, unrelated cleanup.
+
+No Worker/D1/Python/UI runtime behavior changes belong to R2.1.
 
 #### R2 cash/account truth
 
@@ -212,12 +260,14 @@ Prefer additive/shadow computation and reconciliation first. Do not immediately 
 
 A safe R2 sequence is:
 
-1. canonical event/timeline contract + backward compatibility;
-2. execution timestamp/sequence support through manual/import paths;
+1. canonical event/timeline contract + backward compatibility — **R2.1 current**;
+2. capture/persist optional transaction execution metadata and timeline presentation without calculation ordering switch — **R2.2 next**;
 3. explicit cash event storage/model;
 4. shadow cash ledger calculation;
 5. reconciliation and migration UX;
 6. only then review account NAV / account-level performance cutover.
+
+R2.2 must itself keep execution-order activation behind a later evidence gate; storing a timestamp does not automatically authorize the accounting engine to use it.
 
 ---
 
@@ -283,6 +333,19 @@ record durable intent
 ```
 
 No browser-local accounting or recovery authority.
+
+### R2 transaction event metadata
+
+```text
+source/manual facts
+→ adapter/form validation
+→ optional durable event metadata
+→ read/presentation
+→ shadow calculation transport
+→ separate ordering-activation review
+```
+
+`note` is user Journal content, not execution chronology/provenance storage. `id`/`created_at` remain deterministic database facts but must not be presented as broker execution time.
 
 ### Overview presentation
 
@@ -358,6 +421,9 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 - no cash-inclusive `NAV/總資產淨值` claim before R2 establishes explicit cash truth;
 - no guessed historical cash;
 - no mandatory fabricated execution timestamps for legacy records;
+- no reconstruction of financial chronology from free-form `note`;
+- no use of `created_at` or record `id` as fake execution timestamp;
+- no calculation-order activation from partial timestamp coverage;
 - no historical lot attribution from current-day `day_ledger`;
 - no sector/industry classification guessed from symbol names, frontend maps or strategy Tags;
 - no invented risk score, forecast or investment recommendation without reviewed methodology;
@@ -367,7 +433,53 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 
 ---
 
-## 6. Fresh-session startup
+## 6. Current Phase / Batch / Next Actions
+
+### Primary Goal
+
+**R2 Ledger Truth v2: make account/event data truthful enough that future timeline, cash, import/restore and intelligence features do not depend on inferred chronology or fake NAV.**
+
+### Current Phase
+
+`R2 — Ledger Truth v2`
+
+### Current Batch
+
+`R2.1 — Event / Timeline Contract Audit`
+
+In scope:
+
+- architecture/data-flow evidence;
+- first-class optional transaction metadata contract;
+- backward compatibility and activation gates;
+- handoff/update documentation.
+
+Out of scope:
+
+- D1/Worker deployment;
+- cash events/NAV;
+- calculation ordering changes;
+- broker sync;
+- unrelated refactoring.
+
+Verification required before closeout:
+
+- exact-head CI;
+- frozen independent review;
+- exact-head merge;
+- post-main CI/Pages verification.
+
+### Next Action after R2.1 closeout
+
+`R2.2 — Capture / Persistence Foundation`
+
+Narrow objective:
+
+> add backward-compatible optional event metadata through D1/Worker/import/manual-compatible paths and transaction detail/timeline presentation, while leaving authoritative portfolio calculation ordering unchanged until a separate coverage/amendment gate proves it safe.
+
+---
+
+## 7. Fresh-session startup
 
 1. Read `AI_PROJECT_PLAYBOOK.md`, `README.md`, this handoff.
 2. Re-read fresh `main`, open PRs, CI and Pages before modification.
@@ -377,4 +489,4 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 6. Debug same-class impact + regression prevention.
 7. Overview changes must preserve `OverviewPage` as the page-level orchestration boundary and reuse reviewed domain services.
 8. Typography changes must extend semantic roles at the design-system authority; canvas uses the approved bridge.
-9. R1 is closed. The next selected product capability is **R2 Ledger Truth v2**; start with a fresh architecture/data-contract audit before any schema activation.
+9. R2 is active. R2.1 establishes the event/timeline contract; after its merge gates close, continue only with **R2.2 Capture / Persistence Foundation** before any cash/NAV or calculation-order activation.
