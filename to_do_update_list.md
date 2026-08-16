@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 Event / Timeline Contract Audit is CLOSED / VERIFIED. R2.2A nullable timeline-metadata storage expansion is CLOSED / PRODUCTION VERIFIED. R2.2B Metadata API Activation + Writer Semantics is REPOSITORY VERIFIED at `main@263fbbd665f519dc69d6828c351c66e399e5f266`; production still runs exact source `9aed8760dfd49d9568b86555a87c61de086df3d0` at release `4.08` / API `2.61` / schema `3`. The current batch is reviewer-gated R2.2B production activation; Python calculation-order activation remains explicitly out of scope.**
+Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 Event / Timeline Contract Audit is CLOSED / VERIFIED. R2.2A nullable timeline-metadata storage expansion is CLOSED / PRODUCTION VERIFIED. R2.2B Metadata API Activation + Writer Semantics is CLOSED / PRODUCTION VERIFIED. Production now serves exact runtime source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3` at release `4.09` / API `2.62` / schema `3`, Worker Version ID `11593548-e848-4e22-8504-989234c6ca47`. Metadata storage/API semantics are live; Python calculation-order activation remains explicitly disabled. The current product batch is R2.2C Transaction Timeline Detail UX + Shadow Metadata Transport.**
 
 ---
 
@@ -56,17 +56,17 @@ Verification:
 
 Current production Worker runtime source:
 
-`9aed8760dfd49d9568b86555a87c61de086df3d0`
+`cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3`
 
 Current Worker Version ID:
 
-`1cf64e71-f4d4-4a30-89eb-2c0fd14d3472`
+`11593548-e848-4e22-8504-989234c6ca47`
 
-Runtime contract remains intentionally compatible: release `4.08`, API `2.61`, schema `3`. The physical R2.2A columns exist in production D1 but are still ignored by the schema-v3 metadata API/accounting contract.
+Runtime contract: release `4.09`, API `2.62`, schema `3`. R2.2B optional transaction metadata read/write semantics are live in production. Physical schema authority remains 3 because migration `0004_record_timeline_metadata_expand.sql` was already applied by R2.2A; Deploy Worker #9 reported no remote migrations to apply. Python calculation ordering remains on the pre-R2.2B deterministic contract and must not use partial metadata coverage.
 
 Current production activation/deployment control-plane merge:
 
-`ce5ce80d449d76cb7a581aac4bf6f34df0c9f5b3`
+`c30e2671eb6aaddecbfa473ed813abbba2eef7a7`
 
 R2.1 authoritative repository checkpoint:
 
@@ -106,10 +106,10 @@ R2.2A repository closeout / production expansion gate:
 - canonical Deploy Worker #8 / run `31933401342`: **SUCCESS** after reviewer-protected `production` Environment approval;
 - remote production D1 applied exactly `0004_record_timeline_metadata_expand.sql`: **SUCCESS**;
 - Worker redeployed from exact runtime source `9aed8760dfd49d9568b86555a87c61de086df3d0`, Worker Version ID `1cf64e71-f4d4-4a30-89eb-2c0fd14d3472`;
-- live runtime remains release `4.08`, API `2.61`, schema `3`; `/version` and `/health` returned HTTP 200, anonymous records remained 401, production origins 204, staging/localhost origins 403;
+- at the R2.2A closeout checkpoint, live runtime was release `4.08`, API `2.61`, schema `3`; `/version` and `/health` returned HTTP 200, anonymous records remained 401, production origins 204, staging/localhost origins 403;
 - stable post-deploy production contract: **3/3 consecutive PASS**;
 - post-deploy artifact `9260057775`, digest `sha256:f66126a2ce5b63c3f05297bee09e5b0da9fd270377ded339fe172b9f2fe700e2`;
-- therefore R2.2A physical storage expansion is **PRODUCTION VERIFIED** while metadata API/accounting semantics remain inactive.
+- therefore R2.2A physical storage expansion was **PRODUCTION VERIFIED** with metadata API/accounting semantics intentionally inactive at that checkpoint; R2.2B has since activated the reviewed API/write semantics.
 
 A later docs-only merge may advance repository `main` without changing product runtime. Always re-read fresh remote truth.
 
@@ -134,7 +134,7 @@ A later docs-only merge may advance repository `main` without changing product r
 - **R2 Ledger Truth v2 — ACTIVE**
 - **R2.1 Event / Timeline Contract Audit — CLOSED / VERIFIED**
 - **R2.2A Nullable Timeline Metadata Storage Expansion — CLOSED / PRODUCTION VERIFIED**
-- **R2.2B Metadata API Activation + Writer Semantics — REPOSITORY VERIFIED / PRODUCTION ACTIVATION PENDING**
+- **R2.2B Metadata API Activation + Writer Semantics — CLOSED / PRODUCTION VERIFIED**
 
 ---
 
@@ -352,20 +352,20 @@ R2.2A production activation closeout:
 4. **Production Deployment Dispatch Broker #5** / run `31933394781` validated protected-main control plane and dispatched canonical deployment;
 5. reviewer-protected **Deploy Worker #8** / run `31933401342` verified D1 identity, applied remote `0004`, redeployed the unchanged schema-v3 Worker, and reached 3/3 stable production-contract passes;
 6. post-deploy artifact `9260057775` proves runtime source/version/health/CORS remained within the reviewed compatibility contract;
-7. R2.2A is closed. The four nullable columns exist in production but remain non-authoritative to API/accounting until separately reviewed R2.2B activation.
+7. R2.2A closed with the four nullable columns present but non-authoritative to API/accounting at that checkpoint; the separately reviewed R2.2B activation has since made the API/write semantics production-authoritative.
 
-R2.2A review FOLLOW-UP → **NEXT / R2.2B**:
+Historical R2.2A review FOLLOW-UP → **SATISFIED BY R2.2B**:
 
 - preserve pre-upgrade create-idempotency compatibility: if all metadata is absent/null, canonical payload hashing must remain byte-for-byte/effectively identical to the legacy hash input; if any authoritative metadata is present, use a versioned extended fingerprint so same idempotency key + different metadata conflicts;
 - same-event amendments should preserve omitted metadata, while changes that alter event identity/order must clear or revalidate stale chronology/provenance rather than silently trust old browser state.
 
-#### R2.2B — Metadata API Activation + Writer Semantics — REPOSITORY VERIFIED / PRODUCTION ACTIVATION PENDING
+#### R2.2B — Metadata API Activation + Writer Semantics — CLOSED / PRODUCTION VERIFIED
 
 Primary Goal:
 
 > activate backward-compatible Worker/API read/write semantics for the four optional transaction metadata fields while keeping calculation chronology disabled until a separate evidence gate.
 
-Repository contract now verified:
+Production contract now live:
 
 - release `4.09`, API `2.62`, physical schema authority remains `3`;
 - optional `currency`, `executed_at`, `execution_sequence`, `event_source` are validated and persisted on POST/PUT;
@@ -374,7 +374,7 @@ Repository contract now verified:
 - same-event PUT preserves omitted metadata; explicit null clears; changing `txn_date`, `symbol` or `txn_type` clears omitted stale metadata;
 - preservation/clearing is one tenant-scoped atomic SQL `UPDATE ... CASE`, not a SELECT→UPDATE read/modify/write window;
 - `GBp` remains a valid quote unit, `executed_at` requires a real offset-aware timestamp, `execution_sequence` remains opaque TEXT, and `event_source` is limited to reviewed privacy-safe classes;
-- migration history remains immutable: runtime release and historical schema-activation release are intentionally separate authorities.
+- migration history remains immutable: runtime release and historical schema-activation release are separate authorities.
 
 Repository verification:
 
@@ -385,15 +385,28 @@ Repository verification:
 - post-main CI #1085 / run `31937610097`: **SUCCESS**;
 - Pages #1590 / run `31937609532`: **SUCCESS**;
 - exact-head Worker CI includes real local D1 proof that SQLite CASE expressions use pre-update identity values and preserve cross-tenant isolation;
-- the first CI failure was traced to a pre-existing brittle Journal Note test that matched an exact historical SQL column sequence. It was replaced with invariant-level checks for note schema/validation/INSERT/tenant-scoped UPDATE/public projection; no frontend runtime behavior was changed.
+- the first CI failure was traced to a pre-existing brittle Journal Note test that matched an exact historical SQL column sequence. It was replaced with invariant-level checks; no frontend runtime behavior was changed.
+
+Production activation closeout:
+
+1. reviewer-protected **Production Identity Evidence #21** / run `31938174096` audited exact source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3`: **SUCCESS**;
+2. identity artifact `9261266695`, digest `sha256:dbecc165bb4f6e5e816027784304a2aa4e404cf8bf148046ea5d14a0127c1025`: sanitized PASS / `errors=[]`;
+3. activation PR #312 exact head `f03ec686d9a368d720bacc44cdbf22232cc74467`, CI #1088 / run `31938390555`: **SUCCESS**, frozen review `4945850245`: **PASS / BLOCKER 0 / FOLLOW-UP 0**;
+4. PR #312 normal merge/control plane `c30e2671eb6aaddecbfa473ed813abbba2eef7a7`; post-main CI #1089 / run `31938455177`: **SUCCESS**; Pages #1592 / run `31938454889`: **SUCCESS**;
+5. **Production Deployment Dispatch Broker #6** / run `31938455181`: **SUCCESS** and dispatched the canonical deploy for exact runtime source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3`;
+6. reviewer-protected **Deploy Worker #9** / run `31938461098`: **SUCCESS** after production approval; all preflight, D1 identity and repeated authority checks passed;
+7. remote D1 migration step reported **No migrations to apply**, proving R2.2B activation did not change physical schema or replay migration `0004`;
+8. canonical Worker `journal-backend` deployed release `4.09` / API `2.62` / schema `3`, Worker Version ID `11593548-e848-4e22-8504-989234c6ca47`;
+9. propagation probe #1 correctly rejected the still-visible old source; probes #2–#4 then passed three consecutive full contracts for exact source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3`, so the stable gate did not accept a single-edge hit;
+10. post-deploy artifact `9261380121`, digest `sha256:d0a387feac906b59d35971a60531d26294583b316fb0053142e7fe162ba00ae7`: `/version=200`, `/health=200`, anonymous records `401`, approved production origins `204`, staging/localhost origins `403`.
 
 Production boundary:
 
-- production is **not yet R2.2B activated**;
-- live Worker remains exact source `9aed8760dfd49d9568b86555a87c61de086df3d0`, release `4.08`, API `2.61`, schema `3`;
-- production D1 already contains the nullable R2.2A columns, so no new schema migration is expected for R2.2B activation;
-- activation must pass fresh exact-source Production Identity Evidence, protected authority/request convergence, canonical deployment dispatch, reviewer-protected production approval, and post-deploy contract verification;
-- storage/API activation still does **not** authorize Python calculation ordering.
+- R2.2B metadata API/write semantics are now **PRODUCTION VERIFIED**;
+- storing, reading or writing metadata still does **not** authorize Python calculation ordering;
+- partial timestamp coverage remains non-authoritative for chronology;
+- `execution_sequence` remains opaque until a reviewed source-specific comparator contract exists;
+- the next product work may present/transport metadata, but calculation ordering requires a separate evidence gate.
 
 #### R2 cash/account truth
 
@@ -427,13 +440,12 @@ A safe R2 sequence is:
 
 1. canonical event/timeline contract + backward compatibility — **R2.1 CLOSED / VERIFIED**;
 2. physical nullable transaction metadata expansion — **R2.2A CLOSED / PRODUCTION VERIFIED**;
-3. metadata API activation + writer/idempotency/amendment semantics — **R2.2B REPOSITORY VERIFIED / PRODUCTION ACTIVATION PENDING**;
-4. exact-source evidence + reviewer-gated R2.2B production activation;
-5. timeline/detail presentation + shadow Python metadata transport, still without calculation-order activation;
-6. explicit cash event storage/model;
-7. shadow cash ledger calculation;
-8. reconciliation and migration UX;
-9. only then review account NAV / account-level performance cutover.
+3. metadata API activation + writer/idempotency/amendment semantics — **R2.2B CLOSED / PRODUCTION VERIFIED**;
+4. timeline/detail presentation + shadow Python metadata transport — **R2.2C CURRENT**, still without calculation-order activation;
+5. explicit cash event storage/model;
+6. shadow cash ledger calculation;
+7. reconciliation and migration UX;
+8. only then review account NAV / account-level performance cutover.
 
 R2.2 must itself keep execution-order activation behind a later evidence gate; storing a timestamp/sequence does not automatically authorize the accounting engine to use it.
 
@@ -515,7 +527,7 @@ source/manual facts
 
 `note` is user Journal content, not execution chronology/provenance storage. `id`/`created_at` remain deterministic database facts but must not be presented as broker execution time.
 
-R2.2A physical storage exists in production. R2.2B API/write semantics are repository-verified at `main@263fbbd665f519dc69d6828c351c66e399e5f266`, but production still runs source `9aed8760dfd49d9568b86555a87c61de086df3d0` at release `4.08` / API `2.61` / schema `3`, so metadata API activation remains pending. Production activation requires exact-source evidence and the protected deployment path. Python calculation ordering remains disabled regardless of metadata storage/API availability.
+R2.2A physical storage and R2.2B API/write semantics are now live in production from exact runtime source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3`, release `4.09` / API `2.62` / schema `3`. This makes metadata available for truthful capture, read and presentation only. Python calculation ordering remains disabled until a separate source/coverage/comparator evidence gate is reviewed and activated.
 
 ### Overview presentation
 
@@ -595,7 +607,7 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 - no use of `created_at` or record `id` as fake execution timestamp;
 - no calculation-order activation from partial timestamp coverage;
 - no generic lexical/numeric ordering of `execution_sequence` before a reviewed source/comparator contract;
-- no assumption that repository-verified R2.2B API semantics are live merely because code is on `main`; production authority changes only after exact-source evidence + protected deployment + post-deploy verification;
+- no assumption that live R2.2B metadata authorizes calculation chronology; Python ordering remains behind a separate full-coverage/source-comparator evidence gate;
 - no historical lot attribution from current-day `day_ledger`;
 - no sector/industry classification guessed from symbol names, frontend maps or strategy Tags;
 - no invented risk score, forecast or investment recommendation without reviewed methodology;
@@ -617,46 +629,38 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 
 ### Current Batch
 
-`R2.2B — Production Activation / Exact-Source Verification`
+`R2.2C — Transaction Timeline Detail UX + Shadow Metadata Transport`
 
 Primary objective:
 
-> deploy the repository-verified release `4.09` / API `2.62` / schema `3` Worker through the existing protected production control plane, without widening scope or activating Python chronology.
+> make the newly-live optional event metadata understandable and useful in transaction history/detail while carrying it through Python as shadow, non-ordering data; do not change accounting chronology.
 
-Repository-ready evidence:
+Product-first scope:
 
-- PR #310 exact reviewed head `5d479de77edc31f096cdf57cf2d60ffc8b998b0a`;
-- CI #1084 / run `31937509649`: **SUCCESS**;
-- frozen review `4945819640`: **PASS / BLOCKER 0 / FOLLOW-UP 0**;
-- merge/main `263fbbd665f519dc69d6828c351c66e399e5f266`;
-- post-main CI #1085 / run `31937610097`: **SUCCESS**;
-- Pages #1590 / run `31937609532`: **SUCCESS**.
+1. re-audit the current transaction history/detail data path and keep one presentation owner for event metadata;
+2. present authoritative `currency`, `executed_at`, `execution_sequence`, and `event_source` when present, with graceful absence for legacy/manual records;
+3. use explicit labels that distinguish execution time/source from database `created_at` and record `id`; never fabricate a timestamp or provenance value;
+4. carry the optional metadata through Python transaction models/normalization in shadow form only so later reconciliation can measure coverage without changing sort/order behavior;
+5. add focused regression tests for legacy records, partial metadata coverage, privacy-safe provenance and presentation semantics;
+6. inspect manual/import capture boundaries only where necessary to support truthful UX; do not broaden into broker-specific background sync.
 
-Production activation scope:
+Non-goals:
 
-1. obtain fresh reviewer-protected Production Identity Evidence for the exact R2.2B source selected from protected main history;
-2. update `config/production-activation-authority.json` and `config/production-deployment-request.json` together so the exact-source invariant cannot diverge;
-3. exact-head CI + frozen review + protected merge of that activation PR;
-4. let the repository broker dispatch canonical Deploy Worker;
-5. obtain required human approval for the protected `production` environment;
-6. verify deployed source/version, D1 identity, `/version`, `/health`, auth/CORS and sanitized post-deploy evidence;
-7. only then mark R2.2B **PRODUCTION VERIFIED** and advance to timeline/detail capture/presentation work.
-
-Out of scope during activation:
-
-- no new migration or schema bump;
 - no Python calculation-order activation;
-- no partial-coverage chronology;
-- no cash/NAV;
-- no UI metadata editor or IBKR background writer;
-- no unrelated cleanup.
+- no ordering from partial timestamp coverage;
+- no generic lexical/numeric interpretation of `execution_sequence`;
+- no cash/NAV or account-level performance cutover;
+- no IBKR background sync;
+- no unrelated refactor or cleanup.
 
-Production preconditions:
+Entry truth:
 
-- live production currently remains source `9aed8760dfd49d9568b86555a87c61de086df3d0`, release `4.08`, API `2.61`, schema `3`;
-- production D1 migration `0004_record_timeline_metadata_expand.sql` is already applied;
-- current activation authority/request still point to the R2.2A runtime and must not be changed until fresh R2.2B identity evidence is successful;
-- manual environment approval is a release gate, not a development blocker.
+- production Worker source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3` is stable at release `4.09` / API `2.62` / schema `3`;
+- production D1 already contains the four nullable metadata columns;
+- R2.2B write/idempotency/amendment semantics are production verified;
+- legacy records without metadata remain fully valid;
+- current deterministic calculation chronology remains unchanged and is an explicit safety boundary.
+
 
 ---
 
@@ -670,4 +674,4 @@ Production preconditions:
 6. Debug same-class impact + regression prevention.
 7. Overview changes must preserve `OverviewPage` as the page-level orchestration boundary and reuse reviewed domain services.
 8. Typography changes must extend semantic roles at the design-system authority; canvas uses the approved bridge.
-9. R2 is active. R2.1 and R2.2A are closed / verified. R2.2B metadata API/write semantics are repository-verified at `main@263fbbd665f519dc69d6828c351c66e399e5f266`, while production still runs the R2.2A-compatible source `9aed8760dfd49d9568b86555a87c61de086df3d0`. Continue with **R2.2B Production Activation / Exact-Source Verification** only; do not activate cash/NAV or calculation chronology from partial metadata coverage.
+9. R2 is active. R2.1, R2.2A and R2.2B are closed / verified, and production now serves R2.2B exact source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3` at release `4.09` / API `2.62` / schema `3`. Continue with **R2.2C Transaction Timeline Detail UX + Shadow Metadata Transport** only; do not activate cash/NAV or calculation chronology from partial metadata coverage.
