@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 and R2.1/R2.2 are closed at their reviewed boundaries. R2.3A Explicit Cash Event Storage and R2.3B authenticated user-only Cash Event CRUD are CLOSED / PRODUCTION VERIFIED. Production Worker runs exact product runtime source `fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be` at release `4.11` / API `2.64` / schema `3`, Worker Version ID `68ba41ad-3118-4a24-b6b3-6e0640704f92`; protected control-plane `main` is `8ddf207ef51ec88e7864af125dee4ab30e626c87`. Python calculation-order and cash-ledger/NAV activation remain explicitly disabled. The single Primary Active Batch is R2.3C Cash Management UI.**
+Current line: **R1 and R2.1/R2.2 are closed at their reviewed boundaries. R2.3A Explicit Cash Event Storage and R2.3B authenticated user-only Cash Event CRUD are CLOSED / PRODUCTION VERIFIED; R2.3C Cash Management UI is CLOSED / PRODUCTION PAGES VERIFIED. Production Worker remains exact runtime source `fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be` at release `4.11` / API `2.64` / schema `3`, Worker Version ID `68ba41ad-3118-4a24-b6b3-6e0640704f92`; the R2.3C product merge is `363aa458ea7f3fffb5ca19883052561205708b5d`, while current protected `main` must always be re-read from GitHub remote truth because docs-only closeouts may advance it. Cash-inclusive NAV/performance and transaction chronology remain explicitly disabled. The single Primary Active Batch is R2.4 Shadow Cash Ledger.**
 
 ---
 
@@ -122,7 +122,20 @@ A later docs-only merge may advance repository `main` without changing product r
 - Deploy Worker #12 / run `31950674734`: SUCCESS after reviewer-protected production approval; no pending migrations; exact runtime source `fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be`; Worker Version ID `68ba41ad-3118-4a24-b6b3-6e0640704f92`; release `4.11` / API `2.64` / schema `3`; stable public contract 3/3 PASS.
 - Post-deploy artifact `9264672571`, digest `sha256:dbd88e7aad005e0ce3c56da6efd91a5d702d7030e4f5826bcabe194a2328495e`.
 - R2.3B exposes authenticated user-only `GET/POST/PUT/DELETE /api/cash-events`; system/API-secret writer authority, Python cash ledger, account NAV/performance cutover and chronology activation remain disabled.
-- **Primary Active Batch: R2.3C Cash Management UI.**
+- R2.3B production runtime remains authoritative after the frontend-only R2.3C release.
+
+### R2.3C Cash Management UI Pages closeout — 2026-08-16
+
+- PR #324 clean exact head `c5a557e7bbd615c2e6702e79f003f0def82bb8d6`; one commit / 12 permanent files.
+- R2.3C Correctness Workbench #4 / run `31957335132`: PASS across focused cash + shell reliability, full frontend, full Worker, fresh local D1 exact-SQL proof, production build and diff hygiene.
+- Frozen-review replay-safety workbench / run `31957707694`: PASS; a real blocker where failed replay could retire an earlier ambiguous cash-create intent was fixed fail-closed before publication.
+- exact-head CI #1115 / run `31957770710`: SUCCESS across Frontend, Python and Worker/D1 jobs.
+- frozen review `4946610924`: PASS / BLOCKER 0 / FOLLOW-UP 0 on exact head `c5a557e7...`.
+- normal merge/main `363aa458ea7f3fffb5ca19883052561205708b5d`; merge tree `c1321776ce784a5a4970f8ef96dba7f893883afe` exactly matched the frozen candidate tree.
+- post-main CI #1116 / run `31957916650`: SUCCESS.
+- Pages #1604 / run `31957915787`: SUCCESS for exact merge `363aa458...`.
+- R2.3C is frontend-only: no Worker deployment, D1 migration, Python accounting activation, cash-inclusive NAV/TWR/XIRR cutover or transaction chronology activation occurred.
+- **Primary Active Batch: R2.4 Shadow Cash Ledger.**
 
 ### Product state
 
@@ -149,7 +162,8 @@ A later docs-only merge may advance repository `main` without changing product r
 - **R2.2C Transaction Timeline Detail + Source Metadata Capture — CLOSED / VERIFIED; C-D LIVE ON PAGES**
 - **R2.3A Explicit Cash Event Storage / Model — CLOSED / PRODUCTION VERIFIED**
 - **R2.3B Authenticated Cash Event CRUD — CLOSED / PRODUCTION VERIFIED**
-- **R2.3C Cash Management UI — ACTIVE; no cash-ledger/NAV activation**
+- **R2.3C Cash Management UI — CLOSED / PRODUCTION PAGES VERIFIED**
+- **R2.4 Shadow Cash Ledger — ACTIVE; shadow-only, no NAV/performance cutover**
 
 ---
 
@@ -487,6 +501,24 @@ Detailed contract: `docs/engineering/R2_3_CASH_EVENT_STORAGE_MODEL_2026-08-16.md
 
 Risk class: **R2 — Significant** because this is additive persistence. Recovery point is exact protected `main@9caaa399f1cb7f40bbb74c0eab3eb3e7065c190f`; rollback behavior is to leave the new table inert rather than destructively drop it.
 
+#### R2.3C — Cash Management UI — CLOSED / PRODUCTION PAGES VERIFIED
+
+The live frontend now provides one first-class responsive cash-management surface backed only by the production-verified R2.3B API. It supports explicit opening balance / deposit / withdrawal CRUD, preserves signed opening balances, uses browser-local calendar dates, keeps POST retry identity durable while unresolved, and uses exact server-observed state for optimistic PUT/DELETE. It does not call portfolio calculation or present cash as account NAV.
+
+#### R2.4 — Shadow Cash Ledger — ACTIVE
+
+Primary Goal:
+
+> derive a deterministic, currency-aware cash ledger in shadow mode from authoritative `cash_events` plus audited BUY/SELL/confirmed-DIV cash semantics, expose reconciliation evidence, and keep every current production portfolio/NAV/performance surface unchanged until a later explicit cutover gate.
+
+Initial guardrails:
+
+- no inferred opening cash and no fabricated historical zero balance;
+- no duplicate manual BUY/SELL/DIV cash events;
+- no use of partial transaction chronology metadata as ordering authority;
+- multi-currency cash remains separated by currency until an explicit reviewed FX valuation layer exists;
+- shadow output must be independently reconcilable and must not mutate `portfolio_snapshots`, Overview totals, TWR or XIRR.
+
 #### R2 cash/account truth
 
 Explicit cash must be event-driven and multi-currency. Candidate event classes require design/review before schema activation, including:
@@ -521,8 +553,8 @@ A safe R2 sequence is:
 2. physical nullable transaction metadata expansion — **R2.2A CLOSED / PRODUCTION VERIFIED**;
 3. metadata API activation + writer/idempotency/amendment semantics — **R2.2B CLOSED / PRODUCTION VERIFIED**;
 4. timeline/detail presentation + shadow Python metadata transport + safe source enrichment — **R2.2C CLOSED / VERIFIED**, still without calculation-order activation;
-5. explicit cash event storage/model — **R2.3A CURRENT: additive storage/model only; no ledger/NAV activation**;
-6. shadow cash ledger calculation;
+5. explicit cash event storage + authenticated CRUD + management UX — **R2.3A/B/C CLOSED / VERIFIED at their production boundaries**;
+6. shadow cash ledger calculation — **R2.4 CURRENT: shadow-only; no NAV/performance cutover**;
 7. reconciliation and migration UX;
 8. only then review account NAV / account-level performance cutover.
 
