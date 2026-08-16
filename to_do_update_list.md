@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 Event / Timeline Contract Audit is CLOSED / VERIFIED. R2.2A nullable timeline-metadata storage expansion is VERIFIED on frozen substantive head `11fce6e3bff4520a48998f039ac3c6e20c8843eb` in PR #306; final handoff-head CI/merge and production D1 expansion verification remain before R2.2B API activation.**
+Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 Event / Timeline Contract Audit is CLOSED / VERIFIED. R2.2A nullable timeline-metadata storage expansion is MERGED / REPOSITORY VERIFIED at `main@a7fc221b3a41e129766e852fae7140430b8ec36f`; production D1 expansion remains pending fresh Production Identity Evidence and exact-SHA activation/deployment authority before R2.2B API activation.**
 
 ---
 
@@ -65,28 +65,30 @@ Phase 9.2 production activation control plane remains:
 R2.1 authoritative repository checkpoint:
 
 - merged PR #305 — `docs: establish R2 ledger event contract baseline`;
-- substantive head `5eac7a4aaad4214f98882fb107972577008b7280`;
+- exact reviewed head `1e45afe24c792d3f23f52770b4fee9cde90f8512`;
 - merge/main checkpoint `6ff2a0852f716970c485fd20f78139d246c07309`;
-- exact-head CI #1069 / run `31932472434`: **SUCCESS**;
-- frozen review `4945618191`: **PASS / BLOCKER 0 / FOLLOW-UP 0**;
+- exact-head CI #1069 / run `31932043354`: **SUCCESS**;
+- frozen review `4945608716`: **PASS / BLOCKER 0 / FOLLOW-UP 0**;
 - post-main CI #1070: **SUCCESS**;
 - Pages #1585: **SUCCESS**;
 - no runtime/schema activation in R2.1.
 
-R2.2A recovery/current branch:
+R2.2A repository closeout / production expansion gate:
 
 - recovery base: exact `main@6ff2a0852f716970c485fd20f78139d246c07309`;
-- branch: `feat/r2-2a-timeline-metadata-expand`;
-- Draft PR: #306;
+- PR #306 — `db: expand nullable transaction timeline metadata`;
 - substantive frozen head: `11fce6e3bff4520a48998f039ac3c6e20c8843eb`;
-- exact-head CI #1071 / run `31932538495`: **SUCCESS**;
-- Frontend contracts/build: **SUCCESS**;
-- Python tests: **SUCCESS**;
-- Worker security/deployment tests: **SUCCESS**;
-- local D1 migration + legacy INSERT compatibility: **SUCCESS**;
-- frozen review `4945633945`: **PASS / BLOCKER 0 / FOLLOW-UP 1**;
+- substantive CI #1071 / run `31932538495`: **SUCCESS**;
+- substantive review `4945633945`: **PASS / BLOCKER 0 / FOLLOW-UP 1**;
+- final exact head: `3d4a9a738fcc53b9b2b4f35f2060584d663bbb70`;
+- final exact-head CI #1072 / run `31932628031`: **SUCCESS**;
+- final frozen review `4945637870`: **PASS / BLOCKER 0 / FOLLOW-UP 1**;
+- merge/main checkpoint: `a7fc221b3a41e129766e852fae7140430b8ec36f`;
+- post-main CI #1073 / run `31932726361`: **SUCCESS**;
+- Pages #1586 / run `31932725963`: **SUCCESS**;
 - no Worker/API/frontend/Python calculation behavior change;
-- production D1 expansion: **NOT YET APPLIED** until PR #306 merge + deployment gate.
+- production D1 expansion: **NOT YET APPLIED / NOT VERIFIED**; latest Deploy Worker run predates R2.2A;
+- current activation authority still authorizes only `9b9f09f5079c59750219c73e23002a7ab8d2f33e`, so a fresh exact-source identity-evidence/authority cycle is required before protected deployment.
 
 A later docs-only merge may advance repository `main` without changing product runtime. Always re-read fresh remote truth.
 
@@ -110,7 +112,7 @@ A later docs-only merge may advance repository `main` without changing product r
 - **R1 Decision Cockpit — CLOSED / PRODUCTION VERIFIED**
 - **R2 Ledger Truth v2 — ACTIVE**
 - **R2.1 Event / Timeline Contract Audit — CLOSED / VERIFIED**
-- **R2.2A Nullable Timeline Metadata Storage Expansion — VERIFIED / PR #306 merge mechanics active**
+- **R2.2A Nullable Timeline Metadata Storage Expansion — MERGED / REPOSITORY VERIFIED / PRODUCTION D1 EXPANSION PENDING**
 - **R2.2B Metadata API Activation + Writer Semantics — NEXT after R2.2A production D1 verification**
 
 ---
@@ -255,7 +257,7 @@ R2.1 closeout:
 - post-main CI #1070 and Pages #1585: **SUCCESS**;
 - no Worker/D1/Python/UI runtime behavior changed.
 
-#### R2.2A — Nullable Timeline Metadata Storage Expansion — VERIFIED / MERGE MECHANICS ACTIVE
+#### R2.2A — Nullable Timeline Metadata Storage Expansion — MERGED / REPOSITORY VERIFIED / PRODUCTION D1 PENDING
 
 Primary Goal:
 
@@ -300,7 +302,13 @@ Verification:
 - local D1 applies all migrations: **SUCCESS**;
 - local D1 verifies all four new columns are TEXT, nullable, no-default: **SUCCESS**;
 - old-shape BUY record INSERT without metadata: **SUCCESS**, all new fields read back NULL;
-- frozen independent review `4945633945`: **PASS / BLOCKER 0 / FOLLOW-UP 1**.
+- substantive frozen review `4945633945`: **PASS / BLOCKER 0 / FOLLOW-UP 1**;
+- final exact head `3d4a9a738fcc53b9b2b4f35f2060584d663bbb70`: CI #1072 / run `31932628031` **SUCCESS**;
+- final frozen-head review `4945637870`: **PASS / BLOCKER 0 / FOLLOW-UP 1**;
+- merge `a7fc221b3a41e129766e852fae7140430b8ec36f`;
+- post-main CI #1073 / run `31932726361`: **SUCCESS**;
+- Pages #1586 / run `31932725963`: **SUCCESS**;
+- production D1 expansion: **NOT VERIFIED / pending protected activation flow**.
 
 Regression / prevention:
 
@@ -314,14 +322,14 @@ Rollback:
 - before production migration: close/revert PR #306;
 - after additive production migration: do not destructively drop columns as an emergency rollback; the last-known-good Worker can continue to ignore them. Leave unused nullable columns until a separately reviewed cleanup.
 
-R2.2A remaining merge/deploy mechanics:
+R2.2A remaining production activation mechanics:
 
-1. final handoff-only head must pass exact-head CI;
-2. confirm final diff contains no substantive change after frozen review;
-3. mark PR #306 Ready and squash merge exact head;
-4. verify post-main CI/Pages;
-5. use existing protected deployment workflow to apply production D1 migration before any Worker activation;
-6. verify production D1 migration/health evidence;
+1. keep this handoff correction docs-only and merge it through normal exact-head CI/review;
+2. after final current-main Pages propagation, run reviewer-protected **Production Identity Evidence** against that exact current-main SHA;
+3. review the sanitized PASS artifact and create exact-source activation evidence/authority without fabricating production identity;
+4. commit an exact protected-main deployment request so the existing **Production Deployment Dispatch Broker** dispatches canonical `Deploy Worker`;
+5. canonical deployment applies additive D1 migrations, redeploys the unchanged schema-v3 Worker contract, and verifies stable production contract;
+6. verify production D1 expansion evidence and keep the four columns non-authoritative to API/accounting;
 7. only then open R2.2B.
 
 R2.2A review FOLLOW-UP → **NEXT / R2.2B**:
@@ -360,7 +368,7 @@ Prefer additive/shadow computation and reconciliation first. Do not immediately 
 A safe R2 sequence is:
 
 1. canonical event/timeline contract + backward compatibility — **R2.1 CLOSED / VERIFIED**;
-2. physical nullable transaction metadata expansion — **R2.2A VERIFIED / merge+production migration pending**;
+2. physical nullable transaction metadata expansion — **R2.2A MERGED / repository verified / production D1 migration pending**;
 3. metadata API activation + writer/idempotency/amendment semantics — **R2.2B NEXT**;
 4. timeline/detail presentation + shadow Python metadata transport, still without calculation-order activation;
 5. explicit cash event storage/model;
@@ -550,15 +558,14 @@ Do not use `npm audit fix --force` or blanket dependency upgrades as generic cle
 
 ### Current Batch
 
-`R2.2A — Nullable Timeline Metadata Storage Expansion`
+`R2.2A — Production D1 Expansion Closeout`
 
 In scope:
 
-- additive nullable D1 storage;
-- old-writer compatibility;
-- migration/config regression guards;
-- exact-head PR review/merge;
-- production D1 migration verification;
+- preserve the already-merged additive nullable D1 storage contract;
+- correct handoff evidence to fresh GitHub remote truth;
+- fresh exact-source production identity evidence and activation authority;
+- protected production D1 migration verification;
 - handoff/update documentation.
 
 Out of scope:
@@ -574,11 +581,14 @@ Out of scope:
 Verification required before closeout:
 
 - substantive exact-head CI — **DONE / #1071 SUCCESS**;
-- frozen independent review — **DONE / PASS / BLOCKER 0**;
-- final handoff exact-head CI;
-- exact-head squash merge;
-- post-main CI/Pages verification;
-- production D1 expand migration + health verification.
+- substantive frozen independent review — **DONE / PASS / BLOCKER 0**;
+- final PR head CI — **DONE / #1072 SUCCESS**;
+- final frozen-head review — **DONE / PASS / BLOCKER 0**;
+- PR #306 merge — **DONE / `a7fc221b...`**;
+- post-main CI/Pages — **DONE / #1073 + #1586 SUCCESS**;
+- handoff truth repair CI/review/merge — **PENDING**;
+- production identity evidence for the final current-main source — **PENDING**;
+- production D1 expand migration + health verification — **PENDING**.
 
 ### Next Action after R2.2A closeout
 
@@ -600,4 +610,4 @@ Narrow objective:
 6. Debug same-class impact + regression prevention.
 7. Overview changes must preserve `OverviewPage` as the page-level orchestration boundary and reuse reviewed domain services.
 8. Typography changes must extend semantic roles at the design-system authority; canvas uses the approved bridge.
-9. R2 is active. R2.1 is closed. Continue **R2.2A only through final merge + production D1 verification**; then open **R2.2B Metadata API Activation + Writer Semantics**. Do not activate cash/NAV or calculation chronology from partial metadata coverage.
+9. R2 is active. R2.1 is closed. R2.2A repository merge is complete; continue **R2.2A only through handoff truth repair + fresh production identity authority + production D1 expansion verification**; then open **R2.2B Metadata API Activation + Writer Semantics**. Do not activate cash/NAV or calculation chronology from partial metadata coverage.
