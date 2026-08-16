@@ -48,6 +48,7 @@
       <div class="breakdown-item">
         <span>未實現</span>
         <strong class="font-num" :class="pnlClass(model.unrealizedPnl)">{{ formatSignedTwd(model.unrealizedPnl) }}</strong>
+        <small :class="pnlClass(model.unrealizedPnl)">未實現報酬率 {{ formatSignedPercent(model.unrealizedReturnPercent) }}</small>
       </div>
       <div class="breakdown-item">
         <span>已實現</span>
@@ -249,6 +250,14 @@ const xirrTitle = computed(() => {
   font-size: var(--type-emphasis);
 }
 
+.breakdown-item small,
+.performance-item small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-sub);
+  font-size: var(--type-caption);
+}
+
 .performance-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding-top: 14px;
@@ -258,13 +267,6 @@ const xirrTitle = computed(() => {
 .performance-item {
   background: transparent;
   padding: 0;
-}
-
-.performance-item small {
-  display: block;
-  margin-top: 3px;
-  color: var(--text-sub);
-  font-size: var(--type-caption);
 }
 
 .text-green { color: var(--success); }
@@ -282,8 +284,9 @@ const xirrTitle = computed(() => {
 
 @media (max-width: 520px) {
   .breakdown-row { grid-template-columns: 1fr; }
-  .breakdown-item { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .breakdown-item { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .breakdown-item span { margin-bottom: 0; }
+  .breakdown-item small { width: 100%; text-align: right; }
   .performance-row { gap: 10px; }
 }
 </style>
