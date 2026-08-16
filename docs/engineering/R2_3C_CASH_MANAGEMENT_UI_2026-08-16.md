@@ -1,6 +1,6 @@
 # R2.3C Cash Management UI — 2026-08-16
 
-Status: **ACTIVE IMPLEMENTATION**
+Status: **CLOSED / PRODUCTION PAGES VERIFIED**
 
 ## Product goal
 
@@ -26,5 +26,15 @@ Expose the production-verified R2.3B user-only cash-event API as a clear respons
 ## Accounting boundary
 
 R2.3C does not call `portfolioStore`, Python calculation, calculation jobs, portfolio snapshot mutation or Overview projection. It does not compute account cash or NAV. BUY/SELL/DIV cash effects stay derived from authoritative transaction records and must not be re-entered as manual cash events.
+
+## Verification closeout
+
+- clean exact head: `c5a557e7bbd615c2e6702e79f003f0def82bb8d6`;
+- exact-head CI #1115 / run `31957770710`: SUCCESS;
+- frozen review `4946610924`: PASS / BLOCKER 0 / FOLLOW-UP 0;
+- normal merge/main: `363aa458ea7f3fffb5ca19883052561205708b5d`;
+- post-main CI #1116 / run `31957916650`: SUCCESS;
+- Pages #1604 / run `31957915787`: SUCCESS;
+- no Worker/D1/Python accounting deployment occurred in R2.3C.
 
 Next gate: R2.4 shadow cash ledger, followed by reconciliation/migration UX before any NAV/performance cutover.

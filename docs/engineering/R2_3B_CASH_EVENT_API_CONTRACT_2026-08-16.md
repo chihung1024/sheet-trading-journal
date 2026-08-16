@@ -1,6 +1,6 @@
 # R2.3B Cash Event API Contract — 2026-08-16
 
-Status: implementation candidate after R2.3A production storage verification.
+Status: **CLOSED / PRODUCTION VERIFIED**. Exact runtime source `fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be` was activated through PR #323 and Deploy Worker #12 / run `31950674734`; production remains release `4.11` / API `2.64` / schema `3`.
 Risk class: **R2 — Significant**. This activates authenticated writes to the additive `cash_events` family but deliberately does not activate cash-ledger calculation or account NAV.
 
 ## Goal
