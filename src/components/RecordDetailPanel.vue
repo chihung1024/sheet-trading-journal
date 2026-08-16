@@ -39,6 +39,28 @@
       </div>
     </div>
 
+    <div v-if="hasEventMetadata" class="detail-section execution-metadata-section">
+      <span class="detail-label section-label">成交來源資訊</span>
+      <div class="detail-grid event-metadata-grid">
+        <div v-if="storedCurrency" class="detail-item">
+          <span class="detail-label">報價單位（已儲存）</span>
+          <span class="detail-value font-num">{{ storedCurrency }}</span>
+        </div>
+        <div v-if="executedAt" class="detail-item">
+          <span class="detail-label">成交時間（含來源時區）</span>
+          <span class="detail-value metadata-value">{{ executedAt }}</span>
+        </div>
+        <div v-if="executionSequence" class="detail-item">
+          <span class="detail-label">來源序列</span>
+          <span class="detail-value metadata-value">{{ executionSequence }}</span>
+        </div>
+        <div v-if="eventSourceLabel" class="detail-item">
+          <span class="detail-label">來源類型</span>
+          <span class="detail-value">{{ eventSourceLabel }}</span>
+        </div>
+      </div>
+    </div>
+
     <div class="detail-section">
       <span class="detail-label">策略標籤</span>
       <div v-if="tags.length > 0" class="detail-tags">
@@ -54,15 +76,21 @@
     </div>
 
     <p class="detail-authority-note">
-      此處只顯示已儲存的交易／日誌欄位；績效與 TWD 估值仍以系統既有計算與已驗證快照為準。
+      成交來源資訊只有在紀錄實際儲存時才顯示；「交易日期」不等於成交時間，來源序列也不代表系統已依此排序。績效與 TWD 估值仍以系統既有計算與已驗證快照為準。
     </p>
   </section>
 </template>
 
 <script setup>
 import { computed } from 'vue';
-import { detectNativeCurrency, formatNativeAmount } from '../services/instrumentCurrency.js';
-import { getRecordTags } from '../services/recordHistoryPresentation.js';
+import { formatNativeAmount } from '../services/instrumentCurrency.js';
+import {
+  getEventSourceLabel,
+  getRecordDisplayCurrency,
+  getRecordTags,
+  getStoredRecordCurrency,
+  hasRecordEventMetadata,
+} from '../services/recordHistoryPresentation.js';
 
 const props = defineProps({
   record: {
@@ -75,8 +103,14 @@ const props = defineProps({
   },
 });
 
-const currency = computed(() => detectNativeCurrency(props.record?.symbol));
+const optionalText = value => String(value ?? '').trim();
+const currency = computed(() => getRecordDisplayCurrency(props.record));
+const storedCurrency = computed(() => getStoredRecordCurrency(props.record));
 const tags = computed(() => getRecordTags(props.record));
+const hasEventMetadata = computed(() => hasRecordEventMetadata(props.record));
+const executedAt = computed(() => optionalText(props.record?.executed_at));
+const executionSequence = computed(() => optionalText(props.record?.execution_sequence));
+const eventSourceLabel = computed(() => getEventSourceLabel(props.record?.event_source));
 const typeLabel = computed(() => ({
   BUY: '買入',
   SELL: '賣出',
@@ -115,6 +149,9 @@ const formatStoredAmount = (value, digits) => {
 .symbol-value { color: var(--primary); font-family: 'JetBrains Mono', monospace; }
 .font-num { font-family: 'JetBrains Mono', monospace; }
 .detail-section { margin-top: 14px; }
+.section-label { margin-bottom: 8px; }
+.event-metadata-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.metadata-value { font-family: 'JetBrains Mono', monospace; font-size: var(--type-label); }
 .detail-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .detail-tag { padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(99, 102, 241, 0.2); background: rgba(99, 102, 241, 0.08); color: var(--text-main); font-size: var(--type-label); font-weight: 650; }
 .detail-note { margin: 0; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
@@ -126,7 +163,8 @@ const formatStoredAmount = (value, digits) => {
 @media (max-width: 480px) {
   .record-detail-panel { padding: 14px; }
   .detail-header { flex-direction: column; gap: 6px; }
-  .detail-grid { grid-template-columns: 1fr; }
+  .detail-grid,
+  .event-metadata-grid { grid-template-columns: 1fr; }
   .detail-date { white-space: normal; }
 }
 </style>

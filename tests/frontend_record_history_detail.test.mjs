@@ -4,6 +4,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import {
+  getEventSourceLabel,
+  getRecordDisplayCurrency,
+  getStoredRecordCurrency,
+  hasRecordEventMetadata,
+} from '../src/services/recordHistoryPresentation.js';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relativePath => fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
 
@@ -43,7 +50,32 @@ test('detail expansion is cleared when retrieval context or pagination changes',
   assert.match(source, /watch\(\(\) => store\.currentGroup,[\s\S]*collapseRecordDetails\(\)/);
 });
 
-test('RecordDetailPanel presents stored journal facts without becoming a financial or mutation authority', () => {
+test('record event metadata presentation prefers stored quote unit with legacy fallback', () => {
+  assert.equal(getStoredRecordCurrency({ symbol: 'NVDA', currency: 'EUR' }), 'EUR');
+  assert.equal(getRecordDisplayCurrency({ symbol: 'NVDA', currency: 'EUR' }), 'EUR');
+  assert.equal(getStoredRecordCurrency({ symbol: 'VOD.L', currency: 'GBp' }), 'GBp');
+  assert.equal(getRecordDisplayCurrency({ symbol: 'VOD.L', currency: 'GBp' }), 'GBp');
+  assert.equal(getStoredRecordCurrency({ symbol: '7203.T', currency: null }), '');
+  assert.equal(getRecordDisplayCurrency({ symbol: '7203.T', currency: null }), 'JPY');
+  assert.equal(getStoredRecordCurrency({ symbol: '7203.T', currency: 'jpy' }), '');
+  assert.equal(getRecordDisplayCurrency({ symbol: '7203.T', currency: 'jpy' }), 'JPY');
+});
+
+test('record event source labels are privacy-safe and metadata presence stays optional', () => {
+  assert.equal(getEventSourceLabel('MANUAL'), '手動記錄');
+  assert.equal(getEventSourceLabel('ibkr'), 'IBKR');
+  assert.equal(getEventSourceLabel('IMPORT'), '檔案匯入');
+  assert.equal(getEventSourceLabel('SYSTEM'), '系統產生');
+  assert.equal(getEventSourceLabel('account-123-secret'), '未識別來源');
+  assert.equal(getEventSourceLabel(null), '');
+
+  assert.equal(hasRecordEventMetadata({ symbol: 'NVDA' }), false);
+  assert.equal(hasRecordEventMetadata({ symbol: 'NVDA', currency: null, executed_at: null, execution_sequence: null, event_source: null }), false);
+  assert.equal(hasRecordEventMetadata({ symbol: 'NVDA', executed_at: '2026-08-12T10:31:27+08:00' }), true);
+  assert.equal(hasRecordEventMetadata({ symbol: 'NVDA', execution_sequence: 'order:487287953' }), true);
+});
+
+test('RecordDetailPanel presents stored journal and event facts without becoming a financial, ordering, or mutation authority', () => {
   const source = read('src/components/RecordDetailPanel.vue');
 
   assert.match(source, /已儲存交易欄位/);
@@ -52,12 +84,34 @@ test('RecordDetailPanel presents stored journal facts without becoming a financi
   assert.match(source, /DIV 入帳金額/);
   assert.match(source, /手續費/);
   assert.match(source, /稅費/);
+  assert.match(source, /成交來源資訊/);
+  assert.match(source, /報價單位（已儲存）/);
+  assert.match(source, /成交時間（含來源時區）/);
+  assert.match(source, /來源序列/);
+  assert.match(source, /來源類型/);
+  assert.match(source, /getRecordDisplayCurrency\(props\.record\)/);
+  assert.match(source, /getStoredRecordCurrency\(props\.record\)/);
+  assert.match(source, /hasRecordEventMetadata\(props\.record\)/);
+  assert.match(source, /getEventSourceLabel\(props\.record\?\.event_source\)/);
+  assert.match(source, /「交易日期」不等於成交時間/);
+  assert.match(source, /來源序列也不代表系統已依此排序/);
   assert.match(source, /策略標籤/);
   assert.match(source, /交易備註 \/ 投資理由/);
   assert.match(source, /{{ record\.note }}/);
   assert.match(source, /getRecordTags\(props\.record\)/);
   assert.match(source, /績效與 TWD 估值仍以系統既有計算與已驗證快照為準/);
-  assert.doesNotMatch(source, /usePortfolioStore|resolveTransactionValuation|resolveSettlementAmountNative|fetch\(|fetchWithAuth|addRecord|updateRecord|deleteRecord|localStorage/);
+  assert.doesNotMatch(source, /record\.created_at/);
+  assert.doesNotMatch(source, /usePortfolioStore|resolveTransactionValuation|resolveSettlementAmountNative|fetch\(|fetchWithAuth|addRecord|updateRecord|deleteRecord|localStorage|sort\(/);
+});
+
+test('R2.2C detail presentation does not activate execution metadata sorting in RecordList', () => {
+  const source = read('src/components/RecordList.vue');
+
+  assert.match(source, /const sortKey = ref\('txn_date'\)/);
+  assert.doesNotMatch(source, /sortBy\('executed_at'\)/);
+  assert.doesNotMatch(source, /sortBy\('execution_sequence'\)/);
+  assert.doesNotMatch(source, /sortKey\.value === 'executed_at'/);
+  assert.doesNotMatch(source, /sortKey\.value === 'execution_sequence'/);
 });
 
 test('desktop journal summary is integrated with symbol and strategy instead of reserving an empty Note column', () => {
