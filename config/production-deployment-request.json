@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "r2-2b-cc889dc4-20260816t0908z",
-  "source_sha": "cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3",
-  "requested_at": "2026-08-16T09:08:30.000Z",
-  "reason": "R2.2B production activation for repository-verified release 4.09 / API 2.62 / schema 3 after exact-source Production Identity Evidence #21. Production D1 migration 0004 is already applied; no new schema migration or Python calculation-order activation is requested."
+  "request_id": "r2-2c-c-fe81a065-20260816t1033z",
+  "source_sha": "fe81a06586b566444dd53e416c96255059bb3fdb",
+  "requested_at": "2026-08-16T10:33:09.000Z",
+  "reason": "R2.2C-C production activation for repository-verified release 4.10 / API 2.63 / schema 3 after exact-source Production Identity Evidence #23. Production D1 migration 0004 is already applied; no new schema migration, Python calculation-order activation, or IBKR frontend caller activation is requested."
 }
