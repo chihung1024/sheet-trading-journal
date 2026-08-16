@@ -2,45 +2,67 @@
 
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote main/open PR/CI/Pages and machine-readable contracts override prose.
 >
-> Detailed Phase 1–6 chronology remains at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
+> Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **Independent technical-debt root-cause review/cleanup is CLOSED / PRODUCTION VERIFIED after TD-A and TD-B. No runtime batch is active. The proposed Phase 14 Overview redesign remains a product proposal only and has NOT been started.**
+Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. Roadmap V2 is active; R2 Ledger Truth v2 is the next selected product capability.**
 
 ---
 
 ## 0. Operating doctrine
 
 1. Product functionality and UX are highest priority.
-2. Keep one Primary Active Batch. Technical cleanup is justified only when evidence shows it causes product, correctness, maintainability or repeated-debug risk.
+2. Keep one Primary Active Batch. Technical work exists to enable product correctness, maintainability and UX; do not create perpetual cleanup phases.
 3. Debug by evidence and root cause. Inspect same-class impact and add regression/prevention rather than symptom-only patches.
 4. Financial/data correctness is fail-closed. Browser presentation must never become a second accounting, FX, tax, recovery or market-data authority.
-5. Important work uses exact-head CI, recovery point, frozen review and permanent handoff.
+5. Important work uses recovery points, exact-head CI, frozen review, exact-head merge and post-main verification.
 6. Prefer deterministic automation. **AI 管流程，不管帳**.
-7. Do not delete old code/files merely because they look old; first prove they are neither compatibility surface nor forensic/governance evidence.
-8. Do not reopen closed phases without fresh material user/production evidence.
-9. Phase numbering is not priority. Rank future work by cross-user applicability, frequency, product/UX impact and evidence.
-10. When no approved runtime direction remains, stop instead of inventing cleanup.
+7. Do not delete old code/files merely because they look old; first prove they are neither compatibility surfaces nor forensic/governance evidence.
+8. Phase numbering is not priority. Rank work by cross-user applicability, frequency, product/UX value and dependency order.
+9. Do not infer cash, historical lots, industry classifications, risk scores or financial facts that authoritative data does not provide.
+10. When a product batch closes, stop its technical work instead of expanding scope for neatness.
 
 ---
 
 ## 1. Current authoritative state
 
-### Production checkpoints
+### Recovery checkpoint before Roadmap V2
 
-Production Pages runtime after technical-debt cleanup:
+GitHub Release:
 
-`f176b06e38cb0fb351ea9d59a7ccecbf29db2ae5`
+`backup-2026-08-16-tech-debt-closeout`
 
-Production Worker runtime remains unchanged:
+Target:
+
+`13b6558e48fc703afc8b9d1572ec696d104eccb2`
+
+This is a recovery/governance checkpoint, not a Worker/API/schema version.
+
+### Current production product runtime
+
+R1 Decision Cockpit merge:
+
+`eda462b0741a36ece3f4064eb302ea1b3a5b58b7`
+
+Verification:
+
+- PR #301 final exact head `6735454a02abd4ecfdb2ab80facac4d4a12f471d`
+- exact-head CI #1062 / run `31928863491`: **SUCCESS**
+- frozen review `4945470029`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
+- merge `eda462b0741a36ece3f4064eb302ea1b3a5b58b7`
+- post-main CI #1063 / run `31928936171`: **SUCCESS**
+- Pages #1583 / run `31928935341`: **SUCCESS**
+- no Worker/D1/Python accounting deployment or schema change
+
+Production Worker runtime remains:
 
 `9b9f09f5079c59750219c73e23002a7ab8d2f33e`
 
-Phase 9.2 production activation control plane:
+Phase 9.2 production activation control plane remains:
 
 `3e1ef4e5f7d2db7bf18db80bd946f93106a71f6e`
 
-A later docs-only closeout merge may advance repository `main` without changing product runtime. Always re-read fresh remote truth.
+A later docs-only merge may advance repository `main` without changing product runtime. Always re-read fresh remote truth.
 
 ### Product state
 
@@ -48,182 +70,205 @@ A later docs-only closeout merge may advance repository `main` without changing 
 - Phase 2 Trading Journal Note UX — CLOSED / PRODUCTION VERIFIED
 - Phase 3 Explainability — OPTIMIZED FOR CURRENT REQUIREMENTS
 - Phase 4 Strategy Analytics — OPTIMIZED FOR CURRENT REQUIREMENTS
-- Phase 5 Historical Lot / Trade Analytics — BACKLOG until authoritative production lot-ledger exists
+- Phase 5 Historical Lot / Trade Analytics — BACKLOG until an authoritative historical lot producer exists
 - Phase 6 UX Convergence — OPTIMIZED FOR CURRENT REQUIREMENTS
 - Phase 7.1 IBKR Stock Trade File Import — PRODUCTION CODE/PAGES VERIFIED
 - Phase 8.1 Responsive Daily P&L Density — CLOSED / PRODUCTION PAGES VERIFIED
 - Phase 9.1 Dividend Confirmation Source of Truth — CLOSED / PRODUCTION PAGES VERIFIED
 - Phase 9.2 Deterministic Dividend Event Identity — CLOSED / PRODUCTION VERIFIED
 - Phase 10 roadmap — COMPLETE / OPTIMIZED FOR CURRENT REQUIREMENTS
-- Phase 11 Daily Portfolio Command Center / Action Center — OPTIMIZED FOR CURRENT REQUIREMENTS
-- Former Phase 12 IBKR Sync Automation — SKIPPED AS DEFAULT NEXT PHASE / OPTIONAL BROKER-SPECIFIC BACKLOG
+- Phase 11 Daily Portfolio Command Center — **SUBSUMED by R1 Decision Cockpit**
+- Former Phase 12 IBKR Sync Automation — OPTIONAL BROKER-SPECIFIC BACKLOG
 - Phase 13 Cross-Page UX Consistency & Holdings Visualization — OPTIMIZED FOR CURRENT REQUIREMENTS
-- Independent technical-debt root-cause cleanup TD-A / TD-B — **CLOSED / PRODUCTION VERIFIED**
-- **No runtime batch active; next product phase intentionally unselected**
+- Independent technical-debt root-cause cleanup TD-A / TD-B — CLOSED / PRODUCTION VERIFIED
+- **R1 Decision Cockpit — CLOSED / PRODUCTION VERIFIED**
+- **R2 Ledger Truth v2 — NEXT SELECTED PRODUCT CAPABILITY**
 
 ---
 
-## 2. Independent technical-debt root-cause cleanup
+## 2. Roadmap V2
 
-This review deliberately separated real root-cause debt from intentional legacy/forensic material. The goal was not repository neatness; it was to remove architecture paths that could recreate user-visible inconsistency or conflicting presentation truth.
+The previous independent audits were consolidated into four dependency-ordered product capabilities to minimize rework.
 
-### TD-A — Presentation Authority Closure
+### R1 — Decision Cockpit — DONE
 
-#### Root cause
+Purpose: make the Overview answer the most frequent user questions without repeating the same facts in multiple dashboard blocks.
 
-The financial/domain source of truth was not duplicated, but Overview composition was:
-
-- `App.vue` directly composed `DailyCommandCenter + StatsGrid + PerformanceChart`;
-- `DailyCommandCenter.vue` independently rebuilt reviewed Daily P&L explainability and concentration;
-- `StatsGrid.vue` independently rebuilt Daily P&L explainability;
-- navigation pending-dividend badge used raw snapshot count while Daily Command / Dividend workflow reconciled pending events against authoritative DIV records.
-
-This created multiple Overview read-model owners and allowed the same fact/attention state to diverge even though Python/Worker accounting remained authoritative.
-
-#### Root fix
-
-- added `OverviewPage.vue` as the Overview page-controller boundary;
-- reviewed Daily P&L explainability and concentration are built once at that boundary and passed to child surfaces;
-- `StatsGrid` and `DailyCommandCenter` consume reviewed props instead of rebuilding the same domain projection;
-- added shared `dividendAttention.js` using pending snapshot events + records-authoritative DIV confirmation;
-- App navigation badge and Daily Command snapshot now consume the same pending-dividend attention semantics;
-- App remains the application shell rather than owning Overview-specific derivation.
-
-No Worker, D1, Python accounting, FX, mutation or Router behavior changed.
-
-Evidence:
-
-- PR #298 final exact head `91eb987df8030e58f763cc62b76f3a10e2a03594`
-- exact-head CI #1047 / run `31925773400`: **SUCCESS**
-- frozen review `4945365973`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
-- merge `36a6aa9a1daffff539acbb6323b368c885f87d13`
-- post-main CI #1048: **SUCCESS**
-- Pages #1580: **SUCCESS**
-
-### TD-B — Design-System Escape & Portfolio Semantic Authority Closure
-
-#### Root cause A — Chart.js typography bypass
-
-Phase 13.2 made `src/style.css` the single semantic typography authority for Vue/CSS, but Chart.js canvas configuration still hard-coded JavaScript pixel sizes (`10/11/12/13/14px` and direct `ctx.font`). That path was outside the existing typography regression gate and could drift independently again.
-
-#### Root fix A
-
-- added `designTypography.js` as a narrow bridge from approved `--type-*` CSS semantic tokens to computed pixel values needed by canvas/Chart.js;
-- PerformanceChart legend, x-axis ticks, tooltip typography and final-value canvas label consume the existing design-system roles;
-- unknown/unavailable token resolution fails closed to Chart.js/browser defaults rather than inventing fallback font sizes;
-- focused regression prevents hard-coded canvas font pixels from re-entering PerformanceChart.
-
-#### Root cause B — UI terminology stronger than the data model
-
-Python calculator semantics are:
+Final information hierarchy:
 
 ```text
-summary.total_value
-= sum(current holdings market_value_twd)
-= securities-holdings market value, not cash-inclusive brokerage NAV
-
-summary.invested_capital
-= current positive holdings cost basis
-= not lifetime deposits / contributed capital
+現在 / Overview headline
+→ 今日脈絡 / reasons
+→ 待處理 / exception-driven actions
+→ 趨勢 / PerformanceChart
 ```
 
-The UI nevertheless used labels such as `總資產淨值`, `總資產`, `投入資本` and generic `ROI`, overstating what the model actually represents.
+#### Final information ownership
 
-#### Root fix B
+- `持倉市值` — one primary headline owner;
+- `今日損益` — one primary headline owner;
+- `累計損益` — one primary headline owner;
+- `持倉成本 / 未實現 / 已實現` — breakdown beneath the headline;
+- `TWR / XIRR` — secondary long-term performance context, preserving reliability caveats;
+- Daily P&L contributor/detractor — context only, never another primary total;
+- concentration — context only;
+- pending dividends — rendered only when an action is actually required;
+- PerformanceChart — trend/time-series role only.
 
-Current user-facing terminology now uses:
-
-- `持倉市值` for current securities market value;
-- `持倉成本` for current positive-holding cost basis;
-- `未實現報酬率` for `unrealized P&L ÷ current holding cost`;
-- PerformanceChart asset-series label is `持倉市值`.
-
-Legacy backend/API field names `total_value` and `invested_capital` are intentionally retained for compatibility; `journal_engine/models.py` now documents their actual semantics. No financial formula changed.
-
-Evidence:
-
-- PR #299 final exact head `84989b008807c26f7dcc451fd5a6093ce182a096`
-- exact-head CI #1049 / run `31926639689`: **SUCCESS**
-- frozen review `4945392698`: **PASS / BLOCKER 0 / FOLLOW-UP 0**
-- merge `f176b06e38cb0fb351ea9d59a7ccecbf29db2ae5`
-- post-main CI #1050 / run `31926701707`: **SUCCESS**
-- Pages #1581 / run `31926700885`: **SUCCESS**
-- no production Worker deployment and no accounting/FX behavior change
-
-#### Migration/preflight hygiene
-
-Branch-only one-time codemods/workflows were used to apply and diagnose the bounded migration. Several preflight failures correctly stopped before any permanent candidate was committed; they exposed migration-test escaping and touched-line whitespace issues rather than product defects. All temporary workflow/codemod/fixer files were removed before PR #299, and the final PR diff contained only 10 permanent source/test/documentation files.
-
----
-
-## 3. What was intentionally NOT cleaned
-
-The independent review found several items that look old but are not proven dead code.
-
-### Forensic Worker archive
-
-`cloudflare worker/` contains historical Worker versions and is explicitly treated as non-production forensic history. Deployment contracts preserve this archive. Do not delete it as generic dead code without a deliberate archival-policy change.
-
-### Deployment tombstones / historical pointers
-
-Files such as `DEPLOYMENT_FINAL.md` exist as historical/tombstone navigation and are referenced by current documentation/governance. Do not remove them merely because current deployment authority lives elsewhere.
-
-### Legacy API field names
-
-Compatibility fields such as `summary.total_value` and `summary.invested_capital` remain serialized/public contract names. Correct the presentation/documentation semantics first; physical field migration requires separate compatibility evidence and consumer migration.
-
-### Compatibility / recovery state
-
-Legacy-compatible fields, migration readers and recovery state machines are not cleanup candidates until production evidence proves their read/write paths can be removed safely.
-
-### Dependency cleanup
-
-Do not run blanket dependency upgrades or `npm audit fix --force` as technical-debt cleanup. Security/dependency changes require a separate evidence-based batch with regression and deployment compatibility review.
-
----
-
-## 4. Stable authority boundaries after cleanup
-
-### Overview presentation
+#### Architecture
 
 ```text
 Pinia authoritative data
-→ OverviewPage page controller
-→ existing reviewed domain services
-→ reviewed Daily P&L / concentration / dividend-attention facts
-→ child presentation components
+→ OverviewPage (only page-level store/orchestration owner)
+→ reviewed domain services
+   - dailyPnlExplainability
+   - portfolioConcentration
+   - dividendAttention
+   - twrState
+→ overviewProjection (pure UI read-model projection)
+→ props-only OverviewHeadline / OverviewContext
+→ optional DailyPnlExplanation detail
+→ PerformanceChart
 ```
 
-Do not let sibling Overview components independently rebuild the same reviewed domain projection.
+`overviewProjection.js` must not become a second store/accounting engine. It may compose and format already-reviewed facts and preserve existing presentation compatibility, but must not fetch, mutate, calculate portfolio accounting, invent FX, or establish another financial authority.
 
-### Design system / typography
+#### Retired by R1
+
+Removed rather than hidden:
+
+- `DailyCommandCenter.vue`
+- `StatsGrid.vue`
+- `StatsGridSkeleton.vue`
+- `dailyCommandCenter.js`
+- obsolete Daily Command contract
+- stale `.daily-command / .command-card / .stats-grid / .stat-block` layout selectors
+
+Do not recreate these as a parallel Overview summary system.
+
+#### R1 regression lessons
+
+Two root-cause issues were caught before merge and now have prevention:
+
+1. Phase-13 product-consistency regression still required retired command/stats selectors. The old test contract was corrected to protect the current IA rather than force dead architecture to remain.
+2. JavaScript `Number(null) === 0` could make missing Overview values appear as false zeroes. New Overview numeric formatters accept only actual finite numbers; missing values display fail-closed as `—`.
+
+Legacy daily-return presentation fallback is preserved: published `daily_pnl_roi_percent` wins; older snapshots may fall back to reviewed daily P&L ÷ published `daily_pnl_base_value` exactly as the former StatsGrid did.
+
+---
+
+### R2 — Ledger Truth v2 — NEXT
+
+Purpose: establish a truthful account/event foundation before building account-level analytics, universal restore/import, or AI portfolio interpretation.
+
+R2 combines two previously separate proposals because they are the same domain problem:
+
+- **Transaction Timeline Integrity**
+- **Account / Cash Ledger Foundation**
+
+#### R2 target event contract
+
+Design one backward-compatible canonical event model able to represent:
+
+- trade date;
+- optional authoritative execution timestamp and/or stable sequence;
+- symbol/instrument identity;
+- transaction type;
+- quantity / price / fee / tax / currency;
+- source/import provenance;
+- explicit cash events;
+- deterministic event identity/idempotency;
+- compatibility with existing BUY / SELL / DIV records.
+
+Do not make exact time mandatory for old/manual records. Existing records must remain valid.
+
+#### R2 cash/account truth
+
+Explicit cash must be event-driven and multi-currency. Candidate event classes require design/review before schema activation, including:
+
+- opening cash balance;
+- deposit;
+- withdrawal;
+- trade-related cash movement derived from authoritative transaction semantics;
+- dividend cash movement derived from confirmed DIV records;
+- narrowly defined adjustment only if an auditable use case is proven.
+
+Do not infer historical cash as zero. Do not backfill a fake account NAV from securities-only history.
+
+Expected eventual semantics after reconciliation:
 
 ```text
-src/style.css
-→ base palette/surfaces/radius/shadows
-→ font source
-→ semantic --type-* / --icon-* roles
-→ Vue component styles consume roles
-→ designTypography.js bridges approved roles only when canvas requires computed px
+Account NAV = securities market value + explicit cash
+Contributed capital = explicit external cash flows
+Securities market value = current holdings market value
+Cash = currency-aware ledger balance
 ```
 
-`src/styles/product-consistency.css` remains layout/density only.
+Current UI continues to say `持倉市值 / 持倉成本` until account coverage is sufficiently authoritative for a reviewed NAV cutover.
 
-Do not:
+#### R2 rollout principle
 
-- introduce arbitrary numeric component font sizes;
-- hard-code a second Chart.js/canvas typography scale;
-- redefine base design tokens in App/components;
-- create another typography override stylesheet;
-- use `!important` as the normal typography convergence mechanism.
+Prefer additive/shadow computation and reconciliation first. Do not immediately replace the current production summary with account-level numbers.
 
-### Financial / presentation semantics
+A safe R2 sequence is:
 
-Current UI must not describe securities-only `total_value` as cash-inclusive NAV. Until an explicit cash/account ledger exists:
+1. canonical event/timeline contract + backward compatibility;
+2. execution timestamp/sequence support through manual/import paths;
+3. explicit cash event storage/model;
+4. shadow cash ledger calculation;
+5. reconciliation and migration UX;
+6. only then review account NAV / account-level performance cutover.
 
-- `total_value` → user-facing `持倉市值`;
-- `invested_capital` → user-facing `持倉成本`;
-- generic whole-account `ROI` language is not valid for the current unrealized-only ratio.
+---
+
+### R3 — Universal Data Gateway — AFTER R2 FOUNDATION
+
+Consolidates:
+
+- broker-neutral import;
+- user export / backup / restore;
+- existing IBKR file importer as Adapter #1;
+- future broker APIs/Flex sync as adapters rather than direct ledger bypasses.
+
+Target flow:
+
+```text
+external file/API/export
+→ parse
+→ normalize to canonical events
+→ column/source mapping
+→ local preview
+→ deterministic validation
+→ duplicate/conflict reconciliation
+→ authenticated idempotent create
+```
+
+AI may suggest mappings; deterministic validation decides whether data can enter the ledger.
+
+Backup/restore should use a versioned canonical export schema and the same preview/reconciliation engine rather than direct database replacement.
+
+---
+
+### R4 — Portfolio Intelligence — AFTER R2/R3 TRUST FOUNDATION
+
+Consolidates:
+
+- account-level advanced analytics;
+- authoritative historical lot/trade lifecycle analytics;
+- AI Journal Intelligence.
+
+Order:
+
+1. reviewed account-value/performance methodology;
+2. historical lot producer from authoritative transaction events;
+3. Sharpe / Sortino / MDD / rolling/benchmark analytics with explicit methodology;
+4. AI summarization and behavioral insight over deterministic facts.
+
+AI must never become a second accounting, FX, tax, lot-matching or market-data engine.
+
+---
+
+## 3. Stable authority boundaries
 
 ### Mutation / calculation
 
@@ -239,22 +284,52 @@ record durable intent
 
 No browser-local accounting or recovery authority.
 
+### Overview presentation
+
+```text
+OverviewPage
+→ existing reviewed domain services
+→ overviewProjection
+→ props-only Headline / Context
+```
+
+One fact has one primary owner on Overview. A second appearance is allowed only if it adds decomposition, trend, comparison, causal explanation or action context.
+
+### Design system / typography
+
+```text
+src/style.css
+→ font source + semantic --type-* / --icon-* roles
+→ Vue consumers
+→ designTypography.js bridge for canvas/Chart.js only
+```
+
+`src/styles/product-consistency.css` remains layout/density only.
+
+### Financial terminology
+
+Until R2 provides explicit cash/account truth:
+
+- `summary.total_value` → user-facing `持倉市值`;
+- `summary.invested_capital` → user-facing `持倉成本`;
+- generic cash-inclusive `總資產淨值 / NAV` is invalid;
+- generic whole-account ROI language is invalid for the current unrealized-only ratio.
+
 ### Dividend
 
 - actual same-tenant DIV record is the only `已入帳` authority;
-- shared pending attention must reconcile snapshot candidates against records-authoritative confirmation;
-- no inferred pay-date or unreviewed tax policy;
-- deterministic dividend event identity remains unchanged.
+- pending attention reconciles snapshot candidates against records-authoritative DIV confirmation;
+- no browser-local confirmation authority;
+- no inferred pay date or unreviewed tax policy.
 
-### Journal / Transaction History
+### Journal / history
 
 - Journal summary placement is presentation only;
 - full Journal Note remains in `RecordDetailPanel`;
-- no note-only persistence bypass;
 - no historical lot inference from current-day `day_ledger`;
-- no second browser valuation engine.
+- records remain authoritative transaction history.
 
-### Portfolio concentration / allocation
+### Portfolio concentration
 
 - weights consume reconciled holdings market values + summary total;
 - cash is not inferred;
@@ -262,49 +337,44 @@ No browser-local accounting or recovery authority.
 
 ---
 
-## 5. Bounded post-cleanup conclusion
+## 4. Intentional legacy / forensic material
 
-No additional technical-debt runtime batch is justified by the evidence from this review.
+Do not blanket-delete:
 
-Items remaining for future discussion are product/model capabilities, not excuses for perpetual cleanup:
+- `cloudflare worker/` forensic Worker archive;
+- deployment tombstones/historical pointers;
+- serialized compatibility field names such as `total_value` / `invested_capital`;
+- migration readers / recovery state without production evidence that removal is safe;
+- compatibility readers required for existing snapshots/records.
 
-- **Overview Information Architecture redesign** — prior Phase 14 proposal to reduce duplicate homepage numerals and assign one primary owner per fact; proposal only, not started;
-- **Account / Cash Ledger Foundation** — explicit cash, deposits, withdrawals and truthful account NAV semantics;
-- **Transaction Timeline Integrity** — authoritative same-day execution timestamp / sequence;
-- **User Data Portability / Backup** — user-facing export, backup/restore and data-rights workflows;
-- **Broker-neutral Universal Import** — CSV mapping / preview / validation / deterministic create independent of one broker;
-- **Authoritative Historical Lot Ledger** — only after a trustworthy producer exists;
-- **Advanced Portfolio Analytics** — Sharpe / Sortino / MDD etc. only after methodology/account-value scope are reviewed;
-- **AI Journal Intelligence** — interpretation/summarization over deterministic facts, never AI accounting.
-
-Optional broker-specific backlog remains IBKR background/Flex sync and richer IBKR transaction types.
+Do not use `npm audit fix --force` or blanket dependency upgrades as generic cleanup.
 
 ---
 
-## 6. REJECT / DO NOT DO WITHOUT NEW EVIDENCE
+## 5. REJECT / DO NOT DO WITHOUT NEW EVIDENCE
 
-- no browser-local dividend confirmation authority;
 - no second Overview read-model owner for the same reviewed facts;
 - no second browser valuation/accounting/FX engine;
-- no cash-inclusive `NAV/總資產淨值` claim while cash is not explicitly modeled;
-- no new arbitrary numeric Vue/CSS or Chart.js typography scale;
+- no cash-inclusive `NAV/總資產淨值` claim before R2 establishes explicit cash truth;
+- no guessed historical cash;
+- no mandatory fabricated execution timestamps for legacy records;
 - no historical lot attribution from current-day `day_ledger`;
 - no sector/industry classification guessed from symbol names, frontend maps or strategy Tags;
 - no invented risk score, forecast or investment recommendation without reviewed methodology;
+- no new arbitrary numeric Vue/CSS or Chart.js typography scale;
 - no blanket deletion of forensic archives, tombstones or compatibility fields;
-- no blanket dependency force-upgrade as cleanup;
-- no IBKR automation priority merely because it once had a phase number.
+- no IBKR-specific automation path that bypasses the future Universal Data Gateway.
 
 ---
 
-## 7. Fresh-session startup
+## 6. Fresh-session startup
 
 1. Read `AI_PROJECT_PLAYBOOK.md`, `README.md`, this handoff.
-2. Re-read fresh main / open PR / CI / Pages before modifications.
+2. Re-read fresh `main`, open PRs, CI and Pages before modification.
 3. Treat new user screenshots/logs/production symptoms as newer than prose.
 4. Keep one Primary Active Batch and preserve its recovery point.
 5. Reopen closed work only for fresh material evidence.
 6. Debug same-class impact + regression prevention.
-7. For Overview changes, keep `OverviewPage` as the page-level orchestration boundary and reuse existing domain services.
-8. For typography changes, extend semantic roles at the design-system authority; canvas consumers use the approved bridge.
-9. Do not start the proposed Overview redesign, cash ledger, IBKR automation or other product direction unless selected by the user.
+7. Overview changes must preserve `OverviewPage` as the page-level orchestration boundary and reuse reviewed domain services.
+8. Typography changes must extend semantic roles at the design-system authority; canvas uses the approved bridge.
+9. R1 is closed. The next selected product capability is **R2 Ledger Truth v2**; start with a fresh architecture/data-contract audit before any schema activation.
