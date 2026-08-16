@@ -27,5 +27,17 @@ replaceOnce(
   'StrategyGroupOverview semantic regression update',
 );
 
+replaceOnce(
+  "createNew('tests/frontend_design_typography_bridge.test.mjs', `",
+  "createNew('tests/frontend_design_typography_bridge.test.mjs', String.raw`",
+  'typography regression raw template',
+);
+
+replaceOnce(
+  "createNew('tests/frontend_portfolio_terminology.test.mjs', `",
+  "createNew('tests/frontend_portfolio_terminology.test.mjs', String.raw`",
+  'portfolio terminology regression raw template',
+);
+
 fs.writeFileSync(path, source);
 console.log('TD-B one-time codemod repaired for reviewed exact semantics');
