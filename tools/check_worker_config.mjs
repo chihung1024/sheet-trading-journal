@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { readLatestSchemaActivation } from "./schema_activation_metadata.mjs";
 
 const [
   manifestRaw,
@@ -23,6 +24,7 @@ const [
 ]);
 const manifest = JSON.parse(manifestRaw);
 const environmentContract = JSON.parse(environmentContractRaw);
+const schemaActivation = await readLatestSchemaActivation();
 const errors = [];
 const production = environmentContract?.production;
 const productionOrigins = production?.frontend_origins;
@@ -84,8 +86,11 @@ expect(worker, `const REQUIRED_SCHEMA_VERSION = ${manifest.schemaVersion}`, "Wor
 expect(baselineMigration, `schema_version, release_version`, "schema metadata columns");
 expect(baselineMigration, `VALUES (1, 1, '4.05'`, "baseline schema metadata row");
 expect(calculationJobsMigration, `CREATE TABLE IF NOT EXISTS calculation_jobs`, "calculation jobs table");
-expect(activationMigration, `schema_version = ${manifest.schemaVersion}`, "active schema version update");
-expect(activationMigration, `release_version = '${manifest.releaseVersion}'`, "active release version update");
+if (schemaActivation.schemaVersion !== Number(manifest.schemaVersion)) {
+  errors.push(
+    `Latest schema activation ${schemaActivation.migration} declares schema ${schemaActivation.schemaVersion}, expected ${manifest.schemaVersion}`,
+  );
+}
 expect(activationMigration, `CREATE UNIQUE INDEX IF NOT EXISTS idx_records_user_create_idempotency`, "record-create idempotency index");
 for (const column of ["currency", "executed_at", "execution_sequence", "event_source"]) {
   expect(timelineExpandMigration, `ALTER TABLE records ADD COLUMN ${column} TEXT;`, `R2.2A ${column} expansion`);

@@ -1,11 +1,11 @@
 /**
  * Worker: Trading Journal API
- * v2.61 / durable record-create idempotency and calculation lifecycle.
+ * v2.62 / optional transaction event metadata with legacy idempotency compatibility.
  */
 
 const SERVICE_NAME = "trading-journal-api";
-const RELEASE_VERSION = "4.08";
-const API_VERSION = "2.61";
+const RELEASE_VERSION = "4.09";
+const API_VERSION = "2.62";
 const GITHUB_DISPATCH = Object.freeze({
   owner: "chihung1024",
   repository: "sheet-trading-journal",
@@ -56,6 +56,17 @@ const TXN_TYPES = new Set(["BUY", "SELL", "DIV"]);
 const SYMBOL_RE = /^[A-Z0-9.^=\-]{1,24}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const RECORD_METADATA_FIELDS = Object.freeze([
+  "currency",
+  "executed_at",
+  "execution_sequence",
+  "event_source",
+]);
+const CURRENCY_RE = /^[A-Z]{3}$/;
+const EXECUTION_SEQUENCE_RE = /^[A-Za-z0-9._:/-]{1,128}$/;
+const EVENT_SOURCE_RE = /^[A-Z][A-Z0-9_]{0,31}$/;
+const EVENT_SOURCES = new Set(["MANUAL", "IBKR", "IMPORT", "SYSTEM"]);
+const OFFSET_DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 const FORBIDDEN_OWNER_FIELDS = new Set([
   "user_id",
   "target_user_id",
@@ -571,15 +582,15 @@ const recordsRepository = Object.freeze({
     const hasIdempotency = options.idempotencyHash !== undefined && options.idempotencyHash !== null;
     if (!hasIdempotency) {
       await db.prepare(
-        "INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(normalizedUser, body.txn_date, body.symbol, body.txn_type, body.qty, body.price, body.fee, body.tax, body.tag, body.note).run();
+        "INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note, currency, executed_at, execution_sequence, event_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(normalizedUser, body.txn_date, body.symbol, body.txn_type, body.qty, body.price, body.fee, body.tax, body.tag, body.note, body.currency, body.executed_at, body.execution_sequence, body.event_source).run();
       return { kind: "inserted", record: null };
     }
 
     const idempotencyHash = validateRecordCreateHash(options.idempotencyHash, "record create idempotency hash");
     const payloadHash = validateRecordCreateHash(options.payloadHash, "record create payload hash");
     const insert = await db.prepare(
-      "INSERT OR IGNORE INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note, create_idempotency_hash, create_payload_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR IGNORE INTO records (user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note, currency, executed_at, execution_sequence, event_source, create_idempotency_hash, create_payload_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).bind(
       normalizedUser,
       body.txn_date,
@@ -591,6 +602,10 @@ const recordsRepository = Object.freeze({
       body.tax,
       body.tag,
       body.note,
+      body.currency,
+      body.executed_at,
+      body.execution_sequence,
+      body.event_source,
       idempotencyHash,
       payloadHash,
     ).run();
@@ -609,10 +624,66 @@ const recordsRepository = Object.freeze({
     };
   },
 
-  async update(db, userId, body) {
-    const result = await db.prepare(
-      "UPDATE records SET txn_date=?, symbol=?, txn_type=?, qty=?, price=?, fee=?, tax=?, tag=?, note=? WHERE id=? AND user_id=?",
-    ).bind(body.txn_date, body.symbol, body.txn_type, body.qty, body.price, body.fee, body.tax, body.tag, body.note, body.id, userId).run();
+  async update(db, userId, body, options = {}) {
+    const metadataPresence = isPlainObject(options.metadataPresence) ? options.metadataPresence : {};
+    const isPresent = (field) => (metadataPresence[field] === true ? 1 : 0);
+    const result = await db.prepare(`
+      UPDATE records
+      SET txn_date=?, symbol=?, txn_type=?, qty=?, price=?, fee=?, tax=?, tag=?, note=?,
+          currency=CASE
+            WHEN ? = 1 THEN ?
+            WHEN txn_date <> ? OR symbol <> ? OR txn_type <> ? THEN NULL
+            ELSE currency
+          END,
+          executed_at=CASE
+            WHEN ? = 1 THEN ?
+            WHEN txn_date <> ? OR symbol <> ? OR txn_type <> ? THEN NULL
+            ELSE executed_at
+          END,
+          execution_sequence=CASE
+            WHEN ? = 1 THEN ?
+            WHEN txn_date <> ? OR symbol <> ? OR txn_type <> ? THEN NULL
+            ELSE execution_sequence
+          END,
+          event_source=CASE
+            WHEN ? = 1 THEN ?
+            WHEN txn_date <> ? OR symbol <> ? OR txn_type <> ? THEN NULL
+            ELSE event_source
+          END
+      WHERE id=? AND user_id=?
+    `).bind(
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      body.qty,
+      body.price,
+      body.fee,
+      body.tax,
+      body.tag,
+      body.note,
+      isPresent("currency"),
+      body.currency,
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      isPresent("executed_at"),
+      body.executed_at,
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      isPresent("execution_sequence"),
+      body.execution_sequence,
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      isPresent("event_source"),
+      body.event_source,
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      body.id,
+      userId,
+    ).run();
     return affectedRows(result);
   },
 
@@ -684,8 +755,11 @@ async function handleAddRecord(request, env, principal, requestId) {
 
 async function handleUpdateRecord(request, env, principal, requestId) {
   try {
-    const body = validateTransactionPayload(await readJsonObject(request), { requireId: true });
-    const changed = await recordsRepository.update(env.DB, principal.email, body);
+    const rawBody = await readJsonObject(request);
+    const body = validateTransactionPayload(rawBody, { requireId: true });
+    const changed = await recordsRepository.update(env.DB, principal.email, body, {
+      metadataPresence: recordMetadataPresence(rawBody),
+    });
 
     if (changed !== 1) {
       return apiError("NOT_FOUND", "Record not found", 404, requestId);
@@ -980,7 +1054,7 @@ async function hashRecordCreateIdempotency(userId, key) {
 }
 
 async function hashRecordCreatePayload(body) {
-  const canonical = JSON.stringify([
+  const legacyMaterial = [
     body.txn_date,
     body.symbol,
     body.txn_type,
@@ -990,7 +1064,16 @@ async function hashRecordCreatePayload(body) {
     body.tax,
     body.tag,
     body.note,
-  ]);
+  ];
+  const metadataMaterial = [
+    body.currency ?? null,
+    body.executed_at ?? null,
+    body.execution_sequence ?? null,
+    body.event_source ?? null,
+  ];
+  const canonical = metadataMaterial.every((value) => value === null)
+    ? JSON.stringify(legacyMaterial)
+    : JSON.stringify(["record-create-metadata-v1", ...legacyMaterial, ...metadataMaterial]);
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(canonical),
@@ -1495,6 +1578,10 @@ function validateTransactionPayload(body, { requireId }) {
     tax: optionalFiniteNumber(body.tax, "tax", 0),
     tag: sanitizeText(body.tag || "Stock", 500),
     note: sanitizeText(body.note || "", 2_000),
+    currency: validateRecordCurrency(body.currency),
+    executed_at: validateExecutedAt(body.executed_at),
+    execution_sequence: validateExecutionSequence(body.execution_sequence),
+    event_source: validateEventSource(body.event_source),
   };
 
   if (!TXN_TYPES.has(result.txn_type)) {
@@ -1502,6 +1589,75 @@ function validateTransactionPayload(body, { requireId }) {
   }
   if (requireId) result.id = requirePositiveInteger(body.id, "id");
   return result;
+}
+
+function recordMetadataPresence(body) {
+  const presence = {};
+  for (const field of RECORD_METADATA_FIELDS) {
+    presence[field] = Object.prototype.hasOwnProperty.call(body, field);
+  }
+  return presence;
+}
+
+function validateRecordCurrency(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new RequestValidationError("currency must be a string or null");
+  if (value === "GBp") return value;
+  if (!CURRENCY_RE.test(value)) {
+    throw new RequestValidationError("currency must be an uppercase three-letter quote unit or GBp");
+  }
+  return value;
+}
+
+function validateExecutedAt(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new RequestValidationError("executed_at must be a string or null");
+  const match = value.match(OFFSET_DATETIME_RE);
+  if (!match) throw new RequestValidationError("executed_at must be an offset-aware ISO timestamp");
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, offset] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const maxDay = month >= 1 && month <= 12
+    ? new Date(Date.UTC(year, month, 0)).getUTCDate()
+    : 0;
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > maxDay || hour > 23 || minute > 59 || second > 59) {
+    throw new RequestValidationError("executed_at date/time is invalid");
+  }
+
+  if (offset !== "Z") {
+    const offsetHour = Number(offset.slice(1, 3));
+    const offsetMinute = Number(offset.slice(4, 6));
+    if (offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) {
+      throw new RequestValidationError("executed_at UTC offset is invalid");
+    }
+  }
+  return value;
+}
+
+function validateExecutionSequence(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new RequestValidationError("execution_sequence must be an opaque string or null");
+  }
+  if (!EXECUTION_SEQUENCE_RE.test(value)) {
+    throw new RequestValidationError("execution_sequence contains unsupported characters or length");
+  }
+  return value;
+}
+
+function validateEventSource(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new RequestValidationError("event_source must be a string or null");
+  const normalized = value.toUpperCase();
+  if (!EVENT_SOURCE_RE.test(normalized) || !EVENT_SOURCES.has(normalized)) {
+    throw new RequestValidationError("event_source must be a reviewed privacy-safe source token");
+  }
+  return normalized;
 }
 
 function rejectOwnerFields(body) {
@@ -1812,6 +1968,8 @@ export const __test = {
   handleCalculationJobStatus,
   handleAddRecord,
   handleDeleteRecord,
+  handleUpdateRecord,
+  recordMetadataPresence,
   resolveIdempotencyKey,
   validateIdempotencyKey,
   hashCalculationJobIdempotency,

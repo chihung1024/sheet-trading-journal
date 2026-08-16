@@ -110,6 +110,10 @@ test("transaction validation rejects owner injection and unsafe values", () => {
     tax: 0,
     tag: "Core",
     note: "",
+    currency: null,
+    executed_at: null,
+    execution_sequence: null,
+    event_source: null,
   });
   assert.throws(
     () => __test.validateTransactionPayload({ ...valid, user_id: "other@example.com" }, { requireId: false }),
