@@ -101,8 +101,9 @@ test('dividend attention remains records-authoritative and recent transaction re
 
 test('DailyCommandCenter stays presentation-only while becoming compact by default', () => {
   const service = read('src/services/dailyCommandCenter.js');
+  const attention = read('src/services/dividendAttention.js');
   const component = read('src/components/DailyCommandCenter.vue');
-  const combined = `${service}\n${component}`;
+  const combined = `${service}\n${attention}\n${component}`;
 
   assert.match(component, /const isExpanded = ref\(false\)/);
   assert.match(component, /:aria-expanded="isExpanded"/);
@@ -112,9 +113,11 @@ test('DailyCommandCenter stays presentation-only while becoming compact by defau
   assert.match(component, /Top 3 集中度/);
   assert.match(component, /待核對配息/);
   assert.match(component, /最近交易/);
-  assert.match(component, /buildDailyPnlExplanation/);
-  assert.match(component, /buildPortfolioConcentrationSnapshot/);
-  assert.match(service, /buildConfirmedDividendKeySet/);
+  assert.doesNotMatch(component, /buildDailyPnlExplanation|buildPortfolioConcentrationSnapshot/);
+  assert.match(component, /dailyExplanation:\s*\{\s*type:\s*Object,\s*required:\s*true/);
+  assert.match(component, /concentration:\s*\{\s*type:\s*Object,\s*required:\s*true/);
+  assert.match(service, /buildDividendAttention/);
+  assert.match(attention, /buildConfirmedDividendKeySet/);
   assert.match(service, /recordMatchesHistoryFilters/);
   assert.match(component, /不在瀏覽器重算投資組合損益/);
   assert.match(component, /不建立風險分數/);
@@ -134,8 +137,13 @@ test('DailyCommandCenter collapses expanded detail when current group changes', 
   );
 });
 
-test('Overview mounts the command center and routes its navigation through existing activeView state', () => {
+test('OverviewPage owns command-center composition and App only mounts the page controller', () => {
   const app = read('src/App.vue');
-  assert.match(app, /import DailyCommandCenter from '\.\/components\/DailyCommandCenter\.vue';/);
-  assert.match(app, /<DailyCommandCenter\s+v-if="!portfolioStore\.loading"\s+@navigate="activeView = \$event"\s*\/>/s);
+  const overview = read('src/components/OverviewPage.vue');
+  assert.match(app, /import OverviewPage from '\.\/components\/OverviewPage\.vue';/);
+  assert.match(app, /<OverviewPage[\s\S]*@navigate="activeView = \$event"/);
+  assert.doesNotMatch(app, /import DailyCommandCenter|import StatsGrid/);
+  assert.match(overview, /<DailyCommandCenter/);
+  assert.match(overview, /:daily-explanation="dailyPnlExplanation"/);
+  assert.match(overview, /:concentration="concentration"/);
 });

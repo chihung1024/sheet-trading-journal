@@ -147,13 +147,12 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
-import {
-  buildDailyPnlExplanation,
-  selectCurrentGroupDayLedger,
-} from '../services/dailyPnlExplainability.js';
-import { buildPortfolioConcentrationSnapshot } from '../services/portfolioConcentration.js';
 import { buildDailyCommandSnapshot } from '../services/dailyCommandCenter.js';
 
+const props = defineProps({
+  dailyExplanation: { type: Object, required: true },
+  concentration: { type: Object, required: true },
+});
 const emit = defineEmits(['navigate']);
 const store = usePortfolioStore();
 const isExpanded = ref(false);
@@ -169,22 +168,9 @@ const groupLabel = computed(() => (
   store.currentGroup === 'all' ? '全部投資組合' : `策略：${store.currentGroup}`
 ));
 
-const dailyExplanation = computed(() => buildDailyPnlExplanation({
-  dayLedger: selectCurrentGroupDayLedger({
-    rawData: store.rawData,
-    currentGroup: store.currentGroup,
-  }),
-  summary: store.stats,
-}));
-
-const concentration = computed(() => buildPortfolioConcentrationSnapshot(
-  store.holdings,
-  store.stats.total_value,
-));
-
 const snapshot = computed(() => buildDailyCommandSnapshot({
-  dailyExplanation: dailyExplanation.value,
-  concentration: concentration.value,
+  dailyExplanation: props.dailyExplanation,
+  concentration: props.concentration,
   pendingDividends: store.pending_dividends,
   records: store.records,
   currentGroup: store.currentGroup,

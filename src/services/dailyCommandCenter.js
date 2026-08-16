@@ -1,8 +1,4 @@
-import {
-  buildConfirmedDividendKeySet,
-  getPendingDividendEventKey,
-} from './dividendConfirmation.js';
-import { sortDividendRowsRecentFirst } from './dividendWorkflowPresentation.js';
+import { buildDividendAttention } from './dividendAttention.js';
 import { recordMatchesHistoryFilters } from './recordHistoryPresentation.js';
 
 const finiteNumber = value => (
@@ -52,15 +48,7 @@ export const buildDailyCommandSnapshot = ({
   const detractor = selectDriver(dailyRows, value => value < 0, (value, current) => value < current);
 
   const concentrationReady = concentration?.status === 'ok';
-  const confirmedKeys = buildConfirmedDividendKeySet(records);
-  const dividendCandidates = sortDividendRowsRecentFirst(
-    Array.isArray(pendingDividends)
-      ? pendingDividends.filter(dividend => {
-        const key = getPendingDividendEventKey(dividend);
-        return Boolean(key && !confirmedKeys.has(key));
-      })
-      : [],
-  );
+  const dividendAttention = buildDividendAttention({ pendingDividends, records });
 
   const recentRecord = Array.isArray(records)
     ? records.find(record => recordMatchesHistoryFilters(record, { currentGroup }))
@@ -80,9 +68,9 @@ export const buildDailyCommandSnapshot = ({
       positionCount: concentrationReady ? concentration.positionCount : 0,
     }),
     dividends: Object.freeze({
-      status: 'ready',
-      count: dividendCandidates.length,
-      next: dividendCandidates[0] || null,
+      status: dividendAttention.status,
+      count: dividendAttention.count,
+      next: dividendAttention.next,
     }),
     recentRecord: summarizeRecentRecord(recentRecord),
   });
