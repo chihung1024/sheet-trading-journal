@@ -228,6 +228,153 @@ if (
   throw new Error(`Tenant-scoped atomic update isolation failed: ${JSON.stringify(otherTenant)}`);
 }
 
+const workerSource = await readFile("worker.js", "utf8");
+const enrichmentSqlMatch = workerSource.match(
+  /async enrichMetadata\(db, userId, body\)[\s\S]*?const update = await db\.prepare\(`([\s\S]*?)`\)\.bind\(/,
+);
+if (!enrichmentSqlMatch?.[1]) {
+  throw new Error("Unable to locate production record metadata enrichment SQL");
+}
+const enrichmentSql = enrichmentSqlMatch[1];
+const enrichmentBindValues = ({
+  id = 900001,
+  userId = "enrich-r2-2c@example.com",
+  txnDate = "2026-08-16",
+  symbol = "NVDA",
+  txnType = "BUY",
+  qty = 15,
+  price = 103.33333333333333,
+  fee = 1.5,
+  tax = 0.1,
+  currency = "USD",
+  executedAt = null,
+  executionSequence = "IBKR-ORDER:487287953",
+  eventSource = "IBKR",
+} = {}) => [
+  currency,
+  executedAt,
+  executionSequence,
+  eventSource,
+  id,
+  userId,
+  txnDate,
+  symbol,
+  txnType,
+  qty,
+  price,
+  fee,
+  tax,
+  currency,
+  currency,
+  executedAt,
+  executedAt,
+  executionSequence,
+  executionSequence,
+  eventSource,
+  eventSource,
+  currency,
+  executedAt,
+  executionSequence,
+  eventSource,
+];
+
+const enrichmentResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", `
+    INSERT INTO records
+      (id, user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note,
+       currency, executed_at, execution_sequence, event_source)
+    VALUES
+      (900001, 'enrich-r2-2c@example.com', '2026-08-16', 'NVDA', 'BUY', 15, 103.33333333333333, 1.5, 0.1,
+       'Growth', 'keep user journal', NULL, NULL, NULL, NULL);
+
+    INSERT INTO records
+      (id, user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note,
+       currency, executed_at, execution_sequence, event_source)
+    VALUES
+      (900002, 'enrich-r2-2c-other@example.com', '2026-08-16', 'NVDA', 'BUY', 15, 103.33333333333333, 1.5, 0.1,
+       'Other', 'tenant sentinel', 'EUR', NULL, 'OTHER-SEQUENCE', 'IMPORT');
+
+    ${bindSql(enrichmentSql, enrichmentBindValues())};
+    SELECT 'updated' AS phase, changes() AS mutation_changes, qty, price, tag, note,
+           currency, executed_at, execution_sequence, event_source
+    FROM records WHERE id = 900001 AND user_id = 'enrich-r2-2c@example.com';
+
+    ${bindSql(enrichmentSql, enrichmentBindValues())};
+    SELECT 'replay' AS phase, changes() AS mutation_changes, currency, execution_sequence, event_source
+    FROM records WHERE id = 900001 AND user_id = 'enrich-r2-2c@example.com';
+
+    ${bindSql(enrichmentSql, enrichmentBindValues({ executionSequence: "IBKR-ORDER:DIFFERENT" }))};
+    SELECT 'metadata_conflict' AS phase, changes() AS mutation_changes, execution_sequence
+    FROM records WHERE id = 900001 AND user_id = 'enrich-r2-2c@example.com';
+
+    ${bindSql(enrichmentSql, enrichmentBindValues({ qty: 99, executedAt: "2026-08-16T10:00:00+08:00" }))};
+    SELECT 'economic_conflict' AS phase, changes() AS mutation_changes, qty, executed_at
+    FROM records WHERE id = 900001 AND user_id = 'enrich-r2-2c@example.com';
+
+    ${bindSql(enrichmentSql, enrichmentBindValues({ userId: "enrich-r2-2c-other@example.com", currency: "JPY" }))};
+    SELECT 'tenant_isolation' AS phase, changes() AS mutation_changes, currency, execution_sequence, event_source
+    FROM records WHERE id = 900002 AND user_id = 'enrich-r2-2c-other@example.com';
+  `,
+  "--json",
+], true);
+const enrichmentRows = JSON.parse(enrichmentResult.stdout)
+  .flatMap((statement) => (Array.isArray(statement?.results) ? statement.results : []))
+  .filter((item) => item?.phase);
+const enriched = enrichmentRows.find((item) => item.phase === "updated");
+const replayed = enrichmentRows.find((item) => item.phase === "replay");
+const metadataConflict = enrichmentRows.find((item) => item.phase === "metadata_conflict");
+const economicConflict = enrichmentRows.find((item) => item.phase === "economic_conflict");
+const tenantIsolation = enrichmentRows.find((item) => item.phase === "tenant_isolation");
+
+if (
+  !enriched
+  || Number(enriched.mutation_changes) !== 1
+  || Number(enriched.qty) !== 15
+  || Number(enriched.price) !== 103.33333333333333
+  || enriched.tag !== "Growth"
+  || enriched.note !== "keep user journal"
+  || enriched.currency !== "USD"
+  || enriched.executed_at !== null
+  || enriched.execution_sequence !== "IBKR-ORDER:487287953"
+  || enriched.event_source !== "IBKR"
+) {
+  throw new Error(`Real D1 metadata enrichment failed: ${JSON.stringify(enriched)}`);
+}
+if (
+  !replayed
+  || Number(replayed.mutation_changes) !== 0
+  || replayed.currency !== "USD"
+  || replayed.execution_sequence !== "IBKR-ORDER:487287953"
+  || replayed.event_source !== "IBKR"
+) {
+  throw new Error(`Real D1 metadata enrichment replay failed: ${JSON.stringify(replayed)}`);
+}
+if (
+  !metadataConflict
+  || Number(metadataConflict.mutation_changes) !== 0
+  || metadataConflict.execution_sequence !== "IBKR-ORDER:487287953"
+) {
+  throw new Error(`Real D1 metadata conflict protection failed: ${JSON.stringify(metadataConflict)}`);
+}
+if (
+  !economicConflict
+  || Number(economicConflict.mutation_changes) !== 0
+  || Number(economicConflict.qty) !== 15
+  || economicConflict.executed_at !== null
+) {
+  throw new Error(`Real D1 economic conflict protection failed: ${JSON.stringify(economicConflict)}`);
+}
+if (
+  !tenantIsolation
+  || Number(tenantIsolation.mutation_changes) !== 0
+  || tenantIsolation.currency !== "EUR"
+  || tenantIsolation.execution_sequence !== "OTHER-SEQUENCE"
+  || tenantIsolation.event_source !== "IMPORT"
+) {
+  throw new Error(`Real D1 tenant isolation failed: ${JSON.stringify(tenantIsolation)}`);
+}
+
 const indexesResult = run([
   "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
   "--command", "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_calculation_jobs_user_created','idx_calculation_jobs_status_created') ORDER BY name;",
@@ -260,8 +407,30 @@ if (duplicateCount !== 1) {
 }
 
 console.log(
-  "D1 migrations applied; schema activation history, nullable timeline expansion, and atomic metadata PUT semantics verified locally.",
+  "D1 migrations applied; schema activation history, nullable timeline expansion, atomic metadata PUT semantics, and idempotent metadata enrichment verified locally.",
 );
+
+
+function bindSql(sql, values) {
+  let index = 0;
+  const bound = sql.replace(/\?/g, () => {
+    if (index >= values.length) throw new Error("Not enough enrichment SQL bind values");
+    return sqlLiteral(values[index++]);
+  });
+  if (index !== values.length) {
+    throw new Error(`Unused enrichment SQL bind values: ${values.length - index}`);
+  }
+  return bound;
+}
+
+function sqlLiteral(value) {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error(`Cannot bind non-finite SQL number: ${value}`);
+    return String(value);
+  }
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
 
 function run(args, capture = false) {
   const command = process.platform === "win32" ? "npx.cmd" : "npx";
