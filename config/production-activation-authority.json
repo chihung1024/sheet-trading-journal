@@ -2,17 +2,17 @@
   "schema_version": 1,
   "authority_id": "PRODUCTION-ACTIVATION-AUTHORITY",
   "status": "ready",
-  "authorized_source_sha": "2cb7a3e82856d7041c5168ed5aecef332bdcde54",
-  "approved_at": "2026-08-16T12:42:10.000Z",
+  "authorized_source_sha": "fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be",
+  "approved_at": "2026-08-16T13:39:13.458Z",
   "required_checks": {
     "production_frontend_explicit_environment": "passed",
     "production_frontend_live_contract": "passed",
     "production_d1_identity": "passed"
   },
   "evidence": {
-    "production_frontend_explicit_environment": "docs/governance/evidence/production-activation/r2_3a_2cb7a3e8_production_frontend_explicit_environment.json",
-    "production_frontend_live_contract": "docs/governance/evidence/production-activation/r2_3a_2cb7a3e8_production_frontend_live_contract.json",
-    "production_d1_identity": "docs/governance/evidence/production-activation/r2_3a_2cb7a3e8_production_d1_identity.json"
+    "production_frontend_explicit_environment": "docs/governance/evidence/production-activation/r2_3b_fa0ad4a3_production_frontend_explicit_environment.json",
+    "production_frontend_live_contract": "docs/governance/evidence/production-activation/r2_3b_fa0ad4a3_production_frontend_live_contract.json",
+    "production_d1_identity": "docs/governance/evidence/production-activation/r2_3b_fa0ad4a3_production_d1_identity.json"
   },
-  "notes": "Production Identity Evidence #24 authorizes exact R2.3A source 2cb7a3e82856d7041c5168ed5aecef332bdcde54; run 31947746030; artifact 9263774923; sha256:e43656de00ad8e3e62a773d8253bd5c2c14fb25e1cb8ce2b2a2401e1077a9339. The requested production change is the additive 0005_cash_events_expand.sql migration plus canonical same-release Worker deployment traceability at release 4.10 / API 2.63 / schema 3. No cash CRUD/API, Python cash ledger, account NAV/performance cutover, transaction chronology activation, or frontend behavior change is authorized."
+  "notes": "Production Identity Evidence #25 authorizes exact R2.3B source fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be; run 31950409951; artifact 9264479893; sha256:f777333130ed96d422bd22ffd9ebcba1fdb8ef0da24bd8f573b542e3b4eacada. Production migration 0005_cash_events_expand.sql is already applied. The requested production change is canonical Worker activation at release 4.11 / API 2.64 / schema 3 for authenticated user-only cash-event CRUD. No Python cash ledger, account NAV/performance cutover, transaction chronology activation, cash UI, or system/API-secret cash writer is authorized."
 }
