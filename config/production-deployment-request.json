@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "phase9-2-9b9f09f-20260815t1359z",
-  "source_sha": "9b9f09f5079c59750219c73e23002a7ab8d2f33e",
-  "requested_at": "2026-08-15T13:59:20.000Z",
-  "reason": "Phase 9.2 deterministic dividend event identity production activation after exact-source Production Identity Evidence #18 and post-main CI/Pages verification."
+  "request_id": "r2-2a-9aed8760-20260816t0713z",
+  "source_sha": "9aed8760dfd49d9568b86555a87c61de086df3d0",
+  "requested_at": "2026-08-16T07:13:10.000Z",
+  "reason": "R2.2A expand-only production D1 migration for the exact runtime source verified by Production Identity Evidence #19; metadata API/accounting semantics remain inactive."
 }
