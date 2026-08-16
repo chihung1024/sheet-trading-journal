@@ -46,6 +46,9 @@ export const buildOverviewProjection = ({
   const totalPnl = finiteNumber(stats?.total_pnl);
   const realizedPnl = finiteNumber(stats?.realized_pnl);
   const unrealizedPnl = totalPnl !== null && realizedPnl !== null ? totalPnl - realizedPnl : null;
+  const unrealizedReturnPercent = unrealizedPnl !== null && holdingCost !== null && holdingCost > 0
+    ? (unrealizedPnl / holdingCost) * 100
+    : null;
   const dailyReturnPercent = finiteNumber(stats?.daily_pnl_roi_percent);
 
   const twrStatus = stats?.twr_status ?? null;
@@ -62,6 +65,7 @@ export const buildOverviewProjection = ({
       holdingCost,
       totalPnl,
       unrealizedPnl,
+      unrealizedReturnPercent,
       realizedPnl,
       daily: Object.freeze({
         status: dailyReady ? 'ready' : 'unavailable',
