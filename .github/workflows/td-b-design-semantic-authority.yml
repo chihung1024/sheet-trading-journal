@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm ci
-      - name: Repair one-time codemod parser
+      - name: Repair one-time codemod for reviewed exact semantics
         run: node tools/fix_td_b_codemod_parser.mjs
       - name: Apply bounded cleanup
         run: node tools/td_b_design_semantic_cleanup.mjs
