@@ -1,9 +1,9 @@
 <template>
   <div class="stats-grid">
-    <!-- 1️⃣ 總資產淨值 -->
+    <!-- 1️⃣ 持倉市值 -->
     <div class="stat-block primary-block">
       <div class="stat-top">
-        <span class="stat-label">總資產淨值</span>
+        <span class="stat-label">持倉市值</span>
         <span class="icon-box highlight">💰</span>
       </div>
       <div class="stat-main">
@@ -12,7 +12,7 @@
       </div>
       <div class="stat-footer">
         <div class="footer-item">
-            <span class="f-label">投入成本</span> 
+            <span class="f-label">持倉成本</span>
             <span class="f-val">{{ formatNumber(stats.invested_capital) }}</span>
         </div>
       </div>
@@ -31,7 +31,7 @@
       </div>
       <div class="stat-footer">
         <span class="badge" :class="roi >= 0 ? 'badge-green' : 'badge-red'">
-            ROI: {{ roi }}%
+            未實現報酬率: {{ roi }}%
         </span>
       </div>
     </div>
