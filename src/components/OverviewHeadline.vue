@@ -80,26 +80,30 @@ const props = defineProps({
   model: { type: Object, required: true },
 });
 
+const finiteNumber = value => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
 const formatTwd = value => {
-  const number = Number(value);
-  return Number.isFinite(number) ? `${Math.round(number).toLocaleString('zh-TW')} TWD` : '—';
+  const number = finiteNumber(value);
+  return number === null ? '—' : `${Math.round(number).toLocaleString('zh-TW')} TWD`;
 };
 
 const formatSignedTwd = value => {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
+  const number = finiteNumber(value);
+  if (number === null) return '—';
   return `${number >= 0 ? '+' : ''}${Math.round(number).toLocaleString('zh-TW')} TWD`;
 };
 
 const formatSignedPercent = value => {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
+  const number = finiteNumber(value);
+  if (number === null) return '—';
   return `${number >= 0 ? '+' : ''}${number.toFixed(2)}%`;
 };
 
 const pnlClass = value => {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number === 0) return '';
+  const number = finiteNumber(value);
+  if (number === null || number === 0) return '';
   return number > 0 ? 'text-green' : 'text-red';
 };
 
