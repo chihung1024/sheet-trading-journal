@@ -20,12 +20,14 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: npm ci
+      - name: Repair one-time codemod parser
+        run: node tools/fix_td_b_codemod_parser.mjs
       - name: Apply bounded cleanup
         run: node tools/td_b_design_semantic_cleanup.mjs
       - name: Validate frontend contracts
