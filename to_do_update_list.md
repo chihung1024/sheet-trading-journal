@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 is CLOSED / VERIFIED. R2.2A and R2.2B are CLOSED / PRODUCTION VERIFIED. R2.2C-A/B/C/D are CLOSED / VERIFIED; C-C is Worker production verified and C-D is live on Pages. Production Worker remains exact runtime source `fe81a06586b566444dd53e416c96255059bb3fdb` at release `4.10` / API `2.63` / schema `3`, Worker Version ID `297251da-a5ec-48a1-ab24-c1d8742809c8`; current frontend `main` is `bf8b7078ff139f4b1727fe6d1bfff16a64201136`. Python calculation-order activation remains explicitly disabled. The next product capability in the accepted R2 sequence is explicit cash event storage/model; do not activate chronology as a side effect.**
+Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 is CLOSED / VERIFIED. R2.2A/B are CLOSED / PRODUCTION VERIFIED and R2.2C-A/B/C/D are CLOSED / VERIFIED. Production Worker remains exact runtime source `fe81a06586b566444dd53e416c96255059bb3fdb` at release `4.10` / API `2.63` / schema `3`, Worker Version ID `297251da-a5ec-48a1-ab24-c1d8742809c8`; protected `main` recovery base is `9caaa399f1cb7f40bbb74c0eab3eb3e7065c190f`. Python calculation-order activation remains explicitly disabled. The single Primary Active Batch is R2.3A Explicit Cash Event Storage / Model: additive `cash_events` only, with no API, cash-ledger or NAV activation.**
 
 ---
 
@@ -136,6 +136,7 @@ A later docs-only merge may advance repository `main` without changing product r
 - **R2.2A Nullable Timeline Metadata Storage Expansion — CLOSED / PRODUCTION VERIFIED**
 - **R2.2B Metadata API Activation + Writer Semantics — CLOSED / PRODUCTION VERIFIED**
 - **R2.2C Transaction Timeline Detail + Source Metadata Capture — CLOSED / VERIFIED; C-D LIVE ON PAGES**
+- **R2.3A Explicit Cash Event Storage / Model — ACTIVE; REPOSITORY IMPLEMENTATION, PRODUCTION NOT YET ACTIVATED**
 
 ---
 
@@ -449,6 +450,30 @@ R2.2C-D verification:
 - Pages #1598 / run `31943156132`: **SUCCESS** for exact merge `bf8b7078ff139f4b1727fe6d1bfff16a64201136`;
 - no Worker/D1/schema deployment occurred in C-D; production Worker remains release `4.10` / API `2.63` / schema `3`.
 
+#### R2.3A — Explicit Cash Event Storage / Model — ACTIVE
+
+Primary Goal:
+
+> create a separate, additive `cash_events` family for truthful multi-currency opening balances and external deposits/withdrawals without widening `records.txn_type`, duplicating BUY/SELL/DIV cash effects, or activating account NAV.
+
+Accepted storage semantics:
+
+- `cash_events` is tenant-scoped and consolidated at the current user-portfolio level; no broker account identifier is persisted;
+- v1 event types are exactly `OPENING_BALANCE`, `DEPOSIT`, `WITHDRAWAL`;
+- opening balance is a signed baseline and may be negative (margin/debit cash), zero or positive; at most one exists per user/currency;
+- deposit/withdrawal store positive magnitudes and derive direction from event type;
+- cash `currency` is exactly three uppercase letters such as `USD` / `TWD` / `GBP`; quote unit `GBp` is intentionally invalid for cash storage;
+- generic `ADJUSTMENT` is rejected until a concrete auditable product use case exists;
+- trade/fee/tax cash and confirmed DIV cash remain derived from authoritative transaction semantics and are never duplicated as manual cash events;
+- `created_at` / `id` are audit/deterministic database facts, not cash-event chronology;
+- nullable create-idempotency hashes are reserved now so a later cash writer cannot regress below the reviewed transaction retry/conflict standard;
+- migration `0005_cash_events_expand.sql` is expand-only: no existing-row mutation, no `ALTER TABLE records`, no `UPDATE schema_metadata`;
+- current Worker/API/frontend/Python behavior remains unchanged and the table stays inert until separate R2.3B/R2.4 gates.
+
+Detailed contract: `docs/engineering/R2_3_CASH_EVENT_STORAGE_MODEL_2026-08-16.md`.
+
+Risk class: **R2 — Significant** because this is additive persistence. Recovery point is exact protected `main@9caaa399f1cb7f40bbb74c0eab3eb3e7065c190f`; rollback behavior is to leave the new table inert rather than destructively drop it.
+
 #### R2 cash/account truth
 
 Explicit cash must be event-driven and multi-currency. Candidate event classes require design/review before schema activation, including:
@@ -483,7 +508,7 @@ A safe R2 sequence is:
 2. physical nullable transaction metadata expansion — **R2.2A CLOSED / PRODUCTION VERIFIED**;
 3. metadata API activation + writer/idempotency/amendment semantics — **R2.2B CLOSED / PRODUCTION VERIFIED**;
 4. timeline/detail presentation + shadow Python metadata transport + safe source enrichment — **R2.2C CLOSED / VERIFIED**, still without calculation-order activation;
-5. explicit cash event storage/model;
+5. explicit cash event storage/model — **R2.3A CURRENT: additive storage/model only; no ledger/NAV activation**;
 6. shadow cash ledger calculation;
 7. reconciliation and migration UX;
 8. only then review account NAV / account-level performance cutover.
