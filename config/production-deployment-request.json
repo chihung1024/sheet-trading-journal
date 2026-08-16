@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "r2-2a-9aed8760-20260816t0713z",
-  "source_sha": "9aed8760dfd49d9568b86555a87c61de086df3d0",
-  "requested_at": "2026-08-16T07:13:10.000Z",
-  "reason": "R2.2A expand-only production D1 migration for the exact runtime source verified by Production Identity Evidence #19; metadata API/accounting semantics remain inactive."
+  "request_id": "r2-2b-cc889dc4-20260816t0908z",
+  "source_sha": "cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3",
+  "requested_at": "2026-08-16T09:08:30.000Z",
+  "reason": "R2.2B production activation for repository-verified release 4.09 / API 2.62 / schema 3 after exact-source Production Identity Evidence #21. Production D1 migration 0004 is already applied; no new schema migration or Python calculation-order activation is requested."
 }
