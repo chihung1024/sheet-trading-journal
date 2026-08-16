@@ -4,6 +4,9 @@ import fs from 'node:fs';
 
 const mainSource = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../src/styles/product-consistency.css', import.meta.url), 'utf8');
+const overviewPage = fs.readFileSync(new URL('../src/components/OverviewPage.vue', import.meta.url), 'utf8');
+const overviewHeadline = fs.readFileSync(new URL('../src/components/OverviewHeadline.vue', import.meta.url), 'utf8');
+const overviewContext = fs.readFileSync(new URL('../src/components/OverviewContext.vue', import.meta.url), 'utf8');
 
 test('cross-page layout stylesheet is loaded after the base design system', () => {
   const baseIndex = mainSource.indexOf("import './style.css';");
@@ -32,10 +35,12 @@ test('transaction desktop table uses seven balanced columns after journal summar
   assert.doesNotMatch(css, /nth-child\(8\)/);
 });
 
-test('overview command and stats surfaces share one compact responsive density contract', () => {
-  assert.match(css, /\.section-overview \.command-card[\s\S]*min-height:\s*112px/);
-  assert.match(css, /\.section-overview \.stat-block[\s\S]*min-height:\s*140px/);
-  assert.match(css, /@media \(max-width:\s*768px\)/);
+test('current overview surfaces consume the shared responsive page rhythm without reviving retired density selectors', () => {
+  assert.match(overviewPage, /gap:\s*var\(--ui-page-gap\)/);
+  assert.match(overviewHeadline, /padding:\s*20px/);
+  assert.match(overviewHeadline, /@media \(max-width:\s*768px\)/);
+  assert.match(overviewContext, /@media \(max-width:\s*768px\)/);
+  assert.doesNotMatch(css, /\.section-overview \.command-card|\.section-overview \.stat-block|\.daily-command|\.stats-grid/);
 });
 
 test('layout consistency layer does not own typography or brute-force specificity', () => {
