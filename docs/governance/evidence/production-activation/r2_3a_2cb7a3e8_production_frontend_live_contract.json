@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "check_name": "production_frontend_live_contract",
+  "status": "passed",
+  "observed_at": "2026-08-16T12:42:04.576Z",
+  "source_sha": "2cb7a3e82856d7041c5168ed5aecef332bdcde54",
+  "proof": {
+    "result": "pass",
+    "summary": "Production Identity Evidence #24 confirmed live Pages returned HTTP 200 with both CSP surfaces present, production API allowed, and staging API rejected for exact audited source 2cb7a3e82856d7041c5168ed5aecef332bdcde54.",
+    "artifact_reference": "run 31947746030; artifact 9263774923; sha256:e43656de00ad8e3e62a773d8253bd5c2c14fb25e1cb8ce2b2a2401e1077a9339"
+  }
+}

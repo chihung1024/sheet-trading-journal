@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "r2-2c-c-fe81a065-20260816t1033z",
-  "source_sha": "fe81a06586b566444dd53e416c96255059bb3fdb",
-  "requested_at": "2026-08-16T10:33:09.000Z",
-  "reason": "R2.2C-C production activation for repository-verified release 4.10 / API 2.63 / schema 3 after exact-source Production Identity Evidence #23. Production D1 migration 0004 is already applied; no new schema migration, Python calculation-order activation, or IBKR frontend caller activation is requested."
+  "request_id": "r2-3a-2cb7a3e8-20260816t1242z",
+  "source_sha": "2cb7a3e82856d7041c5168ed5aecef332bdcde54",
+  "requested_at": "2026-08-16T12:42:10.000Z",
+  "reason": "R2.3A production activation for the additive cash_events storage foundation after exact-source Production Identity Evidence #24. Apply pending migration 0005_cash_events_expand.sql and deploy the canonical source for traceability while keeping release 4.10 / API 2.63 / schema 3 unchanged. No cash CRUD/API, Python cash ledger, account NAV/performance terminology cutover, transaction chronology activation, or frontend behavior change is requested."
 }
