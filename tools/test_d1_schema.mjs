@@ -46,6 +46,45 @@ const expected = ["calculation_jobs", "portfolio_snapshots", "records", "schema_
 if (JSON.stringify(tables) !== JSON.stringify(expected)) {
   throw new Error(`Unexpected D1 tables: ${JSON.stringify(tables)}`);
 }
+
+const recordColumnsResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", "PRAGMA table_info(records);",
+  "--json",
+], true);
+const recordColumns = JSON.parse(recordColumnsResult.stdout)?.[0]?.results || [];
+const recordColumnByName = new Map(recordColumns.map((column) => [column.name, column]));
+for (const name of ["currency", "executed_at", "execution_sequence", "event_source"]) {
+  const column = recordColumnByName.get(name);
+  if (!column) {
+    throw new Error(`Missing R2.2A records metadata column: ${name}`);
+  }
+  if (String(column.type || "").toUpperCase() !== "TEXT") {
+    throw new Error(`Unexpected ${name} storage type: ${JSON.stringify(column)}`);
+  }
+  if (Number(column.notnull) !== 0 || column.dflt_value !== null) {
+    throw new Error(`R2.2A metadata must stay nullable with no default: ${JSON.stringify(column)}`);
+  }
+}
+
+const legacyRecordResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", `
+    INSERT INTO records (user_id, txn_date, symbol, txn_type, qty, price)
+    VALUES ('legacy-r2-2a@example.com', '2026-08-16', 'SPY', 'BUY', 1, 1);
+    SELECT currency, executed_at, execution_sequence, event_source
+    FROM records
+    WHERE user_id = 'legacy-r2-2a@example.com'
+    ORDER BY id DESC
+    LIMIT 1;
+  `,
+  "--json",
+], true);
+const legacyMetadata = JSON.parse(legacyRecordResult.stdout)?.at(-1)?.results?.[0];
+if (!legacyMetadata || ["currency", "executed_at", "execution_sequence", "event_source"].some((key) => legacyMetadata[key] !== null)) {
+  throw new Error(`Legacy record compatibility failed: ${JSON.stringify(legacyMetadata)}`);
+}
+
 const indexesResult = run([
   "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
   "--command", "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_calculation_jobs_user_created','idx_calculation_jobs_status_created') ORDER BY name;",
@@ -77,7 +116,7 @@ if (duplicateCount !== 1) {
   throw new Error(`Calculation job idempotency uniqueness failed: ${duplicateCount}`);
 }
 
-console.log("D1 migrations applied and schema metadata verified against the Worker manifest locally.");
+console.log("D1 migrations applied; active Worker schema metadata and nullable R2.2A timeline expansion verified locally.");
 
 function run(args, capture = false) {
   const command = process.platform === "win32" ? "npx.cmd" : "npx";
