@@ -1,10 +1,31 @@
 import fs from 'node:fs';
 
 const path = 'tools/td_b_design_semantic_cleanup.mjs';
-const source = fs.readFileSync(path, 'utf8');
-const before = "  assert.doesNotMatch(source, /ctx\\.font\\s*=\\s*`[^`]*\\$\\{[^}]+\\}px/);";
-const after = "  assert.doesNotMatch(source, /ctx\\.font\\s*=\\s*[^;]*\\$\\{[^}]+\\}px/);";
-const count = source.split(before).length - 1;
-if (count !== 1) throw new Error(`expected parser-sensitive assertion once, found ${count}`);
-fs.writeFileSync(path, source.replace(before, after));
-console.log('TD-B codemod parser fixed');
+let source = fs.readFileSync(path, 'utf8');
+
+function replaceOnce(before, after, label) {
+  const count = source.split(before).length - 1;
+  if (count !== 1) throw new Error(`${label}: expected once, found ${count}`);
+  source = source.replace(before, after);
+}
+
+replaceOnce(
+  "  assert.doesNotMatch(source, /ctx\\.font\\s*=\\s*`[^`]*\\$\\{[^}]+\\}px/);",
+  "  assert.doesNotMatch(source, /ctx\\.font\\s*=\\s*[^;]*\\$\\{[^}]+\\}px/);",
+  'parser-sensitive canvas assertion',
+);
+
+replaceOnce(
+  "replaceExact('src/components/StatsGrid.vue', '總資產淨值', '持倉市值', 1);",
+  "replaceExact('src/components/StatsGrid.vue', '總資產淨值', '持倉市值', 2);",
+  'StatsGrid two same-class total-value labels',
+);
+
+replaceOnce(
+  "replaceExact('src/components/StrategyGroupOverview.vue', '投入資本', '持倉成本', 1);",
+  "replaceExact('src/components/StrategyGroupOverview.vue', '投入資本', '持倉成本', 1);\nreplaceExact('tests/frontend_strategy_group_overview.test.mjs', '總資產淨值', '持倉市值', 1);\nreplaceExact('tests/frontend_strategy_group_overview.test.mjs', '投入資本', '持倉成本', 1);",
+  'StrategyGroupOverview semantic regression update',
+);
+
+fs.writeFileSync(path, source);
+console.log('TD-B one-time codemod repaired for reviewed exact semantics');
