@@ -44,6 +44,10 @@ function createRecordsDb() {
                   tax,
                   tag,
                   note,
+                  currency,
+                  executedAt,
+                  executionSequence,
+                  eventSource,
                   idempotencyHash,
                   payloadHash,
                 ] = args;
@@ -63,6 +67,10 @@ function createRecordsDb() {
                   tax,
                   tag,
                   note,
+                  currency,
+                  executed_at: executedAt,
+                  execution_sequence: executionSequence,
+                  event_source: eventSource,
                   create_idempotency_hash: idempotencyHash,
                   create_payload_hash: payloadHash,
                   created_at: '2026-08-12 00:00:00',
@@ -71,7 +79,10 @@ function createRecordsDb() {
               }
 
               if (normalized.startsWith('INSERT INTO records')) {
-                const [userId, txnDate, symbol, txnType, qty, price, fee, tax, tag, note] = args;
+                const [
+                  userId, txnDate, symbol, txnType, qty, price, fee, tax, tag, note,
+                  currency, executedAt, executionSequence, eventSource,
+                ] = args;
                 rows.push({
                   id: nextId++,
                   user_id: userId,
@@ -84,6 +95,10 @@ function createRecordsDb() {
                   tax,
                   tag,
                   note,
+                  currency,
+                  executed_at: executedAt,
+                  execution_sequence: executionSequence,
+                  event_source: eventSource,
                   create_idempotency_hash: null,
                   create_payload_hash: null,
                   created_at: '2026-08-12 00:00:00',

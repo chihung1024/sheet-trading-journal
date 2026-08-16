@@ -23,7 +23,7 @@ const apiRecord = Object.freeze({
   note: '原始投資理由',
 });
 
-test('current D1 and Worker contracts already persist and return note without a schema change', () => {
+test('current D1 and Worker contracts persist and project note independently of adjacent record columns', () => {
   const migration = read('migrations/0001_baseline.sql');
   const worker = read('worker.js');
 
@@ -31,8 +31,21 @@ test('current D1 and Worker contracts already persist and return note without a 
   const noteValidation = worker.match(/note:\s*sanitizeText\(body\.note\s*\|\|\s*"",\s*([0-9_]+)\)/);
   assert.ok(noteValidation, 'Worker must validate the note field before persistence');
   assert.equal(Number(noteValidation[1].replaceAll('_', '')), 2000);
-  assert.match(worker, /INSERT INTO records \(user_id, txn_date, symbol, txn_type, qty, price, fee, tax, tag, note\)/);
-  assert.match(worker, /UPDATE records SET txn_date=\?, symbol=\?, txn_type=\?, qty=\?, price=\?, fee=\?, tax=\?, tag=\?, note=\?/);
+
+  const insertSql = worker.match(/INSERT(?: OR IGNORE)? INTO records\s*\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/);
+  assert.ok(insertSql, 'Worker must persist records through an explicit INSERT column list');
+  const insertColumns = insertSql[1].split(',').map((column) => column.trim());
+  assert.ok(insertColumns.includes('note'), 'record INSERT must persist note');
+  assert.equal(
+    insertColumns.length,
+    insertSql[2].split(',').length,
+    'record INSERT column and placeholder counts must stay aligned',
+  );
+
+  const updateSql = worker.match(/UPDATE records\s+SET([\s\S]*?)WHERE id=\? AND user_id=\?/);
+  assert.ok(updateSql, 'Worker must update records through a tenant-scoped UPDATE');
+  assert.match(updateSql[1], /\bnote=\?/, 'record UPDATE must persist note');
+
   assert.match(worker, /const \{ create_idempotency_hash: _idempotency, create_payload_hash: _payload, \.\.\.record \} = row/);
 });
 
