@@ -15,6 +15,8 @@ import {
 } from './fetchDeadline.js';
 
 const RECORD_ENDPOINT = '/api/records';
+const RECORD_METADATA_ENDPOINT = '/api/records/metadata';
+const RECORD_METADATA_FIELDS = Object.freeze(['currency', 'executed_at', 'execution_sequence', 'event_source']);
 const IMPORT_ID_RE = /^IBKR~/;
 const SENSITIVE_NOTE_FIELD_RE = /^(?:account(?:_?id|_?number)?|client_?account_?id)\s*=/i;
 
@@ -59,6 +61,40 @@ const sanitizeIbkrRecordForPersistence = (record) => {
     .filter(part => !SENSITIVE_NOTE_FIELD_RE.test(part))
     .join('; ');
   return Object.freeze({ ...record, note });
+};
+
+const definiteLocalError = (message) => {
+  const error = new Error(message);
+  error.outcomeAmbiguous = false;
+  return error;
+};
+
+const buildRecordMetadataEnrichmentPayload = (entry, recordId) => {
+  if (!entry?.metadata || typeof entry.metadata !== 'object' || Array.isArray(entry.metadata)) return null;
+  const metadata = {};
+  for (const field of RECORD_METADATA_FIELDS) {
+    if (entry.metadata[field] !== undefined && entry.metadata[field] !== null) {
+      metadata[field] = entry.metadata[field];
+    }
+  }
+  if (Object.keys(metadata).length === 0) return null;
+
+  const id = Number(recordId);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw definiteLocalError('Committed IBKR record did not return a valid record ID for metadata enrichment');
+  }
+  const record = sanitizeIbkrRecordForPersistence(entry.record);
+  return Object.freeze({
+    id,
+    txn_date: record.txn_date,
+    symbol: record.symbol,
+    txn_type: record.txn_type,
+    qty: record.qty,
+    price: record.price,
+    fee: record.fee,
+    tax: record.tax,
+    ...metadata,
+  });
 };
 
 const createIntentIdFactory = (durableKey) => {
@@ -158,6 +194,67 @@ const postIntentWithRefresh = async (
   }
 };
 
+const putMetadataOnce = async (
+  payload,
+  token,
+  {
+    apiBaseUrl,
+    fetchImpl = globalThis.fetch,
+  } = {},
+) => (
+  fetchWithDeadline(
+    `${normalizeApiBaseUrl(apiBaseUrl)}${RECORD_METADATA_ENDPOINT}`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+    {
+      timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+      fetchImpl,
+      responseHandler: response => readApiJson(response, { endpoint: RECORD_METADATA_ENDPOINT }),
+    },
+  )
+);
+
+const putMetadataWithRefresh = async (
+  payload,
+  {
+    getToken,
+    refreshToken,
+    apiBaseUrl,
+    fetchImpl = globalThis.fetch,
+  } = {},
+) => {
+  if (typeof getToken !== 'function') throw new TypeError('getToken must be a function');
+  let token = getToken();
+  if (!token) throw definiteLocalError('請先登入');
+
+  try {
+    return await putMetadataOnce(payload, token, { apiBaseUrl, fetchImpl });
+  } catch (cause) {
+    const error = markRequestOutcome(cause, 'PUT');
+    if (error?.status !== 401 || typeof refreshToken !== 'function') throw error;
+    let refreshed = false;
+    try {
+      refreshed = await refreshToken();
+    } catch (refreshError) {
+      error.refreshError = refreshError;
+      throw error;
+    }
+    token = getToken();
+    if (refreshed !== true || !token) throw error;
+    try {
+      return await putMetadataOnce(payload, token, { apiBaseUrl, fetchImpl });
+    } catch (retryCause) {
+      throw markRequestOutcome(retryCause, 'PUT');
+    }
+  }
+};
+
 const settleConfirmedIntent = (storage, intent) => {
   try {
     completeRecordCreateIntent(storage, intent.owner, intent.idempotencyKey);
@@ -234,13 +331,40 @@ export const createIbkrRecord = async (
     throw error;
   }
 
+  const recordId = response?.record_id ?? null;
+  const recoveryStateError = settleConfirmedIntent(storage, intent);
+  let metadataUpdated = false;
+  let metadataResponse = null;
+  let metadataEnrichmentError = null;
+  let metadataOutcomeAmbiguous = false;
+
+  try {
+    const metadataPayload = buildRecordMetadataEnrichmentPayload(entry, recordId);
+    if (metadataPayload) {
+      metadataResponse = await putMetadataWithRefresh(metadataPayload, {
+        getToken,
+        refreshToken,
+        apiBaseUrl,
+        fetchImpl,
+      });
+      metadataUpdated = metadataResponse?.metadata_updated === true;
+    }
+  } catch (error) {
+    metadataEnrichmentError = error;
+    metadataOutcomeAmbiguous = error?.outcomeAmbiguous === true;
+  }
+
   return Object.freeze({
     committed: true,
     outcomeAmbiguous: false,
     deduplicated: response?.deduplicated === true,
-    recordId: response?.record_id ?? null,
+    recordId,
     response,
-    recoveryStateError: settleConfirmedIntent(storage, intent),
+    recoveryStateError,
+    metadataUpdated,
+    metadataResponse,
+    metadataEnrichmentError,
+    metadataOutcomeAmbiguous,
   });
 };
 
@@ -251,5 +375,8 @@ export const __test = Object.freeze({
   normalizeApiBaseUrl,
   postIntentOnce,
   postIntentWithRefresh,
+  buildRecordMetadataEnrichmentPayload,
+  putMetadataOnce,
+  putMetadataWithRefresh,
   settleConfirmedIntent,
 });

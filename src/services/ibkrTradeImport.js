@@ -4,6 +4,9 @@ import { isIbkrImportProfileScope } from './ibkrImportProfile.js';
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_ROWS = 10000;
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._~-]{16,128}$/;
+const RECORD_CURRENCY_RE = /^[A-Z]{3}$/;
+const EXECUTION_SEQUENCE_RE = /^[A-Za-z0-9._:/-]{1,128}$/;
+const OFFSET_DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
 const ALIASES = Object.freeze({
   assetClass: ['assetclass', 'assetcategory', 'securitytype'],
@@ -136,6 +139,41 @@ function validDate(value) {
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function validateOffsetAwareDateTime(value) {
+  const candidate = text(value);
+  const match = candidate.match(OFFSET_DATETIME_RE);
+  if (!match) return null;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, offset] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const maxDay = month >= 1 && month <= 12
+    ? new Date(Date.UTC(year, month, 0)).getUTCDate()
+    : 0;
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > maxDay || hour > 23 || minute > 59 || second > 59) {
+    return null;
+  }
+  if (offset !== 'Z') {
+    const offsetHour = Number(offset.slice(1, 3));
+    const offsetMinute = Number(offset.slice(4, 6));
+    if (offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) return null;
+  }
+  return candidate;
+}
+
+function normalizeAuthoritativeExecutedAt(value) {
+  const raw = text(value);
+  if (!raw) return null;
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2});(\d{2})(\d{2})(\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/);
+  const candidate = compact
+    ? `${compact[1]}-${compact[2]}-${compact[3]}T${compact[4]}:${compact[5]}:${compact[6]}${compact[7] || ''}${compact[8]}`
+    : raw;
+  return validateOffsetAwareDateTime(candidate);
 }
 
 function sideOf(value) {
@@ -276,6 +314,31 @@ function idempotencyKeyFor(trade, tradeIds) {
   return IDEMPOTENCY_KEY_RE.test(key) ? key : null;
 }
 
+function executionSequenceFor(trade) {
+  const identity = text(trade.orderId || trade.tradeId);
+  if (!identity) return null;
+  const accountId = text(trade.accountId).toUpperCase();
+  if (accountId && identity.toUpperCase().includes(accountId)) return null;
+  const candidate = `IBKR-${trade.orderId ? 'ORDER' : 'TRADE'}:${identity}`;
+  return EXECUTION_SEQUENCE_RE.test(candidate) ? candidate : null;
+}
+
+function metadataFor(trade, fills) {
+  const metadata = { event_source: 'IBKR' };
+  if (trade.currency === 'GBp' || RECORD_CURRENCY_RE.test(trade.currency)) {
+    metadata.currency = trade.currency;
+  }
+  const sequence = executionSequenceFor(trade);
+  if (sequence) metadata.execution_sequence = sequence;
+
+  const executedAtValues = fills.map(fill => normalizeAuthoritativeExecutedAt(fill.dateTime));
+  if (executedAtValues.length === fills.length && executedAtValues.every(Boolean)) {
+    const unique = [...new Set(executedAtValues)];
+    if (unique.length === 1) metadata.executed_at = unique[0];
+  }
+  return Object.freeze(metadata);
+}
+
 function noteFor(trade, fills, tradeIds) {
   const times = [...new Set(fills.map(fill => fill.dateTime).filter(Boolean))].sort();
   return [
@@ -365,6 +428,7 @@ function aggregate(trades, initialTaintedGroups = new Set()) {
         tag: '',
         note: noteFor(first, fills, tradeIds),
       }),
+      metadata: metadataFor(first, fills),
       source: Object.freeze({
         accountId: first.accountId,
         scopeId: first.scopeId,
@@ -453,4 +517,7 @@ export const __test = Object.freeze({
   statementAccounts,
   actualAccountIds,
   groupLabel,
+  normalizeAuthoritativeExecutedAt,
+  executionSequenceFor,
+  metadataFor,
 });
