@@ -32,6 +32,12 @@ from journal_engine.core.validator import PortfolioValidator
 
 
 SUPPORTED_TRANSACTION_TYPES = {"BUY", "SELL", "DIV"}
+SHADOW_TRANSACTION_METADATA_COLUMNS = (
+    "currency",
+    "executed_at",
+    "execution_sequence",
+    "event_source",
+)
 LEGACY_DAILY_PNL_MISMATCH_PREFIX = "Daily PnL formula/aggregation mismatch:"
 PRODUCTION_OVERSELL_POLICY = "CLAMP"
 
@@ -140,6 +146,14 @@ def prepare_transactions(records: list, target_user_id: str = "") -> Tuple[pd.Da
         if optional_column not in df.columns:
             df[optional_column] = default_value
     df["tag"] = df["tag"].fillna("")
+
+    # R2.2C shadow transport keeps the API field names deliberately lowercase.
+    # PortfolioCalculator treats public `Timestamp` / `Sequence` columns as
+    # same-day ordering authority, so these fields must never be aliased to
+    # those names before the separate chronology evidence gate is approved.
+    for metadata_column in SHADOW_TRANSACTION_METADATA_COLUMNS:
+        if metadata_column not in df.columns:
+            df[metadata_column] = None
 
     if df["symbol"].isna().any() or df["txn_type"].isna().any():
         raise PortfolioUpdateError("交易紀錄包含空白 Symbol 或 Type")
