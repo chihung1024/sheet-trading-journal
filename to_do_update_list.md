@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 is CLOSED / VERIFIED. R2.2A and R2.2B are CLOSED / PRODUCTION VERIFIED. R2.2C-A read-only detail UX, R2.2C-B Python shadow metadata transport, and R2.2C-C idempotent metadata-only enrichment API are CLOSED / VERIFIED; C-C is PRODUCTION VERIFIED. Production serves exact runtime source `fe81a06586b566444dd53e416c96255059bb3fdb` at release `4.10` / API `2.63` / schema `3`, Worker Version ID `297251da-a5ec-48a1-ab24-c1d8742809c8`. Python calculation-order activation remains explicitly disabled. The current product batch is R2.2C-D IBKR Source Metadata Capture + Safe Enrichment Caller.**
+Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 is CLOSED / VERIFIED. R2.2A and R2.2B are CLOSED / PRODUCTION VERIFIED. R2.2C-A/B/C/D are CLOSED / VERIFIED; C-C is Worker production verified and C-D is live on Pages. Production Worker remains exact runtime source `fe81a06586b566444dd53e416c96255059bb3fdb` at release `4.10` / API `2.63` / schema `3`, Worker Version ID `297251da-a5ec-48a1-ab24-c1d8742809c8`; current frontend `main` is `bf8b7078ff139f4b1727fe6d1bfff16a64201136`. Python calculation-order activation remains explicitly disabled. The next product capability in the accepted R2 sequence is explicit cash event storage/model; do not activate chronology as a side effect.**
 
 ---
 
@@ -135,7 +135,7 @@ A later docs-only merge may advance repository `main` without changing product r
 - **R2.1 Event / Timeline Contract Audit — CLOSED / VERIFIED**
 - **R2.2A Nullable Timeline Metadata Storage Expansion — CLOSED / PRODUCTION VERIFIED**
 - **R2.2B Metadata API Activation + Writer Semantics — CLOSED / PRODUCTION VERIFIED**
-- **R2.2C Transaction Timeline Detail + Source Metadata Capture — ACTIVE; C-A/B/C closed, C-D current**
+- **R2.2C Transaction Timeline Detail + Source Metadata Capture — CLOSED / VERIFIED; C-D LIVE ON PAGES**
 
 ---
 
@@ -409,7 +409,7 @@ Production boundary:
 - `execution_sequence` remains opaque until a reviewed source-specific comparator contract exists;
 - the next product work may present/transport metadata, but calculation ordering requires a separate evidence gate.
 
-#### R2.2C — Transaction Timeline Detail + Source Metadata Capture — ACTIVE
+#### R2.2C — Transaction Timeline Detail + Source Metadata Capture — CLOSED / VERIFIED
 
 Closed sub-batches:
 
@@ -428,7 +428,7 @@ R2.2C-C production activation closeout:
 7. propagation attempt #2 correctly observed an old edge and reset the stability counter; attempts #3–#5 then passed three consecutive full contracts, preserving the fail-safe rollout rule;
 8. post-deploy artifact `9262381868`, digest `sha256:b25346e1a0cd4d5df0e8d120591f06aafed714155d501535790954b555039158`: `/version=200`, `/health=200`, anonymous records `401`, production origins `204`, staging/localhost/127.0.0.1 origins `403`.
 
-Current primary batch — **R2.2C-D IBKR Source Metadata Capture + Safe Enrichment Caller**:
+**R2.2C-D IBKR Source Metadata Capture + Safe Enrichment Caller — CLOSED / PAGES VERIFIED**:
 
 - keep the existing IBKR legacy POST payload and durable idempotency key unchanged;
 - after confirmed create/replay, enrich the returned record id through the production-verified metadata-only endpoint;
@@ -438,6 +438,16 @@ Current primary batch — **R2.2C-D IBKR Source Metadata Capture + Safe Enrichme
 - metadata-only success refreshes record detail state but does not request Python recalculation;
 - metadata enrichment failure is a source-information warning, never a false transaction-write failure;
 - Python chronology remains disabled until a separate coverage/comparator evidence gate.
+
+R2.2C-D verification:
+
+- workbench #5 / run `31943028810`: **SUCCESS** — focused IBKR regression suite, frontend build and diff hygiene all passed, with temporary helpers removed before publication;
+- PR #318 exact clean head `310057fb73906ddc6a9e24f9ca9b8dd920d0c7eb`; exact-head CI #1101 / run `31943086411`: **SUCCESS**;
+- frozen review `4946041448`: **PASS / BLOCKER 0 / FOLLOW-UP 0**;
+- normal merge/main `bf8b7078ff139f4b1727fe6d1bfff16a64201136`;
+- post-main CI #1102 / run `31943156865`: **SUCCESS** across Frontend, Worker/D1 baseline and Python;
+- Pages #1598 / run `31943156132`: **SUCCESS** for exact merge `bf8b7078ff139f4b1727fe6d1bfff16a64201136`;
+- no Worker/D1/schema deployment occurred in C-D; production Worker remains release `4.10` / API `2.63` / schema `3`.
 
 #### R2 cash/account truth
 
@@ -472,7 +482,7 @@ A safe R2 sequence is:
 1. canonical event/timeline contract + backward compatibility — **R2.1 CLOSED / VERIFIED**;
 2. physical nullable transaction metadata expansion — **R2.2A CLOSED / PRODUCTION VERIFIED**;
 3. metadata API activation + writer/idempotency/amendment semantics — **R2.2B CLOSED / PRODUCTION VERIFIED**;
-4. timeline/detail presentation + shadow Python metadata transport + safe source enrichment — **R2.2C CURRENT; C-A/B/C CLOSED, C-D CURRENT**, still without calculation-order activation;
+4. timeline/detail presentation + shadow Python metadata transport + safe source enrichment — **R2.2C CLOSED / VERIFIED**, still without calculation-order activation;
 5. explicit cash event storage/model;
 6. shadow cash ledger calculation;
 7. reconciliation and migration UX;
@@ -558,7 +568,7 @@ source/manual facts
 
 `note` is user Journal content, not execution chronology/provenance storage. `id`/`created_at` remain deterministic database facts but must not be presented as broker execution time.
 
-R2.2A physical storage and R2.2B API/write semantics are now live in production from exact runtime source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3`, release `4.09` / API `2.62` / schema `3`. This makes metadata available for truthful capture, read and presentation only. Python calculation ordering remains disabled until a separate source/coverage/comparator evidence gate is reviewed and activated.
+R2.2A storage, R2.2B metadata API/write semantics, and R2.2C-C metadata-only enrichment are live in production from exact Worker runtime source `fe81a06586b566444dd53e416c96255059bb3fdb`, release `4.10` / API `2.63` / schema `3`; R2.2C-D source capture/enrichment UI is live on Pages from frontend main `bf8b7078ff139f4b1727fe6d1bfff16a64201136`. These capabilities authorize truthful metadata capture, persistence, read and presentation only. Python calculation ordering remains disabled until a separate source/coverage/comparator evidence gate is reviewed and activated.
 
 ### Overview presentation
 
