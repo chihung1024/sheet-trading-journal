@@ -153,27 +153,27 @@ test('ledger and published summary mismatch fails closed', () => {
   assert.equal(result.reason, 'summary_mismatch');
 });
 
-test('OverviewPage owns group selection while StatsGrid only presents the reviewed explanation', async () => {
+test('OverviewPage owns group selection while child surfaces only present reviewed explanation facts', async () => {
   const overviewSource = await readFile(new URL('../src/components/OverviewPage.vue', import.meta.url), 'utf8');
-  const statsSource = await readFile(new URL('../src/components/StatsGrid.vue', import.meta.url), 'utf8');
+  const headlineSource = await readFile(new URL('../src/components/OverviewHeadline.vue', import.meta.url), 'utf8');
+  const contextSource = await readFile(new URL('../src/components/OverviewContext.vue', import.meta.url), 'utf8');
   const detailSource = await readFile(new URL('../src/components/DailyPnlExplanation.vue', import.meta.url), 'utf8');
 
   assert.match(overviewSource, /selectCurrentGroupDayLedger\(\{/);
   assert.match(overviewSource, /rawData:\s*store\.rawData/);
   assert.match(overviewSource, /currentGroup:\s*store\.currentGroup/);
   assert.match(overviewSource, /buildDailyPnlExplanation/);
-  assert.match(overviewSource, /:daily-pnl-explanation="dailyPnlExplanation"/);
+  assert.match(overviewSource, /<DailyPnlExplanation/);
+  assert.match(overviewSource, /dailyPnlExplanation\.status === 'ready'/);
 
-  assert.doesNotMatch(statsSource, /selectCurrentGroupDayLedger|buildDailyPnlExplanation/);
-  assert.match(statsSource, /dailyPnlExplanation:\s*\{\s*type:\s*Object,\s*required:\s*true/);
-  assert.match(statsSource, /:aria-expanded="isDailyExplanationOpen"/);
-  assert.match(statsSource, /aria-controls="daily-pnl-explanation"/);
-  assert.match(statsSource, /查看損益來源/);
-  assert.match(statsSource, /<DailyPnlExplanation/);
-  assert.doesNotMatch(statsSource, /store\.rawData\.groups|rawData\.groups/);
+  assert.doesNotMatch(headlineSource, /selectCurrentGroupDayLedger|buildDailyPnlExplanation/);
+  assert.doesNotMatch(contextSource, /selectCurrentGroupDayLedger|buildDailyPnlExplanation/);
+  assert.match(contextSource, /aria-controls="daily-pnl-explanation"/);
+  assert.match(contextSource, /查看完整來源/);
 
   assert.match(detailSource, /id="daily-pnl-explanation"/);
   assert.match(detailSource, /計算引擎已對帳的逐檔 day ledger/);
-  assert.match(detailSource, /四捨五入至 TWD 整數/);
+  assert.match(detailSource, /只解釋來源，不重複首頁已顯示的當日總損益/);
+  assert.doesNotMatch(detailSource, /explanation\.publishedTotalTwd/);
   assert.doesNotMatch(detailSource, /fetch\(|\/api\//);
 });

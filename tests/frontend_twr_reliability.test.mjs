@@ -129,13 +129,14 @@ test('first invalid TWR date follows sticky provenance rather than the displayed
   assert.equal(firstTwrInvalidDate(history), '2026-01-05');
 });
 
-test('StatsGrid and PerformanceChart must consume the shared TWR reliability contract', async () => {
-  const stats = await read('src/components/StatsGrid.vue');
+test('Overview headline projection and PerformanceChart consume the shared TWR reliability contract', async () => {
+  const projection = await read('src/services/overviewProjection.js');
+  const headline = await read('src/components/OverviewHeadline.vue');
   const chart = await read('src/components/PerformanceChart.vue');
 
-  assert.match(stats, /isTwrSummaryAvailable/);
-  assert.match(stats, /twrAvailable/);
-  assert.match(stats, /TWR 無法可靠計算/);
+  assert.match(projection, /isTwrSummaryAvailable/);
+  assert.match(headline, /TWR 無法可靠計算/);
+  assert.match(headline, /model\.twr\.sourceStatus/);
 
   assert.match(chart, /buildComparableTwrComparison/);
   assert.match(chart, /firstTwrInvalidDate/);

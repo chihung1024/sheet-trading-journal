@@ -40,13 +40,13 @@ test('dividend attention is recent-first and ignores malformed candidate identit
   assert.deepEqual(result.candidates.map(row => row.symbol), ['NEW', 'OLD']);
 });
 
-test('navigation badge and command snapshot share the same records-authoritative attention service', () => {
+test('navigation badge and overview projection share the same records-authoritative attention service', () => {
   const app = read('src/App.vue');
-  const service = read('src/services/dailyCommandCenter.js');
+  const projection = read('src/services/overviewProjection.js');
 
   assert.match(app, /buildDividendAttention/);
   assert.match(app, /pendingDividends:\s*portfolioStore\.pending_dividends/);
   assert.match(app, /records:\s*portfolioStore\.records/);
   assert.doesNotMatch(app, /pending_dividends\?\.length|pending_dividends\.length/);
-  assert.match(service, /buildDividendAttention/);
+  assert.match(projection, /buildDividendAttention/);
 });
