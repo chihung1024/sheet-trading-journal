@@ -65,6 +65,7 @@
       "journal_engine/core/__init__.py",
       "journal_engine/core/calculation_manifest.py",
       "journal_engine/core/calculator.py",
+      "journal_engine/core/cash_ledger.py",
       "journal_engine/core/currency_detector.py",
       "journal_engine/core/daily_pnl_engine.py",
       "journal_engine/core/daily_pnl_helper.py",
