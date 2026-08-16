@@ -135,3 +135,34 @@ def test_private_sequence_column_does_not_change_financial_order():
     snapshot = calculator.run()
 
     assert snapshot.holdings == []
+
+def test_r2_shadow_metadata_does_not_activate_same_day_financial_ordering():
+    """Lowercase R2.2 metadata must remain observational until a later gate.
+
+    On 2026-01-02 the source metadata deliberately puts the overselling SELL
+    before the replenishing BUY. If `executed_at` / `execution_sequence` were
+    accidentally aliased into calculator Timestamp/Sequence authority, ERROR
+    mode would raise an oversell. The current reviewed fallback must still buy
+    first and finish flat.
+    """
+    frame = _transactions("_sequence").drop(columns=["_sequence"])
+    frame["executed_at"] = [
+        "2026-01-01T09:00:00+08:00",
+        "2026-01-02T09:00:00+08:00",
+        "2026-01-02T10:00:00+08:00",
+    ]
+    frame["execution_sequence"] = ["source:0", "source:1", "source:2"]
+    frame["currency"] = "USD"
+    frame["event_source"] = "IBKR"
+
+    calculator = PortfolioCalculator(
+        frame,
+        SequenceContractMarketDataClient(),
+        oversell_policy="ERROR",
+    )
+
+    snapshot = calculator.run()
+
+    assert snapshot.holdings == []
+    assert "Timestamp" not in frame.columns
+    assert "Sequence" not in frame.columns

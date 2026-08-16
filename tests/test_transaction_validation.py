@@ -66,3 +66,52 @@ def test_prepare_transactions_normalizes_null_tag():
 
     assert users == ["alpha@example.com"]
     assert df.loc[0, "Tag"] == ""
+
+def test_prepare_transactions_exposes_optional_r2_metadata_as_shadow_columns():
+    record = base_record()
+
+    df, _ = runner.prepare_transactions([record])
+
+    assert list(runner.SHADOW_TRANSACTION_METADATA_COLUMNS) == [
+        "currency",
+        "executed_at",
+        "execution_sequence",
+        "event_source",
+    ]
+    for column in runner.SHADOW_TRANSACTION_METADATA_COLUMNS:
+        assert column in df.columns
+        assert df.loc[0, column] is None
+    assert "Timestamp" not in df.columns
+    assert "Sequence" not in df.columns
+
+
+def test_prepare_transactions_preserves_r2_metadata_without_using_it_for_sorting():
+    later_by_metadata = base_record()
+    later_by_metadata.update({
+        "id": 1,
+        "executed_at": "2026-01-01T10:00:00+08:00",
+        "execution_sequence": "source:2",
+        "currency": "USD",
+        "event_source": "IBKR",
+    })
+    earlier_by_metadata = base_record()
+    earlier_by_metadata.update({
+        "id": 2,
+        "executed_at": "2026-01-01T09:00:00+08:00",
+        "execution_sequence": "source:1",
+        "currency": "USD",
+        "event_source": "IBKR",
+    })
+
+    df, _ = runner.prepare_transactions([earlier_by_metadata, later_by_metadata])
+
+    assert df["id"].tolist() == [1, 2]
+    assert df["executed_at"].tolist() == [
+        "2026-01-01T10:00:00+08:00",
+        "2026-01-01T09:00:00+08:00",
+    ]
+    assert df["execution_sequence"].tolist() == ["source:2", "source:1"]
+    assert df["currency"].tolist() == ["USD", "USD"]
+    assert df["event_source"].tolist() == ["IBKR", "IBKR"]
+    assert "Timestamp" not in df.columns
+    assert "Sequence" not in df.columns
