@@ -30,11 +30,23 @@ jobs:
         run: node tools/fix_td_b_codemod_parser.mjs
       - name: Apply bounded cleanup
         run: node tools/td_b_design_semantic_cleanup.mjs
-      - name: Gate semantic typography bridge
-        run: node --test tests/frontend_design_typography_bridge.test.mjs
-      - name: Gate portfolio terminology
+      - name: Typography resolver behavior
+        run: node --test --test-name-pattern="semantic typography bridge resolves" tests/frontend_design_typography_bridge.test.mjs
+      - name: Typography fail-closed behavior
         if: always()
-        run: node --test tests/frontend_portfolio_terminology.test.mjs
+        run: node --test --test-name-pattern="semantic typography bridge fails closed" tests/frontend_design_typography_bridge.test.mjs
+      - name: PerformanceChart semantic typography source contract
+        if: always()
+        run: node --test --test-name-pattern="PerformanceChart consumes" tests/frontend_design_typography_bridge.test.mjs
+      - name: Portfolio surface terminology
+        if: always()
+        run: node --test --test-name-pattern="current portfolio UI names" tests/frontend_portfolio_terminology.test.mjs
+      - name: Portfolio misleading-label exclusion
+        if: always()
+        run: node --test --test-name-pattern="misleading cash-inclusive" tests/frontend_portfolio_terminology.test.mjs
+      - name: Portfolio documentation terminology
+        if: always()
+        run: node --test --test-name-pattern="documentation states" tests/frontend_portfolio_terminology.test.mjs
       - name: Gate existing strategy terminology contract
         if: always()
         run: node --test tests/frontend_strategy_group_overview.test.mjs
