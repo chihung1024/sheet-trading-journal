@@ -1,0 +1,10 @@
+name: R1 preflight marker
+
+on:
+  workflow_dispatch:
+
+jobs:
+  marker:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Temporary marker should never be merged"
