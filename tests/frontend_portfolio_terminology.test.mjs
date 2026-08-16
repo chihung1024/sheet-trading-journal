@@ -8,19 +8,19 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 
 const CURRENT_UI = [
-  'src/components/StatsGrid.vue',
+  'src/components/OverviewHeadline.vue',
   'src/components/StrategyGroupOverview.vue',
   'src/components/PerformanceChart.vue',
 ];
 
 test('current portfolio UI names securities values according to the actual calculator semantics', () => {
-  const stats = read('src/components/StatsGrid.vue');
+  const headline = read('src/components/OverviewHeadline.vue');
   const strategy = read('src/components/StrategyGroupOverview.vue');
   const chart = read('src/components/PerformanceChart.vue');
 
-  assert.match(stats, /持倉市值/);
-  assert.match(stats, /持倉成本/);
-  assert.match(stats, /未實現報酬率:/);
+  assert.match(headline, /持倉市值/);
+  assert.match(headline, /持倉成本/);
+  assert.match(headline, /未實現報酬率/);
   assert.match(strategy, /持倉市值/);
   assert.match(strategy, /持倉成本/);
   assert.match(chart, />持倉市值<\/button>/);
