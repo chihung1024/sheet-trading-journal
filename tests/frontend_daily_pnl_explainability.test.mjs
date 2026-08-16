@@ -153,14 +153,19 @@ test('ledger and published summary mismatch fails closed', () => {
   assert.equal(result.reason, 'summary_mismatch');
 });
 
-test('StatsGrid delegates group selection and exposes a mobile-accessible explanation control', async () => {
+test('OverviewPage owns group selection while StatsGrid only presents the reviewed explanation', async () => {
+  const overviewSource = await readFile(new URL('../src/components/OverviewPage.vue', import.meta.url), 'utf8');
   const statsSource = await readFile(new URL('../src/components/StatsGrid.vue', import.meta.url), 'utf8');
   const detailSource = await readFile(new URL('../src/components/DailyPnlExplanation.vue', import.meta.url), 'utf8');
 
-  assert.match(statsSource, /selectCurrentGroupDayLedger\(\{/);
-  assert.match(statsSource, /rawData:\s*store\.rawData/);
-  assert.match(statsSource, /currentGroup:\s*store\.currentGroup/);
-  assert.match(statsSource, /buildDailyPnlExplanation/);
+  assert.match(overviewSource, /selectCurrentGroupDayLedger\(\{/);
+  assert.match(overviewSource, /rawData:\s*store\.rawData/);
+  assert.match(overviewSource, /currentGroup:\s*store\.currentGroup/);
+  assert.match(overviewSource, /buildDailyPnlExplanation/);
+  assert.match(overviewSource, /:daily-pnl-explanation="dailyPnlExplanation"/);
+
+  assert.doesNotMatch(statsSource, /selectCurrentGroupDayLedger|buildDailyPnlExplanation/);
+  assert.match(statsSource, /dailyPnlExplanation:\s*\{\s*type:\s*Object,\s*required:\s*true/);
   assert.match(statsSource, /:aria-expanded="isDailyExplanationOpen"/);
   assert.match(statsSource, /aria-controls="daily-pnl-explanation"/);
   assert.match(statsSource, /查看損益來源/);

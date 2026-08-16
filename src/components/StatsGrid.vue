@@ -131,13 +131,12 @@
 import { computed, ref, watch } from 'vue';
 import DailyPnlExplanation from './DailyPnlExplanation.vue';
 import { usePortfolioStore } from '../stores/portfolio';
-import {
-  buildDailyPnlExplanation,
-  selectCurrentGroupDayLedger,
-} from '../services/dailyPnlExplainability.js';
 import { isTwrSummaryAvailable } from '../services/twrState.js';
 
 const store = usePortfolioStore();
+const props = defineProps({
+  dailyPnlExplanation: { type: Object, required: true },
+});
 
 const stats = computed(() => store.stats || {});
 const history = computed(() => store.history || []);
@@ -153,14 +152,7 @@ const roi = computed(() => {
 
 const dailyPnL = computed(() => store.dailyPnL || 0);
 const dailyPnlBreakdown = computed(() => stats.value.daily_pnl_breakdown || null);
-const currentDayLedger = computed(() => selectCurrentGroupDayLedger({
-  rawData: store.rawData,
-  currentGroup: store.currentGroup,
-}));
-const dailyPnlExplanation = computed(() => buildDailyPnlExplanation({
-  dayLedger: currentDayLedger.value,
-  summary: stats.value,
-}));
+const dailyPnlExplanation = computed(() => props.dailyPnlExplanation);
 const isDailyExplanationOpen = ref(false);
 
 watch(
