@@ -19,3 +19,14 @@ test('retired duplicate overview surfaces cannot silently return', () => {
   assert.match(overview, /OverviewHeadline/);
   assert.match(overview, /OverviewContext/);
 });
+
+test('shared layout contract cannot preserve dead selectors from the retired overview IA', () => {
+  const consistency = read('src/styles/product-consistency.css');
+  assert.doesNotMatch(consistency, /\.daily-command|\.command-grid|\.command-card|\.stats-grid|\.stat-block/);
+});
+
+test('overview relies on the chart own heading rather than stacking a second trend heading', () => {
+  const overview = read('src/components/OverviewPage.vue');
+  assert.match(overview, /<PerformanceChart/);
+  assert.doesNotMatch(overview, /trend-heading|overview-trend-title|績效與趨勢/);
+});
