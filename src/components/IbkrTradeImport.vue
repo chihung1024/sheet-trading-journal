@@ -214,31 +214,46 @@ const resultTitle = computed(() => {
   const status = result.value?.status;
   if (status === 'committed') return '匯入完成';
   if (status === 'replayed') return '沒有重複新增';
-  if (status === 'committed_with_sync_warning') return '交易已保存，資料同步尚未完成';
-  if (status === 'replayed_with_sync_warning') return '交易已存在，最新清單暫時無法重新載入';
+  if (status === 'committed_with_sync_warning') return '交易已保存，部分後續資訊需留意';
+  if (status === 'replayed_with_sync_warning') return '交易已存在，部分來源資訊需留意';
   if (status === 'partial_failure') return '部分交易已處理';
   return '匯入未完成';
 });
 
 const resultMessage = computed(() => {
   if (!result.value) return '';
+  const metadataUpdated = Number(result.value.metadataUpdated || 0);
+  const metadataWarnings = result.value.sync?.metadataWarnings?.length || 0;
+  const metadataSummary = metadataUpdated > 0 ? `成交來源資訊已補充 ${metadataUpdated} 筆。` : '';
+  const metadataWarning = metadataWarnings > 0
+    ? `有 ${metadataWarnings} 筆成交來源資訊尚未補齊；交易本身已保存或確認存在，不會因此重複新增。重新匯入同一檔案可安全重試來源資訊補充。`
+    : '';
   const base = `已處理 ${result.value.processed}/${result.value.total} 筆；新增 ${result.value.created} 筆，已存在 ${result.value.replayed} 筆。`;
+  const withMetadata = suffix => [base, metadataSummary, metadataWarning, suffix].filter(Boolean).join(' ');
   if (result.value.status === 'partial_failure') {
     const ambiguity = result.value.failure?.outcomeAmbiguous === true
       ? '最後一筆回應不確定，請直接重新匯入同一檔案確認；已成功項目不會重複新增。'
       : '後續寫入已停止。修正問題後可重新匯入同一檔案；已成功項目不會重複新增。';
-    return `${base} ${ambiguity}`;
+    return withMetadata(ambiguity);
   }
   if (result.value.status === 'committed_with_sync_warning') {
-    return `${base} 帳本寫入已確認，不需要重新匯入；稍後重新整理或使用「立即更新」即可繼續同步。`;
+    const ledgerSyncWarning = (
+      result.value.sync?.readbackError
+      || result.value.sync?.updateError
+      || result.value.sync?.recoveryWarnings?.length > 0
+    ) ? '帳本寫入已確認，不需要重新匯入；稍後重新整理或使用「立即更新」即可繼續同步。' : '';
+    return withMetadata(ledgerSyncWarning);
   }
   if (result.value.status === 'replayed_with_sync_warning') {
-    return `${base} 不需要重新匯入；稍後重新整理即可。`;
+    const readbackWarning = result.value.sync?.readbackError
+      ? '交易已存在，不需要重新匯入；稍後重新整理即可。'
+      : '';
+    return withMetadata(readbackWarning);
   }
   if (result.value.status === 'failed') {
-    return `${base} 沒有已確認的新寫入。請依提示修正後再試。`;
+    return withMetadata('沒有已確認的新寫入。請依提示修正後再試。');
   }
-  return base;
+  return withMetadata('');
 });
 
 const chooseFile = () => {
@@ -346,7 +361,11 @@ const confirmImport = async () => {
       : resultTone.value === 'error'
         ? 'error'
         : 'warning';
-    addToast(`${resultTitle.value}：新增 ${result.value.created}、已存在 ${result.value.replayed}`, type);
+    const metadataToast = result.value.metadataUpdated > 0 ? `、來源資訊 ${result.value.metadataUpdated}` : '';
+    const metadataWarningToast = result.value.sync?.metadataWarnings?.length > 0
+      ? `、來源提醒 ${result.value.sync.metadataWarnings.length}`
+      : '';
+    addToast(`${resultTitle.value}：新增 ${result.value.created}、已存在 ${result.value.replayed}${metadataToast}${metadataWarningToast}`, type);
   } catch (error) {
     result.value = {
       status: 'failed',

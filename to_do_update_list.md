@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 Event / Timeline Contract Audit is CLOSED / VERIFIED. R2.2A nullable timeline-metadata storage expansion is CLOSED / PRODUCTION VERIFIED. R2.2B Metadata API Activation + Writer Semantics is CLOSED / PRODUCTION VERIFIED. Production now serves exact runtime source `cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3` at release `4.09` / API `2.62` / schema `3`, Worker Version ID `11593548-e848-4e22-8504-989234c6ca47`. Metadata storage/API semantics are live; Python calculation-order activation remains explicitly disabled. The current product batch is R2.2C Transaction Timeline Detail UX + Shadow Metadata Transport.**
+Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 is CLOSED / VERIFIED. R2.2A and R2.2B are CLOSED / PRODUCTION VERIFIED. R2.2C-A read-only detail UX, R2.2C-B Python shadow metadata transport, and R2.2C-C idempotent metadata-only enrichment API are CLOSED / VERIFIED; C-C is PRODUCTION VERIFIED. Production serves exact runtime source `fe81a06586b566444dd53e416c96255059bb3fdb` at release `4.10` / API `2.63` / schema `3`, Worker Version ID `297251da-a5ec-48a1-ab24-c1d8742809c8`. Python calculation-order activation remains explicitly disabled. The current product batch is R2.2C-D IBKR Source Metadata Capture + Safe Enrichment Caller.**
 
 ---
 
@@ -56,17 +56,17 @@ Verification:
 
 Current production Worker runtime source:
 
-`cc889dc4e497351528fb9efdfbd1ae2db5b6d3a3`
+`fe81a06586b566444dd53e416c96255059bb3fdb`
 
 Current Worker Version ID:
 
-`11593548-e848-4e22-8504-989234c6ca47`
+`297251da-a5ec-48a1-ab24-c1d8742809c8`
 
-Runtime contract: release `4.09`, API `2.62`, schema `3`. R2.2B optional transaction metadata read/write semantics are live in production. Physical schema authority remains 3 because migration `0004_record_timeline_metadata_expand.sql` was already applied by R2.2A; Deploy Worker #9 reported no remote migrations to apply. Python calculation ordering remains on the pre-R2.2B deterministic contract and must not use partial metadata coverage.
+Runtime contract: release `4.10`, API `2.63`, schema `3`. R2.2C-C metadata-only enrichment is live in production on top of the R2.2B metadata read/write semantics. Physical schema authority remains 3 because migration `0004_record_timeline_metadata_expand.sql` was already applied by R2.2A; Deploy Worker #10 again reported `No migrations to apply!`. Python calculation ordering remains on the existing deterministic contract and must not use partial metadata coverage.
 
 Current production activation/deployment control-plane merge:
 
-`c30e2671eb6aaddecbfa473ed813abbba2eef7a7`
+`6b53e1ea915b48ef2dd9c1fc97e078e4e8849f84`
 
 R2.1 authoritative repository checkpoint:
 
@@ -135,6 +135,7 @@ A later docs-only merge may advance repository `main` without changing product r
 - **R2.1 Event / Timeline Contract Audit — CLOSED / VERIFIED**
 - **R2.2A Nullable Timeline Metadata Storage Expansion — CLOSED / PRODUCTION VERIFIED**
 - **R2.2B Metadata API Activation + Writer Semantics — CLOSED / PRODUCTION VERIFIED**
+- **R2.2C Transaction Timeline Detail + Source Metadata Capture — ACTIVE; C-A/B/C closed, C-D current**
 
 ---
 
@@ -408,6 +409,36 @@ Production boundary:
 - `execution_sequence` remains opaque until a reviewed source-specific comparator contract exists;
 - the next product work may present/transport metadata, but calculation ordering requires a separate evidence gate.
 
+#### R2.2C — Transaction Timeline Detail + Source Metadata Capture — ACTIVE
+
+Closed sub-batches:
+
+- **R2.2C-A Read-only metadata detail UX** — PR #314 head `ddd4da9a72348c095b51ae08d401fdb843f9f40c`, merge `be4eb3279af084f2acbfa232283db181029dee87`; exact-head CI #1093 and post-main CI #1094 / Pages #1594 passed. Stored metadata is shown only in the shared transaction detail surface; list ordering and valuation authority were not changed.
+- **R2.2C-B Python shadow metadata transport** — PR #315 head `1c0a746a509974f9b854cbc20a8e14274b4b4500`, merge `65645024d7d94fb1b890feb9e45a28fbbf1d5e7d`; CI #1095, post-main CI #1096 and Pages #1595 passed. Lower-case metadata columns are transported but are deliberately not aliased to calculator `Timestamp` / `Sequence`; chronology remains disabled.
+- **R2.2C-C Idempotent metadata-only enrichment API** — PR #316 head `6848500b640cba8667b2dcf42de2abfbb02bfc94`, runtime source/merge `fe81a06586b566444dd53e416c96255059bb3fdb`; exact-head CI #1097 / run `31940363921`, frozen review `4945918738`, post-main CI #1098 / Pages #1596 passed. The user-only `PUT /api/records/metadata` performs tenant-scoped atomic fill-only enrichment guarded by expected economic fields and never overwrites authoritative metadata or transaction economics.
+
+R2.2C-C production activation closeout:
+
+1. Production Identity Evidence #23 / run `31941927006`: **SUCCESS** for exact runtime source `fe81a06586b566444dd53e416c96255059bb3fdb`;
+2. identity artifact `9262258229`, digest `sha256:1f605b54f4335aafc232f3e6c2850e08fe92eb799b2f756a6e67ca274dda0e8b`: sanitized PASS / all production identity, Pages and CSP checks true / `errors=[]`;
+3. activation PR #317 exact head `155b34826b776623e072fbe120a72ec45e286dad`; CI #1099 / run `31942066904`: **SUCCESS**; frozen review `4945976036`: **PASS**; normal merge/control plane `6b53e1ea915b48ef2dd9c1fc97e078e4e8849f84`;
+4. Production Deployment Dispatch Broker #7 / run `31942122506`: **SUCCESS**;
+5. reviewer-protected Deploy Worker #10 / run `31942127294`: **SUCCESS**; remote D1 reported `No migrations to apply!` and canonical Worker deployed release `4.10` / API `2.63` / schema `3`;
+6. Worker Version ID `297251da-a5ec-48a1-ab24-c1d8742809c8`;
+7. propagation attempt #2 correctly observed an old edge and reset the stability counter; attempts #3–#5 then passed three consecutive full contracts, preserving the fail-safe rollout rule;
+8. post-deploy artifact `9262381868`, digest `sha256:b25346e1a0cd4d5df0e8d120591f06aafed714155d501535790954b555039158`: `/version=200`, `/health=200`, anonymous records `401`, production origins `204`, staging/localhost/127.0.0.1 origins `403`.
+
+Current primary batch — **R2.2C-D IBKR Source Metadata Capture + Safe Enrichment Caller**:
+
+- keep the existing IBKR legacy POST payload and durable idempotency key unchanged;
+- after confirmed create/replay, enrich the returned record id through the production-verified metadata-only endpoint;
+- capture source currency and privacy-safe IBKR provenance; never persist Account ID as metadata;
+- only persist `executed_at` when the source timestamp is genuinely offset-aware; timezone-less `YYYYMMDD;HHMMSS` remains unknown;
+- multi-fill orders do not invent one execution timestamp when authoritative fill times differ;
+- metadata-only success refreshes record detail state but does not request Python recalculation;
+- metadata enrichment failure is a source-information warning, never a false transaction-write failure;
+- Python chronology remains disabled until a separate coverage/comparator evidence gate.
+
 #### R2 cash/account truth
 
 Explicit cash must be event-driven and multi-currency. Candidate event classes require design/review before schema activation, including:
@@ -441,7 +472,7 @@ A safe R2 sequence is:
 1. canonical event/timeline contract + backward compatibility — **R2.1 CLOSED / VERIFIED**;
 2. physical nullable transaction metadata expansion — **R2.2A CLOSED / PRODUCTION VERIFIED**;
 3. metadata API activation + writer/idempotency/amendment semantics — **R2.2B CLOSED / PRODUCTION VERIFIED**;
-4. timeline/detail presentation + shadow Python metadata transport — **R2.2C CURRENT**, still without calculation-order activation;
+4. timeline/detail presentation + shadow Python metadata transport + safe source enrichment — **R2.2C CURRENT; C-A/B/C CLOSED, C-D CURRENT**, still without calculation-order activation;
 5. explicit cash event storage/model;
 6. shadow cash ledger calculation;
 7. reconciliation and migration UX;

@@ -9,6 +9,7 @@ const freezeResult = value => Object.freeze({
   sync: Object.freeze({
     ...value.sync,
     recoveryWarnings: Object.freeze(value.sync.recoveryWarnings || []),
+    metadataWarnings: Object.freeze(value.sync.metadataWarnings || []),
   }),
 });
 
@@ -31,7 +32,9 @@ export const runIbkrTradeImportBatch = async (
   let created = 0;
   let replayed = 0;
   let failure = null;
+  let metadataUpdated = 0;
   const recoveryWarnings = [];
+  const metadataWarnings = [];
 
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
@@ -45,6 +48,16 @@ export const runIbkrTradeImportBatch = async (
       processed += 1;
       if (outcome.deduplicated === true) replayed += 1;
       else created += 1;
+      if (outcome.metadataUpdated === true) metadataUpdated += 1;
+      if (outcome.metadataEnrichmentError) {
+        metadataWarnings.push(Object.freeze({
+          index,
+          entry,
+          error: outcome.metadataEnrichmentError,
+          outcomeAmbiguous: outcome.metadataOutcomeAmbiguous === true,
+          deduplicated: outcome.deduplicated === true,
+        }));
+      }
       if (outcome.recoveryStateError) {
         recoveryWarnings.push(Object.freeze({
           index,
@@ -69,7 +82,9 @@ export const runIbkrTradeImportBatch = async (
   // verification is deliberately bound to the exact records array and a no-op import must
   // not invalidate that proof. Read back only when the ledger actually changed or may have.
   const ledgerMayHaveChanged = created > 0 || failure?.outcomeAmbiguous === true;
-  const shouldRefresh = ledgerMayHaveChanged;
+  const metadataMayHaveChanged = metadataUpdated > 0
+    || metadataWarnings.some(item => item.outcomeAmbiguous === true);
+  const shouldRefresh = ledgerMayHaveChanged || metadataMayHaveChanged;
   let readbackError = null;
   let updateError = null;
   let readbackAttempted = false;
@@ -99,6 +114,7 @@ export const runIbkrTradeImportBatch = async (
     updateAttempted,
     updateError,
     recoveryWarnings,
+    metadataWarnings,
   };
 
   if (failure) {
@@ -108,12 +124,18 @@ export const runIbkrTradeImportBatch = async (
       processed,
       created,
       replayed,
+      metadataUpdated,
       failure,
       sync,
     });
   }
 
-  const hasSyncWarning = Boolean(readbackError || updateError || recoveryWarnings.length > 0);
+  const hasSyncWarning = Boolean(
+    readbackError
+    || updateError
+    || recoveryWarnings.length > 0
+    || metadataWarnings.length > 0
+  );
 
   if (created === 0) {
     return freezeResult({
@@ -122,6 +144,7 @@ export const runIbkrTradeImportBatch = async (
       processed,
       created,
       replayed,
+      metadataUpdated,
       failure: null,
       sync,
     });
@@ -133,6 +156,7 @@ export const runIbkrTradeImportBatch = async (
     processed,
     created,
     replayed,
+    metadataUpdated,
     failure: null,
     sync,
   });
