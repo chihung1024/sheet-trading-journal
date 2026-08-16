@@ -15,6 +15,7 @@ from journal_engine.core.calculation_manifest import (
     resolve_engine_source_commit,
 )
 from journal_engine.core.calculator import PortfolioCalculator
+from journal_engine.core.cash_ledger import build_shadow_cash_ledger
 from journal_engine.core.currency_detector import CurrencyDetector
 from journal_engine.core.daily_pnl_reconciler import reconcile_snapshot_daily_pnl
 from journal_engine.core.ledger_integrity import validate_transaction_prefix_integrity
@@ -87,6 +88,42 @@ def setup_logging() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
+
+def observe_shadow_cash_ledger(api_client, user_id: str, raw_user_df: pd.DataFrame):
+    """Collect privacy-safe, non-authoritative cash completeness evidence."""
+    logger = logging.getLogger("main")
+    try:
+        cash_events = api_client.fetch_cash_events(user_id)
+    except Exception as exc:  # Shadow observation must never block the securities snapshot.
+        logger.warning(
+            "Cash shadow evidence unavailable [stage=feed,error=%s]",
+            type(exc).__name__,
+        )
+        return None
+
+    try:
+        report = build_shadow_cash_ledger(raw_user_df, cash_events)
+    except Exception as exc:  # Fail open only for this non-authoritative observation surface.
+        logger.warning(
+            "Cash shadow evidence unavailable [stage=derive,error=%s]",
+            type(exc).__name__,
+        )
+        return None
+
+    currencies = sorted(summary.currency for summary in report.currencies)
+    issue_codes = sorted({issue.code for issue in report.issues})
+    logger.info(
+        "Cash shadow evidence [complete=%s,transaction_rows=%s,resolved_transaction_rows=%s,cash_event_rows=%s,resolved_cash_event_rows=%s,currencies=%s,issue_codes=%s]",
+        report.complete,
+        report.transaction_rows,
+        report.resolved_transaction_rows,
+        report.cash_event_rows,
+        report.resolved_cash_event_rows,
+        currencies,
+        issue_codes,
+    )
+    return report
 
 
 def mask_user_id(user_id: Optional[str]) -> str:
@@ -414,6 +451,8 @@ def run_update() -> None:
             raw_user_df = df[df["user_id"] == user_id].copy(deep=True)
             if raw_user_df.empty:
                 raise PortfolioUpdateError("使用者交易資料意外為空")
+
+            observe_shadow_cash_ledger(api_client, user_id, raw_user_df)
 
             validation_df = build_split_adjusted_validation_ledger(
                 raw_user_df,

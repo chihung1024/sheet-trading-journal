@@ -165,6 +165,39 @@ class CloudflareClient:
 
         raise CloudflareAPIError("交易紀錄 API 分頁數超過安全上限")
 
+    def fetch_cash_events(self, target_user_id: str) -> List[Dict[str, Any]]:
+        """Fetch one tenant's explicit cash events for non-authoritative shadow evidence."""
+        target = str(target_user_id or "").strip()
+        if not target:
+            raise CloudflareAPIError("cash-events target user is required")
+        try:
+            response = requests.get(
+                f"{self.api_base_url}/api/cash-events",
+                headers=self._headers(target),
+                timeout=REQUEST_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            raise CloudflareAPIError("cash-events read failed") from exc
+        if response.status_code != 200:
+            raise CloudflareAPIError(
+                f"cash-events read failed [status={response.status_code}]"
+            )
+        payload = self._decode_json(response, "cash-events read")
+        if payload.get("success") is not True:
+            raise CloudflareAPIError("cash-events read requires success=true")
+        events = payload.get("cash_events")
+        if not isinstance(events, list) or any(not isinstance(item, dict) for item in events):
+            raise CloudflareAPIError("cash-events read returned invalid cash_events")
+        seen_ids = set()
+        for event in events:
+            event_id = event.get("id")
+            if isinstance(event_id, bool) or not isinstance(event_id, int) or event_id <= 0:
+                raise CloudflareAPIError("cash-events read returned invalid event id")
+            if event_id in seen_ids:
+                raise CloudflareAPIError("cash-events read returned duplicate event id")
+            seen_ids.add(event_id)
+        return events
+
     def resolve_calculation_job_context(self, calculation_job_id: str) -> Tuple[str, str]:
         """Resolve the owner and durable benchmark for one running opaque job."""
         job_id = str(calculation_job_id or "").strip()

@@ -161,9 +161,9 @@ async function createViaHandler(db, event, key = KEY_A, user = USER) {
   );
 }
 
-test("R2.3B runtime advances API only while schema authority stays 3 and cash table becomes health-critical", async () => {
-  assert.equal(__test.RELEASE_VERSION, "4.11");
-  assert.equal(__test.API_VERSION, "2.64");
+test("R2.4B advances the read-only cash feed API while schema authority stays 3", async () => {
+  assert.equal(__test.RELEASE_VERSION, "4.12");
+  assert.equal(__test.API_VERSION, "2.65");
   assert.equal(__test.REQUIRED_SCHEMA_VERSION, 3);
   const worker = await readFile("worker.js", "utf8");
   assert.match(worker, /CORE_DATA_TABLES = \[[^\]]*"cash_events"/);
@@ -171,9 +171,10 @@ test("R2.3B runtime advances API only while schema authority stays 3 and cash ta
   assert.doesNotMatch(migration, /UPDATE schema_metadata/);
 });
 
-test("cash routes are user-only and do not widen system authority", () => {
+test("cash mutations remain user-only while GET permits trusted targeted system reads", () => {
+  assert.equal(__test.authorize({ kind: "user" }, "GET /api/cash-events"), true);
+  assert.equal(__test.authorize({ kind: "system" }, "GET /api/cash-events"), true);
   for (const route of [
-    "GET /api/cash-events",
     "POST /api/cash-events",
     "PUT /api/cash-events",
     "DELETE /api/cash-events",
@@ -377,4 +378,79 @@ test("cross-tenant update and delete classify as not found without leaking anoth
   );
   assert.equal(deletion.status, 404);
   assert.equal(rows.length, 1);
+});
+
+
+test("cash-event GET authorizes tenant user and trusted system while mutations stay user-only", () => {
+  assert.equal(__test.authorize({ kind: "user" }, "GET /api/cash-events"), true);
+  assert.equal(__test.authorize({ kind: "system" }, "GET /api/cash-events"), true);
+  for (const method of ["POST", "PUT", "DELETE"]) {
+    assert.equal(__test.authorize({ kind: "system" }, `${method} /api/cash-events`), false);
+  }
+});
+
+test("system cash-event GET requires explicit target and returns only target public rows", async () => {
+  const rows = [{
+    id: 91,
+    user_id: "target@example.com",
+    event_date: "2026-08-01",
+    event_type: "OPENING_BALANCE",
+    amount: 125,
+    currency: "USD",
+    note: "private note",
+    event_source: "MANUAL",
+    create_idempotency_hash: "a".repeat(64),
+    create_payload_hash: "b".repeat(64),
+    created_at: "2026-08-01 00:00:00",
+    updated_at: "2026-08-01 00:00:00",
+  }];
+  const seen = [];
+  const env = { DB: { prepare(sql) { return { bind(userId) { seen.push(userId); return { async all() { return { results: rows }; } }; } }; } } };
+
+  const missing = await __test.handleGetCashEvents(
+    env,
+    { kind: "system" },
+    "req-missing",
+  );
+  assert.equal(missing.status, 400);
+  const missingPayload = await missing.json();
+  assert.equal(missingPayload.error_meta.code, "INVALID_REQUEST");
+  assert.equal(seen.length, 0);
+
+  const invalid = await __test.handleGetCashEvents(
+    env,
+    { kind: "system" },
+    "req-invalid",
+    "not-an-email",
+  );
+  assert.equal(invalid.status, 400);
+  assert.equal(seen.length, 0);
+
+  const response = await __test.handleGetCashEvents(
+    env,
+    { kind: "system" },
+    "req-system",
+    "target@example.com",
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(seen, ["target@example.com"]);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.cash_events.length, 1);
+  assert.equal("user_id" in payload.cash_events[0], false);
+  assert.equal("create_idempotency_hash" in payload.cash_events[0], false);
+  assert.equal("create_payload_hash" in payload.cash_events[0], false);
+});
+
+test("tenant cash-event GET remains pinned to authenticated owner even if target header is supplied", async () => {
+  const seen = [];
+  const env = { DB: { prepare() { return { bind(userId) { seen.push(userId); return { async all() { return { results: [] }; } }; } }; } } };
+  const response = await __test.handleGetCashEvents(
+    env,
+    { kind: "user", email: "owner@example.com" },
+    "req-user",
+    "other@example.com",
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(seen, ["owner@example.com"]);
 });

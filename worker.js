@@ -1,11 +1,11 @@
 /**
  * Worker: Trading Journal API
- * v2.64 / authenticated explicit cash-event CRUD with durable idempotency and optimistic conflicts.
+ * v2.65 / explicitly targeted system cash-event read feed for shadow reconciliation.
  */
 
 const SERVICE_NAME = "trading-journal-api";
-const RELEASE_VERSION = "4.11";
-const API_VERSION = "2.64";
+const RELEASE_VERSION = "4.12";
+const API_VERSION = "2.65";
 const GITHUB_DISPATCH = Object.freeze({
   owner: "chihung1024",
   repository: "sheet-trading-journal",
@@ -92,7 +92,7 @@ const ROUTE_PERMISSIONS = Object.freeze({
   "PUT /api/records": new Set(["user"]),
   "PUT /api/records/metadata": new Set(["user"]),
   "DELETE /api/records": new Set(["user"]),
-  "GET /api/cash-events": new Set(["user"]),
+  "GET /api/cash-events": new Set(["user", "system"]),
   "POST /api/cash-events": new Set(["user"]),
   "PUT /api/cash-events": new Set(["user"]),
   "DELETE /api/cash-events": new Set(["user"]),
@@ -183,7 +183,12 @@ export default {
           response = await handleDeleteRecord(request, env, principal, requestId);
           break;
         case "GET /api/cash-events":
-          response = await handleGetCashEvents(env, principal, requestId);
+          response = await handleGetCashEvents(
+            env,
+            principal,
+            requestId,
+            request.headers.get("X-Target-User"),
+          );
           break;
         case "POST /api/cash-events":
           response = await handleAddCashEvent(request, env, principal, requestId);
@@ -1112,9 +1117,19 @@ async function handleDeleteRecord(request, env, principal, requestId) {
 
 
 
-async function handleGetCashEvents(env, principal, requestId) {
+async function handleGetCashEvents(env, principal, requestId, targetHeader = null) {
+  let targetUser;
   try {
-    const events = await cashEventsRepository.list(env.DB, principal.email);
+    targetUser = resolveSettingsTarget(principal, targetHeader);
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return apiError("INVALID_REQUEST", error.message, 400, requestId);
+    }
+    throw error;
+  }
+
+  try {
+    const events = await cashEventsRepository.list(env.DB, targetUser);
     return jsonResponse({ success: true, cash_events: events });
   } catch (error) {
     console.error(`[request_id=${requestId}] Cash event read failed`, safeErrorName(error));
