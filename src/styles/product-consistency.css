@@ -40,7 +40,6 @@
 }
 
 .card,
-.daily-command,
 .chart-wrapper,
 .strategy-overview-card {
   border-radius: var(--radius);
@@ -67,51 +66,8 @@
   min-height: var(--ui-control-height);
 }
 
-/* Overview density. Daily Command Center is compact by default. */
-.section-overview .daily-command {
-  padding: var(--ui-card-padding);
-}
-
-.section-overview .command-header {
-  margin-bottom: var(--ui-space-3);
-}
-
-.section-overview .command-summary-item {
-  padding: 10px 12px;
-}
-
-.section-overview .command-details {
-  margin-top: var(--ui-space-3);
-}
-
-.section-overview .command-grid {
-  gap: var(--ui-space-3);
-}
-
-.section-overview .command-card {
-  min-height: 112px;
-  padding: 13px 15px;
-  display: flex;
-  flex-direction: column;
-}
-
-.section-overview .card-heading {
-  margin-bottom: var(--ui-space-2);
-}
-
-.section-overview .detail-link {
-  margin-top: auto;
-  padding-top: var(--ui-space-3);
-}
-
-.section-overview .stats-grid {
-  gap: var(--ui-page-gap);
-}
-
-.section-overview .stat-block {
-  padding: var(--ui-card-padding);
-  min-height: 140px;
-}
+/* Overview page rhythm is owned by the current Overview components themselves.
+   Do not reintroduce retired DailyCommandCenter/StatsGrid selectors here. */
 
 /* Holdings, records and dividends share one toolbar/table density. */
 .section-holdings .card-header,
@@ -178,10 +134,6 @@
 }
 
 @media (max-width: 900px) {
-  .section-overview .command-card {
-    min-height: auto;
-  }
-
   .section-records .desktop-view table {
     table-layout: auto;
   }
@@ -199,14 +151,6 @@
 
   .mobile-tabs {
     min-height: 46px;
-  }
-
-  .section-overview .command-grid {
-    gap: var(--ui-space-2);
-  }
-
-  .section-overview .stat-block {
-    min-height: 124px;
   }
 
   .section-groups .gm-section {
