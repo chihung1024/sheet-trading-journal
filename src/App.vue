@@ -2,7 +2,7 @@
   <div class="app-layout" :class="{ 'dark-mode': isDark }">
     <LoginOverlay v-if="!authStore.token" />
 
-    <div v-else class="main-wrapper">
+    <div v-else class="main-wrapper" :class="{ 'cash-view': activeView === 'cash' }">
       <header class="top-nav">
         <div class="nav-left">
           <div class="nav-brand">
@@ -139,6 +139,11 @@
             <TableSkeleton v-else />
           </section>
 
+          <!-- 現金管理：只管理 explicit cash events，不改變目前 NAV / 績效 -->
+          <section v-else-if="activeView === 'cash'" class="section-cash">
+            <CashManager />
+          </section>
+
           <!-- 群組管理：抽成元件 -->
           <section v-else-if="activeView === 'groups'" class="section-groups">
             <GroupManager />
@@ -146,7 +151,7 @@
         </main>
 
         <!-- Right: 桌面 sticky 交易面板；手機維持 sheet overlay -->
-        <aside class="side-column" :class="{ 'mobile-sheet': isMobileView, 'sheet-open': showMobileTrade }">
+        <aside v-if="activeView !== 'cash'" class="side-column" :class="{ 'mobile-sheet': isMobileView, 'sheet-open': showMobileTrade }">
           <div class="mobile-sheet-header" v-if="isMobileView">
             <h3>交易管理</h3>
             <button type="button" class="btn-close-sheet" @click="showMobileTrade = false">✕</button>
@@ -158,14 +163,14 @@
         </aside>
 
         <div
-          v-if="isMobileView && showMobileTrade"
+          v-if="isMobileView && activeView !== 'cash' && showMobileTrade"
           class="sheet-backdrop"
           @click="showMobileTrade = false"
         ></div>
       </div>
 
       <button
-        v-if="isMobileView"
+        v-if="isMobileView && activeView !== 'cash'"
         type="button"
         class="fab-btn"
         @click="openMobileTrade"
@@ -207,6 +212,7 @@ import TradeForm from './components/TradeForm.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import RecordList from './components/RecordList.vue';
 import DividendManager from './components/DividendManager.vue';
+import CashManager from './components/CashManager.vue';
 import GroupManager from './components/GroupManager.vue';
 
 import ChartSkeleton from './components/skeletons/ChartSkeleton.vue';
@@ -226,6 +232,7 @@ const views = [
   { key: 'holdings', label: '持倉明細', icon: '💼' },
   { key: 'records', label: '交易紀錄', icon: '🧾' },
   { key: 'dividends', label: '配息紀錄', icon: '💰' },
+  { key: 'cash', label: '現金', icon: '💵' },
   { key: 'groups', label: '群組管理', icon: '🏷️' },
 ];
 
@@ -302,6 +309,10 @@ watch(activeView, (v) => {
 // 手機版相關狀態
 const isMobileView = ref(false);
 const showMobileTrade = ref(false);
+
+watch(activeView, (view) => {
+  if (view === 'cash') showMobileTrade.value = false;
+});
 
 const updateMedia = () => {
   isMobileView.value = window.innerWidth < 1024;
@@ -520,6 +531,7 @@ onUnmounted(() => {
 /* Layout Grid */
 .main-wrapper { min-height: 100vh; display: flex; flex-direction: column; overflow-x: clip; }
 .content-container { max-width: var(--layout-max); margin: 0 auto; padding: var(--space-desktop) 24px 24px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; width: 100%; align-items: start; overflow-x: clip; }
+.main-wrapper.cash-view .content-container { grid-template-columns: minmax(0, 1fr); }
 .main-column { display: flex; flex-direction: column; gap: var(--space-desktop); min-width: 0; overflow-x: hidden; }
 .side-column { min-width: 0; }
 

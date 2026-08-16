@@ -5,7 +5,7 @@
 > Detailed Phase 1–6 chronology remains archived at `docs/archive/to_do_update_list_through_phase6.md`. Do not restart closed work from archive plans.
 
 Last updated: **2026-08-16 Asia/Taipei**  
-Current line: **R1 Decision Cockpit is CLOSED / PRODUCTION VERIFIED. R2.1 is CLOSED / VERIFIED. R2.2A/B are CLOSED / PRODUCTION VERIFIED and R2.2C-A/B/C/D are CLOSED / VERIFIED. Production Worker remains exact runtime source `fe81a06586b566444dd53e416c96255059bb3fdb` at release `4.10` / API `2.63` / schema `3`, Worker Version ID `297251da-a5ec-48a1-ab24-c1d8742809c8`; protected `main` recovery base is `9caaa399f1cb7f40bbb74c0eab3eb3e7065c190f`. Python calculation-order activation remains explicitly disabled. The single Primary Active Batch is R2.3A Explicit Cash Event Storage / Model: additive `cash_events` only, with no API, cash-ledger or NAV activation.**
+Current line: **R1 and R2.1/R2.2 are closed at their reviewed boundaries. R2.3A Explicit Cash Event Storage and R2.3B authenticated user-only Cash Event CRUD are CLOSED / PRODUCTION VERIFIED. Production Worker runs exact product runtime source `fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be` at release `4.11` / API `2.64` / schema `3`, Worker Version ID `68ba41ad-3118-4a24-b6b3-6e0640704f92`; protected control-plane `main` is `8ddf207ef51ec88e7864af125dee4ab30e626c87`. Python calculation-order and cash-ledger/NAV activation remain explicitly disabled. The single Primary Active Batch is R2.3C Cash Management UI.**
 
 ---
 
@@ -113,6 +113,17 @@ R2.2A repository closeout / production expansion gate:
 
 A later docs-only merge may advance repository `main` without changing product runtime. Always re-read fresh remote truth.
 
+### R2.3A / R2.3B production closeout — 2026-08-16
+
+- R2.3A production D1 applied `0005_cash_events_expand.sql`; additive `cash_events` is live without widening `records`.
+- R2.3B product/runtime source: `fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be` (PR #322); exact-head CI #1110 PASS; frozen review `4946293975` PASS / BLOCKER 0 / FOLLOW-UP 0; post-main CI #1111 and Pages #1602 PASS.
+- Production Identity Evidence #25 / run `31950409951`: PASS; artifact `9264479893`; digest `sha256:f777333130ed96d422bd22ffd9ebcba1fdb8ef0da24bd8f573b542e3b4eacada`.
+- Activation PR #323 exact head `4cd56711e7797befc434e008188d489a89ffab70`; CI #1112 PASS; frozen review `4946315073` PASS / BLOCKER 0 / FOLLOW-UP 0; merge/control-plane `8ddf207ef51ec88e7864af125dee4ab30e626c87`; post-main CI #1113 PASS; Dispatch Broker #9 PASS.
+- Deploy Worker #12 / run `31950674734`: SUCCESS after reviewer-protected production approval; no pending migrations; exact runtime source `fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be`; Worker Version ID `68ba41ad-3118-4a24-b6b3-6e0640704f92`; release `4.11` / API `2.64` / schema `3`; stable public contract 3/3 PASS.
+- Post-deploy artifact `9264672571`, digest `sha256:dbd88e7aad005e0ce3c56da6efd91a5d702d7030e4f5826bcabe194a2328495e`.
+- R2.3B exposes authenticated user-only `GET/POST/PUT/DELETE /api/cash-events`; system/API-secret writer authority, Python cash ledger, account NAV/performance cutover and chronology activation remain disabled.
+- **Primary Active Batch: R2.3C Cash Management UI.**
+
 ### Product state
 
 - Phase 1 Multi-Market Transaction Experience — CLOSED / PRODUCTION VERIFIED
@@ -136,7 +147,9 @@ A later docs-only merge may advance repository `main` without changing product r
 - **R2.2A Nullable Timeline Metadata Storage Expansion — CLOSED / PRODUCTION VERIFIED**
 - **R2.2B Metadata API Activation + Writer Semantics — CLOSED / PRODUCTION VERIFIED**
 - **R2.2C Transaction Timeline Detail + Source Metadata Capture — CLOSED / VERIFIED; C-D LIVE ON PAGES**
-- **R2.3A Explicit Cash Event Storage / Model — ACTIVE; REPOSITORY IMPLEMENTATION, PRODUCTION NOT YET ACTIVATED**
+- **R2.3A Explicit Cash Event Storage / Model — CLOSED / PRODUCTION VERIFIED**
+- **R2.3B Authenticated Cash Event CRUD — CLOSED / PRODUCTION VERIFIED**
+- **R2.3C Cash Management UI — ACTIVE; no cash-ledger/NAV activation**
 
 ---
 
@@ -450,7 +463,7 @@ R2.2C-D verification:
 - Pages #1598 / run `31943156132`: **SUCCESS** for exact merge `bf8b7078ff139f4b1727fe6d1bfff16a64201136`;
 - no Worker/D1/schema deployment occurred in C-D; production Worker remains release `4.10` / API `2.63` / schema `3`.
 
-#### R2.3A — Explicit Cash Event Storage / Model — ACTIVE
+#### R2.3A — Explicit Cash Event Storage / Model — CLOSED / PRODUCTION VERIFIED
 
 Primary Goal:
 
