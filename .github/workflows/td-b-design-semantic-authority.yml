@@ -1,4 +1,4 @@
-# diagnostic revision: per-file-whitespace
+# final branch-only preflight before removing temporary tooling
 name: One-time TD-B design semantic authority cleanup
 
 on:
@@ -22,37 +22,35 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
       - name: Repair one-time codemod for reviewed exact semantics
         run: node tools/fix_td_b_codemod_parser.mjs
       - name: Apply bounded cleanup
         run: node tools/td_b_design_semantic_cleanup.mjs
-      - name: Hygiene README
-        if: always()
-        run: git diff --check -- README.md
-      - name: Hygiene models
-        if: always()
-        run: git diff --check -- journal_engine/models.py
-      - name: Hygiene PerformanceChart
-        if: always()
-        run: git diff --check -- src/components/PerformanceChart.vue
-      - name: Hygiene StatsGrid
-        if: always()
-        run: git diff --check -- src/components/StatsGrid.vue
-      - name: Hygiene StrategyGroupOverview
-        if: always()
-        run: git diff --check -- src/components/StrategyGroupOverview.vue
-      - name: Hygiene StatsGridSkeleton
-        if: always()
-        run: git diff --check -- src/components/skeletons/StatsGridSkeleton.vue
-      - name: Hygiene designTypography
-        if: always()
-        run: git diff --check -- src/services/designTypography.js
-      - name: Hygiene typography bridge test
-        if: always()
-        run: git diff --check -- tests/frontend_design_typography_bridge.test.mjs
-      - name: Hygiene terminology test
-        if: always()
-        run: git diff --check -- tests/frontend_portfolio_terminology.test.mjs
-      - name: Hygiene strategy regression
-        if: always()
-        run: git diff --check -- tests/frontend_strategy_group_overview.test.mjs
+      - name: Validate focused semantic contracts
+        run: |
+          node --test tests/frontend_design_typography_bridge.test.mjs
+          node --test tests/frontend_portfolio_terminology.test.mjs
+          node --test tests/frontend_strategy_group_overview.test.mjs
+          node --test tests/frontend_typography_authority.test.mjs
+      - name: Validate full frontend contracts
+        run: npm run test:frontend
+      - name: Validate production build
+        run: npm run build
+      - name: Compile touched Python model
+        run: python -m py_compile journal_engine/models.py
+      - name: Validate permanent patch hygiene
+        run: git diff --check -- README.md journal_engine/models.py src tests
+      - name: Commit cleanup result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src tests README.md journal_engine/models.py
+          git diff --cached --check
+          git diff --cached --quiet && exit 0
+          git commit -m "Refactor: close design and portfolio semantic authority debt"
+          git push origin HEAD:refactor/td-b-design-semantic-authority
