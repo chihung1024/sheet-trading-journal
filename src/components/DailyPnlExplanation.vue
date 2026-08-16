@@ -10,9 +10,6 @@
         <h3 id="daily-pnl-explanation-title">{{ groupLabel }}</h3>
         <p class="explanation-period">{{ periodLabel }}</p>
       </div>
-      <div class="published-total" :class="pnlClass(explanation.publishedTotalTwd)">
-        {{ signedTwd(explanation.publishedTotalTwd) }}
-      </div>
     </div>
 
     <div v-if="explanation.componentTotals.length" class="component-summary" aria-label="損益來源總結">
@@ -27,7 +24,7 @@
     </div>
 
     <div class="explanation-copy">
-      以下數字直接來自計算引擎已對帳的逐檔 day ledger，不在瀏覽器重新計算投資組合損益。畫面四捨五入至 TWD 整數；對帳仍使用原始未四捨五入數值。
+      以下數字直接來自計算引擎已對帳的逐檔 day ledger，不在瀏覽器重新計算投資組合損益。此區只解釋來源，不重複首頁已顯示的當日總損益。畫面四捨五入至 TWD 整數；對帳仍使用原始未四捨五入數值。
     </div>
 
     <div class="contributor-list">
@@ -137,7 +134,7 @@ const pnlClass = (value) => {
 
 <style scoped>
 .daily-pnl-explanation {
-  margin-top: 16px;
+  margin-top: 0;
   padding: 16px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
@@ -146,10 +143,6 @@ const pnlClass = (value) => {
 }
 
 .explanation-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
   margin-bottom: 12px;
 }
 
@@ -172,14 +165,6 @@ const pnlClass = (value) => {
   margin: 4px 0 0;
   color: var(--text-sub);
   font-size: var(--type-label);
-}
-
-.published-total {
-  flex: none;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: var(--type-emphasis);
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 .component-summary {
@@ -210,7 +195,7 @@ const pnlClass = (value) => {
   margin-bottom: 10px;
   color: var(--text-sub);
   font-size: var(--type-label);
-  line-height: 1.45;
+  line-height: var(--type-line-body);
 }
 
 .contributor-list {
@@ -310,19 +295,11 @@ const pnlClass = (value) => {
 
 @media (max-width: 768px) {
   .daily-pnl-explanation {
-    margin-top: 12px;
     padding: 12px;
   }
 
   .explanation-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
     margin-bottom: 10px;
-  }
-
-  .published-total {
-    font-size: var(--type-emphasis);
   }
 
   .component-summary {
