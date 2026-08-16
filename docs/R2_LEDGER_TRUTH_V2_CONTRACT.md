@@ -46,10 +46,11 @@ The contract below is constrained by current production-compatible behavior rath
 2. The Python batch runner also fail-closes on any transaction type outside `BUY`, `SELL`, `DIV`; it requires positive quantity and a symbol for every row.
 3. Source-ledger integrity uses deterministic `Date + record id` order and explicitly states that record id is **not** broker execution chronology.
 4. Manual entry currently provides a trade date only. Exact execution time therefore cannot be made mandatory without fabricating data.
-5. IBKR parsing already observes richer facts — account/profile scope, Order ID, Trade ID, currency and execution DateTime — but the current persistence path reduces a safe import to the legacy record shape.
+5. IBKR parsing already observes richer facts — account/profile scope, Order ID, Trade ID, currency and execution DateTime — but the current persistence path reduces a safe import to the legacy record shape. The observed DateTime may be timezone-less, so its presence alone does not prove an offset-aware instant.
 6. IBKR durable retry identity is transformed into the existing record-create idempotency key. That protects a write from duplication, but it is not a sufficient universal economic-event identity model.
 7. Automatic dividend confirmation has a semantic event identity based on `symbol + date`, then uses record-create idempotency to converge on the existing DIV record. This is a useful domain-specific precedent, not a universal identity format.
 8. Privacy hardening intentionally strips legacy IBKR machine metadata from `records.note`; future provenance therefore needs structured privacy-safe fields rather than another note envelope.
+9. Existing record-create idempotency hashes the accepted legacy payload. Any future dual-write path that persists additional authoritative canonical fields must version/fingerprint those fields deliberately rather than silently attaching semantics outside the retry contract.
 
 ### Root cause / architectural constraint
 
@@ -118,16 +119,17 @@ Trade-related cash and dividend cash are derived from authoritative trade/divide
 
 `event_date` is required. `occurred_at` and `source_sequence` are optional.
 
-- If an authoritative source supplies an execution timestamp, persist it with timezone/offset semantics preserved.
+- If an authoritative source supplies an execution timestamp together with authoritative timezone/offset semantics, persist it as `occurred_at` with that offset semantics preserved.
+- A clock value without an authoritative timezone/offset is **not** an authoritative instant. Preserve it only as source metadata if needed for reconciliation; do not normalize it into `occurred_at` using browser timezone, import machine timezone, Taipei time, UTC, or any other guessed zone.
 - If an authoritative source supplies only a stable sequence, persist that sequence without inventing a timestamp.
-- If neither exists, preserve date-only truth.
+- If neither an authoritative instant nor sequence exists, preserve date-only truth.
 - `created_at`, auto-increment IDs or import time may provide deterministic technical ordering, but the UI/analytics must not present them as execution chronology.
 
 ### 4.2 Same-day ordering
 
 A same-day event can have one of these chronology qualities:
 
-- `AUTHORITATIVE_TIME` — offset-aware execution time exists;
+- `AUTHORITATIVE_TIME` — offset-aware execution time exists and its zone/offset semantics are authoritative;
 - `AUTHORITATIVE_SEQUENCE` — source sequence exists but exact time may not;
 - `DATE_ONLY` — no trustworthy intra-day chronology.
 
@@ -135,7 +137,7 @@ A deterministic fallback may be used for stable processing, but `DATE_ONLY` rows
 
 ### 4.3 Legacy compatibility
 
-Existing/manual records remain valid with `event_date` only. No migration may fabricate midnight, noon, import time, `created_at`, or record ID as an execution timestamp.
+Existing/manual records remain valid with `event_date` only. No migration may fabricate midnight, noon, import time, `created_at`, record ID, browser timezone or a default market timezone as an execution timestamp.
 
 ---
 
@@ -175,6 +177,8 @@ A provider may expose a natural key such as account scope + Order ID / Trade ID,
 `Idempotency-Key` and the persisted `create_idempotency_hash/create_payload_hash` protect transport retries and ambiguous responses. They are write-safety mechanisms.
 
 A deterministic importer may derive a write key from source identity, as IBKR already does, but the resulting retry key is not the universal canonical `event_id`.
+
+If an existing write endpoint is later extended to persist canonical fields, its idempotency fingerprint/version must cover every authoritative field written by that request while preserving safe retries from old clients/intents. A canonical field must not be silently dual-written outside the request fingerprint and then treated as authoritative.
 
 This separation prevents later edits, import normalization changes, or protocol details from silently changing economic identity.
 
@@ -228,6 +232,19 @@ Schema details, constraints and migrations belong to the next reviewed batch; th
 
 Canonical `TRADE` and `DIVIDEND` events may project to the existing BUY/SELL/DIV shape while the legacy calculator remains authoritative. `CASH` events must **never** be fabricated as legacy trade records.
 
+### 8.4 Dual-write authority and failure semantics
+
+During any future transition where one user action creates/updates both a canonical event and a legacy `records` projection:
+
+- the transition must not create two independently writable financial authorities;
+- success must mean both required representations are durably consistent, or the design must use an explicit shadow/outbox/reconciliation state that cannot be mistaken for fully committed account truth;
+- a partial write must be detectable and repairable idempotently;
+- ambiguous network outcomes must remain safe under retry;
+- legacy readback may remain the production UX/calculation authority until the canonical path passes parity/cutover gates;
+- implementation must define rollback for schema + write-path activation before production enablement.
+
+A naïve best-effort `INSERT ledger_events` followed by independent `INSERT records` (or the reverse) is rejected unless atomicity or an equivalent deterministic recovery invariant is proven.
+
 ---
 
 ## 9. Backward-compatibility mapping
@@ -255,7 +272,8 @@ The adapter should preserve, structurally:
 - authoritative currency;
 - account/profile scope as privacy-safe `source_scope_ref`;
 - Order ID and/or Trade IDs as source identity;
-- execution DateTime when supplied;
+- execution DateTime as source metadata when supplied;
+- `occurred_at` only if authoritative timezone/offset semantics are also available; otherwise chronology remains sequence/date-only rather than guessed;
 - deterministic import reconciliation identity;
 - aggregated-order provenance without relying on note parsing.
 
@@ -267,13 +285,14 @@ The current IBKR file importer remains functional until that path is deliberatel
 
 ### R2.1 — Contract baseline
 
-This document only. No runtime/schema behavior changes.
+This document plus the handoff update only. No runtime/schema behavior changes.
 
 Gate to close R2.1:
 
 - architecture/data-flow audit completed across manual, IBKR, dividend, Worker and Python paths;
 - no direct-cash-in-`records` design;
 - identity/time/currency/provenance semantics recorded;
+- dual-write/idempotency failure semantics recorded;
 - exact-head CI for repository integrity;
 - independent review with BLOCKER = 0;
 - handoff updated.
@@ -286,6 +305,8 @@ Candidate scope after R2.1 closes:
 - structured event validator/normalizer shared by write adapters;
 - optional timestamp/sequence/provenance through manual/import paths where authoritative;
 - compatibility projection tests;
+- versioned idempotency/fingerprint design for any endpoint that persists new canonical fields;
+- atomic or explicitly recoverable shadow/dual-write semantics with reconciliation tests;
 - no production schema activation until migration + rollback + shadow-read plan pass review.
 
 ### R2.3 — Explicit cash events
@@ -324,9 +345,21 @@ Reason: they are persistence order, not broker execution evidence.
 
 Reason: manual and historical records legitimately have date-only truth.
 
+### REJECT — promote a timezone-less clock value to `occurred_at` using a default timezone
+
+Reason: this fabricates an instant and can silently reorder same-day events across markets/accounts.
+
 ### REJECT — reuse `Idempotency-Key` as canonical event ID
 
 Reason: transport retry identity and economic identity have different lifecycles and semantics.
+
+### REJECT — persist authoritative canonical fields outside the endpoint idempotency fingerprint
+
+Reason: an ambiguous retry could converge on the legacy payload while leaving canonical metadata inconsistent or silently different.
+
+### REJECT — best-effort independent canonical + legacy writes with no atomic/reconciliation invariant
+
+Reason: creates split financial authority and makes partial commits indistinguishable from complete ledger truth.
 
 ### REJECT — persist broker machine metadata back into free-form note
 
@@ -348,13 +381,14 @@ Roadmap V2 selected R2 Ledger Truth v2 before Universal Data Gateway and Portfol
 
 - existing `records` schema/Worker/Python are all trade-specific;
 - same-day record ID is deterministic but explicitly non-chronological;
-- IBKR already observes rich source/timestamp/currency data before legacy projection;
+- IBKR already observes rich source/timestamp/currency data before legacy projection, while its raw DateTime does not by itself prove timezone semantics;
 - dividend flow demonstrates domain identity + transport idempotency as separate concerns;
-- privacy code deliberately strips IBKR machine envelopes from journal notes.
+- privacy code deliberately strips IBKR machine envelopes from journal notes;
+- current record-create safety depends on a payload hash, so canonical dual-write semantics must remain inside a versioned idempotency/recovery contract.
 
 ### Decision
 
-Use an additive canonical ledger event plane and keep `records` as the compatibility trade projection until a later reviewed cutover. Preserve unknown chronology/currency/provenance as unknown rather than fabricating facts.
+Use an additive canonical ledger event plane and keep `records` as the compatibility trade projection until a later reviewed cutover. Preserve unknown chronology/currency/provenance as unknown rather than fabricating facts. Any transition dual-write must be atomic or explicitly recoverable/reconcilable and must not create two independently writable financial authorities.
 
 ### Trade-off
 
