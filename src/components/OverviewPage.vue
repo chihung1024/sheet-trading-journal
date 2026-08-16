@@ -24,19 +24,10 @@
       :as-of-date="store.stats.daily_pnl_asof_date || ''"
     />
 
-    <section class="trend-section" aria-labelledby="overview-trend-title">
-      <div class="trend-heading">
-        <div>
-          <span class="trend-eyebrow">長期</span>
-          <h2 id="overview-trend-title">績效與趨勢</h2>
-        </div>
-        <p>數字看現在，圖表只負責回答時間序列。</p>
-      </div>
-      <div class="chart-wrapper chart-full">
-        <PerformanceChart v-if="!store.loading" />
-        <ChartSkeleton v-else />
-      </div>
-    </section>
+    <div class="chart-wrapper chart-full">
+      <PerformanceChart v-if="!store.loading" />
+      <ChartSkeleton v-else />
+    </div>
   </section>
 </template>
 
@@ -103,50 +94,5 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--ui-page-gap);
-}
-
-.trend-section {
-  padding: 18px 20px 20px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-card);
-}
-
-.trend-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.trend-eyebrow {
-  display: block;
-  margin-bottom: 3px;
-  color: var(--text-sub);
-  font-size: var(--type-caption);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.trend-heading h2 {
-  margin: 0;
-  font-size: var(--type-section);
-}
-
-.trend-heading p {
-  max-width: 440px;
-  margin: 2px 0 0;
-  color: var(--text-sub);
-  font-size: var(--type-label);
-  text-align: right;
-}
-
-@media (max-width: 768px) {
-  .trend-section { padding: 14px; }
-  .trend-heading { display: block; }
-  .trend-heading p { margin-top: 4px; max-width: none; text-align: left; }
 }
 </style>
