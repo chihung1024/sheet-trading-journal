@@ -1,0 +1,46 @@
+name: One-time TD-B design semantic authority cleanup
+
+on:
+  push:
+    branches:
+      - refactor/td-b-design-semantic-authority
+    paths:
+      - .github/workflows/td-b-design-semantic-authority.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/td-b-design-semantic-authority
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Apply bounded cleanup
+        run: node tools/td_b_design_semantic_cleanup.mjs
+      - name: Validate frontend contracts
+        run: npm run test:frontend
+      - name: Validate production build
+        run: npm run build
+      - name: Compile touched Python model
+        run: python -m py_compile journal_engine/models.py
+      - name: Validate patch hygiene
+        run: git diff --check
+      - name: Commit cleanup result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src tests README.md journal_engine/models.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Refactor: close design and portfolio semantic authority debt"
+          git push origin HEAD:refactor/td-b-design-semantic-authority
