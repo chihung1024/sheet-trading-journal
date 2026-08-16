@@ -34,9 +34,10 @@ export const buildOverviewProjection = ({
   pendingDividends = [],
   records = [],
 } = {}) => {
+  const publishedDailyPnl = finiteNumber(dailyExplanation?.publishedTotalTwd);
   const dailyReady = dailyExplanation?.status === 'ready'
     && Array.isArray(dailyExplanation.rows)
-    && finiteNumber(dailyExplanation.publishedTotalTwd) !== null;
+    && publishedDailyPnl !== null;
   const dailyRows = dailyReady ? dailyExplanation.rows : [];
   const contributor = selectDriver(dailyRows, value => value > 0, (value, current) => value > current);
   const detractor = selectDriver(dailyRows, value => value < 0, (value, current) => value < current);
@@ -49,7 +50,14 @@ export const buildOverviewProjection = ({
   const unrealizedReturnPercent = unrealizedPnl !== null && holdingCost !== null && holdingCost > 0
     ? (unrealizedPnl / holdingCost) * 100
     : null;
-  const dailyReturnPercent = finiteNumber(stats?.daily_pnl_roi_percent);
+
+  const publishedDailyReturn = finiteNumber(stats?.daily_pnl_roi_percent);
+  const dailyBaseValue = finiteNumber(stats?.daily_pnl_base_value);
+  const dailyReturnPercent = publishedDailyReturn !== null
+    ? publishedDailyReturn
+    : dailyReady && dailyBaseValue !== null && dailyBaseValue > 0
+      ? (publishedDailyPnl / dailyBaseValue) * 100
+      : null;
 
   const twrStatus = stats?.twr_status ?? null;
   const twrReady = isTwrSummaryAvailable(twrStatus) && finiteNumber(stats?.twr) !== null;
@@ -69,7 +77,7 @@ export const buildOverviewProjection = ({
       realizedPnl,
       daily: Object.freeze({
         status: dailyReady ? 'ready' : 'unavailable',
-        pnlTwd: dailyReady ? dailyExplanation.publishedTotalTwd : null,
+        pnlTwd: dailyReady ? publishedDailyPnl : null,
         returnPercent: dailyReady ? dailyReturnPercent : null,
       }),
       twr: Object.freeze({
