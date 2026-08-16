@@ -373,6 +373,249 @@ if (
 }
 
 const workerSource = await readFile("worker.js", "utf8");
+
+const cashInsertSqlMatch = workerSource.match(
+  /const cashEventsRepository = Object\.freeze\(\{[\s\S]*?async insert\(db, userId, body, options\)[\s\S]*?const insert = await db\.prepare\(\s*"([^"]+)"\s*,?\s*\)\.bind\(/,
+);
+const cashUpdateSqlMatch = workerSource.match(
+  /const cashEventsRepository = Object\.freeze\(\{[\s\S]*?async update\(db, userId, payload\)[\s\S]*?const result = await db\.prepare\(`([\s\S]*?)`\)\.bind\(/,
+);
+const cashDeleteSqlMatch = workerSource.match(
+  /const cashEventsRepository = Object\.freeze\(\{[\s\S]*?async delete\(db, userId, payload\)[\s\S]*?const result = await db\.prepare\(`([\s\S]*?)`\)\.bind\(/,
+);
+if (!cashInsertSqlMatch?.[1] || !cashUpdateSqlMatch?.[1] || !cashDeleteSqlMatch?.[1]) {
+  throw new Error("Unable to locate production R2.3B cash-event mutation SQL");
+}
+const cashInsertSql = cashInsertSqlMatch[1];
+const cashUpdateSql = cashUpdateSqlMatch[1];
+const cashDeleteSql = cashDeleteSqlMatch[1];
+
+const cashInsertBindValues = ({
+  userId = "cash-r2-3b@example.com",
+  eventDate = "2026-04-01",
+  eventType = "DEPOSIT",
+  amount = 1000,
+  currency = "USD",
+  note = "real d1 funding",
+  idempotencyHash = "d".repeat(64),
+  payloadHash = "1".repeat(64),
+} = {}) => [
+  userId,
+  eventDate,
+  eventType,
+  amount,
+  currency,
+  note,
+  idempotencyHash,
+  payloadHash,
+];
+
+const cashUpdateBindValues = ({
+  eventDate = "2026-04-01",
+  eventType = "DEPOSIT",
+  amount = 1200,
+  currency = "USD",
+  note = "real d1 amended funding",
+  id = 910001,
+  userId = "cash-r2-3b@example.com",
+  expectedDate = "2026-04-01",
+  expectedType = "DEPOSIT",
+  expectedAmount = 1000,
+  expectedCurrency = "USD",
+  expectedNote = "real d1 funding",
+} = {}) => [
+  eventDate,
+  eventType,
+  amount,
+  currency,
+  note,
+  id,
+  userId,
+  expectedDate,
+  expectedType,
+  expectedAmount,
+  expectedCurrency,
+  expectedNote,
+  eventType,
+  userId,
+  currency,
+  id,
+];
+
+const cashDeleteBindValues = ({
+  id = 910001,
+  userId = "cash-r2-3b@example.com",
+  expectedDate = "2026-04-01",
+  expectedType = "DEPOSIT",
+  expectedAmount = 1200,
+  expectedCurrency = "USD",
+  expectedNote = "real d1 amended funding",
+} = {}) => [
+  id,
+  userId,
+  expectedDate,
+  expectedType,
+  expectedAmount,
+  expectedCurrency,
+  expectedNote,
+];
+
+const cashCrudResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", `
+    ${bindSql(cashInsertSql, cashInsertBindValues({
+      idempotencyHash: "d".repeat(64),
+      payloadHash: "1".repeat(64),
+    }))};
+    UPDATE cash_events SET id = 910001
+    WHERE user_id = 'cash-r2-3b@example.com'
+      AND create_idempotency_hash = '${"d".repeat(64)}';
+    SELECT 'create' AS phase, COUNT(*) AS row_count, MIN(amount) AS amount,
+           MIN(event_source) AS event_source, MIN(note) AS note
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashInsertSql, cashInsertBindValues({
+      idempotencyHash: "d".repeat(64),
+      payloadHash: "1".repeat(64),
+    }))};
+    SELECT 'replay' AS phase, changes() AS mutation_changes, COUNT(*) AS row_count
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashInsertSql, cashInsertBindValues({
+      amount: 9999,
+      note: "different payload must not insert",
+      idempotencyHash: "d".repeat(64),
+      payloadHash: "2".repeat(64),
+    }))};
+    SELECT 'idempotency_conflict' AS phase, changes() AS mutation_changes, amount, note,
+           create_payload_hash
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashInsertSql, cashInsertBindValues({
+      eventDate: "2026-01-01",
+      eventType: "OPENING_BALANCE",
+      amount: -500,
+      note: "real d1 opening",
+      idempotencyHash: "e".repeat(64),
+      payloadHash: "3".repeat(64),
+    }))};
+    UPDATE cash_events SET id = 910002
+    WHERE user_id = 'cash-r2-3b@example.com'
+      AND create_idempotency_hash = '${"e".repeat(64)}';
+
+    ${bindSql(cashUpdateSql, cashUpdateBindValues())};
+    SELECT 'update' AS phase, changes() AS mutation_changes, amount, note, event_source
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashUpdateSql, cashUpdateBindValues({ amount: 1300, note: "stale overwrite", expectedAmount: 1000 }))};
+    SELECT 'stale_update' AS phase, changes() AS mutation_changes, amount, note, event_source
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashUpdateSql, cashUpdateBindValues({
+      eventType: "OPENING_BALANCE",
+      amount: 50,
+      note: "must not become second opening",
+      expectedAmount: 1200,
+      expectedNote: "real d1 amended funding",
+    }))};
+    SELECT 'opening_conflict' AS phase, changes() AS mutation_changes, event_type, amount, note
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashUpdateSql, cashUpdateBindValues({
+      amount: 1400,
+      note: "cross tenant overwrite",
+      userId: "cash-r2-3b-other@example.com",
+      expectedAmount: 1200,
+      expectedNote: "real d1 amended funding",
+    }))};
+    SELECT 'tenant_update' AS phase, changes() AS mutation_changes, amount, note
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashDeleteSql, cashDeleteBindValues({ expectedAmount: 1000, expectedNote: "real d1 funding" }))};
+    SELECT 'stale_delete' AS phase, changes() AS mutation_changes, COUNT(*) AS row_count
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashDeleteSql, cashDeleteBindValues({ userId: "cash-r2-3b-other@example.com" }))};
+    SELECT 'tenant_delete' AS phase, changes() AS mutation_changes, COUNT(*) AS row_count
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+
+    ${bindSql(cashDeleteSql, cashDeleteBindValues())};
+    SELECT 'delete' AS phase, changes() AS mutation_changes, COUNT(*) AS row_count
+    FROM cash_events WHERE id = 910001 AND user_id = 'cash-r2-3b@example.com';
+  `,
+  "--json",
+], true);
+const cashCrudRows = JSON.parse(cashCrudResult.stdout)
+  .flatMap((statement) => (Array.isArray(statement?.results) ? statement.results : []))
+  .filter((item) => item?.phase);
+const cashCrudByPhase = new Map(cashCrudRows.map((item) => [item.phase, item]));
+const requireCashPhase = (phase) => {
+  const row = cashCrudByPhase.get(phase);
+  if (!row) throw new Error(`Missing real D1 cash CRUD phase: ${phase}`);
+  return row;
+};
+
+const cashCreate = requireCashPhase("create");
+if (
+  Number(cashCreate.row_count) !== 1
+  || Number(cashCreate.amount) !== 1000
+  || cashCreate.event_source !== "MANUAL"
+  || cashCreate.note !== "real d1 funding"
+) {
+  throw new Error(`Real D1 cash create failed: ${JSON.stringify(cashCreate)}`);
+}
+const cashReplay = requireCashPhase("replay");
+if (Number(cashReplay.mutation_changes) !== 0 || Number(cashReplay.row_count) !== 1) {
+  throw new Error(`Real D1 cash replay failed: ${JSON.stringify(cashReplay)}`);
+}
+const cashIdempotencyConflict = requireCashPhase("idempotency_conflict");
+if (
+  Number(cashIdempotencyConflict.mutation_changes) !== 0
+  || Number(cashIdempotencyConflict.amount) !== 1000
+  || cashIdempotencyConflict.note !== "real d1 funding"
+  || cashIdempotencyConflict.create_payload_hash !== "1".repeat(64)
+) {
+  throw new Error(`Real D1 cash idempotency conflict protection failed: ${JSON.stringify(cashIdempotencyConflict)}`);
+}
+const cashUpdated = requireCashPhase("update");
+if (
+  Number(cashUpdated.mutation_changes) !== 1
+  || Number(cashUpdated.amount) !== 1200
+  || cashUpdated.note !== "real d1 amended funding"
+  || cashUpdated.event_source !== "MANUAL"
+) {
+  throw new Error(`Real D1 cash update failed: ${JSON.stringify(cashUpdated)}`);
+}
+for (const phase of ["stale_update", "tenant_update"]) {
+  const row = requireCashPhase(phase);
+  if (
+    Number(row.mutation_changes) !== 0
+    || Number(row.amount) !== 1200
+    || row.note !== "real d1 amended funding"
+  ) {
+    throw new Error(`Real D1 cash ${phase} guard failed: ${JSON.stringify(row)}`);
+  }
+}
+const cashOpeningConflict = requireCashPhase("opening_conflict");
+if (
+  Number(cashOpeningConflict.mutation_changes) !== 0
+  || cashOpeningConflict.event_type !== "DEPOSIT"
+  || Number(cashOpeningConflict.amount) !== 1200
+  || cashOpeningConflict.note !== "real d1 amended funding"
+) {
+  throw new Error(`Real D1 cash opening uniqueness guard failed: ${JSON.stringify(cashOpeningConflict)}`);
+}
+for (const phase of ["stale_delete", "tenant_delete"]) {
+  const row = requireCashPhase(phase);
+  if (Number(row.mutation_changes) !== 0 || Number(row.row_count) !== 1) {
+    throw new Error(`Real D1 cash ${phase} guard failed: ${JSON.stringify(row)}`);
+  }
+}
+const cashDeleted = requireCashPhase("delete");
+if (Number(cashDeleted.mutation_changes) !== 1 || Number(cashDeleted.row_count) !== 0) {
+  throw new Error(`Real D1 cash delete failed: ${JSON.stringify(cashDeleted)}`);
+}
+
 const enrichmentSqlMatch = workerSource.match(
   /async enrichMetadata\(db, userId, body\)[\s\S]*?const update = await db\.prepare\(`([\s\S]*?)`\)\.bind\(/,
 );
@@ -551,7 +794,7 @@ if (duplicateCount !== 1) {
 }
 
 console.log(
-  "D1 migrations applied; schema activation history, nullable timeline expansion, atomic metadata PUT semantics, and idempotent metadata enrichment verified locally.",
+  "D1 migrations applied; cash-event schema plus exact production CRUD SQL, nullable timeline expansion, atomic metadata PUT semantics, and idempotent metadata enrichment verified locally.",
 );
 
 

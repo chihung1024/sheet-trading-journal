@@ -1,11 +1,11 @@
 /**
  * Worker: Trading Journal API
- * v2.63 / idempotent transaction metadata enrichment for automated source capture.
+ * v2.64 / authenticated explicit cash-event CRUD with durable idempotency and optimistic conflicts.
  */
 
 const SERVICE_NAME = "trading-journal-api";
-const RELEASE_VERSION = "4.10";
-const API_VERSION = "2.63";
+const RELEASE_VERSION = "4.11";
+const API_VERSION = "2.64";
 const GITHUB_DISPATCH = Object.freeze({
   owner: "chihung1024",
   repository: "sheet-trading-journal",
@@ -16,7 +16,7 @@ const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;
 const GITHUB_API_VERSION = "2026-03-10";
 const REQUIRED_SCHEMA_VERSION = 3;
 const SOURCE_COMMIT_FALLBACK = "development";
-const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings", "calculation_jobs"];
+const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings", "calculation_jobs", "cash_events"];
 const PUBLIC_ROUTE_METHODS = Object.freeze({
   "/api/health": new Set(["GET"]),
   "/api/version": new Set(["GET"]),
@@ -66,6 +66,11 @@ const CURRENCY_RE = /^[A-Z]{3}$/;
 const EXECUTION_SEQUENCE_RE = /^[A-Za-z0-9._:/-]{1,128}$/;
 const EVENT_SOURCE_RE = /^[A-Z][A-Z0-9_]{0,31}$/;
 const EVENT_SOURCES = new Set(["MANUAL", "IBKR", "IMPORT", "SYSTEM"]);
+const CASH_EVENT_TYPES = new Set(["OPENING_BALANCE", "DEPOSIT", "WITHDRAWAL"]);
+const CASH_EVENT_USER_FIELDS = Object.freeze(["event_date", "event_type", "amount", "currency", "note"]);
+const CASH_EVENT_CREATE_FIELDS = new Set(CASH_EVENT_USER_FIELDS);
+const CASH_EVENT_UPDATE_FIELDS = new Set(["id", "expected", "event"]);
+const CASH_EVENT_DELETE_FIELDS = new Set(["id", "expected"]);
 const OFFSET_DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 const FORBIDDEN_OWNER_FIELDS = new Set([
   "user_id",
@@ -87,6 +92,10 @@ const ROUTE_PERMISSIONS = Object.freeze({
   "PUT /api/records": new Set(["user"]),
   "PUT /api/records/metadata": new Set(["user"]),
   "DELETE /api/records": new Set(["user"]),
+  "GET /api/cash-events": new Set(["user"]),
+  "POST /api/cash-events": new Set(["user"]),
+  "PUT /api/cash-events": new Set(["user"]),
+  "DELETE /api/cash-events": new Set(["user"]),
   "GET /api/user-settings": new Set(["user", "system"]),
   "POST /api/user-settings": new Set(["user"]),
 });
@@ -172,6 +181,18 @@ export default {
           break;
         case "DELETE /api/records":
           response = await handleDeleteRecord(request, env, principal, requestId);
+          break;
+        case "GET /api/cash-events":
+          response = await handleGetCashEvents(env, principal, requestId);
+          break;
+        case "POST /api/cash-events":
+          response = await handleAddCashEvent(request, env, principal, requestId);
+          break;
+        case "PUT /api/cash-events":
+          response = await handleUpdateCashEvent(request, env, principal, requestId);
+          break;
+        case "DELETE /api/cash-events":
+          response = await handleDeleteCashEvent(request, env, principal, requestId);
           break;
         case "GET /api/user-settings":
           response = await handleGetUserSettings(request, env, principal, requestId);
@@ -549,6 +570,194 @@ function validateRecordCreateHash(value, fieldName) {
   return normalized;
 }
 
+function publicCashEvent(row) {
+  if (!isPlainObject(row)) throw new Error("InvalidCashEventRow");
+  const {
+    user_id: _userId,
+    create_idempotency_hash: _idempotency,
+    create_payload_hash: _payload,
+    ...event
+  } = row;
+  return event;
+}
+
+function validateCashEventCreateHash(value, fieldName) {
+  const normalized = String(value || "").toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new RequestValidationError(`${fieldName} is invalid`);
+  }
+  return normalized;
+}
+
+function cashEventUserFieldsMatch(row, expected) {
+  return String(row?.event_date || "") === expected.event_date
+    && String(row?.event_type || "") === expected.event_type
+    && Number(row?.amount) === expected.amount
+    && String(row?.currency || "") === expected.currency
+    && String(row?.note || "") === expected.note;
+}
+
+const cashEventsRepository = Object.freeze({
+  async list(db, userId) {
+    const normalizedUser = normalizeEmail(userId);
+    const result = await db.prepare(
+      "SELECT * FROM cash_events WHERE user_id = ? ORDER BY event_date DESC, id DESC",
+    ).bind(normalizedUser).all();
+    const rows = Array.isArray(result?.results) ? result.results : [];
+    return rows.map(publicCashEvent);
+  },
+
+  async findById(db, userId, id) {
+    const normalizedUser = normalizeEmail(userId);
+    const row = await db.prepare(
+      "SELECT * FROM cash_events WHERE id = ? AND user_id = ? LIMIT 1",
+    ).bind(id, normalizedUser).first();
+    return row || null;
+  },
+
+  async findOpeningConflict(db, userId, currency, excludeId = null) {
+    const normalizedUser = normalizeEmail(userId);
+    if (excludeId === null) {
+      return await db.prepare(
+        "SELECT id FROM cash_events WHERE user_id = ? AND event_type = 'OPENING_BALANCE' AND currency = ? LIMIT 1",
+      ).bind(normalizedUser, currency).first();
+    }
+    return await db.prepare(
+      "SELECT id FROM cash_events WHERE user_id = ? AND event_type = 'OPENING_BALANCE' AND currency = ? AND id <> ? LIMIT 1",
+    ).bind(normalizedUser, currency, excludeId).first();
+  },
+
+  async insert(db, userId, body, options) {
+    const normalizedUser = normalizeEmail(userId);
+    const idempotencyHash = validateCashEventCreateHash(
+      options?.idempotencyHash,
+      "cash-event create idempotency hash",
+    );
+    const payloadHash = validateCashEventCreateHash(
+      options?.payloadHash,
+      "cash-event create payload hash",
+    );
+    const insert = await db.prepare(
+      "INSERT OR IGNORE INTO cash_events (user_id, event_date, event_type, amount, currency, note, event_source, create_idempotency_hash, create_payload_hash) VALUES (?, ?, ?, ?, ?, ?, 'MANUAL', ?, ?)",
+    ).bind(
+      normalizedUser,
+      body.event_date,
+      body.event_type,
+      body.amount,
+      body.currency,
+      body.note,
+      idempotencyHash,
+      payloadHash,
+    ).run();
+
+    const row = await db.prepare(
+      "SELECT * FROM cash_events WHERE user_id = ? AND create_idempotency_hash = ? LIMIT 1",
+    ).bind(normalizedUser, idempotencyHash).first();
+    if (row) {
+      const observedPayloadHash = String(row.create_payload_hash || "").toLowerCase();
+      if (observedPayloadHash !== payloadHash) {
+        return { kind: "idempotency_conflict", event: publicCashEvent(row) };
+      }
+      return {
+        kind: affectedRows(insert) === 1 ? "inserted" : "replayed",
+        event: publicCashEvent(row),
+      };
+    }
+
+    if (body.event_type === "OPENING_BALANCE") {
+      const opening = await this.findOpeningConflict(db, normalizedUser, body.currency);
+      if (opening) return { kind: "opening_conflict", event: null };
+    }
+    throw new Error("CashEventCreateStateLost");
+  },
+
+  async update(db, userId, payload) {
+    const normalizedUser = normalizeEmail(userId);
+    const desired = payload.event;
+    const expected = payload.expected;
+    const result = await db.prepare(`
+      UPDATE cash_events
+      SET event_date = ?, event_type = ?, amount = ?, currency = ?, note = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+        AND event_date = ? AND event_type = ? AND amount = ? AND currency = ? AND note = ?
+        AND (
+          ? <> 'OPENING_BALANCE'
+          OR NOT EXISTS (
+            SELECT 1 FROM cash_events AS opening
+            WHERE opening.user_id = ?
+              AND opening.event_type = 'OPENING_BALANCE'
+              AND opening.currency = ?
+              AND opening.id <> ?
+          )
+        )
+    `).bind(
+      desired.event_date,
+      desired.event_type,
+      desired.amount,
+      desired.currency,
+      desired.note,
+      payload.id,
+      normalizedUser,
+      expected.event_date,
+      expected.event_type,
+      expected.amount,
+      expected.currency,
+      expected.note,
+      desired.event_type,
+      normalizedUser,
+      desired.currency,
+      payload.id,
+    ).run();
+
+    if (affectedRows(result) === 1) {
+      const row = await this.findById(db, normalizedUser, payload.id);
+      if (!row) throw new Error("CashEventUpdateReadbackLost");
+      return { kind: "updated", event: publicCashEvent(row) };
+    }
+
+    const current = await this.findById(db, normalizedUser, payload.id);
+    if (!current) return { kind: "missing", event: null };
+    if (!cashEventUserFieldsMatch(current, expected)) {
+      return { kind: "changed", event: publicCashEvent(current) };
+    }
+    if (desired.event_type === "OPENING_BALANCE") {
+      const conflict = await this.findOpeningConflict(db, normalizedUser, desired.currency, payload.id);
+      if (conflict) return { kind: "opening_conflict", event: publicCashEvent(current) };
+    }
+    if (cashEventUserFieldsMatch(current, desired)) {
+      return { kind: "unchanged", event: publicCashEvent(current) };
+    }
+    throw new Error("CashEventUpdateStateLost");
+  },
+
+  async delete(db, userId, payload) {
+    const normalizedUser = normalizeEmail(userId);
+    const expected = payload.expected;
+    const result = await db.prepare(`
+      DELETE FROM cash_events
+      WHERE id = ? AND user_id = ?
+        AND event_date = ? AND event_type = ? AND amount = ? AND currency = ? AND note = ?
+    `).bind(
+      payload.id,
+      normalizedUser,
+      expected.event_date,
+      expected.event_type,
+      expected.amount,
+      expected.currency,
+      expected.note,
+    ).run();
+    if (affectedRows(result) === 1) return { kind: "deleted" };
+
+    const current = await this.findById(db, normalizedUser, payload.id);
+    if (!current) return { kind: "missing" };
+    if (!cashEventUserFieldsMatch(current, expected)) {
+      return { kind: "changed", event: publicCashEvent(current) };
+    }
+    throw new Error("CashEventDeleteStateLost");
+  },
+});
+
+
 const recordsRepository = Object.freeze({
   async listPage(db, scope, pagination, signingSecret) {
     const { limit, cursor } = pagination;
@@ -898,6 +1107,110 @@ async function handleDeleteRecord(request, env, principal, requestId) {
     return jsonResponse({ success: true, deleted: 1 });
   } catch (error) {
     return mutationError(error, requestId, "Record deletion failed");
+  }
+}
+
+
+
+async function handleGetCashEvents(env, principal, requestId) {
+  try {
+    const events = await cashEventsRepository.list(env.DB, principal.email);
+    return jsonResponse({ success: true, cash_events: events });
+  } catch (error) {
+    console.error(`[request_id=${requestId}] Cash event read failed`, safeErrorName(error));
+    return apiError("DATABASE_ERROR", "Cash events are unavailable", 500, requestId);
+  }
+}
+
+async function handleAddCashEvent(request, env, principal, requestId) {
+  try {
+    const rawIdempotencyKey = request.headers.get("Idempotency-Key");
+    if (rawIdempotencyKey === null) {
+      throw new RequestValidationError("Idempotency-Key is required for cash event creation");
+    }
+    const idempotencyKey = validateIdempotencyKey(rawIdempotencyKey);
+    const body = validateCashEventCreatePayload(await readJsonObject(request));
+    const result = await cashEventsRepository.insert(env.DB, principal.email, body, {
+      idempotencyHash: await hashCashEventCreateIdempotency(principal.email, idempotencyKey),
+      payloadHash: await hashCashEventCreatePayload(body),
+    });
+    if (result.kind === "idempotency_conflict") {
+      return apiError(
+        "IDEMPOTENCY_CONFLICT",
+        "Idempotency-Key was already used for a different cash event payload",
+        409,
+        requestId,
+      );
+    }
+    if (result.kind === "opening_conflict") {
+      return apiError(
+        "OPENING_BALANCE_EXISTS",
+        "An opening balance already exists for this currency",
+        409,
+        requestId,
+      );
+    }
+    return jsonResponse({
+      success: true,
+      deduplicated: result.kind === "replayed",
+      cash_event: result.event,
+    }, result.kind === "inserted" ? 201 : 200);
+  } catch (error) {
+    return mutationError(error, requestId, "Cash event creation failed");
+  }
+}
+
+async function handleUpdateCashEvent(request, env, principal, requestId) {
+  try {
+    const payload = validateCashEventUpdatePayload(await readJsonObject(request));
+    const result = await cashEventsRepository.update(env.DB, principal.email, payload);
+    if (result.kind === "missing") {
+      return apiError("CASH_EVENT_NOT_FOUND", "Cash event not found", 404, requestId);
+    }
+    if (result.kind === "changed") {
+      return apiError(
+        "CASH_EVENT_CHANGED",
+        "Cash event changed before this update; refresh and review the latest values",
+        409,
+        requestId,
+      );
+    }
+    if (result.kind === "opening_conflict") {
+      return apiError(
+        "OPENING_BALANCE_EXISTS",
+        "An opening balance already exists for this currency",
+        409,
+        requestId,
+      );
+    }
+    return jsonResponse({
+      success: true,
+      updated: result.kind === "updated",
+      cash_event: result.event,
+    });
+  } catch (error) {
+    return mutationError(error, requestId, "Cash event update failed");
+  }
+}
+
+async function handleDeleteCashEvent(request, env, principal, requestId) {
+  try {
+    const payload = validateCashEventDeletePayload(await readJsonObject(request));
+    const result = await cashEventsRepository.delete(env.DB, principal.email, payload);
+    if (result.kind === "missing") {
+      return apiError("CASH_EVENT_NOT_FOUND", "Cash event not found", 404, requestId);
+    }
+    if (result.kind === "changed") {
+      return apiError(
+        "CASH_EVENT_CHANGED",
+        "Cash event changed before this deletion; refresh and review the latest values",
+        409,
+        requestId,
+      );
+    }
+    return jsonResponse({ success: true, deleted: 1, cash_event_id: payload.id });
+  } catch (error) {
+    return mutationError(error, requestId, "Cash event deletion failed");
   }
 }
 
@@ -1672,6 +1985,88 @@ function resolveSettingsTarget(principal, targetHeader) {
   return normalizeEmail(targetHeader);
 }
 
+
+
+function rejectUnexpectedFields(body, allowedFields, context) {
+  for (const key of Object.keys(body)) {
+    if (!allowedFields.has(key)) {
+      throw new RequestValidationError(`${key} is not accepted in ${context}`);
+    }
+  }
+}
+
+function validateCashEventDate(value) {
+  const text = requireString(value, "event_date", 10, 10);
+  if (!DATE_RE.test(text)) throw new RequestValidationError("event_date must use YYYY-MM-DD");
+  const [year, month, day] = text.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) {
+    throw new RequestValidationError("event_date is not a valid date");
+  }
+  return text;
+}
+
+function validateCashCurrency(value) {
+  if (typeof value !== "string" || !CURRENCY_RE.test(value)) {
+    throw new RequestValidationError("currency must be an uppercase three-letter cash currency");
+  }
+  return value;
+}
+
+function validateCashEventUserFields(body, context) {
+  if (!isPlainObject(body)) throw new RequestValidationError(`${context} must be a JSON object`);
+  rejectOwnerFields(body);
+  rejectUnexpectedFields(body, CASH_EVENT_CREATE_FIELDS, context);
+  const eventType = requireString(body.event_type, "event_type", 7, 20).toUpperCase();
+  if (!CASH_EVENT_TYPES.has(eventType)) {
+    throw new RequestValidationError("event_type must be OPENING_BALANCE, DEPOSIT, or WITHDRAWAL");
+  }
+  const amount = requireFiniteNumber(body.amount, "amount");
+  if (eventType !== "OPENING_BALANCE" && amount <= 0) {
+    throw new RequestValidationError("deposit and withdrawal amount must be greater than 0");
+  }
+  return {
+    event_date: validateCashEventDate(body.event_date),
+    event_type: eventType,
+    amount,
+    currency: validateCashCurrency(body.currency),
+    note: sanitizeText(body.note || "", 2_000),
+  };
+}
+
+function validateCashEventCreatePayload(body) {
+  return validateCashEventUserFields(body, "cash event");
+}
+
+function validateCashEventUpdatePayload(body) {
+  rejectOwnerFields(body);
+  rejectUnexpectedFields(body, CASH_EVENT_UPDATE_FIELDS, "cash event update");
+  if (!isPlainObject(body.expected) || !isPlainObject(body.event)) {
+    throw new RequestValidationError("expected and event must be JSON objects");
+  }
+  return {
+    id: requirePositiveInteger(body.id, "id"),
+    expected: validateCashEventUserFields(body.expected, "expected cash event"),
+    event: validateCashEventUserFields(body.event, "cash event"),
+  };
+}
+
+function validateCashEventDeletePayload(body) {
+  rejectOwnerFields(body);
+  rejectUnexpectedFields(body, CASH_EVENT_DELETE_FIELDS, "cash event deletion");
+  if (!isPlainObject(body.expected)) {
+    throw new RequestValidationError("expected must be a JSON object");
+  }
+  return {
+    id: requirePositiveInteger(body.id, "id"),
+    expected: validateCashEventUserFields(body.expected, "expected cash event"),
+  };
+}
+
 function validateTransactionPayload(body, { requireId }) {
   rejectOwnerFields(body);
   const result = {
@@ -1967,6 +2362,26 @@ async function claimTriggerSlot(email, env, ctx) {
   return { allowed: true, retryAfter: 0 };
 }
 
+
+
+async function sha256Hex(material) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(material));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hashCashEventCreateIdempotency(userId, key) {
+  const normalizedUser = normalizeEmail(userId);
+  const normalizedKey = validateIdempotencyKey(key);
+  return sha256Hex(`cash-event-create-v1\n${normalizedUser}\n${normalizedKey}`);
+}
+
+async function hashCashEventCreatePayload(body) {
+  const canonical = CASH_EVENT_USER_FIELDS.map((field) => body[field]);
+  return sha256Hex(`cash-event-create-v1\n${JSON.stringify(canonical)}`);
+}
+
 function validateDate(value) {
   const text = requireString(value, "txn_date", 10, 10);
   if (!DATE_RE.test(text)) throw new RequestValidationError("txn_date must use YYYY-MM-DD");
@@ -2125,6 +2540,19 @@ export const __test = {
   handleAddRecord,
   handleDeleteRecord,
   handleUpdateRecord,
+  handleGetCashEvents,
+  handleAddCashEvent,
+  handleUpdateCashEvent,
+  handleDeleteCashEvent,
+  validateCashEventCreatePayload,
+  validateCashEventUpdatePayload,
+  validateCashEventDeletePayload,
+  validateCashCurrency,
+  cashEventUserFieldsMatch,
+  cashEventsRepository,
+  publicCashEvent,
+  hashCashEventCreateIdempotency,
+  hashCashEventCreatePayload,
   recordMetadataPresence,
   validateRecordMetadataEnrichmentPayload,
   recordEconomicFieldsMatch,

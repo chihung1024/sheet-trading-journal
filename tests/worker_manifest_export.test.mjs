@@ -17,8 +17,8 @@ test("Worker manifest exporter emits validated deployment expectations", async (
     assert.equal(result.status, 0, result.stderr);
     const content = await readFile(output, "utf8");
     assert.match(content, /^runtime_service=trading-journal-api$/m);
-    assert.match(content, /^release_version=4\.10$/m);
-    assert.match(content, /^api_version=2\.63$/m);
+    assert.match(content, /^release_version=4\.11$/m);
+    assert.match(content, /^api_version=2\.64$/m);
     assert.match(content, /^schema_version=3$/m);
   } finally {
     await rm(directory, { recursive: true, force: true });
