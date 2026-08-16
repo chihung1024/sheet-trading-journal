@@ -47,13 +47,157 @@ const tablesResult = run([
   "--config",
   "wrangler.toml",
   "--command",
-  "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('records','portfolio_snapshots','user_settings','schema_metadata','calculation_jobs') ORDER BY name;",
+  "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('records','portfolio_snapshots','user_settings','schema_metadata','calculation_jobs','cash_events') ORDER BY name;",
   "--json",
 ], true);
 const tables = JSON.parse(tablesResult.stdout)?.[0]?.results?.map((item) => item.name) || [];
-const expected = ["calculation_jobs", "portfolio_snapshots", "records", "schema_metadata", "user_settings"];
+const expected = ["calculation_jobs", "cash_events", "portfolio_snapshots", "records", "schema_metadata", "user_settings"];
 if (JSON.stringify(tables) !== JSON.stringify(expected)) {
   throw new Error(`Unexpected D1 tables: ${JSON.stringify(tables)}`);
+}
+
+const cashColumnsResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", "PRAGMA table_info(cash_events);",
+  "--json",
+], true);
+const cashColumns = JSON.parse(cashColumnsResult.stdout)?.[0]?.results || [];
+const cashColumnByName = new Map(cashColumns.map((column) => [column.name, column]));
+for (const [name, type, notnull] of [
+  ["user_id", "TEXT", 1],
+  ["event_date", "TEXT", 1],
+  ["event_type", "TEXT", 1],
+  ["amount", "REAL", 1],
+  ["currency", "TEXT", 1],
+  ["note", "TEXT", 1],
+  ["event_source", "TEXT", 0],
+  ["create_idempotency_hash", "TEXT", 0],
+  ["create_payload_hash", "TEXT", 0],
+  ["created_at", "TEXT", 1],
+  ["updated_at", "TEXT", 1],
+]) {
+  const column = cashColumnByName.get(name);
+  if (!column) {
+    throw new Error(`Missing R2.3A cash_events column: ${name}`);
+  }
+  if (String(column.type || "").toUpperCase() !== type || Number(column.notnull) !== notnull) {
+    throw new Error(`Unexpected cash_events ${name} column contract: ${JSON.stringify(column)}`);
+  }
+}
+
+const cashBehaviorResult = run([
+  "wrangler", "d1", "execute", "DB", "--local", "--config", "wrangler.toml",
+  "--command", `
+    INSERT INTO cash_events
+      (user_id, event_date, event_type, amount, currency, note, event_source,
+       create_idempotency_hash, create_payload_hash)
+    VALUES
+      ('cash-r2-3a@example.com', '2026-01-01', 'OPENING_BALANCE', -250.25, 'USD', 'margin baseline', 'MANUAL',
+       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+       '1111111111111111111111111111111111111111111111111111111111111111');
+
+    INSERT OR IGNORE INTO cash_events
+      (user_id, event_date, event_type, amount, currency, note,
+       create_idempotency_hash, create_payload_hash)
+    VALUES
+      ('cash-r2-3a@example.com', '2026-02-01', 'OPENING_BALANCE', 999, 'USD', 'duplicate opening must not enter',
+       'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+       '3333333333333333333333333333333333333333333333333333333333333333');
+
+    INSERT INTO cash_events
+      (user_id, event_date, event_type, amount, currency, note)
+    VALUES
+      ('cash-r2-3a@example.com', '2026-01-01', 'OPENING_BALANCE', 0, 'EUR', 'explicit zero baseline');
+
+    INSERT INTO cash_events
+      (user_id, event_date, event_type, amount, currency, note,
+       create_idempotency_hash, create_payload_hash)
+    VALUES
+      ('cash-r2-3a@example.com', '2026-03-01', 'DEPOSIT', 1000, 'USD', 'external funding',
+       'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+       '2222222222222222222222222222222222222222222222222222222222222222');
+
+    INSERT INTO cash_events
+      (user_id, event_date, event_type, amount, currency, note)
+    VALUES
+      ('cash-r2-3a@example.com', '2026-03-02', 'WITHDRAWAL', 125, 'USD', 'external withdrawal');
+
+    INSERT OR IGNORE INTO cash_events
+      (user_id, event_date, event_type, amount, currency, note)
+    VALUES
+      ('cash-r2-3a@example.com', '2026-03-20', 'DEPOSIT', 0, 'USD', 'invalid zero deposit'),
+      ('cash-r2-3a@example.com', '2026-03-20', 'WITHDRAWAL', -5, 'USD', 'invalid negative withdrawal'),
+      ('cash-r2-3a@example.com', '2026-03-20', 'DEPOSIT', 5, 'GBp', 'quote unit is not cash currency');
+
+    INSERT OR IGNORE INTO cash_events
+      (user_id, event_date, event_type, amount, currency, note,
+       create_idempotency_hash, create_payload_hash)
+    VALUES
+      ('cash-r2-3a@example.com', '2026-03-21', 'DEPOSIT', 10, 'USD', 'duplicate same-tenant idempotency',
+       'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+       '4444444444444444444444444444444444444444444444444444444444444444');
+
+    INSERT INTO cash_events
+      (user_id, event_date, event_type, amount, currency, note,
+       create_idempotency_hash, create_payload_hash)
+    VALUES
+      ('cash-r2-3a-other@example.com', '2026-03-21', 'DEPOSIT', 10, 'USD', 'other tenant may reuse hash',
+       'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+       '5555555555555555555555555555555555555555555555555555555555555555');
+
+    SELECT 'opening_usd' AS phase, COUNT(*) AS row_count, MIN(amount) AS amount
+    FROM cash_events
+    WHERE user_id = 'cash-r2-3a@example.com' AND event_type = 'OPENING_BALANCE' AND currency = 'USD';
+
+    SELECT 'opening_eur' AS phase, COUNT(*) AS row_count, MIN(amount) AS amount
+    FROM cash_events
+    WHERE user_id = 'cash-r2-3a@example.com' AND event_type = 'OPENING_BALANCE' AND currency = 'EUR';
+
+    SELECT 'movement' AS phase, COUNT(*) AS row_count,
+           SUM(CASE WHEN event_type = 'DEPOSIT' THEN amount ELSE 0 END) AS deposit_amount,
+           SUM(CASE WHEN event_type = 'WITHDRAWAL' THEN amount ELSE 0 END) AS withdrawal_amount
+    FROM cash_events
+    WHERE user_id = 'cash-r2-3a@example.com' AND event_type IN ('DEPOSIT', 'WITHDRAWAL');
+
+    SELECT 'invalid' AS phase, COUNT(*) AS row_count
+    FROM cash_events
+    WHERE user_id = 'cash-r2-3a@example.com' AND event_date = '2026-03-20';
+
+    SELECT 'other_tenant' AS phase, COUNT(*) AS row_count
+    FROM cash_events
+    WHERE user_id = 'cash-r2-3a-other@example.com'
+      AND create_idempotency_hash = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  `,
+  "--json",
+], true);
+const cashRows = JSON.parse(cashBehaviorResult.stdout)
+  .flatMap((statement) => (Array.isArray(statement?.results) ? statement.results : []))
+  .filter((item) => item?.phase);
+const openingUsd = cashRows.find((item) => item.phase === "opening_usd");
+const openingEur = cashRows.find((item) => item.phase === "opening_eur");
+const movement = cashRows.find((item) => item.phase === "movement");
+const invalid = cashRows.find((item) => item.phase === "invalid");
+const otherTenantCash = cashRows.find((item) => item.phase === "other_tenant");
+
+if (!openingUsd || Number(openingUsd.row_count) !== 1 || Number(openingUsd.amount) !== -250.25) {
+  throw new Error(`R2.3A signed opening balance / uniqueness failed: ${JSON.stringify(openingUsd)}`);
+}
+if (!openingEur || Number(openingEur.row_count) !== 1 || Number(openingEur.amount) !== 0) {
+  throw new Error(`R2.3A zero/multi-currency opening balance failed: ${JSON.stringify(openingEur)}`);
+}
+if (
+  !movement
+  || Number(movement.row_count) !== 2
+  || Number(movement.deposit_amount) !== 1000
+  || Number(movement.withdrawal_amount) !== 125
+) {
+  throw new Error(`R2.3A deposit/withdrawal magnitude or idempotency failed: ${JSON.stringify(movement)}`);
+}
+if (!invalid || Number(invalid.row_count) !== 0) {
+  throw new Error(`R2.3A invalid cash rows were not rejected: ${JSON.stringify(invalid)}`);
+}
+if (!otherTenantCash || Number(otherTenantCash.row_count) !== 1) {
+  throw new Error(`R2.3A tenant-scoped idempotency failed: ${JSON.stringify(otherTenantCash)}`);
 }
 
 const recordColumnsResult = run([
