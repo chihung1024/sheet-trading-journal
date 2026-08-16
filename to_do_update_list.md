@@ -87,7 +87,7 @@ R2.2A repository closeout / production expansion gate:
 - post-main CI #1073 / run `31932726361`: **SUCCESS**;
 - Pages #1586 / run `31932725963`: **SUCCESS**;
 - no Worker/API/frontend/Python calculation behavior change;
-- production D1 expansion: **NOT YET APPLIED / NOT VERIFIED**; latest Deploy Worker run predates R2.2A;
+- production D1 expansion: **NOT VERIFIED**; there is no protected `Deploy Worker` run after the R2.2A merge, so repository evidence cannot claim the remote migration has been applied;
 - current activation authority still authorizes only `9b9f09f5079c59750219c73e23002a7ab8d2f33e`, so a fresh exact-source identity-evidence/authority cycle is required before protected deployment.
 
 A later docs-only merge may advance repository `main` without changing product runtime. Always re-read fresh remote truth.
@@ -319,7 +319,7 @@ Regression / prevention:
 
 Rollback:
 
-- before production migration: close/revert PR #306;
+- before production migration: if the expansion must be abandoned, revert merge `a7fc221b3a41e129766e852fae7140430b8ec36f` through a protected PR; no destructive remote-D1 rollback is justified without evidence that `0004` was applied;
 - after additive production migration: do not destructively drop columns as an emergency rollback; the last-known-good Worker can continue to ignore them. Leave unused nullable columns until a separately reviewed cleanup.
 
 R2.2A remaining production activation mechanics:
