@@ -141,8 +141,8 @@ function putRequest(record) {
 }
 
 test('runtime version advances independently while physical schema authority remains 3', () => {
-  assert.equal(__test.RELEASE_VERSION, '4.11');
-  assert.equal(__test.API_VERSION, '2.64');
+  assert.equal(__test.RELEASE_VERSION, '4.12');
+  assert.equal(__test.API_VERSION, '2.65');
   assert.equal(__test.REQUIRED_SCHEMA_VERSION, 3);
 });
 

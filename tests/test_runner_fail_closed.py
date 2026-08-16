@@ -343,6 +343,9 @@ def test_run_update_only_touches_requested_user(monkeypatch):
             observed["benchmarks"].append(user_id)
             return "0050.TW"
 
+        def fetch_cash_events(self, user_id):
+            return []
+
         def upload_portfolio(self, snapshot, target_user_id=None):
             observed["uploads"].append(target_user_id)
             return True
@@ -408,3 +411,88 @@ def test_run_update_only_touches_requested_user(monkeypatch):
     assert observed["uploads"] == ["beta@example.com"]
     assert observed["calculator_users"] == ["beta@example.com"]
     assert set(observed["tickers"]) == {"0050.TW"}
+
+
+
+def test_fetch_cash_events_requires_explicit_target_and_validates_transport(monkeypatch):
+    client = CloudflareClient()
+    with pytest.raises(CloudflareAPIError, match="target user is required"):
+        client.fetch_cash_events("")
+
+    captured = {}
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return FakeResponse(200, {"success": True, "cash_events": [{"id": 7, "event_type": "DEPOSIT"}]})
+    monkeypatch.setattr(api_module.requests, "get", fake_get)
+    events = client.fetch_cash_events("alpha@example.com")
+    assert events == [{"id": 7, "event_type": "DEPOSIT"}]
+    assert captured["url"].endswith("/api/cash-events")
+    assert captured["headers"]["X-Target-User"] == "alpha@example.com"
+    assert captured["timeout"] == api_module.REQUEST_TIMEOUT
+
+    monkeypatch.setattr(api_module.requests, "get", lambda *a, **k: FakeResponse(200, {"success": True, "cash_events": [{"id": 7}, {"id": 7}]}))
+    with pytest.raises(CloudflareAPIError, match="duplicate"):
+        client.fetch_cash_events("alpha@example.com")
+
+
+@pytest.mark.parametrize(
+    "response, message",
+    [
+        (FakeResponse(403, {"success": False}), "status=403"),
+        (FakeResponse(200, {"success": False, "cash_events": []}), "success=true"),
+        (FakeResponse(200, {"success": True, "cash_events": {}}), "invalid cash_events"),
+        (FakeResponse(200, {"success": True, "cash_events": [{"id": "7"}]}), "invalid event id"),
+    ],
+)
+def test_fetch_cash_events_fails_closed_on_invalid_response(monkeypatch, response, message):
+    monkeypatch.setattr(api_module.requests, "get", lambda *a, **k: response)
+    with pytest.raises(CloudflareAPIError, match=message):
+        CloudflareClient().fetch_cash_events("alpha@example.com")
+
+
+def test_fetch_cash_events_transport_failure_is_explicit(monkeypatch):
+    monkeypatch.setattr(api_module.requests, "get", lambda *a, **k: (_ for _ in ()).throw(requests.Timeout("private detail")))
+    with pytest.raises(CloudflareAPIError, match="cash-events read failed"):
+        CloudflareClient().fetch_cash_events("alpha@example.com")
+
+
+def test_shadow_cash_observation_is_non_authoritative_and_privacy_safe(caplog):
+    records = make_records()[:1]
+    records[0]["currency"] = "USD"
+    frame, _ = runner.prepare_transactions(records)
+
+    class Client:
+        def fetch_cash_events(self, user_id):
+            assert user_id == "alpha@example.com"
+            return [{"id": 11, "event_date": "2025-12-31", "event_type": "OPENING_BALANCE", "amount": 5000, "currency": "USD", "note": "TOP SECRET CASH NOTE"}]
+
+    with caplog.at_level("INFO"):
+        report = runner.observe_shadow_cash_ledger(Client(), "alpha@example.com", frame)
+    assert report is not None and report.complete is True
+    assert "5000" not in caplog.text
+    assert "TOP SECRET CASH NOTE" not in caplog.text
+    assert "alpha@example.com" not in caplog.text
+    assert "complete=True" in caplog.text
+    assert "currencies=['USD']" in caplog.text
+
+
+def test_shadow_cash_observation_failure_never_blocks_securities_path(caplog):
+    records = make_records()[:1]
+    frame, _ = runner.prepare_transactions(records)
+
+    class FeedFailure:
+        def fetch_cash_events(self, _user_id):
+            raise CloudflareAPIError("403 includes private tenant@example.com and amount 999999")
+
+    with caplog.at_level("WARNING"):
+        assert runner.observe_shadow_cash_ledger(FeedFailure(), "alpha@example.com", frame) is None
+    assert "tenant@example.com" not in caplog.text
+    assert "999999" not in caplog.text
+    assert "CloudflareAPIError" in caplog.text
+
+    class BadLedger:
+        def fetch_cash_events(self, _user_id):
+            return [{"id": 1, "event_date": "bad", "event_type": "DEPOSIT", "amount": 1, "currency": "USD"}]
+    with caplog.at_level("WARNING"):
+        assert runner.observe_shadow_cash_ledger(BadLedger(), "alpha@example.com", frame) is None
