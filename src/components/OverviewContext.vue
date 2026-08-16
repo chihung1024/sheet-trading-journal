@@ -78,7 +78,7 @@
 </template>
 
 <script setup>
-const props = defineProps({
+defineProps({
   model: { type: Object, required: true },
   attention: { type: Object, required: true },
   explanationOpen: { type: Boolean, default: false },
@@ -87,15 +87,19 @@ const props = defineProps({
 
 const emit = defineEmits(['navigate', 'toggle-explanation']);
 
+const finiteNumber = value => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
 const formatSignedTwd = value => {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
+  const number = finiteNumber(value);
+  if (number === null) return '—';
   return `${number >= 0 ? '+' : ''}${Math.round(number).toLocaleString('zh-TW')} TWD`;
 };
 
 const formatPercent = value => {
-  const number = Number(value);
-  return Number.isFinite(number) ? `${number.toFixed(2)}%` : '—';
+  const number = finiteNumber(value);
+  return number === null ? '—' : `${number.toFixed(2)}%`;
 };
 </script>
 
