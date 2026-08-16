@@ -22,6 +22,12 @@ replaceOnce(
 );
 
 replaceOnce(
+  "replaceExact('src/components/StatsGrid.vue', '投入成本', '持倉成本', 1);",
+  "replaceExact('src/components/StatsGrid.vue', '投入成本', '持倉成本', 1);\nreplaceExact('src/components/StatsGrid.vue', '<span class=\"f-label\">持倉成本</span> ', '<span class=\"f-label\">持倉成本</span>', 1);",
+  'StatsGrid touched-line trailing whitespace cleanup',
+);
+
+replaceOnce(
   "replaceExact('src/components/StrategyGroupOverview.vue', '投入資本', '持倉成本', 1);",
   "replaceExact('src/components/StrategyGroupOverview.vue', '投入資本', '持倉成本', 1);\nreplaceExact('tests/frontend_strategy_group_overview.test.mjs', '總資產淨值', '持倉市值', 1);\nreplaceExact('tests/frontend_strategy_group_overview.test.mjs', '投入資本', '持倉成本', 1);",
   'StrategyGroupOverview semantic regression update',
