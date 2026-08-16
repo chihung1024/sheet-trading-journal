@@ -1,11 +1,11 @@
 /**
  * Worker: Trading Journal API
- * v2.62 / optional transaction event metadata with legacy idempotency compatibility.
+ * v2.63 / idempotent transaction metadata enrichment for automated source capture.
  */
 
 const SERVICE_NAME = "trading-journal-api";
-const RELEASE_VERSION = "4.09";
-const API_VERSION = "2.62";
+const RELEASE_VERSION = "4.10";
+const API_VERSION = "2.63";
 const GITHUB_DISPATCH = Object.freeze({
   owner: "chihung1024",
   repository: "sheet-trading-journal",
@@ -85,6 +85,7 @@ const ROUTE_PERMISSIONS = Object.freeze({
   "GET /api/records": new Set(["user", "system"]),
   "POST /api/records": new Set(["user"]),
   "PUT /api/records": new Set(["user"]),
+  "PUT /api/records/metadata": new Set(["user"]),
   "DELETE /api/records": new Set(["user"]),
   "GET /api/user-settings": new Set(["user", "system"]),
   "POST /api/user-settings": new Set(["user"]),
@@ -165,6 +166,9 @@ export default {
           break;
         case "PUT /api/records":
           response = await handleUpdateRecord(request, env, principal, requestId);
+          break;
+        case "PUT /api/records/metadata":
+          response = await handleEnrichRecordMetadata(request, env, principal, requestId);
           break;
         case "DELETE /api/records":
           response = await handleDeleteRecord(request, env, principal, requestId);
@@ -624,6 +628,75 @@ const recordsRepository = Object.freeze({
     };
   },
 
+  async enrichMetadata(db, userId, body) {
+    const normalizedUser = normalizeEmail(userId);
+    const update = await db.prepare(`
+      UPDATE records SET
+        currency=COALESCE(currency, ?),
+        executed_at=COALESCE(executed_at, ?),
+        execution_sequence=COALESCE(execution_sequence, ?),
+        event_source=COALESCE(event_source, ?)
+      WHERE id = ? AND user_id = ?
+        AND txn_date = ? AND symbol = ? AND txn_type = ?
+        AND qty = ? AND price = ? AND fee = ? AND tax = ?
+        AND (? IS NULL OR currency IS NULL OR currency = ?)
+        AND (? IS NULL OR executed_at IS NULL OR executed_at = ?)
+        AND (? IS NULL OR execution_sequence IS NULL OR execution_sequence = ?)
+        AND (? IS NULL OR event_source IS NULL OR event_source = ?)
+        AND (
+          (? IS NOT NULL AND currency IS NULL)
+          OR (? IS NOT NULL AND executed_at IS NULL)
+          OR (? IS NOT NULL AND execution_sequence IS NULL)
+          OR (? IS NOT NULL AND event_source IS NULL)
+        )
+    `).bind(
+      body.currency,
+      body.executed_at,
+      body.execution_sequence,
+      body.event_source,
+      body.id,
+      normalizedUser,
+      body.txn_date,
+      body.symbol,
+      body.txn_type,
+      body.qty,
+      body.price,
+      body.fee,
+      body.tax,
+      body.currency,
+      body.currency,
+      body.executed_at,
+      body.executed_at,
+      body.execution_sequence,
+      body.execution_sequence,
+      body.event_source,
+      body.event_source,
+      body.currency,
+      body.executed_at,
+      body.execution_sequence,
+      body.event_source,
+    ).run();
+
+    if (affectedRows(update) === 1) {
+      return { kind: "updated", record: { id: body.id } };
+    }
+
+    const row = await db.prepare(
+      "SELECT id, txn_date, symbol, txn_type, qty, price, fee, tax, currency, executed_at, execution_sequence, event_source FROM records WHERE id = ? AND user_id = ? LIMIT 1",
+    ).bind(body.id, normalizedUser).first();
+    if (!row) return { kind: "missing", record: { id: body.id } };
+    if (!recordEconomicFieldsMatch(row, body)) {
+      return { kind: "record_conflict", record: { id: body.id } };
+    }
+    if (recordMetadataConflicts(row, body)) {
+      return { kind: "metadata_conflict", record: { id: body.id } };
+    }
+    if (recordMetadataMatches(row, body)) {
+      return { kind: "unchanged", record: { id: body.id } };
+    }
+    throw new Error("RecordMetadataEnrichmentStateLost");
+  },
+
   async update(db, userId, body, options = {}) {
     const metadataPresence = isPlainObject(options.metadataPresence) ? options.metadataPresence : {};
     const isPresent = (field) => (metadataPresence[field] === true ? 1 : 0);
@@ -750,6 +823,39 @@ async function handleAddRecord(request, env, principal, requestId) {
     });
   } catch (error) {
     return mutationError(error, requestId, "Record creation failed");
+  }
+}
+
+async function handleEnrichRecordMetadata(request, env, principal, requestId) {
+  try {
+    const body = validateRecordMetadataEnrichmentPayload(await readJsonObject(request));
+    const result = await recordsRepository.enrichMetadata(env.DB, principal.email, body);
+    if (result.kind === "missing") {
+      return apiError("RECORD_NOT_FOUND", "Record not found", 404, requestId);
+    }
+    if (result.kind === "record_conflict") {
+      return apiError(
+        "RECORD_CHANGED",
+        "Record economic fields changed before metadata enrichment",
+        409,
+        requestId,
+      );
+    }
+    if (result.kind === "metadata_conflict") {
+      return apiError(
+        "METADATA_CONFLICT",
+        "Record already contains different authoritative metadata",
+        409,
+        requestId,
+      );
+    }
+    return jsonResponse({
+      success: true,
+      metadata_updated: result.kind === "updated",
+      record_id: result.record?.id || body.id,
+    });
+  } catch (error) {
+    return mutationError(error, requestId, "Record metadata enrichment failed");
   }
 }
 
@@ -1591,6 +1697,56 @@ function validateTransactionPayload(body, { requireId }) {
   return result;
 }
 
+function validateRecordMetadataEnrichmentPayload(body) {
+  rejectOwnerFields(body);
+  const result = {
+    id: requirePositiveInteger(body.id, "id"),
+    txn_date: validateDate(body.txn_date),
+    symbol: validateSymbol(body.symbol, "symbol"),
+    txn_type: requireString(body.txn_type, "txn_type", 3, 8).toUpperCase(),
+    qty: requireFiniteNumber(body.qty, "qty", { minExclusive: 0 }),
+    price: requireFiniteNumber(body.price, "price", { minInclusive: 0 }),
+    fee: optionalFiniteNumber(body.fee, "fee", 0),
+    tax: optionalFiniteNumber(body.tax, "tax", 0),
+    currency: validateRecordCurrency(body.currency),
+    executed_at: validateExecutedAt(body.executed_at),
+    execution_sequence: validateExecutionSequence(body.execution_sequence),
+    event_source: validateEventSource(body.event_source),
+  };
+  if (!TXN_TYPES.has(result.txn_type)) {
+    throw new RequestValidationError("txn_type must be BUY, SELL, or DIV");
+  }
+  if (RECORD_METADATA_FIELDS.every((field) => result[field] === null)) {
+    throw new RequestValidationError("At least one authoritative metadata field is required");
+  }
+  return result;
+}
+
+function recordEconomicFieldsMatch(row, body) {
+  return String(row?.txn_date || "") === body.txn_date
+    && String(row?.symbol || "") === body.symbol
+    && String(row?.txn_type || "") === body.txn_type
+    && Number(row?.qty) === body.qty
+    && Number(row?.price) === body.price
+    && Number(row?.fee) === body.fee
+    && Number(row?.tax) === body.tax;
+}
+
+function recordMetadataConflicts(row, body) {
+  return RECORD_METADATA_FIELDS.some((field) => (
+    body[field] !== null
+    && row?.[field] !== null
+    && row?.[field] !== undefined
+    && String(row[field]) !== body[field]
+  ));
+}
+
+function recordMetadataMatches(row, body) {
+  return RECORD_METADATA_FIELDS.every((field) => (
+    body[field] === null || String(row?.[field] ?? "") === body[field]
+  ));
+}
+
 function recordMetadataPresence(body) {
   const presence = {};
   for (const field of RECORD_METADATA_FIELDS) {
@@ -1970,6 +2126,11 @@ export const __test = {
   handleDeleteRecord,
   handleUpdateRecord,
   recordMetadataPresence,
+  validateRecordMetadataEnrichmentPayload,
+  recordEconomicFieldsMatch,
+  recordMetadataConflicts,
+  recordMetadataMatches,
+  handleEnrichRecordMetadata,
   resolveIdempotencyKey,
   validateIdempotencyKey,
   hashCalculationJobIdempotency,

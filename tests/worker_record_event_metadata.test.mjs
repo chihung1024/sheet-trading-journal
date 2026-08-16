@@ -140,9 +140,9 @@ function putRequest(record) {
   });
 }
 
-test('R2.2B activates API 2.62 / release 4.09 without advancing physical schema authority', () => {
-  assert.equal(__test.RELEASE_VERSION, '4.09');
-  assert.equal(__test.API_VERSION, '2.62');
+test('runtime version advances independently while physical schema authority remains 3', () => {
+  assert.equal(__test.RELEASE_VERSION, '4.10');
+  assert.equal(__test.API_VERSION, '2.63');
   assert.equal(__test.REQUIRED_SCHEMA_VERSION, 3);
 });
 

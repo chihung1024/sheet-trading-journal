@@ -45,7 +45,7 @@ test("public version endpoint exposes source and runtime traceability without au
     SOURCE_COMMIT: "7B5686157975AB2295D74F9EDF5DDB985978D706",
     CF_VERSION_METADATA: {
       id: "worker-version-id",
-      tag: "release-4.09",
+      tag: "release-4.10",
       timestamp: "2026-08-05T06:45:05Z",
     },
   }, {});
@@ -53,13 +53,13 @@ test("public version endpoint exposes source and runtime traceability without au
 
   assert.equal(response.status, 200);
   assert.equal(body.success, true);
-  assert.equal(body.release_version, "4.09");
-  assert.equal(body.api_version, "2.62");
+  assert.equal(body.release_version, "4.10");
+  assert.equal(body.api_version, "2.63");
   assert.equal(body.schema_version, 3);
   assert.equal(body.source_commit, "7b5686157975ab2295d74f9edf5ddb985978d706");
   assert.equal(body.worker_version.id, "worker-version-id");
-  assert.equal(response.headers.get("X-Release-Version"), "4.09");
-  assert.equal(response.headers.get("X-API-Version"), "2.62");
+  assert.equal(response.headers.get("X-Release-Version"), "4.10");
+  assert.equal(response.headers.get("X-API-Version"), "2.63");
   assert.equal(response.headers.get("X-Worker-Version-Id"), "worker-version-id");
 });
 
@@ -103,8 +103,8 @@ test("build metadata sanitizes untrusted deployment variables", () => {
     SCHEMA_VERSION: "not-a-number",
     SOURCE_COMMIT: "not a commit",
   });
-  assert.equal(metadata.release_version, "4.09");
-  assert.equal(metadata.api_version, "2.62");
+  assert.equal(metadata.release_version, "4.10");
+  assert.equal(metadata.api_version, "2.63");
   assert.equal(metadata.schema_version, 3);
   assert.equal(metadata.source_commit, "development");
 });
