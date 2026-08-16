@@ -2,17 +2,17 @@
   "schema_version": 1,
   "authority_id": "PRODUCTION-ACTIVATION-AUTHORITY",
   "status": "ready",
-  "authorized_source_sha": "9b9f09f5079c59750219c73e23002a7ab8d2f33e",
-  "approved_at": "2026-08-15T13:59:10.000Z",
+  "authorized_source_sha": "9aed8760dfd49d9568b86555a87c61de086df3d0",
+  "approved_at": "2026-08-16T07:09:36.000Z",
   "required_checks": {
     "production_frontend_explicit_environment": "passed",
     "production_frontend_live_contract": "passed",
     "production_d1_identity": "passed"
   },
   "evidence": {
-    "production_frontend_explicit_environment": "docs/governance/evidence/production-activation/phase9_2_r_9b9f09f_production_frontend_explicit_environment.json",
-    "production_frontend_live_contract": "docs/governance/evidence/production-activation/phase9_2_r_9b9f09f_production_frontend_live_contract.json",
-    "production_d1_identity": "docs/governance/evidence/production-activation/phase9_2_r_9b9f09f_production_d1_identity.json"
+    "production_frontend_explicit_environment": "docs/governance/evidence/production-activation/r2_2a_r_9aed8760_production_frontend_explicit_environment.json",
+    "production_frontend_live_contract": "docs/governance/evidence/production-activation/r2_2a_r_9aed8760_production_frontend_live_contract.json",
+    "production_d1_identity": "docs/governance/evidence/production-activation/r2_2a_r_9aed8760_production_d1_identity.json"
   },
-  "notes": "Production Identity Evidence #18 authorizes exact Phase 9.2 runtime source 9b9f09f5079c59750219c73e23002a7ab8d2f33e; run 31888643879; artifact 9247940460; sha256:0cdf3e83ff2450ba3aa83ffa226ac9df9b61980421372520e3e4e1379de54f7a."
+  "notes": "Production Identity Evidence #19 authorizes exact R2.2A runtime source 9aed8760dfd49d9568b86555a87c61de086df3d0 for additive production D1 expansion; run 31933155712; artifact 9259872791; sha256:f54729eee0a8db1f589c70db32ed17f6ce0313ae5f4dd2e1c825392b3e2cee94. This authority does not activate metadata API/accounting semantics."
 }
