@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 
 import { buildOverviewProjection } from '../src/services/overviewProjection.js';
@@ -39,4 +40,14 @@ test('overview prefers the published daily return percentage when available', ()
   });
 
   assert.equal(projection.headline.daily.returnPercent, 1.75);
+});
+
+test('overview numeric formatters reject null-like values instead of coercing them to zero', () => {
+  const headline = fs.readFileSync(new URL('../src/components/OverviewHeadline.vue', import.meta.url), 'utf8');
+  const context = fs.readFileSync(new URL('../src/components/OverviewContext.vue', import.meta.url), 'utf8');
+
+  for (const source of [headline, context]) {
+    assert.match(source, /typeof value === 'number' && Number\.isFinite\(value\)/);
+  }
+  assert.doesNotMatch(`${headline}\n${context}`, /const number = Number\(value\)/);
 });
