@@ -13,7 +13,7 @@
           <div class="toggle-pills">
             <button :class="{active: chartType==='pnl'}" @click="chartType='pnl'">損益</button>
             <button :class="{active: chartType==='twr'}" @click="chartType='twr'">報酬率</button>
-            <button :class="{active: chartType==='asset'}" @click="chartType='asset'">總資產</button>
+            <button :class="{active: chartType==='asset'}" @click="chartType='asset'">持倉市值</button>
           </div>
         </div>
       </div>
@@ -106,6 +106,10 @@ import {
   firstTwrInvalidDate,
   lastFiniteSeriesIndex,
 } from '../services/twrState.js';
+import {
+  buildCanvasSemanticFont,
+  resolveSemanticFontPx,
+} from '../services/designTypography.js';
 
 const portfolioStore = usePortfolioStore();
 const { addToast } = useToast();
@@ -259,8 +263,9 @@ const drawChart = () => {
     if (myChart) myChart.destroy();
 
     const isMobile = window.innerWidth < 768;
-    const fontSize = isMobile ? 10 : 12;
-    const labelFontSize = isMobile ? 11 : 14;
+    const captionFontSize = resolveSemanticFontPx('--type-caption');
+    const labelFontSize = resolveSemanticFontPx('--type-label');
+    const canvasValueFont = buildCanvasSemanticFont({ token: '--type-label' });
 
     let datasets = [];
     const common = { 
@@ -294,7 +299,7 @@ const drawChart = () => {
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
         datasets = [{
-            label: '總資產',
+            label: '持倉市值',
             data: displayedData.value.map(d => d.total_value),
             borderColor: '#3b82f6',
             backgroundColor: gradient,
@@ -375,12 +380,14 @@ const drawChart = () => {
                     display: chartType.value === 'twr' || (chartType.value === 'pnl' && datasets.length > 1),
                     position: 'top',
                     align: 'end',
-                    labels: { boxWidth: 10, padding: 10, font: { size: fontSize } }
+                    labels: { boxWidth: 10, padding: 10, font: captionFontSize ? { size: captionFontSize } : undefined }
                 },
                 tooltip: {
                     mode: 'index', intersect: false,
                     backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                    titleFont: { size: 13 }, bodyFont: { size: 13 }, padding: 10,
+                    titleFont: labelFontSize ? { size: labelFontSize } : undefined,
+                    bodyFont: labelFontSize ? { size: labelFontSize } : undefined,
+                    padding: 10,
                     callbacks: {
                         label: (context) => {
                             let label = context.dataset.label ? context.dataset.label + ': ' : '';
@@ -402,7 +409,7 @@ const drawChart = () => {
                 }
             },
             scales: {
-                x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: isMobile ? 5 : 10, font: { size: fontSize } } },
+                x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: isMobile ? 5 : 10, font: captionFontSize ? { size: captionFontSize } : undefined } },
                 y: { display: false, grid: { color: 'rgba(200, 200, 200, 0.1)' }, grace: '5%' }
             },
             interaction: { mode: 'nearest', axis: 'x', intersect: false }
@@ -428,7 +435,7 @@ const drawChart = () => {
                                          : Math.round(value).toLocaleString();
                         }
                         ctx.save();
-                        ctx.font = `bold ${labelFontSize}px JetBrains Mono`;
+                        if (canvasValueFont) ctx.font = canvasValueFont;
                         ctx.fillStyle = dataset.borderColor;
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'middle';

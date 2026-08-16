@@ -38,11 +38,11 @@
 投資組合儀表板，一目瞭然掌握全局：
 
 - **績效卡片（Stats Grid）**
-  - 總資產（Market Value / NAV-like）
+  - 持倉市值（Securities Market Value；目前不含未建模的現金部位）
   - 已實現損益（Realized P&L）
   - 未實現損益（Unrealized P&L）
   - 總損益（Total P&L）
-  - ROI（投資報酬率）
+  - 未實現報酬率（Unrealized Return；未實現損益 ÷ 目前持倉成本）
   - 當日損益（Daily P&L），可展開查看目前群組的逐檔來源與價格 / 匯率 / 配息 / 交易執行 / 費稅分項
   - TWR（時間加權報酬率；日切分 linked returns，含可靠性狀態）
   - XIRR（個人年化報酬率 / IRR；含可用性與估值日 provenance）

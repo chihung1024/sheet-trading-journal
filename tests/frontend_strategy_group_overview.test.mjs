@@ -146,8 +146,8 @@ test('strategy overview UI explains non-comparable and overlapping groups, uses 
   assert.match(componentSource, /群組金額也不可直接相加/);
   assert.match(componentSource, /store\.setGroup\(group\.name\)/);
   assert.match(componentSource, /buildStrategyGroupOverview\(store\.rawData\)/);
-  assert.match(componentSource, /總資產淨值/);
-  assert.match(componentSource, /投入資本/);
+  assert.match(componentSource, /持倉市值/);
+  assert.match(componentSource, /持倉成本/);
   assert.match(componentSource, /總損益/);
   assert.match(componentSource, /TWR/);
   assert.match(componentSource, /XIRR/);

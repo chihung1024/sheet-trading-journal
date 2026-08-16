@@ -72,11 +72,11 @@
 
         <dl class="metric-grid">
           <div class="metric-item">
-            <dt>總資產淨值</dt>
+            <dt>持倉市值</dt>
             <dd>{{ formatTwd(group.totalValueTwd) }}</dd>
           </div>
           <div class="metric-item">
-            <dt>投入資本</dt>
+            <dt>持倉成本</dt>
             <dd>{{ formatTwd(group.investedCapitalTwd) }}</dd>
           </div>
           <div class="metric-item">

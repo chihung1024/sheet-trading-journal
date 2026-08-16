@@ -88,7 +88,7 @@
 .s-icon { width: 38px; height: 38px; border-radius: 10px; }
 
 .s-value { width: 60%; height: 28px; border-radius: 4px; }
-.s-value-lg { width: 70%; height: 36px; } /* 總資產數字較大 */
+.s-value-lg { width: 70%; height: 36px; } /* 持倉市值數字較大 */
 .s-unit { width: 30px; height: 14px; }
 
 .s-sub { width: 40%; height: 12px; }
@@ -135,7 +135,7 @@
         min-height: 100px;
     }
 
-    /* 關鍵：總資產卡片橫跨兩欄，防止 CLS */
+    /* 關鍵：持倉市值卡片橫跨兩欄，防止 CLS */
     .span-two-mobile {
         grid-column: span 2;
     }

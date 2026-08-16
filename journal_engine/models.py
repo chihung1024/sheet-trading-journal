@@ -33,7 +33,11 @@ class TransactionRecord(BaseModel):
 
 
 class PortfolioSummary(BaseModel):
+    # Legacy API field name retained for compatibility. This is the current
+    # securities-holdings market value in TWD; an explicit cash asset is not yet modeled.
     total_value: float
+    # Legacy API field name retained for compatibility. This is the cost basis of
+    # the current positive holdings, not lifetime account deposits/contributed capital.
     invested_capital: float
     total_pnl: float
     # Legacy numeric TWR remains for snapshot/API compatibility. New snapshots use
