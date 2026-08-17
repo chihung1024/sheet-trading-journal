@@ -149,7 +149,7 @@ test('restore preview UX stays beside backup/import and contains no mutation con
   assert.match(backupComponent, /交易資料備份與還原/);
   assert.match(restoreComponent, /安全還原預覽/);
   assert.match(restoreComponent, /零寫入預覽/);
-  assert.match(restoreComponent, /writes_allowed/);
+  assert.match(service, /writes_allowed:\s*false/);
   assert.doesNotMatch(restoreComponent, /確認還原|開始還原|執行還原/);
   assert.doesNotMatch(service, /method:\s*['"](?:POST|PUT|DELETE)['"]/);
   assert.doesNotMatch(service, /\/api\/records\/idempotent|\/api\/cash-events/);
