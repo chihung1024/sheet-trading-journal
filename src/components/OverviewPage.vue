@@ -5,6 +5,8 @@
       :model="accountValuePreview"
     />
 
+    <JournalBackupButton v-if="!store.loading" />
+
     <OverviewHeadline
       v-if="!store.loading"
       :model="overview.headline"
@@ -47,6 +49,7 @@ import {
 import { buildPortfolioConcentrationSnapshot } from '../services/portfolioConcentration.js';
 import { buildOverviewProjection } from '../services/overviewProjection.js';
 import AccountValuePreview from './AccountValuePreview.vue';
+import JournalBackupButton from './JournalBackupButton.vue';
 import OverviewHeadline from './OverviewHeadline.vue';
 import OverviewContext from './OverviewContext.vue';
 import DailyPnlExplanation from './DailyPnlExplanation.vue';
