@@ -163,7 +163,7 @@ jobs:
           --experimental-auto-create=false
           --config .wrangler/staging.toml
 
-      - name: Verify exact staging deployment readiness
+      - name: Verify stable exact staging deployment and restore route readiness
         env:
           EXPECTED_SHA: ${{ steps.source.outputs.sha }}
           EXPECTED_RUNTIME_SERVICE: ${{ steps.manifest.outputs.runtime_service }}
@@ -173,9 +173,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ready=0
-          for attempt in $(seq 1 20); do
-            rm -f version.json health.json version.headers health.headers
+          required_consecutive_passes=3
+          max_attempts=30
+          consecutive_passes=0
+
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "Staging stability attempt $attempt/$max_attempts; consecutive passes=$consecutive_passes/$required_consecutive_passes"
+            rm -f version.json health.json version.headers health.headers restore-route.body restore-route.headers restore-route.status
+
+            deployment_ok=0
+            route_ok=0
             if curl --silent --show-error --fail --max-time 15 \
               --dump-header version.headers \
               --output version.json \
@@ -194,14 +201,45 @@ jobs:
                 EXPECTED_API_VERSION="$EXPECTED_API_VERSION" \
                 EXPECTED_SCHEMA_VERSION="$EXPECTED_SCHEMA_VERSION" \
                 node tools/verify_staging_worker_deployment.mjs; then
-                ready=1
-                break
+                deployment_ok=1
               fi
             fi
-            sleep 6
+
+            if curl --silent --show-error --max-time 15 \
+              --request GET \
+              --dump-header restore-route.headers \
+              --output restore-route.body \
+              --write-out '%{http_code}' \
+              "$STAGING_WORKER_BASE_URL/api/journal-restore" \
+              > restore-route.status; then
+              if RESTORE_ROUTE_STATUS="$(cat restore-route.status)" \
+                RESTORE_ROUTE_HEADERS="$(cat restore-route.headers)" \
+                RESTORE_ROUTE_BODY="$(cat restore-route.body)" \
+                EXPECTED_SHA="$EXPECTED_SHA" \
+                node tools/verify_staging_restore_route.mjs; then
+                route_ok=1
+              fi
+            fi
+
+            if [ "$deployment_ok" -eq 1 ] && [ "$route_ok" -eq 1 ]; then
+              consecutive_passes=$((consecutive_passes + 1))
+              echo "Staging full-contract pass $consecutive_passes/$required_consecutive_passes"
+              if (( consecutive_passes >= required_consecutive_passes )); then
+                echo "Stable staging deployment and restore route verified after $attempt attempts"
+                break
+              fi
+            else
+              echo "Staging deployment or restore route not stable on attempt $attempt; resetting consecutive-pass counter" >&2
+              consecutive_passes=0
+            fi
+
+            if (( attempt < max_attempts )); then
+              sleep 3
+            fi
           done
-          if [ "$ready" -ne 1 ]; then
-            echo "Exact staging deployment did not become ready" >&2
+
+          if (( consecutive_passes < required_consecutive_passes )); then
+            echo "Staging did not reach $required_consecutive_passes consecutive full-contract passes within $max_attempts attempts" >&2
             exit 1
           fi
 
