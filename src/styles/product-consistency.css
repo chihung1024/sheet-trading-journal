@@ -337,8 +337,8 @@
   }
 }
 
-/* D5 uses horizontal workspace only when there is enough width for the existing
-   forms/tables. Narrow desktop and all mobile layouts remain component-owned. */
+/* Cash has no transaction rail, so the editor and ledger have enough width at
+   1280px. Narrow desktop and all mobile layouts remain component-owned. */
 @media (min-width: 1280px) {
   .section-cash .cash-page {
     grid-template-columns: minmax(340px, 0.72fr) minmax(0, 1.28fr);
@@ -369,7 +369,11 @@
   .section-cash .cash-form .form-actions {
     grid-column: 1 / -1;
   }
+}
 
+/* Group management normally shares the viewport with the transaction rail.
+   Wait for a wider viewport so its seven-column assignment table remains usable. */
+@media (min-width: 1600px) {
   .section-groups .gm-card {
     display: grid;
     grid-template-columns: minmax(300px, 0.38fr) minmax(0, 1fr);
