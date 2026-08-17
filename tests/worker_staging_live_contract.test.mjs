@@ -19,9 +19,9 @@ test('staging Wrangler template and renderer explicitly disable version preview 
   assert.match(renderer, /requireExact\(config, 'preview_urls = false'/);
 });
 
-test('staging deployment verifies the live browser-origin boundary after readiness', async () => {
+test('staging deployment verifies the live browser-origin boundary after stable route readiness', async () => {
   const workflow = await readFile('.github/workflows/deploy-worker-staging.yml', 'utf8');
-  const readinessIndex = workflow.indexOf('Verify exact staging deployment readiness');
+  const readinessIndex = workflow.indexOf('Verify stable exact staging deployment and restore route readiness');
   const liveCorsIndex = workflow.indexOf('Verify live staging browser-origin isolation');
 
   assert.notEqual(readinessIndex, -1);
