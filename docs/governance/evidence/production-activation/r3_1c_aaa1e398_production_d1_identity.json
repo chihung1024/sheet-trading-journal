@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "check_name": "production_d1_identity",
+  "status": "passed",
+  "observed_at": "2026-08-17T12:35:16.948Z",
+  "source_sha": "aaa1e39819f0f0c56d37aa02b399cc13738072eb",
+  "proof": {
+    "result": "pass",
+    "summary": "Production Identity Evidence #27 confirmed the production D1 journal-db fingerprint and every active Worker DB binding match the protected production D1 identity for exact audited source aaa1e39819f0f0c56d37aa02b399cc13738072eb.",
+    "artifact_reference": "run 32030517867; artifact 9288717155; sha256:6c3e7e779b13377e86cb86b155eb562a2b1812bf604575c2d19d28fb6887115d"
+  }
+}

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "r2-4b-f93dbbed-20260817t0113z",
-  "source_sha": "f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee",
-  "requested_at": "2026-08-17T01:13:03.900Z",
-  "reason": "R2.4B production activation for the repository-verified targeted read-only cash shadow feed after exact-source Production Identity Evidence #26. Production migration 0005_cash_events_expand.sql is already applied; deploy canonical source f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee at release 4.12 / API 2.65 / schema 3. This enables only explicit single-target system GET /api/cash-events for non-authoritative Python shadow completeness evidence. User cash-event CRUD remains authoritative and system cash mutation remains forbidden. No cash-inclusive snapshot/NAV/Overview/TWR/XIRR, FX valuation, transaction chronology activation, migration, or frontend behavior change is requested."
+  "request_id": "r3-1c-aaa1e398-20260817t123516z",
+  "source_sha": "aaa1e39819f0f0c56d37aa02b399cc13738072eb",
+  "requested_at": "2026-08-17T12:35:16.948Z",
+  "reason": "R3.1C production activation after successful Production Identity Evidence #27. Apply additive migration 0006_journal_restore_sessions.sql to the protected production D1 before deploying canonical exact source aaa1e39819f0f0c56d37aa02b399cc13738072eb at release 4.12 / API 2.65 / schema 3. This enables only the reviewed authenticated tenant-scoped empty-account atomic journal restore route with idempotent retry protection and authoritative readback; the frontend is already deployed and remains capability fail-closed until the route is live. No merge or replace-all restore, derived snapshot import, TWR/XIRR/NAV methodology change, destructive production smoke, or unrelated cleanup is requested."
 }
