@@ -37,7 +37,12 @@ async function api(method, path, { body, headers = {} } = {}) {
     try {
       payload = JSON.parse(text);
     } catch {
-      throw new Error(`${method} ${path} returned non-JSON HTTP ${response.status}: ${text.slice(0, 200)}`);
+      const safeDiagnostic = formatStagingResponseDiagnostic({
+        status: response.status,
+        headers: response.headers,
+        payload: null,
+      });
+      throw new Error(`${method} ${path} returned non-JSON ${safeDiagnostic}`);
     }
   }
   return { response, payload };
