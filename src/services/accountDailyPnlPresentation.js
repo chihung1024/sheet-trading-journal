@@ -36,7 +36,6 @@ export function buildAccountDailyPnlPresentation({ preview, currentGroup = 'all'
     publishedTotal === null
     || rawTotal === null
     || baseValue === null
-    || baseValue < 0
     || !asOfDate
     || !prevDate
     || ledger.length === 0
