@@ -107,6 +107,8 @@
         </div>
     </div>
 
+    <RecordCurrencyReconciliation />
+
     <div class="table-container desktop-view" ref="tableRef">
         <table>
             <thead>
@@ -303,6 +305,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import IbkrTradeImport from './IbkrTradeImport.vue';
+import RecordCurrencyReconciliation from './RecordCurrencyReconciliation.vue';
 import RecordDetailPanel from './RecordDetailPanel.vue';
 import {
     detectNativeCurrency,
@@ -314,7 +317,9 @@ import {
 } from '../services/transactionValuation.js';
 import {
     getHistoryDateRangeError,
+    getRecordDisplayCurrency,
     getRecordTags,
+    getStoredRecordCurrency,
     hasLocalHistoryFilters,
     normalizeRecordDate,
     recordMatchesHistoryFilters,
@@ -366,10 +371,13 @@ const getTypeLabel = (type) => {
     return labels[type] || type;
 };
 
-const getRecordCurrency = (record) => detectNativeCurrency(record?.symbol);
+const getRecordCurrency = (record) => getRecordDisplayCurrency(record);
 
 const getRecordValuation = (record) => {
     const currency = getRecordCurrency(record);
+    const storedCurrency = getStoredRecordCurrency(record);
+    const detectedCurrency = detectNativeCurrency(record?.symbol);
+    if (storedCurrency && storedCurrency !== detectedCurrency) return null;
     if (currency !== 'TWD' && store.snapshotFreshness !== 'loaded') return null;
     return resolveTransactionValuation(store.rawData, record);
 };

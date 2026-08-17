@@ -19,6 +19,26 @@ const CURRENCY_AFFIXES = Object.freeze({
   EUR: Object.freeze({ prefix: '€', suffix: '' }),
 });
 
+export const NATIVE_CURRENCY_OPTIONS = Object.freeze([
+  'USD',
+  'TWD',
+  'JPY',
+  'KRW',
+  'HKD',
+  'CNY',
+  'EUR',
+  'GBP',
+  'GBp',
+]);
+
+export const normalizeNativeCurrency = (value) => {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return '';
+  if (trimmed === 'GBp') return 'GBp';
+  const normalized = trimmed.toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : '';
+};
+
 export const detectNativeCurrency = (symbol) => {
   const normalized = String(symbol || '').trim().toUpperCase();
   for (const [currency, suffixes] of CURRENCY_RULES) {
@@ -28,7 +48,7 @@ export const detectNativeCurrency = (symbol) => {
 };
 
 export const getCurrencyInputAffix = (currency) => {
-  const normalized = String(currency || '').trim();
+  const normalized = normalizeNativeCurrency(currency) || String(currency || '').trim();
   const affix = CURRENCY_AFFIXES[normalized];
   if (!affix) return normalized;
   return affix.prefix || normalized;
@@ -52,12 +72,12 @@ export const formatNativeAmount = (amount, currency, fractionDigits = 2) => {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
-  const normalized = String(currency || '').trim();
+  const normalized = normalizeNativeCurrency(currency) || String(currency || '').trim();
   const affix = CURRENCY_AFFIXES[normalized];
   if (!affix) return `${formatted} ${normalized || ''}`.trim();
   return `${affix.prefix}${formatted}${affix.suffix}`;
 };
 
 export const canConvertWithLegacyUsdTwdRate = (currency) => (
-  currency === 'TWD' || currency === 'USD'
+  normalizeNativeCurrency(currency) === 'TWD' || normalizeNativeCurrency(currency) === 'USD'
 );

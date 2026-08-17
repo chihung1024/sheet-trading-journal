@@ -89,6 +89,35 @@
             <p v-if="validationAttempted && validationErrors.executionValue" class="field-error" role="alert">{{ validationErrors.executionValue }}</p>
         </div>
 
+        <div class="form-group full">
+            <label for="trade-currency">報價單位 Currency</label>
+            <input
+                id="trade-currency"
+                type="text"
+                v-model="form.currency"
+                list="trade-currency-options"
+                maxlength="3"
+                autocomplete="off"
+                spellcheck="false"
+                class="input-md font-num"
+                :disabled="isEditing"
+                :aria-invalid="validationAttempted && !!validationErrors.currency"
+                @input="markCurrencyEdited"
+                @blur="normalizeCurrencyField"
+            >
+            <datalist id="trade-currency-options">
+                <option v-for="currency in currencyOptions" :key="currency" :value="currency"></option>
+            </datalist>
+            <p v-if="!isEditing" class="field-help">
+                系統會依 Symbol 預填建議值；送出前可修改。新增交易送出即代表你確認這個報價單位，並會儲存在交易 metadata。
+            </p>
+            <p v-else-if="!editingStoredCurrency" class="field-help">
+                歷史交易的缺失幣別請在「交易紀錄」中的現金帳本準備區確認；一般編輯不會把 Symbol 推測值偷偷寫回。
+            </p>
+            <p v-else class="field-help">此交易已儲存報價單位；一般編輯只保留既有值。</p>
+            <p v-if="validationAttempted && validationErrors.currency" class="field-error" role="alert">{{ validationErrors.currency }}</p>
+        </div>
+
         <div class="form-group full shares-fee-row">
             <div class="triple-input">
                 <div class="input-with-label">
@@ -212,6 +241,8 @@ import { formatLocalCalendarDate } from '../services/calendarDate';
 import {
     detectNativeCurrency,
     getCurrencyInputAffix,
+    NATIVE_CURRENCY_OPTIONS,
+    normalizeNativeCurrency,
 } from '../services/instrumentCurrency.js';
 import { buildKnownSymbolSuggestions } from '../services/symbolSuggestions.js';
 import { subscribeRecordCreateRecoverySuccess } from '../services/recordCreateRecoverySignal.js';
@@ -224,6 +255,7 @@ const loading = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
 const validationAttempted = ref(false);
+const currencyUserEdited = ref(false);
 let unresolvedCreateBody = null;
 
 const tagInput = ref('');
@@ -232,6 +264,7 @@ const holdingGroups = ref([]);
 const symbolInputFocused = ref(false);
 const symbolSuggestionsDismissed = ref(false);
 const activeSymbolSuggestionIndex = ref(-1);
+const currencyOptions = NATIVE_CURRENCY_OPTIONS;
 
 // Keep the long-standing financial form declaration stable; journal-only metadata
 // is attached additively so existing transaction/idempotency contracts remain intact.
@@ -244,14 +277,17 @@ const form = reactive({
     fee: '', 
     tax: '', 
     total_amount: '',
-    tag: '' 
+    tag: '',
+    currency: '',
 });
 const journalDefaults = Object.freeze({ note: '' });
 Object.assign(form, journalDefaults);
 
 const normalizedSymbol = computed(() => String(form.symbol || '').trim().toUpperCase());
-const transactionCurrency = computed(() => detectNativeCurrency(normalizedSymbol.value));
+const detectedCurrency = computed(() => detectNativeCurrency(normalizedSymbol.value));
+const transactionCurrency = computed(() => normalizeNativeCurrency(form.currency) || detectedCurrency.value);
 const transactionCurrencySymbol = computed(() => getCurrencyInputAffix(transactionCurrency.value));
+const editingStoredCurrency = computed(() => isEditing.value && normalizeNativeCurrency(form.currency));
 const symbolSuggestions = computed(() => buildKnownSymbolSuggestions(store.records, form.symbol));
 const showSymbolSuggestions = computed(() => (
     !isEditing.value
@@ -284,6 +320,7 @@ const commonTags = computed(() => {
 
 const validationErrors = computed(() => ({
     symbol: !form.symbol ? '請輸入交易標的 Symbol' : '',
+    currency: !isEditing.value && !normalizeNativeCurrency(form.currency) ? '請確認報價單位（3 碼幣別或 GBp）' : '',
     qty: !form.qty ? '請輸入股數' : '',
     executionValue: (!form.price && !form.total_amount) ? '請輸入成交單價或成交金額' : '',
     sellGroups: (
@@ -295,6 +332,7 @@ const validationErrors = computed(() => ({
 
 const firstValidationError = computed(() => (
     validationErrors.value.symbol
+    || validationErrors.value.currency
     || validationErrors.value.qty
     || validationErrors.value.executionValue
     || validationErrors.value.sellGroups
@@ -320,6 +358,15 @@ const closeSymbolSuggestions = () => {
     symbolInputFocused.value = false;
     symbolSuggestionsDismissed.value = false;
     resetSymbolSuggestionNavigation();
+};
+
+const markCurrencyEdited = () => {
+    if (!isEditing.value) currencyUserEdited.value = true;
+};
+
+const normalizeCurrencyField = () => {
+    const normalized = normalizeNativeCurrency(form.currency);
+    if (normalized) form.currency = normalized;
 };
 
 const checkHoldings = () => {
@@ -406,6 +453,11 @@ const pushTag = (t) => {
 };
 
 watch(() => form.txn_type, () => checkHoldings());
+watch(normalizedSymbol, (symbol) => {
+    if (!isEditing.value && !currencyUserEdited.value) {
+        form.currency = detectNativeCurrency(symbol);
+    }
+});
 
 const setTxnType = (type) => { 
     form.txn_type = type;
@@ -416,6 +468,13 @@ const buildRecordPayload = () => {
     const payload = { ...form };
     ['qty', 'price', 'fee', 'tax', 'total_amount'].forEach(k => payload[k] = parseFloat(payload[k] || 0));
     payload.note = String(payload.note || '').slice(0, 2000);
+    const normalizedCurrency = normalizeNativeCurrency(payload.currency);
+    if (isEditing.value) {
+        if (normalizedCurrency) payload.currency = normalizedCurrency;
+        else delete payload.currency;
+    } else {
+        payload.currency = normalizedCurrency;
+    }
     if (payload.qty > 0) {
         if (payload.price <= 0 && payload.total_amount > 0) {
             payload.price = payload.total_amount / payload.qty;
@@ -469,6 +528,7 @@ const resetForm = () => {
     validationAttempted.value = false;
     isEditing.value = false; 
     editingId.value = null;
+    currencyUserEdited.value = false;
     form.txn_date = formatLocalCalendarDate();
     form.symbol = ''; 
     form.qty = ''; 
@@ -478,6 +538,7 @@ const resetForm = () => {
     form.total_amount = '';
     form.tag = '';
     form.note = '';
+    form.currency = '';
     form.txn_type = 'BUY';
     holdingGroups.value = [];
     selectedSellGroups.value = [];
@@ -492,8 +553,10 @@ const setupForm = (r) => {
     validationAttempted.value = false;
     isEditing.value = true; 
     editingId.value = r.id;
+    currencyUserEdited.value = false;
     Object.keys(form).forEach(k => form[k] = r[k]);
     form.note = r.note || '';
+    form.currency = normalizeNativeCurrency(r.currency) || '';
     symbolInputFocused.value = false;
     symbolSuggestionsDismissed.value = false;
     resetSymbolSuggestionNavigation();
