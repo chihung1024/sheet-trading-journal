@@ -1,20 +1,12 @@
 # TO-DO / UPDATE LIST — Product-First Current Handoff
 
-> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote `main` / PR / CI / Pages / Worker runtime truth overrides this snapshot.
+> FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote `main` / open PR / CI / Pages / Worker runtime truth overrides this snapshot.
 >
-> Versioned closeouts:
-> - R2.4: `docs/engineering/R2_4_SHADOW_CASH_LEDGER_PRODUCTION_CLOSEOUT_2026-08-17.md`
-> - R2.5A: `docs/engineering/R2_5A_TRANSACTION_CURRENCY_RECONCILIATION_CLOSEOUT_2026-08-17.md`
-> - R2.5B: `docs/engineering/R2_5B_POST_RECONCILIATION_SHADOW_EVIDENCE_2026-08-17.md`
-> - R2.5C: `docs/engineering/R2_5C_OPENING_BALANCE_READINESS_CLOSEOUT_2026-08-17.md`
-> - R2.5D: `docs/engineering/R2_5D_OPENING_BALANCE_SHADOW_COMPLETE_2026-08-17.md`
-> - R2.6A: `docs/engineering/R2_6A_ACCOUNT_VALUE_PREVIEW_PRODUCTION_CLOSEOUT_2026-08-17.md`
-> - R3.1A: `docs/engineering/R3_1A_BROKER_NEUTRAL_BACKUP_PRODUCTION_CLOSEOUT_2026-08-17.md`
-> - R3.1B: `docs/engineering/R3_1B_ATOMIC_EMPTY_RESTORE_STAGING_CLOSEOUT_2026-08-17.md`
+> Stable closeout evidence is versioned under `docs/engineering/`; this file is intentionally a concise live handoff rather than a history dump.
 
 Last updated: **2026-08-17 Asia/Taipei**
 
-Current line: **R1, R2.1–R2.6A, R3.1A, and R3.1B are closed at their reviewed boundaries. R3.1B backend + isolated staging restore is live-proven on `main@c1c7c2895c297372981dac2898131c7727d44e9a`; Deploy Staging Worker #6 / run `32022424046` succeeded after the stable-readiness gate correctly waited 11 attempts for three consecutive exact-source passes. Authenticated atomic restore, authoritative readback, replay deduplication, idempotency conflict, non-empty blocking, cleanup, credential cleanup, and live CORS isolation all passed. The frontend remains intentionally preview-only. The single Primary Active Batch is R3.1C Restore Execution UX + Production Capability Activation.**
+Current line: **R1, R2.1–R2.6A, R3.1A, R3.1B and R3.1C are closed at their reviewed boundaries. Safe empty-account journal restore is activated in protected production. Desktop Visibility D1–D3 are also closed and Pages-verified. The next single Primary Active Batch is Desktop Visibility D4 — Focus Mode / Transaction Rail Workspace Control, beginning with interaction tracing before implementation.**
 
 ---
 
@@ -35,26 +27,47 @@ Current line: **R1, R2.1–R2.6A, R3.1A, and R3.1B are closed at their reviewed 
 
 ## 1. Current authoritative state
 
-Before this R3.1B docs closeout branch:
+At the start of this handoff snapshot:
 
-- protected `main`: `c1c7c2895c297372981dac2898131c7727d44e9a`;
-- open PRs: none;
-- PR #344 merged successfully;
-- PR #344 frozen head: `1f5a5c67265464949c2358961f9cf385a673948a`;
-- exact-head CI #1170: SUCCESS;
-- frozen review: PASS / BLOCKER 0 / FOLLOW-UP 0;
-- post-main CI #1171: SUCCESS;
-- Pages #1624: SUCCESS;
-- Deploy Staging Worker #6 / run `32022424046`: SUCCESS on exact main source;
-- staging Worker Version ID: `3198a37d-9882-4e68-b40d-edb7e01ed6c9`;
-- staging runtime contract: release `4.12` / API `2.65` / schema `3`;
-- Worker regression suite in the staging run: 261 / 261 passed;
-- stable staging deployment + restore route readiness required 11 attempts to obtain 3 consecutive exact full-contract passes;
-- authenticated live staging restore smoke: PASS;
-- live staging CORS isolation: PASS;
-- production primary tenant was not used for the restore write smoke.
+- protected frontend `main`: `c6acf86da3a5406a3850c458a7c8fb4f1621d753`;
+- open PRs before this docs closeout: none;
+- post-main CI #1184: SUCCESS;
+- Pages #1630: SUCCESS on exact `main@c6acf86da3a5406a3850c458a7c8fb4f1621d753`;
+- production Worker runtime source remains the reviewed R3.1C source `aaa1e39819f0f0c56d37aa02b399cc13738072eb` because D1–D3 are frontend-only;
+- Worker runtime contract remains release `4.12` / API `2.65` / schema authority `3`;
+- production additive migration `0006_journal_restore_sessions.sql` is applied;
+- production authenticated tenant-scoped empty-account atomic `/api/journal-restore` capability is activated through the canonical deployment path.
 
-Last previously verified production Worker source was `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`, Worker Version ID `ebcbdd35-3f5d-40b9-bb97-aef4a25ef706`, release `4.12` / API `2.65` / schema `3`. **Refresh live production runtime/route capability before R3.1C enables any user-facing restore mutation; do not assume this older runtime now contains `/api/journal-restore`.**
+### R3.1C production activation evidence
+
+Status: **CLOSED / PRODUCTION VERIFIED**.
+
+- PR #346 reviewed restore execution UX;
+- exact runtime source `aaa1e39819f0f0c56d37aa02b399cc13738072eb`;
+- Production Identity Evidence #27 / run `32030517867`: SUCCESS;
+- identity artifact `9288717155`;
+- activation authority PR #347 merged to `main@3cb84d6840abdd21ef8b4195efc970e810e64dcb`;
+- Production Deployment Dispatch Broker #11: SUCCESS;
+- Deploy Worker #14 / run `32031442311`: SUCCESS after protected production approval;
+- production D1 identity passed;
+- migration `0006_journal_restore_sessions.sql` applied before Worker activation;
+- stable post-deploy production contract passed;
+- post-deploy artifact `9289089443`.
+
+Retained restore boundary:
+
+```text
+backup v1
+→ strict local/server validation
+→ empty-target requirement
+→ explicit confirmation
+→ one retry-safe idempotent intent
+→ authenticated atomic Worker restore
+→ authoritative records/cash readback
+→ normal recalculation lifecycle
+```
+
+Still rejected: merge restore, replace-all, silent delete, importing derived snapshots, fresh idempotency key on ambiguous retry, destructive production smoke against populated user data.
 
 ### R2 cash/account-value boundary
 
@@ -67,128 +80,111 @@ Status: **CLOSED / PRODUCTION VERIFIED**.
 - existing Daily P&L/TWR/XIRR/performance semantics remain unchanged;
 - whole-account performance cutover remains a separate future methodology decision.
 
-### R3.1A — Broker-Neutral Export & Backup Foundation
+### R3.1A — Broker-Neutral Backup
 
 Status: **CLOSED / PRODUCTION VERIFIED**.
 
-Delivered authority path:
-
 ```text
-authenticated tenant-scoped durable reads
-→ explicit versioned backup contract
-→ fail-closed validation/serialization
-→ user-controlled JSON download
+authenticated durable reads
+→ versioned backup contract
+→ deterministic user download
 ```
 
-The authenticated production user confirmed successful backup download. No personal backup contents/counts are versioned.
+No backup contents or personal financial values are versioned in repo evidence.
 
 ### R3.1B — Atomic Empty Restore Foundation
 
-Status: **CLOSED / BACKEND + ISOLATED STAGING VERIFIED**.
+Status: **CLOSED / ISOLATED STAGING VERIFIED**.
 
-Delivered authority path:
-
-```text
-backup v1
-→ strict restore validation
-→ empty-destination requirement
-→ authenticated tenant-scoped atomic Worker restore
-→ durable restore-session idempotency guard
-→ authoritative server readback
-→ replay/conflict/non-empty fail-closed semantics
-```
-
-Live staging evidence proves:
-
-- atomic restore into an empty tenant;
-- server-authoritative records/cash readback;
-- exact replay deduplication;
-- changed-payload same-key conflict rejection;
-- second restore against non-empty destination rejection;
-- unconditional owned-data cleanup;
-- completed-session replay remains a no-op after cleanup;
-- browser-origin isolation remains intact;
-- deployment propagation is now gated by three consecutive exact-source version/health/restore-route checks before credentials or mutation.
-
-Important retained boundary:
-
-- `JournalRestoreButton.vue` is still preview-only;
-- the execute button remains disabled by design;
-- no production user-facing restore write should be activated until R3.1C verifies/deploys live production capability.
+Staging proved atomic empty-tenant restore, authoritative readback, replay deduplication, same-key conflict rejection, non-empty fail-closed behavior, cleanup, and CORS isolation. R3.1C subsequently activated the reviewed route in production without destructive production restore testing.
 
 ---
 
-## 2. Primary Active Batch
+## 2. Desktop Visibility closeout
+
+Detailed evidence: `docs/engineering/R3_1C_AND_DESKTOP_VISIBILITY_D1_D3_CLOSEOUT_2026-08-17.md`.
+
+### D1 — Workspace Reclaim
+
+Status: **CLOSED / PAGES VERIFIED**.
+
+- PR #348;
+- desktop header 64px → 56px;
+- tighter outer desktop rhythm;
+- right transaction rail 330–350px responsive width;
+- more sticky-rail vertical workspace;
+- >=1680px uses the existing single navigation row in the sticky-header center instead of consuming a second in-flow row;
+- mobile behavior and navigation authority unchanged;
+- exact-head CI #1179 / post-main CI #1180 / Pages #1628: SUCCESS.
+
+### D2 — Overview Information Hierarchy
+
+Status: **CLOSED / PAGES VERIFIED**.
+
+- PR #349;
+- >=1600px portfolio summary + daily context pair side-by-side;
+- account value / detailed Daily P&L explanation / loading skeleton / chart remain full width;
+- desktop chart height becomes viewport-aware `clamp(360px, 44vh, 450px)`;
+- source order, projection and calculation semantics unchanged;
+- exact-head CI #1181 / post-main CI #1182 / Pages #1629: SUCCESS.
+
+### D3 — Data Work Surfaces
+
+Status: **CLOSED / PAGES VERIFIED**.
+
+- PR #350;
+- transaction toolbar/header density reduced;
+- transaction counts use one inline desktop status strip;
+- search/filter/import/backup/refresh controls all remain present;
+- holdings concentration facts remain present with reduced non-data spacing;
+- holdings table desktop viewport expanded to `clamp(480px, 62vh, 760px)`;
+- mobile/tablet component behavior unchanged;
+- exact-head CI #1183 / post-main CI #1184 / Pages #1630: SUCCESS.
+
+---
+
+## 3. Primary Active Batch
 
 ### Phase
 
-`R3 — Universal Data Gateway`
+`Desktop Visibility / Product UX`
 
 ### Batch
 
-`R3.1C — Restore Execution UX + Production Capability Activation`
+`D4 — Desktop Focus Mode / Transaction Rail Workspace Control`
 
-Status: **ACTIVE / READY FOR IMPLEMENTATION TRACE**
+Status: **ACTIVE / ARCHITECTURE TRACE FIRST**
 
 ### Primary Goal
 
-> Turn the already-reviewed backup preview and atomic empty-tenant restore backend into a safe, understandable user recovery flow, while preserving one idempotent intent across ambiguous retries and refusing to expose an execution action until the live production Worker can prove the reviewed restore route.
+> Let a desktop user intentionally reclaim the horizontal space occupied by the persistent transaction rail when reviewing dense data, without weakening the transaction create/edit flow or affecting the mobile trade sheet.
 
 ### Why this is next
 
-R3.1A proves trustworthy export. R3.1B proves trustworthy atomic empty restore in isolated staging. The remaining direct user gap is execution: today the product can tell the user that a backup is ready, but the UI intentionally stops before mutation.
+D1–D3 reclaimed vertical space and improved information density without hiding content. The remaining persistent desktop space cost is the always-open 330–350px transaction rail. A reversible user-controlled focus mode can improve holdings/history work without permanently removing the fast-entry workflow.
 
-### Required product behavior
+### Required behavior before implementation is accepted
 
-1. Keep strict backup-v1 validation and current-target preview before mutation.
-2. Keep restore limited to an empty transaction + cash-event destination; no merge and no replace-all.
-3. Require deliberate final confirmation that restoring will create durable journal rows.
-4. Create one restore intent/idempotency generation per accepted backup preview and retain it across retry of the same intent.
-5. Do not generate a fresh key merely because a request timed out or the user retries an ambiguous result.
-6. Reset the restore intent only when the selected backup/preview materially changes or the operation reaches a terminal outcome that requires a new intent.
-7. Surface server fail-closed classifications clearly: route/capability unavailable, auth, destination-not-empty, idempotency conflict, validation/schema, network ambiguity, and database failure.
-8. After accepted restore, refetch records and cash events authoritatively and verify expected counts/portable fields before declaring success.
-9. Trigger the normal calculation lifecycle after committed readback; never import derived analytics/snapshots from the backup.
-10. Preserve current user journal if any precondition fails.
-11. If live production restore capability is absent, show a clear unavailable state rather than sending a broken POST.
-
-### Production activation gate
-
-Before enabling the execute path in production:
-
-- refresh live production Worker source and `/api/journal-restore` route capability;
-- verify production D1 has the additive `journal_restore_sessions` migration;
-- deploy only through the existing reviewed production Worker activation path if runtime is behind;
-- use non-mutating route/readiness proof before any user write;
-- do not attempt destructive/empty-restore smoke against the user's populated primary tenant;
-- production verification may safely prove route identity, auth/fail-closed behavior, and no mutation on non-empty destination.
-
-### Initial exit criteria
-
-R3.1C may close only when:
-
-1. frontend execution is reachable only after a valid executable preview;
-2. same restore intent preserves one idempotency key across ambiguous retries;
-3. explicit confirmation precedes mutation;
-4. timeout/retry cannot duplicate financial events;
-5. non-empty destination remains fail-closed and non-destructive;
-6. successful restore performs authoritative post-write refetch/verification;
-7. normal recalculation is requested only after committed restore/readback;
-8. capability-unavailable/auth/conflict/network/database states have actionable UX;
-9. full exact-head CI + frozen review pass;
-10. live production capability is verified before the UI is considered production-ready;
-11. production verification does not endanger existing production journal data.
+1. Desktop only; mobile sheet behavior must remain exactly as-is.
+2. Default remains safe/understandable; no transaction form authority is duplicated.
+3. Focus mode must be explicitly reversible from a visible control.
+4. Editing a transaction from history must automatically expose the transaction form before `setupForm(record)` executes.
+5. Creating/submitting a transaction must continue to use the existing `TradeForm` and store/API paths.
+6. Initial implementation should be memory-only session UI state; do not add browser persistence unless later user value clearly justifies it.
+7. Cash view remains single-column by its existing authority.
+8. No accounting, FX, API, Worker, auth, restore or calculation changes.
+9. Add contract tests for desktop-only visibility, edit auto-open behavior, and no mobile regression.
 
 ### NOW / NEXT / BACKLOG / REJECT
 
-- **NOW:** trace current frontend auth/API/mutation orchestration → define stable restore-intent lifecycle → verify live production restore capability → implement the smallest execution UX slice.
-- **NEXT:** exact-head CI/frozen review → production capability activation/deployment if required → non-destructive live verification → close R3.1C.
-- **BACKLOG:** staging metadata-display drift cleanup; broker-neutral CSV/adapters; automated reconciliation preview; external-cash migration guidance; minimal strategy metadata; whole-account performance methodology only if separately justified.
-- **REJECT:** merge restore, replace-all, silent deletes, fresh idempotency key on ambiguous retry, guessed financial facts, importing credentials/server hashes/derived snapshots, unrelated refactor.
+- **NOW:** trace `App.vue` desktop rail lifecycle, `RecordList @edit`, `TradeForm.setupForm/resetForm`, cash-view layout, responsive breakpoint contracts, and existing frontend tests; design the smallest reversible focus-mode state machine.
+- **NEXT:** implement behind existing single `TradeForm` authority → exact-head CI → frozen review → merge → Pages verification.
+- **BACKLOG:** further cross-page visual polish only if current production layout evidence identifies a concrete usability gap; broker-neutral CSV/adapters; automated reconciliation preview; whole-account performance methodology only if separately justified.
+- **REJECT:** duplicate TradeForm, hidden/unreachable create/edit path, persistent UI state without need, mobile behavior drift, financial calculation changes disguised as layout work, arbitrary font shrinking, unrelated cleanup.
 
 ---
 
-## 3. Stable authority boundaries
+## 4. Stable authority boundaries
 
 ### Transaction mutation
 
@@ -212,52 +208,30 @@ explicit user cash event
 → reviewed account-value preview
 ```
 
-### Backup
+### Backup / Restore
 
 ```text
 authenticated durable reads
-→ versioned backup contract
-→ deterministic user download
+→ versioned backup
+→ strict restore preview
+→ empty-target confirmation
+→ one idempotent restore intent
+→ atomic Worker restore
+→ authoritative readback
+→ normal recalculation
 ```
 
-### Restore
+### UI layout
 
-```text
-user-selected backup
-→ strict local validation
-→ authoritative current-target read
-→ empty-target/executable preview
-→ explicit confirmation
-→ one durable retry-safe restore intent
-→ authenticated atomic Worker restore
-→ authoritative records/cash readback
-→ normal recalculation lifecycle
-→ success UX
-```
-
-No stage may infer missing financial facts or silently merge/delete/replace current data.
-
----
-
-## 4. Immediate next actions
-
-1. Read `JournalRestoreButton.vue`, `journalRestorePreview.js`, API/auth utilities, store refresh/recalculation path, and frontend restore tests.
-2. Verify current live production Worker source and whether `GET /api/journal-restore` returns the reviewed non-mutating 405 contract on that exact source.
-3. Verify production migration/runtime authority for `journal_restore_sessions` before enabling mutation.
-4. Define a frontend restore-intent state machine that retains one key across timeout/ambiguous retry.
-5. Add execution service contract + unit tests before UI wiring.
-6. Add explicit confirmation and actionable terminal/ambiguous state UX without weakening empty-target rules.
-7. Refetch/verify durable rows after success, then invoke existing normal recalculation path.
-8. Use Draft PR + exact-head full CI + frozen independent review.
-9. If production Worker is behind, use the existing reviewed deployment process rather than creating a second deployment path.
-10. Close R3.1C only after non-destructive production capability evidence.
+`src/styles/product-consistency.css` is the final cross-page spacing/density layer. Typography authority remains in the existing semantic type system/component tokens. Layout CSS must not become a data, financial, persistence, or navigation authority.
 
 ---
 
 ## 5. Fresh-session startup
 
 1. Read `AI_PROJECT_PLAYBOOK.md`, `README.md`, this file.
-2. Refresh `main`, open PRs, CI, Pages, Worker/runtime truth.
-3. Keep R3.1C as the only Primary Active Batch unless newer production evidence materially changes priority.
-4. Preserve recovery points and exact-head review discipline.
-5. Reopen closed R2/R3.1A/R3.1B work only for new material evidence.
+2. Refresh `main`, open PRs, CI, Pages, and Worker/runtime truth.
+3. Keep D4 as the single Primary Active Batch unless fresh evidence materially changes priority.
+4. Preserve exact-head CI/frozen-review/expected-head merge discipline.
+5. Reopen closed R2/R3/D1–D3 work only for new material evidence.
+6. Do not change `AI_PROJECT_PLAYBOOK.md` for ordinary layout-specific decisions.
