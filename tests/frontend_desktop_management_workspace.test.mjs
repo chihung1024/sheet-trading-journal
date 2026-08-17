@@ -17,16 +17,17 @@ test('D5 keeps the existing management component authorities mounted by App', ()
 test('wide cash workspace composes the existing editor and ledger side by side', () => {
   assert.match(cash, /class="card cash-editor"/);
   assert.match(cash, /class="card cash-list-card"/);
+  assert.match(app, /<aside[\s\S]*v-if="activeView !== 'cash'"/);
   assert.match(css, /@media \(min-width:\s*1280px\)[\s\S]*\.section-cash \.cash-page\s*\{[\s\S]*grid-template-columns:\s*minmax\(340px, 0\.72fr\) minmax\(0, 1\.28fr\)/);
   assert.match(css, /\.section-cash \.cash-editor\s*\{\s*grid-column:\s*1/);
   assert.match(css, /\.section-cash \.cash-list-card\s*\{\s*grid-column:\s*2/);
   assert.match(css, /\.section-cash \.cash-form\s*\{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 });
 
-test('wide group workspace uses horizontal space without creating a second management authority', () => {
+test('group workspace waits for enough viewport width beside the transaction rail', () => {
   assert.equal((groups.match(/class="card gm-card"/g) || []).length, 1);
   assert.equal((groups.match(/class="gm-section gm-section-selection"/g) || []).length, 1);
-  assert.match(css, /\.section-groups \.gm-card\s*\{[\s\S]*grid-template-columns:\s*minmax\(300px, 0\.38fr\) minmax\(0, 1fr\)/);
+  assert.match(css, /@media \(min-width:\s*1600px\)[\s\S]*\.section-groups \.gm-card\s*\{[\s\S]*grid-template-columns:\s*minmax\(300px, 0\.38fr\) minmax\(0, 1fr\)/);
   assert.match(css, /\.section-groups \.gm-section-selection\s*\{[\s\S]*grid-column:\s*2/);
   assert.match(css, /\.section-groups \.gm-card \.gm-records\s*\{[\s\S]*max-height:\s*clamp\(520px, 62vh, 760px\)/);
 });
