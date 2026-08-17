@@ -177,6 +177,7 @@ def build_account_value_preview(
     normalized_fx["TWD"] = 1.0
     components: list[AccountValueCashComponent] = []
     missing_currencies: list[str] = []
+    cash_value = Decimal("0")
 
     for summary in cash_report.currencies:
         balance = _finite_decimal(summary.balance)
@@ -195,6 +196,7 @@ def build_account_value_preview(
             continue
 
         value_twd = balance * rate
+        cash_value += value_twd
         components.append(AccountValueCashComponent(
             currency=summary.currency,
             balance_native=float(balance),
@@ -210,10 +212,6 @@ def build_account_value_preview(
             missing_cash_fx_currencies=missing_currencies,
         )
 
-    cash_value = sum(
-        (_finite_decimal(component.value_twd) or Decimal("0"))
-        for component in components
-    )
     account_value = securities_decimal + cash_value
 
     return AccountValuePreview(
