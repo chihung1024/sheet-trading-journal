@@ -60,6 +60,7 @@ function parseCsvMatrix(text) {
   let row = [];
   let field = '';
   let quoted = false;
+  let afterQuote = false;
 
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index];
@@ -71,9 +72,33 @@ function parseCsvMatrix(text) {
           index += 1;
         } else {
           quoted = false;
+          afterQuote = true;
         }
       } else {
         field += char;
+      }
+      continue;
+    }
+
+    if (afterQuote) {
+      if (char === ',') {
+        row.push(field);
+        field = '';
+        afterQuote = false;
+      } else if (char === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        afterQuote = false;
+      } else if (char === '\r' && source[index + 1] === '\n') {
+        // CRLF is completed by the following newline. Nothing may otherwise
+        // appear between a closing quote and the field/row delimiter.
+      } else {
+        throw new BrokerNeutralImportPreviewError(
+          'CSV 引號結束後只能接逗號、換行或檔案結尾',
+          'MALFORMED_CSV',
+        );
       }
       continue;
     }
@@ -100,7 +125,7 @@ function parseCsvMatrix(text) {
     throw new BrokerNeutralImportPreviewError('CSV 有未關閉的引號', 'MALFORMED_CSV');
   }
 
-  if (field.length > 0 || row.length > 0) {
+  if (field.length > 0 || row.length > 0 || afterQuote) {
     row.push(field.replace(/\r$/, ''));
     rows.push(row);
   }
@@ -137,9 +162,25 @@ function parseCanonicalNumber(rawValue, field, { required = true, positive = fal
 }
 
 function validateOffsetDatetime(value) {
-  if (!OFFSET_DATETIME_RE.test(value)) return false;
-  const time = Date.parse(value);
-  return Number.isFinite(time);
+  const match = value.match(OFFSET_DATETIME_RE);
+  if (!match) return false;
+
+  const datePart = `${match[1]}-${match[2]}-${match[3]}`;
+  if (!validateIsoDate(datePart)) return false;
+
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  if (hour > 23 || minute > 59 || second > 59) return false;
+
+  const offset = match[7];
+  if (offset !== 'Z') {
+    const offsetHour = Number(offset.slice(1, 3));
+    const offsetMinute = Number(offset.slice(4, 6));
+    if (offsetHour > 23 || offsetMinute > 59) return false;
+  }
+
+  return Number.isFinite(Date.parse(value));
 }
 
 function validateHeaders(headers) {
@@ -246,7 +287,7 @@ function validateRow(values, headers, rowNumber) {
   if (executedAt && !validateOffsetDatetime(executedAt)) {
     issues.push(makeIssue(
       'INVALID_EXECUTED_AT',
-      'executed_at 必須是含 Z 或時區偏移的 ISO 時間',
+      'executed_at 必須是有效且含 Z 或時區偏移的 ISO 時間',
       'executed_at',
     ));
   } else if (executedAt && txnDate && executedAt.slice(0, 10) !== txnDate) {
