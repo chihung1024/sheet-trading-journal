@@ -230,15 +230,20 @@ test('browser download is created only from a validated backup contract and alwa
   assert.deepEqual(events, ['create-url', 'append', 'click', 'remove', 'revoke:blob:backup']);
 });
 
-test('overview backup UX uses fresh backup service rather than the projected portfolio records store', () => {
+test('backup UX is compact and colocated with trade import rather than occupying overview space', () => {
   const component = fs.readFileSync(path.join(ROOT, 'src/components/JournalBackupButton.vue'), 'utf8');
   const overview = fs.readFileSync(path.join(ROOT, 'src/components/OverviewPage.vue'), 'utf8');
+  const records = fs.readFileSync(path.join(ROOT, 'src/components/RecordList.vue'), 'utf8');
   const service = fs.readFileSync(path.join(ROOT, 'src/services/journalBackupExport.js'), 'utf8');
 
-  assert.match(overview, /<JournalBackupButton v-if="!store\.loading" \/>/);
+  assert.doesNotMatch(overview, /JournalBackupButton/);
+  assert.match(records, /import JournalBackupButton from '\.\/JournalBackupButton\.vue';/);
+  assert.match(records, /<IbkrTradeImport \/>\s*<JournalBackupButton \/>/);
+  assert.match(component, /class="backup-button"/);
+  assert.match(component, /aria-label="下載交易紀錄與現金事件備份"/);
   assert.match(component, /createJournalBackup\(/);
   assert.match(component, /authStore\.refreshToken\(\)/);
-  assert.match(component, /不包含登入憑證、本機快取或衍生投資組合快照/);
+  assert.doesNotMatch(component, /journal-backup-card|backup-copy|width:\s*100%/);
   assert.doesNotMatch(component, /portfolioStore|store\.records|localStorage/);
   assert.match(service, /buildRecordsPageEndpoint/);
   assert.doesNotMatch(service, /fetchAllRecordPages/);

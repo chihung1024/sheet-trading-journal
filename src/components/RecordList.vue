@@ -67,6 +67,7 @@
              </div>
 
              <IbkrTradeImport />
+             <JournalBackupButton />
 
              <button class="btn-refresh" @click="refreshData" :disabled="isRefreshing">
                 <span class="refresh-icon" :class="{ spinning: isRefreshing }">↺</span>
@@ -305,6 +306,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { useToast } from '../composables/useToast';
 import IbkrTradeImport from './IbkrTradeImport.vue';
+import JournalBackupButton from './JournalBackupButton.vue';
 import RecordCurrencyReconciliation from './RecordCurrencyReconciliation.vue';
 import RecordDetailPanel from './RecordDetailPanel.vue';
 import {
