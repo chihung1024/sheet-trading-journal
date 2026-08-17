@@ -321,6 +321,84 @@
   .section-holdings .table-container {
     max-height: clamp(480px, 62vh, 760px);
   }
+
+  /* Desktop Visibility D5 — remaining management pages keep every fact and
+     action visible while shedding excess chrome on desktop. */
+  .section-dividends .dm-header {
+    padding: 14px 16px;
+  }
+
+  .section-dividends .dividend-entry-help {
+    padding: 10px 16px;
+  }
+
+  .section-dividends .queue-section-label {
+    padding: 8px 16px;
+  }
+}
+
+/* D5 uses horizontal workspace only when there is enough width for the existing
+   forms/tables. Narrow desktop and all mobile layouts remain component-owned. */
+@media (min-width: 1280px) {
+  .section-cash .cash-page {
+    grid-template-columns: minmax(340px, 0.72fr) minmax(0, 1.28fr);
+    align-items: start;
+  }
+
+  .section-cash .cash-header,
+  .section-cash .cash-boundary,
+  .section-cash .pending-card {
+    grid-column: 1 / -1;
+  }
+
+  .section-cash .cash-editor {
+    grid-column: 1;
+  }
+
+  .section-cash .cash-list-card {
+    grid-column: 2;
+  }
+
+  .section-cash .cash-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .section-cash .cash-form .note-field,
+  .section-cash .cash-form .form-actions {
+    grid-column: 1 / -1;
+  }
+
+  .section-groups .gm-card {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.38fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
+  }
+
+  .section-groups .gm-header {
+    grid-column: 1 / -1;
+  }
+
+  .section-groups .gm-section:not(.gm-section-selection) {
+    grid-column: 1;
+  }
+
+  .section-groups .gm-section-selection {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .section-groups .gm-card .group-list {
+    max-height: clamp(360px, 52vh, 620px);
+    overflow: auto;
+    padding-right: 2px;
+  }
+
+  .section-groups .gm-card .gm-records {
+    max-height: clamp(520px, 62vh, 760px);
+  }
 }
 
 /* On wide desktops the existing navigation row occupies the otherwise-unused
@@ -336,6 +414,10 @@
     min-height: 40px;
     transform: translateX(-50%);
     box-shadow: none;
+  }
+
+  .section-groups .strategy-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
