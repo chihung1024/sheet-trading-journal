@@ -66,6 +66,16 @@ test('wide desktop overview pairs summary and context while full-width evidence 
   assert.match(overviewPage, /:deep\(\.overview-context\)\s*\{\s*grid-column:\s*2/);
 });
 
+test('desktop record and holdings work surfaces reclaim space without hiding controls or data', () => {
+  assert.match(css, /\.section-records \.toolbar\s*\{[\s\S]*gap:\s*8px[\s\S]*padding:\s*10px 12px/);
+  assert.match(css, /\.section-records \.stats-summary\s*\{[\s\S]*display:\s*flex[\s\S]*margin-bottom:\s*12px[\s\S]*padding:\s*8px 10px/);
+  assert.match(css, /\.section-records \.stat-item\s*\{[\s\S]*flex-direction:\s*row[\s\S]*border-left:\s*1px solid var\(--border-color\)/);
+  assert.match(css, /\.section-holdings \.concentration-panel\s*\{[\s\S]*margin-bottom:\s*12px[\s\S]*padding:\s*12px 14px/);
+  assert.match(css, /\.section-holdings \.table-container\s*\{[\s\S]*max-height:\s*clamp\(480px, 62vh, 760px\)/);
+  assert.doesNotMatch(css, /\.section-records[^\{]*\{[^\}]*display:\s*none/);
+  assert.doesNotMatch(css, /\.section-holdings[^\{]*\{[^\}]*display:\s*none/);
+});
+
 test('layout consistency layer does not own typography or brute-force specificity', () => {
   assert.doesNotMatch(css, /font-size\s*:/i);
   assert.doesNotMatch(css, /--ui-font-/i);

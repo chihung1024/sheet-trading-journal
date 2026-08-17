@@ -238,6 +238,81 @@
   .section-overview .overview-headline .performance-row {
     padding-top: 10px;
   }
+
+  /* Desktop Visibility D3 — make high-frequency record/holding pages behave
+     like work surfaces instead of stacked dashboard cards. Content and controls
+     remain identical; only desktop rhythm and available table viewport change. */
+  .section-records .card-header {
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+
+  .section-records .toolbar {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .section-records .filters-wrapper,
+  .section-records .filters {
+    gap: 8px;
+  }
+
+  .section-records .stats-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+  }
+
+  .section-records .stat-item {
+    flex-direction: row;
+    gap: 6px;
+    min-width: 0;
+    padding: 2px 14px;
+    border-left: 1px solid var(--border-color);
+  }
+
+  .section-records .stat-item:first-child {
+    padding-left: 2px;
+    border-left: 0;
+  }
+
+  .section-holdings .concentration-panel {
+    margin-bottom: 12px;
+    padding: 12px 14px;
+  }
+
+  .section-holdings .concentration-header {
+    margin-bottom: 10px;
+  }
+
+  .section-holdings .concentration-content {
+    gap: 10px;
+  }
+
+  .section-holdings .concentration-metrics {
+    gap: 6px;
+  }
+
+  .section-holdings .concentration-metric {
+    padding: 8px;
+  }
+
+  .section-holdings .concentration-list {
+    gap: 6px;
+    padding-block: 4px;
+  }
+
+  .section-holdings .concentration-note {
+    margin-top: 8px;
+  }
+
+  .section-holdings .table-container {
+    max-height: clamp(480px, 62vh, 760px);
+  }
 }
 
 /* On wide desktops the existing navigation row occupies the otherwise-unused
