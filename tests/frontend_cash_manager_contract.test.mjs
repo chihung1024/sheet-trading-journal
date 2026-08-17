@@ -32,3 +32,16 @@ test('cash UI keeps trade/dividend derived cash out of manual event types', asyn
   assert.match(manager, /WITHDRAWAL/);
   assert.doesNotMatch(manager, /value="BUY"|value="SELL"|value="DIV"|value="ADJUSTMENT"/);
 });
+
+test('empty cash ledger guides an explicit opening baseline without fabricating a value', async () => {
+  const manager = await readFile('src/components/CashManager.vue', 'utf8');
+
+  assert.match(manager, /events\.value\.length === 0 && !pendingIntent\.value && isUntouchedCreateForm\(\)/);
+  assert.match(manager, /form\.event_type = 'OPENING_BALANCE'/);
+  assert.match(manager, /期初現金是「已知基準」，不是系統推算值/);
+  assert.match(manager, /基準日前的交易／入出金會視為已包含在這個金額內/);
+  assert.match(manager, /基準日若同時有 BUY、SELL、DIV、入金或出金/);
+  assert.match(manager, /不要為了完成狀態而猜測金額或自動填 0/);
+  assert.match(manager, /amount: ''/);
+  assert.doesNotMatch(manager, /amount:\s*0\b/);
+});

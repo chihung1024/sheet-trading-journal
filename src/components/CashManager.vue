@@ -31,6 +31,11 @@
         <button v-if="editing" type="button" class="btn-link" :disabled="saving" @click="resetForm">取消修改</button>
       </div>
 
+      <div v-if="form.event_type === 'OPENING_BALANCE'" class="opening-guidance" role="note">
+        <strong>期初現金是「已知基準」，不是系統推算值</strong>
+        <span>請填入你能確認的實際現金餘額。基準日前的交易／入出金會視為已包含在這個金額內；基準日若同時有 BUY、SELL、DIV、入金或出金，因目前沒有日內先後順序，現金帳本仍會保持待確認。不要為了完成狀態而猜測金額或自動填 0。</span>
+      </div>
+
       <form class="cash-form" @submit.prevent="submitForm">
         <label>
           <span>類型</span>
@@ -75,7 +80,7 @@
 
       <div v-if="loading && events.length === 0" class="empty-state">正在載入現金紀錄…</div>
       <div v-else-if="loadError && events.length === 0" class="empty-state error-state">{{ loadError }}</div>
-      <div v-else-if="events.length === 0" class="empty-state">目前沒有現金紀錄。若要建立完整帳本，請先從各幣別的期初現金開始。</div>
+      <div v-else-if="events.length === 0" class="empty-state">目前沒有現金紀錄。新增表單會先切到「期初現金」；請用你能確認的實際基準餘額開始，不要把第一筆交易金額當成期初現金。</div>
 
       <div v-else class="cash-table-wrap">
         <table class="cash-table">
@@ -128,6 +133,11 @@ const normalizeCurrency = () => { form.currency = String(form.currency || '').to
 const expectedState = (event) => normalizeCashEventState(event);
 const amountClass = (event) => ({ positive: event.event_type === 'DEPOSIT' || (event.event_type === 'OPENING_BALANCE' && event.amount > 0), negative: event.event_type === 'WITHDRAWAL' || (event.event_type === 'OPENING_BALANCE' && event.amount < 0) });
 const displayAmount = (event) => formatCashEventAmount(event);
+const isUntouchedCreateForm = () => {
+  if (editing.value) return false;
+  const pristine = freshForm();
+  return Object.entries(pristine).every(([key, value]) => form[key] === value);
+};
 
 const refreshPendingIntent = () => {
   try { pendingIntent.value = readCashCreateIntent(localStorage, owner()); }
@@ -259,7 +269,13 @@ const removeEvent = async (event) => {
   } finally { saving.value = false; }
 };
 
-onMounted(async () => { refreshPendingIntent(); await loadEvents(); });
+onMounted(async () => {
+  refreshPendingIntent();
+  const loaded = await loadEvents();
+  if (loaded && events.value.length === 0 && !pendingIntent.value && isUntouchedCreateForm()) {
+    form.event_type = 'OPENING_BALANCE';
+  }
+});
 </script>
 
 <style scoped>
@@ -268,8 +284,9 @@ onMounted(async () => { refreshPendingIntent(); await loadEvents(); });
 .cash-header h2, .cash-editor h3, .cash-list-card h3 { margin: 0; }
 .eyebrow { margin: 0 0 5px; color: var(--primary); font-size: var(--type-label); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .subtitle, .section-title-row p, .pending-card p { margin: 6px 0 0; color: var(--text-sub); font-size: var(--type-label); line-height: 1.55; }
-.cash-boundary { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border-color)); border-radius: 12px; background: color-mix(in srgb, var(--primary) 7%, var(--bg-card)); }
-.cash-boundary span { color: var(--text-sub); font-size: var(--type-label); }
+.cash-boundary, .opening-guidance { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border-color)); border-radius: 12px; background: color-mix(in srgb, var(--primary) 7%, var(--bg-card)); }
+.cash-boundary span, .opening-guidance span { color: var(--text-sub); font-size: var(--type-label); line-height: 1.55; }
+.opening-guidance { margin-top: 14px; }
 .pending-card { border-color: color-mix(in srgb, #d97706 45%, var(--border-color)); }
 .cash-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
 .cash-form label { display: grid; gap: 6px; min-width: 0; }
