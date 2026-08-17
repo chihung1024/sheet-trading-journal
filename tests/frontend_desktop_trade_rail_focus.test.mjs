@@ -34,7 +34,8 @@ test('editing a record reopens the desktop rail before delegating to TradeForm s
 
 test('mobile sheet behavior remains authoritative and shares the exact 1024px boundary with CSS', () => {
   assert.match(app, /isMobileView\.value = window\.innerWidth <= 1024/);
-  assert.match(css, /@media \(max-width:\s*1024px\)/);
+  assert.match(app, /@media \(max-width:\s*1024px\)/);
+  assert.match(css, /@media \(min-width:\s*1025px\)/);
   assert.match(app, /if \(isMobileView\.value\) \{[\s\S]*showMobileTrade\.value = false;[\s\S]*desktopTradeRailCollapsed\.value = false/);
   assert.match(app, /class="side-column"[\s\S]*'mobile-sheet': isMobileView[\s\S]*'sheet-open': showMobileTrade/);
   assert.match(app, /v-if="isMobileView && activeView !== 'cash'"[\s\S]*class="fab-btn"/);
