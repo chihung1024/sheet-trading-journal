@@ -63,6 +63,7 @@
       "journal_engine/clients/semantic_market_data.py",
       "journal_engine/config.py",
       "journal_engine/core/__init__.py",
+      "journal_engine/core/account_value_preview.py",
       "journal_engine/core/calculation_manifest.py",
       "journal_engine/core/calculator.py",
       "journal_engine/core/cash_ledger.py",
