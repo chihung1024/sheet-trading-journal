@@ -95,7 +95,24 @@ test('staging wrapper accepts only the fixed staging origin', async () => {
   }
 });
 
-test('staging wrapper fails closed before canonical Worker execution when configuration is incomplete', async () => {
+test('staging wrapper delegates deployment-only routes through the shared Worker entry', async () => {
+  const response = await stagingWorker.fetch(
+    new Request('https://staging.invalid/api/journal-restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }),
+    validEnv(),
+    ctx,
+  );
+
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error_meta.code, 'UNAUTHORIZED');
+  assert.equal(response.headers.get('X-Deployment-Environment'), 'staging');
+  assert.equal(response.headers.get('X-Worker-Service'), 'journal-backend-staging');
+});
+
+test('staging wrapper fails closed before shared Worker entry execution when configuration is incomplete', async () => {
   const response = await stagingWorker.fetch(
     new Request('https://staging.invalid/api/version'),
     validEnv({ API_SECRET: '' }),
