@@ -1,5 +1,6 @@
 import canonicalWorker, { __test as canonicalTest } from './worker.js';
 import { tryHandleDividendEventCreate } from './worker-dividend-event.js';
+import { tryHandleJournalRestore } from './worker-journal-restore.js';
 
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
 const IDEMPOTENT_RECORD_CREATE_PATH = '/api/records/idempotent';
@@ -15,7 +16,7 @@ export default {
       }
     }
 
-    const dividendResponse = await tryHandleDividendEventCreate(request, env, ctx, {
+    const entryDependencies = {
       canonicalWorker,
       canonicalTest,
       isOriginAllowed(origin, runtimeEnv) {
@@ -24,7 +25,17 @@ export default {
           ? runtimePolicy.allowedOrigins.has(origin)
           : canonicalTest.isOriginAllowed(origin, runtimeEnv);
       },
-    });
+    };
+
+    const restoreResponse = await tryHandleJournalRestore(request, env, ctx, entryDependencies);
+    if (restoreResponse) return restoreResponse;
+
+    const dividendResponse = await tryHandleDividendEventCreate(
+      request,
+      env,
+      ctx,
+      entryDependencies,
+    );
     if (dividendResponse) return dividendResponse;
 
     return canonicalWorker.fetch(routeRecordCreateRequest(request), env, ctx);
