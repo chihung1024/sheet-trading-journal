@@ -280,24 +280,29 @@ const splitJsonChunks = rows => {
   if (rows.length === 0) return [];
   const chunks = [];
   let current = [];
-  let currentBytes = 2;
+  let currentBytes = 2; // JSON array brackets: []
 
   for (const row of rows) {
     const serialized = JSON.stringify(row);
-    const addedBytes = byteLength(serialized) + (current.length ? 1 : 0);
-    if (addedBytes + 2 > MAX_D1_JSON_CHUNK_BYTES) {
-      if (current.length === 0) {
-        throw new JournalRestoreRequestError('A restore row exceeds the D1 chunk safety limit', {
-          code: 'RESTORE_TOO_LARGE',
-          status: 413,
-        });
-      }
-      chunks.push(JSON.stringify(current));
-      current = [];
-      currentBytes = 2;
+    const rowBytes = byteLength(serialized);
+    if (rowBytes + 2 > MAX_D1_JSON_CHUNK_BYTES) {
+      throw new JournalRestoreRequestError('A restore row exceeds the D1 chunk safety limit', {
+        code: 'RESTORE_TOO_LARGE',
+        status: 413,
+      });
     }
+
+    const separatorBytes = current.length ? 1 : 0;
+    const nextBytes = currentBytes + separatorBytes + rowBytes;
+    if (nextBytes > MAX_D1_JSON_CHUNK_BYTES) {
+      chunks.push(JSON.stringify(current));
+      current = [row];
+      currentBytes = 2 + rowBytes;
+      continue;
+    }
+
     current.push(row);
-    currentBytes += byteLength(serialized) + (current.length > 1 ? 1 : 0);
+    currentBytes = nextBytes;
   }
   if (current.length) chunks.push(JSON.stringify(current));
   return chunks;
