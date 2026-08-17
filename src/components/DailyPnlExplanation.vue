@@ -24,7 +24,12 @@
     </div>
 
     <div class="explanation-copy">
-      以下數字直接來自計算引擎已對帳的逐檔 day ledger，不在瀏覽器重新計算投資組合損益。此區只解釋來源，不重複首頁已顯示的當日總損益。畫面四捨五入至 TWD 整數；對帳仍使用原始未四捨五入數值。
+      <template v-if="scope === 'account'">
+        以下數字直接來自計算引擎已對帳的帳戶 day ledger，包含持倉與權威現金；外幣現金（含負餘額）會納入匯率曝險，不在瀏覽器重算損益。此區只解釋來源，不重複首頁已顯示的當日總損益。畫面四捨五入至 TWD 整數；對帳仍使用原始未四捨五入數值。
+      </template>
+      <template v-else>
+        以下數字直接來自計算引擎已對帳的逐檔 day ledger，不在瀏覽器重新計算投資組合損益。此區只解釋來源，不重複首頁已顯示的當日總損益。畫面四捨五入至 TWD 整數；對帳仍使用原始未四捨五入數值。
+      </template>
     </div>
 
     <div class="contributor-list">
@@ -63,7 +68,7 @@
       class="show-more-btn"
       @click="showAll = !showAll"
     >
-      {{ showAll ? '收起其餘標的' : `顯示全部 ${explanation.rows.length} 檔` }}
+      {{ showAll ? '收起其餘項目' : `顯示全部 ${explanation.rows.length} 項` }}
     </button>
   </section>
 </template>
@@ -79,6 +84,11 @@ const props = defineProps({
   groupName: {
     type: String,
     default: 'all',
+  },
+  scope: {
+    type: String,
+    default: 'securities',
+    validator: value => ['securities', 'account'].includes(value),
   },
   prevDate: {
     type: String,
@@ -100,9 +110,10 @@ watch(
   },
 );
 
-const groupLabel = computed(() => (
-  props.groupName === 'all' ? '全部投資組合' : `群組：${props.groupName}`
-));
+const groupLabel = computed(() => {
+  if (props.groupName !== 'all') return `群組：${props.groupName}`;
+  return props.scope === 'account' ? '全部帳戶（持倉＋現金）' : '全部投資組合';
+});
 
 const periodLabel = computed(() => {
   if (props.prevDate && props.asOfDate) return `${props.prevDate} → ${props.asOfDate}`;
