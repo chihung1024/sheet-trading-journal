@@ -1,5 +1,5 @@
 <template>
-  <div class="journal-data-actions" aria-label="交易資料匯入、範本、備份與還原">
+  <div class="journal-data-actions" aria-label="交易資料匯入、備份與還原">
     <BrokerNeutralImportPreview />
     <BrokerNeutralCsvTemplateButton />
     <button
