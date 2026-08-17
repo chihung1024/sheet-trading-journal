@@ -6,9 +6,10 @@
 > - Phase 1–6: `docs/archive/to_do_update_list_through_phase6.md`
 > - Full pre-R2.4-closeout live-status snapshot: `docs/archive/to_do_update_list_pre_r2_4_closeout_snapshot.md` — historical only; do not follow its stale Current Batch sections.
 > - R2.4 production closeout: `docs/engineering/R2_4_SHADOW_CASH_LEDGER_PRODUCTION_CLOSEOUT_2026-08-17.md`
+> - R2.5A production closeout: `docs/engineering/R2_5A_TRANSACTION_CURRENCY_RECONCILIATION_CLOSEOUT_2026-08-17.md`
 
 Last updated: **2026-08-17 Asia/Taipei**  
-Current line: **R1 and R2.1–R2.4 are closed at their reviewed boundaries. R2.4 Shadow Cash Ledger is CLOSED / PRODUCTION VERIFIED at the shadow-only boundary. Production Worker is exact runtime source `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`, Worker Version ID `ebcbdd35-3f5d-40b9-bb97-aef4a25ef706`, release `4.12` / API `2.65` / schema `3`. A real hosted calculation proved the targeted cash shadow feed works without taking over or blocking securities accounting. Production evidence now identifies missing authoritative transaction currency as the first reconciliation gap, so cash-inclusive NAV/performance remains explicitly disabled. The single Primary Active Batch is R2.5A Transaction Currency Reconciliation UX.**
+Current line: **R1 and R2.1–R2.5A are closed at their reviewed boundaries. R2.5A Transaction Currency Reconciliation UX is CLOSED / PRODUCTION PAGES VERIFIED at merge `7acb01717395b09a0b4e09b24af8733e60a0a8cb`; post-main CI #1134 and Pages #1610 succeeded. Production Worker remains unchanged at exact runtime source `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`, Worker Version ID `ebcbdd35-3f5d-40b9-bb97-aef4a25ef706`, release `4.12` / API `2.65` / schema `3`. The reconciliation product defect is closed, but authoritative production data still requires the user to confirm legacy missing transaction currencies before the next shadow-readiness issue can be observed. Cash-inclusive NAV/performance remains explicitly disabled. The single Primary Active Batch is R2.5B Post-Reconciliation Shadow Readiness Evidence, currently BLOCKED ON USER AUTHORITATIVE INPUT rather than code.**
 
 ---
 
@@ -37,36 +38,39 @@ GitHub Release `backup-2026-08-16-tech-debt-closeout` targets `13b6558e48fc703af
 
 At this closeout checkpoint:
 
-- protected `main`: `9bd3d1fe3f92376f7e922df7a37eb738963de136`;
+- protected `main`: `7acb01717395b09a0b4e09b24af8733e60a0a8cb` before this docs-only closeout;
 - production Worker runtime source: `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`;
 - Worker Version ID: `ebcbdd35-3f5d-40b9-bb97-aef4a25ef706`;
 - runtime contract: release `4.12` / API `2.65` / schema `3`;
 - production D1 remains the reviewed additive schema-v3 database with `0004_record_timeline_metadata_expand.sql` and `0005_cash_events_expand.sql` already applied;
-- R2.4 does not activate cash-inclusive snapshots, NAV, Overview totals, TWR, XIRR, FX conversion or transaction chronology.
+- R2.5A changes frontend reconciliation behavior only and does not activate cash-inclusive snapshots, NAV, Overview totals, TWR, XIRR, FX conversion or transaction chronology.
 
 Always re-read remote main before new work because docs-only closeouts can advance repository main without changing production Worker source.
 
-### R2.4 repository delivery
+### R2.4 repository / production closeout
 
 - R2.4A deterministic shadow cash ledger — PR #326, exact head `0035de2c009611621ec6e8dc227aad9004c09eec`, merge `717866ee489aee938fbb8954d071b582e9b6752c`.
 - R2.4B targeted read-only cash shadow feed — PR #327, exact head `da9b26f2d7ba28fda1d5eeb160060ff704288a47`, runtime merge/source `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`.
 - PR #327 exact-head CI #1124: SUCCESS; frozen review: PASS / BLOCKER 0 / FOLLOW-UP 0.
 - System/API-secret authority is read-only and single-target for `GET /api/cash-events`; user cash CRUD remains the only mutation authority.
-- Missing/invalid system target fails as `INVALID_REQUEST` / HTTP 400 before DB access; DB failures remain 500.
-- Python shadow feed/derivation failure cannot block the existing securities snapshot path.
-- Shadow evidence is privacy-safe and contains no cash amount, balance, note, raw payload or tenant identity.
+- Production Identity Evidence #26 / run `31984262043`: SUCCESS for exact source `f93dbbed...`.
+- Activation/control-plane merge `9bd3d1fe3f92376f7e922df7a37eb738963de136`; post-main CI #1127 and Pages #1608: SUCCESS.
+- Deploy Worker #13 / run `31984738416`: SUCCESS after the protected `production` approval gate.
+- Normal production `Update Portfolio Data` #3291 / run `31985211893`: SUCCESS. The trusted calculation path executed the targeted cash shadow feed without disrupting the securities-only snapshot path.
+- Real shadow evidence identified `TRANSACTION_CURRENCY_MISSING` as the first account-readiness issue; this was a data-reconciliation gap, not a Worker deployment failure.
 
-### R2.4 production activation closeout — 2026-08-17
+### R2.5A repository / production Pages closeout — 2026-08-17
 
-- Production Identity Evidence #26 / run `31984262043`: SUCCESS for exact source `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`.
-- Identity artifact `9273271736`, digest `sha256:4cdcb90702026a1cb3a45ed8b5dc76026bad3abd5c54ad2ce90c2f7480466704`.
-- Activation PR #328 exact head `a1598105aa31aa09c755646daff78e08a5c7b137`; exact-head CI #1126 / run `31984636350`: SUCCESS; frozen review PASS / BLOCKER 0 / FOLLOW-UP 0.
-- Activation/control-plane merge `9bd3d1fe3f92376f7e922df7a37eb738963de136`; post-main CI #1127 / run `31984732786`: SUCCESS; Pages #1608 / run `31984731948`: SUCCESS.
-- Production Deployment Dispatch Broker #10 / run `31984732759`: SUCCESS.
-- Deploy Worker #13 / run `31984738416`: SUCCESS after reviewer-protected `production` approval. D1 identity, authority, migration, canonical deploy and stable post-deploy contract all passed.
-- Post-deploy artifact `9273434812`, digest `sha256:3620b1740b2d2f95681432f42d0aa86e3b45c8d3eb0ebdfad7ab9a9e4c7c3e1b`; `/version=200`, `/health=200`, anonymous records `401`, production CORS accepted and staging/local origins rejected.
-- Normal production `Update Portfolio Data` #3291 / run `31985211893`: SUCCESS. The trusted calculation path executed the targeted cash shadow feed for every processed tenant without feed/derive failure, and the existing securities-only snapshot path still completed successfully.
-- Real shadow evidence remains incomplete with issue code `TRANSACTION_CURRENCY_MISSING`. This is the first observed account-readiness blocker, not a deployment failure.
+- PR #330 — `feat: add transaction currency reconciliation UX`.
+- Base: `4bf91cfbd381e2b147eb89aeab4c3d77e3feeedd`.
+- Frozen exact head: `2bfa16c26f6848caf3fd5241def2ed7159702e71`.
+- Exact-head CI #1133 / run `31996866556`: SUCCESS.
+- Frozen review: PASS / BLOCKER 0 / FOLLOW-UP 0.
+- Merge: `7acb01717395b09a0b4e09b24af8733e60a0a8cb` using expected-head protection.
+- Post-main CI #1134 / run `31996960247`: SUCCESS.
+- Pages #1610 / run `31996959451`: SUCCESS on the same merge SHA; Pages state `built`, source `main` `/`, HTTPS enforced.
+- No Worker deployment or D1 migration was required or performed.
+- R2.5A closeout details, root causes, regression evidence and rollback are recorded in `docs/engineering/R2_5A_TRANSACTION_CURRENCY_RECONCILIATION_CLOSEOUT_2026-08-17.md`.
 
 ### Product state
 
@@ -96,7 +100,8 @@ Always re-read remote main before new work because docs-only closeouts can advan
 - **R2.3C Cash Management UI — CLOSED / PRODUCTION PAGES VERIFIED**
 - **R2.4 Shadow Cash Ledger — CLOSED / PRODUCTION VERIFIED at shadow-only boundary**
 - **R2.5 Reconciliation & Migration UX — ACTIVE**
-- **R2.5A Transaction Currency Reconciliation UX — PRIMARY ACTIVE BATCH**
+- **R2.5A Transaction Currency Reconciliation UX — CLOSED / PRODUCTION PAGES VERIFIED**
+- **R2.5B Post-Reconciliation Shadow Readiness Evidence — PRIMARY ACTIVE BATCH / BLOCKED ON USER AUTHORITATIVE INPUT**
 
 ---
 
@@ -108,66 +113,57 @@ Always re-read remote main before new work because docs-only closeouts can advan
 
 ### Batch
 
-`R2.5A — Transaction Currency Reconciliation UX`
+`R2.5B — Post-Reconciliation Shadow Readiness Evidence`
 
 ### Primary Goal
 
-> Make legacy transactions that lack authoritative cash currency understandable and safely repairable, so cash-ledger completeness can progress from real facts instead of symbol-based inference or fabricated defaults.
-
-### Root-cause evidence
-
-R2.4 production shadow observation is functioning correctly. The hosted calculation did not fail to read cash events and did not disrupt current securities snapshots. Instead, the deterministic shadow ledger rejected legacy transaction rows whose durable `currency` metadata is absent and emitted `TRANSACTION_CURRENCY_MISSING`.
-
-Therefore the next constraint is **data reconciliation UX**, not another cash-engine rewrite and not an account-NAV cutover.
-
-### Product-first scope
-
-1. Provide one clear reconciliation/readiness surface for transactions missing authoritative `currency`.
-2. Show enough reviewed transaction context for a user to make a safe currency decision without exposing another tenant or turning free-form notes into financial authority.
-3. Reuse the existing user-only fill-only metadata authority for durable currency enrichment; do not mutate transaction economics.
-4. If the product offers a candidate currency, treat it as a suggestion only until deterministic validation and explicit user confirmation make it durable authority.
-5. Support efficient reviewed bulk correction where multiple records share the same trustworthy source context, while retaining per-record conflict/failure visibility.
-6. Preserve mixed-currency correctness and fail closed for quote-unit cases such as `GBp` until a reviewed settlement rule exists.
-7. After currency coverage improves, surface the next shadow readiness issue truthfully, including missing explicit opening balance when applicable; never assume opening cash is zero.
-8. Add focused regression tests for legacy records, mixed currencies, partial repair, stale/conflicting metadata, privacy boundaries, and no accidental NAV/chronology activation.
-
-### Non-goals
-
-- no automatic symbol-based currency inference as accounting authority;
-- no fabricated historical/opening cash;
-- no cash-inclusive snapshot / Overview / NAV / TWR / XIRR cutover;
-- no FX valuation layer in R2.5A;
-- no transaction-order activation from partial timestamp/sequence coverage;
-- no system/API-secret cash writer;
-- no broker-specific background sync;
-- no unrelated refactor or cleanup.
+> Convert the now-deployed reconciliation UX into fresh authoritative production evidence: first let the authenticated user confirm legacy missing transaction currencies, then rerun the existing shadow-readiness path and select the next product work only from the next observed issue.
 
 ### Entry truth
 
-- production Worker is exact source `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`, release `4.12` / API `2.65` / schema `3`;
-- R2.4 shadow feed and derivation are production verified and intentionally non-authoritative;
-- existing `PUT /api/records/metadata` fill-only semantics are production verified and can be reused rather than adding a second metadata writer;
-- legacy records without currency remain valid securities records; missing cash currency blocks only cash-authority completeness;
-- account NAV/performance and transaction chronology remain disabled.
+- R2.5A is CLOSED / PRODUCTION PAGES VERIFIED.
+- Legacy currency repair is a user financial-data authority decision; Symbol detection remains suggestion-only and cannot be automated into durable truth.
+- Production Worker, D1 schema and shadow cash engine are unchanged from the R2.4 verified boundary.
+- The previous production observation reported `TRANSACTION_CURRENCY_MISSING`; that observation must not be treated as already resolved until the user actually confirms affected records.
+- The next issue is unknown until corrected data is observed. Opening balance is a candidate, not a fact.
 
-### Exit criteria
+### In Scope
 
-R2.5A may close only when:
+1. User completes the production Transaction History reconciliation surface for missing currency records.
+2. After user completion, rerun/observe the existing production shadow completeness path without changing accounting authority.
+3. Capture the next observed deterministic readiness issue and its scope.
+4. If the next issue is missing explicit opening balance, create a separate, narrow R2.5 product batch for that UX/API path.
+5. Preserve securities-only snapshot behavior and all existing authority boundaries.
 
-1. users can identify and review missing-currency transactions through one coherent UX;
-2. confirmed currency repair uses the existing tenant-scoped metadata authority and cannot overwrite conflicting authoritative metadata silently;
-3. suggestions/defaults cannot become durable currency facts without the reviewed confirmation boundary;
-4. mixed-currency, `GBp`, legacy, partial-repair and conflict cases have regression coverage;
-5. the normal transaction/history and securities snapshot behavior remains unchanged;
-6. no cash-inclusive NAV/performance/FX/chronology authority is activated;
-7. exact-head CI, risk-proportional independent review, merge and production Pages verification pass.
+### Out of Scope
+
+- automatic approval of Symbol-derived currency;
+- guessing or bulk-writing financial facts without user confirmation;
+- assuming missing opening cash equals zero;
+- pre-implementing opening-balance UX before evidence identifies it as the next blocker;
+- FX methodology, account NAV/TWR/XIRR cutover or chronology activation;
+- unrelated cleanup/refactor.
+
+### Expansion Trigger
+
+Re-plan only if fresh production evidence shows a different high-impact/critical issue, or if reconciliation itself fails in production despite the verified Pages/CI state.
+
+### Exit Criteria
+
+R2.5B evidence gate may close only when:
+
+1. affected production currency records have been explicitly reviewed/confirmed by the authenticated user;
+2. a fresh production shadow run observes corrected data;
+3. the next readiness issue is recorded from deterministic evidence, or shadow completeness is confirmed for this stage;
+4. no inferred financial fact is introduced to force the gate green;
+5. the next product batch is selected from that evidence and documented.
 
 ### NOW / NEXT / BACKLOG / REJECT
 
-- **NOW:** R2.5A Transaction Currency Reconciliation UX.
-- **NEXT:** reconcile explicit opening-balance readiness per resolved currency; then collect shadow completeness evidence over corrected data.
+- **NOW:** user-authoritative currency confirmation, then fresh shadow-readiness evidence.
+- **NEXT:** only the first observed post-reconciliation readiness issue; explicit opening-balance UX if and only if evidence identifies it.
 - **BACKLOG:** reviewed FX/account-value methodology and account-level performance cutover until R2 coverage is demonstrably sufficient; broker-neutral restore/import belongs to R3.
-- **REJECT:** guessed currency authority, fake zero cash, partial-data NAV cutover, chronology inference, new parallel accounting engines, unrelated cleanup.
+- **REJECT:** guessed currency authority, fake zero cash, partial-data NAV cutover, chronology inference, parallel accounting engines, unrelated cleanup.
 
 ---
 
@@ -214,7 +210,7 @@ user cash CRUD
 - user CRUD is the only cash mutation authority;
 - system/API-secret cash reads require one explicit target tenant;
 - no system cash writer;
-- transaction cash currency must be explicitly persisted; symbol inference is forbidden;
+- transaction cash currency must be explicitly persisted; Symbol inference is suggestion-only and forbidden as durable authority;
 - opening balance must be explicit; absence never means zero;
 - multi-currency cash remains separate until a reviewed FX/account-value methodology exists;
 - shadow balances/evidence do not enter current snapshots or performance.
@@ -253,9 +249,10 @@ R2 safe dependency order:
 4. R2.2C detail presentation, shadow metadata transport and safe source enrichment — CLOSED / VERIFIED.
 5. R2.3A/B/C explicit cash storage, authenticated CRUD and management UX — CLOSED / VERIFIED at their production boundaries.
 6. R2.4 deterministic shadow cash ledger + targeted production feed — CLOSED / PRODUCTION VERIFIED at shadow-only boundary.
-7. **R2.5 reconciliation and migration UX — CURRENT; R2.5A transaction currency first.**
-8. Re-run shadow evidence after reconciliation and address the next truthful gap, such as explicit opening-balance readiness.
-9. Only after sufficient authoritative coverage: separately review account NAV / account-level performance / FX methodology and cutover.
+7. R2.5A transaction currency reconciliation UX — CLOSED / PRODUCTION PAGES VERIFIED.
+8. **R2.5B post-reconciliation shadow readiness evidence — CURRENT / waiting for user-authoritative currency confirmation.**
+9. Address the next observed reconciliation gap in a separate bounded product batch.
+10. Only after sufficient authoritative coverage: separately review account NAV / account-level performance / FX methodology and cutover.
 
 After R2 foundation:
 
@@ -266,25 +263,47 @@ After R2 foundation:
 
 ## 5. Current risk / decision / technical-debt register
 
-### Active blocker
+### Active blocker / user dependency
 
-- `TRANSACTION_CURRENCY_MISSING` is the first production-observed R2 cash-readiness gap.
-- It blocks authoritative transaction cash derivation for affected legacy rows but does **not** invalidate existing securities accounting.
+- The R2.5A software defect is closed and deployed.
+- Production data may still contain legacy rows with missing `currency` until an authenticated user confirms them through the new reconciliation surface.
+- Until that user-authoritative input exists, a fresh shadow run would only reproduce the known `TRANSACTION_CURRENCY_MISSING` issue and would not provide new evidence.
+- This blocks progression of R2 cash-readiness evidence but does **not** invalidate existing securities accounting.
+
+### R2.5A Change / Root Cause Log
+
+- Product change: safe missing-currency reconciliation UX + explicit currency on new manual transactions.
+- CI root cause 1: stale implementation-bound currency test; fixed at the semantic authority contract.
+- CI root cause 2: Journal test accidentally froze unrelated form field ordering; narrowed to the intended additive-`note` contract.
+- Frozen-review blocker: direct regression coverage for 401 + mixed USD/GBp + partial repair + 409 conflict; added and exact-head CI remained green.
+- Merge: `7acb01717395b09a0b4e09b24af8733e60a0a8cb`.
+- Verification: exact-head CI #1133, post-main CI #1134, Pages #1610 — all SUCCESS.
+- Rollback: revert PR #330 / merge `7acb0171`; no D1 or Worker rollback required.
+- Full detail: `docs/engineering/R2_5A_TRANSACTION_CURRENCY_RECONCILIATION_CLOSEOUT_2026-08-17.md`.
 
 ### Decisions carried forward
 
-- do not infer currency from symbol as durable truth;
+- do not infer currency from Symbol as durable truth;
 - do not infer historical/opening cash as zero;
 - do not use partial timestamp coverage or generic `execution_sequence` sorting as chronology authority;
-- do not widen R2.5A into FX/NAV/performance cutover;
+- do not widen R2.5 into FX/NAV/performance cutover;
 - do not create a second browser valuation/accounting/reconciliation authority;
-- preserve additive D1 history and compatibility readers unless a separate evidence-backed cleanup is justified.
+- preserve additive D1 history and compatibility readers unless a separate evidence-backed cleanup is justified;
+- do not assume opening balance is the next blocker until fresh post-reconciliation evidence says so.
+
+### Known Issues / Technical Debt / Deferred Candidates
+
+- Known data readiness issue: production legacy currency confirmation remains user-dependent until completed.
+- No unresolved R2.5A software BLOCKER or FOLLOW-UP remains at closeout.
+- FX/account-value methodology remains BACKLOG, not hidden technical debt.
+- Broker-neutral restore/import remains R3 BACKLOG.
+- No new unrelated technical-debt work is authorized by this closeout.
 
 ### Handoff drift root cause / prevention
 
-The previous live handoff accumulated detailed history plus duplicate Current Batch sections, allowing the top status and lower startup instructions to diverge. This closeout preserves that full historical snapshot under `docs/archive/` and restores `to_do_update_list.md` to one concise live current-state owner. Future closed-batch detail belongs in versioned `docs/engineering/` closeout/contract records; this live file should point to those records instead of duplicating stale current-state prose in multiple locations.
+The previous live handoff accumulated detailed history plus duplicate Current Batch sections, allowing the top status and lower startup instructions to diverge. Closed-batch detail belongs in versioned `docs/engineering/` closeout/contract records; this live file points to those records instead of duplicating stale current-state prose in multiple locations.
 
-This documentation correction does not change runtime, schema, API, frontend or Python accounting behavior.
+Documentation closeouts do not change runtime, schema, API, frontend or Python accounting behavior.
 
 ---
 
@@ -300,17 +319,19 @@ This documentation correction does not change runtime, schema, API, frontend or 
 
 ### Current Batch
 
-`R2.5A — Transaction Currency Reconciliation UX`
+`R2.5B — Post-Reconciliation Shadow Readiness Evidence`  
+Status: **BLOCKED ON USER AUTHORITATIVE INPUT**
 
 ### Immediate next actions
 
-1. Re-read transaction history/detail and metadata enrichment UX/data paths from fresh main.
-2. Design the minimum user-facing reconciliation state around `TRANSACTION_CURRENCY_MISSING` without adding a second accounting engine.
-3. Reuse the existing fill-only metadata endpoint rather than inventing another currency writer.
-4. Implement one narrow, testable UX batch with explicit suggestion-vs-authority semantics.
-5. Verify legacy/mixed-currency/conflict/privacy cases and that normal securities calculation remains unchanged.
-6. Publish through exact-head CI, frozen review, exact-head merge and Pages verification.
-7. Stop R2.5A after the currency-reconciliation UX boundary; do not automatically continue into NAV/FX/account-performance activation.
+1. Authenticated user opens the production Trading Journal → Transaction History.
+2. In the `現金帳本準備` / missing-currency reconciliation panel, review each suggested quote unit; edit any incorrect suggestion.
+3. Select only records whose currency has been reviewed, then use `確認並儲存` and ensure the UI reports server-readback confirmation.
+4. Repeat until the missing-currency panel has no affected records that the user can authoritatively resolve.
+5. User reports completion to the project agent; do not paste tokens, passwords or financial secrets.
+6. Agent reruns/observes the existing production shadow completeness path and records the next deterministic readiness issue.
+7. Open a new bounded product batch only for that observed issue; if it is missing explicit opening balance, design that UX then.
+8. Keep cash-inclusive NAV/performance, FX valuation and transaction chronology disabled until a separate reviewed evidence gate explicitly authorizes them.
 
 ---
 
@@ -324,4 +345,5 @@ This documentation correction does not change runtime, schema, API, frontend or 
 6. Debug same-class impact + regression prevention.
 7. For historical R1/R2 chronology, use `docs/archive/to_do_update_list_pre_r2_4_closeout_snapshot.md`; do not follow its historical Current Batch instructions.
 8. For R2.4 authority/evidence, use `docs/engineering/R2_4_SHADOW_CASH_LEDGER_PRODUCTION_CLOSEOUT_2026-08-17.md` plus fresh remote truth.
-9. R2.4 is CLOSED / PRODUCTION VERIFIED at the shadow-only boundary. Continue **R2.5A Transaction Currency Reconciliation UX** only. Do not activate cash-inclusive NAV/performance, FX valuation or transaction chronology without a new explicit reviewed evidence gate.
+9. For R2.5A implementation/root-cause/verification history, use `docs/engineering/R2_5A_TRANSACTION_CURRENCY_RECONCILIATION_CLOSEOUT_2026-08-17.md`.
+10. R2.5A is CLOSED / PRODUCTION PAGES VERIFIED. Continue **R2.5B Post-Reconciliation Shadow Readiness Evidence** only after user-authoritative currency confirmation. Do not pre-build opening-balance/NAV/FX/chronology work without fresh evidence.
