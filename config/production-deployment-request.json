@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "r2-3b-fa0ad4a3-20260816t1339z",
-  "source_sha": "fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be",
-  "requested_at": "2026-08-16T13:39:13.458Z",
-  "reason": "R2.3B production activation for repository-verified authenticated user-only cash-event CRUD after exact-source Production Identity Evidence #25. Production migration 0005_cash_events_expand.sql is already applied; deploy canonical source fa0ad4a3e0aa9287e7d488b07ef4fb230a2943be at release 4.11 / API 2.64 / schema 3. No Python cash ledger, account NAV/performance cutover, transaction chronology activation, cash UI, or system/API-secret cash writer is requested."
+  "request_id": "r2-4b-f93dbbed-20260817t0113z",
+  "source_sha": "f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee",
+  "requested_at": "2026-08-17T01:13:03.900Z",
+  "reason": "R2.4B production activation for the repository-verified targeted read-only cash shadow feed after exact-source Production Identity Evidence #26. Production migration 0005_cash_events_expand.sql is already applied; deploy canonical source f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee at release 4.12 / API 2.65 / schema 3. This enables only explicit single-target system GET /api/cash-events for non-authoritative Python shadow completeness evidence. User cash-event CRUD remains authoritative and system cash mutation remains forbidden. No cash-inclusive snapshot/NAV/Overview/TWR/XIRR, FX valuation, transaction chronology activation, migration, or frontend behavior change is requested."
 }
