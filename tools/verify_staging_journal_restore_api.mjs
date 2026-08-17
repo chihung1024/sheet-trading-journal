@@ -10,7 +10,8 @@ if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error('SOURCE_SHA must be an ex
 
 const marker = `RESTORE_E2E_${runId}_${sourceSha.slice(0, 8)}`;
 const idempotencyKey = `restore.e2e.${runId}.${sourceSha.slice(0, 16)}`.slice(0, 128);
-const secondKey = `${idempotencyKey}.second`.slice(0, 128);
+const secondKey = `restore.e2e.second.${runId}.${sourceSha.slice(0, 16)}`.slice(0, 128);
+if (secondKey === idempotencyKey) throw new Error('staging restore idempotency intents must be distinct');
 
 function required(name) {
   const value = String(process.env[name] || '').trim();
@@ -150,7 +151,6 @@ async function main() {
   await assertTenantEmpty('precondition');
   const original = buildBackup(1);
   const changed = buildBackup(2);
-  let restored = false;
 
   try {
     const first = await api('POST', '/api/journal-restore', {
@@ -166,7 +166,6 @@ async function main() {
     if (first.payload?.verification_required !== true) {
       throw new Error('initial restore did not require authoritative verification');
     }
-    restored = true;
 
     const [afterRecords, afterCash] = await Promise.all([getRecords(), getCashEvents()]);
     const restoredRecords = afterRecords.filter(row => row.tag === marker && row.note === marker);
@@ -202,7 +201,9 @@ async function main() {
       throw new Error(`non-empty restore did not fail closed HTTP ${nonEmpty.response.status}`);
     }
   } finally {
-    if (restored) await cleanupMarkerRows();
+    // Cleanup is unconditional: even a malformed success response may have
+    // committed live staging rows before an assertion fails.
+    await cleanupMarkerRows();
   }
 
   await assertTenantEmpty('post-cleanup');
