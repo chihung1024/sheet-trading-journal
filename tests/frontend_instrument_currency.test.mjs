@@ -81,11 +81,15 @@ test('currency presentation is native-aware and legacy scalar FX is limited to T
   }
 });
 
-test('TradeForm delegates currency labels to the shared native-currency contract', () => {
+test('TradeForm prefers confirmed currency while keeping Symbol detection as suggestion/fallback', () => {
   const source = read(TRADE_FORM_PATH);
   assert.match(source, /detectNativeCurrency/);
+  assert.match(source, /normalizeNativeCurrency/);
   assert.match(source, /getCurrencyInputAffix/);
-  assert.match(source, /const transactionCurrency = computed\(\(\) => detectNativeCurrency\(normalizedSymbol\.value\)\);/);
+  assert.match(source, /const detectedCurrency = computed\(\(\) => detectNativeCurrency\(normalizedSymbol\.value\)\);/);
+  assert.match(source, /normalizeNativeCurrency\(form\.currency\) \|\| detectedCurrency\.value/);
+  assert.match(source, /if \(!isEditing\.value && !currencyUserEdited\.value\) \{\s*form\.currency = detectNativeCurrency\(symbol\);/s);
+  assert.doesNotMatch(source, /const transactionCurrency = computed\(\(\) => detectNativeCurrency\(normalizedSymbol\.value\)\);/);
   assert.doesNotMatch(source, /const isTaiwanSymbol/);
   assert.doesNotMatch(source, /transactionCurrency\.value === 'TWD' \? 'NT\$' : '\$'/);
 });
