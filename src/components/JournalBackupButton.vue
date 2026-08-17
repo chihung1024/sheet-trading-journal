@@ -1,15 +1,21 @@
 <template>
-  <button
-    type="button"
-    class="journal-backup-btn"
-    :disabled="exporting"
-    :title="exporting ? '正在建立備份' : '下載交易與現金資料備份'"
-    :aria-label="exporting ? '正在建立備份' : '下載資料備份'"
-    @click="handleBackup"
-  >
-    <span aria-hidden="true">{{ exporting ? '⏳' : '⬇️' }}</span>
-    <span class="desktop-only">{{ exporting ? '備份中' : '下載備份' }}</span>
-  </button>
+  <section class="journal-backup-card" aria-labelledby="journal-backup-title">
+    <div class="backup-copy">
+      <strong id="journal-backup-title">資料備份</strong>
+      <span>下載伺服器已確認的交易與現金事件；不包含登入憑證、本機快取或衍生投資組合快照。</span>
+    </div>
+
+    <button
+      type="button"
+      class="journal-backup-btn"
+      :disabled="exporting"
+      :aria-busy="exporting"
+      @click="handleBackup"
+    >
+      <span aria-hidden="true">{{ exporting ? '⏳' : '⬇️' }}</span>
+      <span>{{ exporting ? '建立備份中…' : '下載備份' }}</span>
+    </button>
+  </section>
 </template>
 
 <script setup>
@@ -47,17 +53,47 @@ const handleBackup = async () => {
 </script>
 
 <style scoped>
+.journal-backup-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.backup-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.backup-copy strong {
+  color: var(--text-main);
+  font-size: var(--type-emphasis);
+}
+
+.backup-copy span {
+  color: var(--text-sub);
+  font-size: var(--type-body);
+  line-height: 1.45;
+}
+
 .journal-backup-btn {
-  min-height: 38px;
+  min-height: 40px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0 12px;
-  border: 1px solid var(--border-color);
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-main);
+  background: var(--primary);
+  color: white;
   font-size: var(--type-label);
   font-weight: 700;
   cursor: pointer;
@@ -65,8 +101,7 @@ const handleBackup = async () => {
 }
 
 .journal-backup-btn:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
+  background: var(--primary-dark);
 }
 
 .journal-backup-btn:disabled {
@@ -74,10 +109,14 @@ const handleBackup = async () => {
   opacity: 0.65;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 720px) {
+  .journal-backup-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .journal-backup-btn {
-    width: 38px;
-    padding: 0;
+    width: 100%;
   }
 }
 </style>
