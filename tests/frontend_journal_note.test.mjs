@@ -49,7 +49,7 @@ test('current D1 and Worker contracts persist and project note independently of 
   assert.match(worker, /const \{ create_idempotency_hash: _idempotency, create_payload_hash: _payload, \.\.\.record \} = row/);
 });
 
-test('TradeForm adds journal metadata without changing the established financial form declaration', () => {
+test('TradeForm keeps journal note additive instead of embedding it into the financial form declaration', () => {
   const source = read('src/components/TradeForm.vue');
 
   assert.match(source, /v-model="form\.note"/);
@@ -61,7 +61,13 @@ test('TradeForm adds journal metadata without changing the established financial
   assert.match(source, /form\.note\s*=\s*''/);
   assert.match(source, /form\.note\s*=\s*r\.note\s*\|\|\s*''/);
 
-  assert.match(source, /total_amount:\s*'',\s*\n\s*tag:\s*''\s*\n\}\);/);
+  const formStart = source.indexOf('const form = reactive({');
+  const formEnd = source.indexOf('});', formStart);
+  assert.ok(formStart >= 0 && formEnd > formStart);
+  const financialFormDeclaration = source.slice(formStart, formEnd);
+  assert.match(financialFormDeclaration, /total_amount:\s*''/);
+  assert.match(financialFormDeclaration, /tag:\s*''/);
+  assert.doesNotMatch(financialFormDeclaration, /\bnote:\s*/);
 });
 
 test('RecordList keeps journal searchable and compact while RecordDetailPanel exposes the full note', () => {
