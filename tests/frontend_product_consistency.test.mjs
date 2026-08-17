@@ -58,6 +58,14 @@ test('desktop overview compaction changes spacing only and keeps the financial s
   assert.match(css, /\.section-overview \.overview-headline \.primary-item\s*\{[\s\S]*padding:\s*13px/);
 });
 
+test('wide desktop overview pairs summary and context while full-width evidence surfaces stay intact', () => {
+  assert.match(overviewPage, /@media \(min-width:\s*1025px\)\s*\{[\s\S]*\.chart-wrapper\.chart-full\s*\{[\s\S]*height:\s*clamp\(360px, 44vh, 450px\)/);
+  assert.match(overviewPage, /@media \(min-width:\s*1600px\)\s*\{[\s\S]*\.section-overview\s*\{[\s\S]*display:\s*grid[\s\S]*grid-template-columns:\s*minmax\(0, 1\.08fr\) minmax\(0, 0\.92fr\)/);
+  assert.match(overviewPage, /:deep\(\.account-value-preview\)[\s\S]*:deep\(\.daily-pnl-explanation\)[\s\S]*:deep\(\.headline-skeleton\)[\s\S]*\.chart-wrapper\s*\{\s*grid-column:\s*1 \/ -1/);
+  assert.match(overviewPage, /:deep\(\.overview-headline\)\s*\{\s*grid-column:\s*1/);
+  assert.match(overviewPage, /:deep\(\.overview-context\)\s*\{\s*grid-column:\s*2/);
+});
+
 test('layout consistency layer does not own typography or brute-force specificity', () => {
   assert.doesNotMatch(css, /font-size\s*:/i);
   assert.doesNotMatch(css, /--ui-font-/i);

@@ -107,4 +107,33 @@ watch(
   flex-direction: column;
   gap: var(--ui-page-gap);
 }
+
+@media (min-width: 1025px) {
+  .chart-wrapper.chart-full {
+    height: clamp(360px, 44vh, 450px);
+  }
+}
+
+@media (min-width: 1600px) {
+  .section-overview {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+    align-items: start;
+  }
+
+  .section-overview > :deep(.account-value-preview),
+  .section-overview > :deep(.daily-pnl-explanation),
+  .section-overview > :deep(.headline-skeleton),
+  .section-overview > .chart-wrapper {
+    grid-column: 1 / -1;
+  }
+
+  .section-overview > :deep(.overview-headline) {
+    grid-column: 1;
+  }
+
+  .section-overview > :deep(.overview-context) {
+    grid-column: 2;
+  }
+}
 </style>
