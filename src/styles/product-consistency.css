@@ -133,6 +133,129 @@
   .section-records .desktop-view th:nth-child(7) { width: 11%; }
 }
 
+/* Desktop Visibility D1 — reclaim vertical workspace without changing content,
+   typography, accounting semantics, persistence or mobile behavior. */
+@media (min-width: 1025px) {
+  :root {
+    --header-height: 56px;
+    --space-desktop: 14px;
+    --ui-page-gap: 14px;
+    --ui-card-padding: 16px;
+  }
+
+  .top-nav {
+    padding-inline: 18px;
+  }
+
+  .nav-left {
+    gap: 12px;
+  }
+
+  .nav-status {
+    gap: 8px;
+  }
+
+  .nav-brand {
+    gap: 6px;
+  }
+
+  .group-selector {
+    gap: 6px;
+    padding: 3px 7px;
+  }
+
+  .auto-refresh-indicator {
+    gap: 5px;
+    padding: 3px 8px;
+  }
+
+  .action-trigger-btn {
+    padding-inline: 10px;
+  }
+
+  .theme-toggle {
+    padding: 5px;
+  }
+
+  .content-container {
+    grid-template-columns: minmax(0, 1fr) minmax(330px, 350px);
+    gap: 16px;
+    padding: 12px 18px 20px;
+  }
+
+  .main-column,
+  .section-overview {
+    gap: 14px;
+  }
+
+  .mobile-tabs {
+    min-height: 42px;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 10px;
+  }
+
+  .tab-item {
+    min-height: 34px;
+    gap: 6px;
+    padding: 5px 10px;
+  }
+
+  .fixed-panel {
+    top: calc(var(--header-height) + 12px);
+    max-height: calc(100vh - var(--header-height) - 24px);
+    gap: 14px;
+  }
+
+  .section-overview .account-value-preview {
+    gap: 14px;
+    padding: 12px 14px;
+  }
+
+  .section-overview .overview-headline {
+    padding: 16px;
+  }
+
+  .section-overview .overview-headline .section-heading {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .section-overview .overview-headline .primary-item {
+    padding: 13px;
+  }
+
+  .section-overview .overview-headline .breakdown-row,
+  .section-overview .overview-headline .performance-row {
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .section-overview .overview-headline .breakdown-item {
+    padding: 9px 10px;
+  }
+
+  .section-overview .overview-headline .performance-row {
+    padding-top: 10px;
+  }
+}
+
+/* On wide desktops the existing navigation row occupies the otherwise-unused
+   center of the sticky header. The same DOM remains the only navigation authority. */
+@media (min-width: 1680px) {
+  .main-column > .mobile-tabs {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    z-index: 60;
+    width: max-content;
+    max-width: 620px;
+    min-height: 40px;
+    transform: translateX(-50%);
+    box-shadow: none;
+  }
+}
+
 @media (max-width: 900px) {
   .section-records .desktop-view table {
     table-layout: auto;
