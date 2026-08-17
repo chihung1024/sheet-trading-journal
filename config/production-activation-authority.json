@@ -2,17 +2,17 @@
   "schema_version": 1,
   "authority_id": "PRODUCTION-ACTIVATION-AUTHORITY",
   "status": "ready",
-  "authorized_source_sha": "f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee",
-  "approved_at": "2026-08-17T01:13:03.900Z",
+  "authorized_source_sha": "aaa1e39819f0f0c56d37aa02b399cc13738072eb",
+  "approved_at": "2026-08-17T12:35:16.948Z",
   "required_checks": {
     "production_frontend_explicit_environment": "passed",
     "production_frontend_live_contract": "passed",
     "production_d1_identity": "passed"
   },
   "evidence": {
-    "production_frontend_explicit_environment": "docs/governance/evidence/production-activation/r2_4b_f93dbbed_production_frontend_explicit_environment.json",
-    "production_frontend_live_contract": "docs/governance/evidence/production-activation/r2_4b_f93dbbed_production_frontend_live_contract.json",
-    "production_d1_identity": "docs/governance/evidence/production-activation/r2_4b_f93dbbed_production_d1_identity.json"
+    "production_frontend_explicit_environment": "docs/governance/evidence/production-activation/r3_1c_aaa1e398_production_frontend_explicit_environment.json",
+    "production_frontend_live_contract": "docs/governance/evidence/production-activation/r3_1c_aaa1e398_production_frontend_live_contract.json",
+    "production_d1_identity": "docs/governance/evidence/production-activation/r3_1c_aaa1e398_production_d1_identity.json"
   },
-  "notes": "Production Identity Evidence #26 authorizes exact R2.4B source f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee; run 31984262043; artifact 9273271736; sha256:4cdcb90702026a1cb3a45ed8b5dc76026bad3abd5c54ad2ce90c2f7480466704. Production migration 0005_cash_events_expand.sql is already applied. The requested production change is canonical Worker activation at release 4.12 / API 2.65 / schema 3 so the trusted system principal may perform explicit single-target read-only GET /api/cash-events for non-authoritative shadow cash completeness evidence. User CRUD remains authoritative; system/API-secret cash mutation remains forbidden. No cash-inclusive snapshot/NAV/Overview/TWR/XIRR, FX valuation, transaction chronology activation, migration, or frontend behavior change is authorized."
+  "notes": "Production Identity Evidence #27 authorizes exact R3.1C runtime source aaa1e39819f0f0c56d37aa02b399cc13738072eb; run 32030517867; artifact 9288717155; sha256:6c3e7e779b13377e86cb86b155eb562a2b1812bf604575c2d19d28fb6887115d. The canonical production deployment must apply additive migration 0006_journal_restore_sessions.sql before Worker activation, then deploy release 4.12 / API 2.65 / schema 3. The requested production change activates only the already-reviewed authenticated tenant-scoped empty-account atomic POST /api/journal-restore path with durable idempotency/concurrency guarding. Frontend execution remains capability-gated and fail-closed until the live route is available. No merge or replace-all restore, derived snapshot import, financial methodology change, destructive production smoke, or unrelated cleanup is authorized."
 }
