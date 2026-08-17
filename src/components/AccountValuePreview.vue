@@ -33,7 +33,7 @@
 </template>
 
 <script setup>
-const props = defineProps({
+defineProps({
   model: { type: Object, required: true },
 });
 
@@ -74,7 +74,7 @@ const formatTwd = value => (
   border: 1px solid var(--border-color);
   border-radius: 999px;
   color: var(--text-sub);
-  font-size: 10px;
+  font-size: var(--type-caption);
   font-weight: 800;
   letter-spacing: 0.05em;
 }
