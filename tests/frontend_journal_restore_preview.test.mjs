@@ -164,7 +164,7 @@ test('preview remains a zero-write authority check while execution is isolated b
 
   assert.match(recordList, /<IbkrTradeImport \/>\s*<JournalBackupButton \/>/);
   assert.match(backupComponent, /<JournalRestoreButton \/>/);
-  assert.match(backupComponent, /交易資料備份與還原/);
+  assert.match(backupComponent, /交易資料匯入、備份與還原/);
   assert.match(restoreComponent, /安全還原/);
   assert.match(restoreComponent, /確認建立紀錄/);
   assert.match(previewService, /writes_allowed:\s*false/);
