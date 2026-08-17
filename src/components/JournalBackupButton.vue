@@ -1,6 +1,7 @@
 <template>
   <div class="journal-data-actions" aria-label="交易資料匯入、備份與還原">
     <BrokerNeutralImportPreview />
+    <BrokerNeutralCsvTemplateButton />
     <button
       type="button"
       class="backup-button"
@@ -24,6 +25,7 @@ import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
 import { createJournalBackup, downloadJournalBackup } from '../services/journalBackupExport.js';
 import BrokerNeutralImportPreview from './BrokerNeutralImportPreview.vue';
+import BrokerNeutralCsvTemplateButton from './BrokerNeutralCsvTemplateButton.vue';
 import JournalRestoreButton from './JournalRestoreButton.vue';
 
 const authStore = useAuthStore();
