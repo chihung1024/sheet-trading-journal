@@ -108,13 +108,27 @@ test('canonical rows reject ambiguous dates, currencies, types, quantities and f
   assert.ok(codes.has('INVALID_CURRENCY'));
 });
 
-test('executed_at requires an explicit offset and never rewrites a differing txn_date', () => {
+test('executed_at requires an explicit offset and a real calendar time without rewriting txn_date', () => {
   const withoutOffset = buildCanonicalTradeCsvPreview([
     'txn_date,symbol,txn_type,qty,price,currency,executed_at',
     '2026-08-17,NVDA,BUY,1,100,USD,2026-08-17T09:30:00',
   ].join('\n'));
   assert.equal(withoutOffset.status, 'blocked');
   assert.ok(withoutOffset.rows[0].issues.some((issue) => issue.code === 'INVALID_EXECUTED_AT'));
+
+  const impossibleCalendarDate = buildCanonicalTradeCsvPreview([
+    'txn_date,symbol,txn_type,qty,price,currency,executed_at',
+    '2026-02-28,NVDA,BUY,1,100,USD,2026-02-30T09:30:00Z',
+  ].join('\n'));
+  assert.equal(impossibleCalendarDate.status, 'blocked');
+  assert.ok(impossibleCalendarDate.rows[0].issues.some((issue) => issue.code === 'INVALID_EXECUTED_AT'));
+
+  const impossibleClock = buildCanonicalTradeCsvPreview([
+    'txn_date,symbol,txn_type,qty,price,currency,executed_at',
+    '2026-08-17,NVDA,BUY,1,100,USD,2026-08-17T24:30:00Z',
+  ].join('\n'));
+  assert.equal(impossibleClock.status, 'blocked');
+  assert.ok(impossibleClock.rows[0].issues.some((issue) => issue.code === 'INVALID_EXECUTED_AT'));
 
   const differingDate = buildCanonicalTradeCsvPreview([
     'txn_date,symbol,txn_type,qty,price,currency,executed_at',
@@ -157,9 +171,16 @@ test('quoted commas, escaped quotes and multiline notes stay one source row', ()
   assert.equal(preview.rows[0].payload.note, 'first line, with comma\nsecond line says "done"');
 });
 
-test('malformed CSV, file-size evidence and row caps fail closed', () => {
+test('malformed CSV, post-quote junk, file-size evidence and row caps fail closed', () => {
   assert.throws(
     () => buildCanonicalTradeCsvPreview('txn_date,symbol\n"2026-08-17,NVDA'),
+    (error) => error instanceof BrokerNeutralImportPreviewError && error.code === 'MALFORMED_CSV',
+  );
+  assert.throws(
+    () => buildCanonicalTradeCsvPreview([
+      'txn_date,symbol,txn_type,qty,price,currency,note',
+      '2026-08-17,NVDA,BUY,1,100,USD,"valid quote"junk',
+    ].join('\n')),
     (error) => error instanceof BrokerNeutralImportPreviewError && error.code === 'MALFORMED_CSV',
   );
   assert.throws(
