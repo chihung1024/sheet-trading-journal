@@ -10,9 +10,10 @@
 > - R2.5B post-reconciliation production evidence: `docs/engineering/R2_5B_POST_RECONCILIATION_SHADOW_EVIDENCE_2026-08-17.md`
 > - R2.5C opening-balance readiness closeout: `docs/engineering/R2_5C_OPENING_BALANCE_READINESS_CLOSEOUT_2026-08-17.md`
 > - R2.5D opening-balance/shadow completion: `docs/engineering/R2_5D_OPENING_BALANCE_SHADOW_COMPLETE_2026-08-17.md`
+> - R2.6A account-value preview production closeout: `docs/engineering/R2_6A_ACCOUNT_VALUE_PREVIEW_PRODUCTION_CLOSEOUT_2026-08-17.md`
 
 Last updated: **2026-08-17 Asia/Taipei**  
-Current line: **R1 and R2.1–R2.5D are closed at their reviewed boundaries. Fresh production `Update Portfolio Data #3300` / run `31999168801` on `main@87414b89046e83d2905be8a9f29720a94060f10b` proved cash-shadow completeness: 192/192 transaction rows resolved, 2/2 cash events resolved, USD observed, `issue_codes=[]`, `complete=True`, and the normal securities snapshot path also succeeded. Production Worker remains runtime source `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`, Worker Version ID `ebcbdd35-3f5d-40b9-bb97-aef4a25ef706`, release `4.12` / API `2.65` / schema `3`. Cash-inclusive NAV/performance is still disabled. The single Primary Active Batch is R2.6A Cash-Inclusive Account Value Preview.**
+Current line: **R1 and R2.1–R2.6A are closed at their reviewed boundaries. Production `Update Portfolio Data #3301` / run `32001637621` on `main@550c73f554915d3af6fe2805c788d65c045e0b87` proved cash-shadow completeness and the new engine-owned account-value preview: 192/192 transaction rows resolved, 2/2 cash events resolved, USD observed, `issue_codes=[]`, cash `complete=True`, preview `status=ready`, missing FX `[]`, and snapshot upload succeeded. Existing securities-only Daily P&L/TWR/XIRR/performance semantics remain unchanged. Production Worker remains runtime source `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`, Worker Version ID `ebcbdd35-3f5d-40b9-bb97-aef4a25ef706`, release `4.12` / API `2.65` / schema `3`. The single Primary Active Batch is R3.1A Broker-Neutral Export & Backup Foundation.**
 
 ---
 
@@ -27,6 +28,7 @@ Current line: **R1 and R2.1–R2.5D are closed at their reviewed boundaries. Fre
 7. Never infer cash, currency, chronology, lots or other financial facts that authoritative data does not provide.
 8. Shadow completeness is a prerequisite for account-value work, not automatic permission to activate NAV/TWR/XIRR.
 9. When a batch closes, stop its technical work instead of expanding scope for neatness.
+10. Prefer direct user utility over methodology expansion when both are optional and the latter carries higher financial interpretation risk.
 
 ---
 
@@ -34,55 +36,58 @@ Current line: **R1 and R2.1–R2.5D are closed at their reviewed boundaries. Fre
 
 ### Repository / production checkpoint
 
-Before this docs-only closeout:
+Before the R2.6A docs-only closeout:
 
-- protected `main`: `87414b89046e83d2905be8a9f29720a94060f10b`;
-- open PRs: none at the R2.5D evidence checkpoint;
+- protected `main`: `550c73f554915d3af6fe2805c788d65c045e0b87`;
+- open PRs: none at the production-evidence checkpoint;
+- feature PR #335 merged successfully;
+- exact-head CI #1147: SUCCESS;
+- post-main CI #1148: SUCCESS;
+- Pages #1615: SUCCESS;
+- production `Update Portfolio Data #3301` / run `32001637621`: SUCCESS on the exact feature merge head;
 - production Worker runtime source: `f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee`;
 - Worker Version ID: `ebcbdd35-3f5d-40b9-bb97-aef4a25ef706`;
 - runtime contract: release `4.12` / API `2.65` / schema `3`;
-- production D1 remains schema v3 with reviewed transaction-metadata and cash-event migrations;
-- current securities-only snapshot/accounting behavior remains authoritative for its existing scope;
-- cash-inclusive account NAV, TWR, XIRR, performance chart and transaction chronology are not activated.
+- production D1 remains schema v3;
+- Worker/D1 required no R2.6A change because portfolio snapshots remain opaque JSON passthrough;
+- whole-account TWR/XIRR/performance cutover is not activated.
 
 Always re-read fresh `main`, open PRs, CI, Pages and production runtime before modifying anything.
 
-### R2.5A — Transaction Currency Reconciliation UX
+### R2.5A–R2.5D
 
-Status: **CLOSED / PRODUCTION PAGES VERIFIED**.
+Status: **CLOSED / PRODUCTION VERIFIED**.
 
-Legacy missing currencies were explicitly reviewed by the authenticated user; production evidence later proved all 192 observed transaction rows resolve durable currency. Symbol-derived currency remains suggestion-only.
+The reviewed transaction-currency and opening-balance path now gives the observed production ledger durable currency truth and a complete deterministic shadow cash ledger. Do not reopen reconciliation work without new material production evidence.
 
-### R2.5B — Post-Reconciliation Shadow Evidence
+### R2.6A — Cash-Inclusive Account Value Preview
 
-Status: **CLOSED / PRODUCTION EVIDENCE VERIFIED**.
+Status: **CLOSED / PRODUCTION VERIFIED**.
 
-`Update Portfolio Data #3295` proved transaction-currency completeness and selected `MISSING_OPENING_BALANCE` as the sole next cash-readiness issue.
+Production #3301 proved:
 
-### R2.5C — Opening Balance Readiness UX
+- cash shadow `complete=True`;
+- transaction rows `192`, resolved `192`;
+- cash event rows `2`, resolved `2`;
+- observed cash currencies `['USD']`;
+- cash issue codes `[]`;
+- `account_value_preview.status=ready`;
+- `cash_ledger_complete=True`;
+- preview currencies `['USD']`;
+- preview reason `None`;
+- preview missing FX `[]`;
+- portfolio snapshot upload succeeded;
+- normal calculation completed 1 success / 0 failures.
 
-Status: **CLOSED / PRODUCTION PAGES VERIFIED**.
+R2.6A is additive only:
 
-The existing CashManager was aligned with opening-balance-first setup without adding a new writer, schema or accounting engine.
+- `summary.total_value` remains user-facing `持倉市值`;
+- account-level cash is displayed separately as `帳戶價值預覽` on `全部`;
+- Daily P&L, TWR, XIRR and performance chart remain at their existing securities-oriented reviewed semantics;
+- group/tag views do not duplicate account-level cash;
+- frontend does not calculate cash/FX/account value.
 
-### R2.5D — Opening Balance Authoritative Input + Shadow Verification
-
-Status: **CLOSED / PRODUCTION SHADOW COMPLETE**.
-
-Production path:
-
-- an intermediate run correctly surfaced `OPENING_DATE_ACTIVITY_AMBIGUOUS` when a baseline shared the earliest transaction date;
-- the user clarified the real cash-event semantics and corrected the production cash events;
-- no software/accounting workaround was introduced;
-- final `Update Portfolio Data #3300` / run `31999168801` on `main@87414b89046e83d2905be8a9f29720a94060f10b` reported:
-  - `complete=True`;
-  - transaction rows `192`, resolved `192`;
-  - cash event rows `2`, resolved `2`;
-  - currencies `['USD']`;
-  - issue codes `[]`;
-- transaction prefix integrity, canonical Daily P&L reconciliation, split-ledger parity and snapshot upload also succeeded.
-
-Do not reopen R2.5 reconciliation unless new production evidence shows a material defect.
+The same production run observed the existing CASY dividend-only provider-row condition. The already-reviewed market-data path re-fetched and normalized the persistent dividend-only row as an explicit as-of effective valuation; calculation and snapshot publication succeeded. This does not reopen R2.6A.
 
 ---
 
@@ -90,62 +95,68 @@ Do not reopen R2.5 reconciliation unless new production evidence shows a materia
 
 ### Phase
 
-`R2 — Ledger Truth v2`
+`R3 — Universal Data Gateway`
 
 ### Batch
 
-`R2.6A — Cash-Inclusive Account Value Preview`
+`R3.1A — Broker-Neutral Export & Backup Foundation`
 
-Status: **PLANNING / READY FOR IMPLEMENTATION**
+Status: **PLANNING / READY FOR ARCHITECTURE TRACE**
 
 ### Primary Goal
 
-> Give the user a deterministic, auditable preview of whole-account value by combining existing securities valuation with authoritative cash, without silently changing current holdings-value or performance semantics.
+> Give the user a deterministic, user-controlled backup/export package containing the authoritative journal data needed to preserve and later reconstruct their portfolio history, without relying on browser-local state or broker-specific assumptions.
 
 ### Why this is next
 
-Production now has sufficient reviewed cash facts for the observed USD ledger. The next user-facing gap is that the product still exposes securities market value but cannot yet show a reviewed whole-account value that includes cash.
+R2 now provides reviewed transaction metadata, explicit cash events, deterministic cash completeness and a production-verified whole-account current-value preview. The highest-value next gap is portability and recoverability of user data.
 
-This batch is intentionally a preview rather than a cutover because cash completeness does not by itself review:
-
-- FX valuation provenance;
-- account-value snapshot contract;
-- performance cash-flow treatment;
-- TWR/XIRR semantics;
-- historical whole-account chart methodology.
+A whole-account TWR/XIRR/performance cutover remains possible later, but it introduces materially greater methodology risk than the direct user value of backup/export. It is therefore deferred until separately justified by product evidence.
 
 ### Narrow execution boundary
 
-1. Calculation engine owns the account-value preview. The browser does not calculate cash, FX or account NAV.
-2. Use cash balances only when shadow cash report is complete.
-3. Reuse reviewed engine-owned valuation/FX inputs where possible; do not introduce a second FX source merely for the preview.
-4. Publish explicit preview provenance/readiness fields in the calculated snapshot contract.
-5. Present a separate user-facing `帳戶價值預覽` (final wording subject to UX review) alongside existing `持倉市值`; do not silently relabel `summary.total_value`.
-6. Fail closed when cash or FX inputs are incomplete/unreviewed.
-7. Add deterministic reconciliation: preview account value = securities value + reviewed cash value components.
-8. Preserve current Daily P&L, TWR, XIRR and performance-chart behavior in R2.6A.
-9. No transaction chronology activation.
-10. No broker-specific balance importer in this batch.
+1. Export authoritative durable records, not browser-local derived state.
+2. Include at minimum transaction records and cash events with the durable metadata required to reconstruct their meaning.
+3. Define an explicit versioned export manifest/schema before UI implementation.
+4. Preserve transaction currency, cash currency, tags, notes and relevant durable metadata exactly; never infer missing financial facts during export.
+5. Separate authoritative source data from derived portfolio snapshot/cache data in the package.
+6. Prefer one deterministic download action from the authenticated product UI.
+7. Export must be tenant-scoped and authenticated.
+8. Do not make localStorage/indexedDB the backup authority.
+9. Do not implement broker-specific CSV parsing in R3.1A.
+10. Do not implement restore writes until the export contract is reviewed; restore becomes a separate follow-up batch unless a minimal round-trip validator can remain read-only.
+11. No TWR/XIRR/performance cutover in this batch.
+12. No guessed chronology, currency, cash, tax or lot information.
+
+### Architecture questions to answer before implementation
+
+1. Which existing Worker endpoints already expose tenant-scoped authoritative transaction and cash-event reads, and can they safely support export without a second data path?
+2. Which durable fields are required for lossless reconstruction versus optional presentation fields?
+3. Should export be a single JSON package, ZIP containing JSON/CSV views, or JSON-first with CSV convenience views?
+4. How should schema version, generated-at provenance, tenant identity handling and checksum/integrity metadata be represented without leaking unnecessary account identifiers?
+5. Which existing write/import idempotency primitives can later support a safe restore batch?
+6. What package-size limits are realistic for the current Worker/Pages architecture?
 
 ### Exit criteria
 
-R2.6A may close only when:
+R3.1A may close only when:
 
-1. the engine-owned preview contract and terminology are explicit;
-2. incomplete cash/FX states fail closed rather than fabricate a value;
-3. deterministic component reconciliation is tested;
-4. existing securities-only metrics are unchanged;
-5. frontend only renders published preview/provenance and performs no parallel accounting;
-6. exact-head CI and frozen independent review pass;
-7. production Pages/runtime evidence confirms the new preview without regressions;
-8. no whole-account performance cutover is implied by the preview.
+1. the export package contract is explicit and versioned;
+2. authoritative vs derived data boundaries are documented and tested;
+3. transaction and cash-event export is tenant-scoped and authenticated;
+4. durable financial fields round-trip through serialization without inference or loss;
+5. frontend offers a clear one-action export/backup UX;
+6. malformed/incomplete server responses fail closed rather than producing a misleading “complete backup”;
+7. full CI + frozen exact-head review pass;
+8. production Pages/runtime evidence confirms a valid export flow;
+9. no restore mutation or broker-specific parser is silently included.
 
 ### NOW / NEXT / BACKLOG / REJECT
 
-- **NOW:** R2.6A account-value preview contract → engine calculation → snapshot publication → frontend rendering → production reconciliation.
-- **NEXT:** only after R2.6A production evidence, decide whether a separate whole-account performance methodology/cutover batch is justified.
-- **BACKLOG:** account-level TWR/XIRR methodology, historical account-value chart, multi-currency expansion when actually observed, R3 broker-neutral import/export/backup/restore, R4 deterministic portfolio intelligence.
-- **REJECT:** browser-side NAV/FX accounting, silent replacement of `持倉市值`, automatic TWR/XIRR cutover, guessed FX/cash, inferred chronology, unrelated cleanup.
+- **NOW:** trace authoritative read contracts → define versioned export package → implement deterministic export generation → one-action UX → production verification.
+- **NEXT:** R3.1B reviewed restore/import foundation using explicit idempotency and validation, selected only after R3.1A evidence.
+- **BACKLOG:** broker-neutral adapters/CSV import, automated reconciliation previews, whole-account TWR/XIRR methodology, historical whole-account chart, multi-currency expansion when actually observed, R4 portfolio intelligence.
+- **REJECT:** browser-local backup authority, guessed fields, broker-specific assumptions in core schema, silent restore writes, automatic performance-methodology cutover, unrelated cleanup.
 
 ---
 
@@ -174,7 +185,6 @@ user cash CRUD
 → deterministic shadow cash derivation
 → completeness gate
 → reviewed account-value preview
-→ later separate performance-cutover review
 ```
 
 - user CRUD remains the only cash mutation authority;
@@ -182,17 +192,28 @@ user cash CRUD
 - transaction cash currency must be explicitly persisted;
 - one opening balance per currency;
 - absence of opening balance never means zero;
-- same-date ambiguity remains fail-closed unless a separately reviewed chronology authority exists;
-- cash-shadow/account-value preview does not automatically alter TWR/XIRR.
+- same-date ambiguity remains fail-closed unless a separately reviewed chronology authority exists.
 
-### Financial terminology
-
-Until a later reviewed cutover:
+### Account value / performance
 
 - `summary.total_value` → user-facing `持倉市值`;
-- `summary.invested_capital` → user-facing `持倉成本`;
-- any whole-account value introduced in R2.6A must be clearly identified as a separate preview contract;
-- generic whole-account ROI/TWR/XIRR claims remain invalid unless explicitly reviewed later.
+- `account_value_preview` → separate current whole-account value preview;
+- current-value preview does not automatically alter TWR/XIRR;
+- current valuation FX must not be reused as historical performance FX without an explicitly reviewed methodology;
+- generic whole-account ROI/TWR/XIRR claims remain invalid until a future reviewed cutover.
+
+### Export / backup authority
+
+R3.1A must preserve this direction:
+
+```text
+authenticated tenant-scoped durable reads
+→ explicit versioned export contract
+→ deterministic package serialization
+→ user download
+```
+
+Derived UI caches, localStorage and portfolio snapshots may be useful context but are not replacements for authoritative source data.
 
 ### Dividend / history
 
@@ -206,19 +227,20 @@ Until a later reviewed cutover:
 ## 4. Roadmap V2 — current dependency order
 
 1. R2.1 canonical event/timeline contract — CLOSED / VERIFIED.
-2. R2.2 transaction metadata foundation — CLOSED at reviewed production boundaries.
-3. R2.3 explicit cash storage/API/UI — CLOSED at reviewed production boundaries.
+2. R2.2 transaction metadata foundation — CLOSED / PRODUCTION VERIFIED.
+3. R2.3 explicit cash storage/API/UI — CLOSED / PRODUCTION VERIFIED.
 4. R2.4 deterministic shadow cash ledger + targeted production feed — CLOSED / PRODUCTION VERIFIED.
 5. R2.5A transaction currency reconciliation — CLOSED / PRODUCTION VERIFIED.
 6. R2.5B post-reconciliation evidence — CLOSED.
-7. R2.5C opening-balance readiness UX — CLOSED / PRODUCTION PAGES VERIFIED.
-8. R2.5D authoritative cash input + shadow verification — CLOSED / `complete=True` production evidence.
-9. **R2.6A cash-inclusive account-value preview — CURRENT.**
-10. Only after R2.6A reviewed production evidence: separately consider whole-account TWR/XIRR/performance cutover.
+7. R2.5C opening-balance readiness UX — CLOSED / PRODUCTION VERIFIED.
+8. R2.5D authoritative cash input + shadow verification — CLOSED / PRODUCTION COMPLETE.
+9. R2.6A cash-inclusive account-value preview — CLOSED / PRODUCTION VERIFIED.
+10. **R3.1A broker-neutral export & backup foundation — CURRENT.**
+11. After R3.1A evidence: separately choose restore/import foundation, broker adapters, or whole-account performance methodology according to user value and observed gaps.
 
-After R2 foundation:
+Future:
 
-- **R3 Universal Data Gateway:** broker-neutral import/export/backup/restore and deterministic adapters.
+- **R3 Universal Data Gateway:** export/backup, restore/import, broker-neutral adapters and deterministic reconciliation.
 - **R4 Portfolio Intelligence:** account-level analytics and AI summarization over deterministic facts. AI never becomes accounting/FX/tax/lot/market-data authority.
 
 ---
@@ -227,11 +249,13 @@ After R2 foundation:
 
 ### Current risks to control
 
-- Do not treat one production USD-complete ledger as proof that every future tenant/currency is complete.
-- Do not reuse a spot/current FX value for historical performance without an explicitly reviewed rule.
-- Do not make the browser responsible for deriving cash balance or account value.
-- Do not let a new account-value label silently change the semantics of existing persisted snapshot fields.
-- Existing XIRR warnings about non-conventional cash flows are not automatically solved by cash completeness and are outside R2.6A unless the new preview directly exposes a defect.
+- Do not mistake export convenience formats for authoritative schema.
+- Do not omit durable currency/cash metadata that would make later reconstruction ambiguous.
+- Do not include secrets, bearer tokens, API keys or unnecessary tenant identifiers in exported files.
+- Do not let browser-generated data become the only backup source.
+- Do not introduce restore writes before validation/idempotency semantics are reviewed.
+- Do not let R3 work reopen closed cash/account-value plumbing without new evidence.
+- Existing XIRR warnings about non-conventional cash flows remain a future methodology concern, not an R3.1A blocker.
 
 ### Decisions carried forward
 
@@ -240,19 +264,22 @@ After R2 foundation:
 - chronology is never inferred from partial timestamps;
 - production evidence selects the next truth gap;
 - closed-batch details belong in versioned `docs/engineering/`, not duplicated live-status prose;
-- technical cleanup without product justification remains rejected.
+- technical cleanup without product justification remains rejected;
+- current-value preview is useful product output but not permission for performance-methodology cutover.
 
 ---
 
 ## 6. Immediate next actions
 
-1. Re-read current snapshot schema/calculator publication path and StatsGrid rendering contracts.
-2. Identify the existing engine-owned FX provenance used for securities valuation and whether it can safely value the complete USD cash balance for the preview.
-3. Define R2.6A preview fields and fail-closed readiness semantics before implementation.
-4. Implement the narrow engine/snapshot/frontend path with reconciliation tests.
-5. Do not modify existing TWR/XIRR/Daily P&L/performance chart behavior.
-6. Run full CI, frozen exact-head review and production verification.
-7. Update this live handoff only after evidence changes the current state.
+1. Re-read existing Worker transaction/cash read endpoints and frontend stores/services.
+2. Identify the minimum lossless durable field set for transactions + cash events.
+3. Trace any existing export/download helpers before adding code.
+4. Define versioned package manifest and authoritative/derived separation.
+5. Select JSON-first vs ZIP/CSV convenience format from actual product constraints, not preference.
+6. Add serialization/contract tests before UI wiring.
+7. Implement one-action authenticated export UX.
+8. Run full CI, frozen exact-head review and production verification.
+9. Keep restore/import writes outside R3.1A unless separately promoted.
 
 ---
 
@@ -264,5 +291,5 @@ After R2 foundation:
 4. Keep one Primary Active Batch and preserve its recovery point.
 5. Reopen closed work only for new material evidence.
 6. Debug same-class impact + regression prevention.
-7. Use versioned engineering closeouts for R2.4/R2.5 history.
-8. Continue **R2.6A Cash-Inclusive Account Value Preview** without prematurely activating whole-account performance semantics.
+7. Use versioned engineering closeouts for R2 history.
+8. Continue **R3.1A Broker-Neutral Export & Backup Foundation** without prematurely activating restore writes, broker-specific assumptions or whole-account performance cutover.
