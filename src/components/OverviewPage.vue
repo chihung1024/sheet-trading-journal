@@ -1,5 +1,10 @@
 <template>
   <section class="section-overview">
+    <AccountValuePreview
+      v-if="!store.loading"
+      :model="accountValuePreview"
+    />
+
     <OverviewHeadline
       v-if="!store.loading"
       :model="overview.headline"
@@ -34,12 +39,14 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
+import { buildAccountValuePreviewPresentation } from '../services/accountValuePreviewPresentation.js';
 import {
   buildDailyPnlExplanation,
   selectCurrentGroupDayLedger,
 } from '../services/dailyPnlExplainability.js';
 import { buildPortfolioConcentrationSnapshot } from '../services/portfolioConcentration.js';
 import { buildOverviewProjection } from '../services/overviewProjection.js';
+import AccountValuePreview from './AccountValuePreview.vue';
 import OverviewHeadline from './OverviewHeadline.vue';
 import OverviewContext from './OverviewContext.vue';
 import DailyPnlExplanation from './DailyPnlExplanation.vue';
@@ -50,6 +57,11 @@ import ChartSkeleton from './skeletons/ChartSkeleton.vue';
 const emit = defineEmits(['navigate']);
 const store = usePortfolioStore();
 const isDailyExplanationOpen = ref(false);
+
+const accountValuePreview = computed(() => buildAccountValuePreviewPresentation({
+  preview: store.rawData?.account_value_preview,
+  currentGroup: store.currentGroup,
+}));
 
 const currentDayLedger = computed(() => selectCurrentGroupDayLedger({
   rawData: store.rawData,

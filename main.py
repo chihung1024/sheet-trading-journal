@@ -10,6 +10,7 @@ import pandas as pd
 from journal_engine.clients.api_client import CloudflareClient
 from journal_engine.clients.semantic_market_data import SemanticMarketDataClient as MarketDataClient
 from journal_engine.config import API_KEY
+from journal_engine.core.account_value_preview import attach_account_value_preview
 from journal_engine.core.calculation_manifest import (
     CalculationManifestError,
     resolve_engine_source_commit,
@@ -452,7 +453,7 @@ def run_update() -> None:
             if raw_user_df.empty:
                 raise PortfolioUpdateError("使用者交易資料意外為空")
 
-            observe_shadow_cash_ledger(api_client, user_id, raw_user_df)
+            cash_report = observe_shadow_cash_ledger(api_client, user_id, raw_user_df)
 
             validation_df = build_split_adjusted_validation_ledger(
                 raw_user_df,
@@ -512,6 +513,39 @@ def run_update() -> None:
 
             if not validate_adjusted_ledger_parity(calculator.df, validation_df):
                 raise PortfolioUpdateError("計算器與驗證器的拆股復權交易帳本不一致")
+
+            try:
+                fx_context = market_client.get_realtime_fx_snapshot(calculation_now)
+            except Exception as exc:
+                logger.warning(
+                    "Account value preview FX unavailable [error=%s]",
+                    type(exc).__name__,
+                )
+                fx_context = {}
+
+            try:
+                snapshot = attach_account_value_preview(
+                    snapshot,
+                    cash_report=cash_report,
+                    fx_context=fx_context,
+                )
+                preview = snapshot.account_value_preview
+                logger.info(
+                    "Account value preview [status=%s,cash_ledger_complete=%s,currencies=%s,reason=%s,missing_fx=%s]",
+                    preview.status,
+                    preview.cash_ledger_complete,
+                    [component.currency for component in preview.cash_components],
+                    preview.reason,
+                    preview.missing_cash_fx_currencies,
+                )
+            except Exception as exc:
+                # R2.6A is additive. A preview implementation defect must not erase
+                # the already-reviewed securities snapshot path; no account value is
+                # published in this fallback.
+                logger.warning(
+                    "Account value preview unavailable [stage=assemble,error=%s]",
+                    type(exc).__name__,
+                )
 
             try:
                 snapshot.calculation_manifest = build_production_calculation_manifest(
