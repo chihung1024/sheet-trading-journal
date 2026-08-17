@@ -112,6 +112,80 @@ test('batch repair writes with bounded concurrency and performs one authoritativ
   assert.ok(requests.every(request => Object.keys(request.body).sort().join(',') === 'currency,fee,id,price,qty,symbol,tax,txn_date,txn_type'));
 });
 
+test('401 repair refreshes auth once and retries the same guarded metadata write with the new token', async () => {
+  let token = 'token-a';
+  let refreshCount = 0;
+  let refreshed = [];
+  const authorizationHeaders = [];
+  const requestBodies = [];
+
+  const result = await reconcileRecordCurrencies(
+    [{ record: RECORD, currency: 'USD' }],
+    options(async (_url, init) => {
+      authorizationHeaders.push(init.headers.Authorization);
+      requestBodies.push(init.body);
+      if (authorizationHeaders.length === 1) {
+        return response({ success: false, error: 'expired token' }, 401);
+      }
+      return response({ success: true, metadata_updated: true, record_id: RECORD.id });
+    }, {
+      getToken: () => token,
+      refreshToken: async () => {
+        refreshCount += 1;
+        token = 'token-b';
+        return true;
+      },
+      refreshRecords: async () => {
+        refreshed = [{ ...RECORD, currency: 'USD' }];
+      },
+      readRecords: () => refreshed,
+    }),
+  );
+
+  assert.deepEqual(authorizationHeaders, ['Bearer token-a', 'Bearer token-b']);
+  assert.equal(refreshCount, 1);
+  assert.equal(requestBodies.length, 2);
+  assert.equal(requestBodies[0], requestBodies[1]);
+  assert.equal(result.confirmed.length, 1);
+  assert.equal(result.unconfirmed.length, 0);
+});
+
+test('mixed-currency partial repair confirms readback truth and keeps a GBp conflict definite and unconfirmed', async () => {
+  const usdRecord = { ...RECORD, id: 11, symbol: 'NVDA' };
+  const gbpenceRecord = { ...RECORD, id: 12, symbol: 'VOD.L' };
+  let refreshed = [];
+
+  const result = await reconcileRecordCurrencies(
+    [
+      { record: usdRecord, currency: 'USD' },
+      { record: gbpenceRecord, currency: 'GBp' },
+    ],
+    options(async (_url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.id === gbpenceRecord.id) {
+        return response({ success: false, error: 'metadata conflict' }, 409);
+      }
+      return response({ success: true, metadata_updated: true, record_id: body.id });
+    }, {
+      refreshRecords: async () => {
+        refreshed = [
+          { ...usdRecord, currency: 'USD' },
+          { ...gbpenceRecord, currency: null },
+        ];
+      },
+      readRecords: () => refreshed,
+    }),
+  );
+
+  assert.equal(result.readbackSucceeded, true);
+  assert.deepEqual(result.confirmed.map(item => [item.id, item.desiredCurrency]), [[11, 'USD']]);
+  assert.equal(result.unconfirmed.length, 1);
+  assert.equal(result.unconfirmed[0].id, 12);
+  assert.equal(result.unconfirmed[0].desiredCurrency, 'GBp');
+  assert.equal(result.unconfirmed[0].error.status, 409);
+  assert.equal(result.unconfirmed[0].error.outcomeAmbiguous, false);
+});
+
 test('ambiguous PUT is not called successful unless server readback proves the desired currency', async () => {
   let refreshCount = 0;
   let refreshed = [{ ...RECORD, currency: 'USD' }];
