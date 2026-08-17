@@ -27,7 +27,12 @@
     </div>
 
     <p class="preview-boundary">
-      目前只提供帳戶現值預覽；不改變持倉市值、今日損益、TWR、XIRR 或績效曲線。
+      <template v-if="dailyAccountPnlReady">
+        帳戶現值與今日損益已納入權威現金；持倉市值、TWR、XIRR 與績效曲線仍維持既有口徑。
+      </template>
+      <template v-else>
+        帳戶現值可納入權威現金；今日損益只有在現金歷史與匯率可完整對帳時才切換帳戶口徑，否則維持持倉口徑。TWR、XIRR 與績效曲線不變。
+      </template>
     </p>
   </section>
 </template>
@@ -35,6 +40,7 @@
 <script setup>
 defineProps({
   model: { type: Object, required: true },
+  dailyAccountPnlReady: { type: Boolean, default: false },
 });
 
 const formatTwd = value => (
@@ -100,7 +106,7 @@ const formatTwd = value => (
 }
 
 .preview-boundary {
-  max-width: 430px;
+  max-width: 500px;
   margin: 0;
   color: var(--text-sub);
   font-size: var(--type-caption);
