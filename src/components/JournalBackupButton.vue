@@ -1,5 +1,5 @@
 <template>
-  <div class="journal-backup-action">
+  <div class="journal-data-actions" aria-label="交易資料備份與還原">
     <button
       type="button"
       class="backup-button"
@@ -12,6 +12,7 @@
       <span aria-hidden="true">{{ exporting ? '⏳' : '⤓' }}</span>
       <span>{{ exporting ? '備份中…' : '下載備份' }}</span>
     </button>
+    <JournalRestoreButton />
   </div>
 </template>
 
@@ -21,6 +22,7 @@ import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
 import { CONFIG } from '../config';
 import { createJournalBackup, downloadJournalBackup } from '../services/journalBackupExport.js';
+import JournalRestoreButton from './JournalRestoreButton.vue';
 
 const authStore = useAuthStore();
 const { addToast } = useToast();
@@ -50,8 +52,10 @@ const handleBackup = async () => {
 </script>
 
 <style scoped>
-.journal-backup-action {
+.journal-data-actions {
   display: inline-flex;
+  align-items: center;
+  gap: 8px;
   flex: 0 0 auto;
 }
 
@@ -80,5 +84,11 @@ const handleBackup = async () => {
 .backup-button:disabled {
   cursor: wait;
   opacity: 0.6;
+}
+
+@media (max-width: 480px) {
+  .journal-data-actions {
+    flex-wrap: wrap;
+  }
 }
 </style>
