@@ -140,6 +140,15 @@
       "owner_paths": ["src/App.vue"]
     },
     {
+      "key": "sheet_trading_journal.calculation_poll_claim.",
+      "classification": "ephemeral-tenant-operation-coordination-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-038"],
+      "target_batch": "PHASE-4",
+      "planned_action": "retain-expiring-opaque-scope-job-poll-claim-only",
+      "owner_paths": ["src/services/calculationJobPollClaim.js"]
+    },
+    {
       "key": "sheet_trading_journal.market_refresh_leader.",
       "classification": "ephemeral-operation-coordination-prefix",
       "authoritative": false,
