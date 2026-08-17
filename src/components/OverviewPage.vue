@@ -3,6 +3,7 @@
     <AccountValuePreview
       v-if="!store.loading"
       :model="accountValuePreview"
+      :daily-account-pnl-ready="accountDailyPnl.status === 'ready'"
     />
 
     <OverviewHeadline
@@ -25,8 +26,9 @@
       v-if="!store.loading && isDailyExplanationOpen && dailyPnlExplanation.status === 'ready'"
       :explanation="dailyPnlExplanation"
       :group-name="store.currentGroup"
-      :prev-date="store.stats.daily_pnl_prev_date || ''"
-      :as-of-date="store.stats.daily_pnl_asof_date || ''"
+      :scope="accountDailyPnl.status === 'ready' ? 'account' : 'securities'"
+      :prev-date="effectiveDailyStats.daily_pnl_prev_date || ''"
+      :as-of-date="effectiveDailyStats.daily_pnl_asof_date || ''"
     />
 
     <div class="chart-wrapper chart-full">
@@ -40,6 +42,7 @@
 import { computed, ref, watch } from 'vue';
 import { usePortfolioStore } from '../stores/portfolio';
 import { buildAccountValuePreviewPresentation } from '../services/accountValuePreviewPresentation.js';
+import { buildAccountDailyPnlPresentation } from '../services/accountDailyPnlPresentation.js';
 import {
   buildDailyPnlExplanation,
   selectCurrentGroupDayLedger,
@@ -63,14 +66,29 @@ const accountValuePreview = computed(() => buildAccountValuePreviewPresentation(
   currentGroup: store.currentGroup,
 }));
 
-const currentDayLedger = computed(() => selectCurrentGroupDayLedger({
-  rawData: store.rawData,
+const accountDailyPnl = computed(() => buildAccountDailyPnlPresentation({
+  preview: store.rawData?.account_daily_pnl_preview,
   currentGroup: store.currentGroup,
 }));
 
+const effectiveDailyStats = computed(() => (
+  accountDailyPnl.value.status === 'ready'
+    ? { ...store.stats, ...accountDailyPnl.value.statsOverrides }
+    : store.stats
+));
+
+const currentDayLedger = computed(() => (
+  accountDailyPnl.value.status === 'ready'
+    ? accountDailyPnl.value.dayLedger
+    : selectCurrentGroupDayLedger({
+      rawData: store.rawData,
+      currentGroup: store.currentGroup,
+    })
+));
+
 const dailyPnlExplanation = computed(() => buildDailyPnlExplanation({
   dayLedger: currentDayLedger.value,
-  summary: store.stats,
+  summary: effectiveDailyStats.value,
 }));
 
 const concentration = computed(() => buildPortfolioConcentrationSnapshot(
@@ -79,7 +97,7 @@ const concentration = computed(() => buildPortfolioConcentrationSnapshot(
 ));
 
 const overview = computed(() => buildOverviewProjection({
-  stats: store.stats,
+  stats: effectiveDailyStats.value,
   dailyExplanation: dailyPnlExplanation.value,
   concentration: concentration.value,
   pendingDividends: store.pending_dividends,
