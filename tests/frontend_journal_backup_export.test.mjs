@@ -180,10 +180,13 @@ test('backup contract is deterministic, tenant-neutral, and excludes browser-der
 
   assert.equal(backup.generated_at, '2026-08-17T06:40:00.000Z');
   assert.equal(buildJournalBackupFilename(backup.generated_at), 'sheet-trading-journal-backup-2026-08-17T06-40-00-000Z.json');
+  assert.equal(backup.authority.derived_portfolio_snapshot_included, false);
+  assert.equal(backup.authority.browser_local_state_included, false);
+  assert.equal(Object.hasOwn(backup, 'portfolio_snapshot'), false);
   const serialized = JSON.stringify(backup);
   assert.doesNotMatch(serialized, /tenant@example\.test/);
   assert.doesNotMatch(serialized, /secret-internal-hash|cash-secret-hash|cash-payload-hash/);
-  assert.doesNotMatch(serialized, /access_token|refresh_token|portfolio_snapshot|localStorage/);
+  assert.doesNotMatch(serialized, /"access_token"|"refresh_token"|"portfolio_snapshot"|"localStorage"/);
 });
 
 test('browser download is created only from a validated backup contract and always revokes the object URL', () => {
