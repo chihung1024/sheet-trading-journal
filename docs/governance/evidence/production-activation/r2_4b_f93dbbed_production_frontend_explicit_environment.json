@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "check_name": "production_frontend_explicit_environment",
+  "status": "passed",
+  "observed_at": "2026-08-17T01:13:03.900Z",
+  "source_sha": "f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee",
+  "proof": {
+    "result": "pass",
+    "summary": "Production Identity Evidence #26 confirmed the canonical Pages production deployment is on branch main at exact audited source f93dbbed3f67ce4e8c9d808d286f2c0096c1e8ee, with the reviewed production API URL and Google client configuration.",
+    "artifact_reference": "run 31984262043; artifact 9273271736; sha256:4cdcb90702026a1cb3a45ed8b5dc76026bad3abd5c54ad2ce90c2f7480466704"
+  }
+}
