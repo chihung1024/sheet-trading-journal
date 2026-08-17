@@ -6,6 +6,7 @@ const STAGING_FRONTEND_ORIGIN = 'https://staging.sheet-trading-journal.pages.dev
 const PRODUCTION_GOOGLE_CLIENT_ID =
   '951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com';
 const GOOGLE_CLIENT_ID_RE = /^\d+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i;
+const SOURCE_COMMIT_RE = /^[0-9a-f]{40}$/;
 
 export default {
   async fetch(request, env, ctx) {
@@ -37,7 +38,7 @@ export default {
     }
 
     const response = await deploymentWorker.fetch(request, env, ctx);
-    return annotateStagingResponse(response);
+    return annotateStagingResponse(response, env);
   },
 };
 
@@ -80,10 +81,17 @@ function isStagingOriginAllowed(origin) {
   return origin === STAGING_FRONTEND_ORIGIN;
 }
 
-function annotateStagingResponse(response) {
+function normalizedSourceCommit(env = {}) {
+  const sourceCommit = String(env.SOURCE_COMMIT || '').trim().toLowerCase();
+  return SOURCE_COMMIT_RE.test(sourceCommit) ? sourceCommit : '';
+}
+
+function annotateStagingResponse(response, env = {}) {
   const headers = new Headers(response.headers);
   headers.set('X-Deployment-Environment', DEPLOYMENT_ENVIRONMENT);
   headers.set('X-Worker-Service', STAGING_WORKER_SERVICE);
+  const sourceCommit = normalizedSourceCommit(env);
+  if (sourceCommit) headers.set('X-Source-Commit', sourceCommit);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -112,5 +120,6 @@ export const __test = {
   PRODUCTION_GOOGLE_CLIENT_ID,
   validateStagingRuntime,
   isStagingOriginAllowed,
+  normalizedSourceCommit,
   annotateStagingResponse,
 };

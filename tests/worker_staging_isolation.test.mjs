@@ -71,6 +71,7 @@ test('staging wrapper accepts only the fixed staging origin', async () => {
   );
   assert.equal(allowed.headers.get('X-Deployment-Environment'), 'staging');
   assert.equal(allowed.headers.get('X-Worker-Service'), 'journal-backend-staging');
+  assert.equal(allowed.headers.get('X-Source-Commit'), validEnv().SOURCE_COMMIT);
 
   for (const origin of [
     'https://sheet-trading-journal.pages.dev',
@@ -110,6 +111,18 @@ test('staging wrapper delegates deployment-only routes through the shared Worker
   assert.equal((await response.json()).error_meta.code, 'UNAUTHORIZED');
   assert.equal(response.headers.get('X-Deployment-Environment'), 'staging');
   assert.equal(response.headers.get('X-Worker-Service'), 'journal-backend-staging');
+  assert.equal(response.headers.get('X-Source-Commit'), validEnv().SOURCE_COMMIT);
+});
+
+test('staging wrapper publishes only a validated source commit on delegated responses', async () => {
+  assert.equal(__test.normalizedSourceCommit(validEnv()), validEnv().SOURCE_COMMIT);
+  assert.equal(__test.normalizedSourceCommit(validEnv({ SOURCE_COMMIT: 'NOT-A-SHA' })), '');
+
+  const response = __test.annotateStagingResponse(
+    new Response('{}', { status: 200 }),
+    validEnv({ SOURCE_COMMIT: 'ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD' }),
+  );
+  assert.equal(response.headers.get('X-Source-Commit'), 'abcdefabcdefabcdefabcdefabcdefabcdefabcd');
 });
 
 test('staging wrapper fails closed before shared Worker entry execution when configuration is incomplete', async () => {
@@ -122,7 +135,7 @@ test('staging wrapper fails closed before shared Worker entry execution when con
   assert.equal((await response.json()).error_meta.code, 'STAGING_CONFIGURATION_ERROR');
 });
 
-test('staging version response carries exact environment and service headers', async () => {
+test('staging version response carries exact environment, service, and source headers', async () => {
   const response = await stagingWorker.fetch(
     new Request('https://staging.invalid/api/version'),
     validEnv(),
@@ -131,6 +144,7 @@ test('staging version response carries exact environment and service headers', a
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('X-Deployment-Environment'), 'staging');
   assert.equal(response.headers.get('X-Worker-Service'), 'journal-backend-staging');
+  assert.equal(response.headers.get('X-Source-Commit'), validEnv().SOURCE_COMMIT);
   const body = await response.json();
   assert.equal(body.source_commit, validEnv().SOURCE_COMMIT);
 });
