@@ -65,19 +65,41 @@ test('staging deploy workflow refuses automatic provisioning and uses rendered s
   assert.doesNotMatch(workflow, /wrangler\.staging\.toml/);
 });
 
-test('staging deploy workflow verifies exact version, schema, environment, runtime service, and Recovery Gate', async () => {
+test('staging readiness requires consecutive exact full-contract passes including the restore route', async () => {
   const workflow = await readFile(WORKFLOW_PATH, 'utf8');
 
   assert.match(workflow, /id: manifest/);
   assert.match(workflow, /node tools\/export_worker_manifest\.mjs/);
   assert.match(workflow, /npm run worker:recovery-gate:check/);
-  assert.match(workflow, /for attempt in \$\(seq 1 20\)/);
+  assert.match(workflow, /required_consecutive_passes=3/);
+  assert.match(workflow, /max_attempts=30/);
+  assert.match(workflow, /consecutive_passes=0/);
+  assert.match(workflow, /for attempt in \$\(seq 1 "\$max_attempts"\)/);
   assert.match(workflow, /\/api\/version/);
   assert.match(workflow, /\/api\/health/);
+  assert.match(workflow, /\/api\/journal-restore/);
   assert.match(workflow, /verify_staging_worker_deployment\.mjs/);
+  assert.match(workflow, /verify_staging_restore_route\.mjs/);
+  assert.match(workflow, /consecutive_passes=\$\(\(consecutive_passes \+ 1\)\)/);
+  assert.match(workflow, /resetting consecutive-pass counter/);
+  assert.match(workflow, /consecutive_passes=0/);
   assert.match(workflow, /EXPECTED_SHA:/);
   assert.match(workflow, /EXPECTED_RUNTIME_SERVICE: \$\{\{ steps\.manifest\.outputs\.runtime_service \}\}/);
   assert.match(workflow, /EXPECTED_RELEASE_VERSION:/);
   assert.match(workflow, /EXPECTED_API_VERSION:/);
   assert.match(workflow, /EXPECTED_SCHEMA_VERSION:/);
+});
+
+test('staging restore route readiness is proven before credentials and mutations are exercised', async () => {
+  const workflow = await readFile(WORKFLOW_PATH, 'utf8');
+  const readinessIndex = workflow.indexOf('Verify stable exact staging deployment and restore route readiness');
+  const tokenIndex = workflow.indexOf('Mint fresh Google ID token for isolated staging restore account');
+  const mutationIndex = workflow.indexOf('Verify authenticated atomic restore on isolated staging tenant');
+
+  assert.notEqual(readinessIndex, -1);
+  assert.ok(tokenIndex > readinessIndex);
+  assert.ok(mutationIndex > tokenIndex);
+  assert.match(workflow, /RESTORE_ROUTE_STATUS/);
+  assert.match(workflow, /RESTORE_ROUTE_HEADERS/);
+  assert.match(workflow, /RESTORE_ROUTE_BODY/);
 });
