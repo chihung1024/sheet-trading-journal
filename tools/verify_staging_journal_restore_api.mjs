@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { formatStagingResponseDiagnostic } from './verify_staging_restore_route.mjs';
 
 const apiOrigin = required('STAGING_WORKER_BASE_URL').replace(/\/$/, '');
 const tokenFile = required('STAGING_E2E_ID_TOKEN_FILE');
@@ -42,19 +43,29 @@ async function api(method, path, { body, headers = {} } = {}) {
   return { response, payload };
 }
 
+function diagnostic(result) {
+  return formatStagingResponseDiagnostic({
+    status: result.response.status,
+    headers: result.response.headers,
+    payload: result.payload,
+  });
+}
+
 async function getRecords() {
-  const { response, payload } = await api('GET', '/api/records?limit=1000');
+  const result = await api('GET', '/api/records?limit=1000');
+  const { response, payload } = result;
   if (!response.ok || payload?.success !== true || !Array.isArray(payload?.data)) {
-    throw new Error(`GET /api/records failed HTTP ${response.status}`);
+    throw new Error(`GET /api/records failed ${diagnostic(result)}`);
   }
   if (payload?.page?.has_more) throw new Error('staging restore tenant unexpectedly exceeds one records page');
   return payload.data;
 }
 
 async function getCashEvents() {
-  const { response, payload } = await api('GET', '/api/cash-events');
+  const result = await api('GET', '/api/cash-events');
+  const { response, payload } = result;
   if (!response.ok || payload?.success !== true || !Array.isArray(payload?.cash_events)) {
-    throw new Error(`GET /api/cash-events failed HTTP ${response.status}`);
+    throw new Error(`GET /api/cash-events failed ${diagnostic(result)}`);
   }
   return payload.cash_events;
 }
@@ -109,9 +120,9 @@ function buildBackup(price = 1) {
 }
 
 async function deleteRecord(row) {
-  const { response, payload } = await api('DELETE', '/api/records', { body: { id: Number(row.id) } });
-  if (!response.ok || payload?.success !== true) {
-    throw new Error(`cleanup DELETE /api/records failed HTTP ${response.status}`);
+  const result = await api('DELETE', '/api/records', { body: { id: Number(row.id) } });
+  if (!result.response.ok || result.payload?.success !== true) {
+    throw new Error(`cleanup DELETE /api/records failed ${diagnostic(result)}`);
   }
 }
 
@@ -123,11 +134,11 @@ async function deleteCashEvent(row) {
     currency: row.currency,
     note: row.note || '',
   };
-  const { response, payload } = await api('DELETE', '/api/cash-events', {
+  const result = await api('DELETE', '/api/cash-events', {
     body: { id: Number(row.id), expected },
   });
-  if (!response.ok || payload?.success !== true) {
-    throw new Error(`cleanup DELETE /api/cash-events failed HTTP ${response.status}`);
+  if (!result.response.ok || result.payload?.success !== true) {
+    throw new Error(`cleanup DELETE /api/cash-events failed ${diagnostic(result)}`);
   }
 }
 
@@ -158,7 +169,7 @@ async function main() {
       headers: { 'Idempotency-Key': idempotencyKey },
     });
     if (first.response.status !== 201 || first.payload?.success !== true || first.payload?.restored !== true) {
-      throw new Error(`initial restore failed HTTP ${first.response.status}`);
+      throw new Error(`initial restore failed ${diagnostic(first)}`);
     }
     if (first.payload?.counts?.records !== 1 || first.payload?.counts?.cash_events !== 1) {
       throw new Error('initial restore returned unexpected counts');
@@ -179,7 +190,7 @@ async function main() {
       headers: { 'Idempotency-Key': idempotencyKey },
     });
     if (replay.response.status !== 200 || replay.payload?.deduplicated !== true || replay.payload?.restored !== false) {
-      throw new Error(`same-intent replay was not deduplicated HTTP ${replay.response.status}`);
+      throw new Error(`same-intent replay was not deduplicated ${diagnostic(replay)}`);
     }
     if ((await getRecords()).length !== 1 || (await getCashEvents()).length !== 1) {
       throw new Error('same-intent replay changed live row multiplicity');
@@ -190,7 +201,7 @@ async function main() {
       headers: { 'Idempotency-Key': idempotencyKey },
     });
     if (conflict.response.status !== 409 || conflict.payload?.error_meta?.code !== 'IDEMPOTENCY_CONFLICT') {
-      throw new Error(`same-key changed-payload conflict did not fail closed HTTP ${conflict.response.status}`);
+      throw new Error(`same-key changed-payload conflict did not fail closed ${diagnostic(conflict)}`);
     }
 
     const nonEmpty = await api('POST', '/api/journal-restore', {
@@ -198,7 +209,7 @@ async function main() {
       headers: { 'Idempotency-Key': secondKey },
     });
     if (nonEmpty.response.status !== 409 || nonEmpty.payload?.error_meta?.code !== 'RESTORE_DESTINATION_NOT_EMPTY') {
-      throw new Error(`non-empty restore did not fail closed HTTP ${nonEmpty.response.status}`);
+      throw new Error(`non-empty restore did not fail closed ${diagnostic(nonEmpty)}`);
     }
   } finally {
     // Cleanup is unconditional: even a malformed success response may have
@@ -213,7 +224,7 @@ async function main() {
     headers: { 'Idempotency-Key': idempotencyKey },
   });
   if (postCleanupReplay.response.status !== 200 || postCleanupReplay.payload?.deduplicated !== true) {
-    throw new Error(`completed restore replay after cleanup was not a no-op HTTP ${postCleanupReplay.response.status}`);
+    throw new Error(`completed restore replay after cleanup was not a no-op ${diagnostic(postCleanupReplay)}`);
   }
   await assertTenantEmpty('post-replay');
 
