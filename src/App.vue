@@ -347,7 +347,7 @@ watch(activeView, (view) => {
 });
 
 const updateMedia = () => {
-  isMobileView.value = window.innerWidth < 1024;
+  isMobileView.value = window.innerWidth <= 1024;
   if (isMobileView.value) {
     showMobileTrade.value = false;
     desktopTradeRailCollapsed.value = false;
