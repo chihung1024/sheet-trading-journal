@@ -1,22 +1,23 @@
 """Engine-owned current account-value preview.
 
-R2.6A is deliberately additive.  Existing ``summary.total_value`` remains the
+R2.6A is deliberately additive. Existing ``summary.total_value`` remains the
 securities-holdings market value and existing performance metrics remain
-securities-only.  This module can publish a separate current account-value
+securities-only. This module can publish a separate current account-value
 preview only when the deterministic shadow cash ledger is complete and every
 cash currency has a reviewed engine-owned TWD conversion in the supplied FX
 context.
 
 The browser must never reproduce this arithmetic or source an alternate FX
-rate.  Missing cash/FX evidence therefore returns an explicit unavailable
+rate. Missing cash/FX evidence therefore returns an explicit unavailable
 preview instead of fabricating a value.
 """
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, InvalidOperation
 import math
-from typing import Literal, Mapping, Optional
+from typing import Any, Literal, Mapping, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
@@ -186,8 +187,6 @@ def build_account_value_preview(
             if rate is None:
                 missing_currencies.append(summary.currency)
             else:
-                # A report marked complete should already guarantee a complete
-                # summary/balance. Refuse partial publication if that invariant drifts.
                 return _unavailable(
                     reason="cash_ledger_incomplete",
                     securities_value_twd=securities_value,
@@ -224,13 +223,74 @@ def build_account_value_preview(
     )
 
 
+class _SnapshotHistoryFxMarket:
+    """Read FX contexts already embedded in the reconciled snapshot history."""
+
+    def __init__(self, snapshot: PortfolioSnapshotWithAccountValuePreview) -> None:
+        self.snapshot = snapshot
+
+    @staticmethod
+    def _normalized_date(value: Any) -> Optional[str]:
+        text = str(value or "")[:10]
+        try:
+            return date.fromisoformat(text).isoformat()
+        except ValueError:
+            return None
+
+    def _lookup(self, value_date: Any) -> dict[str, float]:
+        target = self._normalized_date(value_date)
+        if not target:
+            return {"TWD": 1.0}
+
+        histories = [list(self.snapshot.history or [])]
+        group = self.snapshot.groups.get("all")
+        if group is not None:
+            histories.append(list(group.history or []))
+
+        for history in histories:
+            for row in reversed(history):
+                if self._normalized_date(row.get("date")) != target:
+                    continue
+                raw = row.get("_raw_fx_rates")
+                if isinstance(raw, Mapping):
+                    result = {"TWD": 1.0}
+                    for currency, value in raw.items():
+                        rate = _positive_fx(value)
+                        if rate is not None:
+                            result[str(currency)] = float(rate)
+                    return result
+                legacy = _positive_fx(row.get("_raw_fx_rate", row.get("fx_rate")))
+                if legacy is not None:
+                    return {"TWD": 1.0, "USD": float(legacy)}
+        return {"TWD": 1.0}
+
+    def get_fx_snapshot(self, value_date: Any) -> dict[str, float]:
+        return self._lookup(value_date)
+
+    def get_realtime_fx_snapshot(self, value_date: Any = None) -> dict[str, float]:
+        return self._lookup(value_date)
+
+
+def _daily_calculation_as_of(snapshot: PortfolioSnapshotWithAccountValuePreview) -> date:
+    text = str(snapshot.summary.daily_pnl_asof_date or "")
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return date.min
+
+
 def attach_account_value_preview(
     snapshot: PortfolioSnapshot,
     *,
     cash_report: Optional[ShadowCashLedgerReport],
     fx_context: Mapping[str, object] | None,
 ) -> PortfolioSnapshotWithAccountValuePreview:
-    """Return an additive snapshot subtype without mutating legacy snapshot fields."""
+    """Attach current account value and additive account Daily P&L preview.
+
+    The Daily P&L extension consumes only the canonical reconciled day ledger,
+    the same authoritative cash report, and FX contexts already embedded in
+    snapshot history. It performs no second market-data fetch.
+    """
 
     preview = build_account_value_preview(
         securities_value_twd=snapshot.summary.total_value,
@@ -239,4 +299,15 @@ def attach_account_value_preview(
     )
     payload = snapshot.model_dump(mode="python")
     payload["account_value_preview"] = preview
-    return PortfolioSnapshotWithAccountValuePreview.model_validate(payload)
+    extended = PortfolioSnapshotWithAccountValuePreview.model_validate(payload)
+
+    # Local import avoids a definition-time cycle: the Daily P&L subtype extends
+    # PortfolioSnapshotWithAccountValuePreview.
+    from .account_daily_pnl_preview import attach_account_daily_pnl_preview
+
+    return attach_account_daily_pnl_preview(
+        extended,
+        cash_report=cash_report,
+        market_client=_SnapshotHistoryFxMarket(extended),
+        calculation_as_of=_daily_calculation_as_of(extended),
+    )
