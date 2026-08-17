@@ -2,7 +2,14 @@
   <div class="app-layout" :class="{ 'dark-mode': isDark }">
     <LoginOverlay v-if="!authStore.token" />
 
-    <div v-else class="main-wrapper" :class="{ 'cash-view': activeView === 'cash' }">
+    <div
+      v-else
+      class="main-wrapper"
+      :class="{
+        'cash-view': activeView === 'cash',
+        'trade-rail-collapsed': isDesktopTradeRailCollapsed,
+      }"
+    >
       <header class="top-nav">
         <div class="nav-left">
           <div class="nav-brand">
@@ -68,6 +75,19 @@
           >
             <span>🔄</span>
             <span class="desktop-only">立即更新</span>
+          </button>
+
+          <button
+            v-if="!isMobileView && activeView !== 'cash'"
+            type="button"
+            class="trade-rail-toggle"
+            @click="desktopTradeRailCollapsed = !desktopTradeRailCollapsed"
+            :aria-expanded="!desktopTradeRailCollapsed"
+            aria-controls="desktop-trade-rail"
+            :title="desktopTradeRailCollapsed ? '顯示交易區' : '收起交易區並放大主內容'"
+          >
+            <span aria-hidden="true">{{ desktopTradeRailCollapsed ? '▤' : '◫' }}</span>
+            <span class="desktop-only">{{ desktopTradeRailCollapsed ? '顯示交易區' : '專注檢視' }}</span>
           </button>
 
           <button type="button" class="theme-toggle" @click="toggleTheme" aria-label="切換明暗主題">
@@ -151,7 +171,13 @@
         </main>
 
         <!-- Right: 桌面 sticky 交易面板；手機維持 sheet overlay -->
-        <aside v-if="activeView !== 'cash'" class="side-column" :class="{ 'mobile-sheet': isMobileView, 'sheet-open': showMobileTrade }">
+        <aside
+          v-if="activeView !== 'cash'"
+          v-show="isMobileView || !desktopTradeRailCollapsed"
+          id="desktop-trade-rail"
+          class="side-column"
+          :class="{ 'mobile-sheet': isMobileView, 'sheet-open': showMobileTrade }"
+        >
           <div class="mobile-sheet-header" v-if="isMobileView">
             <h3>交易管理</h3>
             <button type="button" class="btn-close-sheet" @click="showMobileTrade = false">✕</button>
@@ -309,6 +335,12 @@ watch(activeView, (v) => {
 // 手機版相關狀態
 const isMobileView = ref(false);
 const showMobileTrade = ref(false);
+const desktopTradeRailCollapsed = ref(false);
+const isDesktopTradeRailCollapsed = computed(() => (
+  !isMobileView.value
+  && activeView.value !== 'cash'
+  && desktopTradeRailCollapsed.value
+));
 
 watch(activeView, (view) => {
   if (view === 'cash') showMobileTrade.value = false;
@@ -316,7 +348,10 @@ watch(activeView, (view) => {
 
 const updateMedia = () => {
   isMobileView.value = window.innerWidth < 1024;
-  if (!isMobileView.value) {
+  if (isMobileView.value) {
+    showMobileTrade.value = false;
+    desktopTradeRailCollapsed.value = false;
+  } else {
     showMobileTrade.value = false;
   }
 };
@@ -377,6 +412,8 @@ const handleTriggerUpdate = async () => {
 const handleEditRecord = (record) => {
   if (isMobileView.value) {
     showMobileTrade.value = true;
+  } else {
+    desktopTradeRailCollapsed.value = false;
   }
 
   nextTick(() => {
@@ -495,7 +532,8 @@ onUnmounted(() => {
 }
 
 .refresh-icon:focus-visible,
-.user-profile:focus-visible {
+.user-profile:focus-visible,
+.trade-rail-toggle:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
@@ -518,8 +556,10 @@ onUnmounted(() => {
 .loading .dot, .polling .dot { animation: pulse 1s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-.action-trigger-btn { background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: var(--type-body); cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
-.action-trigger-btn:hover:not(:disabled) { background: var(--bg-card); border-color: var(--primary); color: var(--primary); }
+.action-trigger-btn,
+.trade-rail-toggle { background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: var(--type-body); cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+.action-trigger-btn:hover:not(:disabled),
+.trade-rail-toggle:hover { background: var(--bg-card); border-color: var(--primary); color: var(--primary); }
 .action-trigger-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .theme-toggle { background: transparent; border: none; padding: 6px; border-radius: 50%; cursor: pointer; font-size: var(--icon-lg); transition: transform 0.2s; }

@@ -59,6 +59,7 @@
 .btn-refresh,
 .btn-clear-filters,
 .action-trigger-btn,
+.trade-rail-toggle,
 .section-groups .gm-select-wrap select,
 .section-groups .group-item input,
 .section-groups .btn-sm,
@@ -169,7 +170,8 @@
     padding: 3px 8px;
   }
 
-  .action-trigger-btn {
+  .action-trigger-btn,
+  .trade-rail-toggle {
     padding-inline: 10px;
   }
 
@@ -181,6 +183,12 @@
     grid-template-columns: minmax(0, 1fr) minmax(330px, 350px);
     gap: 16px;
     padding: 12px 18px 20px;
+  }
+
+  /* D4 reversible desktop focus mode. Vue owns rail visibility; this layer only
+     returns the existing grid to one column while the same TradeForm stays mounted. */
+  .main-wrapper.trade-rail-collapsed .content-container {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .main-column,
