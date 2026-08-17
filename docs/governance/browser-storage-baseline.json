@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "baseline_sha": "c5b608bbbde1c13105f9dcb7d5ae8f789b9f4bae",
-  "review_date": "2026-08-14",
-  "purpose": "Inventory current browser persistence so new keys cannot be introduced silently. Presence in this baseline is not a declaration that a key is safe.",
+  "baseline_sha": "345cde1a96bf9547effbddafc72f6223bd496310",
+  "review_date": "2026-08-17",
+  "purpose": "Inventory current browser persistence so new keys and dynamic key prefixes cannot be introduced silently. Presence in this baseline is not a declaration that a key is safe.",
   "keys": [
     {
       "key": "automatic_recalculation_clean.v1",
@@ -11,6 +11,15 @@
       "risk_ids": ["RISK-020", "RISK-038"],
       "target_batch": "PHASE-2",
       "planned_action": "retain-owner-validated-covered-generation-only",
+      "owner_paths": ["src/services/automaticRecalculationState.js", "src/services/projectStorage.js"]
+    },
+    {
+      "key": "automatic_recalculation_coverage.v1.",
+      "classification": "tenant-operation-recovery-state-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-020", "RISK-038"],
+      "target_batch": "PHASE-2",
+      "planned_action": "retain-owner-validated-job-coverage-only",
       "owner_paths": ["src/services/automaticRecalculationState.js", "src/services/projectStorage.js"]
     },
     {
@@ -77,6 +86,42 @@
       "owner_paths": ["src/services/calculationJobState.js", "src/services/projectStorage.js", "src/stores/portfolio.js"]
     },
     {
+      "key": "pending_calculation_request.v2.",
+      "classification": "tenant-operation-recovery-state-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-020", "RISK-038"],
+      "target_batch": "B07",
+      "planned_action": "retain-only-as-opaque-tenant-bound-hint",
+      "owner_paths": ["src/services/calculationJobState.js", "src/services/projectStorage.js", "src/stores/portfolio.js"]
+    },
+    {
+      "key": "pending_cash_create.v1.",
+      "classification": "tenant-operation-recovery-state-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-020", "RISK-038"],
+      "target_batch": "R2.3C",
+      "planned_action": "retain-owner-validated-idempotent-create-intent",
+      "owner_paths": ["src/services/cashCreateIntent.js", "src/services/projectStorage.js"]
+    },
+    {
+      "key": "pending_journal_restore.v1.",
+      "classification": "tenant-operation-recovery-state-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-020", "RISK-038"],
+      "target_batch": "R3.1C",
+      "planned_action": "retain-owner-validated-hash-and-idempotency-key-only-no-financial-payload",
+      "owner_paths": ["src/services/journalRestoreIntent.js", "src/services/projectStorage.js"]
+    },
+    {
+      "key": "pending_record_create.v1.",
+      "classification": "tenant-operation-recovery-state-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-020", "RISK-038"],
+      "target_batch": "NOW-1B",
+      "planned_action": "retain-owner-validated-idempotent-create-intent",
+      "owner_paths": ["src/services/recordCreateIntent.js", "src/services/projectStorage.js"]
+    },
+    {
       "key": "record_mutation_barrier.v1",
       "classification": "tenant-operation-recovery-barrier",
       "authoritative": false,
@@ -93,6 +138,15 @@
       "target_batch": "B14",
       "planned_action": "retain-project-scoped",
       "owner_paths": ["src/App.vue"]
+    },
+    {
+      "key": "sheet_trading_journal.calculation_poll_claim.",
+      "classification": "ephemeral-tenant-operation-coordination-prefix",
+      "authoritative": false,
+      "risk_ids": ["RISK-038"],
+      "target_batch": "PHASE-4",
+      "planned_action": "retain-expiring-opaque-scope-job-poll-claim-only",
+      "owner_paths": ["src/services/calculationJobPollClaim.js"]
     },
     {
       "key": "sheet_trading_journal.market_refresh_leader.",

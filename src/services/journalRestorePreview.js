@@ -44,6 +44,7 @@ const CASH_PORTABLE_FIELDS = Object.freeze([
   'amount',
   'currency',
   'note',
+  'event_source',
 ]);
 
 const requirePlainObject = (value, label) => {

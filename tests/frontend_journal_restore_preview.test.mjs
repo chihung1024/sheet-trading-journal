@@ -68,7 +68,7 @@ test('restore backup parser accepts only the reviewed v1 authority/count contrac
   }), /browser-local authority/);
 });
 
-test('empty destination produces create preview but explicitly enables no writes', () => {
+test('empty destination produces create preview but preview service itself enables no writes', () => {
   const source = backup({
     records: [record(), record({ id: 2, execution_sequence: 'order-1:fill-2' })],
     cashEvents: [cashEvent()],
@@ -106,6 +106,23 @@ test('exact portable multiset is already restored even when destination ids and 
   assert.deepEqual(preview.planned_creates, { records: 0, cash_events: 0 });
 });
 
+test('cash event provenance is part of authoritative restore equality', () => {
+  const source = backup();
+  const changedSource = backup({
+    records: [record({ id: 900, created_at: '2026-08-18 00:00:00' })],
+    cashEvents: [cashEvent({
+      id: 901,
+      event_source: 'IMPORT',
+      created_at: '2026-08-18 00:00:01',
+      updated_at: '2026-08-18 00:00:02',
+    })],
+    generatedAt: '2026-08-18T01:00:00Z',
+  });
+
+  const preview = buildJournalRestorePreview({ backup: source, current: changedSource });
+  assert.equal(preview.status, 'conflict_nonempty');
+});
+
 test('multiset comparison preserves legitimate duplicate multiplicity instead of field-level deduplication', () => {
   const duplicated = record({ note: 'two legitimate identical fills', execution_sequence: null });
   const source = backup({
@@ -138,19 +155,20 @@ test('any non-empty partial difference blocks guessed merge or overwrite', () =>
   assert.deepEqual(preview.planned_creates, { records: 0, cash_events: 0 });
 });
 
-test('restore preview UX stays beside backup/import and contains no mutation control', () => {
+test('preview remains a zero-write authority check while execution is isolated behind a separate service', () => {
   const backupComponent = fs.readFileSync(path.join(ROOT, 'src/components/JournalBackupButton.vue'), 'utf8');
   const restoreComponent = fs.readFileSync(path.join(ROOT, 'src/components/JournalRestoreButton.vue'), 'utf8');
   const recordList = fs.readFileSync(path.join(ROOT, 'src/components/RecordList.vue'), 'utf8');
-  const service = fs.readFileSync(path.join(ROOT, 'src/services/journalRestorePreview.js'), 'utf8');
+  const previewService = fs.readFileSync(path.join(ROOT, 'src/services/journalRestorePreview.js'), 'utf8');
+  const executionService = fs.readFileSync(path.join(ROOT, 'src/services/journalRestoreExecution.js'), 'utf8');
 
   assert.match(recordList, /<IbkrTradeImport \/>\s*<JournalBackupButton \/>/);
   assert.match(backupComponent, /<JournalRestoreButton \/>/);
   assert.match(backupComponent, /交易資料備份與還原/);
-  assert.match(restoreComponent, /安全還原預覽/);
-  assert.match(restoreComponent, /零寫入預覽/);
-  assert.match(service, /writes_allowed:\s*false/);
-  assert.doesNotMatch(restoreComponent, /確認還原|開始還原|執行還原/);
-  assert.doesNotMatch(service, /method:\s*['"](?:POST|PUT|DELETE)['"]/);
-  assert.doesNotMatch(service, /\/api\/records\/idempotent|\/api\/cash-events/);
+  assert.match(restoreComponent, /安全還原/);
+  assert.match(restoreComponent, /確認建立紀錄/);
+  assert.match(previewService, /writes_allowed:\s*false/);
+  assert.doesNotMatch(previewService, /method:\s*['"](?:POST|PUT|DELETE)['"]/);
+  assert.match(executionService, /method:\s*'POST'/);
+  assert.match(executionService, /\/api\/journal-restore/);
 });

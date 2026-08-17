@@ -39,7 +39,7 @@ const browserFiles = [
 function discoverStorageKeys() {
   const keys = new Set();
   const directCall = /localStorage\.(?:getItem|setItem|removeItem)\(\s*['"`]([^'"`]+)['"`]/g;
-  const storageConstant = /(?:export\s+)?const\s+[A-Z0-9_]*STORAGE_KEY\s*=\s*['"`]([^'"`]+)['"`]/g;
+  const storageConstant = /(?:export\s+)?const\s+[A-Z0-9_]*STORAGE_(?:KEY|PREFIX)\s*=\s*['"`]([^'"`]+)['"`]/g;
 
   for (const filePath of browserFiles) {
     const content = read(filePath);
