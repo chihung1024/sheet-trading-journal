@@ -1,4 +1,4 @@
-import canonicalWorker from '../../worker.js';
+import deploymentWorker from '../../worker-entry.js';
 
 const DEPLOYMENT_ENVIRONMENT = 'staging';
 const STAGING_WORKER_SERVICE = 'journal-backend-staging';
@@ -36,7 +36,7 @@ export default {
       );
     }
 
-    const response = await canonicalWorker.fetch(request, env, ctx);
+    const response = await deploymentWorker.fetch(request, env, ctx);
     return annotateStagingResponse(response);
   },
 };
