@@ -1,10 +1,13 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
+import {
+  KEYED_SMOKE_NOTE,
+  LEGACY_SMOKE_NOTE,
+  isLegacyBrowserTestRecord,
+  isOwnedSmokeRecord,
+} from './production_test_record_contract.mjs';
+
 const SHA_RE = /^[0-9a-f]{40}$/;
-const LEGACY_BROWSER_TAG = 'NOW1A-IDEMPOTENCY-TEST-20260813';
-const OWNED_SMOKE_TAG_RE = /^NOW1A_API_SMOKE_[A-Za-z0-9]{1,24}_[A-Za-z0-9]{16,24}_(legacy|keyed)$/;
-const LEGACY_SMOKE_NOTE = 'automated production idempotency legacy compatibility smoke';
-const KEYED_SMOKE_NOTE = 'automated production idempotency keyed replay smoke';
 
 function expect(condition, message) {
   if (!condition) throw new Error(message);
@@ -35,32 +38,6 @@ function normalizeBaseUrl(value, { allowInsecureLocal = false } = {}) {
     'Production API origin must use HTTPS',
   );
   return url.origin;
-}
-
-function isLegacyBrowserTestRecord(record) {
-  return record
-    && record.tag === LEGACY_BROWSER_TAG
-    && record.txn_date === '2026-08-13'
-    && record.symbol === 'AAPL'
-    && record.txn_type === 'BUY'
-    && Number(record.qty) === 1
-    && Number(record.price) === 1
-    && Number(record.fee) === 0
-    && Number(record.tax) === 0;
-}
-
-function isOwnedSmokeRecord(record) {
-  const tagMatch = String(record?.tag || '').match(OWNED_SMOKE_TAG_RE);
-  return record
-    && tagMatch
-    && record.txn_date === '2026-08-13'
-    && record.symbol === 'AAPL'
-    && record.txn_type === 'BUY'
-    && Number(record.qty) === 0.0001
-    && Number(record.price) === 1
-    && Number(record.fee) === 0
-    && Number(record.tax) === 0
-    && record.note === (tagMatch[1] === 'legacy' ? LEGACY_SMOKE_NOTE : KEYED_SMOKE_NOTE);
 }
 
 async function requestJson(fetchImpl, baseUrl, token, path, { method = 'GET', body, idempotencyKey } = {}) {
@@ -211,7 +188,7 @@ export async function runProductionRecordIdempotencySmoke({
     expect(keyedReplay.payload?.deduplicated === true, 'Same key + same payload was not reported as deduplicated');
     expect(positiveRecordId(keyedReplay.payload?.record_id, 'Keyed replay record_id') === keyedRecordId, 'Keyed replay returned a different record ID');
 
-    const conflict = await requestJson(fetchImpl, normalizedBaseUrl, normalizedToken, '/api/records', {
+    const conflict = await requestJson(fetchImpl, normalizedBaseUrl, token, '/api/records', {
       method: 'POST',
       body: { ...keyedRecord, qty: 0.0002 },
       idempotencyKey: key,
