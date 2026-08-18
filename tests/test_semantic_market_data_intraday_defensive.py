@@ -38,6 +38,10 @@ def test_cross_granularity_agreement_requires_all_price_fields_and_tight_match()
     values = _values()
     assert SemanticMarketDataClient._intraday_price_candidates_agree(values, dict(values)) is True
 
+    near = dict(values)
+    near["Close"] += 1e-8
+    assert SemanticMarketDataClient._intraday_price_candidates_agree(values, near) is True
+
     missing = dict(values)
     missing.pop("Close")
     assert SemanticMarketDataClient._intraday_price_candidates_agree(values, missing) is False
