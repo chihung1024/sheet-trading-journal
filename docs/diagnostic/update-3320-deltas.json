@@ -1,0 +1,467 @@
+[
+  {
+    "attempts": [
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 479.739990234375,
+            "Close": 479.739990234375,
+            "High": 496.8598937988281,
+            "Low": 469.04998779296875,
+            "Open": 492.125
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 479.739990234375,
+            "Close": 479.739990234375,
+            "High": 496.8598937988281,
+            "Low": 469.04998779296875,
+            "Open": 492.125
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 1,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      },
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 479.739990234375,
+            "Close": 479.739990234375,
+            "High": 496.8598937988281,
+            "Low": 469.04998779296875,
+            "Open": 492.125
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 479.739990234375,
+            "Close": 479.739990234375,
+            "High": 496.8598937988281,
+            "Low": 469.04998779296875,
+            "Open": 492.125
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 2,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      },
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 479.739990234375,
+            "Close": 479.739990234375,
+            "High": 496.8598937988281,
+            "Low": 469.04998779296875,
+            "Open": 492.125
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 479.739990234375,
+            "Close": 479.739990234375,
+            "High": 496.8598937988281,
+            "Low": 469.04998779296875,
+            "Open": 492.125
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 3,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      }
+    ],
+    "symbol": "DELL"
+  },
+  {
+    "attempts": [
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 395.5799865722656,
+            "Close": 395.5799865722656,
+            "High": 398.8999938964844,
+            "Low": 391.42498779296875,
+            "Open": 398.57000732421875
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 395.5799865722656,
+            "Close": 395.5799865722656,
+            "High": 398.8999938964844,
+            "Low": 391.42498779296875,
+            "Open": 398.57000732421875
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 1,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      },
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 395.5799865722656,
+            "Close": 395.5799865722656,
+            "High": 398.8999938964844,
+            "Low": 391.42498779296875,
+            "Open": 398.57000732421875
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 395.5799865722656,
+            "Close": 395.5799865722656,
+            "High": 398.8999938964844,
+            "Low": 391.42498779296875,
+            "Open": 398.57000732421875
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 2,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      },
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 395.5799865722656,
+            "Close": 395.5799865722656,
+            "High": 398.8999938964844,
+            "Low": 391.42498779296875,
+            "Open": 398.57000732421875
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 395.5799865722656,
+            "Close": 395.5799865722656,
+            "High": 398.8999938964844,
+            "Low": 391.42498779296875,
+            "Open": 398.57000732421875
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 3,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      }
+    ],
+    "symbol": "UNH"
+  },
+  {
+    "attempts": [
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 73.45999908447266,
+            "Close": 73.45999908447266,
+            "High": 75.36000061035156,
+            "Low": 73.38999938964844,
+            "Open": 75.19999694824219
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 73.45999908447266,
+            "Close": 73.45999908447266,
+            "High": 75.36000061035156,
+            "Low": 73.38999938964844,
+            "Open": 75.19999694824219
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 1,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      },
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 73.45999908447266,
+            "Close": 73.45999908447266,
+            "High": 75.36000061035156,
+            "Low": 73.38999938964844,
+            "Open": 75.19999694824219
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 73.45999908447266,
+            "Close": 73.45999908447266,
+            "High": 75.36000061035156,
+            "Low": 73.38999938964844,
+            "Open": 75.19999694824219
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 2,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      },
+      {
+        "15m": {
+          "aggregate": {
+            "Adj Close": 73.45999908447266,
+            "Close": 73.45999908447266,
+            "High": 75.36000061035156,
+            "Low": 73.38999938964844,
+            "Open": 75.19999694824219
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 26,
+          "valid": 26
+        },
+        "1h": {
+          "aggregate": {
+            "Adj Close": 73.45999908447266,
+            "Close": 73.45999908447266,
+            "High": 75.36000061035156,
+            "Low": 73.38999938964844,
+            "Open": 75.19999694824219
+          },
+          "empty": 0,
+          "partial": 0,
+          "raw": 7,
+          "valid": 7
+        },
+        "abs_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "attempt": 3,
+        "delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        },
+        "relative_delta": {
+          "Adj Close": 0.0,
+          "Close": 0.0,
+          "High": 0.0,
+          "Low": 0.0,
+          "Open": 0.0
+        }
+      }
+    ],
+    "symbol": "WMB"
+  }
+]
