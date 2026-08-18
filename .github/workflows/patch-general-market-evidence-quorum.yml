@@ -1,4 +1,4 @@
-name: Migrate general market evidence quorum contract
+name: Migrate generic market evidence test contracts
 
 on:
   pull_request:
@@ -17,50 +17,64 @@ jobs:
           ref: fix/market-data-row-recovery-composition
           persist-credentials: true
           fetch-depth: 1
-      - name: Replace obsolete fail-fast contract
+      - name: Migrate stale interval-specific contracts
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('tests/test_semantic_market_data_classifier.py')
-          text = path.read_text(encoding='utf-8')
-          old = '''def test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_query():
-              client = SemanticMarketDataClient()
-              frame = _prepared_partial_row()
-              with patch(
-                  "journal_engine.clients.semantic_market_data.yf.Ticker",
-                  return_value=_Ticker(pd.DataFrame()),
-              ) as ticker:
-                  result, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
-          
-              assert result is frame
-              assert dates == ()
-              assert ticker.call_count == 1
+          fallback = Path('tests/test_market_data_repair_fallback.py')
+          text = fallback.read_text(encoding='utf-8')
+          if '"same-provider raw 1h/15m"' not in text:
+              raise RuntimeError('stale metadata contract not found in fallback tests')
+          text = text.replace(
+              '"same-provider raw 1h/15m"',
+              '"multi-granularity quorum evidence"',
+              1,
+          )
+
+          start = text.index('def test_intraday_recovery_rejects_price_empty_bucket_with_nonzero_volume():')
+          end = text.find('\ndef ', start + 4)
+          if end < 0:
+              end = len(text)
+          block = text[start:end]
+          old_comment = '''    # First secondary granularity is already contradictory, so the second must not
+              # be queried and the original invalid daily row remains fail-closed.
           '''.replace('\n              ', '\n')
-          new = '''def test_exact_date_intraday_recovery_stops_when_quorum_becomes_impossible():
-              client = SemanticMarketDataClient()
-              frame = _prepared_partial_row()
-              with patch(
-                  "journal_engine.clients.semantic_market_data.yf.Ticker",
-                  return_value=_Ticker(pd.DataFrame()),
-              ) as ticker:
-                  result, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
-          
-              assert result is frame
-              assert dates == ()
-              assert ticker.call_count == 2
+          new_comment = '''    # A contradictory representation does not decide the whole recovery. The resolver
+              # evaluates the next representation, then stops once a 2-vote quorum is mathematically
+              # impossible; the final optional representation is not requested and the row remains
+              # fail-closed.
           '''.replace('\n              ', '\n')
-          if old not in text:
-              raise RuntimeError('obsolete fail-fast test contract not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          if old_comment not in block or 'assert calls["AAA"] == 3' not in block:
+              raise RuntimeError('stale fail-fast bucket contract not found')
+          block = block.replace(old_comment, new_comment, 1)
+          block = block.replace('assert calls["AAA"] == 3', 'assert calls["AAA"] == 4', 1)
+          text = text[:start] + block + text[end:]
+          fallback.write_text(text, encoding='utf-8')
+
+          semantic = Path('tests/test_semantic_market_data.py')
+          text = semantic.read_text(encoding='utf-8')
+          if '"raw 1h/15m regular-session"' not in text:
+              raise RuntimeError('stale metadata contract not found in semantic tests')
+          text = text.replace(
+              '"raw 1h/15m regular-session"',
+              '"multi-granularity quorum evidence"',
+              1,
+          )
+          semantic.write_text(text, encoding='utf-8')
           PY
-          python -m compileall -q journal_engine tests/test_semantic_market_data_classifier.py tests/test_semantic_market_data_stabilization.py
+          python -m compileall -q journal_engine tests
           python -m pip install --disable-pip-version-check -q -r requirements-dev.txt
-          python -m pytest -q tests/test_semantic_market_data_classifier.py tests/test_semantic_market_data_stabilization.py
+          python -m pytest -q \
+            tests/test_market_data_repair_fallback.py \
+            tests/test_semantic_market_data.py \
+            tests/test_semantic_market_data_classifier.py \
+            tests/test_semantic_market_data_stabilization.py \
+            tests/test_semantic_market_data_recovery_composition.py
           git diff --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tests/test_semantic_market_data_classifier.py
-          git commit -m 'test: replace interval fail-fast with quorum exhaustion contract'
+          git add tests/test_market_data_repair_fallback.py tests/test_semantic_market_data.py
+          git commit -m 'test: align market recovery tests with generic quorum policy'
           git push origin HEAD:fix/market-data-row-recovery-composition
