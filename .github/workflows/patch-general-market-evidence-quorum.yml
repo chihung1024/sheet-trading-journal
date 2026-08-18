@@ -1,15 +1,14 @@
 name: Migrate general market evidence quorum contract
 
 on:
-  push:
-    branches:
-      - diagnostic/generalize-market-evidence-quorum
+  pull_request:
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: ${{ github.head_ref == 'diagnostic/generalize-market-evidence-quorum' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
