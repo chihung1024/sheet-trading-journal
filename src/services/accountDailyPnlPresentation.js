@@ -1,4 +1,7 @@
-const RECONCILIATION_TOLERANCE_TWD = 0.51;
+const RAW_RECONCILIATION_TOLERANCE_TWD = 0.02;
+const PUBLISHED_ROUNDING_TOLERANCE_TWD = 0.51;
+const READY_METHOD = 'securities_plus_authoritative_cash_daily_v1';
+const READY_FX_POLICY = 'beginning_net_currency_exposure_v1';
 
 const finite = value => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -18,9 +21,14 @@ export function buildAccountDailyPnlPresentation({ preview, currentGroup = 'all'
     return unavailable('missing_preview');
   }
   if (preview.status !== 'ready') return unavailable(preview.reason || 'preview_unavailable');
-  if (preview.scope !== 'whole_account' || preview.cash_ledger_complete !== true) {
-    return unavailable('invalid_authority');
-  }
+
+  const contractValid = preview.preview_version === 1
+    && preview.base_currency === 'TWD'
+    && preview.scope === 'whole_account'
+    && preview.method === READY_METHOD
+    && preview.fx_policy === READY_FX_POLICY
+    && preview.cash_ledger_complete === true;
+  if (!contractValid) return unavailable('invalid_authority');
 
   const publishedTotal = finite(preview.account_daily_pnl_twd);
   const rawTotal = finite(preview.account_daily_pnl_raw_twd);
@@ -49,10 +57,10 @@ export function buildAccountDailyPnlPresentation({ preview, currentGroup = 'all'
     if (value === null) return unavailable('invalid_day_ledger');
     ledgerTotal += value;
   }
-  if (Math.abs(ledgerTotal - rawTotal) > RECONCILIATION_TOLERANCE_TWD) {
+  if (Math.abs(ledgerTotal - rawTotal) > RAW_RECONCILIATION_TOLERANCE_TWD) {
     return unavailable('day_ledger_mismatch');
   }
-  if (Math.abs(Math.round(rawTotal) - publishedTotal) > RECONCILIATION_TOLERANCE_TWD) {
+  if (Math.abs(Math.round(rawTotal) - publishedTotal) > PUBLISHED_ROUNDING_TOLERANCE_TWD) {
     return unavailable('published_total_mismatch');
   }
 
@@ -71,4 +79,7 @@ export function buildAccountDailyPnlPresentation({ preview, currentGroup = 'all'
   });
 }
 
-export const __test = Object.freeze({ RECONCILIATION_TOLERANCE_TWD });
+export const __test = Object.freeze({
+  RAW_RECONCILIATION_TOLERANCE_TWD,
+  PUBLISHED_ROUNDING_TOLERANCE_TWD,
+});
