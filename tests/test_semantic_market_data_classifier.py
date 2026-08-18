@@ -270,87 +270,90 @@ def test_recovery_action_signature_requires_complete_finite_actions():
 
 def test_intraday_candidate_rejects_absent_empty_naive_wrong_date_and_duplicates():
     event_date = pd.Timestamp("2026-08-11")
-    original = _daily_action_row()
-    assert SemanticMarketDataClient._complete_intraday_price_candidate(None, event_date, original) is None
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(None, event_date) is None
     assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        pd.DataFrame(), event_date, original
+        pd.DataFrame(), event_date
     ) is None
 
     naive = _intraday_row()
     naive.index = naive.index.tz_localize(None)
-    assert SemanticMarketDataClient._complete_intraday_price_candidate(naive, event_date, original) is None
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(naive, event_date) is None
     assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        _intraday_row(date="2026-08-12"), event_date, original
+        _intraday_row(date="2026-08-12"), event_date
     ) is None
 
     duplicate = _intraday_row()
     duplicate.index = pd.DatetimeIndex([duplicate.index[0], duplicate.index[0]])
     assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        duplicate, event_date, original
+        duplicate, event_date
     ) is None
 
 
 def test_intraday_candidate_requires_multiple_complete_structurally_valid_price_bars():
     event_date = pd.Timestamp("2026-08-11")
-    original = _daily_action_row()
 
     single = _intraday_row().iloc[[0]]
-    assert SemanticMarketDataClient._complete_intraday_price_candidate(single, event_date, original) is None
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(single, event_date) is None
 
     for column in ("Open", "High", "Low", "Close", "Adj Close"):
         missing = _intraday_row().drop(columns=[column])
         assert SemanticMarketDataClient._complete_intraday_price_candidate(
-            missing, event_date, original
+            missing, event_date
         ) is None
 
     nonpositive = _intraday_row(final_close=0.0)
     impossible_high = _intraday_row(open_price=104.0, first_high=103.0)
     impossible_low = _intraday_row(final_close=100.5, second_low=101.0)
-    for frame in (nonpositive, impossible_high, impossible_low):
+    adjusted_mismatch = _intraday_row()
+    adjusted_mismatch.loc[adjusted_mismatch.index[-1], "Adj Close"] = 101.5
+    for frame in (nonpositive, impossible_high, impossible_low, adjusted_mismatch):
         assert SemanticMarketDataClient._complete_intraday_price_candidate(
-            frame, event_date, original
+            frame, event_date
         ) is None
 
 
-def test_intraday_candidate_requires_daily_open_volume_and_range_anchors():
+def test_intraday_candidate_ignores_fully_empty_keepna_bucket_but_rejects_partial_bucket():
     event_date = pd.Timestamp("2026-08-11")
-    valid_intraday = _intraday_row()
-
-    wrong_open = _daily_action_row()
-    wrong_open["Open"] = 101.25
+    frame = _intraday_row()
+    empty = pd.DataFrame(
+        {column: [float("nan")] for column in ("Open", "High", "Low", "Close", "Adj Close", "Volume")},
+        index=pd.DatetimeIndex(["2026-08-11 10:00:00"], tz="America/New_York"),
+    )
+    with_empty = pd.concat([frame.iloc[[0]], empty, frame.iloc[[1]]]).sort_index()
     assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        valid_intraday, event_date, wrong_open
+        with_empty, event_date
+    ) is not None
+
+    partial = with_empty.copy(deep=True)
+    partial.loc[pd.Timestamp("2026-08-11 10:00:00", tz="America/New_York"), "Open"] = 101.25
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        partial, event_date
     ) is None
 
-    bad_volume = _daily_action_row()
-    bad_volume["Volume"] = float("nan")
-    assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        valid_intraday, event_date, bad_volume
-    ) is None
 
-    outside_high = _daily_action_row()
-    outside_high["High"] = 104.0
-    assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        valid_intraday, event_date, outside_high
-    ) is None
+def test_cross_granularity_price_candidates_require_all_fields_and_agreement():
+    values = {
+        "Open": 101.0,
+        "High": 103.0,
+        "Low": 100.0,
+        "Close": 102.0,
+        "Adj Close": 102.0,
+    }
+    assert SemanticMarketDataClient._intraday_price_candidates_agree(values, dict(values)) is True
 
-    outside_low = _daily_action_row()
-    outside_low["Low"] = 99.0
-    assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        valid_intraday, event_date, outside_low
-    ) is None
+    missing = dict(values)
+    missing.pop("Adj Close")
+    assert SemanticMarketDataClient._intraday_price_candidates_agree(values, missing) is False
 
-    close_mismatch = _daily_action_row()
-    close_mismatch["Close"] = 102.5
-    assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        valid_intraday, event_date, close_mismatch
-    ) is None
+    different = dict(values)
+    different["Low"] = 99.5
+    assert SemanticMarketDataClient._intraday_price_candidates_agree(values, different) is False
 
 
 def test_intraday_candidate_accepts_timezone_aware_stable_price_sequence():
     event_date = pd.Timestamp("2026-08-11")
     candidate = SemanticMarketDataClient._complete_intraday_price_candidate(
-        _intraday_row(), event_date, _daily_action_row()
+        _intraday_row(), event_date
     )
     assert candidate is not None
     values, signature = candidate
@@ -423,7 +426,7 @@ def test_exact_date_intraday_recovery_rejects_provider_exception():
     assert dates == ()
 
 
-def test_exact_date_intraday_recovery_rejects_unstable_sequence():
+def test_exact_date_intraday_recovery_rejects_disagreeing_granularities():
     client = SemanticMarketDataClient()
     frame = _prepared_partial_row()
     tickers = iter([_Ticker(_intraday_row(final_close=102.0)), _Ticker(_intraday_row(final_close=102.5))])
