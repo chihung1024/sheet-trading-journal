@@ -148,6 +148,7 @@
               <strong>{{ resultTitle }}</strong>
               <p>{{ resultMessage }}</p>
             </div>
+            <ImportReconciliationReceipt :result="result" />
           </template>
 
           <footer class="dialog-actions">
@@ -176,6 +177,7 @@ import { CONFIG } from '../config.js';
 import { useToast } from '../composables/useToast';
 import { useAuthStore } from '../stores/auth';
 import { usePortfolioStore } from '../stores/portfolio';
+import ImportReconciliationReceipt from './ImportReconciliationReceipt.vue';
 import { deriveIbkrImportProfile } from '../services/ibkrImportProfile.js';
 import { createIbkrRecord } from '../services/ibkrRecordCreate.js';
 import { parseIbkrTradeCsv } from '../services/ibkrTradeImport.js';
