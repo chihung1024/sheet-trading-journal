@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-cross-granularity-coverage-cleanup:
-    name: Apply #3317 coverage cleanup to target branch
+  repair-cross-granularity-cleanup:
+    name: Repair #3317 coverage cleanup indentation
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -23,68 +23,44 @@ jobs:
           ref: fix/market-data-cross-granularity-evidence
           fetch-depth: 1
 
-      - name: Remove unreachable aggregate guards and add real fail-closed regression
+      - name: Repair indentation and verify syntax
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          source_path = Path('journal_engine/clients/semantic_market_data.py')
-          source = source_path.read_text(encoding='utf-8')
-          dead = '''        if (
-              values["High"] < values["Low"]
-              or values["High"] < max(values["Open"], values["Close"])
-              or values["Low"] > min(values["Open"], values["Close"])
-          ):
-              return None
-          if not math.isclose(
-              values["Close"],
-              values["Adj Close"],
-              rel_tol=_PRICE_REL_TOL,
-              abs_tol=_PRICE_ABS_TOL,
-          ):
-              return None
-          return values, tuple(bar_signature)
-          '''.replace('\n    ', '\n        ')
-          replacement = '''        # Aggregate validity is already guaranteed by the validated constituent
+          path = Path('journal_engine/clients/semantic_market_data.py')
+          text = path.read_text(encoding='utf-8')
+          broken = '''        # Aggregate validity is already guaranteed by the validated constituent
           # bars: max(High)/min(Low) necessarily contain the first Open and last
           # Close, and the last bar already proved Close == Adj Close.
           return values, tuple(bar_signature)
           '''
-          if dead not in source:
-              start = source.index('        if (\n            values["High"] < values["Low"]')
-              end_marker = '        return values, tuple(bar_signature)\n'
-              end = source.index(end_marker, start) + len(end_marker)
-              source = source[:start] + replacement + source[end:]
-          else:
-              source = source.replace(dead, replacement, 1)
-          source_path.write_text(source, encoding='utf-8')
-
-          test_path = Path('tests/test_semantic_market_data_classifier.py')
-          tests = test_path.read_text(encoding='utf-8')
-          marker = 'def test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_query():'
-          if marker not in tests:
-              tests += '''\n\n\ndef test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_query():
-              client = SemanticMarketDataClient()
-              frame = _prepared_partial_row()
-              with patch(
-                  "journal_engine.clients.semantic_market_data.yf.Ticker",
-                  return_value=_Ticker(pd.DataFrame()),
-              ) as ticker:
-                  result, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
-
-              assert result is frame
-              assert dates == ()
-              assert ticker.call_count == 1
-          '''
-              test_path.write_text(tests, encoding='utf-8')
+          # YAML block indentation can strip leading spaces inside the embedded
+          # literal, so target the exact checked-in malformed text explicitly.
+          malformed = (
+              '        # Aggregate validity is already guaranteed by the validated constituent\n'
+              '# bars: max(High)/min(Low) necessarily contain the first Open and last\n'
+              '# Close, and the last bar already proved Close == Adj Close.\n'
+              'return values, tuple(bar_signature)\n'
+          )
+          fixed = (
+              '        # Aggregate validity is already guaranteed by the validated constituent\n'
+              '        # bars: max(High)/min(Low) necessarily contain the first Open and last\n'
+              '        # Close, and the last bar already proved Close == Adj Close.\n'
+              '        return values, tuple(bar_signature)\n'
+          )
+          if malformed not in text:
+              raise SystemExit('malformed aggregate block not found')
+          path.write_text(text.replace(malformed, fixed, 1), encoding='utf-8')
           PY
+          python -m py_compile journal_engine/clients/semantic_market_data.py tests/test_semantic_market_data_classifier.py
+          git diff --check
 
-      - name: Commit target branch patch
+      - name: Commit target branch repair
         run: |
           set -euo pipefail
-          git diff --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add journal_engine/clients/semantic_market_data.py tests/test_semantic_market_data_classifier.py
-          git commit -m 'test: close cross-granularity coverage gaps'
+          git add journal_engine/clients/semantic_market_data.py
+          git commit -m 'fix: repair cross-granularity cleanup indentation'
           git push origin HEAD:fix/market-data-cross-granularity-evidence
