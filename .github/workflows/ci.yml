@@ -1,70 +1,59 @@
-name: Production verification for Update Portfolio Data 3317 final
+name: Diagnostic DELL intraday interval semantics
 
 on:
   pull_request:
 
 permissions:
-  actions: write
   contents: read
 
 jobs:
-  verify-production:
+  probe:
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317-final' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
-      - name: Dispatch merged-main Update Portfolio Data and wait for completion
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_MAIN_SHA: f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.10'
+      - name: Install pinned market-data client
+        run: python -m pip install --disable-pip-version-check yfinance==1.5.2 pandas==2.3.3
+      - name: Probe regular-session interval boundaries
         run: |
-          set -euo pipefail
-          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
-          auth=(-H 'Accept: application/vnd.github+json' -H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          python - <<'PY'
+          import pandas as pd
+          import yfinance as yf
+          from yfinance.data import YfData
 
-          actual_main_sha="$(curl --silent --show-error --fail-with-body "${auth[@]}" "$api/branches/main" | jq -r '.commit.sha')"
-          if [[ "$actual_main_sha" != "$EXPECTED_MAIN_SHA" ]]; then
-            echo "main moved: expected=$EXPECTED_MAIN_SHA actual=$actual_main_sha" >&2
-            exit 1
-          fi
-
-          before_id="$(curl --silent --show-error --fail-with-body "${auth[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&branch=main&per_page=1" | jq -r '.workflow_runs[0].id // 0')"
-          curl --silent --show-error --fail-with-body -X POST "${auth[@]}" \
-            "$api/actions/workflows/update.yml/dispatches" \
-            --data '{"ref":"main","inputs":{"custom_benchmark":"0050.TW","target_user_id":"","calculation_job_id":"","transaction_integrity_audit_only":"false"}}' >/dev/null
-
-          run_id=""
-          for _ in $(seq 1 60); do
-            payload="$(curl --silent --show-error --fail-with-body "${auth[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&branch=main&per_page=10")"
-            run_id="$(jq -r --arg sha "$EXPECTED_MAIN_SHA" --argjson before "$before_id" '[.workflow_runs[] | select(.head_sha == $sha and .id > $before)] | sort_by(.id) | last | .id // empty' <<<"$payload")"
-            if [[ -n "$run_id" ]]; then
-              break
-            fi
-            sleep 2
-          done
-          if [[ -z "$run_id" ]]; then
-            echo 'production workflow dispatch was not observed' >&2
-            exit 1
-          fi
-
-          echo "PRODUCTION_RUN_ID=$run_id"
-          for _ in $(seq 1 180); do
-            run="$(curl --silent --show-error --fail-with-body "${auth[@]}" "$api/actions/runs/$run_id")"
-            status="$(jq -r '.status' <<<"$run")"
-            conclusion="$(jq -r '.conclusion // ""' <<<"$run")"
-            run_number="$(jq -r '.run_number' <<<"$run")"
-            head_sha="$(jq -r '.head_sha' <<<"$run")"
-            echo "PRODUCTION_STATUS=$status RUN_NUMBER=$run_number CONCLUSION=$conclusion HEAD_SHA=$head_sha"
-            if [[ "$status" == 'completed' ]]; then
-              echo "PRODUCTION_RUN_NUMBER=$run_number"
-              echo "PRODUCTION_CONCLUSION=$conclusion"
-              echo "PRODUCTION_HEAD_SHA=$head_sha"
-              [[ "$head_sha" == "$EXPECTED_MAIN_SHA" ]]
-              [[ "$conclusion" == 'success' ]]
-              exit 0
-            fi
-            sleep 5
-          done
-
-          echo 'production workflow did not complete within verification bound' >&2
-          exit 1
+          symbol = 'DELL'
+          start = pd.Timestamp('2026-08-17')
+          end = start + pd.Timedelta(days=1)
+          for interval in ('1h', '30m', '15m', '5m'):
+              YfData().cache_get.cache_clear()
+              frame = yf.Ticker(symbol).history(
+                  start=start,
+                  end=end,
+                  interval=interval,
+                  auto_adjust=False,
+                  actions=False,
+                  prepost=False,
+                  repair=False,
+                  keepna=True,
+                  timeout=10.0,
+              )
+              print(f'=== interval={interval} rows={len(frame)} tz={getattr(frame.index, "tz", None)} ===')
+              cols = [c for c in ('Open','High','Low','Close','Adj Close','Volume') if c in frame.columns]
+              if frame.empty:
+                  print('EMPTY')
+                  continue
+              print(frame[cols].to_string())
+              valid = frame.dropna(subset=[c for c in ('Open','High','Low','Close','Adj Close') if c in frame.columns])
+              if not valid.empty:
+                  agg = {
+                      'Open': float(valid.iloc[0]['Open']),
+                      'High': float(valid['High'].max()),
+                      'Low': float(valid['Low'].min()),
+                      'Close': float(valid.iloc[-1]['Close']),
+                      'Adj Close': float(valid.iloc[-1]['Adj Close']),
+                  }
+                  print('AGG', agg)
+          PY
