@@ -55,12 +55,28 @@
       <p v-if="receipt.unattempted > 0" class="unattempted-note">
         後續 {{ receipt.unattempted }} 筆因前一筆停止條件而未送出，系統沒有替它們臆造成功或失敗結果。
       </p>
+
+      <div v-if="showRetry" class="retry-panel">
+        <div>
+          <strong>可使用相同來源安全續傳</strong>
+          <p>系統會先確認既有未定結果，再以原本的穩定識別重播整批；已確認項目不會重複新增。</p>
+        </div>
+        <button
+          type="button"
+          class="retry-button"
+          :disabled="retrying"
+          @click="emit('retry')"
+        >
+          {{ retrying ? '正在確認既有結果…' : '安全續傳' }}
+        </button>
+      </div>
     </div>
   </details>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { isAmbiguousImportRetryCandidate } from '../services/importAmbiguousRetry.js';
 import { buildImportReconciliationReceipt } from '../services/importReconciliationReceipt.js';
 
 const props = defineProps({
@@ -68,7 +84,16 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  retryAvailable: {
+    type: Boolean,
+    default: false,
+  },
+  retrying: {
+    type: Boolean,
+    default: false,
+  },
 });
+const emit = defineEmits(['retry']);
 
 const PAGE_SIZE = 100;
 const visibleLimit = ref(PAGE_SIZE);
@@ -82,6 +107,10 @@ const receipt = computed(() => {
   }
 });
 const visibleRows = computed(() => receipt.value?.rows?.slice(0, visibleLimit.value) || []);
+const showRetry = computed(() => (
+  props.retryAvailable
+  && isAmbiguousImportRetryCandidate(props.result)
+));
 
 const showMore = () => {
   visibleLimit.value += PAGE_SIZE;
@@ -161,21 +190,52 @@ watch(() => props.result, () => {
 .status-pill.neutral { color: #475569; background: rgb(100 116 139 / 10%); }
 .status-pill.warning { color: #b45309; background: rgb(245 158 11 / 12%); }
 .status-pill.error { color: #b91c1c; background: rgb(220 38 38 / 10%); }
-.show-more {
-  justify-self: start;
+.show-more,
+.retry-button {
   min-height: 34px;
   padding: 0.4rem 0.65rem;
   border: 1px solid var(--border-color, #d5d9e2);
   border-radius: 7px;
+  font: inherit;
+  font-weight: 600;
+}
+.show-more {
+  justify-self: start;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font: inherit;
-  font-weight: 600;
 }
 .unattempted-note {
   margin: 0;
   color: var(--text-muted, var(--text-secondary, #64748b));
   line-height: 1.5;
+}
+.retry-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid rgb(217 119 6 / 35%);
+  border-radius: 8px;
+  background: rgb(245 158 11 / 8%);
+}
+.retry-panel p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted, var(--text-secondary, #64748b));
+  line-height: 1.45;
+}
+.retry-button {
+  flex: 0 0 auto;
+  border-color: var(--primary, #2563eb);
+  background: var(--primary, #2563eb);
+  color: #fff;
+  cursor: pointer;
+}
+.retry-button:disabled { cursor: not-allowed; opacity: 0.58; }
+
+@media (max-width: 640px) {
+  .retry-panel { align-items: stretch; flex-direction: column; }
+  .retry-button { width: 100%; }
 }
 </style>
