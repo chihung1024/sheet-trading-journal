@@ -15,7 +15,7 @@ on:
 
 permissions:
   contents: read
-  actions: write
+  actions: read
 
 concurrency:
   group: production-test-record-reconciliation
@@ -61,10 +61,10 @@ jobs:
         run: node tools/reconcile_legacy_calculation_jobs.mjs check-github-active-runs
 
   production:
-    name: Reconcile exact owned synthetic records and verify production
+    name: Reconcile exact owned synthetic records
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     environment: production
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -130,49 +130,11 @@ jobs:
           REQUIRE_CHANGES: ${{ inputs.require_changes && '1' || '0' }}
           AUDIT_OUTPUT: production-test-record-reconciliation.json
         run: node tools/reconcile_production_test_records.mjs
-      - name: Dispatch merged-main Update Portfolio Data after reconciliation
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.expected_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          jq -nc '{ref:"main",inputs:{custom_benchmark:"0050.TW"}}' \
-            | gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/dispatches" --input -
-
-          run_id=''
-          for _ in $(seq 1 120); do
-            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/runs?event=workflow_dispatch&branch=main&per_page=30" > "$RUNNER_TEMP/update-runs.json"
-            run_id="$(jq -r --arg sha "$EXPECTED_SHA" --arg started "$started" '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $started)] | sort_by(.created_at) | last | .id // empty' "$RUNNER_TEMP/update-runs.json")"
-            if [[ -n "$run_id" ]]; then break; fi
-            sleep 5
-          done
-          test -n "$run_id"
-          echo "POST_RECONCILIATION_UPDATE_RUN_ID=$run_id"
-
-          for _ in $(seq 1 240); do
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "$RUNNER_TEMP/update-run.json"
-            status="$(jq -r .status "$RUNNER_TEMP/update-run.json")"
-            conclusion="$(jq -r '.conclusion // empty' "$RUNNER_TEMP/update-run.json")"
-            run_number="$(jq -r .run_number "$RUNNER_TEMP/update-run.json")"
-            echo "POST_RECONCILIATION_UPDATE_RUN_NUMBER=$run_number STATUS=$status CONCLUSION=${conclusion:-pending}"
-            if [[ "$status" = completed ]]; then
-              test "$conclusion" = success
-              jq -nc --argjson id "$run_id" --argjson number "$run_number" --arg conclusion "$conclusion" '{run_id:$id,run_number:$number,conclusion:$conclusion}' > post-reconciliation-update.json
-              exit 0
-            fi
-            sleep 5
-          done
-          echo 'Post-reconciliation Update Portfolio Data did not complete within verifier bound.' >&2
-          exit 1
       - name: Upload sanitized reconciliation evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: production-test-record-reconciliation-${{ needs.preflight.outputs.expected_sha }}
-          path: |
-            production-test-record-reconciliation.json
-            post-reconciliation-update.json
+          path: production-test-record-reconciliation.json
           if-no-files-found: warn
           retention-days: 30
