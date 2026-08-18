@@ -1,4 +1,4 @@
-name: Verify Update Portfolio Data 3317 closeout
+name: Verify legacy production test-tenant lifecycle cleanup
 
 on:
   pull_request:
@@ -8,29 +8,36 @@ permissions:
   contents: read
 
 jobs:
-  verify-production:
+  verify-cleanup:
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317-closeout' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
-      - name: Verify merged main and dispatch production update
+      - name: Dispatch canonical production idempotency smoke and verify cleanup evidence
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_MAIN: 0537d73e0674f09a9b3f671f15caa089a75273c7
+          PRODUCTION_API: https://journal-backend.chired.workers.dev
         run: |
           set -euo pipefail
           actual_main="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
           test "$actual_main" = "$EXPECTED_MAIN"
 
+          version_json="$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors "$PRODUCTION_API/api/version")"
+          deployed_sha="$(jq -r '.source_commit // empty' <<<"$version_json")"
+          [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/commits/$deployed_sha" --silent
+          echo "DEPLOYED_WORKER_SHA=$deployed_sha"
+
           started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          jq -nc '{ref:"main",inputs:{custom_benchmark:"0050.TW"}}' \
-            | gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/dispatches" --input -
+          jq -nc --arg expected_sha "$deployed_sha" '{ref:"main",inputs:{expected_sha:$expected_sha}}' \
+            | gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/production-record-idempotency-smoke.yml/dispatches" --input -
 
           run_id=''
           for _ in $(seq 1 120); do
-            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/runs?event=workflow_dispatch&branch=main&per_page=30" > /tmp/runs.json
-            run_id="$(jq -r --arg sha "$EXPECTED_MAIN" --arg started "$started" \
-              '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $started)] | sort_by(.created_at) | last | .id // empty' \
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/production-record-idempotency-smoke.yml/runs?event=workflow_dispatch&branch=main&per_page=30" > /tmp/runs.json
+            run_id="$(jq -r --arg started "$started" \
+              '[.workflow_runs[] | select(.created_at >= $started)] | sort_by(.created_at) | last | .id // empty' \
               /tmp/runs.json)"
             if [ -n "$run_id" ]; then
               break
@@ -38,19 +45,31 @@ jobs:
             sleep 5
           done
           test -n "$run_id"
+          echo "IDEMPOTENCY_SMOKE_RUN_ID=$run_id"
 
-          echo "PRODUCTION_RUN_ID=$run_id"
-          for _ in $(seq 1 240); do
+          for _ in $(seq 1 180); do
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > /tmp/run.json
             status="$(jq -r .status /tmp/run.json)"
             conclusion="$(jq -r '.conclusion // empty' /tmp/run.json)"
             run_number="$(jq -r .run_number /tmp/run.json)"
-            echo "PRODUCTION_RUN_NUMBER=$run_number STATUS=$status CONCLUSION=${conclusion:-pending}"
+            echo "IDEMPOTENCY_SMOKE_RUN_NUMBER=$run_number STATUS=$status CONCLUSION=${conclusion:-pending}"
             if [ "$status" = completed ]; then
               test "$conclusion" = success
-              exit 0
+              break
             fi
             sleep 5
           done
-          echo 'Production Update Portfolio Data did not complete within verifier bound.' >&2
-          exit 1
+          test "$(jq -r .status /tmp/run.json)" = completed
+          test "$(jq -r .conclusion /tmp/run.json)" = success
+
+          rm -rf /tmp/idempotency-evidence
+          mkdir -p /tmp/idempotency-evidence
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --dir /tmp/idempotency-evidence
+          evidence="$(find /tmp/idempotency-evidence -name production-record-idempotency-smoke.json -type f -print -quit)"
+          test -n "$evidence"
+          jq -e '.status == "passed"' "$evidence" >/dev/null
+          jq -e '.preflight.prior_browser_test_record_deleted == true' "$evidence" >/dev/null
+          jq -e '.cleanup.tenantRecordsRemaining == 0' "$evidence" >/dev/null
+          echo "LEGACY_BROWSER_TEST_RECORD_DELETED=$(jq -r .preflight.prior_browser_test_record_deleted "$evidence")"
+          echo "ORPHANED_PRIOR_SMOKE_RECORDS_DELETED=$(jq -r .preflight.orphaned_prior_smoke_records_deleted "$evidence")"
+          echo "FINAL_TEST_TENANT_RECORDS=$(jq -r .cleanup.tenantRecordsRemaining "$evidence")"
