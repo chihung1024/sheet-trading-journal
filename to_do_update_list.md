@@ -6,7 +6,7 @@
 
 Last updated: **2026-08-18 Asia/Taipei**
 
-Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, and R3.2A–R3.2F are closed at their reviewed engineering boundaries. R2.6B cash-inclusive whole-account Daily P&L is merged and CI-reviewed, but fresh production financial-snapshot evidence is still pending and must not be inferred. The single Primary Active Batch is R3.3A — Import Reconciliation Receipt.**
+Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, and R3.2A–R3.2F are closed at their reviewed engineering boundaries. R2.6B cash-inclusive whole-account Daily P&L is merged and CI-reviewed, but fresh production financial-snapshot evidence is still pending and must not be inferred. The single Primary Active Batch is R3.3A — Import Reconciliation Receipt; implementation is complete on PR #365 and exact-head CI #1237 passed at `0427d41f8f4c14c9e49cc15f7e3ec09a2ef1b820`, with final documentation/frozen review/merge still required.**
 
 ---
 
@@ -29,12 +29,14 @@ Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, and
 
 At this handoff snapshot:
 
-- protected frontend/engine `main`: `8f6240be74014af81e908064aa782fc1a6f43fd4`;
-- PR #363 R3.2F merged from exact head `bac2b1e82f2a3ada3fadeb321d354f13c444a254`;
-- PR #363 exact-head CI #1227: **SUCCESS** across Frontend contracts/build, Python tests/coverage, and Worker security/deployment/D1 baseline;
-- PR #363 frozen independent review: **PASS / BLOCKER 0 / FOLLOW-UP 0**;
-- CI #1226 correctly failed because the new browser-storage prefix had not yet been registered in the exact persistence inventory; the governance baseline was updated rather than weakening the security contract;
-- R3.2F introduces no Worker/D1/schema/accounting/FX/idempotency change;
+- protected frontend/engine `main`: `326f5ff63e7385c7b8ccb9c4c8b1c09eb4c22fcf` (`docs: close R3.2F and open import reconciliation receipt (#364)`);
+- Draft PR #365 `feat: add shared import reconciliation receipt` is open from `feat/r3-3a-import-reconciliation-receipt` and remained mergeable at the latest refresh;
+- PR #365 implementation head before this documentation commit: `0427d41f8f4c14c9e49cc15f7e3ec09a2ef1b820`;
+- PR #365 exact-head CI #1237 at `0427d41f8f4c14c9e49cc15f7e3ec09a2ef1b820`: **SUCCESS** across Frontend security contracts/build, Python tests/coverage, and Worker security/deployment/D1 baseline;
+- CI #1232 had one frontend receipt test false-negative while 625/626 frontend tests passed; root cause was a test-fixture contract mismatch (`refreshError` helper option versus `readbackError` call-site), not production `runRecordImportBatch` behavior;
+- root-cause fix aligned the fixture with the production `sync.readbackError` contract and added an upstream assertion proving the injected readback failure is present before receipt presentation; no product success/failure semantics or assertions were weakened;
+- R3.3A changed only shared frontend import batch/presentation/test surfaces plus this handoff document; no Worker/D1/schema/accounting/FX/idempotency mutation contract change is part of the batch;
+- frozen review and expected-head merge remain pending until the documentation-updated head receives exact-head CI;
 - production Worker authority remains the reviewed R3.1C Worker line unless fresh deployment truth supersedes it;
 - Worker runtime contract remains release `4.12` / API `2.65` / schema authority `3` unless fresh runtime evidence supersedes it;
 - additive migration `0006_journal_restore_sessions.sql` remains the restore-session schema authority.
@@ -150,7 +152,7 @@ Safety properties:
 
 `R3.3A — Import Reconciliation Receipt`
 
-Status: **ACTIVE / SHARED BATCH CONTRACT FIRST**
+Status: **IMPLEMENTATION COMPLETE / EXACT-HEAD CI PASS / DOCUMENTATION-UPDATED HEAD REQUIRES FINAL CI + FROZEN REVIEW**
 
 ### Primary Goal
 
@@ -158,27 +160,66 @@ Status: **ACTIVE / SHARED BATCH CONTRACT FIRST**
 
 ### Why this is next
 
-Canonical, mapped, and IBKR import already share durable create/replay and batch recovery semantics, but current UX mainly shows aggregate counts. On partial failure or replay-heavy imports the user cannot easily see which ordered items were confirmed versus where processing stopped. A shared receipt improves confidence and recoverability without another backend or financial authority.
+Canonical, mapped, and IBKR import already share durable create/replay and batch recovery semantics, but previous UX mainly showed aggregate counts. On partial failure or replay-heavy imports the user could not easily see which ordered items were confirmed versus where processing stopped. The shared receipt improves confidence and recoverability without another backend or financial authority.
 
-### Required behavior
+### Implemented behavior
 
-1. Extend the existing shared `runRecordImportBatch` result additively; existing status/count/sync semantics must remain backward compatible.
-2. Record one memory-only outcome for every **attempted** ordered entry: created, replayed, or failed/ambiguous. Do not fabricate outcomes for unattempted suffix entries after a stop.
-3. Receipt row identity should be non-financial and deterministic. Prefer import order/index plus explicit source-reference metadata supplied by the importer; do not infer transaction identity from economic fields.
-4. Do not persist receipt rows to localStorage, D1, backup JSON, or portfolio snapshot in this slice.
-5. Receipt presentation must not expose auth credentials, idempotency keys, raw broker CSV, full note payloads, or internal request objects.
-6. A committed/replayed server outcome remains the authority. UI receipt is presentation of that evidence, not a second reconciliation engine.
-7. Ambiguous failure must be visibly different from explicit rejection and preserve the existing safe-retry guidance.
-8. Sync warnings (authoritative readback/recalculation failure) must remain distinct from record-write failure.
-9. Apply the same shared receipt model to Canonical CSV, mapped broker CSV, and IBKR imports where their existing batch flow permits it; do not fork three reconciliation implementations.
-10. No Worker/D1/schema/accounting/FX/idempotency changes unless fresh evidence proves the existing outcome does not contain enough authority.
+1. `runRecordImportBatch` is extended additively with immutable `items`, `attempted`, and `unattempted`; existing status/count/failure/sync authority remains unchanged.
+2. Every attempted ordered entry receives exactly one memory-only receipt outcome: `created`, `replayed`, `rejected`, or `ambiguous`; processing-stop suffix entries receive no fabricated outcome.
+3. Receipt identity is non-financial and deterministic: explicit mapped source-record ordinal, Canonical CSV row, IBKR aggregate first source row, or final import-order fallback.
+4. Receipt rows are not persisted to localStorage, sessionStorage, IndexedDB, D1, backup JSON, or portfolio snapshot.
+5. Receipt presentation omits auth credentials, idempotency keys, raw broker CSV, record payloads, full notes, internal errors, and account IDs.
+6. Committed/replayed server outcomes remain authoritative; the receipt is a presentation projection of existing batch evidence only.
+7. Ambiguous response and explicit rejection have distinct receipt states and labels; unattempted suffixes remain explicit.
+8. Authoritative readback/recalculation/recovery/metadata warnings are presented separately from record-write outcomes.
+9. Canonical CSV, mapped broker CSV, and IBKR imports render the same `ImportReconciliationReceipt` component and shared presentation adapter; no importer-specific reconciliation engine was created.
+10. Large receipts render incrementally in groups of 100 to keep the result UI bounded.
+11. No Worker/D1/schema/accounting/FX/idempotency change was required.
+
+### Debug / Root Cause Log — CI #1232
+
+- **Symptom:** Frontend CI had 625/626 tests passing; only the new receipt sync-warning test failed because the expected readback warning message was absent.
+- **Failure Point:** Test helper did not throw from `refreshRecords()`.
+- **Contributing Factor:** Fixture option was named `refreshError`, while the test passed `readbackError`.
+- **Root Cause:** Test-fixture naming drift from the established `sync.readbackError` batch contract produced a false-negative; production `runRecordImportBatch` correctly maps `refreshRecords()` failure to `sync.readbackError`.
+- **Systemic Cause:** The test initially asserted only downstream presentation text and did not prove the upstream failure injection actually reached the shared batch result.
+- **Fix:** Rename the fixture option to `readbackError` and assert `result.sync.readbackError` before exercising `buildImportReconciliationReceipt`.
+- **Regression Prevention:** Shared-surface contract test verifies all three import UIs mount the same receipt component; privacy/persistence tests prohibit sensitive fields and storage/API paths; broker aggregate source-row reduction is covered explicitly.
+
+### Files changed in R3.3A implementation
+
+- `src/services/recordImportBatch.js`
+- `src/services/importReconciliationReceipt.js`
+- `src/components/ImportReconciliationReceipt.vue`
+- `src/components/BrokerNeutralImportPreview.vue`
+- `src/components/BrokerNeutralColumnMapping.vue`
+- `src/components/IbkrTradeImport.vue`
+- `tests/frontend_import_reconciliation_receipt.test.mjs`
+- `to_do_update_list.md` (handoff/evidence only)
+
+### Verification evidence
+
+- Implementation exact head before documentation update: `0427d41f8f4c14c9e49cc15f7e3ec09a2ef1b820`.
+- CI #1237 on that exact head: **SUCCESS**.
+- Frontend security contract tests: **SUCCESS**.
+- Frontend production build: **SUCCESS**.
+- Python compile/tests/coverage baseline: **SUCCESS**.
+- Worker tests, deployment metadata, Recovery Evidence Gate, and local D1 baseline: **SUCCESS**.
+- Frozen diff scope before documentation update: seven implementation/test files only; no backend/schema/financial-authority expansion.
+- Open review threads at that checkpoint: **0**.
+- This documentation commit intentionally changes PR head; final exact-head CI and frozen review must therefore use the new head rather than reusing #1237 as merge authority.
+
+### Rollback
+
+- R3.3A is additive and migration-free. Rollback is a normal revert of the expected-head PR merge; no D1/schema/data restoration is required.
+- Existing aggregate import result messages and server mutation authority remain present, so reverting the receipt layer does not require reconstructing transaction state.
 
 ### NOW / NEXT / BACKLOG / REJECT
 
-- **NOW:** trace `runRecordImportBatch`, Canonical/mapped/IBKR entry metadata, and their current result UIs; define the smallest additive per-item outcome schema.
-- **NEXT:** implement shared receipt service/presentation → integrate import UIs → regression tests for committed/replayed/partial/ambiguous/sync-warning cases → exact-head CI → frozen review → merge.
+- **NOW:** exact-head CI on the documentation-updated PR head → frozen independent review with BLOCKER/FOLLOW-UP/BACKLOG classification → mark Ready → expected-head merge.
+- **NEXT:** after merge, verify `main` points to the expected merge result and inspect authoritative post-main CI/deployment evidence that is available; then close R3.3A at a stable checkpoint before choosing the next product batch.
 - **BACKLOG:** optional local receipt download/export; deterministic built-in broker adapters backed by documented export contracts; confirmed mapping suggestions; cross-device preference sync only if product value justifies a server contract.
-- **REJECT:** storing broker file contents in receipt history, economic-field duplicate guessing, receipt becoming accounting authority, masking partial failure as success, or a second writer.
+- **REJECT:** storing broker file contents in receipt history, economic-field duplicate guessing, receipt becoming accounting authority, masking partial failure as success, adding a second writer, or refactoring unrelated stable import paths in this batch.
 
 ---
 
@@ -207,12 +248,14 @@ explicit source semantics
 → shared batch outcome / readback / recalculation
 ```
 
-Import receipt target:
+Import receipt:
 
 ```text
 shared authoritative batch outcomes
+→ additive immutable per-attempt evidence
 → memory-only non-financial ordered receipt
-→ clear created / replayed / failed / ambiguous / sync-warning presentation
+→ shared Canonical / mapped / IBKR presentation
+→ distinct created / replayed / rejected / ambiguous / sync-warning UX
 ```
 
 Receipt state is never accounting, duplicate, or transaction-identity authority.
@@ -222,9 +265,10 @@ Receipt state is never accounting, duplicate, or transaction-identity authority.
 ## 6. Fresh-session startup
 
 1. Read `AI_PROJECT_PLAYBOOK.md`, `README.md`, this file.
-2. Refresh `main`, open PRs, exact-head CI, deployment/runtime truth, and any available fresh R2.6B production calculation evidence.
-3. Keep R3.3A as the single Primary Active Batch unless fresh evidence materially changes priority.
-4. Preserve exact-head CI/frozen-review/expected-head merge discipline.
-5. Keep R2.6B production financial verification distinct from engineering/CI completion.
-6. Reopen closed work only for new material evidence.
-7. Do not change `AI_PROJECT_PLAYBOOK.md` for feature-specific import/receipt decisions.
+2. Refresh `main`, PR #365 (or its merge result), exact-head CI, deployment/runtime truth, and any available fresh R2.6B production calculation evidence.
+3. If PR #365 is still open, keep R3.3A as the single Primary Active Batch and complete only its CI/frozen-review/expected-head merge gates.
+4. If PR #365 is merged and post-main verification is clean, mark R3.3A closed before opening another implementation batch.
+5. Preserve exact-head CI/frozen-review/expected-head merge discipline.
+6. Keep R2.6B production financial verification distinct from engineering/CI completion.
+7. Reopen closed work only for new material evidence.
+8. Do not change `AI_PROJECT_PLAYBOOK.md` for feature-specific import/receipt decisions.
