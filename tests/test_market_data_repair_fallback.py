@@ -77,6 +77,10 @@ class RepairRequiredTicker:
         if kwargs.get("period") == "1d":
             return pd.DataFrame()
         if kwargs.get("repair") is True:
+            # Repaired daily valuation must preserve the ordinary regular-session
+            # Close contract while retaining malformed rows for explicit validation.
+            assert kwargs.get("prepost") is False
+            assert kwargs.get("keepna") is True
             return self.repaired.copy(deep=True)
         return self.malformed.copy(deep=True)
 
