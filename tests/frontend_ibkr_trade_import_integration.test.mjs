@@ -96,7 +96,7 @@ test('IBKR import UI is preview-first and delegates writes without direct record
   assert.match(component, /createIbkrRecord\(entry/);
   assert.match(component, /refreshRecords:\s*\(\) => portfolioStore\.fetchRecords\(\)/);
   assert.match(component, /requestUpdate:\s*\(\) => portfolioStore\.triggerUpdate\(/);
-  assert.doesNotMatch(component, /portfolioStore\.fetchAll\(/);
+  assert.match(component, /prepareAmbiguousImportRetry\(priorResult[\s\S]*reconcile:\s*\(\) => portfolioStore\.fetchAll\(\)/);
   assert.doesNotMatch(component, /\/api\/records/);
   assert.doesNotMatch(component, /\bfetch\s*\(/);
   assert.doesNotMatch(component, /localStorage\.setItem\s*\(/);
