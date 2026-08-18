@@ -9,12 +9,15 @@ malformed market data while allowing two evidence-based recovery paths:
    Yahoo/yfinance provider for the exact affected calendar date. Each granularity must
    contain multiple structurally valid price bars and both must reconstruct the same
    daily OHLC/adjusted-close observation. If the two representations transiently
-   disagree, one bounded fresh cross-granularity re-observation is allowed; it is
-   accepted only when both fresh representations converge to a value already observed
-   in the first round. Persistent disagreement remains fail-closed. Completely empty
-   keepna buckets are ignored only when they carry no contradictory non-zero volume;
-   partially populated or contradictory bars remain fail-closed. Only price fields are
-   replaced; the original daily volume and corporate-action evidence stay authoritative.
+   disagree, one bounded fresh cross-granularity re-observation is allowed. Because
+   yfinance caches historical ``history`` requests, the bounded second observation uses
+   a semantically neutral distinct client timeout so the cache key changes and a fresh
+   Yahoo request is actually made. The second observation is accepted only when both
+   fresh representations converge to a value already observed in the first round.
+   Persistent disagreement remains fail-closed. Completely empty keepna buckets are
+   ignored only when they carry no contradictory non-zero volume; partially populated
+   or contradictory bars remain fail-closed. Only price fields are replaced; the
+   original daily volume and corporate-action evidence stay authoritative.
 2. If exact-date intraday recovery is unavailable, a proven pure positive
    cash-dividend-only row may use the existing explicit ``asof_carry_forward`` effective
    valuation contract.
@@ -41,7 +44,7 @@ logger = logging.getLogger(__name__)
 _RAW_PRICE_COLUMNS = ("Open", "High", "Low", "Close", "Adj Close")
 _REQUIRED_ACTION_COLUMNS = ("Dividends", "Stock Splits")
 _INTRADAY_RECOVERY_INTERVALS = ("1h", "15m")
-_INTRADAY_RECOVERY_ROUNDS = 2
+_INTRADAY_RECOVERY_TIMEOUTS = (10.0, 11.0)
 _INTRADAY_REOBSERVATION_DELAY_SECONDS = 1.0
 _MAX_NARROW_RECOVERY_ROWS = 5
 _MIN_INTRADAY_BARS = 2
@@ -171,9 +174,6 @@ class SemanticMarketDataClient(MarketDataClient):
             "Close": valid_bars[-1][1]["Close"],
             "Adj Close": valid_bars[-1][1]["Adj Close"],
         }
-        # Aggregate validity is already guaranteed by the validated constituent
-        # bars: max(High)/min(Low) necessarily contain the first Open and last
-        # Close, and the last bar already proved Close == Adj Close.
         return values, tuple(bar_signature)
 
     @staticmethod
@@ -293,21 +293,25 @@ class SemanticMarketDataClient(MarketDataClient):
                 return frame, ()
             original_row = original_rows.iloc[0]
             original_actions = self._action_signature_from_row(original_row)
-            # Intraday price evidence is never a corporate-action authority. Only a
-            # proven zero-action daily row may enter this price-only recovery path.
             if original_actions != (0.0, 0.0, 0.0):
                 return frame, ()
             original_volume = self._finite_number(original_row.get("Volume"))
             if original_volume is None or original_volume < 0.0:
                 return frame, ()
 
+            ticker_clients: dict[str, Any] = {}
             prior_disagreement: tuple[dict[str, float], dict[str, float]] | None = None
             consensus: dict[str, float] | None = None
-            for observation_round in range(_INTRADAY_RECOVERY_ROUNDS):
+
+            for observation_round, request_timeout in enumerate(_INTRADAY_RECOVERY_TIMEOUTS):
                 candidates: dict[str, dict[str, float]] = {}
                 for interval in _INTRADAY_RECOVERY_INTERVALS:
                     try:
-                        intraday = yf.Ticker(symbol).history(
+                        ticker_client = ticker_clients.get(interval)
+                        if ticker_client is None:
+                            ticker_client = yf.Ticker(symbol)
+                            ticker_clients[interval] = ticker_client
+                        intraday = ticker_client.history(
                             start=event_date,
                             end=event_date + pd.Timedelta(days=1),
                             interval=interval,
@@ -316,14 +320,16 @@ class SemanticMarketDataClient(MarketDataClient):
                             prepost=False,
                             repair=False,
                             keepna=True,
+                            timeout=request_timeout,
                         )
                     except Exception as exc:
                         logger.warning(
-                            "[%s] exact-date raw intraday recovery request failed for %s interval=%s round=%s: %s",
+                            "[%s] exact-date raw intraday recovery request failed for %s interval=%s round=%s timeout=%s: %s",
                             symbol,
                             event_date.strftime("%Y-%m-%d"),
                             interval,
                             observation_round + 1,
+                            request_timeout,
                             exc,
                         )
                         return frame, ()
@@ -357,7 +363,7 @@ class SemanticMarketDataClient(MarketDataClient):
                             )
                             return frame, ()
                         logger.warning(
-                            "[%s] exact-date raw intraday granularities converged after bounded re-observation for %s: consensus=%s",
+                            "[%s] exact-date raw intraday granularities converged after cache-busting bounded re-observation for %s: consensus=%s",
                             symbol,
                             event_date.strftime("%Y-%m-%d"),
                             first,
@@ -365,11 +371,11 @@ class SemanticMarketDataClient(MarketDataClient):
                     consensus = first
                     break
 
-                if observation_round + 1 >= _INTRADAY_RECOVERY_ROUNDS:
+                if observation_round + 1 >= len(_INTRADAY_RECOVERY_TIMEOUTS):
                     logger.warning(
                         "[%s] exact-date raw intraday granularities still disagree after %s rounds for %s (%s=%s vs %s=%s); fail closed",
                         symbol,
-                        _INTRADAY_RECOVERY_ROUNDS,
+                        len(_INTRADAY_RECOVERY_TIMEOUTS),
                         event_date.strftime("%Y-%m-%d"),
                         first_interval,
                         first,
@@ -380,14 +386,14 @@ class SemanticMarketDataClient(MarketDataClient):
 
                 prior_disagreement = (first, second)
                 logger.warning(
-                    "[%s] exact-date raw intraday granularities disagree for %s (%s=%s vs %s=%s); bounded re-observation 1/%s",
+                    "[%s] exact-date raw intraday granularities disagree for %s (%s=%s vs %s=%s); bounded fresh re-observation 1/%s",
                     symbol,
                     event_date.strftime("%Y-%m-%d"),
                     first_interval,
                     first,
                     second_interval,
                     second,
-                    _INTRADAY_RECOVERY_ROUNDS - 1,
+                    len(_INTRADAY_RECOVERY_TIMEOUTS) - 1,
                 )
                 time.sleep(_INTRADAY_REOBSERVATION_DELAY_SECONDS)
 
