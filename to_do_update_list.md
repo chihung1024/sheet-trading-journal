@@ -6,13 +6,14 @@
 
 Last updated: **2026-08-19 Asia/Taipei**
 
-Current line: **Primary Active Batch is UX-R1 — Adaptive Workspace & Responsive Interaction. R3.3B Safe Ambiguous Import Retry is explicitly DEFERRED, preserved in Draft PR #367 and `docs/engineering/R3_3B_SAFE_AMBIGUOUS_IMPORT_RETRY_DEFERRED_2026-08-19.md`. Do not resume or merge #367 until UX-R1 closes or the user explicitly reprioritizes it.**
+Current line: **Primary Active Batch is UX-R1.2 — Adaptive Transaction Surface on Draft PR #387. UX-R1.1 is COMPLETE with exact-head CI success. R3.3B Safe Ambiguous Import Retry remains explicitly DEFERRED in Draft PR #367; do not resume or merge #367 until UX-R1 closes or the user explicitly reprioritizes it.**
 
-Planning baseline before this handoff update: `main@44c62993706c083fd23fb7d1200adf217471efd4`. Always refresh remote truth at session start.
+Current protected-main baseline for UX-R1: `main@97e2a7a582334518a18732237a0c686baaa547e0`. Active UX branch: `feat/ux-r1-adaptive-workspace`. Always refresh remote truth before merge or after external changes.
 
 Key planning documents:
 
 - UX-R1 plan: `docs/engineering/UX_R1_ADAPTIVE_WORKSPACE_PLAN_2026-08-19.md`
+- UX-R1.1 breakpoint/container authority map: `docs/engineering/UX_R1_BREAKPOINT_CONTAINER_AUTHORITY_MAP_2026-08-19.md`
 - deferred R3.3B handoff: `docs/engineering/R3_3B_SAFE_AMBIGUOUS_IMPORT_RETRY_DEFERRED_2026-08-19.md`
 - Update Portfolio Data #3317 RCA: `docs/engineering/update-portfolio-3317-systemic-rca.md`
 - prior desktop visibility closeout: `docs/engineering/DESKTOP_VISIBILITY_D4_D5_CLOSEOUT_2026-08-17.md`
@@ -83,11 +84,13 @@ Cash/account value, dividend, backup/restore, FX, accounting, and transaction id
 
 ---
 
-## 2. Primary Active Batch — UX-R1 Adaptive Workspace & Responsive Interaction
+## 2. Primary Active Phase — UX-R1 Adaptive Workspace & Responsive Interaction
 
 Phase: `UX-R1 — Adaptive Workspace & Responsive Interaction`
 
-Status: **PRIMARY ACTIVE / IMPLEMENTATION NEXT**
+Status: **PRIMARY ACTIVE / R1.1 COMPLETE / R1.2 NEXT**
+
+Draft PR: **#387 — `feat: UX-R1 adaptive workspace and responsive interaction`**
 
 ### Primary goal
 
@@ -115,53 +118,89 @@ No private portfolio screenshot or actual financial value should be committed as
 7. Reuse existing Holdings/Records desktop-table and mobile-card projections; improve the switching/composition authority instead of duplicating data logic.
 8. Treat accessibility, keyboard navigation, zoom/reflow, focus management, and mobile safe-area behavior as product requirements, not post-polish.
 
-### Implementation batches
+### UX-R1.1 — Adaptive layout foundation
 
-#### UX-R1.1 — Adaptive layout foundation
+Status: **COMPLETE**
 
-- map all current runtime/media breakpoint authorities;
-- define shared app-shell/touch-density/container tokens;
-- create named container boundaries where useful;
-- remove only proven redundant breakpoint duplication;
-- add deterministic layout-contract coverage where feasible.
+Risk: **R2 Significant presentation architecture change; no financial/mutation authority change.**
 
-#### UX-R1.2 — Adaptive transaction surface
+Scope / root cause:
+
+- audited viewport media-query classes and all current `window.innerWidth` presentation paths;
+- root cause confirmed as missing distinction between app-shell viewport authority and component usable inline-size authority;
+- intentionally did not shotgun-rewrite every legacy component breakpoint.
+
+Implementation:
+
+- added `src/styles/adaptive-workspace.css` after the existing product-consistency layer;
+- added shared app-shell/transaction/touch/safe-area tokens;
+- added named inline-size containers for app/main/transaction/analysis/holdings/records/management/dividends/cash/groups workspaces;
+- added deterministic `frontend_adaptive_workspace_foundation.test.mjs` contracts;
+- committed systemic authority map at `docs/engineering/UX_R1_BREAKPOINT_CONTAINER_AUTHORITY_MAP_2026-08-19.md`;
+- no Worker/D1/schema/auth/accounting/FX/idempotency/import mutation changes.
+
+Files changed in implementation commit:
+
+- `src/main.js`
+- `src/styles/adaptive-workspace.css`
+- `tests/frontend_adaptive_workspace_foundation.test.mjs`
+- `docs/engineering/UX_R1_BREAKPOINT_CONTAINER_AUTHORITY_MAP_2026-08-19.md`
+
+Verification:
+
+- implementation commit: `b9c10105a107c54c1d420cdc94cd1f847a750257`;
+- PR #387 Draft exact-head CI #1379 / run `32162550781`: **SUCCESS**;
+- Frontend contracts + build: SUCCESS;
+- Python tests: SUCCESS;
+- Worker security/deployment tests: SUCCESS;
+- diff review: no business/data/mutation authority introduced;
+- rollback: revert R1.1 commit or reset only the feature branch before merge; protected `main` remains unchanged.
+
+Regression / follow-up:
+
+- existing app-shell `<=1024` transaction mode remains intact for R1.1;
+- RecordList/Holdings/PerformanceChart runtime width checks remain intentionally deferred to their owning R1.4/R1.5 batches;
+- next active batch is R1.2 transaction-surface state/presentation.
+
+### UX-R1.2 — Adaptive transaction surface
+
+Status: **PRIMARY ACTIVE / NEXT IMPLEMENTATION**
 
 - dock only when sufficient workspace remains;
 - desktop/tablet drawer when docking would harm the active workspace;
 - mobile sheet for compact layouts;
 - preserve one `TradeForm` state/mutation authority;
 - edit-from-history must reopen the correct surface;
-- verify Escape, backdrop, focus, scroll locking, and unsaved in-memory form behavior.
+- verify Escape, backdrop, focus, scroll locking, focus restoration, and unsaved in-memory form behavior.
 
-#### UX-R1.3 — Responsive navigation
+### UX-R1.3 — Responsive navigation
 
 - compact primary destinations + `更多` presentation;
 - preserve `activeView`, URL, localStorage, pending badges, and current-view state;
 - no second routing authority.
 
-#### UX-R1.4 — Holdings + Records work surfaces
+### UX-R1.4 — Holdings + Records work surfaces
 
 - container-driven table/card/detail presentation;
 - Holdings concentration summary/detail composition;
 - Records primary search/filter vs secondary import/backup/CSV utilities;
 - maintain all existing mutation/import/export authority.
 
-#### UX-R1.5 — Overview + Charts
+### UX-R1.5 — Overview + Charts
 
 - preserve information hierarchy;
 - use reclaimed workspace;
 - viewport/container-aware chart height;
 - reduce avoidable dead zones and first-screen displacement without removing KPI/business content.
 
-#### UX-R1.6 — Dividends + Cash + Groups
+### UX-R1.6 — Dividends + Cash + Groups
 
 - task-oriented adaptive layouts;
 - workspace-first Group management;
 - sticky changed-count/save/action feedback where useful;
 - no mutation semantics change.
 
-#### UX-R1.7 — Accessibility / interaction verification
+### UX-R1.7 — Accessibility / interaction verification
 
 - keyboard/focus/escape behavior;
 - practical mobile touch targets;
@@ -170,7 +209,7 @@ No private portfolio screenshot or actual financial value should be committed as
 - reduced motion;
 - mobile safe-area and sticky action verification.
 
-#### UX-R1.8 — Production visual verification + closeout
+### UX-R1.8 — Production visual verification + closeout
 
 - exact-head CI;
 - frozen review BLOCKER 0;
@@ -189,12 +228,12 @@ Also verify light/dark themes, trade surface open/closed/editing, long labels/no
 
 ### Immediate next actions
 
-1. Refresh current `main`, open PRs, exact-head CI, Pages/deployment truth.
-2. Read `AI_PROJECT_PLAYBOOK.md`, `README.md`, this file, UX-R1 plan, and D4–D5 closeout.
-3. Trace `App.vue`, `style.css`, `styles/product-consistency.css`, and primary page component breakpoint/layout authorities.
-4. Produce one breakpoint/container authority map before editing CSS.
-5. Implement UX-R1.1 first; do not begin with isolated page styling patches.
-6. Keep business/data/mutation code unchanged unless source tracing proves a necessary UX-enabling correction.
+1. Treat `main@97e2a7a582334518a18732237a0c686baaa547e0` + current PR #387 head as the working baseline; refresh before any merge.
+2. Implement UX-R1.2 only; do not start R1.3 page/navigation work in the same implementation batch.
+3. Preserve exactly one mounted/canonical `TradeForm` and one edit setup path.
+4. Define one transaction-surface state machine for dock/drawer/mobile-sheet presentation; do not infer mode from isolated page CSS.
+5. Add deterministic contracts for create/edit state retention, Escape/backdrop/focus restoration/scroll lock where practical.
+6. Run exact-head CI before marking R1.2 complete, then update this handoff and advance to R1.3.
 
 ---
 
@@ -247,7 +286,7 @@ R3.3A memory-only receipts remain convenience/reconciliation state, not transact
 5. Read `docs/engineering/DESKTOP_VISIBILITY_D4_D5_CLOSEOUT_2026-08-17.md`.
 6. Refresh protected `main`, open PRs, exact-head CI, and Pages/deployment truth.
 7. Confirm #367 remains Draft/deferred; read its deferred handoff only if UX work overlaps its files.
-8. Keep UX-R1 as the single Primary Active Batch.
-9. Start with systemic layout/breakpoint authority mapping, then UX-R1.1 foundation.
+8. Keep UX-R1 as the single Primary Active Phase and exactly one active implementation batch.
+9. Resume from the recorded Current Batch; closed batches stay closed unless new material evidence appears.
 10. Use Draft PR → exact-head CI → frozen review → expected-head merge → production/Pages verification.
 11. Complete UX-R1 and persist closeout before opening another development phase.
