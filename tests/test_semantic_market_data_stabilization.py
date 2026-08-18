@@ -45,43 +45,57 @@ def _intraday(close):
 
 
 class _Ticker:
-    def __init__(self, frame):
-        self.frame = frame
+    def __init__(self, frames):
+        self._frames = iter(frames)
+        self.timeouts = []
 
-    def history(self, **_kwargs):
-        return self.frame.copy(deep=True)
+    def history(self, **kwargs):
+        self.timeouts.append(kwargs.get("timeout"))
+        return next(self._frames).copy(deep=True)
 
 
-def _recover(sequence):
+def _recover(one_hour_frames, fifteen_minute_frames):
     client = SemanticMarketDataClient()
     frame = _partial_daily_frame()
-    tickers = iter(_Ticker(item) for item in sequence)
+    one_hour = _Ticker(one_hour_frames)
+    fifteen_minute = _Ticker(fifteen_minute_frames)
+    clients = iter((one_hour, fifteen_minute))
     with patch(
         "journal_engine.clients.semantic_market_data.yf.Ticker",
-        side_effect=lambda _symbol: next(tickers),
+        side_effect=lambda _symbol: next(clients),
     ) as ticker, patch("journal_engine.clients.semantic_market_data.time.sleep") as sleep:
         recovered, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
-    return recovered, dates, ticker, sleep
+    return recovered, dates, ticker, sleep, one_hour, fifteen_minute
 
 
 def test_first_round_consensus_requires_no_reobservation():
     stable = _intraday(102.25)
-    recovered, dates, ticker, sleep = _recover([stable, stable])
+    recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover([stable], [stable])
 
     assert dates == (pd.Timestamp("2026-08-11"),)
     assert ticker.call_count == 2
+    assert one_hour.timeouts == [10.0]
+    assert fifteen_minute.timeouts == [10.0]
     sleep.assert_not_called()
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.25
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
 
 
-def test_transient_disagreement_can_converge_once_to_previously_observed_value():
+def test_transient_disagreement_uses_cache_busting_reobservation_and_can_converge():
     stale = _intraday(102.25)
     current = _intraday(102.50)
-    recovered, dates, ticker, sleep = _recover([stale, current, current, current])
+    recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover(
+        [stale, current],
+        [current, current],
+    )
 
     assert dates == (pd.Timestamp("2026-08-11"),)
-    assert ticker.call_count == 4
+    # The same two Ticker clients are reused. Distinct timeout values deliberately
+    # change yfinance's historical cache_get key, forcing the bounded second round
+    # to perform a fresh Yahoo request instead of replaying the cached first result.
+    assert ticker.call_count == 2
+    assert one_hour.timeouts == [10.0, 11.0]
+    assert fifteen_minute.timeouts == [10.0, 11.0]
     sleep.assert_called_once_with(1.0)
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.50
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
@@ -90,10 +104,15 @@ def test_transient_disagreement_can_converge_once_to_previously_observed_value()
 def test_persistent_cross_granularity_disagreement_remains_fail_closed():
     first = _intraday(102.25)
     second = _intraday(102.50)
-    recovered, dates, ticker, sleep = _recover([first, second, first, second])
+    recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover(
+        [first, first],
+        [second, second],
+    )
 
     assert dates == ()
-    assert ticker.call_count == 4
+    assert ticker.call_count == 2
+    assert one_hour.timeouts == [10.0, 11.0]
+    assert fifteen_minute.timeouts == [10.0, 11.0]
     sleep.assert_called_once_with(1.0)
     assert recovered["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", recovered) is False
@@ -103,10 +122,15 @@ def test_second_round_third_value_is_not_accepted_as_convergence():
     first = _intraday(102.25)
     second = _intraday(102.50)
     third = _intraday(102.75)
-    recovered, dates, ticker, sleep = _recover([first, second, third, third])
+    recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover(
+        [first, third],
+        [second, third],
+    )
 
     assert dates == ()
-    assert ticker.call_count == 4
+    assert ticker.call_count == 2
+    assert one_hour.timeouts == [10.0, 11.0]
+    assert fifteen_minute.timeouts == [10.0, 11.0]
     sleep.assert_called_once_with(1.0)
     assert recovered["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", recovered) is False
