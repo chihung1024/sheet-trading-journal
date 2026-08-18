@@ -1,47 +1,41 @@
-/* UX-R1.1 — adaptive workspace foundation.
-   This layer owns presentation/layout authority only. It must not introduce
-   financial, persistence, mutation, authentication, or typography authority.
+/* UX-R1 — adaptive workspace authority.
+   This layer owns presentation/layout only. It must not introduce financial,
+   persistence, mutation, authentication, or typography authority.
 
-   Viewport media queries remain the app-shell authority. Component presentation
-   should migrate to the named inline-size containers below as each UX-R1 batch
-   adopts them. The foundation intentionally does not rewrite every legacy
-   component breakpoint in one step. */
+   Viewport media queries remain limited to true app-shell/device interaction
+   modes. Component presentation migrates to the named inline-size containers
+   below as each UX-R1 batch adopts them. */
 
 :root {
-  /* App-shell geometry. Keep legacy App/product-consistency values stable while
-     providing one shared vocabulary for the adaptive transaction work in R1.2. */
+  /* App-shell geometry. */
   --ui-layout-max: 1920px;
   --ui-shell-inline-padding: clamp(16px, 1.5vw, 24px);
   --ui-trade-dock-min: 330px;
   --ui-trade-dock-max: 350px;
+  --ui-trade-dock-workspace-min: 1500px;
   --ui-trade-drawer-max: 430px;
   --ui-trade-sheet-max: 430px;
 
-  /* Interaction density. Desktop remains compact; touch/coarse pointers get a
-     distinct target contract without changing semantic typography. */
+  /* Interaction density. */
   --ui-control-height-desktop: 40px;
   --ui-control-height-touch: 44px;
   --ui-touch-target: 44px;
 
-  /* Sticky/sheet surfaces consume safe-area tokens instead of page-local magic. */
+  /* Sticky/sheet safe-area contract. */
   --ui-safe-top: env(safe-area-inset-top, 0px);
   --ui-safe-right: env(safe-area-inset-right, 0px);
   --ui-safe-bottom: env(safe-area-inset-bottom, 0px);
   --ui-safe-left: env(safe-area-inset-left, 0px);
 }
 
-/* Coarse-pointer density is an interaction characteristic, not a page width.
-   Existing controls already consume --ui-control-height from the shared layout
-   contract, so touch devices gain the larger target without inflating desktop. */
+/* Coarse-pointer density is an interaction characteristic, not a page width. */
 @media (hover: none), (pointer: coarse) {
   :root {
     --ui-control-height: var(--ui-control-height-touch);
   }
 }
 
-/* Container boundaries. These selectors already own width from App.vue; adding
-   inline-size containment establishes local presentation authority without
-   changing business/data state or duplicating rendered data. */
+/* Container boundaries. */
 .content-container {
   container-type: inline-size;
   container-name: app-workspace;
@@ -86,4 +80,129 @@
 .section-groups {
   container-type: inline-size;
   container-name: management-workspace groups-workspace;
+}
+
+/* UX-R1.2 transaction surface.
+   Vue owns one surface state machine and one mounted TradeForm. CSS only
+   composes the same surface as dock, modal drawer, or compact sheet. */
+body.trade-surface-scroll-lock {
+  overflow: hidden;
+}
+
+.main-wrapper.trade-mode-dock:not(.cash-view) .content-container {
+  grid-template-columns: minmax(0, 1fr) minmax(var(--ui-trade-dock-min), var(--ui-trade-dock-max));
+}
+
+.main-wrapper.trade-mode-dock.trade-rail-collapsed .content-container,
+.main-wrapper.trade-mode-drawer .content-container,
+.main-wrapper.trade-mode-sheet .content-container {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trade-surface-dock:not(.trade-surface-open) {
+  display: none;
+}
+
+.side-column.trade-surface-drawer,
+.side-column.trade-surface-sheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 150;
+  padding: 0;
+  background: var(--bg-app);
+  border-left: 1px solid var(--border-color);
+  box-shadow: -8px 0 28px rgba(15, 23, 42, 0.18);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  transform: translateX(100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.24s step-end;
+}
+
+.side-column.trade-surface-drawer {
+  width: min(var(--ui-trade-drawer-max), calc(100vw - 32px - var(--ui-safe-left)));
+}
+
+.side-column.trade-surface-sheet {
+  width: min(100vw, var(--ui-trade-sheet-max));
+  max-width: 100vw;
+}
+
+.side-column.trade-surface-drawer.trade-surface-open,
+.side-column.trade-surface-sheet.trade-surface-open {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
+}
+
+.trade-surface-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: calc(var(--ui-touch-target) + var(--ui-safe-top));
+  padding: calc(10px + var(--ui-safe-top)) max(16px, var(--ui-safe-right)) 10px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-card);
+}
+
+.trade-surface-header h3 {
+  margin: 0;
+}
+
+.btn-close-sheet {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--ui-touch-target);
+  min-height: var(--ui-touch-target);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-sub);
+  cursor: pointer;
+}
+
+.btn-close-sheet:hover {
+  border-color: var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-main);
+}
+
+.btn-close-sheet:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.trade-surface-drawer .fixed-panel,
+.trade-surface-sheet .fixed-panel {
+  position: static;
+  top: auto;
+  width: 100%;
+  max-height: none;
+  padding: 18px max(18px, var(--ui-safe-right)) calc(24px + var(--ui-safe-bottom)) max(18px, var(--ui-safe-left));
+  overflow: visible;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.fab-btn {
+  right: max(24px, calc(16px + var(--ui-safe-right)));
+  bottom: max(24px, calc(16px + var(--ui-safe-bottom)));
 }

@@ -8,6 +8,10 @@
       :class="{
         'cash-view': activeView === 'cash',
         'trade-rail-collapsed': isDesktopTradeRailCollapsed,
+        'trade-mode-dock': tradeSurfaceMode === 'dock',
+        'trade-mode-drawer': tradeSurfaceMode === 'drawer',
+        'trade-mode-sheet': tradeSurfaceMode === 'sheet',
+        'trade-overlay-open': isTransientTradeSurfaceOpen,
       }"
     >
       <header class="top-nav">
@@ -78,16 +82,16 @@
           </button>
 
           <button
-            v-if="!isMobileView && activeView !== 'cash'"
+            v-if="!isCompactView && activeView !== 'cash'"
             type="button"
             class="trade-rail-toggle"
-            @click="desktopTradeRailCollapsed = !desktopTradeRailCollapsed"
-            :aria-expanded="!desktopTradeRailCollapsed"
+            @click="toggleDesktopTradeSurface"
+            :aria-expanded="isTradeSurfaceVisible"
             aria-controls="desktop-trade-rail"
-            :title="desktopTradeRailCollapsed ? '顯示交易區' : '收起交易區並放大主內容'"
+            :title="tradeSurfaceToggleTitle"
           >
-            <span aria-hidden="true">{{ desktopTradeRailCollapsed ? '▤' : '◫' }}</span>
-            <span class="desktop-only">{{ desktopTradeRailCollapsed ? '顯示交易區' : '專注檢視' }}</span>
+            <span aria-hidden="true">{{ tradeSurfaceMode === 'dock' ? (desktopTradeRailCollapsed ? '▤' : '◫') : (tradeOverlayOpen ? '▤' : '▥') }}</span>
+            <span class="desktop-only">{{ tradeSurfaceToggleLabel }}</span>
           </button>
 
           <button type="button" class="theme-toggle" @click="toggleTheme" aria-label="切換明暗主題">
@@ -104,7 +108,7 @@
 
       <DataReliabilityBanner />
 
-      <div class="content-container">
+      <div ref="contentContainerRef" class="content-container">
         <!-- Middle: 主內容（依選單切換） -->
         <main class="main-column">
           <!-- Desktop + Mobile: 功能切換（頂端 tabs） -->
@@ -170,17 +174,28 @@
           </section>
         </main>
 
-        <!-- Right: 桌面 sticky 交易面板；手機維持 sheet overlay -->
+        <!-- Single TradeForm authority; presentation switches between dock/drawer/sheet. -->
         <aside
           v-if="activeView !== 'cash'"
-          v-show="isMobileView || !desktopTradeRailCollapsed"
+          ref="tradeSurfaceRef"
           id="desktop-trade-rail"
           class="side-column"
-          :class="{ 'mobile-sheet': isMobileView, 'sheet-open': showMobileTrade }"
+          :class="[
+            `trade-surface-${tradeSurfaceMode}`,
+            { 'trade-surface-open': isTradeSurfaceVisible },
+          ]"
+          :aria-hidden="isTradeSurfaceVisible ? 'false' : 'true'"
+          :inert="!isTradeSurfaceVisible"
+          @keydown="handleTradeSurfaceKeydown"
         >
-          <div class="mobile-sheet-header" v-if="isMobileView">
+          <div class="trade-surface-header" v-if="tradeSurfaceMode !== 'dock'">
             <h3>交易管理</h3>
-            <button type="button" class="btn-close-sheet" @click="showMobileTrade = false">✕</button>
+            <button
+              type="button"
+              class="btn-close-sheet"
+              @click="closeTransientTradeSurface()"
+              aria-label="關閉交易區"
+            >✕</button>
           </div>
 
           <div class="fixed-panel">
@@ -189,18 +204,20 @@
         </aside>
 
         <div
-          v-if="isMobileView && activeView !== 'cash' && showMobileTrade"
+          v-if="isTransientTradeSurfaceOpen"
           class="sheet-backdrop"
-          @click="showMobileTrade = false"
+          @click="closeTransientTradeSurface()"
+          aria-hidden="true"
         ></div>
       </div>
 
       <button
-        v-if="isMobileView && activeView !== 'cash'"
+        v-if="isCompactView && activeView !== 'cash'"
         type="button"
         class="fab-btn"
-        @click="openMobileTrade"
+        @click="openNewTrade"
         title="新增交易"
+        aria-controls="desktop-trade-rail"
       >
         <span>+</span>
       </button>
@@ -247,6 +264,8 @@ import TableSkeleton from './components/skeletons/TableSkeleton.vue';
 const authStore = useAuthStore();
 const portfolioStore = usePortfolioStore();
 const tradeFormRef = ref(null);
+const contentContainerRef = ref(null);
+const tradeSurfaceRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
 const { needRefresh, updateServiceWorker } = usePWA();
@@ -332,29 +351,126 @@ watch(activeView, (v) => {
   if (didInitView) setUrlView(v);
 });
 
-// 手機版相關狀態
+// App-shell and transaction presentation authority.
+// `isMobileView` remains the existing <=1024 single-column shell boundary.
+// A separate compact boundary decides mobile sheet vs tablet/desktop drawer.
+const DEFAULT_TRADE_DOCK_WORKSPACE_MIN = 1500;
 const isMobileView = ref(false);
-const showMobileTrade = ref(false);
+const isCompactView = ref(false);
+const workspaceInlineSize = ref(0);
+const tradeDockWorkspaceMin = ref(DEFAULT_TRADE_DOCK_WORKSPACE_MIN);
+const tradeOverlayOpen = ref(false);
 const desktopTradeRailCollapsed = ref(false);
+let workspaceResizeObserver = null;
+let tradeSurfaceReturnFocus = null;
+
+const tradeSurfaceMode = computed(() => {
+  if (isCompactView.value) return 'sheet';
+  if (workspaceInlineSize.value >= tradeDockWorkspaceMin.value) return 'dock';
+  return 'drawer';
+});
+
+const isTransientTradeSurfaceOpen = computed(() => (
+  activeView.value !== 'cash'
+  && tradeSurfaceMode.value !== 'dock'
+  && tradeOverlayOpen.value
+));
+
 const isDesktopTradeRailCollapsed = computed(() => (
-  !isMobileView.value
+  tradeSurfaceMode.value === 'dock'
   && activeView.value !== 'cash'
   && desktopTradeRailCollapsed.value
 ));
 
-watch(activeView, (view) => {
-  if (view === 'cash') showMobileTrade.value = false;
+const isTradeSurfaceVisible = computed(() => {
+  if (activeView.value === 'cash') return false;
+  if (tradeSurfaceMode.value === 'dock') return !desktopTradeRailCollapsed.value;
+  return tradeOverlayOpen.value;
 });
+
+const tradeSurfaceToggleLabel = computed(() => {
+  if (tradeSurfaceMode.value === 'dock') {
+    return desktopTradeRailCollapsed.value ? '顯示交易區' : '專注檢視';
+  }
+  return tradeOverlayOpen.value ? '關閉交易區' : '開啟交易區';
+});
+
+const tradeSurfaceToggleTitle = computed(() => {
+  if (tradeSurfaceMode.value === 'dock') {
+    return desktopTradeRailCollapsed.value
+      ? '顯示交易區'
+      : '收起交易區並放大主內容';
+  }
+  return tradeOverlayOpen.value
+    ? '關閉交易區並返回主內容'
+    : '以抽屜開啟交易區';
+});
+
+const readCssPixelToken = (name, fallback) => {
+  try {
+    const raw = window.getComputedStyle(document.documentElement).getPropertyValue(name);
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const measureWorkspace = () => {
+  const el = contentContainerRef.value;
+  if (!el) return;
+  const width = el.getBoundingClientRect().width;
+  if (Number.isFinite(width) && width > 0) workspaceInlineSize.value = width;
+};
+
+const observeWorkspace = (el) => {
+  if (workspaceResizeObserver) {
+    workspaceResizeObserver.disconnect();
+    workspaceResizeObserver = null;
+  }
+  if (!el) return;
+
+  measureWorkspace();
+  if (window.ResizeObserver) {
+    workspaceResizeObserver = new window.ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect?.width;
+      if (Number.isFinite(width) && width > 0) workspaceInlineSize.value = width;
+    });
+    workspaceResizeObserver.observe(el);
+  }
+};
+
+watch(contentContainerRef, observeWorkspace, { flush: 'post' });
 
 const updateMedia = () => {
   isMobileView.value = window.innerWidth <= 1024;
-  if (isMobileView.value) {
-    showMobileTrade.value = false;
-    desktopTradeRailCollapsed.value = false;
-  } else {
-    showMobileTrade.value = false;
-  }
+  isCompactView.value = window.innerWidth < 600;
+  measureWorkspace();
 };
+
+watch(tradeSurfaceMode, (mode, previousMode) => {
+  // Presentation changes never reset TradeForm. Transient overlays remain open
+  // across drawer↔sheet transitions, while dock transitions settle to a stable
+  // visible/closed default without carrying stale overlay state.
+  if (mode === 'dock') {
+    tradeOverlayOpen.value = false;
+    desktopTradeRailCollapsed.value = false;
+    tradeSurfaceReturnFocus = null;
+    return;
+  }
+
+  desktopTradeRailCollapsed.value = false;
+  if (previousMode === 'dock') {
+    tradeOverlayOpen.value = false;
+    tradeSurfaceReturnFocus = null;
+  }
+});
+
+watch(activeView, (view, previousView) => {
+  if (view !== previousView && tradeOverlayOpen.value) {
+    closeTransientTradeSurface({ restoreFocus: false });
+  }
+});
 
 const dividendAttention = computed(() => buildDividendAttention({
   pendingDividends: portfolioStore.pending_dividends,
@@ -384,18 +500,107 @@ const marketRefresh = useMarketHoursRefresh();
 // 🔐 Token 自動刷新
 useTokenRefresh();
 
-const openMobileTrade = () => {
-  showMobileTrade.value = true;
-  if (tradeFormRef.value && tradeFormRef.value.resetForm) {
-    tradeFormRef.value.resetForm();
+const rememberTradeSurfaceTrigger = () => {
+  const active = document.activeElement;
+  tradeSurfaceReturnFocus = active instanceof HTMLElement ? active : null;
+};
+
+const getTradeSurfaceFocusable = () => {
+  const surface = tradeSurfaceRef.value;
+  if (!surface) return [];
+  return Array.from(surface.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )).filter((el) => !el.hasAttribute('inert') && el.getAttribute('aria-hidden') !== 'true');
+};
+
+const focusTradeSurface = () => {
+  const surface = tradeSurfaceRef.value;
+  if (!surface || !isTradeSurfaceVisible.value) return;
+  const preferred = surface.querySelector(
+    'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not(.btn-close-sheet):not([disabled])',
+  );
+  const target = preferred || getTradeSurfaceFocusable()[0];
+  if (target && typeof target.focus === 'function') {
+    target.focus({ preventScroll: true });
   }
 };
 
-const onTradeSubmitted = () => {
-  if (isMobileView.value) {
-    showMobileTrade.value = false;
+const openTransientTradeSurface = ({ rememberFocus = true } = {}) => {
+  if (tradeSurfaceMode.value === 'dock' || activeView.value === 'cash') return;
+  if (rememberFocus && !tradeOverlayOpen.value) rememberTradeSurfaceTrigger();
+  tradeOverlayOpen.value = true;
+  nextTick(focusTradeSurface);
+};
+
+const closeTransientTradeSurface = ({ restoreFocus = true } = {}) => {
+  if (!tradeOverlayOpen.value) return;
+  const returnTarget = tradeSurfaceReturnFocus;
+  tradeOverlayOpen.value = false;
+  tradeSurfaceReturnFocus = null;
+
+  if (restoreFocus && returnTarget && typeof returnTarget.focus === 'function') {
+    nextTick(() => {
+      if (returnTarget.isConnected) returnTarget.focus({ preventScroll: true });
+    });
   }
 };
+
+const toggleDesktopTradeSurface = () => {
+  if (tradeSurfaceMode.value === 'dock') {
+    desktopTradeRailCollapsed.value = !desktopTradeRailCollapsed.value;
+    return;
+  }
+
+  if (tradeOverlayOpen.value) {
+    closeTransientTradeSurface();
+  } else {
+    openTransientTradeSurface();
+  }
+};
+
+const openNewTrade = () => {
+  rememberTradeSurfaceTrigger();
+  if (tradeFormRef.value?.resetForm) tradeFormRef.value.resetForm();
+  openTransientTradeSurface({ rememberFocus: false });
+};
+
+const onTradeSubmitted = () => {
+  if (tradeSurfaceMode.value !== 'dock') {
+    closeTransientTradeSurface();
+  }
+};
+
+const handleTradeSurfaceKeydown = (event) => {
+  if (event.key !== 'Tab' || !isTransientTradeSurfaceOpen.value) return;
+
+  const focusable = getTradeSurfaceFocusable();
+  if (focusable.length === 0) {
+    event.preventDefault();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+};
+
+const handleGlobalKeydown = (event) => {
+  if (event.key !== 'Escape' || !isTransientTradeSurfaceOpen.value) return;
+  event.preventDefault();
+  closeTransientTradeSurface();
+};
+
+watch(isTransientTradeSurfaceOpen, (open) => {
+  document.body.classList.toggle('trade-surface-scroll-lock', open);
+});
 
 const handleTriggerUpdate = async () => {
   if (portfolioStore.isPolling) {
@@ -410,22 +615,20 @@ const handleTriggerUpdate = async () => {
 };
 
 const handleEditRecord = (record) => {
-  if (isMobileView.value) {
-    showMobileTrade.value = true;
-  } else {
+  if (tradeSurfaceMode.value === 'dock') {
     desktopTradeRailCollapsed.value = false;
+  } else {
+    if (!tradeOverlayOpen.value) rememberTradeSurfaceTrigger();
+    tradeOverlayOpen.value = true;
   }
 
   nextTick(() => {
     if (tradeFormRef.value) {
       tradeFormRef.value.setupForm(record);
 
-      if (!isMobileView.value) {
-        const tradeFormEl = document.querySelector('.fixed-panel');
-        if (tradeFormEl) {
-          tradeFormEl.scrollTop = 0;
-        }
-      }
+      const tradeFormEl = tradeSurfaceRef.value?.querySelector('.fixed-panel');
+      if (tradeFormEl) tradeFormEl.scrollTop = 0;
+      focusTradeSurface();
     }
   });
 };
@@ -440,9 +643,14 @@ onMounted(async () => {
   setUrlView(activeView.value, { replace: true });
   didInitView = true;
 
+  tradeDockWorkspaceMin.value = readCssPixelToken(
+    '--ui-trade-dock-workspace-min',
+    DEFAULT_TRADE_DOCK_WORKSPACE_MIN,
+  );
   updateMedia();
   window.addEventListener('resize', updateMedia);
   window.addEventListener('popstate', syncFromUrl);
+  window.addEventListener('keydown', handleGlobalKeydown);
   authStore.startStorageSync();
 
   const isLoggedIn = authStore.initAuth();
@@ -456,6 +664,7 @@ onMounted(async () => {
   }
 
   await nextTick();
+  measureWorkspace();
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
     setTimeout(() => {
@@ -468,6 +677,12 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', updateMedia);
   window.removeEventListener('popstate', syncFromUrl);
+  window.removeEventListener('keydown', handleGlobalKeydown);
+  if (workspaceResizeObserver) {
+    workspaceResizeObserver.disconnect();
+    workspaceResizeObserver = null;
+  }
+  document.body.classList.remove('trade-surface-scroll-lock');
   authStore.stopStorageSync();
 });
 </script>
@@ -641,7 +856,7 @@ onUnmounted(() => {
 .card, .chart-wrapper { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-card); overflow-x: hidden; }
 .chart-wrapper.chart-full { height: 450px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 
-/* Desktop sticky transaction rail */
+/* Docked TradeForm remains sticky; drawer/sheet overrides live in adaptive-workspace.css. */
 .fixed-panel {
   position: sticky;
   top: calc(var(--header-height) + var(--space-desktop));
@@ -675,33 +890,6 @@ onUnmounted(() => {
 }
 .fab-btn:active { transform: scale(0.95); }
 .fab-btn span { margin-top: -4px; }
-
-/* Mobile Sheet (Sidebar) */
-.mobile-sheet {
-  position: fixed; top: 0; right: 0; bottom: 0;
-  width: 100%; max-width: 400px;
-  background: var(--bg-app);
-  z-index: 150;
-  transform: translateX(100%);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  padding: 0;
-  overflow-y: auto;
-  box-shadow: -4px 0 20px rgba(0,0,0,0.1);
-}
-.mobile-sheet.sheet-open { transform: translateX(0); }
-.sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 140; backdrop-filter: blur(2px); }
-
-.mobile-sheet-header {
-  padding: 16px 20px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-color);
-  display: flex; justify-content: space-between; align-items: center;
-  position: sticky; top: 0; z-index: 10;
-}
-.mobile-sheet-header h3 { margin: 0; font-size: var(--type-section); }
-.btn-close-sheet { background: none; border: none; font-size: var(--icon-xl); color: var(--text-sub); cursor: pointer; padding: 4px; }
-
-.mobile-sheet .fixed-panel { position: static; padding: 20px; max-height: none; width: 100%; right: auto; }
 
 /* Utilities */
 .desktop-only { display: inline-block; }
