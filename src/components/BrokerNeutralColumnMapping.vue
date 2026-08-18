@@ -11,7 +11,7 @@
     <button
       type="button"
       class="tool-action-button"
-      :disabled="importing"
+      :disabled="importing || retrying"
       title="將其他券商 CSV 明確對應到 Canonical Trade CSV v1，預覽通過後可安全匯入"
       @click="chooseFile"
     >
@@ -35,7 +35,7 @@
             <button
               type="button"
               class="icon-close"
-              :disabled="importing"
+              :disabled="importing || retrying"
               aria-label="關閉欄位對應"
               @click="closeDialog"
             >×</button>
@@ -63,7 +63,7 @@
                     <h3>來源欄位</h3>
                     <p>{{ sourceTable.rows.length }} 筆來源資料 · {{ sourceTable.headers.length }} 個欄位</p>
                   </div>
-                  <button type="button" class="btn-secondary" :disabled="importing" @click="chooseFile">
+                  <button type="button" class="btn-secondary" :disabled="importing || retrying" @click="chooseFile">
                     重新選擇
                   </button>
                 </div>
@@ -92,7 +92,7 @@
                   <select
                     id="mapping-preset-select"
                     v-model="selectedPresetKey"
-                    :disabled="importing"
+                    :disabled="importing || retrying"
                   >
                     <option value="">選擇已儲存 preset</option>
                     <option v-for="preset in exactPresets" :key="preset.label_key" :value="preset.label_key">
@@ -102,13 +102,13 @@
                   <button
                     type="button"
                     class="btn-secondary"
-                    :disabled="!selectedPresetKey || importing"
+                    :disabled="!selectedPresetKey || importing || retrying"
                     @click="applySelectedPreset"
                   >套用</button>
                   <button
                     type="button"
                     class="btn-secondary danger-text"
-                    :disabled="!selectedPresetKey || importing"
+                    :disabled="!selectedPresetKey || importing || retrying"
                     @click="deleteSelectedPreset"
                   >刪除</button>
                 </div>
@@ -122,13 +122,13 @@
                     type="text"
                     maxlength="48"
                     autocomplete="off"
-                    :disabled="importing"
+                    :disabled="importing || retrying"
                     placeholder="例如：富途成交明細 v1"
                   >
                   <button
                     type="button"
                     class="btn-secondary"
-                    :disabled="!mappingReady || !presetLabel.trim() || importing"
+                    :disabled="!mappingReady || !presetLabel.trim() || importing || retrying"
                     @click="saveCurrentPreset"
                   >儲存目前對應</button>
                 </div>
@@ -163,7 +163,7 @@
                   <select
                     :id="`map-${field}`"
                     v-model="mappingState[field].sourceHeader"
-                    :disabled="importing"
+                    :disabled="importing || retrying"
                     @change="handleColumnSelection(field)"
                   >
                     <option value="">未對應</option>
@@ -176,7 +176,7 @@
                     v-if="constantFieldSet.has(field)"
                     v-model="mappingState[field].constant"
                     type="text"
-                    :disabled="importing"
+                    :disabled="importing || retrying"
                     :placeholder="constantPlaceholder(field)"
                     @input="handleConstantInput(field)"
                   >
@@ -191,7 +191,7 @@
                 <button
                   type="button"
                   class="btn-primary"
-                  :disabled="!mappingReady || importing"
+                  :disabled="!mappingReady || importing || retrying"
                   @click="buildPreview"
                 >建立零寫入預覽</button>
               </div>
@@ -282,9 +282,9 @@
                     type="text"
                     maxlength="64"
                     autocomplete="off"
-                    :disabled="importing"
+                    :disabled="importing || retrying"
                     placeholder="例如：富途主帳戶、Schwab 主帳戶"
-                    @input="result = null"
+                    @input="invalidateImportResult"
                   >
                   <p>
                     同一來源設定檔＋完全相同原始 CSV＋完全相同 mapping 會使用相同防重複識別。
@@ -303,7 +303,12 @@
               <strong>{{ resultTitle }}</strong>
               <span>{{ resultMessage }}</span>
             </div>
-            <ImportReconciliationReceipt :result="result" />
+            <ImportReconciliationReceipt
+              :result="result"
+              :retry-available="canRetryAmbiguous"
+              :retrying="retrying"
+              @retry="retryAmbiguousImport"
+            />
           </div>
 
           <footer class="dialog-footer">
@@ -311,7 +316,7 @@
               Mapping preview 本身 writes_allowed=false；實際寫入僅透過 reviewed durable record-create path。
             </span>
             <div class="footer-actions">
-              <button type="button" class="btn-secondary" :disabled="importing" @click="closeDialog">
+              <button type="button" class="btn-secondary" :disabled="importing || retrying" @click="closeDialog">
                 {{ result ? '關閉' : '取消' }}
               </button>
               <button
@@ -356,6 +361,11 @@ import {
 } from '../services/brokerNeutralMappingPresets.js';
 import { prepareMappedBrokerImport } from '../services/brokerNeutralMappedImportExecution.js';
 import { createBrokerNeutralRecord } from '../services/brokerNeutralRecordCreate.js';
+import {
+  IMPORT_AMBIGUOUS_RETRY_REASON,
+  isAmbiguousImportRetryCandidate,
+  prepareAmbiguousImportRetry,
+} from '../services/importAmbiguousRetry.js';
 import { runRecordImportBatch } from '../services/recordImportBatch.js';
 
 const authStore = useAuthStore();
@@ -366,6 +376,7 @@ const fileInput = ref(null);
 const open = ref(false);
 const reading = ref(false);
 const importing = ref(false);
+const retrying = ref(false);
 const fileName = ref('');
 const sourceText = ref('');
 const sourceFileSize = ref(null);
@@ -430,14 +441,26 @@ const mappingObject = computed(() => Object.fromEntries(
 const missingRequired = computed(() => REQUIRED_CANONICAL_HEADERS.filter(field => !mappedEntry(field)));
 const mappingReady = computed(() => Boolean(sourceTable.value) && missingRequired.value.length === 0);
 const mappedRows = computed(() => mappedResult.value?.canonical_preview?.rows?.slice(0, 12) || []);
+const sourceReady = computed(() => (
+  mappedResult.value?.canonical_preview?.status === 'ready'
+  && mappedResult.value?.canonical_preview?.counts?.blocked === 0
+  && mappedResult.value?.source_row_count > 0
+  && sourceText.value.length > 0
+  && sourceProfile.value.trim().length > 0
+));
 const executionReady = computed(() => (
   !reading.value
   && !importing.value
+  && !retrying.value
   && !result.value
-  && mappedResult.value?.canonical_preview?.status === 'ready'
-  && mappedResult.value?.canonical_preview?.counts?.blocked === 0
-  && mappedResult.value?.source_row_count > 0
-  && sourceProfile.value.trim().length > 0
+  && sourceReady.value
+));
+const canRetryAmbiguous = computed(() => (
+  !reading.value
+  && !importing.value
+  && !retrying.value
+  && sourceReady.value
+  && isAmbiguousImportRetryCandidate(result.value)
 ));
 
 const resultTone = computed(() => {
@@ -462,7 +485,7 @@ const resultMessage = computed(() => {
   const base = `已處理 ${result.value.processed}/${result.value.total} 筆；新增 ${result.value.created} 筆，已存在 ${result.value.replayed} 筆。`;
   if (result.value.status === 'partial_failure') {
     const retry = result.value.failure?.outcomeAmbiguous
-      ? '最後一筆回應不確定。請使用相同來源設定檔、同一原始檔與同一 mapping 重新執行，已確認項目會安全重播。'
+      ? '最後一筆回應不確定。可使用逐筆結果中的「安全續傳」先確認既有未定結果，再以相同原始檔、mapping 與來源識別續跑。'
       : '後續寫入已停止。修正問題後，以相同來源設定檔、同一原始檔與同一 mapping 重新執行即可安全續傳。';
     return `${base} ${retry}`;
   }
@@ -495,7 +518,7 @@ const refreshExactPresets = () => {
 };
 
 const applyPreset = (preset) => {
-  if (!preset || importing.value) return;
+  if (!preset || importing.value || retrying.value) return;
   resetMapping();
   for (const field of CANONICAL_HEADERS) {
     const entry = preset.mapping[field];
@@ -514,7 +537,7 @@ const applySelectedPreset = () => {
 };
 
 const saveCurrentPreset = () => {
-  if (!signedOwner.value || !sourceTable.value || !mappingReady.value || !presetLabel.value.trim()) return;
+  if (retrying.value || !signedOwner.value || !sourceTable.value || !mappingReady.value || !presetLabel.value.trim()) return;
   try {
     const saved = saveBrokerMappingPreset(window.localStorage, signedOwner.value, {
       label: presetLabel.value,
@@ -535,7 +558,7 @@ const saveCurrentPreset = () => {
 
 const deleteSelectedPreset = () => {
   const preset = exactPresets.value.find(item => item.label_key === selectedPresetKey.value);
-  if (!preset || !signedOwner.value || importing.value) return;
+  if (!preset || !signedOwner.value || importing.value || retrying.value) return;
   if (!window.confirm(`刪除 mapping preset「${preset.label}」？`)) return;
   try {
     deleteBrokerMappingPreset(window.localStorage, signedOwner.value, preset.label);
@@ -548,19 +571,23 @@ const deleteSelectedPreset = () => {
 };
 
 const chooseFile = () => {
-  if (importing.value) return;
+  if (importing.value || retrying.value) return;
   open.value = true;
   fileInput.value?.click();
 };
 
 const closeDialog = () => {
-  if (importing.value) return;
+  if (importing.value || retrying.value) return;
   open.value = false;
 };
 
 const invalidateMappedPreview = () => {
   mappedResult.value = null;
   result.value = null;
+};
+
+const invalidateImportResult = () => {
+  if (result.value) result.value = null;
 };
 
 const markMappingEdited = () => {
@@ -572,11 +599,13 @@ const markMappingEdited = () => {
 };
 
 const handleColumnSelection = (field) => {
+  if (retrying.value) return;
   if (mappingState[field].sourceHeader) mappingState[field].constant = '';
   markMappingEdited();
 };
 
 const handleConstantInput = (field) => {
+  if (retrying.value) return;
   if (mappingState[field].constant) mappingState[field].sourceHeader = '';
   markMappingEdited();
 };
@@ -584,7 +613,7 @@ const handleConstantInput = (field) => {
 const handleFileChange = async (event) => {
   const file = event.target.files?.[0];
   event.target.value = '';
-  if (!file) return;
+  if (!file || retrying.value) return;
 
   open.value = true;
   reading.value = true;
@@ -619,6 +648,7 @@ const handleFileChange = async (event) => {
 };
 
 const buildPreview = () => {
+  if (retrying.value) return;
   errorMessage.value = '';
   result.value = null;
   mappedResult.value = null;
@@ -633,36 +663,14 @@ const buildPreview = () => {
   }
 };
 
-const confirmImport = async () => {
-  if (!executionReady.value) return;
+const prepareCurrentImport = () => prepareMappedBrokerImport(
+  sourceText.value,
+  mappingObject.value,
+  sourceProfile.value,
+  { fileSizeBytes: sourceFileSize.value },
+);
 
-  let prepared;
-  try {
-    prepared = await prepareMappedBrokerImport(
-      sourceText.value,
-      mappingObject.value,
-      sourceProfile.value,
-      { fileSizeBytes: sourceFileSize.value },
-    );
-  } catch (error) {
-    errorMessage.value = error?.message || '欄位對應來源尚未達到安全匯入條件。';
-    return;
-  }
-
-  const confirmation = [
-    `確認匯入 ${prepared.entries.length} 筆欄位對應交易？`,
-    `來源設定檔：${prepared.source_profile}`,
-    '防重複識別綁定原始 CSV、完整 mapping contract 與來源列序。',
-    '原始檔或 mapping 任一變更會視為新來源；系統不使用交易欄位相似度猜測重複。',
-  ].join('\n');
-  if (!window.confirm(confirmation)) return;
-
-  const owner = signedOwner.value;
-  if (!owner || !authStore.token) {
-    addToast('請先登入再執行欄位對應匯入', 'error');
-    return;
-  }
-
+const executePreparedImport = async (prepared, owner) => {
   importing.value = true;
   errorMessage.value = '';
   result.value = null;
@@ -715,6 +723,84 @@ const confirmImport = async () => {
     addToast('欄位對應匯入未完成，沒有足夠證據宣告寫入成功', 'error');
   } finally {
     importing.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  if (!executionReady.value) return;
+
+  let prepared;
+  try {
+    prepared = await prepareCurrentImport();
+  } catch (error) {
+    errorMessage.value = error?.message || '欄位對應來源尚未達到安全匯入條件。';
+    return;
+  }
+
+  const confirmation = [
+    `確認匯入 ${prepared.entries.length} 筆欄位對應交易？`,
+    `來源設定檔：${prepared.source_profile}`,
+    '防重複識別綁定原始 CSV、完整 mapping contract 與來源列序。',
+    '原始檔或 mapping 任一變更會視為新來源；系統不使用交易欄位相似度猜測重複。',
+  ].join('\n');
+  if (!window.confirm(confirmation)) return;
+
+  const owner = signedOwner.value;
+  if (!owner || !authStore.token) {
+    addToast('請先登入再執行欄位對應匯入', 'error');
+    return;
+  }
+
+  await executePreparedImport(prepared, owner);
+};
+
+const retryAmbiguousImport = async () => {
+  if (!canRetryAmbiguous.value) return;
+  const priorResult = result.value;
+
+  let prepared;
+  try {
+    prepared = await prepareCurrentImport();
+  } catch (error) {
+    errorMessage.value = error?.message || '目前來源、mapping 或設定檔已不符合原本的安全匯入條件。';
+    return;
+  }
+
+  const confirmation = [
+    `安全續傳 ${prepared.entries.length} 筆欄位對應交易？`,
+    `來源設定檔：${prepared.source_profile}`,
+    '系統會先確認既有未定交易；確認完成後才以同一原始 CSV、完整 mapping 與穩定識別從頭重播。',
+    '已確認項目會由伺服器判定為安全重播，不會用交易欄位相似度猜測重複。',
+  ].join('\n');
+  if (!window.confirm(confirmation)) return;
+
+  const owner = signedOwner.value;
+  if (!owner || !authStore.token) {
+    addToast('請先登入再執行安全續傳', 'error');
+    return;
+  }
+
+  retrying.value = true;
+  try {
+    const gate = await prepareAmbiguousImportRetry(priorResult, {
+      entries: prepared.entries,
+      storage: window.localStorage,
+      owner,
+      reconcile: () => portfolioStore.fetchAll(),
+    });
+
+    if (!gate.ready) {
+      if (gate.reason === IMPORT_AMBIGUOUS_RETRY_REASON.RECONCILIATION_PENDING) {
+        addToast('系統仍在確認先前未定的交易結果；目前不會重送整批。', 'info');
+      } else if (gate.reason === IMPORT_AMBIGUOUS_RETRY_REASON.RECOVERY_STATE_UNAVAILABLE) {
+        addToast('無法安全確認本機恢復狀態；目前不會重送整批。', 'error');
+      }
+      return;
+    }
+
+    await executePreparedImport(prepared, owner);
+  } finally {
+    retrying.value = false;
   }
 };
 
