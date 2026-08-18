@@ -26,6 +26,9 @@ const sourceReferenceForEntry = (entry, index) => {
   if (Number.isSafeInteger(entry?.rowNumber) && entry.rowNumber > 0) {
     return { kind: 'source_row', value: entry.rowNumber };
   }
+  if (Number.isSafeInteger(entry?.source?.firstRowNumber) && entry.source.firstRowNumber > 0) {
+    return { kind: 'source_row', value: entry.source.firstRowNumber };
+  }
   return { kind: 'import_index', value: index + 1 };
 };
 
