@@ -54,19 +54,60 @@ test('non-ambiguous result never invokes reconciliation', async () => {
   assert.equal(reconciled, 0);
 });
 
-test('any remaining eligible create recovery blocks replay across importer key formats', async () => {
+test('an active durable reconciliation window blocks replay across importer key formats', async () => {
   let reconciled = 0;
   const gate = await prepareAmbiguousImportRetry(ambiguousResult, {
     entries,
     owner: 'owner@example.com',
     reconcile: async () => { reconciled += 1; },
-    readPendingIntents: () => [{ idempotencyKey: 'ibkr.4f7b4d39f2b7' }],
+    readPendingIntents: () => [{
+      idempotencyKey: 'ibkr.4f7b4d39f2b7',
+      reconcilingUntil: 2000,
+    }],
+    now: 1000,
   });
 
   assert.equal(reconciled, 1);
   assert.deepEqual(gate, {
     ready: false,
     reason: IMPORT_AMBIGUOUS_RETRY_REASON.RECONCILIATION_PENDING,
+    reconciliation_degraded: false,
+  });
+});
+
+test('exhausted ambiguous recovery cannot permanently deadlock an explicit stable-source retry', async () => {
+  let reconciled = 0;
+  const gate = await prepareAmbiguousImportRetry(ambiguousResult, {
+    entries,
+    owner: 'owner@example.com',
+    reconcile: async () => { reconciled += 1; },
+    readPendingIntents: () => [{
+      idempotencyKey: 'ibkr.4f7b4d39f2b7',
+      reconcilingUntil: 999,
+    }],
+    now: 1000,
+  });
+
+  assert.equal(reconciled, 1);
+  assert.deepEqual(gate, {
+    ready: true,
+    reason: null,
+    reconciliation_degraded: false,
+  });
+});
+
+test('a live intent with no active reconciliation window may be explicitly superseded after recovery is awaited', async () => {
+  const gate = await prepareAmbiguousImportRetry(ambiguousResult, {
+    entries,
+    owner: 'owner@example.com',
+    reconcile: async () => {},
+    readPendingIntents: () => [{ idempotencyKey: 'stable-but-exhausted-recovery' }],
+    now: 1000,
+  });
+
+  assert.deepEqual(gate, {
+    ready: true,
+    reason: null,
     reconciliation_degraded: false,
   });
 });
@@ -86,22 +127,29 @@ test('cleared pending state allows retry even when later readback degraded', asy
   });
 });
 
-test('unreadable recovery state fails closed', async () => {
-  const gate = await prepareAmbiguousImportRetry(ambiguousResult, {
+test('unreadable or malformed recovery state fails closed', async () => {
+  const unreadable = await prepareAmbiguousImportRetry(ambiguousResult, {
     entries,
     owner: 'owner@example.com',
     reconcile: async () => {},
     readPendingIntents: () => { throw new Error('storage unavailable'); },
   });
+  const malformed = await prepareAmbiguousImportRetry(ambiguousResult, {
+    entries,
+    owner: 'owner@example.com',
+    reconcile: async () => {},
+    readPendingIntents: () => ({ unexpected: true }),
+  });
 
-  assert.deepEqual(gate, {
+  assert.deepEqual(unreadable, {
     ready: false,
     reason: IMPORT_AMBIGUOUS_RETRY_REASON.RECOVERY_STATE_UNAVAILABLE,
     reconciliation_degraded: false,
   });
+  assert.deepEqual(malformed, unreadable);
 });
 
-test('gate refuses replay without stable prepared entries', async () => {
+test('gate refuses replay without stable prepared entries or a finite clock', async () => {
   await assert.rejects(
     () => prepareAmbiguousImportRetry(ambiguousResult, {
       entries: [{ idempotencyKey: '' }],
@@ -110,6 +158,16 @@ test('gate refuses replay without stable prepared entries', async () => {
       readPendingIntents: () => [],
     }),
     /stable entry idempotency keys/,
+  );
+  await assert.rejects(
+    () => prepareAmbiguousImportRetry(ambiguousResult, {
+      entries,
+      owner: 'owner@example.com',
+      reconcile: async () => {},
+      readPendingIntents: () => [],
+      now: Number.NaN,
+    }),
+    /finite reconciliation clock/,
   );
 });
 
