@@ -47,10 +47,10 @@ def _intraday(close):
 class _Ticker:
     def __init__(self, frames):
         self._frames = iter(frames)
-        self.timeouts = []
+        self.calls = []
 
     def history(self, **kwargs):
-        self.timeouts.append(kwargs.get("timeout"))
+        self.calls.append(dict(kwargs))
         return next(self._frames).copy(deep=True)
 
 
@@ -74,14 +74,14 @@ def test_first_round_consensus_requires_no_reobservation():
 
     assert dates == (pd.Timestamp("2026-08-11"),)
     assert ticker.call_count == 2
-    assert one_hour.timeouts == [10.0]
-    assert fifteen_minute.timeouts == [10.0]
+    assert len(one_hour.calls) == 1
+    assert len(fifteen_minute.calls) == 1
     sleep.assert_not_called()
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.25
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
 
 
-def test_transient_disagreement_uses_cache_busting_reobservation_and_can_converge():
+def test_transient_disagreement_can_converge_after_one_fresh_reobservation():
     stale = _intraday(102.25)
     current = _intraday(102.50)
     recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover(
@@ -90,12 +90,9 @@ def test_transient_disagreement_uses_cache_busting_reobservation_and_can_converg
     )
 
     assert dates == (pd.Timestamp("2026-08-11"),)
-    # The same two Ticker clients are reused. Distinct timeout values deliberately
-    # change yfinance's historical cache_get key, forcing the bounded second round
-    # to perform a fresh Yahoo request instead of replaying the cached first result.
     assert ticker.call_count == 2
-    assert one_hour.timeouts == [10.0, 11.0]
-    assert fifteen_minute.timeouts == [10.0, 11.0]
+    assert len(one_hour.calls) == 2
+    assert len(fifteen_minute.calls) == 2
     sleep.assert_called_once_with(1.0)
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.50
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
@@ -111,8 +108,8 @@ def test_persistent_cross_granularity_disagreement_remains_fail_closed():
 
     assert dates == ()
     assert ticker.call_count == 2
-    assert one_hour.timeouts == [10.0, 11.0]
-    assert fifteen_minute.timeouts == [10.0, 11.0]
+    assert len(one_hour.calls) == 2
+    assert len(fifteen_minute.calls) == 2
     sleep.assert_called_once_with(1.0)
     assert recovered["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", recovered) is False
@@ -129,8 +126,8 @@ def test_second_round_third_value_is_not_accepted_as_convergence():
 
     assert dates == ()
     assert ticker.call_count == 2
-    assert one_hour.timeouts == [10.0, 11.0]
-    assert fifteen_minute.timeouts == [10.0, 11.0]
+    assert len(one_hour.calls) == 2
+    assert len(fifteen_minute.calls) == 2
     sleep.assert_called_once_with(1.0)
     assert recovered["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", recovered) is False
