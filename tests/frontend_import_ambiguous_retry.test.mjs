@@ -26,6 +26,14 @@ const canonicalComponentSource = fs.readFileSync(
   new URL('../src/components/BrokerNeutralImportPreview.vue', import.meta.url),
   'utf8',
 );
+const mappedComponentSource = fs.readFileSync(
+  new URL('../src/components/BrokerNeutralColumnMapping.vue', import.meta.url),
+  'utf8',
+);
+const ibkrComponentSource = fs.readFileSync(
+  new URL('../src/components/IbkrTradeImport.vue', import.meta.url),
+  'utf8',
+);
 
 test('retry candidate is limited to ambiguous partial failures', () => {
   assert.equal(isAmbiguousImportRetryCandidate(ambiguousResult), true);
@@ -196,4 +204,25 @@ test('canonical UI invalidates result on profile edit and reconciles before stab
   assert.match(canonicalComponentSource, /prepareAmbiguousImportRetry\(priorResult/);
   assert.match(canonicalComponentSource, /reconcile:\s*\(\) => portfolioStore\.fetchAll\(\)/);
   assert.match(canonicalComponentSource, /await executePreparedImport\(prepared, owner\)/);
+});
+
+test('mapped and IBKR UIs preserve exact source identity and reuse the guarded retry gate', () => {
+  assert.match(mappedComponentSource, /@input="invalidateImportResult"/);
+  assert.match(mappedComponentSource, /:retry-available="canRetryAmbiguous"/);
+  assert.match(mappedComponentSource, /@retry="retryAmbiguousImport"/);
+  assert.match(mappedComponentSource, /prepared = await prepareCurrentImport\(\)/);
+  assert.match(mappedComponentSource, /prepareAmbiguousImportRetry\(priorResult/);
+  assert.match(mappedComponentSource, /reconcile:\s*\(\) => portfolioStore\.fetchAll\(\)/);
+  assert.match(mappedComponentSource, /await executePreparedImport\(prepared, owner\)/);
+
+  const markProfileStart = ibkrComponentSource.indexOf('const markProfileDirty =');
+  const rebuildStart = ibkrComponentSource.indexOf('const rebuildPreview =');
+  assert.ok(markProfileStart >= 0 && rebuildStart > markProfileStart);
+  assert.match(ibkrComponentSource.slice(markProfileStart, rebuildStart), /result\.value = null/);
+  assert.match(ibkrComponentSource, /:retry-available="canRetryAmbiguous"/);
+  assert.match(ibkrComponentSource, /@retry="retryAmbiguousImport"/);
+  assert.match(ibkrComponentSource, /const retryEntries = preview\.value\.entries/);
+  assert.match(ibkrComponentSource, /prepareAmbiguousImportRetry\(priorResult/);
+  assert.match(ibkrComponentSource, /reconcile:\s*\(\) => portfolioStore\.fetchAll\(\)/);
+  assert.match(ibkrComponentSource, /await executeCurrentImport\(owner\)/);
 });
