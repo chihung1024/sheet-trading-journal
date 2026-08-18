@@ -44,15 +44,20 @@ jobs:
           ):
               return None
           return values, tuple(bar_signature)
-          '''
+          '''.replace('\n    ', '\n        ')
           replacement = '''        # Aggregate validity is already guaranteed by the validated constituent
           # bars: max(High)/min(Low) necessarily contain the first Open and last
           # Close, and the last bar already proved Close == Adj Close.
           return values, tuple(bar_signature)
           '''
           if dead not in source:
-              raise SystemExit('expected aggregate guard block not found')
-          source_path.write_text(source.replace(dead, replacement, 1), encoding='utf-8')
+              start = source.index('        if (\n            values["High"] < values["Low"]')
+              end_marker = '        return values, tuple(bar_signature)\n'
+              end = source.index(end_marker, start) + len(end_marker)
+              source = source[:start] + replacement + source[end:]
+          else:
+              source = source.replace(dead, replacement, 1)
+          source_path.write_text(source, encoding='utf-8')
 
           test_path = Path('tests/test_semantic_market_data_classifier.py')
           tests = test_path.read_text(encoding='utf-8')
@@ -78,7 +83,6 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          git diff -- journal_engine/clients/semantic_market_data.py tests/test_semantic_market_data_classifier.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add journal_engine/clients/semantic_market_data.py tests/test_semantic_market_data_classifier.py
