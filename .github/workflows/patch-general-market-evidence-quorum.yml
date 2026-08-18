@@ -38,7 +38,7 @@ jobs:
               assert dates == ()
               assert ticker.call_count == 1
           '''.replace('\n              ', '\n')
-          new = '''def test_exact_date_intraday_recovery_exhausts_quorum_when_all_representations_invalid():
+          new = '''def test_exact_date_intraday_recovery_stops_when_quorum_becomes_impossible():
               client = SemanticMarketDataClient()
               frame = _prepared_partial_row()
               with patch(
@@ -49,7 +49,7 @@ jobs:
           
               assert result is frame
               assert dates == ()
-              assert ticker.call_count == 3
+              assert ticker.call_count == 2
           '''.replace('\n              ', '\n')
           if old not in text:
               raise RuntimeError('obsolete fail-fast test contract not found')
