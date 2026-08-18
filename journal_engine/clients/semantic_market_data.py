@@ -8,7 +8,15 @@ malformed market data while allowing two evidence-based recovery paths:
    independent raw regular-session granularities (1h and 15m) from the same
    Yahoo/yfinance provider for the exact affected calendar date. Each granularity must
    contain multiple structurally valid price bars and both must reconstruct the same
-   daily OHLC/adjusted-close observation. Completely empty keepna buckets are ignored;
+   daily OHLC/adjusted-close observation. If the two representations transiently
+   disagree, one bounded fresh cross-granularity re-observation is allowed. Freshness
+   itself is owned by :class:`YahooIntradayEvidenceSession`, which explicitly bypasses
+   yfinance's historical-response LRU without changing market query semantics. Each
+   granularity is fetched and validated lazily inside the same freshness boundary, so
+   invalid 1h evidence prevents an unnecessary 15m request. The second observation is
+   accepted only when both fresh representations converge to a value already observed
+   in the first round. Persistent disagreement remains fail-closed. Completely empty
+   keepna buckets are ignored only when they carry no contradictory non-zero volume;
    partially populated or contradictory bars remain fail-closed. Only price fields are
    replaced; the original daily volume and corporate-action evidence stay authoritative.
 2. If exact-date intraday recovery is unavailable, a proven pure positive
@@ -25,17 +33,24 @@ from __future__ import annotations
 import logging
 import math
 import threading
+import time
 from typing import Any
 
 import pandas as pd
 import yfinance as yf
 
 from .market_data import VALUATION_SOURCE_COLUMN, VALUATION_SOURCE_DATE_COLUMN, MarketDataClient
+from .yahoo_intraday_evidence import (
+    INTRADAY_EVIDENCE_INTERVALS,
+    YahooIntradayEvidenceError,
+    YahooIntradayEvidenceSession,
+)
 
 logger = logging.getLogger(__name__)
 _RAW_PRICE_COLUMNS = ("Open", "High", "Low", "Close", "Adj Close")
 _REQUIRED_ACTION_COLUMNS = ("Dividends", "Stock Splits")
-_INTRADAY_RECOVERY_INTERVALS = ("1h", "15m")
+_MAX_INTRADAY_OBSERVATION_ROUNDS = 2
+_INTRADAY_REOBSERVATION_DELAY_SECONDS = 1.0
 _MAX_NARROW_RECOVERY_ROWS = 5
 _MIN_INTRADAY_BARS = 2
 _PRICE_REL_TOL = 1e-7
@@ -118,10 +133,6 @@ class SemanticMarketDataClient(MarketDataClient):
                 )
                 if empty_volume is not None and empty_volume != 0.0:
                     return None
-                # keepna=True intentionally preserves no-trade buckets for sparse
-                # symbols. A fully empty price bucket is absence of evidence only
-                # when it also carries no contradictory non-zero volume. Partial
-                # buckets and price-empty traded buckets remain fail-closed.
                 continue
             if not all(present):
                 return None
@@ -164,9 +175,6 @@ class SemanticMarketDataClient(MarketDataClient):
             "Close": valid_bars[-1][1]["Close"],
             "Adj Close": valid_bars[-1][1]["Adj Close"],
         }
-        # Aggregate validity is already guaranteed by the validated constituent
-        # bars: max(High)/min(Low) necessarily contain the first Open and last
-        # Close, and the last bar already proved Close == Adj Close.
         return values, tuple(bar_signature)
 
     @staticmethod
@@ -286,60 +294,115 @@ class SemanticMarketDataClient(MarketDataClient):
                 return frame, ()
             original_row = original_rows.iloc[0]
             original_actions = self._action_signature_from_row(original_row)
-            # Intraday price evidence is never a corporate-action authority. Only a
-            # proven zero-action daily row may enter this price-only recovery path.
             if original_actions != (0.0, 0.0, 0.0):
                 return frame, ()
             original_volume = self._finite_number(original_row.get("Volume"))
             if original_volume is None or original_volume < 0.0:
                 return frame, ()
 
-            candidates: dict[str, dict[str, float]] = {}
-            for interval in _INTRADAY_RECOVERY_INTERVALS:
+            try:
+                evidence_session = YahooIntradayEvidenceSession(
+                    str(symbol),
+                    ticker_factory=yf.Ticker,
+                    intervals=INTRADAY_EVIDENCE_INTERVALS,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[%s] exact-date Yahoo intraday evidence session could not be created for %s: %s",
+                    symbol,
+                    event_date.strftime("%Y-%m-%d"),
+                    exc,
+                )
+                return frame, ()
+
+            prior_disagreement: tuple[dict[str, float], dict[str, float]] | None = None
+            consensus: dict[str, float] | None = None
+
+            for observation_round in range(_MAX_INTRADAY_OBSERVATION_ROUNDS):
+                candidates: dict[str, dict[str, float]] = {}
                 try:
-                    intraday = yf.Ticker(symbol).history(
-                        start=event_date,
-                        end=event_date + pd.Timedelta(days=1),
-                        interval=interval,
-                        auto_adjust=False,
-                        actions=False,
-                        prepost=False,
-                        repair=False,
-                        keepna=True,
-                    )
-                except Exception as exc:
+                    with evidence_session.observation(event_date) as observation:
+                        for interval in INTRADAY_EVIDENCE_INTERVALS:
+                            intraday = observation.fetch(interval)
+                            candidate = self._complete_intraday_price_candidate(
+                                intraday,
+                                event_date,
+                            )
+                            if candidate is None:
+                                logger.warning(
+                                    "[%s] exact-date raw intraday evidence invalid for %s interval=%s round=%s; fail closed",
+                                    symbol,
+                                    event_date.strftime("%Y-%m-%d"),
+                                    interval,
+                                    observation_round + 1,
+                                )
+                                return frame, ()
+                            candidates[interval] = candidate[0]
+                except YahooIntradayEvidenceError as exc:
                     logger.warning(
-                        "[%s] exact-date raw intraday recovery request failed for %s interval=%s: %s",
+                        "[%s] exact-date fresh Yahoo intraday observation failed for %s round=%s: %s",
                         symbol,
                         event_date.strftime("%Y-%m-%d"),
-                        interval,
+                        observation_round + 1,
                         exc,
                     )
                     return frame, ()
-                candidate = self._complete_intraday_price_candidate(intraday, event_date)
-                if candidate is None:
+
+                first_interval, second_interval = INTRADAY_EVIDENCE_INTERVALS
+                first = candidates[first_interval]
+                second = candidates[second_interval]
+                if self._intraday_price_candidates_agree(first, second):
+                    if prior_disagreement is not None:
+                        if not (
+                            self._intraday_price_candidates_agree(first, prior_disagreement[0])
+                            or self._intraday_price_candidates_agree(first, prior_disagreement[1])
+                        ):
+                            logger.warning(
+                                "[%s] exact-date raw intraday evidence converged to an unobserved third value for %s; fail closed: prior=%s current=%s",
+                                symbol,
+                                event_date.strftime("%Y-%m-%d"),
+                                prior_disagreement,
+                                first,
+                            )
+                            return frame, ()
+                        logger.warning(
+                            "[%s] exact-date raw intraday granularities converged after bounded fresh re-observation for %s: consensus=%s",
+                            symbol,
+                            event_date.strftime("%Y-%m-%d"),
+                            first,
+                        )
+                    consensus = first
+                    break
+
+                if observation_round + 1 >= _MAX_INTRADAY_OBSERVATION_ROUNDS:
                     logger.warning(
-                        "[%s] exact-date raw intraday evidence invalid for %s interval=%s; fail closed",
+                        "[%s] exact-date raw intraday granularities still disagree after %s fresh observations for %s (%s=%s vs %s=%s); fail closed",
                         symbol,
+                        _MAX_INTRADAY_OBSERVATION_ROUNDS,
                         event_date.strftime("%Y-%m-%d"),
-                        interval,
+                        first_interval,
+                        first,
+                        second_interval,
+                        second,
                     )
                     return frame, ()
-                candidates[interval] = candidate[0]
 
-            first_interval, second_interval = _INTRADAY_RECOVERY_INTERVALS
-            first = candidates[first_interval]
-            second = candidates[second_interval]
-            if not self._intraday_price_candidates_agree(first, second):
+                prior_disagreement = (first, second)
                 logger.warning(
-                    "[%s] exact-date raw intraday granularities disagree for %s (%s vs %s); fail closed",
+                    "[%s] exact-date raw intraday granularities disagree for %s (%s=%s vs %s=%s); bounded fresh re-observation 1/%s",
                     symbol,
                     event_date.strftime("%Y-%m-%d"),
                     first_interval,
+                    first,
                     second_interval,
+                    second,
+                    _MAX_INTRADAY_OBSERVATION_ROUNDS - 1,
                 )
+                time.sleep(_INTRADAY_REOBSERVATION_DELAY_SECONDS)
+
+            if consensus is None:
                 return frame, ()
-            staged[event_date] = first
+            staged[event_date] = consensus
 
         work = normalized_frame.copy(deep=True)
         for event_date, values in staged.items():

@@ -61,6 +61,7 @@
       "journal_engine/clients/auto_price_selector.py",
       "journal_engine/clients/market_data.py",
       "journal_engine/clients/semantic_market_data.py",
+      "journal_engine/clients/yahoo_intraday_evidence.py",
       "journal_engine/config.py",
       "journal_engine/core/__init__.py",
       "journal_engine/core/account_daily_pnl_preview.py",
