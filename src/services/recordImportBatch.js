@@ -3,14 +3,59 @@ const requireFunction = (value, label) => {
   return value;
 };
 
+const freezeItem = item => Object.freeze({
+  ...item,
+  sourceReference: item.sourceReference ? Object.freeze({ ...item.sourceReference }) : null,
+});
+
 const freezeResult = value => Object.freeze({
   ...value,
+  items: Object.freeze((value.items || []).map(freezeItem)),
   failure: value.failure ? Object.freeze(value.failure) : null,
   sync: Object.freeze({
     ...value.sync,
     recoveryWarnings: Object.freeze(value.sync.recoveryWarnings || []),
     metadataWarnings: Object.freeze(value.sync.metadataWarnings || []),
   }),
+});
+
+const sourceReferenceForEntry = (entry, index) => {
+  if (Number.isSafeInteger(entry?.sourceRecordNumber) && entry.sourceRecordNumber > 0) {
+    return { kind: 'source_record', value: entry.sourceRecordNumber };
+  }
+  if (Number.isSafeInteger(entry?.rowNumber) && entry.rowNumber > 0) {
+    return { kind: 'source_row', value: entry.rowNumber };
+  }
+  if (Number.isSafeInteger(entry?.source?.firstRowNumber) && entry.source.firstRowNumber > 0) {
+    return { kind: 'source_row', value: entry.source.firstRowNumber };
+  }
+  return { kind: 'import_index', value: index + 1 };
+};
+
+const committedReceiptItem = (entry, index, outcome) => ({
+  index,
+  position: index + 1,
+  sourceReference: sourceReferenceForEntry(entry, index),
+  status: outcome.deduplicated === true ? 'replayed' : 'created',
+  committed: true,
+  outcomeAmbiguous: false,
+  metadataUpdated: outcome.metadataUpdated === true,
+  metadataWarning: Boolean(outcome.metadataEnrichmentError),
+  metadataOutcomeAmbiguous: outcome.metadataOutcomeAmbiguous === true,
+  recoveryWarning: Boolean(outcome.recoveryStateError),
+});
+
+const failedReceiptItem = (entry, index, error) => ({
+  index,
+  position: index + 1,
+  sourceReference: sourceReferenceForEntry(entry, index),
+  status: error?.outcomeAmbiguous === true ? 'ambiguous' : 'rejected',
+  committed: false,
+  outcomeAmbiguous: error?.outcomeAmbiguous === true,
+  metadataUpdated: false,
+  metadataWarning: false,
+  metadataOutcomeAmbiguous: false,
+  recoveryWarning: false,
 });
 
 export const runRecordImportBatch = async (
@@ -35,6 +80,7 @@ export const runRecordImportBatch = async (
   let metadataUpdated = 0;
   const recoveryWarnings = [];
   const metadataWarnings = [];
+  const items = [];
 
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
@@ -66,7 +112,9 @@ export const runRecordImportBatch = async (
           deduplicated: outcome.deduplicated === true,
         }));
       }
+      items.push(committedReceiptItem(entry, index, outcome));
     } catch (error) {
+      items.push(failedReceiptItem(entry, index, error));
       failure = {
         index,
         entry,
@@ -116,16 +164,23 @@ export const runRecordImportBatch = async (
     metadataWarnings,
   };
 
+  const common = {
+    total: entries.length,
+    attempted: items.length,
+    unattempted: Math.max(0, entries.length - items.length),
+    processed,
+    created,
+    replayed,
+    metadataUpdated,
+    items,
+    sync,
+  };
+
   if (failure) {
     return freezeResult({
       status: processed > 0 || failure.outcomeAmbiguous ? 'partial_failure' : 'failed',
-      total: entries.length,
-      processed,
-      created,
-      replayed,
-      metadataUpdated,
+      ...common,
       failure,
-      sync,
     });
   }
 
@@ -139,24 +194,20 @@ export const runRecordImportBatch = async (
   if (created === 0) {
     return freezeResult({
       status: hasSyncWarning ? 'replayed_with_sync_warning' : 'replayed',
-      total: entries.length,
-      processed,
-      created,
-      replayed,
-      metadataUpdated,
+      ...common,
       failure: null,
-      sync,
     });
   }
 
   return freezeResult({
     status: hasSyncWarning ? 'committed_with_sync_warning' : 'committed',
-    total: entries.length,
-    processed,
-    created,
-    replayed,
-    metadataUpdated,
+    ...common,
     failure: null,
-    sync,
   });
 };
+
+export const __test = Object.freeze({
+  sourceReferenceForEntry,
+  committedReceiptItem,
+  failedReceiptItem,
+});
