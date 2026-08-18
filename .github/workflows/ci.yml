@@ -11,84 +11,143 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  probe-update-3320-disagreement:
-    name: Probe Update Portfolio Data #3320 disagreement
+  apply-stabilized-cross-granularity-recovery:
+    name: Apply stabilized cross-granularity recovery
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     steps:
-      - name: Checkout diagnostic branch
+      - name: Checkout target branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: diagnostic/update-portfolio-3317
+          ref: fix/market-data-stabilized-cross-granularity
           fetch-depth: 1
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.10'
-      - name: Install production market-data stack
-        run: python -m pip install --disable-pip-version-check yfinance==1.5.2 pandas==2.3.3 numpy==2.2.6
-      - name: Measure 1h versus 15m reconstructed price deltas
+      - name: Patch bounded convergence protocol
         run: |
           python - <<'PY'
-          import json, math, time
-          import pandas as pd
-          import yfinance as yf
-
-          target = pd.Timestamp('2026-08-17')
-          symbols = ('DELL','UNH','WMB')
-          intervals = ('1h','15m')
-          cols = ('Open','High','Low','Close','Adj Close')
-
-          def finite(v):
-              try: v=float(v)
-              except (TypeError,ValueError): return None
-              return v if math.isfinite(v) else None
-
-          def aggregate(frame):
-              idx=pd.to_datetime(frame.index,errors='coerce')
-              work=frame.copy(); work.index=idx
-              day=work[[not pd.isna(t) and t.date()==target.date() for t in idx]]
-              bars=[]; empty=partial=0
-              for ts,row in day.iterrows():
-                  vals={c:finite(row[c]) if c in row.index else None for c in cols}
-                  present=[v is not None for v in vals.values()]
-                  if not any(present): empty+=1; continue
-                  if not all(present): partial+=1; continue
-                  bars.append((ts,vals))
-              if len(bars)<2 or partial:
-                  return {'raw':len(day),'valid':len(bars),'empty':empty,'partial':partial,'aggregate':None}
-              return {'raw':len(day),'valid':len(bars),'empty':empty,'partial':partial,'aggregate':{
-                  'Open':bars[0][1]['Open'], 'High':max(x[1]['High'] for x in bars),
-                  'Low':min(x[1]['Low'] for x in bars), 'Close':bars[-1][1]['Close'],
-                  'Adj Close':bars[-1][1]['Adj Close']}}
-
-          out=[]
-          for symbol in symbols:
-              attempts=[]
-              for n in range(3):
-                  item={'attempt':n+1}
-                  for interval in intervals:
-                      try:
-                          f=yf.Ticker(symbol).history(start=target,end=target+pd.Timedelta(days=1),interval=interval,auto_adjust=False,actions=False,prepost=False,repair=False,keepna=True)
-                          item[interval]=aggregate(f)
-                      except Exception as exc:
-                          item[interval]={'error':f'{type(exc).__name__}: {exc}'}
-                  a=item.get('1h',{}).get('aggregate'); b=item.get('15m',{}).get('aggregate')
-                  if a and b:
-                      item['delta']={c:b[c]-a[c] for c in cols}
-                      item['abs_delta']={c:abs(b[c]-a[c]) for c in cols}
-                      item['relative_delta']={c:abs(b[c]-a[c])/max(abs(a[c]),abs(b[c])) for c in cols}
-                  attempts.append(item); time.sleep(1)
-              out.append({'symbol':symbol,'attempts':attempts})
           from pathlib import Path
-          Path('docs/diagnostic').mkdir(parents=True,exist_ok=True)
-          Path('docs/diagnostic/update-3320-deltas.json').write_text(json.dumps(out,indent=2,sort_keys=True),encoding='utf-8')
+          import re
+
+          path=Path('journal_engine/clients/semantic_market_data.py')
+          text=path.read_text(encoding='utf-8')
+          text=text.replace('import threading\n', 'import threading\nimport time\n', 1)
+          text=text.replace(
+              '_INTRADAY_RECOVERY_INTERVALS = ("1h", "15m")\n',
+              '_INTRADAY_RECOVERY_INTERVALS = ("1h", "15m")\n_INTRADAY_RECOVERY_ROUNDS = 2\n_INTRADAY_REOBSERVATION_DELAY_SECONDS = 1.0\n',
+              1,
+          )
+          pattern=re.compile(
+              r'            candidates: dict\[str, dict\[str, float\]\] = \{\}\n'
+              r'.*?'
+              r'            staged\[event_date\] = first\n',
+              re.S,
+          )
+          replacement='''            prior_disagreement: tuple[dict[str, float], dict[str, float]] | None = None
+            consensus: dict[str, float] | None = None
+            for observation_round in range(_INTRADAY_RECOVERY_ROUNDS):
+                candidates: dict[str, dict[str, float]] = {}
+                for interval in _INTRADAY_RECOVERY_INTERVALS:
+                    try:
+                        intraday = yf.Ticker(symbol).history(
+                            start=event_date,
+                            end=event_date + pd.Timedelta(days=1),
+                            interval=interval,
+                            auto_adjust=False,
+                            actions=False,
+                            prepost=False,
+                            repair=False,
+                            keepna=True,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "[%s] exact-date raw intraday recovery request failed for %s interval=%s round=%s: %s",
+                            symbol,
+                            event_date.strftime("%Y-%m-%d"),
+                            interval,
+                            observation_round + 1,
+                            exc,
+                        )
+                        return frame, ()
+                    candidate = self._complete_intraday_price_candidate(intraday, event_date)
+                    if candidate is None:
+                        logger.warning(
+                            "[%s] exact-date raw intraday evidence invalid for %s interval=%s round=%s; fail closed",
+                            symbol,
+                            event_date.strftime("%Y-%m-%d"),
+                            interval,
+                            observation_round + 1,
+                        )
+                        return frame, ()
+                    candidates[interval] = candidate[0]
+
+                first_interval, second_interval = _INTRADAY_RECOVERY_INTERVALS
+                first = candidates[first_interval]
+                second = candidates[second_interval]
+                if self._intraday_price_candidates_agree(first, second):
+                    if prior_disagreement is not None:
+                        if not (
+                            self._intraday_price_candidates_agree(first, prior_disagreement[0])
+                            or self._intraday_price_candidates_agree(first, prior_disagreement[1])
+                        ):
+                            logger.warning(
+                                "[%s] exact-date raw intraday evidence converged to an unobserved third value for %s; fail closed: prior=%s current=%s",
+                                symbol,
+                                event_date.strftime("%Y-%m-%d"),
+                                prior_disagreement,
+                                first,
+                            )
+                            return frame, ()
+                        logger.warning(
+                            "[%s] exact-date raw intraday granularities converged after bounded re-observation for %s: consensus=%s",
+                            symbol,
+                            event_date.strftime("%Y-%m-%d"),
+                            first,
+                        )
+                    consensus = first
+                    break
+
+                if observation_round + 1 >= _INTRADAY_RECOVERY_ROUNDS:
+                    logger.warning(
+                        "[%s] exact-date raw intraday granularities still disagree after %s rounds for %s (%s=%s vs %s=%s); fail closed",
+                        symbol,
+                        _INTRADAY_RECOVERY_ROUNDS,
+                        event_date.strftime("%Y-%m-%d"),
+                        first_interval,
+                        first,
+                        second_interval,
+                        second,
+                    )
+                    return frame, ()
+
+                prior_disagreement = (first, second)
+                logger.warning(
+                    "[%s] exact-date raw intraday granularities disagree for %s (%s=%s vs %s=%s); bounded re-observation 1/%s",
+                    symbol,
+                    event_date.strftime("%Y-%m-%d"),
+                    first_interval,
+                    first,
+                    second_interval,
+                    second,
+                    _INTRADAY_RECOVERY_ROUNDS - 1,
+                )
+                time.sleep(_INTRADAY_REOBSERVATION_DELAY_SECONDS)
+
+            if consensus is None:
+                return frame, ()
+            staged[event_date] = consensus
+'''
+          text,n=pattern.subn(replacement,text,count=1)
+          if n!=1:
+              raise SystemExit(f'expected one recovery block, replaced {n}')
+          path.write_text(text,encoding='utf-8')
           PY
-      - name: Commit probe evidence
+          python -m py_compile journal_engine/clients/semantic_market_data.py
+          git diff --check
+      - name: Commit target branch patch
         run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/diagnostic/update-3320-deltas.json
-          git commit -m 'chore: capture Update Portfolio Data 3320 price deltas' || exit 0
-          git push origin HEAD:diagnostic/update-portfolio-3317
+          git add journal_engine/clients/semantic_market_data.py
+          git commit -m 'fix: stabilize cross-granularity market evidence'
+          git push origin HEAD:fix/market-data-stabilized-cross-granularity
