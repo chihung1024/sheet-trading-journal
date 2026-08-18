@@ -10,7 +10,7 @@
     <button
       type="button"
       class="import-button"
-      :disabled="importing"
+      :disabled="importing || retrying"
       title="從 IBKR Activity / Flex CSV 匯入股票成交"
       @click="chooseFile"
     >
@@ -34,7 +34,7 @@
             <button
               type="button"
               class="close-button"
-              :disabled="importing"
+              :disabled="importing || retrying"
               aria-label="關閉 IBKR 匯入"
               @click="closeDialog"
             >✕</button>
@@ -73,14 +73,14 @@
                   type="text"
                   maxlength="64"
                   autocomplete="off"
-                  :disabled="reading || importing"
+                  :disabled="reading || importing || retrying"
                   placeholder="例如：IBKR 主帳戶"
                   @input="markProfileDirty"
                 >
                 <button
                   type="button"
                   class="secondary-button profile-apply"
-                  :disabled="reading || importing || !fileContents || !profileDirty"
+                  :disabled="reading || importing || retrying || !fileContents || !profileDirty"
                   @click="rebuildPreview"
                 >重新檢查</button>
               </div>
@@ -148,11 +148,16 @@
               <strong>{{ resultTitle }}</strong>
               <p>{{ resultMessage }}</p>
             </div>
-            <ImportReconciliationReceipt :result="result" />
+            <ImportReconciliationReceipt
+              :result="result"
+              :retry-available="canRetryAmbiguous"
+              :retrying="retrying"
+              @retry="retryAmbiguousImport"
+            />
           </template>
 
           <footer class="dialog-actions">
-            <button type="button" class="secondary-button" :disabled="importing" @click="closeDialog">
+            <button type="button" class="secondary-button" :disabled="importing || retrying" @click="closeDialog">
               {{ result ? '關閉' : '取消' }}
             </button>
             <button
@@ -182,6 +187,11 @@ import { deriveIbkrImportProfile } from '../services/ibkrImportProfile.js';
 import { createIbkrRecord } from '../services/ibkrRecordCreate.js';
 import { parseIbkrTradeCsv } from '../services/ibkrTradeImport.js';
 import { runIbkrTradeImportBatch } from '../services/ibkrTradeImportBatch.js';
+import {
+  IMPORT_AMBIGUOUS_RETRY_REASON,
+  isAmbiguousImportRetryCandidate,
+  prepareAmbiguousImportRetry,
+} from '../services/importAmbiguousRetry.js';
 
 const authStore = useAuthStore();
 const portfolioStore = usePortfolioStore();
@@ -191,6 +201,7 @@ const fileInput = ref(null);
 const showDialog = ref(false);
 const reading = ref(false);
 const importing = ref(false);
+const retrying = ref(false);
 const fileName = ref('');
 const fileContents = ref('');
 const profileName = ref('');
@@ -203,6 +214,15 @@ const progress = ref({ current: 0, total: 0 });
 
 const progressText = computed(() => (
   progress.value.total > 0 ? `${progress.value.current}/${progress.value.total}` : ''
+));
+const canRetryAmbiguous = computed(() => (
+  !reading.value
+  && !importing.value
+  && !retrying.value
+  && !profileDirty.value
+  && fileContents.value.length > 0
+  && preview.value?.entries?.length > 0
+  && isAmbiguousImportRetryCandidate(result.value)
 ));
 
 const resultTone = computed(() => {
@@ -234,7 +254,7 @@ const resultMessage = computed(() => {
   const withMetadata = suffix => [base, metadataSummary, metadataWarning, suffix].filter(Boolean).join(' ');
   if (result.value.status === 'partial_failure') {
     const ambiguity = result.value.failure?.outcomeAmbiguous === true
-      ? '最後一筆回應不確定，請直接重新匯入同一檔案確認；已成功項目不會重複新增。'
+      ? '最後一筆回應不確定。可使用逐筆結果中的「安全續傳」先確認既有未定結果，再以相同來源識別續跑；已成功項目不會重複新增。'
       : '後續寫入已停止。修正問題後可重新匯入同一檔案；已成功項目不會重複新增。';
     return withMetadata(ambiguity);
   }
@@ -259,13 +279,14 @@ const resultMessage = computed(() => {
 });
 
 const chooseFile = () => {
-  if (importing.value) return;
+  if (importing.value || retrying.value) return;
   fileInput.value?.click();
 };
 
 const resetState = () => {
   reading.value = false;
   importing.value = false;
+  retrying.value = false;
   fileName.value = '';
   fileContents.value = '';
   profileName.value = '';
@@ -278,7 +299,7 @@ const resetState = () => {
 };
 
 const closeDialog = () => {
-  if (importing.value) return;
+  if (importing.value || retrying.value) return;
   showDialog.value = false;
   resetState();
 };
@@ -286,10 +307,11 @@ const closeDialog = () => {
 const markProfileDirty = () => {
   profileDirty.value = true;
   profileError.value = '';
+  result.value = null;
 };
 
 const rebuildPreview = async ({ notifyIfEmpty = true } = {}) => {
-  if (!fileContents.value || importing.value) return;
+  if (!fileContents.value || importing.value || retrying.value) return;
   reading.value = true;
   result.value = null;
   profileError.value = '';
@@ -313,7 +335,7 @@ const rebuildPreview = async ({ notifyIfEmpty = true } = {}) => {
 const handleFileChange = async (event) => {
   const file = event.target?.files?.[0];
   if (fileInput.value) fileInput.value.value = '';
-  if (!file) return;
+  if (!file || retrying.value) return;
 
   resetState();
   showDialog.value = true;
@@ -331,13 +353,11 @@ const handleFileChange = async (event) => {
   }
 };
 
-const confirmImport = async () => {
-  if (importing.value || profileDirty.value || !preview.value?.entries?.length) return;
+const executeCurrentImport = async (owner) => {
   importing.value = true;
   result.value = null;
   progress.value = { current: 0, total: preview.value.entries.length };
 
-  const owner = authStore.user?.email || '';
   try {
     result.value = await runIbkrTradeImportBatch(preview.value.entries, {
       createRecord: async (entry) => {
@@ -381,6 +401,58 @@ const confirmImport = async () => {
     addToast('IBKR 匯入未完成，沒有足夠證據宣告寫入成功', 'error');
   } finally {
     importing.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  if (importing.value || retrying.value || profileDirty.value || !preview.value?.entries?.length) return;
+  const owner = authStore.user?.email || '';
+  if (!owner || !authStore.token) {
+    addToast('請先登入再執行 IBKR 匯入', 'error');
+    return;
+  }
+  await executeCurrentImport(owner);
+};
+
+const retryAmbiguousImport = async () => {
+  if (!canRetryAmbiguous.value) return;
+  const priorResult = result.value;
+  const retryEntries = preview.value.entries;
+
+  const confirmation = [
+    `安全續傳 ${retryEntries.length} 筆 IBKR 交易？`,
+    '系統會先確認既有未定交易；確認完成後才以目前仍在記憶體中的相同來源識別重播整批。',
+    '已確認項目會由伺服器判定為安全重播，不會用交易欄位相似度猜測重複。',
+  ].join('\n');
+  if (!window.confirm(confirmation)) return;
+
+  const owner = authStore.user?.email || '';
+  if (!owner || !authStore.token) {
+    addToast('請先登入再執行安全續傳', 'error');
+    return;
+  }
+
+  retrying.value = true;
+  try {
+    const gate = await prepareAmbiguousImportRetry(priorResult, {
+      entries: retryEntries,
+      storage: window.localStorage,
+      owner,
+      reconcile: () => portfolioStore.fetchAll(),
+    });
+
+    if (!gate.ready) {
+      if (gate.reason === IMPORT_AMBIGUOUS_RETRY_REASON.RECONCILIATION_PENDING) {
+        addToast('系統仍在確認先前未定的交易結果；目前不會重送整批。', 'info');
+      } else if (gate.reason === IMPORT_AMBIGUOUS_RETRY_REASON.RECOVERY_STATE_UNAVAILABLE) {
+        addToast('無法安全確認本機恢復狀態；目前不會重送整批。', 'error');
+      }
+      return;
+    }
+
+    await executeCurrentImport(owner);
+  } finally {
+    retrying.value = false;
   }
 };
 
