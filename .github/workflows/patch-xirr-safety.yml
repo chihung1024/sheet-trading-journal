@@ -1,0 +1,146 @@
+name: Apply XIRR safety-domain normalization
+
+on:
+  push:
+    branches:
+      - fix/xirr-safety-domain-normalization
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/xirr-safety-domain-normalization
+          fetch-depth: 1
+          persist-credentials: true
+      - name: Normalize XIRR solver outputs at the metric boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('journal_engine/core/performance_metrics.py')
+          s = p.read_text(encoding='utf-8')
+          needle = 'from pyxirr import xirr as pyxirr_xirr\n\n\n@dataclass(frozen=True)\n'
+          repl = 'from pyxirr import xirr as pyxirr_xirr\n\n\nMAX_SUPPORTED_ABS_XIRR_PERCENT = 1_000_000.0\n\n\n@dataclass(frozen=True)\n'
+          if needle not in s:
+              raise SystemExit('performance_metrics constant insertion point not found')
+          s = s.replace(needle, repl, 1)
+          needle = '''    if not math.isfinite(value_percent):
+        return XirrMetric(
+            0.0,
+            "undefined",
+            "solver_non_finite",
+            normalized_terminal_date.isoformat(),
+            conventional,
+        )
+
+    return XirrMetric(
+'''
+          repl = '''    if not math.isfinite(value_percent):
+        return XirrMetric(
+            0.0,
+            "undefined",
+            "solver_non_finite",
+            normalized_terminal_date.isoformat(),
+            conventional,
+        )
+    if abs(value_percent) > MAX_SUPPORTED_ABS_XIRR_PERCENT:
+        return XirrMetric(
+            0.0,
+            "undefined",
+            "solver_outside_supported_range",
+            normalized_terminal_date.isoformat(),
+            conventional,
+        )
+
+    return XirrMetric(
+'''
+          if needle not in s:
+              raise SystemExit('performance_metrics XIRR result block not found')
+          p.write_text(s.replace(needle, repl, 1), encoding='utf-8')
+
+          p = Path('journal_engine/core/validator.py')
+          s = p.read_text(encoding='utf-8')
+          needle = 'from ..models import PortfolioSnapshot\n\n\nlogger = logging.getLogger(__name__)\n'
+          repl = 'from ..models import PortfolioSnapshot\nfrom .performance_metrics import MAX_SUPPORTED_ABS_XIRR_PERCENT\n\n\nlogger = logging.getLogger(__name__)\n'
+          if needle not in s:
+              raise SystemExit('validator import insertion point not found')
+          s = s.replace(needle, repl, 1)
+          s = s.replace('if abs(numeric_value) > 1_000_000:', 'if abs(numeric_value) > MAX_SUPPORTED_ABS_XIRR_PERCENT:', 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('tests/test_performance_metrics.py')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              'from journal_engine.core.performance_metrics import XirrMetric, calculate_xirr_metric\n',
+              'from journal_engine.core.performance_metrics import (\n    MAX_SUPPORTED_ABS_XIRR_PERCENT,\n    XirrMetric,\n    calculate_xirr_metric,\n)\n',
+              1,
+          )
+          marker = '\n\ndef test_xirr_rejects_missing_sign_change_and_zero_date_span_before_solver():\n'
+          addition = '''
+
+def test_xirr_solver_result_outside_supported_domain_becomes_unavailable():
+    above_limit_rate = (MAX_SUPPORTED_ABS_XIRR_PERCENT + 1.0) / 100.0
+    result = calculate_xirr_metric(
+        [{"date": "2025-01-01", "amount": -100.0}],
+        120.0,
+        "2026-01-01",
+        solver=lambda dates, amounts: above_limit_rate,
+    )
+
+    assert result.value_percent == 0.0
+    assert result.status == "undefined"
+    assert result.reason == "solver_outside_supported_range"
+    assert result.asof_date == "2026-01-01"
+    assert result.cashflow_conventional is True
+
+
+def test_xirr_solver_result_at_supported_boundary_remains_valid():
+    boundary_rate = MAX_SUPPORTED_ABS_XIRR_PERCENT / 100.0
+    result = calculate_xirr_metric(
+        [{"date": "2025-01-01", "amount": -100.0}],
+        120.0,
+        "2026-01-01",
+        solver=lambda dates, amounts: boundary_rate,
+    )
+
+    assert result.value_percent == MAX_SUPPORTED_ABS_XIRR_PERCENT
+    assert result.status == "ok"
+    assert result.reason is None
+'''
+          if marker not in s:
+              raise SystemExit('performance_metrics test insertion point not found')
+          p.write_text(s.replace(marker, addition + marker, 1), encoding='utf-8')
+
+          p = Path('tests/test_xirr_metadata.py')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              'from journal_engine.core.validator import PortfolioValidator\n',
+              'from journal_engine.core.performance_metrics import MAX_SUPPORTED_ABS_XIRR_PERCENT\nfrom journal_engine.core.validator import PortfolioValidator\n',
+              1,
+          )
+          s += '''
+
+
+def test_validator_uses_same_supported_xirr_domain_as_metric_layer():
+    assert PortfolioValidator.validate_xirr_value(MAX_SUPPORTED_ABS_XIRR_PERCENT) is True
+    assert PortfolioValidator.validate_xirr_value(MAX_SUPPORTED_ABS_XIRR_PERCENT + 0.01) is False
+'''
+          p.write_text(s, encoding='utf-8')
+          PY
+          python -m compileall -q journal_engine tests
+          git diff --check
+      - name: Commit patch and remove one-off workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/patch-xirr-safety.yml
+          git add journal_engine/core/performance_metrics.py journal_engine/core/validator.py tests/test_performance_metrics.py tests/test_xirr_metadata.py
+          git commit -m 'fix: normalize XIRR outside supported safety domain'
+          git push origin HEAD:fix/xirr-safety-domain-normalization
