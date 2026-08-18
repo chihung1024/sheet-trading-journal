@@ -5,66 +5,36 @@ on:
 
 permissions:
   contents: read
-  actions: write
+  actions: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verify-update-3317-final-production:
-    name: Verify final Update Portfolio Data #3317 fix
+  inspect-update-3320-log:
+    name: Inspect Update Portfolio Data #3320 log
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 5
     steps:
-      - name: Dispatch exact merged main and require production success
+      - name: Extract recovery and validator evidence
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_MAIN_SHA: e89cf39463c69e83ffa1237554ac7d94aafaa44d
+          JOB_ID: '95669108505'
         run: |
           set -euo pipefail
-          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
-          headers=(
-            -H 'Accept: application/vnd.github+json'
-            -H "Authorization: Bearer $GH_TOKEN"
-            -H 'X-GitHub-Api-Version: 2022-11-28'
-          )
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs"
+          curl --silent --show-error --fail-with-body -L \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$api" > job.log
 
-          current_main="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/branches/main" | jq -r '.commit.sha')"
-          test "$current_main" = "$EXPECTED_MAIN_SHA"
+          echo '=== RECOVERY / VALIDATOR EVIDENCE ==='
+          grep -E -i \
+            'exact-date raw intraday|cross-validated|persistent invalid daily|invalid price data|MARKET_DATA_FAILED|granularit|fail closed|failed to recover|NaN' \
+            job.log | tail -n 500 || true
 
-          before="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
-          before_number="$(printf '%s' "$before" | jq '[.workflow_runs[].run_number] | max // 0')"
-
-          payload='{"ref":"main","inputs":{"custom_benchmark":"0050.TW","target_user_id":"","calculation_job_id":"","transaction_integrity_audit_only":"false"}}'
-          curl --silent --show-error --fail-with-body "${headers[@]}" \
-            -X POST "$api/actions/workflows/update.yml/dispatches" \
-            -H 'Content-Type: application/json' \
-            --data "$payload" >/dev/null
-
-          run_id=''
-          for _ in $(seq 1 30); do
-            response="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
-            run_id="$(printf '%s' "$response" | jq -r --arg sha "$EXPECTED_MAIN_SHA" --argjson before "$before_number" '.workflow_runs[] | select(.head_sha == $sha and .run_number > $before) | .id' | head -n1)"
-            if [[ -n "$run_id" && "$run_id" != "null" ]]; then
-              break
-            fi
-            sleep 5
-          done
-          test -n "$run_id"
-          printf 'PRODUCTION_RUN_ID=%s\n' "$run_id"
-
-          conclusion=''
-          for _ in $(seq 1 150); do
-            run="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/runs/$run_id")"
-            status="$(printf '%s' "$run" | jq -r '.status')"
-            conclusion="$(printf '%s' "$run" | jq -r '.conclusion // empty')"
-            if [[ "$status" == "completed" ]]; then
-              printf '%s\n' "$(printf '%s' "$run" | jq -c '{id,name,run_number,event,status,conclusion,head_sha,created_at,updated_at,html_url}')"
-              break
-            fi
-            sleep 5
-          done
-
-          test "$conclusion" = 'success'
+          echo '=== FINAL FAILURE CONTEXT ==='
+          tail -n 220 job.log
