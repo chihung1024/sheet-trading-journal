@@ -387,6 +387,9 @@ class SemanticMarketDataClient(MarketDataClient):
                 return frame, ()
             staged[event_date] = consensus
 
+        if not staged:
+            return frame, ()
+
         work = normalized_frame.copy(deep=True)
         for event_date, values in staged.items():
             for column, value in values.items():
