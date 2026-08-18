@@ -179,6 +179,8 @@ def annotate_twr_history(
             period_status = "undefined"
             period_reason = "negative_beginning_value"
         else:
+            # History stores user-facing net cash flow with the opposite sign from
+            # the Dietz external-flow convention used by the calculator.
             dietz_cashflow = -published_net_cashflow
 
             if beginning > epsilon:
