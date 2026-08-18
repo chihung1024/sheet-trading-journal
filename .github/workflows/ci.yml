@@ -5,66 +5,141 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verify-update-3317-fix:
-    name: Verify Update Portfolio Data 3317 fix
+  diagnose-update-3317-remaining:
+    name: Diagnose remaining Update Portfolio Data 3317 evidence
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - name: Dispatch merged main and require production success
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_MAIN_SHA: 533b076e4beba34b72549f5bb39b9588bb14724f
+      - name: Checkout merged main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 533b076e4beba34b72549f5bb39b9588bb14724f
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install production dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Probe remaining invalid symbols with exact production recovery args
         run: |
-          set -euo pipefail
-          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
-          headers=(
-            -H 'Accept: application/vnd.github+json'
-            -H "Authorization: Bearer $GH_TOKEN"
-            -H 'X-GitHub-Api-Version: 2022-11-28'
+          python - <<'PY'
+          import hashlib
+          import json
+          import math
+          import time
+
+          import pandas as pd
+          import yfinance as yf
+
+          from journal_engine.clients.semantic_market_data import SemanticMarketDataClient
+
+          target = pd.Timestamp('2026-08-17')
+          incident = {
+              'AIHY': dict(Open=21.190000534057617, High=21.1200008392334, Low=20.905000686645508, Volume=7453.0),
+              'COST': dict(Open=968.7100219726562, High=969.239990234375, Low=952.989990234375, Volume=1206524.0),
+              'LIN': dict(Open=506.2300109863281, High=507.5299987792969, Low=501.4700012207031, Volume=1084006.0),
+              'ORLY': dict(Open=102.3499984741211, High=102.3499984741211, Low=100.61000061035156, Volume=1394725.0),
+              'PHOX': dict(Open=26.989999771118164, High=27.769899368286133, Low=27.18000030517578, Volume=6310.0),
+              'WMB': dict(Open=63.94169998168945, High=64.13999938964844, Low=63.560001373291016, Volume=5410305.0),
+          }
+
+          def original_row(symbol):
+              values = incident[symbol]
+              return pd.Series({
+                  'Open': values['Open'],
+                  'High': values['High'],
+                  'Low': values['Low'],
+                  'Close': float('nan'),
+                  'Adj Close': float('nan'),
+                  'Volume': values['Volume'],
+                  'Dividends': 0.0,
+                  'Stock Splits': 0.0,
+                  'Capital Gains': 0.0,
+              })
+
+          def normalize(frame):
+              if frame is None or frame.empty:
+                  return {'rows': 0, 'tz': None, 'signature': None, 'bars': []}
+              work = frame.copy()
+              idx = pd.to_datetime(work.index, errors='coerce')
+              work.index = idx
+              day = work[[not pd.isna(ts) and ts.date() == target.date() for ts in idx]]
+              bars = []
+              for ts, row in day.iterrows():
+                  values = []
+                  for col in ('Open', 'High', 'Low', 'Close', 'Adj Close'):
+                      raw = row[col] if col in row.index else None
+                      value = None
+                      try:
+                          if raw is not None and not pd.isna(raw):
+                              numeric = float(raw)
+                              value = numeric if math.isfinite(numeric) else None
+                      except Exception:
+                          value = None
+                      values.append(value)
+                  bars.append([ts.isoformat(), *values])
+              payload = json.dumps(bars, separators=(',', ':'), sort_keys=False)
+              return {
+                  'rows': len(day),
+                  'tz': str(getattr(idx, 'tz', None)),
+                  'signature': hashlib.sha256(payload.encode()).hexdigest() if bars else None,
+                  'bars': bars,
+              }
+
+          client = SemanticMarketDataClient()
+          kwargs = dict(
+              start=target,
+              end=target + pd.Timedelta(days=1),
+              interval='1h',
+              auto_adjust=False,
+              actions=False,
+              prepost=False,
+              repair=False,
+              keepna=True,
           )
 
-          current_main="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/branches/main" | jq -r '.commit.sha')"
-          test "$current_main" = "$EXPECTED_MAIN_SHA"
+          for symbol in incident:
+              observations = []
+              for attempt in range(1, 5):
+                  try:
+                      frame = yf.Ticker(symbol).history(**kwargs)
+                      summary = normalize(frame)
+                      candidate = client._complete_intraday_price_candidate(frame, target, original_row(symbol))
+                      summary['candidate'] = None if candidate is None else candidate[0]
+                      summary['attempt'] = attempt
+                  except Exception as exc:
+                      summary = {'attempt': attempt, 'error': f'{type(exc).__name__}: {exc}'}
+                  observations.append(summary)
+                  time.sleep(1)
 
-          before="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
-          before_number="$(printf '%s' "$before" | jq '[.workflow_runs[].run_number] | max // 0')"
+              reference = None
+              try:
+                  action_frame = yf.Ticker(symbol).history(**{**kwargs, 'actions': True})
+                  reference = normalize(action_frame)
+                  reference['candidate'] = None
+                  candidate = client._complete_intraday_price_candidate(action_frame, target, original_row(symbol))
+                  if candidate is not None:
+                      reference['candidate'] = candidate[0]
+              except Exception as exc:
+                  reference = {'error': f'{type(exc).__name__}: {exc}'}
 
-          payload='{"ref":"main","inputs":{"custom_benchmark":"0050.TW","target_user_id":"","calculation_job_id":"","transaction_integrity_audit_only":"false"}}'
-          curl --silent --show-error --fail-with-body "${headers[@]}" \
-            -X POST "$api/actions/workflows/update.yml/dispatches" \
-            -H 'Content-Type: application/json' \
-            --data "$payload" >/dev/null
-
-          run_id=''
-          for _ in $(seq 1 30); do
-            response="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
-            run_id="$(printf '%s' "$response" | jq -r --arg sha "$EXPECTED_MAIN_SHA" --argjson before "$before_number" '.workflow_runs[] | select(.head_sha == $sha and .run_number > $before) | .id' | head -n1)"
-            if [[ -n "$run_id" && "$run_id" != "null" ]]; then
-              break
-            fi
-            sleep 5
-          done
-          test -n "$run_id"
-          printf 'PRODUCTION_RUN_ID=%s\n' "$run_id"
-
-          conclusion=''
-          for _ in $(seq 1 120); do
-            run="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/runs/$run_id")"
-            status="$(printf '%s' "$run" | jq -r '.status')"
-            conclusion="$(printf '%s' "$run" | jq -r '.conclusion // empty')"
-            if [[ "$status" == "completed" ]]; then
-              printf '%s\n' "$(printf '%s' "$run" | jq -c '{id,name,run_number,event,status,conclusion,head_sha,created_at,updated_at,html_url}')"
-              break
-            fi
-            sleep 5
-          done
-
-          test "$conclusion" = 'success'
+              print(json.dumps({
+                  'symbol': symbol,
+                  'incident_daily': incident[symbol],
+                  'actions_false_attempts': observations,
+                  'actions_true_reference': reference,
+              }, separators=(',', ':'), sort_keys=True))
+          PY
