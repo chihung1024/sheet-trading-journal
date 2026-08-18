@@ -14,15 +14,14 @@ export const isAmbiguousImportRetryCandidate = result => Boolean(
   && result.failure?.outcomeAmbiguous === true
 );
 
-const validatedEntryKeys = (entries) => {
+const validateStableEntries = (entries) => {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new TypeError('Ambiguous import retry requires validated import entries');
   }
-  const keys = entries.map(entry => entry?.idempotencyKey);
-  if (keys.some(key => typeof key !== 'string' || !key)) {
+  if (entries.some(entry => typeof entry?.idempotencyKey !== 'string' || !entry.idempotencyKey)) {
     throw new TypeError('Ambiguous import retry requires stable entry idempotency keys');
   }
-  return new Set(keys);
+  return entries.length;
 };
 
 const retryGateResult = (ready, reason = null, reconciliationDegraded = false) => Object.freeze({
@@ -51,7 +50,7 @@ export const prepareAmbiguousImportRetry = async (
     throw new TypeError('Ambiguous import retry reconciliation dependencies are invalid');
   }
 
-  const currentKeys = validatedEntryKeys(entries);
+  validateStableEntries(entries);
   let reconciliationDegraded = false;
   try {
     await reconcile();
@@ -72,10 +71,13 @@ export const prepareAmbiguousImportRetry = async (
     );
   }
 
-  if (
-    Array.isArray(pending)
-    && pending.some(intent => currentKeys.has(intent?.idempotencyKey))
-  ) {
+  // Importers do not all expose the same key representation to the UI. IBKR,
+  // for example, hashes its import identity before persisting the durable
+  // record-create intent. The record-create mutation barrier guarantees at most
+  // one eligible intent per owner, so any remaining eligible create recovery is
+  // a fail-closed reason to delay whole-batch replay rather than compare unlike
+  // key formats and risk racing recovery.
+  if (Array.isArray(pending) && pending.length > 0) {
     return retryGateResult(
       false,
       IMPORT_AMBIGUOUS_RETRY_REASON.RECONCILIATION_PENDING,
@@ -87,5 +89,5 @@ export const prepareAmbiguousImportRetry = async (
 };
 
 export const __test = Object.freeze({
-  validatedEntryKeys,
+  validateStableEntries,
 });
