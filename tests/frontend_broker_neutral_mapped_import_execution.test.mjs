@@ -47,6 +47,32 @@ test('same original source, normalized profile, and mapping produce stable repla
   assert.ok(first.entries.every(entry => entry.record.event_source === 'IMPORT'));
 });
 
+test('fully identical legitimate source rows remain distinct by source ordinal rather than content', async () => {
+  const identicalSource = [
+    'Date,Ticker,Side,Shares,Price,CCY',
+    '2026-08-17,NVDA,BUY,1,100,USD',
+    '2026-08-17,NVDA,BUY,1,100,USD',
+  ].join('\n');
+  const mapping = {
+    txn_date: column('Date'),
+    symbol: column('Ticker'),
+    txn_type: column('Side'),
+    qty: column('Shares'),
+    price: column('Price'),
+    currency: column('CCY'),
+  };
+
+  const prepared = await prepareMappedBrokerImport(identicalSource, mapping, 'Broker A');
+
+  assert.equal(prepared.entries.length, 2);
+  assert.deepEqual(prepared.entries[0].record, prepared.entries[1].record);
+  assert.equal(prepared.entries[0].sourceRecordNumber, 1);
+  assert.equal(prepared.entries[1].sourceRecordNumber, 2);
+  assert.notEqual(prepared.entries[0].idempotencyKey, prepared.entries[1].idempotencyKey);
+  assert.match(prepared.entries[0].idempotencyKey, /\.r1$/);
+  assert.match(prepared.entries[1].idempotencyKey, /\.r2$/);
+});
+
 test('mapping contract, source text, and source profile each participate in stable identity', async () => {
   const first = await prepareMappedBrokerImport(source, baseMapping, 'Broker A');
   const mappedNoteConstant = await prepareMappedBrokerImport(source, {
