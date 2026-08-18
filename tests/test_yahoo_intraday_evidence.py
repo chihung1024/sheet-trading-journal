@@ -41,25 +41,26 @@ class _Data:
         self.cache_get = cache_get
 
 
-def test_each_observation_explicitly_clears_yfinance_history_response_cache():
+def test_each_observation_explicitly_clears_cache_and_reuses_lazy_tickers():
     tickers = [_Ticker(), _Ticker()]
     ticker_iter = iter(tickers)
     cache_get = _CacheGet()
+    factory = Mock(side_effect=lambda _symbol: next(ticker_iter))
 
     with patch(
         "journal_engine.clients.yahoo_intraday_evidence.YfData",
         return_value=_Data(cache_get),
     ):
-        session = YahooIntradayEvidenceSession(
-            "AAA",
-            ticker_factory=lambda _symbol: next(ticker_iter),
-        )
-        first = session.observe(pd.Timestamp("2026-08-17"))
-        second = session.observe(pd.Timestamp("2026-08-17"))
+        session = YahooIntradayEvidenceSession("AAA", ticker_factory=factory)
+        with session.observation(pd.Timestamp("2026-08-17")) as first:
+            first.fetch("1h")
+            first.fetch("15m")
+        with session.observation(pd.Timestamp("2026-08-17")) as second:
+            second.fetch("1h")
+            second.fetch("15m")
 
-    assert set(first) == {"1h", "15m"}
-    assert set(second) == {"1h", "15m"}
     assert cache_get.cache_clear.call_count == 2
+    assert factory.call_count == 2
     for ticker in tickers:
         assert len(ticker.calls) == 2
         for call in ticker.calls:
@@ -71,7 +72,25 @@ def test_each_observation_explicitly_clears_yfinance_history_response_cache():
             assert call["timeout"] == 10.0
 
 
-def test_missing_yfinance_cache_clear_contract_fails_closed():
+def test_lazy_fetch_does_not_construct_unrequested_second_granularity():
+    ticker = _Ticker()
+    cache_get = _CacheGet()
+    factory = Mock(return_value=ticker)
+
+    with patch(
+        "journal_engine.clients.yahoo_intraday_evidence.YfData",
+        return_value=_Data(cache_get),
+    ):
+        session = YahooIntradayEvidenceSession("AAA", ticker_factory=factory)
+        with session.observation(pd.Timestamp("2026-08-17")) as observation:
+            observation.fetch("1h")
+
+    cache_get.cache_clear.assert_called_once_with()
+    factory.assert_called_once_with("AAA")
+    assert len(ticker.calls) == 1
+
+
+def test_missing_yfinance_cache_clear_contract_fails_closed_before_provider_request():
     ticker = _Ticker()
 
     class _BrokenData:
@@ -87,7 +106,8 @@ def test_missing_yfinance_cache_clear_contract_fails_closed():
             intervals=("1h",),
         )
         with pytest.raises(YahooIntradayEvidenceError, match="cache"):
-            session.observe(pd.Timestamp("2026-08-17"))
+            with session.observation(pd.Timestamp("2026-08-17")):
+                pass
 
     assert ticker.calls == []
 
@@ -108,6 +128,27 @@ def test_provider_failure_is_wrapped_as_evidence_error():
             intervals=("1h",),
         )
         with pytest.raises(YahooIntradayEvidenceError, match="interval=1h"):
-            session.observe(pd.Timestamp("2026-08-17"))
+            with session.observation(pd.Timestamp("2026-08-17")) as observation:
+                observation.fetch("1h")
 
     cache_get.cache_clear.assert_called_once_with()
+
+
+def test_unsupported_interval_fails_closed_without_provider_request():
+    ticker = _Ticker()
+    cache_get = _CacheGet()
+
+    with patch(
+        "journal_engine.clients.yahoo_intraday_evidence.YfData",
+        return_value=_Data(cache_get),
+    ):
+        session = YahooIntradayEvidenceSession(
+            "AAA",
+            ticker_factory=lambda _symbol: ticker,
+            intervals=("1h",),
+        )
+        with session.observation(pd.Timestamp("2026-08-17")) as observation:
+            with pytest.raises(YahooIntradayEvidenceError, match="unsupported"):
+                observation.fetch("15m")
+
+    assert ticker.calls == []
