@@ -7,11 +7,11 @@ from journal_engine.clients.semantic_market_data import SemanticMarketDataClient
 from journal_engine.core.validator import PortfolioValidator
 
 
-def _malformed_history(*, impossible_ohlc=False, dividend=0.0):
+def _malformed_history(*, impossible_ohlc=False, dividend=0.0, opening=100.0):
     final_high = 99.75 if impossible_ohlc else 102.0
     return pd.DataFrame(
         {
-            "Open": [99.0, 100.0],
+            "Open": [99.0, opening],
             "High": [101.0, final_high],
             "Low": [98.0, 99.5],
             "Close": [100.0, float("nan")],
@@ -42,21 +42,23 @@ def _valid_history(final_close=101.0):
     )
 
 
-def _intraday_history(final_close=101.75, *, opening=100.0):
-    index = pd.DatetimeIndex(
-        ["2026-08-11 09:30:00", "2026-08-11 10:30:00"],
-        tz="America/New_York",
-    )
+def _intraday_history(final_close=101.75, *, opening=100.0, include_empty_bucket=False):
+    timestamps = ["2026-08-11 09:30:00", "2026-08-11 10:30:00"]
+    rows = {
+        "Open": [opening, 102.0],
+        "High": [103.0, 103.0],
+        "Low": [99.0, 101.0],
+        "Close": [102.0, final_close],
+        "Adj Close": [102.0, final_close],
+        "Volume": [6000.0, 5000.0],
+    }
+    if include_empty_bucket:
+        timestamps.insert(1, "2026-08-11 10:00:00")
+        for values in rows.values():
+            values.insert(1, float("nan"))
     return pd.DataFrame(
-        {
-            "Open": [opening, 102.0],
-            "High": [103.0, 103.0],
-            "Low": [99.0, 101.0],
-            "Close": [102.0, final_close],
-            "Adj Close": [102.0, final_close],
-            "Volume": [6000.0, 5000.0],
-        },
-        index=index,
+        rows,
+        index=pd.DatetimeIndex(timestamps, tz="America/New_York"),
     )
 
 
@@ -71,20 +73,23 @@ class StaticTicker:
 
 
 class IntradayRecoveryTicker:
-    def __init__(self, malformed, intraday):
+    def __init__(self, malformed, one_hour, fifteen_minute=None):
         self.malformed = malformed
-        self.intraday = intraday
+        self.one_hour = one_hour
+        self.fifteen_minute = fifteen_minute if fifteen_minute is not None else one_hour
 
     def history(self, **kwargs):
         if kwargs.get("period") == "1d":
             return pd.DataFrame()
-        if kwargs.get("interval") == "1h":
+        interval = kwargs.get("interval")
+        if interval in ("1h", "15m"):
             assert kwargs.get("auto_adjust") is False
             assert kwargs.get("actions") is False
             assert kwargs.get("prepost") is False
             assert kwargs.get("repair") is False
             assert kwargs.get("keepna") is True
-            return self.intraday.copy(deep=True)
+            frame = self.one_hour if interval == "1h" else self.fifteen_minute
+            return frame.copy(deep=True)
         return self.malformed.copy(deep=True)
 
 
@@ -100,7 +105,7 @@ def _download(client, ticker_factory):
     return market_data
 
 
-def test_persistent_daily_nan_uses_two_identical_raw_intraday_observations():
+def test_persistent_daily_nan_uses_cross_granularity_intraday_consensus():
     client = SemanticMarketDataClient()
     malformed = _malformed_history()
     intraday = _intraday_history()
@@ -113,30 +118,26 @@ def test_persistent_daily_nan_uses_two_identical_raw_intraday_observations():
             return IntradayRecoveryTicker(malformed, intraday)
         return StaticTicker(spy)
 
-    market_data = _download(client, ticker_factory)
-    frame = market_data["AAA"]
+    frame = _download(client, ticker_factory)["AAA"]
     event_date = pd.Timestamp("2026-08-11")
 
-    # Two broad raw daily attempts must fail before two fresh raw 1h observations.
+    # Two broad daily attempts fail first, then one 1h and one 15m observation.
     assert calls["AAA"] == 4
     assert frame.loc[event_date, "Open"] == 100.0
     assert frame.loc[event_date, "High"] == 103.0
     assert frame.loc[event_date, "Low"] == 99.0
     assert frame.loc[event_date, "Close"] == 101.75
     assert frame.loc[event_date, "Close_Adjusted"] == 101.75
-    # Daily volume remains authoritative; intraday volume is not promoted into it.
     assert frame.loc[event_date, "Volume"] == 12345.0
     assert PortfolioValidator.validate_price_data("AAA", frame) is True
-    assert (
-        "two exact-date same-provider raw 1h regular-session observations"
-        in client.price_metadata_by_symbol["AAA"]["selection_reason"]
-    )
+    assert "same-provider raw 1h/15m" in client.price_metadata_by_symbol["AAA"]["selection_reason"]
 
 
-def test_intraday_recovery_reconstructs_structurally_impossible_daily_ohlc():
+def test_intraday_recovery_reconstructs_daily_ohlc_even_when_daily_ohlc_is_polluted():
     client = SemanticMarketDataClient()
-    malformed = _malformed_history(impossible_ohlc=True)
-    intraday = _intraday_history()
+    # The affected provider failure can corrupt the daily OHLC as well as Close.
+    malformed = _malformed_history(impossible_ohlc=True, opening=250.0)
+    intraday = _intraday_history(opening=100.0)
     spy = _valid_history(500.0)
 
     def ticker_factory(symbol):
@@ -147,28 +148,27 @@ def test_intraday_recovery_reconstructs_structurally_impossible_daily_ohlc():
     frame = _download(client, ticker_factory)["AAA"]
     event_date = pd.Timestamp("2026-08-11")
 
-    assert malformed.loc[event_date, "High"] < malformed.loc[event_date, "Open"]
+    assert frame.loc[event_date, "Open"] == 100.0
     assert frame.loc[event_date, "High"] == 103.0
     assert frame.loc[event_date, "Low"] == 99.0
     assert frame.loc[event_date, "Close"] == 101.75
+    assert frame.loc[event_date, "Volume"] == 12345.0
     assert PortfolioValidator.validate_price_data("AAA", frame) is True
 
 
-def test_raw_intraday_observations_must_be_identical():
+def test_cross_granularity_intraday_observations_must_agree():
     client = SemanticMarketDataClient()
     malformed = _malformed_history(impossible_ohlc=True)
-    intraday_first = _intraday_history(101.75)
-    intraday_second = _intraday_history(101.80)
+    one_hour = _intraday_history(101.75)
+    fifteen_minute = _intraday_history(101.80)
     spy = _valid_history(500.0)
     calls = defaultdict(int)
 
     def ticker_factory(symbol):
-        call_index = calls[symbol]
         calls[symbol] += 1
         if symbol != "AAA":
             return StaticTicker(spy)
-        intraday = intraday_first if call_index == 2 else intraday_second
-        return IntradayRecoveryTicker(malformed, intraday)
+        return IntradayRecoveryTicker(malformed, one_hour, fifteen_minute)
 
     frame = _download(client, ticker_factory)["AAA"]
 
@@ -177,24 +177,21 @@ def test_raw_intraday_observations_must_be_identical():
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
 
 
-def test_intraday_recovery_requires_original_daily_open_anchor():
+def test_intraday_recovery_ignores_fully_empty_keepna_buckets():
     client = SemanticMarketDataClient()
     malformed = _malformed_history(impossible_ohlc=True)
-    intraday = _intraday_history(opening=100.25)
+    sparse = _intraday_history(include_empty_bucket=True)
     spy = _valid_history(500.0)
-    calls = defaultdict(int)
 
     def ticker_factory(symbol):
-        calls[symbol] += 1
         if symbol == "AAA":
-            return IntradayRecoveryTicker(malformed, intraday)
+            return IntradayRecoveryTicker(malformed, sparse)
         return StaticTicker(spy)
 
     frame = _download(client, ticker_factory)["AAA"]
 
-    assert calls["AAA"] == 3
-    assert frame["Close_Adjusted"].isna().sum() == 1
-    assert PortfolioValidator.validate_price_data("AAA", frame) is False
+    assert frame.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 101.75
+    assert PortfolioValidator.validate_price_data("AAA", frame) is True
 
 
 def test_intraday_recovery_never_overrides_nonzero_daily_actions():
@@ -212,8 +209,6 @@ def test_intraday_recovery_never_overrides_nonzero_daily_actions():
 
     frame = _download(client, ticker_factory)["AAA"]
 
-    # The price-only path must reject before any intraday request because daily
-    # corporate-action evidence remains authoritative.
     assert calls["AAA"] == 2
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
