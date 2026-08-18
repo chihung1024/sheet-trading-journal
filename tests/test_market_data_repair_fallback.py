@@ -175,7 +175,7 @@ def test_cross_granularity_intraday_observations_must_agree():
 
     frame = _download(client, ticker_factory)["AAA"]
 
-    assert calls["AAA"] == 4
+    assert calls["AAA"] == 5
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
 

@@ -240,7 +240,7 @@ class SemanticMarketDataClient(MarketDataClient):
             if event_date is None:
                 return None
             signature.append((event_date, dividend, split, split_factor))
-        return tuple(signature)
+        return tuple(signature) if signature else None
 
     def _prepare_data(self, symbol, df):
         prepared = super()._prepare_data(symbol, df)

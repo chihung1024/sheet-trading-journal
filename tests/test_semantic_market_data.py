@@ -213,7 +213,7 @@ def test_exact_date_intraday_recovery_rejects_disagreeing_granularities():
     market_data, _sleep = _run_download(client, ticker_factory)
     frame = market_data["AAA"]
 
-    assert calls["AAA"] == 4
+    assert calls["AAA"] == 5
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
 

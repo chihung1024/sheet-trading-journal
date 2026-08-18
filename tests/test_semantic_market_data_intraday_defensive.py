@@ -115,7 +115,7 @@ def test_dividend_asof_materializer_normalizes_timezone_aware_source_date():
 
     with patch.object(
         SemanticMarketDataClient,
-        "_pure_action_only_signature",
+        "_dividend_action_only_signature",
         return_value=signature,
     ):
         materialized, applied = client._materialize_action_only_asof_valuations(
