@@ -5,8 +5,8 @@
   "baseline_main_sha": "1e8e29ae132e70474d91d388fe775ad9976ee11a",
   "baseline_tree_sha": "37f53ac8bfbd3a0806c0ac0405412f2dffa45ad6",
   "captured_at_utc": "2026-08-06T12:47:00Z",
-  "last_updated_batch": "NOW-1A-PRODUCTION-RECORD-IDEMPOTENCY-SMOKE",
-  "last_updated_at_utc": "2026-08-13T09:31:00Z",
+  "last_updated_batch": "PRODUCTION-TEST-RECORD-RECONCILIATION",
+  "last_updated_at_utc": "2026-08-18T15:36:00Z",
   "policy": {
     "external_actions_must_use_full_commit_sha": true,
     "checkout_persist_credentials": false,
@@ -30,6 +30,7 @@
     ".github/workflows/production-identity-evidence.yml",
     ".github/workflows/production-legacy-job-reconciliation.yml",
     ".github/workflows/production-record-idempotency-smoke.yml",
+    ".github/workflows/production-test-record-reconciliation.yml",
     ".github/workflows/staging-browser-smoke.yml",
     ".github/workflows/staging-d1-recovery-evidence.yml",
     ".github/workflows/update.yml"
@@ -62,8 +63,8 @@
   ],
   "recovery": {
     "pre_change_branch": "backup-pre-e1c-a1-legacy-reconciliation-67b8735",
-    "work_branch": "gate-e-e1c-a1-legacy-reconciliation",
+    "work_branch": "ops/production-test-record-reconciliation",
     "preserved_reverted_branch": "backup-post-actions-autonomous-dispatch-67b8735",
-    "rollback": "revert the reconciliation control-plane PR; no calculation job is mutated until the reviewer-protected production workflow executes"
+    "rollback": "revert the reconciliation control-plane PR; no production test record is mutated until the reviewer-protected production workflow executes"
   }
 }
