@@ -4,13 +4,15 @@ The underlying :class:`MarketDataClient` intentionally fails closed when its sel
 valuation field contains NaN. This adapter preserves that behavior for ambiguous or
 malformed market data while allowing two evidence-based recovery paths:
 
-1. A persistent invalid provider row may be re-requested from the same provider for
-   the exact affected calendar date using yfinance's bounded ``repair=True`` path.
-   Recovery is accepted only when two fresh repaired daily requests reproduce the same
-   complete OHLC/volume observation and preserve the original modeled corporate-action
-   semantics. No price is synthesized or carried forward by this path.
-2. If exact-date recovery is unavailable, a proven pure positive cash-dividend-only row
-   may use the existing explicit ``asof_carry_forward`` effective valuation contract.
+1. A persistent invalid zero-action provider row may be reconstructed from two fresh,
+   identical raw 1-hour regular-session observations from the same Yahoo/yfinance
+   provider for the exact affected calendar date. The intraday sequence must be
+   complete enough to contain multiple structurally valid bars, reproduce the original
+   daily open, and remain identical across both observations. Only price fields are
+   replaced; the original daily volume and corporate-action evidence stay authoritative.
+2. If exact-date intraday recovery is unavailable, a proven pure positive
+   cash-dividend-only row may use the existing explicit ``asof_carry_forward`` effective
+   valuation contract.
 
 Everything else remains fail-closed. There are no ticker/date exceptions, alternate
 provider substitutions, guessed prices, unsupported capital-gain recovery, or relaxed
@@ -34,6 +36,9 @@ _RAW_PRICE_COLUMNS = ("Open", "High", "Low", "Close", "Adj Close")
 _REQUIRED_ACTION_COLUMNS = ("Dividends", "Stock Splits")
 _NARROW_RECOVERY_ATTEMPTS = 2
 _MAX_NARROW_RECOVERY_ROWS = 5
+_MIN_INTRADAY_BARS = 2
+_PRICE_REL_TOL = 1e-7
+_PRICE_ABS_TOL = 1e-7
 
 
 class SemanticMarketDataClient(MarketDataClient):
@@ -79,54 +84,106 @@ class SemanticMarketDataClient(MarketDataClient):
         return dividend, split, capital_gain
 
     @classmethod
-    def _complete_narrow_daily_candidate(cls, frame: pd.DataFrame, expected_date: pd.Timestamp):
+    def _intraday_candidate_matches_original(cls, values: dict[str, float], original_row: pd.Series) -> bool:
+        """Require independent daily evidence to anchor an intraday reconstruction."""
+        original_open = cls._finite_number(original_row.get("Open"))
+        if original_open is None or original_open <= 0.0:
+            return False
+        if not math.isclose(values["Open"], original_open, rel_tol=_PRICE_REL_TOL, abs_tol=_PRICE_ABS_TOL):
+            return False
+
+        original_volume = cls._finite_number(original_row.get("Volume"))
+        if original_volume is None or original_volume < 0.0:
+            return False
+
+        for column in ("High", "Low"):
+            original = cls._finite_number(original_row.get(column))
+            if original is None:
+                continue
+            tolerance = max(_PRICE_ABS_TOL, abs(original) * _PRICE_REL_TOL)
+            if original < values["Low"] - tolerance or original > values["High"] + tolerance:
+                return False
+
+        for column in ("Close", "Adj Close"):
+            original = cls._finite_number(original_row.get(column))
+            if original is None:
+                continue
+            if column not in values:
+                return False
+            if not math.isclose(values[column], original, rel_tol=_PRICE_REL_TOL, abs_tol=_PRICE_ABS_TOL):
+                return False
+        return True
+
+    @classmethod
+    def _complete_intraday_price_candidate(
+        cls,
+        frame: pd.DataFrame,
+        expected_date: pd.Timestamp,
+        original_row: pd.Series,
+    ):
         if frame is None or frame.empty:
             return None
         work = frame.copy(deep=True)
         index = pd.to_datetime(work.index, errors="coerce")
-        if index.isna().any():
+        if index.isna().any() or index.tz is None:
             return None
-        if index.tz is not None:
-            index = index.tz_localize(None)
-        work.index = index.normalize()
-        matches = work.loc[work.index == expected_date]
-        if len(matches) != 1:
+        work.index = index
+        work = work.sort_index()
+        if work.index.has_duplicates:
             return None
-        row = matches.iloc[0]
-        values: dict[str, float] = {}
-        for column in ("Open", "High", "Low", "Close"):
-            if column not in row.index:
+
+        expected_day = expected_date.date()
+        day = work.loc[[timestamp.date() == expected_day for timestamp in work.index]]
+        if len(day) < _MIN_INTRADAY_BARS:
+            return None
+
+        required_columns = ("Open", "High", "Low", "Close", "Adj Close")
+        if any(column not in day.columns for column in required_columns):
+            return None
+
+        bar_signature = []
+        for timestamp, row in day.iterrows():
+            bar_values: dict[str, float] = {}
+            for column in required_columns:
+                value = cls._finite_number(row[column])
+                if value is None or value <= 0.0:
+                    return None
+                bar_values[column] = value
+            if (
+                bar_values["High"] < bar_values["Low"]
+                or bar_values["High"] < max(bar_values["Open"], bar_values["Close"])
+                or bar_values["Low"] > min(bar_values["Open"], bar_values["Close"])
+            ):
                 return None
-            value = cls._finite_number(row[column])
-            if value is None or value <= 0.0:
-                return None
-            values[column] = value
-        if values["High"] < values["Low"] or values["High"] < max(values["Open"], values["Close"]) or values["Low"] > min(values["Open"], values["Close"]):
+            bar_signature.append(
+                (
+                    timestamp.isoformat(),
+                    bar_values["Open"],
+                    bar_values["High"],
+                    bar_values["Low"],
+                    bar_values["Close"],
+                    bar_values["Adj Close"],
+                )
+            )
+
+        values = {
+            "Open": cls._finite_number(day.iloc[0]["Open"]),
+            "High": cls._finite_number(pd.to_numeric(day["High"], errors="coerce").max()),
+            "Low": cls._finite_number(pd.to_numeric(day["Low"], errors="coerce").min()),
+            "Close": cls._finite_number(day.iloc[-1]["Close"]),
+            "Adj Close": cls._finite_number(day.iloc[-1]["Adj Close"]),
+        }
+        if any(value is None or value <= 0.0 for value in values.values()):
             return None
-        if "Volume" not in row.index:
+        if (
+            values["High"] < values["Low"]
+            or values["High"] < max(values["Open"], values["Close"])
+            or values["Low"] > min(values["Open"], values["Close"])
+        ):
             return None
-        volume = cls._finite_number(row["Volume"])
-        if volume is None or volume < 0.0:
+        if not cls._intraday_candidate_matches_original(values, original_row):
             return None
-        values["Volume"] = volume
-        action_signature = cls._action_signature_from_row(row)
-        if action_signature is None:
-            return None
-        dividend, split, capital_gain = action_signature
-        if capital_gain != 0.0:
-            return None
-        values["Dividends"] = dividend
-        values["Stock Splits"] = split
-        values["Capital Gains"] = capital_gain
-        if "Adj Close" in row.index:
-            if pd.isna(row["Adj Close"]):
-                return None
-            adjusted = cls._finite_number(row["Adj Close"])
-            if adjusted is None or adjusted <= 0.0:
-                return None
-            values["Adj Close"] = adjusted
-        signature = tuple((column, values[column]) for column in sorted(values))
-        return values, signature
+        return values, tuple(bar_signature)
 
     @classmethod
     def _pure_action_only_signature(cls, frame: pd.DataFrame):
@@ -176,12 +233,19 @@ class SemanticMarketDataClient(MarketDataClient):
         prepared = super()._prepare_data(symbol, df)
         if self._selected_price_contains_nan(prepared):
             metadata = dict(prepared.attrs.get("price_provenance") or {})
-            evidence = {"signature": self._pure_action_only_signature(prepared), "price_source": metadata.get("price_source")}
+            evidence = {
+                "signature": self._pure_action_only_signature(prepared),
+                "price_source": metadata.get("price_source"),
+            }
             with self._semantic_attempt_lock:
                 self._invalid_attempt_evidence.setdefault(str(symbol), []).append(evidence)
         return prepared
 
-    def _recover_with_exact_date_daily_evidence(self, symbol: str, frame: pd.DataFrame) -> tuple[pd.DataFrame, tuple[pd.Timestamp, ...]]:
+    def _recover_with_exact_date_intraday_evidence(
+        self,
+        symbol: str,
+        frame: pd.DataFrame,
+    ) -> tuple[pd.DataFrame, tuple[pd.Timestamp, ...]]:
         if frame is None or frame.empty or "Close_Adjusted" not in frame.columns:
             return frame, ()
         selected = pd.to_numeric(frame["Close_Adjusted"], errors="coerce")
@@ -189,8 +253,14 @@ class SemanticMarketDataClient(MarketDataClient):
         if not invalid_index:
             return frame, ()
         if len(invalid_index) > _MAX_NARROW_RECOVERY_ROWS:
-            logger.warning("[%s] exact-date recovery skipped: invalid row count %s exceeds bound %s", symbol, len(invalid_index), _MAX_NARROW_RECOVERY_ROWS)
+            logger.warning(
+                "[%s] exact-date intraday recovery skipped: invalid row count %s exceeds bound %s",
+                symbol,
+                len(invalid_index),
+                _MAX_NARROW_RECOVERY_ROWS,
+            )
             return frame, ()
+
         normalized_frame = frame.copy(deep=True)
         normalized_index = pd.to_datetime(normalized_frame.index, errors="coerce")
         if normalized_index.isna().any():
@@ -198,6 +268,7 @@ class SemanticMarketDataClient(MarketDataClient):
         if normalized_index.tz is not None:
             normalized_index = normalized_index.tz_localize(None)
         normalized_frame.index = normalized_index.normalize()
+
         invalid_dates = []
         for raw_date in invalid_index:
             event_date = self._normalize_date(raw_date)
@@ -205,71 +276,84 @@ class SemanticMarketDataClient(MarketDataClient):
                 return frame, ()
             if event_date not in invalid_dates:
                 invalid_dates.append(event_date)
+
         staged: dict[pd.Timestamp, dict[str, float]] = {}
         for event_date in invalid_dates:
             original_rows = normalized_frame.loc[normalized_frame.index == event_date]
             if len(original_rows) != 1:
                 return frame, ()
-            original_actions = self._action_signature_from_row(original_rows.iloc[0])
-            if original_actions is None:
+            original_row = original_rows.iloc[0]
+            original_actions = self._action_signature_from_row(original_row)
+            # Intraday action fields are not an accounting authority. Only a proven
+            # zero-action daily row may use this price-only reconstruction path.
+            if original_actions != (0.0, 0.0, 0.0):
                 return frame, ()
+
             candidates = []
             for _attempt in range(_NARROW_RECOVERY_ATTEMPTS):
                 try:
-                    ticker_obj = yf.Ticker(symbol)
-                    # The broad downloader has already reproduced the malformed daily
-                    # row twice. At this secondary recovery boundary, ask the same
-                    # Yahoo/yfinance provider to repair the exact-date daily bar from
-                    # its finer-grained regular-session evidence. We still require two
-                    # fresh repaired observations to be complete, action-identical, and
-                    # bit-for-bit stable before accepting any value.
-                    narrow = ticker_obj.history(
+                    intraday = yf.Ticker(symbol).history(
                         start=event_date,
                         end=event_date + pd.Timedelta(days=1),
-                        interval="1d",
+                        interval="1h",
                         auto_adjust=False,
-                        actions=True,
+                        actions=False,
                         prepost=False,
-                        repair=True,
+                        repair=False,
                         keepna=True,
                     )
                 except Exception as exc:
-                    logger.warning("[%s] exact-date repaired daily recovery request failed for %s: %s", symbol, event_date.strftime("%Y-%m-%d"), exc)
+                    logger.warning(
+                        "[%s] exact-date raw intraday recovery request failed for %s: %s",
+                        symbol,
+                        event_date.strftime("%Y-%m-%d"),
+                        exc,
+                    )
                     return frame, ()
-                candidate = self._complete_narrow_daily_candidate(narrow, event_date)
+                candidate = self._complete_intraday_price_candidate(intraday, event_date, original_row)
                 if candidate is None:
                     return frame, ()
-                values, signature = candidate
-                candidate_actions = (values["Dividends"], values["Stock Splits"], values.get("Capital Gains", 0.0))
-                if candidate_actions != original_actions:
-                    logger.warning("[%s] exact-date repaired daily recovery action mismatch for %s; fail closed", symbol, event_date.strftime("%Y-%m-%d"))
-                    return frame, ()
-                candidates.append((values, signature))
-            if len(candidates) != _NARROW_RECOVERY_ATTEMPTS or len({signature for _values, signature in candidates}) != 1:
-                logger.warning("[%s] exact-date repaired daily recovery was not stable for %s; fail closed", symbol, event_date.strftime("%Y-%m-%d"))
+                candidates.append(candidate)
+
+            if (
+                len(candidates) != _NARROW_RECOVERY_ATTEMPTS
+                or len({signature for _values, signature in candidates}) != 1
+            ):
+                logger.warning(
+                    "[%s] exact-date raw intraday recovery was not stable for %s; fail closed",
+                    symbol,
+                    event_date.strftime("%Y-%m-%d"),
+                )
                 return frame, ()
             staged[event_date] = candidates[-1][0]
+
         work = normalized_frame.copy(deep=True)
         for event_date, values in staged.items():
             for column, value in values.items():
-                if column == "Capital Gains" and column not in work.columns:
-                    continue
                 work.at[event_date, column] = value
             if VALUATION_SOURCE_COLUMN in work.columns:
                 work.at[event_date, VALUATION_SOURCE_COLUMN] = "market"
             if VALUATION_SOURCE_DATE_COLUMN in work.columns:
                 work.at[event_date, VALUATION_SOURCE_DATE_COLUMN] = event_date.strftime("%Y-%m-%d")
+
         rebuilt = super()._prepare_data(symbol, work)
         if self._selected_price_contains_nan(rebuilt):
             return frame, ()
         metadata = dict(rebuilt.attrs.get("price_provenance") or {})
         reason = str(metadata.get("selection_reason") or "").strip()
-        metadata["selection_reason"] = (f"{reason}; persistent invalid daily row recovered by two exact-date same-provider repaired daily observations").strip("; ")
+        metadata["selection_reason"] = (
+            f"{reason}; persistent invalid daily row recovered by two exact-date "
+            "same-provider raw 1h regular-session observations"
+        ).strip("; ")
         rebuilt.attrs["price_provenance"] = metadata
         return rebuilt, tuple(sorted(staged))
 
     @classmethod
-    def _materialize_action_only_asof_valuations(cls, frame: pd.DataFrame, signature) -> tuple[pd.DataFrame, bool]:
+    def _materialize_action_only_asof_valuations(
+        cls,
+        frame: pd.DataFrame,
+        signature,
+    ) -> tuple[pd.DataFrame, bool]:
         current_signature = cls._pure_action_only_signature(frame)
         if not signature or current_signature != signature:
             return frame, False
@@ -278,12 +362,20 @@ class SemanticMarketDataClient(MarketDataClient):
         if VALUATION_SOURCE_COLUMN not in work.columns:
             work[VALUATION_SOURCE_COLUMN] = "market"
         if VALUATION_SOURCE_DATE_COLUMN not in work.columns:
-            work[VALUATION_SOURCE_DATE_COLUMN] = [pd.Timestamp(index).normalize().strftime("%Y-%m-%d") for index in work.index]
+            work[VALUATION_SOURCE_DATE_COLUMN] = [
+                pd.Timestamp(index).normalize().strftime("%Y-%m-%d") for index in work.index
+            ]
         selected = pd.to_numeric(work["Close_Adjusted"], errors="coerce")
         staged: list[tuple[pd.Timestamp, float, pd.Timestamp]] = []
         for event_date, _dividend, _split, _split_factor in signature:
             prior = selected.loc[selected.index < event_date]
-            prior = prior[prior.map(lambda value: not pd.isna(value) and math.isfinite(float(value)) and float(value) > 0.0)]
+            prior = prior[
+                prior.map(
+                    lambda value: not pd.isna(value)
+                    and math.isfinite(float(value))
+                    and float(value) > 0.0
+                )
+            ]
             if prior.empty:
                 return frame, False
             source_date = pd.Timestamp(prior.index[-1])
@@ -304,19 +396,27 @@ class SemanticMarketDataClient(MarketDataClient):
         for symbol, frame in list(self.market_data.items()):
             if not self._selected_price_contains_nan(frame):
                 continue
-            recovered, recovered_dates = self._recover_with_exact_date_daily_evidence(str(symbol), frame)
+            recovered, recovered_dates = self._recover_with_exact_date_intraday_evidence(str(symbol), frame)
             if recovered_dates:
                 self.market_data[symbol] = recovered
                 metadata = dict(recovered.attrs.get("price_provenance") or {})
                 if metadata:
                     self.price_metadata_by_symbol[symbol] = metadata
-                logger.warning("[%s] persistent invalid daily row(s) recovered from exact-date same-provider repaired evidence: dates=%s count=%s", symbol, ",".join(date.strftime("%Y-%m-%d") for date in recovered_dates), len(recovered_dates))
+                logger.warning(
+                    "[%s] persistent invalid daily row(s) recovered from exact-date same-provider raw 1h evidence: dates=%s count=%s",
+                    symbol,
+                    ",".join(date.strftime("%Y-%m-%d") for date in recovered_dates),
+                    len(recovered_dates),
+                )
                 continue
+
             with self._semantic_attempt_lock:
                 attempts = list(self._invalid_attempt_evidence.get(str(symbol), ()))
             if len(attempts) < 2:
                 continue
-            first = attempts[-2]; second = attempts[-1]; signature = first.get("signature")
+            first = attempts[-2]
+            second = attempts[-1]
+            signature = first.get("signature")
             if not signature or signature != second.get("signature"):
                 continue
             if first.get("price_source") != second.get("price_source"):
@@ -326,5 +426,10 @@ class SemanticMarketDataClient(MarketDataClient):
                 continue
             self.market_data[symbol] = normalized
             event_dates = ",".join(event_date.strftime("%Y-%m-%d") for event_date, *_ in signature)
-            logger.warning("[%s] persistent dividend-only row(s) normalized as explicit as-of effective valuation: dates=%s count=%s", symbol, event_dates, len(signature))
+            logger.warning(
+                "[%s] persistent dividend-only row(s) normalized as explicit as-of effective valuation: dates=%s count=%s",
+                symbol,
+                event_dates,
+                len(signature),
+            )
         return self.market_data, fx_rates
