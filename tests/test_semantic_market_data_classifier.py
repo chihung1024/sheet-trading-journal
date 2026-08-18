@@ -141,20 +141,20 @@ class _Ticker:
 
 
 def test_classifier_rejects_absent_or_incomplete_frames():
-    assert SemanticMarketDataClient._pure_action_only_signature(None) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(pd.DataFrame()) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(pd.DataFrame({"Close": [1.0]})) is None
+    assert SemanticMarketDataClient._dividend_action_only_signature(None) is None
+    assert SemanticMarketDataClient._dividend_action_only_signature(pd.DataFrame()) is None
+    assert SemanticMarketDataClient._dividend_action_only_signature(pd.DataFrame({"Close": [1.0]})) is None
 
 
 def test_classifier_accepts_nan_volume_and_absent_optional_capital_gain():
     frame = _prepared_event_row(volume=float("nan"))
-    assert SemanticMarketDataClient._pure_action_only_signature(frame) == (
+    assert SemanticMarketDataClient._dividend_action_only_signature(frame) == (
         (pd.Timestamp("2026-08-11"), 0.5, 0.0, 1.0),
     )
 
 
 def test_classifier_requires_all_semantic_input_columns():
-    assert SemanticMarketDataClient._pure_action_only_signature(
+    assert SemanticMarketDataClient._dividend_action_only_signature(
         _prepared_event_row().drop(columns=["Volume"])
     ) is None
 
@@ -162,46 +162,46 @@ def test_classifier_requires_all_semantic_input_columns():
 def test_classifier_rejects_mixed_partial_price_bar():
     frame = _prepared_event_row()
     frame.loc[frame.index[0], "Open"] = 100.0
-    assert SemanticMarketDataClient._pure_action_only_signature(frame) is None
+    assert SemanticMarketDataClient._dividend_action_only_signature(frame) is None
 
 
 def test_classifier_rejects_nonzero_or_nonfinite_volume():
-    assert SemanticMarketDataClient._pure_action_only_signature(_prepared_event_row(volume=1.0)) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(
+    assert SemanticMarketDataClient._dividend_action_only_signature(_prepared_event_row(volume=1.0)) is None
+    assert SemanticMarketDataClient._dividend_action_only_signature(
         _prepared_event_row(volume=float("inf"))
     ) is None
 
 
 def test_classifier_requires_positive_finite_dividend():
     for dividend in (0.0, -0.1, "not-a-number"):
-        assert SemanticMarketDataClient._pure_action_only_signature(
+        assert SemanticMarketDataClient._dividend_action_only_signature(
             _prepared_event_row(dividend=dividend)
         ) is None
 
 
 def test_classifier_rejects_any_nonzero_split_even_with_valid_dividend():
     for split in (2.0, -2.0):
-        assert SemanticMarketDataClient._pure_action_only_signature(
+        assert SemanticMarketDataClient._dividend_action_only_signature(
             _prepared_event_row(dividend=0.5, split=split)
         ) is None
 
 
 def test_classifier_requires_positive_finite_split_factor():
     for factor in (0.0, "not-a-number"):
-        assert SemanticMarketDataClient._pure_action_only_signature(
+        assert SemanticMarketDataClient._dividend_action_only_signature(
             _prepared_event_row(split_factor=factor)
         ) is None
 
 
 def test_classifier_rejects_malformed_or_material_capital_gain():
     for gain in ("not-a-number", 0.75):
-        assert SemanticMarketDataClient._pure_action_only_signature(
+        assert SemanticMarketDataClient._dividend_action_only_signature(
             _prepared_event_row(capital_gain=gain)
         ) is None
 
 
 def test_classifier_rejects_nat_event_date():
-    assert SemanticMarketDataClient._pure_action_only_signature(
+    assert SemanticMarketDataClient._dividend_action_only_signature(
         _prepared_event_row(index=pd.DatetimeIndex([pd.NaT]))
     ) is None
 
@@ -210,7 +210,7 @@ def test_classifier_normalizes_timezone_aware_event_date():
     frame = _prepared_event_row(
         index=pd.DatetimeIndex([pd.Timestamp("2026-08-11", tz="America/New_York")])
     )
-    assert SemanticMarketDataClient._pure_action_only_signature(frame) == (
+    assert SemanticMarketDataClient._dividend_action_only_signature(frame) == (
         (pd.Timestamp("2026-08-11"), 0.5, 0.0, 1.0),
     )
 
@@ -218,7 +218,7 @@ def test_classifier_normalizes_timezone_aware_event_date():
 def test_classifier_no_invalid_selected_price_rows_returns_empty_signature():
     frame = _prepared_event_row()
     frame.loc[frame.index[0], "Close_Adjusted"] = 100.0
-    assert SemanticMarketDataClient._pure_action_only_signature(frame) == ()
+    assert SemanticMarketDataClient._dividend_action_only_signature(frame) == ()
 
 
 def test_materializer_revalidates_signature_before_mutating():
@@ -234,7 +234,7 @@ def test_materializer_revalidates_signature_before_mutating():
 
 def test_materializer_respects_existing_provenance_columns():
     frame = _prepared_two_row_event(existing_provenance=True)
-    signature = SemanticMarketDataClient._pure_action_only_signature(frame)
+    signature = SemanticMarketDataClient._dividend_action_only_signature(frame)
     result, applied = SemanticMarketDataClient._materialize_action_only_asof_valuations(
         frame, signature
     )
@@ -429,7 +429,13 @@ def test_exact_date_intraday_recovery_rejects_provider_exception():
 def test_exact_date_intraday_recovery_rejects_disagreeing_granularities():
     client = SemanticMarketDataClient()
     frame = _prepared_partial_row()
-    tickers = iter([_Ticker(_intraday_row(final_close=102.0)), _Ticker(_intraday_row(final_close=102.5))])
+    tickers = iter(
+        [
+            _Ticker(_intraday_row(final_close=102.0)),
+            _Ticker(_intraday_row(final_close=102.5)),
+            _Ticker(pd.DataFrame()),
+        ]
+    )
     with patch(
         "journal_engine.clients.semantic_market_data.yf.Ticker",
         side_effect=lambda _symbol: next(tickers),
@@ -470,7 +476,7 @@ def test_exact_date_intraday_recovery_preserves_existing_market_provenance_colum
 
 
 
-def test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_query():
+def test_exact_date_intraday_recovery_stops_when_quorum_becomes_impossible():
     client = SemanticMarketDataClient()
     frame = _prepared_partial_row()
     with patch(
@@ -481,4 +487,4 @@ def test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_
 
     assert result is frame
     assert dates == ()
-    assert ticker.call_count == 1
+    assert ticker.call_count == 2

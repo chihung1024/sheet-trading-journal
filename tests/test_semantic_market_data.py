@@ -167,7 +167,7 @@ def test_persistent_partial_price_bar_recovers_from_cross_granularity_intraday_c
     assert frame.loc[event_date, "Dividends"] == 0.0
     assert frame.loc[event_date, "Stock Splits"] == 0.0
     assert PortfolioValidator.validate_price_data("AAA", frame) is True
-    assert "raw 1h/15m regular-session" in client.price_metadata_by_symbol["AAA"]["selection_reason"]
+    assert "multi-granularity quorum evidence" in client.price_metadata_by_symbol["AAA"]["selection_reason"]
     identity = build_market_inputs_identity({"AAA": frame}, required_symbols=["AAA"])
     assert identity.synthetic_row_counts == {}
 
@@ -213,7 +213,7 @@ def test_exact_date_intraday_recovery_rejects_disagreeing_granularities():
     market_data, _sleep = _run_download(client, ticker_factory)
     frame = market_data["AAA"]
 
-    assert calls["AAA"] == 4
+    assert calls["AAA"] == 5
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
 

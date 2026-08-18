@@ -2,29 +2,26 @@
 
 The underlying :class:`MarketDataClient` intentionally fails closed when its selected
 valuation field contains NaN. This adapter preserves that behavior for ambiguous or
-malformed market data while allowing two evidence-based recovery paths:
+malformed market data while composing two row-level evidence authorities:
 
-1. A persistent invalid zero-action provider row may be reconstructed from two
-   independent raw regular-session granularities (1h and 15m) from the same
-   Yahoo/yfinance provider for the exact affected calendar date. Each granularity must
-   contain multiple structurally valid price bars and both must reconstruct the same
-   daily OHLC/adjusted-close observation. If the two representations transiently
-   disagree, one bounded fresh cross-granularity re-observation is allowed. Freshness
-   itself is owned by :class:`YahooIntradayEvidenceSession`, which explicitly bypasses
-   yfinance's historical-response LRU without changing market query semantics. Each
-   granularity is fetched and validated lazily inside the same freshness boundary, so
-   invalid 1h evidence prevents an unnecessary 15m request. The second observation is
-   accepted only when both fresh representations converge to a value already observed
-   in the first round. Persistent disagreement remains fail-closed. Completely empty
-   keepna buckets are ignored only when they carry no contradictory non-zero volume;
-   partially populated or contradictory bars remain fail-closed. Only price fields are
-   replaced; the original daily volume and corporate-action evidence stay authoritative.
-2. If exact-date intraday recovery is unavailable, a proven pure positive
-   cash-dividend-only row may use the existing explicit ``asof_carry_forward`` effective
-   valuation contract.
+1. A persistent invalid zero-action provider row may be reconstructed from fresh raw
+   regular-session evidence from the same Yahoo/yfinance provider for the exact affected
+   date. Recovery uses an ordered set of multiple intraday granularities and requires a
+   unique semantic quorum of complete daily OHLC/adjusted-close candidates. Granularities
+   are fetched lazily until the quorum is proven or can no longer be reached; an invalid,
+   unavailable, or disagreeing representation is evidence against that representation,
+   not a ticker-specific exception. There is no temporal retry, tolerance widening, or
+   symbol/date branching. Completely empty keepna buckets are ignored only when they
+   carry no contradictory non-zero volume. Intraday evidence replaces price fields only;
+   original daily volume and corporate actions remain authoritative.
+2. Invalid rows are classified independently. A stable pure positive cash-dividend-only
+   row may use the explicit ``asof_carry_forward`` effective valuation contract even when
+   another row for the same symbol independently requires intraday price recovery. The
+   dividend signature must agree across the two ordinary daily observations; unsupported
+   split/capital-gain/action rows remain unresolved and fail closed.
 
 Everything else remains fail-closed. There are no ticker/date exceptions, alternate
-provider substitutions, guessed prices, unsupported capital-gain recovery, or relaxed
+provider substitutions, guessed prices, unsupported corporate-action recovery, or relaxed
 ledger/validator rules.
 """
 
@@ -33,7 +30,6 @@ from __future__ import annotations
 import logging
 import math
 import threading
-import time
 from typing import Any
 
 import pandas as pd
@@ -49,8 +45,8 @@ from .yahoo_intraday_evidence import (
 logger = logging.getLogger(__name__)
 _RAW_PRICE_COLUMNS = ("Open", "High", "Low", "Close", "Adj Close")
 _REQUIRED_ACTION_COLUMNS = ("Dividends", "Stock Splits")
-_MAX_INTRADAY_OBSERVATION_ROUNDS = 2
-_INTRADAY_REOBSERVATION_DELAY_SECONDS = 1.0
+_SEMANTIC_INTRADAY_INTERVALS = INTRADAY_EVIDENCE_INTERVALS + ("5m",)
+_SEMANTIC_INTRADAY_QUORUM = 2
 _MAX_NARROW_RECOVERY_ROWS = 5
 _MIN_INTRADAY_BARS = 2
 _PRICE_REL_TOL = 1e-7
@@ -195,8 +191,97 @@ class SemanticMarketDataClient(MarketDataClient):
             for column in required_columns
         )
 
+
+
+    def _resolve_intraday_price_quorum(self, observation, event_date: pd.Timestamp):
+        """Resolve a unique price candidate from ordered multi-granularity evidence.
+
+        Every interval is governed by the same semantic candidate validator. Invalid or
+        unavailable representations may be outvoted only when the remaining representations
+        establish the configured quorum. Ambiguous qualified candidates remain fail-closed.
+        """
+        intervals = _SEMANTIC_INTRADAY_INTERVALS
+        quorum = _SEMANTIC_INTRADAY_QUORUM
+        if quorum < 2 or quorum > len(intervals):
+            return None, (), ()
+
+        candidates: list[tuple[str, dict[str, float]]] = []
+        attempted: list[str] = []
+        for interval in intervals:
+            attempted.append(interval)
+            try:
+                intraday = observation.fetch(interval)
+            except YahooIntradayEvidenceError as exc:
+                logger.warning(
+                    "exact-date intraday evidence unavailable for %s interval=%s: %s",
+                    event_date.strftime("%Y-%m-%d"),
+                    interval,
+                    exc,
+                )
+            else:
+                candidate = self._complete_intraday_price_candidate(intraday, event_date)
+                if candidate is None:
+                    logger.warning(
+                        "exact-date intraday representation invalid for %s interval=%s",
+                        event_date.strftime("%Y-%m-%d"),
+                        interval,
+                    )
+                else:
+                    candidates.append((interval, candidate[0]))
+
+            qualified: list[tuple[str, dict[str, float], tuple[str, ...]]] = []
+            for candidate_interval, candidate_values in candidates:
+                supporters = tuple(
+                    other_interval
+                    for other_interval, other_values in candidates
+                    if self._intraday_price_candidates_agree(candidate_values, other_values)
+                )
+                if len(supporters) >= quorum:
+                    qualified.append((candidate_interval, candidate_values, supporters))
+
+            if qualified:
+                anchor = qualified[0][1]
+                if not all(
+                    self._intraday_price_candidates_agree(anchor, candidate_values)
+                    for _interval, candidate_values, _supporters in qualified[1:]
+                ):
+                    logger.warning(
+                        "exact-date intraday evidence produced multiple incompatible quorum candidates for %s",
+                        event_date.strftime("%Y-%m-%d"),
+                    )
+                    return None, (), tuple(attempted)
+                agreeing = tuple(
+                    candidate_interval
+                    for candidate_interval, candidate_values in candidates
+                    if self._intraday_price_candidates_agree(anchor, candidate_values)
+                )
+                return anchor, agreeing, tuple(attempted)
+
+            remaining = len(intervals) - len(attempted)
+            best_support = max(
+                (
+                    sum(
+                        1
+                        for _other_interval, other_values in candidates
+                        if self._intraday_price_candidates_agree(candidate_values, other_values)
+                    )
+                    for _candidate_interval, candidate_values in candidates
+                ),
+                default=0,
+            )
+            if best_support + remaining < quorum:
+                break
+
+        return None, (), tuple(attempted)
+
     @classmethod
-    def _pure_action_only_signature(cls, frame: pd.DataFrame):
+    def _dividend_action_only_signature(cls, frame: pd.DataFrame):
+        """Return independently eligible dividend-only invalid rows.
+
+        Other malformed rows are ignored by this classifier so they cannot suppress
+        stable corporate-action evidence from a different date. Unsupported rows are
+        never normalized here and remain visible to the final fail-closed validator.
+        """
         if frame is None or frame.empty or "Close_Adjusted" not in frame.columns:
             return None
         selected = pd.to_numeric(frame["Close_Adjusted"], errors="coerce")
@@ -209,42 +294,40 @@ class SemanticMarketDataClient(MarketDataClient):
         signature = []
         for raw_date, row in invalid.iterrows():
             if any(not pd.isna(row[column]) for column in _RAW_PRICE_COLUMNS):
-                return None
+                continue
             volume = row["Volume"]
             if not pd.isna(volume):
                 numeric_volume = cls._finite_number(volume)
                 if numeric_volume is None or numeric_volume != 0.0:
-                    return None
+                    continue
             dividend = cls._finite_number(row["Dividends"])
             split = cls._finite_number(row["Stock Splits"])
             split_factor = cls._finite_number(row["Split_Factor"])
             if dividend is None or dividend <= 0.0:
-                return None
+                continue
             if split is None or split != 0.0:
-                return None
+                continue
             if split_factor is None or split_factor <= 0.0:
-                return None
+                continue
             capital_gain = 0.0
             if "Capital Gains" in frame.columns and not pd.isna(row["Capital Gains"]):
                 capital_gain = cls._finite_number(row["Capital Gains"])
                 if capital_gain is None:
-                    return None
+                    continue
             if capital_gain != 0.0:
+                continue
+            event_date = cls._normalize_date(raw_date)
+            if event_date is None:
                 return None
-            event_date = pd.Timestamp(raw_date)
-            if pd.isna(event_date):
-                return None
-            if event_date.tzinfo is not None:
-                event_date = event_date.tz_localize(None)
-            signature.append((event_date.normalize(), dividend, split, split_factor))
-        return tuple(signature)
+            signature.append((event_date, dividend, split, split_factor))
+        return tuple(signature) if signature else None
 
     def _prepare_data(self, symbol, df):
         prepared = super()._prepare_data(symbol, df)
         if self._selected_price_contains_nan(prepared):
             metadata = dict(prepared.attrs.get("price_provenance") or {})
             evidence = {
-                "signature": self._pure_action_only_signature(prepared),
+                "signature": self._dividend_action_only_signature(prepared),
                 "price_source": metadata.get("price_source"),
             }
             with self._semantic_attempt_lock:
@@ -294,8 +377,8 @@ class SemanticMarketDataClient(MarketDataClient):
                 return frame, ()
             original_row = original_rows.iloc[0]
             original_actions = self._action_signature_from_row(original_row)
-            if original_actions != (0.0, 0.0, 0.0):
-                return frame, ()
+            if original_actions is None or original_actions != (0.0, 0.0, 0.0):
+                continue
             original_volume = self._finite_number(original_row.get("Volume"))
             if original_volume is None or original_volume < 0.0:
                 return frame, ()
@@ -304,7 +387,7 @@ class SemanticMarketDataClient(MarketDataClient):
                 evidence_session = YahooIntradayEvidenceSession(
                     str(symbol),
                     ticker_factory=yf.Ticker,
-                    intervals=INTRADAY_EVIDENCE_INTERVALS,
+                    intervals=_SEMANTIC_INTRADAY_INTERVALS,
                 )
             except Exception as exc:
                 logger.warning(
@@ -315,94 +398,44 @@ class SemanticMarketDataClient(MarketDataClient):
                 )
                 return frame, ()
 
-            prior_disagreement: tuple[dict[str, float], dict[str, float]] | None = None
+
+
             consensus: dict[str, float] | None = None
-
-            for observation_round in range(_MAX_INTRADAY_OBSERVATION_ROUNDS):
-                candidates: dict[str, dict[str, float]] = {}
-                try:
-                    with evidence_session.observation(event_date) as observation:
-                        for interval in INTRADAY_EVIDENCE_INTERVALS:
-                            intraday = observation.fetch(interval)
-                            candidate = self._complete_intraday_price_candidate(
-                                intraday,
-                                event_date,
-                            )
-                            if candidate is None:
-                                logger.warning(
-                                    "[%s] exact-date raw intraday evidence invalid for %s interval=%s round=%s; fail closed",
-                                    symbol,
-                                    event_date.strftime("%Y-%m-%d"),
-                                    interval,
-                                    observation_round + 1,
-                                )
-                                return frame, ()
-                            candidates[interval] = candidate[0]
-                except YahooIntradayEvidenceError as exc:
-                    logger.warning(
-                        "[%s] exact-date fresh Yahoo intraday observation failed for %s round=%s: %s",
-                        symbol,
-                        event_date.strftime("%Y-%m-%d"),
-                        observation_round + 1,
-                        exc,
+            agreeing_intervals: tuple[str, ...] = ()
+            attempted_intervals: tuple[str, ...] = ()
+            try:
+                with evidence_session.observation(event_date) as observation:
+                    consensus, agreeing_intervals, attempted_intervals = (
+                        self._resolve_intraday_price_quorum(observation, event_date)
                     )
-                    return frame, ()
-
-                first_interval, second_interval = INTRADAY_EVIDENCE_INTERVALS
-                first = candidates[first_interval]
-                second = candidates[second_interval]
-                if self._intraday_price_candidates_agree(first, second):
-                    if prior_disagreement is not None:
-                        if not (
-                            self._intraday_price_candidates_agree(first, prior_disagreement[0])
-                            or self._intraday_price_candidates_agree(first, prior_disagreement[1])
-                        ):
-                            logger.warning(
-                                "[%s] exact-date raw intraday evidence converged to an unobserved third value for %s; fail closed: prior=%s current=%s",
-                                symbol,
-                                event_date.strftime("%Y-%m-%d"),
-                                prior_disagreement,
-                                first,
-                            )
-                            return frame, ()
-                        logger.warning(
-                            "[%s] exact-date raw intraday granularities converged after bounded fresh re-observation for %s: consensus=%s",
-                            symbol,
-                            event_date.strftime("%Y-%m-%d"),
-                            first,
-                        )
-                    consensus = first
-                    break
-
-                if observation_round + 1 >= _MAX_INTRADAY_OBSERVATION_ROUNDS:
-                    logger.warning(
-                        "[%s] exact-date raw intraday granularities still disagree after %s fresh observations for %s (%s=%s vs %s=%s); fail closed",
-                        symbol,
-                        _MAX_INTRADAY_OBSERVATION_ROUNDS,
-                        event_date.strftime("%Y-%m-%d"),
-                        first_interval,
-                        first,
-                        second_interval,
-                        second,
-                    )
-                    return frame, ()
-
-                prior_disagreement = (first, second)
+            except YahooIntradayEvidenceError as exc:
                 logger.warning(
-                    "[%s] exact-date raw intraday granularities disagree for %s (%s=%s vs %s=%s); bounded fresh re-observation 1/%s",
+                    "[%s] exact-date fresh Yahoo intraday observation failed for %s: %s",
                     symbol,
                     event_date.strftime("%Y-%m-%d"),
-                    first_interval,
-                    first,
-                    second_interval,
-                    second,
-                    _MAX_INTRADAY_OBSERVATION_ROUNDS - 1,
+                    exc,
                 )
-                time.sleep(_INTRADAY_REOBSERVATION_DELAY_SECONDS)
+                return frame, ()
 
             if consensus is None:
+                logger.warning(
+                    "[%s] exact-date intraday evidence did not establish a unique quorum for %s: attempted=%s",
+                    symbol,
+                    event_date.strftime("%Y-%m-%d"),
+                    ",".join(attempted_intervals),
+                )
                 return frame, ()
+            logger.warning(
+                "[%s] exact-date intraday evidence quorum accepted for %s: agreeing=%s attempted=%s",
+                symbol,
+                event_date.strftime("%Y-%m-%d"),
+                ",".join(agreeing_intervals),
+                ",".join(attempted_intervals),
+            )
             staged[event_date] = consensus
+
+        if not staged:
+            return frame, ()
 
         work = normalized_frame.copy(deep=True)
         for event_date, values in staged.items():
@@ -413,14 +446,23 @@ class SemanticMarketDataClient(MarketDataClient):
             if VALUATION_SOURCE_DATE_COLUMN in work.columns:
                 work.at[event_date, VALUATION_SOURCE_DATE_COLUMN] = event_date.strftime("%Y-%m-%d")
 
+
         rebuilt = super()._prepare_data(symbol, work)
-        if self._selected_price_contains_nan(rebuilt):
-            return frame, ()
+        rebuilt_selected = pd.to_numeric(rebuilt["Close_Adjusted"], errors="coerce")
+        for event_date in staged:
+            if event_date not in rebuilt_selected.index:
+                return frame, ()
+            rebuilt_value = rebuilt_selected.loc[event_date]
+            if isinstance(rebuilt_value, pd.Series):
+                return frame, ()
+            numeric_value = self._finite_number(rebuilt_value)
+            if numeric_value is None or numeric_value <= 0.0:
+                return frame, ()
         metadata = dict(rebuilt.attrs.get("price_provenance") or {})
         reason = str(metadata.get("selection_reason") or "").strip()
         metadata["selection_reason"] = (
             f"{reason}; persistent invalid daily row recovered by cross-validated exact-date "
-            "same-provider raw 1h/15m regular-session observations"
+            "same-provider raw regular-session multi-granularity quorum evidence"
         ).strip("; ")
         rebuilt.attrs["price_provenance"] = metadata
         return rebuilt, tuple(sorted(staged))
@@ -431,7 +473,7 @@ class SemanticMarketDataClient(MarketDataClient):
         frame: pd.DataFrame,
         signature,
     ) -> tuple[pd.DataFrame, bool]:
-        current_signature = cls._pure_action_only_signature(frame)
+        current_signature = cls._dividend_action_only_signature(frame)
         if not signature or current_signature != signature:
             return frame, False
         work = frame.copy(deep=True)
@@ -480,12 +522,12 @@ class SemanticMarketDataClient(MarketDataClient):
                 if metadata:
                     self.price_metadata_by_symbol[symbol] = metadata
                 logger.warning(
-                    "[%s] persistent invalid daily row(s) recovered from cross-validated exact-date same-provider raw 1h/15m evidence: dates=%s count=%s",
+                    "[%s] persistent invalid daily row(s) recovered from exact-date same-provider multi-granularity quorum evidence: dates=%s count=%s",
                     symbol,
                     ",".join(date.strftime("%Y-%m-%d") for date in recovered_dates),
                     len(recovered_dates),
                 )
-                continue
+                frame = recovered
 
             with self._semantic_attempt_lock:
                 attempts = list(self._invalid_attempt_evidence.get(str(symbol), ()))

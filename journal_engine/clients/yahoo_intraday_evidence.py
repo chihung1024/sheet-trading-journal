@@ -8,10 +8,12 @@ through an LRU-backed ``YfData.cache_get`` path. Repeating an identical request 
 therefore replay cached bytes rather than establish an independent provider observation.
 Each bounded observation here explicitly clears that HTTP-response LRU first.
 
-An observation is a context manager so semantic validation can fetch one granularity at
-a time and fail fast. If 1h evidence is already structurally invalid, 15m is never
-requested. A class-level lock spans cache-clear plus all requested granularities so one
-recovery session cannot invalidate another session's freshness boundary.
+An observation is a context manager so the semantic layer can request granularities
+lazily inside one freshness boundary. This transport deliberately does not decide whether
+a missing/invalid representation should terminate recovery or whether later
+representations may establish a quorum; that policy belongs to semantic validation. A
+class-level lock spans cache-clear plus all requested granularities so one recovery
+session cannot invalidate another session's freshness boundary.
 
 If the pinned yfinance cache contract changes, freshness fails closed.
 """

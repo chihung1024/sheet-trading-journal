@@ -133,7 +133,7 @@ def test_persistent_daily_nan_uses_cross_granularity_intraday_consensus():
     assert frame.loc[event_date, "Close_Adjusted"] == 101.75
     assert frame.loc[event_date, "Volume"] == 12345.0
     assert PortfolioValidator.validate_price_data("AAA", frame) is True
-    assert "same-provider raw 1h/15m" in client.price_metadata_by_symbol["AAA"]["selection_reason"]
+    assert "multi-granularity quorum evidence" in client.price_metadata_by_symbol["AAA"]["selection_reason"]
 
 
 def test_intraday_recovery_reconstructs_daily_ohlc_even_when_daily_ohlc_is_polluted():
@@ -175,7 +175,7 @@ def test_cross_granularity_intraday_observations_must_agree():
 
     frame = _download(client, ticker_factory)["AAA"]
 
-    assert calls["AAA"] == 4
+    assert calls["AAA"] == 5
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
 
@@ -214,9 +214,11 @@ def test_intraday_recovery_rejects_price_empty_bucket_with_nonzero_volume():
 
     frame = _download(client, ticker_factory)["AAA"]
 
-    # First secondary granularity is already contradictory, so the second must not
-    # be queried and the original invalid daily row remains fail-closed.
-    assert calls["AAA"] == 3
+    # A contradictory representation does not decide the whole recovery. The resolver
+    # evaluates the next representation, then stops once a 2-vote quorum is mathematically
+    # impossible; the final optional representation is not requested and the row remains
+    # fail-closed.
+    assert calls["AAA"] == 4
     assert frame["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
 
