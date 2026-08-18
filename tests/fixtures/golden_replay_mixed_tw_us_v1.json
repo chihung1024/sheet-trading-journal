@@ -61,13 +61,14 @@
     "daily_pnl_roi_percent": 8.43,
     "twr": 8.16,
     "twr_status": "ok",
-    "xirr": 1329427.6,
-    "xirr_status": "ok",
+    "xirr": 0.0,
+    "xirr_status": "undefined",
+    "xirr_reason": "solver_outside_supported_range",
     "xirr_asof_date": "2026-01-05",
     "xirr_cashflow_conventional": true,
     "pending_dividends_twd": {"2330.TW": 20.0, "NVDA": 91.0},
     "day_ledger_total_pnl_twd": {"2330.TW": 120.0, "NVDA": 841.0},
-    "content_sha256": "257117e2ee7516e25a37d24d52525c6e8ae08c8ff00e785a1beb268cd005a21c",
+    "content_sha256": "1d8048bf534b1c766549f8047908a0018bcdcc6347cc4d636756df3ea0055492",
     "combined_input_sha256": "6f213201279bf7ff6a58d0cb7af237e5fdcb8db1f2006c1f368c61c0cc85fe05"
   }
 }

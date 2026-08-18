@@ -11,6 +11,9 @@ import pandas as pd
 from pyxirr import xirr as pyxirr_xirr
 
 
+MAX_SUPPORTED_ABS_XIRR_PERCENT = 1_000_000.0
+
+
 @dataclass(frozen=True)
 class ModifiedDietzMetric:
     """Modified Dietz numeric compatibility value plus validity metadata."""
@@ -365,6 +368,14 @@ def calculate_xirr_metric(
             0.0,
             "undefined",
             "solver_non_finite",
+            normalized_terminal_date.isoformat(),
+            conventional,
+        )
+    if abs(value_percent) > MAX_SUPPORTED_ABS_XIRR_PERCENT:
+        return XirrMetric(
+            0.0,
+            "undefined",
+            "solver_outside_supported_range",
             normalized_terminal_date.isoformat(),
             conventional,
         )
