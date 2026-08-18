@@ -15,10 +15,11 @@ import { installCalculationTriggerAmbiguityRecovery } from './services/calculati
 import { installRecordCreateAmbiguityRecovery } from './services/recordCreateAmbiguityRecovery.js';
 import { installDataReadSelfRecovery } from './services/dataReadSelfRecovery.js';
 
-// 引入全域樣式與動畫 (順序很重要：先動畫、主樣式，再套產品一致性層)
+// 引入全域樣式與動畫 (順序很重要：先動畫、主樣式，再套產品一致性與自適應工作區層)
 import './styles/animations.css';
 import './style.css';
 import './styles/product-consistency.css';
+import './styles/adaptive-workspace.css';
 
 const app = createApp(App);
 const pinia = createPinia();

@@ -1,0 +1,89 @@
+/* UX-R1.1 — adaptive workspace foundation.
+   This layer owns presentation/layout authority only. It must not introduce
+   financial, persistence, mutation, authentication, or typography authority.
+
+   Viewport media queries remain the app-shell authority. Component presentation
+   should migrate to the named inline-size containers below as each UX-R1 batch
+   adopts them. The foundation intentionally does not rewrite every legacy
+   component breakpoint in one step. */
+
+:root {
+  /* App-shell geometry. Keep legacy App/product-consistency values stable while
+     providing one shared vocabulary for the adaptive transaction work in R1.2. */
+  --ui-layout-max: 1920px;
+  --ui-shell-inline-padding: clamp(16px, 1.5vw, 24px);
+  --ui-trade-dock-min: 330px;
+  --ui-trade-dock-max: 350px;
+  --ui-trade-drawer-max: 430px;
+  --ui-trade-sheet-max: 430px;
+
+  /* Interaction density. Desktop remains compact; touch/coarse pointers get a
+     distinct target contract without changing semantic typography. */
+  --ui-control-height-desktop: 40px;
+  --ui-control-height-touch: 44px;
+  --ui-touch-target: 44px;
+
+  /* Sticky/sheet surfaces consume safe-area tokens instead of page-local magic. */
+  --ui-safe-top: env(safe-area-inset-top, 0px);
+  --ui-safe-right: env(safe-area-inset-right, 0px);
+  --ui-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --ui-safe-left: env(safe-area-inset-left, 0px);
+}
+
+/* Coarse-pointer density is an interaction characteristic, not a page width.
+   Existing controls already consume --ui-control-height from the shared layout
+   contract, so touch devices gain the larger target without inflating desktop. */
+@media (hover: none), (pointer: coarse) {
+  :root {
+    --ui-control-height: var(--ui-control-height-touch);
+  }
+}
+
+/* Container boundaries. These selectors already own width from App.vue; adding
+   inline-size containment establishes local presentation authority without
+   changing business/data state or duplicating rendered data. */
+.content-container {
+  container-type: inline-size;
+  container-name: app-workspace;
+}
+
+.main-column {
+  container-type: inline-size;
+  container-name: main-workspace;
+}
+
+.side-column {
+  container-type: inline-size;
+  container-name: transaction-workspace;
+}
+
+.section-overview,
+.section-charts {
+  container-type: inline-size;
+  container-name: analysis-workspace;
+}
+
+.section-holdings {
+  container-type: inline-size;
+  container-name: holdings-workspace;
+}
+
+.section-records {
+  container-type: inline-size;
+  container-name: records-workspace;
+}
+
+.section-dividends {
+  container-type: inline-size;
+  container-name: management-workspace dividends-workspace;
+}
+
+.section-cash {
+  container-type: inline-size;
+  container-name: management-workspace cash-workspace;
+}
+
+.section-groups {
+  container-type: inline-size;
+  container-name: management-workspace groups-workspace;
+}
