@@ -1,0 +1,39 @@
+name: Patch row-recovery no-stage invariant
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317-final' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/market-data-row-recovery-composition
+          persist-credentials: true
+          fetch-depth: 1
+      - name: Preserve original frame when nothing is safely staged
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('journal_engine/clients/semantic_market_data.py')
+          text = path.read_text(encoding='utf-8')
+          old = '            staged[event_date] = consensus\n\n        work = normalized_frame.copy(deep=True)\n'
+          new = '            staged[event_date] = consensus\n\n        if not staged:\n            return frame, ()\n\n        work = normalized_frame.copy(deep=True)\n'
+          if old not in text:
+              raise RuntimeError('staging boundary not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python -m compileall -q journal_engine/clients/semantic_market_data.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add journal_engine/clients/semantic_market_data.py
+          git diff --cached --check
+          git commit -m 'fix: preserve fail-closed no-stage recovery identity'
+          git push origin HEAD:fix/market-data-row-recovery-composition
