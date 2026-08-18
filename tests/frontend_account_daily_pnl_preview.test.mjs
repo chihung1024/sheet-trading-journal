@@ -49,7 +49,10 @@ const cashRow = {
 const readyPreview = (overrides = {}) => ({
   preview_version: 1,
   status: 'ready',
+  base_currency: 'TWD',
   scope: 'whole_account',
+  method: 'securities_plus_authoritative_cash_daily_v1',
+  fx_policy: 'beginning_net_currency_exposure_v1',
   cash_ledger_complete: true,
   as_of_date: '2026-08-05',
   prev_date: '2026-08-04',
@@ -101,6 +104,37 @@ test('group views and unavailable or malformed account previews fail closed to s
     }).reason,
     'day_ledger_mismatch',
   );
+});
+
+test('unknown contract version, method, FX policy, or base currency cannot become browser authority', () => {
+  for (const overrides of [
+    { preview_version: 2 },
+    { base_currency: 'USD' },
+    { method: 'future_method' },
+    { fx_policy: 'future_fx_policy' },
+  ]) {
+    const model = buildAccountDailyPnlPresentation({ preview: readyPreview(overrides) });
+    assert.equal(model.status, 'unavailable');
+    assert.equal(model.reason, 'invalid_authority');
+  }
+});
+
+test('raw ledger reconciliation keeps engine precision while published total allows integer rounding', () => {
+  assert.equal(
+    buildAccountDailyPnlPresentation({
+      preview: readyPreview({ account_daily_pnl_raw_twd: 1499.97 }),
+    }).reason,
+    'day_ledger_mismatch',
+  );
+
+  const rounded = buildAccountDailyPnlPresentation({
+    preview: readyPreview({
+      account_daily_pnl_twd: 1500,
+      account_daily_pnl_raw_twd: 1500.49,
+      day_ledger: [securityRow, { ...cashRow, total_pnl_twd: 500.49 }],
+    }),
+  });
+  assert.equal(rounded.status, 'ready');
 });
 
 test('signed account base value is preserved while return may remain unavailable', () => {
