@@ -2,29 +2,25 @@
 
 The underlying :class:`MarketDataClient` intentionally fails closed when its selected
 valuation field contains NaN. This adapter preserves that behavior for ambiguous or
-malformed market data while allowing two evidence-based recovery paths:
+malformed market data while composing two row-level evidence authorities:
 
-1. A persistent invalid zero-action provider row may be reconstructed from two
-   independent raw regular-session granularities (1h and 15m) from the same
-   Yahoo/yfinance provider for the exact affected calendar date. Each granularity must
-   contain multiple structurally valid price bars and both must reconstruct the same
-   daily OHLC/adjusted-close observation. If the two representations transiently
-   disagree, one bounded fresh cross-granularity re-observation is allowed. Freshness
-   itself is owned by :class:`YahooIntradayEvidenceSession`, which explicitly bypasses
-   yfinance's historical-response LRU without changing market query semantics. Each
-   granularity is fetched and validated lazily inside the same freshness boundary, so
-   invalid 1h evidence prevents an unnecessary 15m request. The second observation is
-   accepted only when both fresh representations converge to a value already observed
-   in the first round. Persistent disagreement remains fail-closed. Completely empty
-   keepna buckets are ignored only when they carry no contradictory non-zero volume;
-   partially populated or contradictory bars remain fail-closed. Only price fields are
-   replaced; the original daily volume and corporate-action evidence stay authoritative.
-2. If exact-date intraday recovery is unavailable, a proven pure positive
-   cash-dividend-only row may use the existing explicit ``asof_carry_forward`` effective
-   valuation contract.
+1. A persistent invalid zero-action provider row may be reconstructed from fresh raw
+   regular-session evidence from the same Yahoo/yfinance provider for the exact affected
+   date. The normal gate requires complete 1h/15m daily OHLC/adjusted-close consensus.
+   Only when those two valid representations disagree is raw 5m evidence fetched as a
+   tie-breaker; exactly one primary candidate must match it before a unique 2-of-3 full
+   price candidate is accepted. There is no temporal retry or tolerance widening.
+   Completely empty keepna buckets are ignored only when they carry no contradictory
+   non-zero volume. Intraday evidence replaces price fields only; original daily volume
+   and corporate actions remain authoritative.
+2. Invalid rows are classified independently. A stable pure positive cash-dividend-only
+   row may use the explicit ``asof_carry_forward`` effective valuation contract even when
+   another row for the same symbol independently requires intraday price recovery. The
+   dividend signature must agree across the two ordinary daily observations; unsupported
+   split/capital-gain/action rows remain unresolved and fail closed.
 
 Everything else remains fail-closed. There are no ticker/date exceptions, alternate
-provider substitutions, guessed prices, unsupported capital-gain recovery, or relaxed
+provider substitutions, guessed prices, unsupported corporate-action recovery, or relaxed
 ledger/validator rules.
 """
 
