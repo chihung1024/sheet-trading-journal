@@ -220,16 +220,16 @@ class SemanticMarketDataClient(MarketDataClient):
                     # The broad downloader has already reproduced the malformed daily
                     # row twice. At this secondary recovery boundary, ask the same
                     # Yahoo/yfinance provider to repair the exact-date daily bar from
-                    # its finer-grained evidence. We still require two fresh repaired
-                    # observations to be complete, action-identical, and bit-for-bit
-                    # stable before accepting any value.
+                    # its finer-grained regular-session evidence. We still require two
+                    # fresh repaired observations to be complete, action-identical, and
+                    # bit-for-bit stable before accepting any value.
                     narrow = ticker_obj.history(
                         start=event_date,
                         end=event_date + pd.Timedelta(days=1),
                         interval="1d",
                         auto_adjust=False,
                         actions=True,
-                        prepost=True,
+                        prepost=False,
                         repair=True,
                         keepna=True,
                     )
