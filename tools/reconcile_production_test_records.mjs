@@ -7,13 +7,13 @@ import {
   OWNED_SMOKE_TAG_PREFIX,
   classifyProductionTestRecord,
   isProductionTestTagCandidate,
-  ownedSmokeTagKind,
 } from './production_test_record_contract.mjs';
 
 const SHA_RE = /^[0-9a-f]{40}$/;
 const MAX_CANDIDATE_RECORDS = 25;
 const CANDIDATE_COLUMNS = [
   'id',
+  'user_id',
   'txn_date',
   'symbol',
   'txn_type',
@@ -33,6 +33,7 @@ export function planProductionTestRecordReconciliation(rows, { requireChanges = 
 
   const recognized = [];
   const counts = { legacy_browser: 0, api_smoke: 0 };
+  const ownerStats = new Map();
   for (const row of rows) {
     if (!isProductionTestTagCandidate(row)) {
       throw new Error('Production test-record query returned a row outside the candidate tag contract');
@@ -45,14 +46,23 @@ export function planProductionTestRecordReconciliation(rows, { requireChanges = 
     if (!Number.isSafeInteger(id) || id <= 0) {
       throw new Error('Owned production test record has an invalid record id');
     }
+    const owner = normalizeOwner(row.user_id);
+    const stats = ownerStats.get(owner) || { legacy_browser: 0, api_smoke: 0 };
+    stats[kind] += 1;
+    ownerStats.set(owner, stats);
     counts[kind] += 1;
-    recognized.push({ ...row, id, kind });
+    recognized.push({ ...row, id, user_id: owner, kind });
   }
 
+  for (const stats of ownerStats.values()) {
+    if (stats.legacy_browser > 1) {
+      throw new Error('Dedicated production test tenant has more than one legacy browser record; refusing all mutation');
+    }
+  }
   if (requireChanges && recognized.length === 0) {
     throw new Error('Reconciliation required at least one owned production test record but found none');
   }
-  return { recognized, counts };
+  return { recognized, counts, ownerCount: ownerStats.size };
 }
 
 export function buildExactDeleteSql(record) {
@@ -60,9 +70,11 @@ export function buildExactDeleteSql(record) {
   if (!kind) throw new Error('Refusing to build delete SQL for an unowned record');
   const id = Number(record.id);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Owned production test record id is invalid');
+  const owner = normalizeOwner(record.user_id);
 
   const predicates = [
     `id = ${id}`,
+    `user_id = ${sqlString(owner)}`,
     `tag = ${sqlString(record.tag)}`,
     "txn_date = '2026-08-13'",
     "symbol = 'AAPL'",
@@ -88,15 +100,40 @@ export function executeProductionTestRecordReconciliation({
 
   const beforeRows = queryCandidates(runWrangler);
   const beforePlan = planProductionTestRecordReconciliation(beforeRows, { requireChanges });
-  let changed = 0;
+  const verifiedByOwner = new Map();
 
-  for (const record of beforePlan.recognized) {
-    const result = runWrangler(buildExactDeleteSql(record));
-    const rowChanged = parseScalar(result, 'changed');
-    if (rowChanged !== 1) {
-      throw new Error(`Production test-record mutation cardinality mismatch for ${record.kind}: changed=${rowChanged}`);
+  for (const owner of new Set(beforePlan.recognized.map((record) => record.user_id))) {
+    const ownerRows = queryOwnerRows(runWrangler, owner);
+    const ownerPlan = planProductionTestRecordReconciliation(ownerRows, { requireChanges: true });
+    if (ownerPlan.ownerCount !== 1 || ownerPlan.recognized.some((record) => record.user_id !== owner)) {
+      throw new Error('Dedicated production test tenant query returned an unexpected owner; refusing all mutation');
     }
-    changed += rowChanged;
+    const expected = beforePlan.recognized.filter((record) => record.user_id === owner);
+    if (!sameRecordIds(expected, ownerPlan.recognized)) {
+      throw new Error('Dedicated production test tenant changed during pre-mutation verification; refusing all mutation');
+    }
+    verifiedByOwner.set(owner, ownerPlan.recognized);
+  }
+
+  let changed = 0;
+  for (const records of verifiedByOwner.values()) {
+    for (const record of records) {
+      const result = runWrangler(buildExactDeleteSql(record));
+      const rowChanged = parseScalar(result, 'changed');
+      if (rowChanged !== 1) {
+        throw new Error(`Production test-record mutation cardinality mismatch for ${record.kind}: changed=${rowChanged}`);
+      }
+      changed += rowChanged;
+    }
+  }
+
+  let tenantRecordsRemaining = 0;
+  for (const owner of verifiedByOwner.keys()) {
+    const remaining = queryOwnerRows(runWrangler, owner);
+    tenantRecordsRemaining += remaining.length;
+  }
+  if (tenantRecordsRemaining !== 0) {
+    throw new Error(`Dedicated production test tenant cleanup did not converge: ${tenantRecordsRemaining} record(s) remain`);
   }
 
   const afterRows = queryCandidates(runWrangler);
@@ -115,23 +152,26 @@ export function executeProductionTestRecordReconciliation({
       legacy_browser_tag: LEGACY_BROWSER_TAG,
       owned_smoke_tag_prefix: OWNED_SMOKE_TAG_PREFIX,
       exact_payload_validation_required: true,
+      dedicated_tenant_purity_required: true,
       unrecognized_candidate_fails_closed_before_mutation: true,
       candidate_limit: MAX_CANDIDATE_RECORDS,
-      user_identity_recorded: false,
+      tenant_identity_recorded: false,
       record_ids_recorded: false,
     },
     result: {
       target_rows_before: beforePlan.recognized.length,
+      test_tenants_before: beforePlan.ownerCount,
       legacy_browser_rows_before: beforePlan.counts.legacy_browser,
       api_smoke_rows_before: beforePlan.counts.api_smoke,
       mutation_changes: changed,
       target_rows_after: afterPlan.recognized.length,
+      test_tenant_records_remaining: tenantRecordsRemaining,
     },
     worker_authorization_changed: false,
   };
   writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
   console.log(
-    `Production test-record reconciliation passed: before=${evidence.result.target_rows_before} changed=${changed} after=${evidence.result.target_rows_after}`,
+    `Production test-record reconciliation passed: before=${evidence.result.target_rows_before} tenants=${evidence.result.test_tenants_before} changed=${changed} after=${evidence.result.target_rows_after}`,
   );
   return evidence;
 }
@@ -139,6 +179,23 @@ export function executeProductionTestRecordReconciliation({
 function queryCandidates(runWrangler) {
   const sql = `SELECT ${CANDIDATE_COLUMNS.join(', ')} FROM records WHERE tag = ${sqlString(LEGACY_BROWSER_TAG)} OR tag GLOB ${sqlString(`${OWNED_SMOKE_TAG_PREFIX}*`)} ORDER BY id;`;
   return parseRows(runWrangler(sql));
+}
+
+function queryOwnerRows(runWrangler, owner) {
+  const sql = `SELECT ${CANDIDATE_COLUMNS.join(', ')} FROM records WHERE user_id = ${sqlString(normalizeOwner(owner))} ORDER BY id;`;
+  return parseRows(runWrangler(sql));
+}
+
+function sameRecordIds(left, right) {
+  const leftIds = left.map((record) => Number(record.id)).sort((a, b) => a - b);
+  const rightIds = right.map((record) => Number(record.id)).sort((a, b) => a - b);
+  return leftIds.length === rightIds.length && leftIds.every((id, index) => id === rightIds[index]);
+}
+
+function normalizeOwner(value) {
+  const owner = String(value || '').trim();
+  if (!owner || owner.length > 320) throw new Error('Owned production test record has an invalid tenant identity');
+  return owner;
 }
 
 function parseRows(payload) {
@@ -212,7 +269,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
 }
 
-export const __test = Object.freeze({
-  MAX_CANDIDATE_RECORDS,
-  ownedSmokeTagKind,
-});
+export const __test = Object.freeze({ MAX_CANDIDATE_RECORDS });
