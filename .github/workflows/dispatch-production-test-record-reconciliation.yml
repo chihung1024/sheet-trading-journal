@@ -1,0 +1,40 @@
+name: Dispatch production test-record reconciliation
+
+on:
+  pull_request:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    if: ${{ github.head_ref == 'diagnostic/dispatch-production-test-record-reconciliation' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify merged main and dispatch canonical reconciliation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN: ae418ca2eb2efa73190395e9a7951c4badbeba20
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_main="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          test "$actual_main" = "$EXPECTED_MAIN"
+
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq -nc --arg sha "$EXPECTED_MAIN" '{ref:"main",inputs:{expected_sha:$sha,require_changes:"true"}}' \
+            | gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/production-test-record-reconciliation.yml/dispatches" --input -
+
+          run_id=''
+          for _ in $(seq 1 60); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/production-test-record-reconciliation.yml/runs?event=workflow_dispatch&branch=main&per_page=20" > /tmp/runs.json
+            run_id="$(jq -r --arg sha "$EXPECTED_MAIN" --arg started "$started" '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $started)] | sort_by(.created_at) | last | .id // empty' /tmp/runs.json)"
+            if [ -n "$run_id" ]; then break; fi
+            sleep 2
+          done
+          test -n "$run_id"
+          run_number="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .run_number)"
+          echo "PRODUCTION_RECONCILIATION_RUN_ID=$run_id"
+          echo "PRODUCTION_RECONCILIATION_RUN_NUMBER=$run_number"
