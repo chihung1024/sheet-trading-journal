@@ -188,7 +188,7 @@ export async function runProductionRecordIdempotencySmoke({
     expect(keyedReplay.payload?.deduplicated === true, 'Same key + same payload was not reported as deduplicated');
     expect(positiveRecordId(keyedReplay.payload?.record_id, 'Keyed replay record_id') === keyedRecordId, 'Keyed replay returned a different record ID');
 
-    const conflict = await requestJson(fetchImpl, normalizedBaseUrl, token, '/api/records', {
+    const conflict = await requestJson(fetchImpl, normalizedBaseUrl, normalizedToken, '/api/records', {
       method: 'POST',
       body: { ...keyedRecord, qty: 0.0002 },
       idempotencyKey: key,
