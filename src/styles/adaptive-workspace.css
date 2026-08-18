@@ -206,3 +206,137 @@ body.trade-surface-scroll-lock {
   right: max(24px, calc(16px + var(--ui-safe-right)));
   bottom: max(24px, calc(16px + var(--ui-safe-bottom)));
 }
+
+/* UX-R1.3 responsive navigation.
+   The full seven-destination strip remains the wide presentation. The compact
+   presentation is selected by actual main-workspace inline size, not a new
+   route state or page-specific viewport exception. */
+.compact-navigation {
+  display: none;
+}
+
+@container main-workspace (max-width: 680px) {
+  .main-column > .mobile-tabs {
+    display: none;
+  }
+
+  .compact-navigation {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-card);
+    overflow: visible;
+  }
+}
+
+.compact-nav-item,
+.compact-nav-more-item {
+  appearance: none;
+  min-width: 0;
+  min-height: var(--ui-touch-target);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.compact-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 4px;
+  font-weight: 700;
+}
+
+.compact-nav-item:hover,
+.compact-nav-more-item:hover {
+  background: var(--bg-secondary);
+}
+
+.compact-nav-item.active {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border-color));
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg-card));
+  color: var(--primary);
+}
+
+.compact-nav-item:focus-visible,
+.compact-nav-more-item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.compact-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-nav-badge {
+  flex: 0 0 auto;
+  padding-inline: 5px;
+}
+
+.compact-nav-more {
+  position: relative;
+  min-width: 0;
+}
+
+.compact-nav-more-trigger {
+  height: 100%;
+}
+
+.compact-nav-chevron {
+  flex: 0 0 auto;
+  transition: transform 0.18s ease;
+}
+
+.compact-nav-more-trigger[aria-expanded='true'] .compact-nav-chevron {
+  transform: rotate(180deg);
+}
+
+.compact-nav-more-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 70;
+  display: grid;
+  gap: 4px;
+  width: 220px;
+  max-width: calc(100cqw - 12px);
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-lg);
+}
+
+.compact-nav-more-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.compact-nav-more-item.active {
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg-card));
+  color: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compact-nav-chevron {
+    transition: none;
+  }
+}
