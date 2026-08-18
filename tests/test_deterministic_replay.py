@@ -261,7 +261,7 @@ def _assert_golden_economics(replay, expected):
     assert summary.twr_invalid_since is None
     assert summary.xirr == expected["xirr"]
     assert summary.xirr_status == expected["xirr_status"]
-    assert summary.xirr_reason is None
+    assert summary.xirr_reason == expected["xirr_reason"]
     assert summary.xirr_asof_date == expected["xirr_asof_date"]
     assert summary.xirr_cashflow_conventional is expected["xirr_cashflow_conventional"]
 
