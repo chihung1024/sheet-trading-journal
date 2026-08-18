@@ -1,28 +1,25 @@
-name: Approve idempotency cleanup production gate
+name: Identify idempotency cleanup production reviewer
 
 on:
   pull_request:
 
 permissions:
-  actions: write
+  actions: read
   contents: read
 
 jobs:
-  approve:
+  inspect:
     if: ${{ github.head_ref == 'diagnostic/approve-idempotency-cleanup' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Review pending production deployment for canonical smoke
+      - name: Inspect pending production deployment reviewer contract
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_RUN_ID: '32152361874'
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/pending_deployments" > /tmp/pending.json
+          jq -e 'length > 0' /tmp/pending.json >/dev/null
           jq -r '.[] | "PENDING environment=\(.environment.name) id=\(.environment.id) wait_timer=\(.wait_timer) reviewers=\(.reviewers | length)"' /tmp/pending.json
-          env_ids="$(jq '[.[].environment.id]' /tmp/pending.json)"
-          test "$env_ids" != '[]'
-          jq -nc --argjson environment_ids "$env_ids" '{environment_ids:$environment_ids,state:"approved",comment:"Automated closeout approval for canonical production idempotency smoke; run uses existing dedicated test-tenant cleanup contract."}' > /tmp/review.json
-          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/pending_deployments" --input /tmp/review.json > /tmp/result.json
-          jq -r '.[]? | "DEPLOYMENT_REVIEWED environment=\(.environment // .environment_url // "unknown") state=\(.state // "approved")"' /tmp/result.json || true
+          jq -r '.[] | .reviewers[]? | "REVIEWER type=\(.type) login=\(.reviewer.login // .reviewer.name // "unknown") id=\(.reviewer.id // "unknown")"' /tmp/pending.json
