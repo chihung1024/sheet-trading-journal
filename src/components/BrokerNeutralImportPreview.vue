@@ -12,7 +12,7 @@
     <button
       type="button"
       class="neutral-import-button"
-      :disabled="importing"
+      :disabled="importing || retrying"
       title="預覽並安全匯入 Canonical Trade CSV"
       aria-label="預覽並匯入通用交易 CSV"
       @click="openPicker"
@@ -43,7 +43,7 @@
             <button
               type="button"
               class="icon-close"
-              :disabled="importing"
+              :disabled="importing || retrying"
               aria-label="關閉通用 CSV 匯入"
               @click="closeDialog"
             >×</button>
@@ -107,8 +107,9 @@
                   type="text"
                   maxlength="64"
                   autocomplete="off"
-                  :disabled="importing"
+                  :disabled="importing || retrying"
                   placeholder="例如：富途主帳戶、Schwab 主帳戶"
+                  @input="invalidateImportResult"
                 >
                 <p>
                   同一設定檔＋同一份 CSV 會使用相同防重複識別，可安全重新匯入續傳。
@@ -196,7 +197,12 @@
               <strong>{{ resultTitle }}</strong>
               <span>{{ resultMessage }}</span>
             </div>
-            <ImportReconciliationReceipt :result="result" />
+            <ImportReconciliationReceipt
+              :result="result"
+              :retry-available="canRetryAmbiguous"
+              :retrying="retrying"
+              @retry="retryAmbiguousImport"
+            />
           </div>
 
           <footer class="dialog-footer">
@@ -207,7 +213,7 @@
               <button
                 type="button"
                 class="btn-secondary"
-                :disabled="importing"
+                :disabled="importing || retrying"
                 @click="openPicker"
               >重新選擇</button>
               <button
@@ -223,7 +229,7 @@
                 v-else
                 type="button"
                 class="btn-primary"
-                :disabled="importing"
+                :disabled="importing || retrying"
                 @click="closeDialog"
               >完成</button>
             </div>
@@ -249,6 +255,11 @@ import {
 } from '../services/brokerNeutralImportPreview.js';
 import { prepareCanonicalTradeImport } from '../services/brokerNeutralImportExecution.js';
 import { createBrokerNeutralRecord } from '../services/brokerNeutralRecordCreate.js';
+import {
+  IMPORT_AMBIGUOUS_RETRY_REASON,
+  isAmbiguousImportRetryCandidate,
+  prepareAmbiguousImportRetry,
+} from '../services/importAmbiguousRetry.js';
 import { runRecordImportBatch } from '../services/recordImportBatch.js';
 
 const authStore = useAuthStore();
@@ -259,6 +270,7 @@ const fileInput = ref(null);
 const dialogOpen = ref(false);
 const reading = ref(false);
 const importing = ref(false);
+const retrying = ref(false);
 const fileName = ref('');
 const sourceText = ref('');
 const sourceFileSize = ref(null);
@@ -271,14 +283,26 @@ const progress = ref({ current: 0, total: 0 });
 const requiredHeaders = REQUIRED_CANONICAL_HEADERS;
 const optionalHeaders = OPTIONAL_CANONICAL_HEADERS;
 const visibleRows = computed(() => preview.value?.rows?.slice(0, 20) || []);
+const sourceReady = computed(() => (
+  preview.value?.status === 'ready'
+  && preview.value?.counts?.rows > 0
+  && preview.value?.counts?.blocked === 0
+  && sourceText.value.length > 0
+  && sourceProfile.value.trim().length > 0
+));
 const canImport = computed(() => (
   !reading.value
   && !importing.value
+  && !retrying.value
   && !result.value
-  && preview.value?.status === 'ready'
-  && preview.value?.counts?.rows > 0
-  && preview.value?.counts?.blocked === 0
-  && sourceProfile.value.trim().length > 0
+  && sourceReady.value
+));
+const canRetryAmbiguous = computed(() => (
+  !reading.value
+  && !importing.value
+  && !retrying.value
+  && sourceReady.value
+  && isAmbiguousImportRetryCandidate(result.value)
 ));
 
 const resultTone = computed(() => {
@@ -303,7 +327,7 @@ const resultMessage = computed(() => {
   const base = `已處理 ${result.value.processed}/${result.value.total} 筆；新增 ${result.value.created} 筆，已存在 ${result.value.replayed} 筆。`;
   if (result.value.status === 'partial_failure') {
     const retry = result.value.failure?.outcomeAmbiguous
-      ? '最後一筆回應不確定。請保留相同來源設定檔並重新匯入同一檔案，已確認項目會安全重播。'
+      ? '最後一筆回應不確定。可使用逐筆結果中的「安全續傳」先確認既有未定結果，再以相同來源識別續跑。'
       : '後續寫入已停止。修正問題後，以相同來源設定檔重新匯入同一檔案即可安全續傳。';
     return `${base} ${retry}`;
   }
@@ -320,13 +344,13 @@ const resultMessage = computed(() => {
 });
 
 const openPicker = () => {
-  if (importing.value) return;
+  if (importing.value || retrying.value) return;
   dialogOpen.value = true;
   fileInput.value?.click();
 };
 
 const closeDialog = () => {
-  if (importing.value) return;
+  if (importing.value || retrying.value) return;
   dialogOpen.value = false;
   reading.value = false;
   fileName.value = '';
@@ -337,6 +361,10 @@ const closeDialog = () => {
   errorMessage.value = '';
   result.value = null;
   progress.value = { current: 0, total: 0 };
+};
+
+const invalidateImportResult = () => {
+  if (result.value) result.value = null;
 };
 
 const handleFileChange = async (event) => {
@@ -371,33 +399,15 @@ const handleFileChange = async (event) => {
   }
 };
 
-const confirmImport = async () => {
-  if (!canImport.value) return;
+const prepareCurrentImport = () => prepareCanonicalTradeImport(
+  sourceText.value,
+  sourceProfile.value,
+  { fileSizeBytes: sourceFileSize.value },
+);
 
-  let prepared;
-  try {
-    prepared = await prepareCanonicalTradeImport(sourceText.value, sourceProfile.value, {
-      fileSizeBytes: sourceFileSize.value,
-    });
-  } catch (error) {
-    errorMessage.value = error?.message || 'CSV 尚未達到安全匯入條件。';
-    return;
-  }
+const signedOwner = () => authStore.user?.email || '';
 
-  const confirmation = [
-    `確認匯入 ${prepared.entries.length} 筆 Canonical Trade CSV 交易？`,
-    `來源設定檔：${prepared.source_profile}`,
-    '同一設定檔＋同一檔案可安全重播。',
-    '修改、重排或改用不同設定檔的檔案會視為新來源；系統不以欄位相似度猜測重複交易。',
-  ].join('\n');
-  if (!window.confirm(confirmation)) return;
-
-  const owner = authStore.user?.email || '';
-  if (!owner || !authStore.token) {
-    addToast('請先登入再執行通用 CSV 匯入', 'error');
-    return;
-  }
-
+const executePreparedImport = async (prepared, owner) => {
   importing.value = true;
   errorMessage.value = '';
   result.value = null;
@@ -450,6 +460,84 @@ const confirmImport = async () => {
     addToast('通用 CSV 匯入未完成，沒有足夠證據宣告寫入成功', 'error');
   } finally {
     importing.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  if (!canImport.value) return;
+
+  let prepared;
+  try {
+    prepared = await prepareCurrentImport();
+  } catch (error) {
+    errorMessage.value = error?.message || 'CSV 尚未達到安全匯入條件。';
+    return;
+  }
+
+  const confirmation = [
+    `確認匯入 ${prepared.entries.length} 筆 Canonical Trade CSV 交易？`,
+    `來源設定檔：${prepared.source_profile}`,
+    '同一設定檔＋同一檔案可安全重播。',
+    '修改、重排或改用不同設定檔的檔案會視為新來源；系統不以欄位相似度猜測重複交易。',
+  ].join('\n');
+  if (!window.confirm(confirmation)) return;
+
+  const owner = signedOwner();
+  if (!owner || !authStore.token) {
+    addToast('請先登入再執行通用 CSV 匯入', 'error');
+    return;
+  }
+
+  await executePreparedImport(prepared, owner);
+};
+
+const retryAmbiguousImport = async () => {
+  if (!canRetryAmbiguous.value) return;
+  const priorResult = result.value;
+
+  let prepared;
+  try {
+    prepared = await prepareCurrentImport();
+  } catch (error) {
+    errorMessage.value = error?.message || '目前來源已不符合原本的安全匯入條件。';
+    return;
+  }
+
+  const confirmation = [
+    `安全續傳 ${prepared.entries.length} 筆 Canonical Trade CSV 交易？`,
+    `來源設定檔：${prepared.source_profile}`,
+    '系統會先確認既有未定交易；確認完成後才以同一批穩定識別從頭重播。',
+    '已確認項目會由伺服器判定為安全重播，不會用交易欄位相似度猜測重複。',
+  ].join('\n');
+  if (!window.confirm(confirmation)) return;
+
+  const owner = signedOwner();
+  if (!owner || !authStore.token) {
+    addToast('請先登入再執行安全續傳', 'error');
+    return;
+  }
+
+  retrying.value = true;
+  try {
+    const gate = await prepareAmbiguousImportRetry(priorResult, {
+      entries: prepared.entries,
+      storage: window.localStorage,
+      owner,
+      reconcile: () => portfolioStore.fetchAll(),
+    });
+
+    if (!gate.ready) {
+      if (gate.reason === IMPORT_AMBIGUOUS_RETRY_REASON.RECONCILIATION_PENDING) {
+        addToast('系統仍在確認先前未定的交易結果；目前不會重送整批。', 'info');
+      } else if (gate.reason === IMPORT_AMBIGUOUS_RETRY_REASON.RECOVERY_STATE_UNAVAILABLE) {
+        addToast('無法安全確認本機恢復狀態；目前不會重送整批。', 'error');
+      }
+      return;
+    }
+
+    await executePreparedImport(prepared, owner);
+  } finally {
+    retrying.value = false;
   }
 };
 
