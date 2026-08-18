@@ -85,32 +85,48 @@ def _prepared_partial_row(*, split=0.0, dividend=0.0, capital_gain=0.0, rows=2):
     return frame
 
 
-def _narrow_daily_row(
+def _daily_action_row(*, capital_gain=0.0):
+    return pd.Series(
+        {
+            "Open": 101.0,
+            "High": 103.0,
+            "Low": 100.0,
+            "Close": float("nan"),
+            "Adj Close": float("nan"),
+            "Volume": 1200.0,
+            "Dividends": 0.0,
+            "Stock Splits": 0.0,
+            "Capital Gains": capital_gain,
+        }
+    )
+
+
+def _intraday_row(
     *,
     date="2026-08-11",
-    open_price=100.0,
-    high=103.0,
-    low=99.0,
-    close=102.0,
-    volume=1234.0,
-    dividend=0.0,
-    split=0.0,
-    capital_gain=0.0,
-    include_adj_close=True,
+    open_price=101.0,
+    final_close=102.0,
+    first_high=103.0,
+    first_low=100.0,
+    second_high=103.0,
+    second_low=101.0,
+    tz="America/New_York",
 ):
-    data = {
-        "Open": [open_price],
-        "High": [high],
-        "Low": [low],
-        "Close": [close],
-        "Volume": [volume],
-        "Dividends": [dividend],
-        "Stock Splits": [split],
-        "Capital Gains": [capital_gain],
-    }
-    if include_adj_close:
-        data["Adj Close"] = [close]
-    return pd.DataFrame(data, index=pd.to_datetime([date]))
+    index = pd.DatetimeIndex(
+        [f"{date} 09:30:00", f"{date} 10:30:00"],
+        tz=tz,
+    )
+    return pd.DataFrame(
+        {
+            "Open": [open_price, 102.0],
+            "High": [first_high, second_high],
+            "Low": [first_low, second_low],
+            "Close": [102.0, final_close],
+            "Adj Close": [102.0, final_close],
+            "Volume": [600.0, 600.0],
+        },
+        index=index,
+    )
 
 
 class _Ticker:
@@ -127,106 +143,90 @@ class _Ticker:
 def test_classifier_rejects_absent_or_incomplete_frames():
     assert SemanticMarketDataClient._pure_action_only_signature(None) is None
     assert SemanticMarketDataClient._pure_action_only_signature(pd.DataFrame()) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(
-        pd.DataFrame({"Close": [1.0]})
-    ) is None
+    assert SemanticMarketDataClient._pure_action_only_signature(pd.DataFrame({"Close": [1.0]})) is None
 
 
 def test_classifier_accepts_nan_volume_and_absent_optional_capital_gain():
     frame = _prepared_event_row(volume=float("nan"))
-
-    signature = SemanticMarketDataClient._pure_action_only_signature(frame)
-
-    assert signature == ((pd.Timestamp("2026-08-11"), 0.5, 0.0, 1.0),)
+    assert SemanticMarketDataClient._pure_action_only_signature(frame) == (
+        (pd.Timestamp("2026-08-11"), 0.5, 0.0, 1.0),
+    )
 
 
 def test_classifier_requires_all_semantic_input_columns():
-    frame = _prepared_event_row().drop(columns=["Volume"])
-
-    assert SemanticMarketDataClient._pure_action_only_signature(frame) is None
+    assert SemanticMarketDataClient._pure_action_only_signature(
+        _prepared_event_row().drop(columns=["Volume"])
+    ) is None
 
 
 def test_classifier_rejects_mixed_partial_price_bar():
     frame = _prepared_event_row()
     frame.loc[frame.index[0], "Open"] = 100.0
-
     assert SemanticMarketDataClient._pure_action_only_signature(frame) is None
 
 
 def test_classifier_rejects_nonzero_or_nonfinite_volume():
-    nonzero = _prepared_event_row(volume=1.0)
-    nonfinite = _prepared_event_row(volume=float("inf"))
-
-    assert SemanticMarketDataClient._pure_action_only_signature(nonzero) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(nonfinite) is None
+    assert SemanticMarketDataClient._pure_action_only_signature(_prepared_event_row(volume=1.0)) is None
+    assert SemanticMarketDataClient._pure_action_only_signature(
+        _prepared_event_row(volume=float("inf"))
+    ) is None
 
 
 def test_classifier_requires_positive_finite_dividend():
-    zero = _prepared_event_row(dividend=0.0)
-    negative = _prepared_event_row(dividend=-0.1)
-    malformed = _prepared_event_row(dividend="not-a-number")
-
-    assert SemanticMarketDataClient._pure_action_only_signature(zero) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(negative) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(malformed) is None
+    for dividend in (0.0, -0.1, "not-a-number"):
+        assert SemanticMarketDataClient._pure_action_only_signature(
+            _prepared_event_row(dividend=dividend)
+        ) is None
 
 
 def test_classifier_rejects_any_nonzero_split_even_with_valid_dividend():
-    positive_split = _prepared_event_row(dividend=0.5, split=2.0)
-    negative_split = _prepared_event_row(dividend=0.5, split=-2.0)
-
-    assert SemanticMarketDataClient._pure_action_only_signature(positive_split) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(negative_split) is None
+    for split in (2.0, -2.0):
+        assert SemanticMarketDataClient._pure_action_only_signature(
+            _prepared_event_row(dividend=0.5, split=split)
+        ) is None
 
 
 def test_classifier_requires_positive_finite_split_factor():
-    zero = _prepared_event_row(split_factor=0.0)
-    malformed = _prepared_event_row(split_factor="not-a-number")
-
-    assert SemanticMarketDataClient._pure_action_only_signature(zero) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(malformed) is None
+    for factor in (0.0, "not-a-number"):
+        assert SemanticMarketDataClient._pure_action_only_signature(
+            _prepared_event_row(split_factor=factor)
+        ) is None
 
 
 def test_classifier_rejects_malformed_or_material_capital_gain():
-    malformed = _prepared_event_row(capital_gain="not-a-number")
-    material = _prepared_event_row(capital_gain=0.75)
-
-    assert SemanticMarketDataClient._pure_action_only_signature(malformed) is None
-    assert SemanticMarketDataClient._pure_action_only_signature(material) is None
+    for gain in ("not-a-number", 0.75):
+        assert SemanticMarketDataClient._pure_action_only_signature(
+            _prepared_event_row(capital_gain=gain)
+        ) is None
 
 
 def test_classifier_rejects_nat_event_date():
-    frame = _prepared_event_row(index=pd.DatetimeIndex([pd.NaT]))
-
-    assert SemanticMarketDataClient._pure_action_only_signature(frame) is None
+    assert SemanticMarketDataClient._pure_action_only_signature(
+        _prepared_event_row(index=pd.DatetimeIndex([pd.NaT]))
+    ) is None
 
 
 def test_classifier_normalizes_timezone_aware_event_date():
     frame = _prepared_event_row(
         index=pd.DatetimeIndex([pd.Timestamp("2026-08-11", tz="America/New_York")])
     )
-
-    signature = SemanticMarketDataClient._pure_action_only_signature(frame)
-
-    assert signature == ((pd.Timestamp("2026-08-11"), 0.5, 0.0, 1.0),)
+    assert SemanticMarketDataClient._pure_action_only_signature(frame) == (
+        (pd.Timestamp("2026-08-11"), 0.5, 0.0, 1.0),
+    )
 
 
 def test_classifier_no_invalid_selected_price_rows_returns_empty_signature():
     frame = _prepared_event_row()
     frame.loc[frame.index[0], "Close_Adjusted"] = 100.0
-
     assert SemanticMarketDataClient._pure_action_only_signature(frame) == ()
 
 
 def test_materializer_revalidates_signature_before_mutating():
     frame = _prepared_two_row_event()
     wrong_signature = ((pd.Timestamp("2026-08-12"), 0.5, 0.0, 1.0),)
-
     result, applied = SemanticMarketDataClient._materialize_action_only_asof_valuations(
-        frame,
-        wrong_signature,
+        frame, wrong_signature
     )
-
     assert applied is False
     assert result is frame
     assert pd.isna(result.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"])
@@ -235,12 +235,9 @@ def test_materializer_revalidates_signature_before_mutating():
 def test_materializer_respects_existing_provenance_columns():
     frame = _prepared_two_row_event(existing_provenance=True)
     signature = SemanticMarketDataClient._pure_action_only_signature(frame)
-
     result, applied = SemanticMarketDataClient._materialize_action_only_asof_valuations(
-        frame,
-        signature,
+        frame, signature
     )
-
     assert applied is True
     assert result.loc[pd.Timestamp("2026-08-10"), "Valuation_Source"] == "market"
     assert result.loc[pd.Timestamp("2026-08-10"), "Valuation_Source_Date"] == "2026-08-10"
@@ -260,9 +257,8 @@ def test_recovery_scalar_and_date_helpers_fail_closed_and_normalize_timezone():
 
 
 def test_recovery_action_signature_requires_complete_finite_actions():
-    valid = _narrow_daily_row().iloc[0]
+    valid = _daily_action_row()
     assert SemanticMarketDataClient._action_signature_from_row(valid) == (0.0, 0.0, 0.0)
-
     assert SemanticMarketDataClient._action_signature_from_row(valid.drop(labels=["Dividends"])) is None
     malformed_split = valid.copy()
     malformed_split["Stock Splits"] = "bad"
@@ -272,167 +268,199 @@ def test_recovery_action_signature_requires_complete_finite_actions():
     assert SemanticMarketDataClient._action_signature_from_row(malformed_gain) is None
 
 
-def test_complete_narrow_candidate_rejects_absent_wrong_date_and_duplicate_rows():
+def test_intraday_candidate_rejects_absent_empty_naive_wrong_date_and_duplicates():
     event_date = pd.Timestamp("2026-08-11")
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(None, event_date) is None
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(pd.DataFrame(), event_date) is None
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(
-        _narrow_daily_row(date="2026-08-12"), event_date
+    original = _daily_action_row()
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(None, event_date, original) is None
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        pd.DataFrame(), event_date, original
     ) is None
-    duplicate = pd.concat([_narrow_daily_row(), _narrow_daily_row()])
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(duplicate, event_date) is None
+
+    naive = _intraday_row()
+    naive.index = naive.index.tz_localize(None)
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(naive, event_date, original) is None
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        _intraday_row(date="2026-08-12"), event_date, original
+    ) is None
+
+    duplicate = _intraday_row()
+    duplicate.index = pd.DatetimeIndex([duplicate.index[0], duplicate.index[0]])
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        duplicate, event_date, original
+    ) is None
 
 
-def test_complete_narrow_candidate_rejects_invalid_index_and_missing_price_fields():
+def test_intraday_candidate_requires_multiple_complete_structurally_valid_price_bars():
     event_date = pd.Timestamp("2026-08-11")
-    bad_index = _narrow_daily_row()
-    bad_index.index = pd.DatetimeIndex([pd.NaT])
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(bad_index, event_date) is None
+    original = _daily_action_row()
 
-    for column in ("Open", "High", "Low", "Close"):
-        missing = _narrow_daily_row().drop(columns=[column])
-        assert SemanticMarketDataClient._complete_narrow_daily_candidate(missing, event_date) is None
+    single = _intraday_row().iloc[[0]]
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(single, event_date, original) is None
 
-    nonpositive = _narrow_daily_row(close=0.0)
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(nonpositive, event_date) is None
+    for column in ("Open", "High", "Low", "Close", "Adj Close"):
+        missing = _intraday_row().drop(columns=[column])
+        assert SemanticMarketDataClient._complete_intraday_price_candidate(
+            missing, event_date, original
+        ) is None
+
+    nonpositive = _intraday_row(final_close=0.0)
+    impossible_high = _intraday_row(open_price=104.0, first_high=103.0)
+    impossible_low = _intraday_row(final_close=100.5, second_low=101.0)
+    for frame in (nonpositive, impossible_high, impossible_low):
+        assert SemanticMarketDataClient._complete_intraday_price_candidate(
+            frame, event_date, original
+        ) is None
 
 
-def test_complete_narrow_candidate_rejects_impossible_ohlc_and_bad_volume():
+def test_intraday_candidate_requires_daily_open_volume_and_range_anchors():
     event_date = pd.Timestamp("2026-08-11")
-    impossible_high = _narrow_daily_row(open_price=105.0, high=104.0, low=99.0, close=102.0)
-    impossible_low = _narrow_daily_row(open_price=100.0, high=103.0, low=101.0, close=100.5)
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(impossible_high, event_date) is None
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(impossible_low, event_date) is None
+    valid_intraday = _intraday_row()
 
-    missing_volume = _narrow_daily_row().drop(columns=["Volume"])
-    negative_volume = _narrow_daily_row(volume=-1.0)
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(missing_volume, event_date) is None
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(negative_volume, event_date) is None
+    wrong_open = _daily_action_row()
+    wrong_open["Open"] = 101.25
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        valid_intraday, event_date, wrong_open
+    ) is None
+
+    bad_volume = _daily_action_row()
+    bad_volume["Volume"] = float("nan")
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        valid_intraday, event_date, bad_volume
+    ) is None
+
+    outside_high = _daily_action_row()
+    outside_high["High"] = 104.0
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        valid_intraday, event_date, outside_high
+    ) is None
+
+    outside_low = _daily_action_row()
+    outside_low["Low"] = 99.0
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        valid_intraday, event_date, outside_low
+    ) is None
+
+    close_mismatch = _daily_action_row()
+    close_mismatch["Close"] = 102.5
+    assert SemanticMarketDataClient._complete_intraday_price_candidate(
+        valid_intraday, event_date, close_mismatch
+    ) is None
 
 
-def test_complete_narrow_candidate_requires_action_and_adjusted_price_integrity():
+def test_intraday_candidate_accepts_timezone_aware_stable_price_sequence():
     event_date = pd.Timestamp("2026-08-11")
-    missing_action = _narrow_daily_row().drop(columns=["Dividends"])
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(missing_action, event_date) is None
-
-    bad_adjusted = _narrow_daily_row()
-    bad_adjusted.loc[event_date, "Adj Close"] = float("nan")
-    assert SemanticMarketDataClient._complete_narrow_daily_candidate(bad_adjusted, event_date) is None
-
-    without_adjusted = _narrow_daily_row(include_adj_close=False)
-    values, signature = SemanticMarketDataClient._complete_narrow_daily_candidate(
-        without_adjusted, event_date
-    )
-    assert values["Close"] == 102.0
-    assert "Adj Close" not in values
-    assert signature
-
-
-def test_complete_narrow_candidate_normalizes_timezone_aware_index():
-    frame = _narrow_daily_row()
-    frame.index = pd.DatetimeIndex([pd.Timestamp("2026-08-11", tz="Asia/Taipei")])
-    candidate = SemanticMarketDataClient._complete_narrow_daily_candidate(
-        frame, pd.Timestamp("2026-08-11")
+    candidate = SemanticMarketDataClient._complete_intraday_price_candidate(
+        _intraday_row(), event_date, _daily_action_row()
     )
     assert candidate is not None
+    values, signature = candidate
+    assert values == {
+        "Open": 101.0,
+        "High": 103.0,
+        "Low": 100.0,
+        "Close": 102.0,
+        "Adj Close": 102.0,
+    }
+    assert len(signature) == 2
+    assert "-04:00" in signature[0][0]
 
 
-def test_exact_date_recovery_noops_without_selected_nan_or_required_frame_shape():
+def test_exact_date_intraday_recovery_noops_without_selected_nan_or_required_shape():
     client = SemanticMarketDataClient()
     valid = _prepared_partial_row()
     valid.loc[valid.index[-1], "Close"] = 102.0
     valid.loc[valid.index[-1], "Adj Close"] = 102.0
     valid.loc[valid.index[-1], "Close_Adjusted"] = 102.0
 
-    result, dates = client._recover_with_exact_date_daily_evidence("AAA", valid)
+    result, dates = client._recover_with_exact_date_intraday_evidence("AAA", valid)
     assert result is valid
     assert dates == ()
 
-    result, dates = client._recover_with_exact_date_daily_evidence("AAA", pd.DataFrame())
+    result, dates = client._recover_with_exact_date_intraday_evidence("AAA", pd.DataFrame())
     assert result.empty
     assert dates == ()
 
 
-def test_exact_date_recovery_bounds_many_invalid_rows_and_rejects_invalid_index():
+def test_exact_date_intraday_recovery_bounds_many_invalid_rows_and_rejects_invalid_index():
     client = SemanticMarketDataClient()
     too_many = _prepared_partial_row(rows=6)
     too_many["Close_Adjusted"] = float("nan")
-    result, dates = client._recover_with_exact_date_daily_evidence("AAA", too_many)
+    result, dates = client._recover_with_exact_date_intraday_evidence("AAA", too_many)
     assert result is too_many
     assert dates == ()
 
     malformed_index = _prepared_partial_row()
     malformed_index.index = pd.DatetimeIndex([pd.Timestamp("2026-08-10"), pd.NaT])
-    result, dates = client._recover_with_exact_date_daily_evidence("AAA", malformed_index)
+    result, dates = client._recover_with_exact_date_intraday_evidence("AAA", malformed_index)
     assert result is malformed_index
     assert dates == ()
 
 
-def test_exact_date_recovery_rejects_missing_original_action_evidence():
+def test_exact_date_intraday_recovery_rejects_missing_or_nonzero_daily_action_evidence():
     client = SemanticMarketDataClient()
-    frame = _prepared_partial_row().drop(columns=["Dividends"])
-    result, dates = client._recover_with_exact_date_daily_evidence("AAA", frame)
-    assert result is frame
+    missing = _prepared_partial_row().drop(columns=["Dividends"])
+    result, dates = client._recover_with_exact_date_intraday_evidence("AAA", missing)
+    assert result is missing
     assert dates == ()
 
+    split = _prepared_partial_row(split=2.0)
+    with patch("journal_engine.clients.semantic_market_data.yf.Ticker") as ticker:
+        result, dates = client._recover_with_exact_date_intraday_evidence("AAA", split)
+    assert result is split
+    assert dates == ()
+    ticker.assert_not_called()
 
-def test_exact_date_recovery_rejects_provider_exception():
+
+def test_exact_date_intraday_recovery_rejects_provider_exception():
     client = SemanticMarketDataClient()
     frame = _prepared_partial_row()
     with patch(
         "journal_engine.clients.semantic_market_data.yf.Ticker",
         return_value=_Ticker(error=RuntimeError("provider unavailable")),
     ):
-        result, dates = client._recover_with_exact_date_daily_evidence("AAA", frame)
+        result, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
     assert result is frame
     assert dates == ()
 
 
-def test_exact_date_recovery_rejects_unstable_exact_date_evidence():
+def test_exact_date_intraday_recovery_rejects_unstable_sequence():
     client = SemanticMarketDataClient()
     frame = _prepared_partial_row()
-    first = _narrow_daily_row(close=102.0)
-    second = _narrow_daily_row(close=102.5)
-    tickers = iter([_Ticker(first), _Ticker(second)])
+    tickers = iter([_Ticker(_intraday_row(final_close=102.0)), _Ticker(_intraday_row(final_close=102.5))])
     with patch(
         "journal_engine.clients.semantic_market_data.yf.Ticker",
         side_effect=lambda _symbol: next(tickers),
     ):
-        result, dates = client._recover_with_exact_date_daily_evidence("AAA", frame)
+        result, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
     assert result is frame
     assert dates == ()
 
 
-def test_exact_date_recovery_recomputes_split_factor_from_real_provider_row():
+def test_exact_date_intraday_recovery_never_recomputes_split_factor_from_intraday_prices():
     client = SemanticMarketDataClient()
     frame = _prepared_partial_row(split=2.0)
-    frame.loc[frame.index[0], "Split_Factor"] = 1.0
-    narrow = _narrow_daily_row(split=2.0)
-    with patch(
-        "journal_engine.clients.semantic_market_data.yf.Ticker",
-        return_value=_Ticker(narrow),
-    ):
-        recovered, dates = client._recover_with_exact_date_daily_evidence("AAA", frame)
-
-    assert dates == (pd.Timestamp("2026-08-11"),)
-    assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.0
-    assert recovered.loc[pd.Timestamp("2026-08-10"), "Split_Factor"] == 2.0
-    assert recovered.loc[pd.Timestamp("2026-08-11"), "Split_Factor"] == 1.0
-    assert PortfolioValidator.validate_price_data("AAA", recovered) is True
+    before = frame["Split_Factor"].copy(deep=True)
+    with patch("journal_engine.clients.semantic_market_data.yf.Ticker") as ticker:
+        recovered, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
+    assert recovered is frame
+    assert dates == ()
+    assert recovered["Split_Factor"].equals(before)
+    ticker.assert_not_called()
+    assert PortfolioValidator.validate_price_data("AAA", recovered) is False
 
 
-def test_exact_date_recovery_preserves_existing_market_provenance_columns():
+def test_exact_date_intraday_recovery_preserves_existing_market_provenance_columns():
     client = SemanticMarketDataClient()
     frame = _prepared_partial_row()
     frame["Valuation_Source"] = ["market", "asof_carry_forward"]
     frame["Valuation_Source_Date"] = ["2026-08-10", "2026-08-10"]
-    narrow = _narrow_daily_row()
     with patch(
         "journal_engine.clients.semantic_market_data.yf.Ticker",
-        return_value=_Ticker(narrow),
+        return_value=_Ticker(_intraday_row()),
     ):
-        recovered, dates = client._recover_with_exact_date_daily_evidence("AAA", frame)
+        recovered, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
 
     assert dates == (pd.Timestamp("2026-08-11"),)
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Valuation_Source"] == "market"
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Valuation_Source_Date"] == "2026-08-11"
+    assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.0
