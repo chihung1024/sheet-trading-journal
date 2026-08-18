@@ -1,0 +1,227 @@
+name: Protected legacy browser test record cleanup
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: protected-legacy-browser-test-record-cleanup
+  cancel-in-progress: false
+
+env:
+  EXPECTED_MAIN_SHA: 0537d73e0674f09a9b3f671f15caa089a75273c7
+
+jobs:
+  preflight:
+    name: Verify cleanup control plane before reviewer gate
+    if: ${{ github.head_ref == 'diagnostic/legacy-browser-record-cleanup' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPECTED_MAIN_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+      - name: Verify exact protected-main head and zero active portfolio updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UPDATE_WORKFLOW: update.yml
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$EXPECTED_MAIN_SHA"
+          node tools/reconcile_legacy_calculation_jobs.mjs check-github-active-runs
+
+  production:
+    name: Delete exact owned legacy test record and verify production
+    needs: preflight
+    if: ${{ github.head_ref == 'diagnostic/legacy-browser-record-cleanup' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPECTED_MAIN_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Re-verify protected main and zero active portfolio updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UPDATE_WORKFLOW: update.yml
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$EXPECTED_MAIN_SHA"
+          node tools/reconcile_legacy_calculation_jobs.mjs check-github-active-runs
+      - name: Render production Wrangler config
+        env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+          SOURCE_COMMIT: ${{ env.EXPECTED_MAIN_SHA }}
+        run: npm run worker:config:render
+      - name: Verify exact production D1 identity
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          EXPECTED_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$EXPECTED_D1_DATABASE_ID"
+          test -n "$EXPECTED_D1_DATABASE_NAME"
+          D1_INFO_JSON="$(npx wrangler d1 info "$EXPECTED_D1_DATABASE_NAME" --json --config .wrangler/deploy.toml)"
+          export D1_INFO_JSON
+          node tools/verify_d1_identity.mjs
+      - name: Delete only the exact historical owned browser-test record
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EVIDENCE_FILE: legacy-browser-record-cleanup.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { spawnSync } from 'node:child_process';
+          import { writeFileSync } from 'node:fs';
+
+          const config = '.wrangler/deploy.toml';
+          const where = [
+            "tag = 'NOW1A-IDEMPOTENCY-TEST-20260813'",
+            "txn_date = '2026-08-13'",
+            "symbol = 'AAPL'",
+            "txn_type = 'BUY'",
+            'qty = 1',
+            'price = 1',
+            'COALESCE(fee, 0) = 0',
+            'COALESCE(tax, 0) = 0',
+          ].join(' AND ');
+
+          function wrangler(command) {
+            const result = spawnSync('npx', [
+              'wrangler', 'd1', 'execute', 'DB', '--remote', '--config', config,
+              '--command', command, '--json',
+            ], {
+              encoding: 'utf8',
+              env: { ...process.env, CI: 'true' },
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
+            if (result.status !== 0) {
+              throw new Error(`Wrangler D1 command failed without exposing row data: ${result.stderr || 'unknown error'}`);
+            }
+            return JSON.parse(result.stdout);
+          }
+
+          function scalar(payload, key) {
+            const value = Number(payload?.at(-1)?.results?.[0]?.[key]);
+            if (!Number.isInteger(value) || value < 0) throw new Error(`Invalid D1 scalar for ${key}`);
+            return value;
+          }
+
+          const before = scalar(wrangler(`SELECT COUNT(*) AS total FROM records WHERE ${where};`), 'total');
+          if (before !== 1) {
+            throw new Error(`Refusing cleanup: exact owned legacy marker cardinality is ${before}, expected exactly 1`);
+          }
+
+          const mutationSql = `
+            DELETE FROM records
+             WHERE id = (SELECT id FROM records WHERE ${where} ORDER BY id LIMIT 1)
+               AND 1 = (SELECT COUNT(*) FROM records WHERE ${where});
+            SELECT changes() AS changed;
+          `;
+          const changed = scalar(wrangler(mutationSql), 'changed');
+          if (changed !== 1) throw new Error(`Cleanup mutation cardinality mismatch: changed=${changed}`);
+
+          const after = scalar(wrangler(`SELECT COUNT(*) AS total FROM records WHERE ${where};`), 'total');
+          if (after !== 0) throw new Error(`Cleanup did not converge: exact marker rows remaining=${after}`);
+
+          const evidence = {
+            schema_version: 1,
+            check_name: 'legacy_browser_test_record_cleanup',
+            status: 'passed',
+            observed_at: new Date().toISOString(),
+            main_sha: process.env.EXPECTED_MAIN_SHA,
+            selection_contract: {
+              tag: 'NOW1A-IDEMPOTENCY-TEST-20260813',
+              txn_date: '2026-08-13',
+              symbol: 'AAPL',
+              txn_type: 'BUY',
+              qty: 1,
+              price: 1,
+              fee_or_null_as_zero: 0,
+              tax_or_null_as_zero: 0,
+              user_identity_recorded: false,
+            },
+            result: { target_rows_before: before, mutation_changes: changed, target_rows_after: after },
+            worker_authorization_changed: false,
+          };
+          writeFileSync(process.env.EVIDENCE_FILE, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+          console.log(`Legacy browser test record cleanup passed: before=${before} changed=${changed} after=${after}`);
+          NODE
+      - name: Dispatch merged-main Update Portfolio Data after cleanup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq -nc '{ref:"main",inputs:{custom_benchmark:"0050.TW"}}' \
+            | gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/dispatches" --input -
+
+          run_id=''
+          for _ in $(seq 1 120); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/runs?event=workflow_dispatch&branch=main&per_page=30" > /tmp/update-runs.json
+            run_id="$(jq -r --arg sha "$EXPECTED_MAIN_SHA" --arg started "$started" '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $started)] | sort_by(.created_at) | last | .id // empty' /tmp/update-runs.json)"
+            if [ -n "$run_id" ]; then break; fi
+            sleep 5
+          done
+          test -n "$run_id"
+          echo "POST_CLEANUP_UPDATE_RUN_ID=$run_id"
+
+          for _ in $(seq 1 240); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > /tmp/update-run.json
+            status="$(jq -r .status /tmp/update-run.json)"
+            conclusion="$(jq -r '.conclusion // empty' /tmp/update-run.json)"
+            run_number="$(jq -r .run_number /tmp/update-run.json)"
+            echo "POST_CLEANUP_UPDATE_RUN_NUMBER=$run_number STATUS=$status CONCLUSION=${conclusion:-pending}"
+            if [ "$status" = completed ]; then
+              test "$conclusion" = success
+              jq -nc --argjson id "$run_id" --argjson number "$run_number" --arg conclusion "$conclusion" '{run_id:$id,run_number:$number,conclusion:$conclusion}' > post-cleanup-update.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Post-cleanup Update Portfolio Data did not complete within verifier bound.' >&2
+          exit 1
+      - name: Upload sanitized cleanup evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: legacy-browser-record-cleanup-${{ env.EXPECTED_MAIN_SHA }}
+          path: |
+            legacy-browser-record-cleanup.json
+            post-cleanup-update.json
+          if-no-files-found: warn
+          retention-days: 30
