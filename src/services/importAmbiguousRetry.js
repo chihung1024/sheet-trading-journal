@@ -30,6 +30,11 @@ const retryGateResult = (ready, reason = null, reconciliationDegraded = false) =
   reconciliation_degraded: reconciliationDegraded,
 });
 
+const hasActiveReconciliation = (pending, now) => pending.some(intent => (
+  Number.isFinite(intent?.reconcilingUntil)
+  && intent.reconcilingUntil > now
+));
+
 export const prepareAmbiguousImportRetry = async (
   importResult,
   {
@@ -38,6 +43,7 @@ export const prepareAmbiguousImportRetry = async (
     owner,
     reconcile,
     readPendingIntents = readEligibleRecordCreateIntents,
+    now = Date.now(),
   } = {},
 ) => {
   if (!isAmbiguousImportRetryCandidate(importResult)) {
@@ -49,14 +55,20 @@ export const prepareAmbiguousImportRetry = async (
   if (typeof reconcile !== 'function' || typeof readPendingIntents !== 'function') {
     throw new TypeError('Ambiguous import retry reconciliation dependencies are invalid');
   }
+  if (!Number.isFinite(now)) {
+    throw new TypeError('Ambiguous import retry requires a finite reconciliation clock');
+  }
 
   validateStableEntries(entries);
   let reconciliationDegraded = false;
   try {
+    // fetchAll owns the existing same-key recovery and awaits that recovery before
+    // its normal read path. The explicit retry must give that authority one full
+    // opportunity before deciding whether it can take over.
     await reconcile();
   } catch {
-    // Existing recovery can settle the ambiguous intent before a later readback
-    // failure. Durable recovery state below is therefore the final retry gate.
+    // Existing recovery runs before the later portfolio read. A later readback
+    // failure therefore does not prove that recovery itself is still running.
     reconciliationDegraded = true;
   }
 
@@ -70,14 +82,23 @@ export const prepareAmbiguousImportRetry = async (
       reconciliationDegraded,
     );
   }
+  if (!Array.isArray(pending)) {
+    return retryGateResult(
+      false,
+      IMPORT_AMBIGUOUS_RETRY_REASON.RECOVERY_STATE_UNAVAILABLE,
+      reconciliationDegraded,
+    );
+  }
 
-  // Importers do not all expose the same key representation to the UI. IBKR,
-  // for example, hashes its import identity before persisting the durable
-  // record-create intent. The record-create mutation barrier guarantees at most
-  // one eligible intent per owner, so any remaining eligible create recovery is
-  // a fail-closed reason to delay whole-batch replay rather than compare unlike
-  // key formats and risk racing recovery.
-  if (Array.isArray(pending) && pending.length > 0) {
+  // A live reconciliation window can belong to another tab/controller, so do
+  // not race it. Once that bounded window has expired (or was never active), a
+  // remaining live intent is recovery state, not proof of an in-flight request.
+  // The existing mutation-barrier contract already allows a later *explicit*
+  // mutation to supersede old recovery state. The parent importer will replay
+  // only the exact re-prepared stable source, so allowing that explicit takeover
+  // avoids permanently deadlocking the user after the one-shot automatic
+  // recovery has already been exhausted.
+  if (hasActiveReconciliation(pending, now)) {
     return retryGateResult(
       false,
       IMPORT_AMBIGUOUS_RETRY_REASON.RECONCILIATION_PENDING,
@@ -90,4 +111,5 @@ export const prepareAmbiguousImportRetry = async (
 
 export const __test = Object.freeze({
   validateStableEntries,
+  hasActiveReconciliation,
 });
