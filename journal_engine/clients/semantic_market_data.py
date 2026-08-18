@@ -11,13 +11,14 @@ malformed market data while allowing two evidence-based recovery paths:
    daily OHLC/adjusted-close observation. If the two representations transiently
    disagree, one bounded fresh cross-granularity re-observation is allowed. Freshness
    itself is owned by :class:`YahooIntradayEvidenceSession`, which explicitly bypasses
-   yfinance's historical-response LRU without changing market query semantics. The
-   second observation is accepted only when both fresh representations converge to a
-   value already observed in the first round. Persistent disagreement remains
-   fail-closed. Completely empty keepna buckets are ignored only when they carry no
-   contradictory non-zero volume; partially populated or contradictory bars remain
-   fail-closed. Only price fields are replaced; the original daily volume and
-   corporate-action evidence stay authoritative.
+   yfinance's historical-response LRU without changing market query semantics. Each
+   granularity is fetched and validated lazily inside the same freshness boundary, so
+   invalid 1h evidence prevents an unnecessary 15m request. The second observation is
+   accepted only when both fresh representations converge to a value already observed
+   in the first round. Persistent disagreement remains fail-closed. Completely empty
+   keepna buckets are ignored only when they carry no contradictory non-zero volume;
+   partially populated or contradictory bars remain fail-closed. Only price fields are
+   replaced; the original daily volume and corporate-action evidence stay authoritative.
 2. If exact-date intraday recovery is unavailable, a proven pure positive
    cash-dividend-only row may use the existing explicit ``asof_carry_forward`` effective
    valuation contract.
@@ -318,8 +319,25 @@ class SemanticMarketDataClient(MarketDataClient):
             consensus: dict[str, float] | None = None
 
             for observation_round in range(_MAX_INTRADAY_OBSERVATION_ROUNDS):
+                candidates: dict[str, dict[str, float]] = {}
                 try:
-                    observations = evidence_session.observe(event_date)
+                    with evidence_session.observation(event_date) as observation:
+                        for interval in INTRADAY_EVIDENCE_INTERVALS:
+                            intraday = observation.fetch(interval)
+                            candidate = self._complete_intraday_price_candidate(
+                                intraday,
+                                event_date,
+                            )
+                            if candidate is None:
+                                logger.warning(
+                                    "[%s] exact-date raw intraday evidence invalid for %s interval=%s round=%s; fail closed",
+                                    symbol,
+                                    event_date.strftime("%Y-%m-%d"),
+                                    interval,
+                                    observation_round + 1,
+                                )
+                                return frame, ()
+                            candidates[interval] = candidate[0]
                 except YahooIntradayEvidenceError as exc:
                     logger.warning(
                         "[%s] exact-date fresh Yahoo intraday observation failed for %s round=%s: %s",
@@ -329,23 +347,6 @@ class SemanticMarketDataClient(MarketDataClient):
                         exc,
                     )
                     return frame, ()
-
-                candidates: dict[str, dict[str, float]] = {}
-                for interval in INTRADAY_EVIDENCE_INTERVALS:
-                    candidate = self._complete_intraday_price_candidate(
-                        observations.get(interval),
-                        event_date,
-                    )
-                    if candidate is None:
-                        logger.warning(
-                            "[%s] exact-date raw intraday evidence invalid for %s interval=%s round=%s; fail closed",
-                            symbol,
-                            event_date.strftime("%Y-%m-%d"),
-                            interval,
-                            observation_round + 1,
-                        )
-                        return frame, ()
-                    candidates[interval] = candidate[0]
 
                 first_interval, second_interval = INTRADAY_EVIDENCE_INTERVALS
                 first = candidates[first_interval]
