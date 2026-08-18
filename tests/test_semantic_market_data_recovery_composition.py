@@ -1,3 +1,5 @@
+"""Regression coverage for composing independent row-level recovery authorities."""
+
 from collections import defaultdict
 from unittest.mock import patch
 
