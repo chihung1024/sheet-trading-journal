@@ -1,9 +1,7 @@
 name: Production verification for Update Portfolio Data 3317
 
 on:
-  push:
-    branches:
-      - diagnostic/update-portfolio-3317
+  pull_request:
 
 permissions:
   actions: write
@@ -11,6 +9,7 @@ permissions:
 
 jobs:
   verify-production:
+    if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
