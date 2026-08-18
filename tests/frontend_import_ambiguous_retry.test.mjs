@@ -44,13 +44,13 @@ test('non-ambiguous result never invokes reconciliation', async () => {
   assert.equal(reconciled, 0);
 });
 
-test('matching pending stable key blocks retry after reconciliation attempt', async () => {
+test('any remaining eligible create recovery blocks replay across importer key formats', async () => {
   let reconciled = 0;
   const gate = await prepareAmbiguousImportRetry(ambiguousResult, {
     entries,
     owner: 'owner@example.com',
     reconcile: async () => { reconciled += 1; },
-    readPendingIntents: () => [{ idempotencyKey: 'stable-key-0000002' }],
+    readPendingIntents: () => [{ idempotencyKey: 'ibkr.4f7b4d39f2b7' }],
   });
 
   assert.equal(reconciled, 1);
@@ -89,6 +89,18 @@ test('unreadable recovery state fails closed', async () => {
     reason: IMPORT_AMBIGUOUS_RETRY_REASON.RECOVERY_STATE_UNAVAILABLE,
     reconciliation_degraded: false,
   });
+});
+
+test('gate refuses replay without stable prepared entries', async () => {
+  await assert.rejects(
+    () => prepareAmbiguousImportRetry(ambiguousResult, {
+      entries: [{ idempotencyKey: '' }],
+      owner: 'owner@example.com',
+      reconcile: async () => {},
+      readPendingIntents: () => [],
+    }),
+    /stable entry idempotency keys/,
+  );
 });
 
 test('gate result never exposes entry keys or reconciliation error messages', async () => {
