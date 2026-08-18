@@ -120,16 +120,20 @@ test('a stale snapshot discovered after a succeeded calculation re-enters the Ph
   stop();
 });
 
-test('desktop trade panel stays in the grid flow while the mobile sheet remains an intentional overlay', async () => {
-  const source = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8');
-  const desktopPanel = source.match(/\.fixed-panel\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+test('trade entry stays one canonical surface: dock in flow, drawer/sheet as intentional overlays', async () => {
+  const appSource = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8');
+  const adaptiveSource = await readFile(new URL('../src/styles/adaptive-workspace.css', import.meta.url), 'utf8');
+  const desktopPanel = appSource.match(/\.fixed-panel\s*\{([\s\S]*?)\n\}/)?.[1] || '';
 
+  assert.equal((appSource.match(/<TradeForm\b/g) || []).length, 1, 'TradeForm remains the single create/edit authority');
   assert.match(desktopPanel, /position:\s*sticky;/);
   assert.doesNotMatch(desktopPanel, /position:\s*fixed;/);
-  assert.doesNotMatch(desktopPanel, /right:\s*max\(/);
   assert.match(desktopPanel, /width:\s*100%;/);
-  assert.match(source, /\.main-wrapper[^\n]*overflow-x:\s*clip;/);
-  assert.match(source, /\.content-container[^\n]*overflow-x:\s*clip;/);
-  assert.match(source, /\.mobile-sheet\s*\{[\s\S]*?position:\s*fixed;/);
-  assert.match(source, /\.mobile-sheet \.fixed-panel \{ position: static;/);
+  assert.match(appSource, /`trade-surface-\$\{tradeSurfaceMode\}`/);
+  assert.match(appSource, /if \(isCompactView\.value\) return 'sheet';/);
+  assert.match(appSource, /@click="closeTransientTradeSurface\(\)"/);
+  assert.match(appSource, /v-if="isTransientTradeSurfaceOpen"[\s\S]*class="sheet-backdrop"/);
+  assert.match(adaptiveSource, /\.side-column\.trade-surface-drawer,[\s\S]*\.side-column\.trade-surface-sheet[\s\S]*position:\s*fixed;/);
+  assert.match(adaptiveSource, /\.trade-surface-drawer \.fixed-panel,[\s\S]*\.trade-surface-sheet \.fixed-panel[\s\S]*position:\s*static;/);
+  assert.match(adaptiveSource, /\.sheet-backdrop\s*\{[\s\S]*position:\s*fixed;[\s\S]*inset:\s*0;/);
 });
