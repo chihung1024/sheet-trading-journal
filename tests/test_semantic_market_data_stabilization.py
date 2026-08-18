@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from journal_engine.clients.semantic_market_data import SemanticMarketDataClient
+from journal_engine.clients.yahoo_intraday_evidence import YahooIntradayEvidenceError
 from journal_engine.core.validator import PortfolioValidator
 
 
@@ -54,6 +55,19 @@ class _Ticker:
     def history(self, **kwargs):
         self.calls.append(dict(kwargs))
         return self.frame.copy(deep=True)
+
+
+class _Observation:
+    def __init__(self, responses):
+        self.responses = dict(responses)
+        self.calls = []
+
+    def fetch(self, interval):
+        self.calls.append(interval)
+        value = self.responses[interval]
+        if isinstance(value, Exception):
+            raise value
+        return value.copy(deep=True)
 
 
 def _recover(*evidence_frames):
@@ -106,6 +120,57 @@ def test_quorum_can_form_when_earlier_representation_is_invalid():
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Open"] == 100.5
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.25
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
+
+
+def test_quorum_can_form_after_one_provider_representation_is_unavailable():
+    stable = _intraday(open_price=100.5)
+    observation = _Observation(
+        {
+            "1h": YahooIntradayEvidenceError("temporary representation failure"),
+            "15m": stable,
+            "5m": stable,
+        }
+    )
+
+    candidate, agreeing, attempted = SemanticMarketDataClient()._resolve_intraday_price_quorum(
+        observation,
+        pd.Timestamp("2026-08-11"),
+    )
+
+    assert candidate is not None
+    assert candidate["Open"] == 100.5
+    assert agreeing == ("15m", "5m")
+    assert attempted == ("1h", "15m", "5m")
+
+
+def test_invalid_quorum_configuration_fails_closed_before_provider_access():
+    observation = _Observation({})
+    with patch("journal_engine.clients.semantic_market_data._SEMANTIC_INTRADAY_QUORUM", 1):
+        candidate, agreeing, attempted = SemanticMarketDataClient()._resolve_intraday_price_quorum(
+            observation,
+            pd.Timestamp("2026-08-11"),
+        )
+
+    assert candidate is None
+    assert agreeing == ()
+    assert attempted == ()
+    assert observation.calls == []
+
+
+def test_nontransitive_tolerance_cannot_create_ambiguous_quorum_acceptance():
+    first = _intraday(open_price=100.0)
+    second = _intraday(open_price=100.000018)
+    bridge = _intraday(open_price=100.000009)
+    observation = _Observation({"1h": first, "15m": second, "5m": bridge})
+
+    candidate, agreeing, attempted = SemanticMarketDataClient()._resolve_intraday_price_quorum(
+        observation,
+        pd.Timestamp("2026-08-11"),
+    )
+
+    assert candidate is None
+    assert agreeing == ()
+    assert attempted == ("1h", "15m", "5m")
 
 
 def test_three_distinct_valid_representations_remain_fail_closed():
