@@ -1,3 +1,5 @@
+"""Generic invariants for ordered multi-granularity semantic evidence quorum recovery."""
+
 from unittest.mock import patch
 
 import pandas as pd
