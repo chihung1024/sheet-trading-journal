@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "baseline_sha": "345cde1a96bf9547effbddafc72f6223bd496310",
-  "review_date": "2026-08-17",
+  "review_date": "2026-08-18",
   "purpose": "Inventory current browser persistence so new keys and dynamic key prefixes cannot be introduced silently. Presence in this baseline is not a declaration that a key is safe.",
   "keys": [
     {
@@ -30,6 +30,15 @@
       "target_batch": "PHASE-2",
       "planned_action": "retain-owner-validated-latest-dirty-generation-only",
       "owner_paths": ["src/services/automaticRecalculationState.js", "src/services/projectStorage.js", "src/stores/portfolio.js"]
+    },
+    {
+      "key": "broker_mapping_presets.v1.",
+      "classification": "tenant-broker-import-preference-prefix",
+      "authoritative": false,
+      "risk_ids": [],
+      "target_batch": "R3.2F",
+      "planned_action": "retain-owner-scoped-explicit-mapping-metadata-only-no-broker-rows-or-execution-identity",
+      "owner_paths": ["src/services/brokerNeutralMappingPresets.js", "src/services/projectStorage.js"]
     },
     {
       "key": "cached_records",
