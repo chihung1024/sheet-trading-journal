@@ -4,64 +4,67 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
+  actions: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-empty-bucket-volume-guard:
-    name: Apply #3317 empty bucket volume guard
+  verify-update-3317-final-production:
+    name: Verify final Update Portfolio Data #3317 fix
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 18
     steps:
-      - name: Checkout target branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: fix/market-data-cross-granularity-evidence
-          fetch-depth: 1
-
-      - name: Add contradictory empty-bucket volume guard
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('journal_engine/clients/semantic_market_data.py')
-          text = path.read_text(encoding='utf-8')
-          old = (
-              '            if not any(present):\n'
-              '                # keepna=True intentionally preserves no-trade buckets for sparse\n'
-              '                # symbols. A fully empty price bucket is absence of evidence, not\n'
-              '                # contradictory price evidence; partial buckets still fail below.\n'
-              '                continue\n'
-          )
-          new = (
-              '            if not any(present):\n'
-              '                empty_volume = (\n'
-              '                    cls._finite_number(row["Volume"]) if "Volume" in row.index else None\n'
-              '                )\n'
-              '                if empty_volume is not None and empty_volume != 0.0:\n'
-              '                    return None\n'
-              '                # keepna=True intentionally preserves no-trade buckets for sparse\n'
-              '                # symbols. A fully empty price bucket is absence of evidence only\n'
-              '                # when it also carries no contradictory non-zero volume. Partial\n'
-              '                # buckets and price-empty traded buckets remain fail-closed.\n'
-              '                continue\n'
-          )
-          if old not in text:
-              raise SystemExit('expected empty-bucket block not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-          python -m py_compile journal_engine/clients/semantic_market_data.py
-          git diff --check
-
-      - name: Commit target branch guard
+      - name: Dispatch exact merged main and require production success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: e89cf39463c69e83ffa1237554ac7d94aafaa44d
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add journal_engine/clients/semantic_market_data.py
-          git commit -m 'fix: reject contradictory empty intraday buckets'
-          git push origin HEAD:fix/market-data-cross-granularity-evidence
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          headers=(
+            -H 'Accept: application/vnd.github+json'
+            -H "Authorization: Bearer $GH_TOKEN"
+            -H 'X-GitHub-Api-Version: 2022-11-28'
+          )
+
+          current_main="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/branches/main" | jq -r '.commit.sha')"
+          test "$current_main" = "$EXPECTED_MAIN_SHA"
+
+          before="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
+          before_number="$(printf '%s' "$before" | jq '[.workflow_runs[].run_number] | max // 0')"
+
+          payload='{"ref":"main","inputs":{"custom_benchmark":"0050.TW","target_user_id":"","calculation_job_id":"","transaction_integrity_audit_only":"false"}}'
+          curl --silent --show-error --fail-with-body "${headers[@]}" \
+            -X POST "$api/actions/workflows/update.yml/dispatches" \
+            -H 'Content-Type: application/json' \
+            --data "$payload" >/dev/null
+
+          run_id=''
+          for _ in $(seq 1 30); do
+            response="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
+            run_id="$(printf '%s' "$response" | jq -r --arg sha "$EXPECTED_MAIN_SHA" --argjson before "$before_number" '.workflow_runs[] | select(.head_sha == $sha and .run_number > $before) | .id' | head -n1)"
+            if [[ -n "$run_id" && "$run_id" != "null" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          test -n "$run_id"
+          printf 'PRODUCTION_RUN_ID=%s\n' "$run_id"
+
+          conclusion=''
+          for _ in $(seq 1 150); do
+            run="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/runs/$run_id")"
+            status="$(printf '%s' "$run" | jq -r '.status')"
+            conclusion="$(printf '%s' "$run" | jq -r '.conclusion // empty')"
+            if [[ "$status" == "completed" ]]; then
+              printf '%s\n' "$(printf '%s' "$run" | jq -c '{id,name,run_number,event,status,conclusion,head_sha,created_at,updated_at,html_url}')"
+              break
+            fi
+            sleep 5
+          done
+
+          test "$conclusion" = 'success'
