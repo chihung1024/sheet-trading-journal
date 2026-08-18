@@ -49,6 +49,8 @@ def test_cross_granularity_agreement_requires_all_price_fields_and_tight_match()
 
 def test_intraday_recovery_rejects_invalid_daily_volume_before_provider_request():
     client = SemanticMarketDataClient()
+    # Daily volume remains part of the authoritative daily evidence boundary even
+    # when the price fields are reconstructed from independent intraday granularities.
     for volume in (-1.0, float("nan")):
         frame = _prepared_recovery_frame(volume=volume)
         with patch("journal_engine.clients.semantic_market_data.yf.Ticker") as ticker:
