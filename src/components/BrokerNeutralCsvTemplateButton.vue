@@ -28,13 +28,13 @@
       <div class="tool-card mapping-card">
         <div>
           <strong>其他券商 CSV 欄位對應</strong>
-          <span>明確指定來源欄位後建立零寫入 Canonical 預覽；不猜財務語意。</span>
+          <span>明確指定來源欄位，先建立 Canonical 預覽；全部通過後才可明確確認匯入。</span>
         </div>
         <BrokerNeutralColumnMapping />
       </div>
 
       <p class="tools-note">
-        工具本身不建立交易；實際 Canonical 匯入仍由「通用 CSV」的 reviewed execution flow 負責。
+        欄位對應不猜財務語意；實際寫入與「通用 CSV」共用同一 durable record-create / readback / recalculation authority。
       </p>
     </div>
   </div>

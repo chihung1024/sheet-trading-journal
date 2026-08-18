@@ -11,10 +11,11 @@
     <button
       type="button"
       class="tool-action-button"
-      title="將其他券商 CSV 欄位明確對應到 Canonical Trade CSV v1；只預覽、不寫入"
+      :disabled="importing"
+      title="將其他券商 CSV 明確對應到 Canonical Trade CSV v1，預覽通過後可安全匯入"
       @click="chooseFile"
     >
-      欄位對應預覽
+      欄位對應匯入
     </button>
 
     <Teleport to="body">
@@ -27,25 +28,31 @@
         >
           <header class="dialog-header">
             <div>
-              <p class="eyebrow">Explicit Mapping · Zero Write</p>
+              <p class="eyebrow">Explicit Mapping · Durable Import</p>
               <h2 id="mapping-title">其他券商 CSV 欄位對應</h2>
               <p v-if="fileName" class="file-name">{{ fileName }}</p>
             </div>
-            <button type="button" class="icon-close" aria-label="關閉欄位對應" @click="closeDialog">×</button>
+            <button
+              type="button"
+              class="icon-close"
+              :disabled="importing"
+              aria-label="關閉欄位對應"
+              @click="closeDialog"
+            >×</button>
           </header>
 
           <div class="dialog-body">
-            <div class="zero-write-banner">
-              <strong>此階段不會寫入交易</strong>
+            <div class="safety-banner">
+              <strong>先明確對應 → Canonical v1 預覽 → 最後確認寫入</strong>
               <span>
-                你明確指定來源欄位或固定值；系統不猜日期格式、BUY/SELL、幣別、正負號或重複交易。
-                對應後仍必須通過原 Canonical Trade CSV v1 validator。
+                系統不猜日期格式、BUY/SELL、幣別、正負號或重複交易。Mapping preview 本身仍是零寫入；
+                只有重新驗證原始來源、mapping 與來源設定檔後，才會進入既有 durable record writer。
               </span>
             </div>
 
             <div v-if="reading" class="state-panel" role="status">正在讀取來源 CSV…</div>
             <div v-if="errorMessage" class="error-panel" role="alert">
-              <strong>無法建立欄位對應預覽</strong>
+              <strong>無法建立安全欄位對應</strong>
               <span>{{ errorMessage }}</span>
             </div>
 
@@ -56,7 +63,9 @@
                     <h3>來源欄位</h3>
                     <p>{{ sourceTable.rows.length }} 筆來源資料 · {{ sourceTable.headers.length }} 個欄位</p>
                   </div>
-                  <button type="button" class="btn-secondary" @click="chooseFile">重新選擇</button>
+                  <button type="button" class="btn-secondary" :disabled="importing" @click="chooseFile">
+                    重新選擇
+                  </button>
                 </div>
                 <div class="source-header-list">
                   <code v-for="header in sourceTable.headers" :key="header">{{ header }}</code>
@@ -91,6 +100,7 @@
                   <select
                     :id="`map-${field}`"
                     v-model="mappingState[field].sourceHeader"
+                    :disabled="importing"
                     @change="handleColumnSelection(field)"
                   >
                     <option value="">未對應</option>
@@ -103,6 +113,7 @@
                     v-if="constantFieldSet.has(field)"
                     v-model="mappingState[field].constant"
                     type="text"
+                    :disabled="importing"
                     :placeholder="constantPlaceholder(field)"
                     @input="handleConstantInput(field)"
                   >
@@ -117,7 +128,7 @@
                 <button
                   type="button"
                   class="btn-primary"
-                  :disabled="!mappingReady"
+                  :disabled="!mappingReady || importing"
                   @click="buildPreview"
                 >建立零寫入預覽</button>
               </div>
@@ -153,7 +164,7 @@
                   </strong>
                   <span>
                     {{ mappedResult.canonical_preview.status === 'ready'
-                      ? '此結果仍是零寫入預覽；本階段不會建立交易。'
+                      ? '這一層 preview 仍是零寫入；請設定來源名稱並明確確認後，才會建立 durable import intents。'
                       : '請依下方阻擋原因修正來源資料或欄位對應；系統不會自動轉換。' }}
                   </span>
                 </div>
@@ -199,13 +210,56 @@
                 <p v-if="mappedResult.canonical_preview.rows.length > mappedRows.length" class="more-note">
                   畫面僅顯示前 {{ mappedRows.length }} 筆；摘要仍涵蓋全部 {{ mappedResult.canonical_preview.rows.length }} 筆。
                 </p>
+
+                <div v-if="mappedResult.canonical_preview.status === 'ready'" class="source-profile-card">
+                  <label for="mapped-source-profile"><strong>匯入來源設定檔</strong></label>
+                  <input
+                    id="mapped-source-profile"
+                    v-model="sourceProfile"
+                    type="text"
+                    maxlength="64"
+                    autocomplete="off"
+                    :disabled="importing"
+                    placeholder="例如：富途主帳戶、Schwab 主帳戶"
+                    @input="result = null"
+                  >
+                  <p>
+                    同一來源設定檔＋完全相同原始 CSV＋完全相同 mapping 會使用相同防重複識別。
+                    原始檔或 mapping 任一變更都視為新來源；系統不以交易欄位相似度猜測重複。
+                  </p>
+                </div>
               </section>
             </template>
+
+            <div v-if="importing" class="progress-panel" role="status" aria-live="polite">
+              <strong>正在安全匯入 {{ progress.current }}/{{ progress.total }}</strong>
+              <span>逐筆使用 source-bound stable key 提交；整批完成或停止後只做一次權威 readback 與重算。</span>
+            </div>
+
+            <div v-if="result" class="result-panel" :class="resultTone" role="status" aria-live="polite">
+              <strong>{{ resultTitle }}</strong>
+              <span>{{ resultMessage }}</span>
+            </div>
           </div>
 
           <footer class="dialog-footer">
-            <span>零寫入 mapping preview · 不建立第二套財務語意</span>
-            <button type="button" class="btn-primary" @click="closeDialog">完成</button>
+            <span>
+              Mapping preview 本身 writes_allowed=false；實際寫入僅透過 reviewed durable record-create path。
+            </span>
+            <div class="footer-actions">
+              <button type="button" class="btn-secondary" :disabled="importing" @click="closeDialog">
+                {{ result ? '關閉' : '取消' }}
+              </button>
+              <button
+                v-if="mappedResult?.canonical_preview?.status === 'ready' && !result"
+                type="button"
+                class="btn-primary"
+                :disabled="!executionReady"
+                @click="confirmImport"
+              >
+                {{ importing ? `匯入中 ${progress.current}/${progress.total}` : `確認匯入 ${mappedResult.source_row_count} 筆` }}
+              </button>
+            </div>
           </footer>
         </section>
       </div>
@@ -215,6 +269,10 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue';
+import { CONFIG } from '../config.js';
+import { useToast } from '../composables/useToast';
+import { useAuthStore } from '../stores/auth';
+import { usePortfolioStore } from '../stores/portfolio';
 import {
   CANONICAL_HEADERS,
   MAX_CANONICAL_CSV_BYTES,
@@ -226,16 +284,27 @@ import {
   buildMappedCanonicalTradePreview,
   parseBrokerSourceCsv,
 } from '../services/brokerNeutralColumnMapping.js';
+import { prepareMappedBrokerImport } from '../services/brokerNeutralMappedImportExecution.js';
+import { createBrokerNeutralRecord } from '../services/brokerNeutralRecordCreate.js';
+import { runRecordImportBatch } from '../services/recordImportBatch.js';
+
+const authStore = useAuthStore();
+const portfolioStore = usePortfolioStore();
+const { addToast } = useToast();
 
 const fileInput = ref(null);
 const open = ref(false);
 const reading = ref(false);
+const importing = ref(false);
 const fileName = ref('');
 const sourceText = ref('');
 const sourceFileSize = ref(null);
 const sourceTable = ref(null);
 const mappedResult = ref(null);
+const sourceProfile = ref('');
 const errorMessage = ref('');
+const result = ref(null);
+const progress = ref({ current: 0, total: 0 });
 const canonicalFields = CANONICAL_HEADERS;
 const requiredFieldSet = new Set(REQUIRED_CANONICAL_HEADERS);
 const constantFieldSet = new Set(CONSTANT_MAPPING_FIELDS);
@@ -249,6 +318,7 @@ const resetMapping = () => {
     mappingState[field].constant = '';
   }
   mappedResult.value = null;
+  result.value = null;
 };
 
 const applyExactHeaderDefaults = () => {
@@ -272,28 +342,81 @@ const mappedEntry = (field) => {
 const mappingObject = computed(() => Object.fromEntries(
   CANONICAL_HEADERS.map(field => [field, mappedEntry(field)]),
 ));
-
 const missingRequired = computed(() => REQUIRED_CANONICAL_HEADERS.filter(field => !mappedEntry(field)));
 const mappingReady = computed(() => Boolean(sourceTable.value) && missingRequired.value.length === 0);
 const mappedRows = computed(() => mappedResult.value?.canonical_preview?.rows?.slice(0, 12) || []);
+const executionReady = computed(() => (
+  !reading.value
+  && !importing.value
+  && !result.value
+  && mappedResult.value?.canonical_preview?.status === 'ready'
+  && mappedResult.value?.canonical_preview?.counts?.blocked === 0
+  && mappedResult.value?.source_row_count > 0
+  && sourceProfile.value.trim().length > 0
+));
+
+const resultTone = computed(() => {
+  const status = result.value?.status;
+  if (status === 'committed' || status === 'replayed') return 'success';
+  if (status === 'failed') return 'error';
+  return 'warning';
+});
+
+const resultTitle = computed(() => {
+  const status = result.value?.status;
+  if (status === 'committed') return '欄位對應匯入完成';
+  if (status === 'replayed') return '沒有重複新增';
+  if (status === 'committed_with_sync_warning') return '交易已保存，後續同步需留意';
+  if (status === 'replayed_with_sync_warning') return '交易已存在，後續同步需留意';
+  if (status === 'partial_failure') return '部分交易已處理';
+  return '匯入未完成';
+});
+
+const resultMessage = computed(() => {
+  if (!result.value) return '';
+  const base = `已處理 ${result.value.processed}/${result.value.total} 筆；新增 ${result.value.created} 筆，已存在 ${result.value.replayed} 筆。`;
+  if (result.value.status === 'partial_failure') {
+    const retry = result.value.failure?.outcomeAmbiguous
+      ? '最後一筆回應不確定。請使用相同來源設定檔、同一原始檔與同一 mapping 重新執行，已確認項目會安全重播。'
+      : '後續寫入已停止。修正問題後，以相同來源設定檔、同一原始檔與同一 mapping 重新執行即可安全續傳。';
+    return `${base} ${retry}`;
+  }
+  if (result.value.status === 'committed_with_sync_warning') {
+    return `${base} 交易寫入已確認，不需要重複匯入；權威 readback 或重算將由既有恢復流程繼續處理。`;
+  }
+  if (result.value.status === 'replayed_with_sync_warning') {
+    return `${base} 交易已存在，不需要重複匯入；稍後重新整理即可。`;
+  }
+  if (result.value.status === 'failed') {
+    return `${base} 沒有足夠證據宣告新的寫入成功。`;
+  }
+  return base;
+});
 
 const chooseFile = () => {
+  if (importing.value) return;
   open.value = true;
   fileInput.value?.click();
 };
 
 const closeDialog = () => {
+  if (importing.value) return;
   open.value = false;
+};
+
+const invalidateMappedPreview = () => {
+  mappedResult.value = null;
+  result.value = null;
 };
 
 const handleColumnSelection = (field) => {
   if (mappingState[field].sourceHeader) mappingState[field].constant = '';
-  mappedResult.value = null;
+  invalidateMappedPreview();
 };
 
 const handleConstantInput = (field) => {
   if (mappingState[field].constant) mappingState[field].sourceHeader = '';
-  mappedResult.value = null;
+  invalidateMappedPreview();
 };
 
 const handleFileChange = async (event) => {
@@ -308,6 +431,8 @@ const handleFileChange = async (event) => {
   sourceText.value = '';
   sourceFileSize.value = file.size;
   sourceTable.value = null;
+  sourceProfile.value = '';
+  progress.value = { current: 0, total: 0 };
   resetMapping();
 
   if (file.size > MAX_CANONICAL_CSV_BYTES) {
@@ -331,6 +456,7 @@ const handleFileChange = async (event) => {
 
 const buildPreview = () => {
   errorMessage.value = '';
+  result.value = null;
   mappedResult.value = null;
   try {
     mappedResult.value = buildMappedCanonicalTradePreview(
@@ -340,6 +466,91 @@ const buildPreview = () => {
     );
   } catch (error) {
     errorMessage.value = error?.message || '欄位對應無法建立 Canonical 預覽。';
+  }
+};
+
+const confirmImport = async () => {
+  if (!executionReady.value) return;
+
+  let prepared;
+  try {
+    prepared = await prepareMappedBrokerImport(
+      sourceText.value,
+      mappingObject.value,
+      sourceProfile.value,
+      { fileSizeBytes: sourceFileSize.value },
+    );
+  } catch (error) {
+    errorMessage.value = error?.message || '欄位對應來源尚未達到安全匯入條件。';
+    return;
+  }
+
+  const confirmation = [
+    `確認匯入 ${prepared.entries.length} 筆欄位對應交易？`,
+    `來源設定檔：${prepared.source_profile}`,
+    '防重複識別綁定原始 CSV、完整 mapping contract 與來源列序。',
+    '原始檔或 mapping 任一變更會視為新來源；系統不使用交易欄位相似度猜測重複。',
+  ].join('\n');
+  if (!window.confirm(confirmation)) return;
+
+  const owner = authStore.user?.email || '';
+  if (!owner || !authStore.token) {
+    addToast('請先登入再執行欄位對應匯入', 'error');
+    return;
+  }
+
+  importing.value = true;
+  errorMessage.value = '';
+  result.value = null;
+  progress.value = { current: 0, total: prepared.entries.length };
+
+  try {
+    result.value = await runRecordImportBatch(prepared.entries, {
+      createRecord: async (entry) => {
+        try {
+          return await createBrokerNeutralRecord(entry, {
+            storage: window.localStorage,
+            owner,
+            getToken: () => authStore.token,
+            refreshToken: () => authStore.refreshToken(),
+            apiBaseUrl: CONFIG.API_BASE_URL,
+          });
+        } finally {
+          progress.value = {
+            current: Math.min(progress.value.current + 1, progress.value.total),
+            total: progress.value.total,
+          };
+        }
+      },
+      refreshRecords: () => portfolioStore.fetchRecords(),
+      requestUpdate: () => portfolioStore.triggerUpdate(
+        portfolioStore.selectedBenchmark,
+        { automatic: true },
+      ),
+    });
+
+    const type = resultTone.value === 'success'
+      ? 'success'
+      : resultTone.value === 'error'
+        ? 'error'
+        : 'warning';
+    addToast(
+      `${resultTitle.value}：新增 ${result.value.created}、已存在 ${result.value.replayed}`,
+      type,
+    );
+  } catch (error) {
+    result.value = {
+      status: 'failed',
+      total: prepared.entries.length,
+      processed: 0,
+      created: 0,
+      replayed: 0,
+      failure: { outcomeAmbiguous: error?.outcomeAmbiguous === true },
+      sync: {},
+    };
+    addToast('欄位對應匯入未完成，沒有足夠證據宣告寫入成功', 'error');
+  } finally {
+    importing.value = false;
   }
 };
 
@@ -369,8 +580,8 @@ const displayNumber = value => (Number.isFinite(value) ? String(value) : '—');
   cursor: pointer;
 }
 .tool-action-button { width: 100%; background: var(--bg-card, #fff); color: inherit; text-align: left; }
-.tool-action-button:hover,
-.btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
+.tool-action-button:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .btn-primary { border-color: var(--primary); background: var(--primary); color: #fff; }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 .mapping-overlay {
@@ -414,25 +625,29 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .eyebrow { color: var(--text-muted); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .file-name { margin-top: 3px !important; color: var(--text-muted); }
 .icon-close { min-width: 36px; min-height: 36px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; font: inherit; }
-.icon-close:hover { background: var(--bg-secondary); }
+.icon-close:hover:not(:disabled) { background: var(--bg-secondary); }
 .dialog-body { display: grid; gap: 14px; overflow: auto; padding: 16px 18px; }
-.zero-write-banner,
+.safety-banner,
 .state-panel,
 .error-panel,
 .source-panel,
 .mapping-panel,
 .mapped-preview,
-.mapped-status-panel {
+.mapped-status-panel,
+.source-profile-card,
+.progress-panel,
+.result-panel {
   border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 12px 14px;
 }
-.zero-write-banner { display: grid; gap: 4px; background: var(--bg-secondary); }
+.safety-banner { display: grid; gap: 4px; background: var(--bg-secondary); }
 .state-panel { text-align: center; color: var(--text-muted); }
 .error-panel { display: grid; gap: 4px; border-color: var(--danger, #dc2626); background: rgb(220 38 38 / 7%); }
 .source-panel,
 .mapping-panel,
-.mapped-preview { display: grid; gap: 12px; }
+.mapped-preview,
+.source-profile-card { display: grid; gap: 12px; }
 .section-heading p { margin-top: 3px; color: var(--text-muted); }
 .source-header-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .source-header-list code { padding: 4px 7px; border-radius: 6px; background: var(--bg-secondary); }
@@ -445,7 +660,17 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .required-badge { color: var(--danger, #dc2626); background: rgb(220 38 38 / 8%); }
 .optional-badge { color: var(--text-muted); background: var(--bg-secondary); }
 .mapping-row select,
-.mapping-row input { min-width: 0; min-height: 36px; padding: 0.45rem 0.55rem; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-card, #fff); color: inherit; font: inherit; }
+.mapping-row input,
+.source-profile-card input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-card, #fff);
+  color: inherit;
+  font: inherit;
+}
 .constant-unavailable { color: var(--text-muted); }
 .mapping-status { color: var(--warning, #d97706); font-weight: 700; }
 .mapping-status.ready { color: var(--success); }
@@ -454,9 +679,16 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .preview-summary span { color: var(--text-muted); }
 .preview-summary .good strong { color: var(--success); }
 .preview-summary .bad strong { color: var(--danger, #dc2626); }
-.mapped-status-panel { display: grid; gap: 4px; }
+.mapped-status-panel,
+.progress-panel,
+.result-panel { display: grid; gap: 4px; }
 .mapped-status-panel.success { border-color: var(--success); background: rgb(16 185 129 / 7%); }
 .mapped-status-panel.warning { border-color: var(--warning, #d97706); background: rgb(245 158 11 / 7%); }
+.source-profile-card p { margin: 0; color: var(--text-muted); }
+.progress-panel { border-color: var(--primary); background: var(--bg-secondary); }
+.result-panel.success { background: rgb(16 185 129 / 8%); }
+.result-panel.warning { background: rgb(245 158 11 / 9%); }
+.result-panel.error { background: rgb(220 38 38 / 8%); }
 .mapped-table-wrap { overflow: auto; border: 1px solid var(--border-color); border-radius: 8px; }
 .mapped-table { width: 100%; min-width: 930px; border-collapse: collapse; }
 .mapped-table th,
@@ -467,6 +699,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .bad-text { color: var(--danger, #dc2626); }
 .warning-text { color: var(--warning, #d97706); }
 .more-note { margin: 0; color: var(--text-muted); }
+.footer-actions { display: flex; gap: 8px; align-items: center; }
 
 @media (max-width: 760px) {
   .mapping-overlay { padding: 0; align-items: end; }
@@ -478,6 +711,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .preview-actions,
   .dialog-footer { align-items: stretch; flex-direction: column; }
   .preview-actions button,
-  .dialog-footer button { width: 100%; }
+  .footer-actions,
+  .footer-actions button { width: 100%; }
+  .footer-actions { flex-direction: column; }
 }
 </style>

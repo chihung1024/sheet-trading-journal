@@ -82,8 +82,11 @@ const assertExecutionReadyPreview = (preview) => {
   }
 };
 
-const buildRecord = (row) => {
-  const payload = row.payload;
+export const buildCanonicalImportRecord = (row) => {
+  const payload = row?.payload;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new BrokerNeutralImportExecutionError('Canonical preview row is invalid', 'PREVIEW_ROW_INVALID');
+  }
   return Object.freeze({
     txn_date: payload.txn_date,
     symbol: payload.symbol,
@@ -133,7 +136,7 @@ export const prepareCanonicalTradeImport = async (
     return Object.freeze({
       rowNumber: row.row_number,
       idempotencyKey,
-      record: buildRecord(row),
+      record: buildCanonicalImportRecord(row),
     });
   });
 
@@ -150,5 +153,5 @@ export const prepareCanonicalTradeImport = async (
 export const __test = Object.freeze({
   sha256Hex,
   assertExecutionReadyPreview,
-  buildRecord,
+  buildCanonicalImportRecord,
 });
