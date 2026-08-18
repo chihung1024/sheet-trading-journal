@@ -1,4 +1,4 @@
-name: Migrate generic market evidence test contracts
+name: Record systemic portfolio update recovery handoff
 
 on:
   pull_request:
@@ -10,71 +10,89 @@ jobs:
   patch:
     if: ${{ github.head_ref == 'diagnostic/generalize-market-evidence-quorum' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: fix/market-data-row-recovery-composition
           persist-credentials: true
           fetch-depth: 1
-      - name: Migrate stale interval-specific contracts
+      - name: Update live handoff truth
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          fallback = Path('tests/test_market_data_repair_fallback.py')
-          text = fallback.read_text(encoding='utf-8')
-          if '"same-provider raw 1h/15m"' not in text:
-              raise RuntimeError('stale metadata contract not found in fallback tests')
-          text = text.replace(
-              '"same-provider raw 1h/15m"',
-              '"multi-granularity quorum evidence"',
-              1,
-          )
+          path = Path('to_do_update_list.md')
+          text = path.read_text(encoding='utf-8')
 
-          start = text.index('def test_intraday_recovery_rejects_price_empty_bucket_with_nonzero_volume():')
-          end = text.find('\ndef ', start + 4)
-          if end < 0:
-              end = len(text)
-          block = text[start:end]
-          old_comment = '''    # First secondary granularity is already contradictory, so the second must not
-              # be queried and the original invalid daily row remains fail-closed.
-          '''.replace('\n              ', '\n')
-          new_comment = '''    # A contradictory representation does not decide the whole recovery. The resolver
-              # evaluates the next representation, then stops once a 2-vote quorum is mathematically
-              # impossible; the final optional representation is not requested and the row remains
-              # fail-closed.
-          '''.replace('\n              ', '\n')
-          if old_comment not in block or 'assert calls["AAA"] == 3' not in block:
-              raise RuntimeError('stale fail-fast bucket contract not found')
-          block = block.replace(old_comment, new_comment, 1)
-          block = block.replace('assert calls["AAA"] == 3', 'assert calls["AAA"] == 4', 1)
-          text = text[:start] + block + text[end:]
-          fallback.write_text(text, encoding='utf-8')
+          old_current = '''Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, R3.2A–R3.2F, and R3.3A are closed at their reviewed engineering boundaries. R2.6B cash-inclusive whole-account Daily P&L is merged and CI-reviewed, but fresh production financial-snapshot evidence is still pending and must not be inferred. R3.3A Import Reconciliation Receipt merged as PR #365 at `main@26c74af8429f3d17380c278f53828008d01fee1e` after exact-head CI #1238 and frozen review PASS. The single Primary Active Batch is R3.3B — Safe Ambiguous Import Retry.**'''
+          new_current = '''Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, R3.2A–R3.2F, and R3.3A are closed at their reviewed engineering boundaries. R3.3B remains open but is temporarily PAUSED. The single Primary Active Batch is P0 — Update Portfolio Data #3317 systemic production-correctness closeout. `main@f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0` contains the merged XIRR safety-domain repair (#373). PR #376 is the unmerged systemic market-data recovery refactor; exact-head CI #1349 is green across Frontend, Python + branch-coverage governance, and Worker/D1/security. Production success from merged main is still required before P0 is closed.**'''
+          if old_current not in text:
+              raise RuntimeError('current-line handoff marker not found')
+          text = text.replace(old_current, new_current, 1)
 
-          semantic = Path('tests/test_semantic_market_data.py')
-          text = semantic.read_text(encoding='utf-8')
-          if '"raw 1h/15m regular-session"' not in text:
-              raise RuntimeError('stale metadata contract not found in semantic tests')
-          text = text.replace(
-              '"raw 1h/15m regular-session"',
-              '"multi-granularity quorum evidence"',
-              1,
-          )
-          semantic.write_text(text, encoding='utf-8')
+          old_main = '- protected frontend/engine `main`: `26c74af8429f3d17380c278f53828008d01fee1e` (`feat: add shared import reconciliation receipt (#365)`);'
+          new_main = '- protected `main` at the current P0 recovery boundary: `f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0` (PR #373 XIRR safety-domain repair merged); PR #376 remains deliberately unmerged until exact-head review/merge gates complete;'
+          if old_main not in text:
+              raise RuntimeError('authoritative main marker not found')
+          text = text.replace(old_main, new_main, 1)
+
+          marker = '\n---\n\n## 0. Operating doctrine\n'
+          incident = '''
+---
+
+## P0. Primary Active Batch — Update Portfolio Data #3317 systemic production correctness
+
+Status: **ACTIVE / EXACT-HEAD CI GREEN / FROZEN CLOSEOUT IN PROGRESS**
+
+### Root-cause chain
+
+- **Symptom:** production portfolio updates repeatedly failed closed on malformed/NaN Yahoo daily rows; later runs exposed extreme XIRR output and mixed malformed-row recovery interactions.
+- **Failure Point:** recovery and metric safety decisions were split across layers: repeated historical yfinance calls could replay cache, whole-frame market-data classifiers let unrelated invalid row types block one another, interval disagreement handling encoded a fixed sequence, and XIRR range authority existed only at upload validation.
+- **Contributing Factors:** upstream daily OHLC/Close corruption, sparse zero-volume intraday buckets, historical-response caching, cross-granularity representation drift, and legacy production test-tenant evidence amplified those architectural gaps.
+- **Root Cause:** recovery was modeled around attempts/frames/particular representation order rather than explicit evidence authorities and composable semantic invariants.
+- **Systemic Cause:** freshness transport, market-price evidence, corporate-action valuation, and performance-metric safety boundaries were not sufficiently separated, so valid independent recovery authorities could either block each other or depend on retry timing.
+
+### Systemic remediation already merged before PR #376
+
+1. Historical Yahoo freshness is explicit and fail-closed rather than assuming an identical retry is fresh.
+2. Intraday evidence uses raw regular-session data; all-empty zero-volume buckets may be ignored, contradictory/partial bars remain invalid.
+3. XIRR calculation and upload validation now share the supported safety domain; out-of-domain finite solver output becomes machine-readable `undefined`, never a fabricated/clamped return.
+
+### PR #376 architecture — symbol/date agnostic
+
+1. Invalid daily rows are classified independently instead of assigning one recovery type to an entire symbol frame.
+2. Zero-action malformed price rows use only same-provider, exact-date, regular-session intraday price evidence.
+3. Stable pure positive dividend-only rows retain the existing two-observation `asof_carry_forward` authority; intraday evidence never invents corporate actions or Volume.
+4. The two authorities compose per row, so one recoverable row type cannot suppress another; unsupported rows remain visible to the final fail-closed validator.
+5. Intraday recovery is an ordered multi-granularity quorum, not a ticker/date patch or fixed tie-break rule. Each representation uses the same full OHLC/Adj Close structural validator.
+6. Invalid, unavailable, or disagreeing representations may be outvoted only by a unique configured quorum. Fetching stops when quorum is proven or mathematically impossible.
+7. Non-transitive tolerance ambiguity is explicitly fail-closed; no tolerance widening, alternate provider, guessed price, symbol/date exception, accounting/FX change, or validator relaxation.
+8. Freshness transport remains separate from semantic quorum policy and cannot become a second financial authority.
+
+### Verification state
+
+- PR #376 latest reviewed work branch: `fix/market-data-row-recovery-composition`;
+- exact-head CI #1349: **SUCCESS** across Frontend contracts/build, 658 Python tests + branch-coverage governance, and Worker security/deployment/D1 baseline;
+- frozen architecture review: review threads 0; production diff contains no symbol/date special-case rule;
+- merge and merged-main production `Update Portfolio Data` success remain mandatory closeout gates;
+- R3.3B resumes only after this P0 batch is closed.
+'''
+          if marker not in text:
+              raise RuntimeError('operating-doctrine insertion marker not found')
+          text = text.replace(marker, incident + '\n---\n\n## 0. Operating doctrine\n', 1)
+
+          text = text.replace('## 5. Primary Active Batch\n', '## 5. Paused Product Batch — resume after P0 closeout\n', 1)
+          text = text.replace('Status: **ACTIVE / CONTRACT-FIRST**', 'Status: **PAUSED / CONTRACT PRESERVED**', 1)
+
+          path.write_text(text, encoding='utf-8')
           PY
-          python -m compileall -q journal_engine tests
-          python -m pip install --disable-pip-version-check -q -r requirements-dev.txt
-          python -m pytest -q \
-            tests/test_market_data_repair_fallback.py \
-            tests/test_semantic_market_data.py \
-            tests/test_semantic_market_data_classifier.py \
-            tests/test_semantic_market_data_stabilization.py \
-            tests/test_semantic_market_data_recovery_composition.py
           git diff --check
+          grep -F 'P0. Primary Active Batch — Update Portfolio Data #3317' to_do_update_list.md
+          grep -F 'R3.3B remains open but is temporarily PAUSED' to_do_update_list.md
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tests/test_market_data_repair_fallback.py tests/test_semantic_market_data.py
-          git commit -m 'test: align market recovery tests with generic quorum policy'
+          git add to_do_update_list.md
+          git commit -m 'docs: record systemic portfolio update recovery authority'
           git push origin HEAD:fix/market-data-row-recovery-composition
