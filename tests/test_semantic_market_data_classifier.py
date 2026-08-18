@@ -476,7 +476,7 @@ def test_exact_date_intraday_recovery_preserves_existing_market_provenance_colum
 
 
 
-def test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_query():
+def test_exact_date_intraday_recovery_stops_when_quorum_becomes_impossible():
     client = SemanticMarketDataClient()
     frame = _prepared_partial_row()
     with patch(
@@ -487,4 +487,4 @@ def test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_
 
     assert result is frame
     assert dates == ()
-    assert ticker.call_count == 1
+    assert ticker.call_count == 2
