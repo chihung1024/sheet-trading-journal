@@ -1,4 +1,4 @@
-"""Generic invariants for ordered multi-granularity semantic evidence quorum recovery."""
+"""Symbol-agnostic invariants for ordered multi-granularity semantic evidence quorum recovery."""
 
 from unittest.mock import patch
 
