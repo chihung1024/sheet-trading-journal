@@ -113,9 +113,15 @@ class SemanticMarketDataClient(MarketDataClient):
             observed = {column: cls._finite_number(row[column]) for column in required_columns}
             present = tuple(value is not None for value in observed.values())
             if not any(present):
+                empty_volume = (
+                    cls._finite_number(row["Volume"]) if "Volume" in row.index else None
+                )
+                if empty_volume is not None and empty_volume != 0.0:
+                    return None
                 # keepna=True intentionally preserves no-trade buckets for sparse
-                # symbols. A fully empty price bucket is absence of evidence, not
-                # contradictory price evidence; partial buckets still fail below.
+                # symbols. A fully empty price bucket is absence of evidence only
+                # when it also carries no contradictory non-zero volume. Partial
+                # buckets and price-empty traded buckets remain fail-closed.
                 continue
             if not all(present):
                 return None
