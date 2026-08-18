@@ -90,6 +90,20 @@ def test_lazy_fetch_does_not_construct_unrequested_second_granularity():
     assert len(ticker.calls) == 1
 
 
+def test_constructor_requires_symbol():
+    with pytest.raises(ValueError, match="symbol"):
+        YahooIntradayEvidenceSession("", ticker_factory=lambda _symbol: _Ticker())
+
+
+def test_constructor_requires_at_least_one_interval():
+    with pytest.raises(ValueError, match="interval"):
+        YahooIntradayEvidenceSession(
+            "AAA",
+            ticker_factory=lambda _symbol: _Ticker(),
+            intervals=(),
+        )
+
+
 def test_missing_yfinance_cache_clear_contract_fails_closed_before_provider_request():
     ticker = _Ticker()
 
@@ -106,6 +120,28 @@ def test_missing_yfinance_cache_clear_contract_fails_closed_before_provider_requ
             intervals=("1h",),
         )
         with pytest.raises(YahooIntradayEvidenceError, match="cache"):
+            with session.observation(pd.Timestamp("2026-08-17")):
+                pass
+
+    assert ticker.calls == []
+
+
+def test_noncallable_yfinance_cache_clear_contract_fails_closed():
+    ticker = _Ticker()
+
+    class _NonCallableCacheGet:
+        cache_clear = None
+
+    with patch(
+        "journal_engine.clients.yahoo_intraday_evidence.YfData",
+        return_value=_Data(_NonCallableCacheGet()),
+    ):
+        session = YahooIntradayEvidenceSession(
+            "AAA",
+            ticker_factory=lambda _symbol: ticker,
+            intervals=("1h",),
+        )
+        with pytest.raises(YahooIntradayEvidenceError, match="callable"):
             with session.observation(pd.Timestamp("2026-08-17")):
                 pass
 
