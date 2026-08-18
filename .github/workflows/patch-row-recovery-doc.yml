@@ -1,0 +1,64 @@
+name: Patch row-recovery architecture documentation
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317-final' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/market-data-row-recovery-composition
+          persist-credentials: true
+          fetch-depth: 1
+      - name: Align source contract documentation with recovery architecture
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('journal_engine/clients/semantic_market_data.py')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('"""Semantic normalization')
+          end = text.index('\n"""\n\nfrom __future__', start) + len('\n"""')
+          doc = '''"""Semantic normalization and strict recovery for malformed provider daily rows.
+
+          The underlying :class:`MarketDataClient` intentionally fails closed when its selected
+          valuation field contains NaN. This adapter preserves that behavior for ambiguous or
+          malformed market data while composing two row-level evidence authorities:
+
+          1. A persistent invalid zero-action provider row may be reconstructed from fresh raw
+             regular-session evidence from the same Yahoo/yfinance provider for the exact affected
+             date. The normal gate requires complete 1h/15m daily OHLC/adjusted-close consensus.
+             Only when those two valid representations disagree is raw 5m evidence fetched as a
+             tie-breaker; exactly one primary candidate must match it before a unique 2-of-3 full
+             price candidate is accepted. There is no temporal retry or tolerance widening.
+             Completely empty keepna buckets are ignored only when they carry no contradictory
+             non-zero volume. Intraday evidence replaces price fields only; original daily volume
+             and corporate actions remain authoritative.
+          2. Invalid rows are classified independently. A stable pure positive cash-dividend-only
+             row may use the explicit ``asof_carry_forward`` effective valuation contract even when
+             another row for the same symbol independently requires intraday price recovery. The
+             dividend signature must agree across the two ordinary daily observations; unsupported
+             split/capital-gain/action rows remain unresolved and fail closed.
+
+          Everything else remains fail-closed. There are no ticker/date exceptions, alternate
+          provider substitutions, guessed prices, unsupported corporate-action recovery, or relaxed
+          ledger/validator rules.
+          """'''
+          from textwrap import dedent
+          doc = dedent(doc)
+          path.write_text(text[:start] + doc + text[end:], encoding='utf-8')
+          PY
+          python -m compileall -q journal_engine/clients/semantic_market_data.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add journal_engine/clients/semantic_market_data.py
+          git diff --cached --check
+          git commit -m 'docs: align semantic recovery architecture contract'
+          git push origin HEAD:fix/market-data-row-recovery-composition
