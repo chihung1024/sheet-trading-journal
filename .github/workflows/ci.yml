@@ -5,50 +5,90 @@ on:
 
 permissions:
   contents: write
-  actions: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  capture-update-3320-log:
-    name: Capture Update Portfolio Data #3320 evidence
+  probe-update-3320-disagreement:
+    name: Probe Update Portfolio Data #3320 disagreement
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Checkout diagnostic branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: diagnostic/update-portfolio-3317
           fetch-depth: 1
-
-      - name: Extract raw production evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
-          JOB_ID: '95669108505'
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.10'
+      - name: Install production market-data stack
+        run: python -m pip install --disable-pip-version-check yfinance==1.5.2 pandas==2.3.3 numpy==2.2.6
+      - name: Measure 1h versus 15m reconstructed price deltas
         run: |
-          set -euo pipefail
-          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs"
-          curl --silent --show-error --fail-with-body -L \
-            -H 'Accept: application/vnd.github+json' \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "$api" > job.log
-          mkdir -p docs/diagnostic
-          {
-            echo '=== RECOVERY / VALIDATOR EVIDENCE ==='
-            grep -E -i 'exact-date raw intraday|cross-validated|persistent invalid daily|invalid price data|MARKET_DATA_FAILED|granularit|fail closed|failed to recover|NaN' job.log | tail -n 800 || true
-            echo '=== FINAL FAILURE CONTEXT ==='
-            tail -n 300 job.log
-          } > docs/diagnostic/update-3320-extract.txt
+          python - <<'PY'
+          import json, math, time
+          import pandas as pd
+          import yfinance as yf
 
-      - name: Commit diagnostic evidence
+          target = pd.Timestamp('2026-08-17')
+          symbols = ('DELL','UNH','WMB')
+          intervals = ('1h','15m')
+          cols = ('Open','High','Low','Close','Adj Close')
+
+          def finite(v):
+              try: v=float(v)
+              except (TypeError,ValueError): return None
+              return v if math.isfinite(v) else None
+
+          def aggregate(frame):
+              idx=pd.to_datetime(frame.index,errors='coerce')
+              work=frame.copy(); work.index=idx
+              day=work[[not pd.isna(t) and t.date()==target.date() for t in idx]]
+              bars=[]; empty=partial=0
+              for ts,row in day.iterrows():
+                  vals={c:finite(row[c]) if c in row.index else None for c in cols}
+                  present=[v is not None for v in vals.values()]
+                  if not any(present): empty+=1; continue
+                  if not all(present): partial+=1; continue
+                  bars.append((ts,vals))
+              if len(bars)<2 or partial:
+                  return {'raw':len(day),'valid':len(bars),'empty':empty,'partial':partial,'aggregate':None}
+              return {'raw':len(day),'valid':len(bars),'empty':empty,'partial':partial,'aggregate':{
+                  'Open':bars[0][1]['Open'], 'High':max(x[1]['High'] for x in bars),
+                  'Low':min(x[1]['Low'] for x in bars), 'Close':bars[-1][1]['Close'],
+                  'Adj Close':bars[-1][1]['Adj Close']}}
+
+          out=[]
+          for symbol in symbols:
+              attempts=[]
+              for n in range(3):
+                  item={'attempt':n+1}
+                  for interval in intervals:
+                      try:
+                          f=yf.Ticker(symbol).history(start=target,end=target+pd.Timedelta(days=1),interval=interval,auto_adjust=False,actions=False,prepost=False,repair=False,keepna=True)
+                          item[interval]=aggregate(f)
+                      except Exception as exc:
+                          item[interval]={'error':f'{type(exc).__name__}: {exc}'}
+                  a=item.get('1h',{}).get('aggregate'); b=item.get('15m',{}).get('aggregate')
+                  if a and b:
+                      item['delta']={c:b[c]-a[c] for c in cols}
+                      item['abs_delta']={c:abs(b[c]-a[c]) for c in cols}
+                      item['relative_delta']={c:abs(b[c]-a[c])/max(abs(a[c]),abs(b[c])) for c in cols}
+                  attempts.append(item); time.sleep(1)
+              out.append({'symbol':symbol,'attempts':attempts})
+          from pathlib import Path
+          Path('docs/diagnostic').mkdir(parents=True,exist_ok=True)
+          Path('docs/diagnostic/update-3320-deltas.json').write_text(json.dumps(out,indent=2,sort_keys=True),encoding='utf-8')
+          PY
+      - name: Commit probe evidence
         run: |
-          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/diagnostic/update-3320-extract.txt
-          git commit -m 'chore: capture Update Portfolio Data 3320 evidence' || exit 0
+          git add docs/diagnostic/update-3320-deltas.json
+          git commit -m 'chore: capture Update Portfolio Data 3320 price deltas' || exit 0
           git push origin HEAD:diagnostic/update-portfolio-3317
