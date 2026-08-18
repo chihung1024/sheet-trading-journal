@@ -54,12 +54,10 @@ class _Ticker:
         return self.frame.copy(deep=True)
 
 
-def _recover(one_hour_frame, fifteen_minute_frame, five_minute_frame=None):
+def _recover(*evidence_frames):
     client = SemanticMarketDataClient()
     frame = _partial_daily_frame()
-    tickers = [_Ticker(one_hour_frame), _Ticker(fifteen_minute_frame)]
-    if five_minute_frame is not None:
-        tickers.append(_Ticker(five_minute_frame))
+    tickers = [_Ticker(item) for item in evidence_frames]
     clients = iter(tickers)
     with patch(
         "journal_engine.clients.semantic_market_data.yf.Ticker",
@@ -69,7 +67,7 @@ def _recover(one_hour_frame, fifteen_minute_frame, five_minute_frame=None):
     return recovered, dates, ticker, tickers
 
 
-def test_primary_cross_granularity_consensus_needs_no_tiebreaker():
+def test_quorum_stops_after_first_two_consistent_representations():
     stable = _intraday()
     recovered, dates, ticker, tickers = _recover(stable, stable)
 
@@ -81,11 +79,11 @@ def test_primary_cross_granularity_consensus_needs_no_tiebreaker():
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
 
 
-def test_5m_tiebreaker_can_confirm_first_primary_full_ohlc_candidate():
+def test_quorum_can_form_after_one_valid_representation_disagrees():
     first = _intraday(open_price=101.0)
     second = _intraday(open_price=100.5)
-    tie_breaker = _intraday(open_price=101.0)
-    recovered, dates, ticker, tickers = _recover(first, second, tie_breaker)
+    third = _intraday(open_price=101.0)
+    recovered, dates, ticker, tickers = _recover(first, second, third)
 
     assert dates == (pd.Timestamp("2026-08-11"),)
     assert ticker.call_count == 3
@@ -95,19 +93,20 @@ def test_5m_tiebreaker_can_confirm_first_primary_full_ohlc_candidate():
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
 
 
-def test_5m_tiebreaker_can_confirm_second_primary_full_ohlc_candidate():
-    first = _intraday(open_price=101.0)
-    second = _intraday(open_price=100.5)
-    tie_breaker = _intraday(open_price=100.5)
-    recovered, dates, ticker, _tickers = _recover(first, second, tie_breaker)
+def test_quorum_can_form_when_earlier_representation_is_invalid():
+    invalid = pd.DataFrame()
+    stable = _intraday(open_price=100.5)
+    recovered, dates, ticker, tickers = _recover(invalid, stable, stable)
 
     assert dates == (pd.Timestamp("2026-08-11"),)
     assert ticker.call_count == 3
+    assert [item.calls[0]["interval"] for item in tickers] == ["1h", "15m", "5m"]
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Open"] == 100.5
+    assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.25
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
 
 
-def test_three_way_cross_granularity_disagreement_remains_fail_closed():
+def test_three_distinct_valid_representations_remain_fail_closed():
     first = _intraday(open_price=101.0)
     second = _intraday(open_price=100.5)
     third = _intraday(open_price=100.0)
@@ -119,11 +118,10 @@ def test_three_way_cross_granularity_disagreement_remains_fail_closed():
     assert PortfolioValidator.validate_price_data("AAA", recovered) is False
 
 
-def test_invalid_5m_tiebreaker_remains_fail_closed():
-    first = _intraday(open_price=101.0)
-    second = _intraday(open_price=100.5)
+def test_quorum_fails_closed_when_only_one_valid_representation_exists():
+    valid = _intraday(open_price=101.0)
     invalid = pd.DataFrame()
-    recovered, dates, ticker, _tickers = _recover(first, second, invalid)
+    recovered, dates, ticker, _tickers = _recover(valid, invalid, invalid)
 
     assert dates == ()
     assert ticker.call_count == 3
