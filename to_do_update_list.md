@@ -6,7 +6,7 @@
 
 Last updated: **2026-08-19 Asia/Taipei**
 
-Current line: **Primary Active Batch is UX-R1.2 — Adaptive Transaction Surface on Draft PR #387. UX-R1.1 is COMPLETE with exact-head CI success. R3.3B Safe Ambiguous Import Retry remains explicitly DEFERRED in Draft PR #367; do not resume or merge #367 until UX-R1 closes or the user explicitly reprioritizes it.**
+Current line: **Primary Active Batch is UX-R1.3 — Responsive Navigation on Draft PR #387. UX-R1.1 and UX-R1.2 are COMPLETE with exact-head CI success. R3.3B Safe Ambiguous Import Retry remains explicitly DEFERRED in Draft PR #367; do not resume or merge #367 until UX-R1 closes or the user explicitly reprioritizes it.**
 
 Current protected-main baseline for UX-R1: `main@97e2a7a582334518a18732237a0c686baaa547e0`. Active UX branch: `feat/ux-r1-adaptive-workspace`. Always refresh remote truth before merge or after external changes.
 
@@ -88,7 +88,7 @@ Cash/account value, dividend, backup/restore, FX, accounting, and transaction id
 
 Phase: `UX-R1 — Adaptive Workspace & Responsive Interaction`
 
-Status: **PRIMARY ACTIVE / R1.1 COMPLETE / R1.2 NEXT**
+Status: **PRIMARY ACTIVE / R1.1 COMPLETE / R1.2 COMPLETE / R1.3 ACTIVE**
 
 Draft PR: **#387 — `feat: UX-R1 adaptive workspace and responsive interaction`**
 
@@ -158,26 +158,67 @@ Verification:
 
 Regression / follow-up:
 
-- existing app-shell `<=1024` transaction mode remains intact for R1.1;
-- RecordList/Holdings/PerformanceChart runtime width checks remain intentionally deferred to their owning R1.4/R1.5 batches;
-- next active batch is R1.2 transaction-surface state/presentation.
+- existing app-shell `<=1024` transaction mode remained intact for R1.1;
+- RecordList/Holdings/PerformanceChart runtime width checks remain intentionally deferred to their owning R1.4/R1.5 batches.
 
 ### UX-R1.2 — Adaptive transaction surface
 
-Status: **PRIMARY ACTIVE / NEXT IMPLEMENTATION**
+Status: **COMPLETE**
 
-- dock only when sufficient workspace remains;
-- desktop/tablet drawer when docking would harm the active workspace;
-- mobile sheet for compact layouts;
-- preserve one `TradeForm` state/mutation authority;
-- edit-from-history must reopen the correct surface;
-- verify Escape, backdrop, focus, scroll locking, focus restoration, and unsaved in-memory form behavior.
+Risk: **R2 interaction/layout state-machine change; one existing TradeForm and mutation authority preserved.**
+
+Scope / root cause:
+
+- persistent desktop rail was a presentation allocation decision tied too strongly to viewport class rather than the actual workspace left for the active page;
+- the required correction was one transaction-surface presentation state machine, not a second form or page-specific hide/show patches.
+
+Implementation:
+
+- kept exactly one mounted/canonical `TradeForm` in `App.vue`;
+- introduced actual `content-container` inline-size observation with `ResizeObserver` and one shared dock-eligibility token;
+- same TradeForm now composes as dock, desktop/tablet drawer, or compact sheet;
+- preserved create/edit setup path and unsaved in-memory form state across presentation changes;
+- edit-from-Record history opens the current transaction presentation before delegating to the existing `setupForm(record)` path;
+- transient drawer/sheet supports backdrop close, Escape close, focus containment, focus restoration, and body scroll lock;
+- adaptive transaction state remains memory-only and creates no localStorage, API, financial, or mutation authority.
+
+Files changed:
+
+- `src/App.vue`
+- `src/styles/adaptive-workspace.css`
+- `tests/frontend_adaptive_workspace_foundation.test.mjs`
+- `tests/frontend_desktop_trade_rail_focus.test.mjs`
+- `tests/frontend_user_reported_product_defects.test.mjs`
+- `tests/frontend_data_reliability.test.mjs`
+
+Verification / regression:
+
+- implementation commit: `fdf13b35fda2091bb5c849b33e197711e7970fa3`;
+- first contract-adjustment commit: `f3c838c45c9d7e373b790f14ee40ce5386ada845`;
+- CI then exposed one unrelated-looking but structurally triggered reliability-banner contract failure. Trace showed the banner itself remained persistently mounted between header and content, while the test searched for the obsolete exact literal `<div class="content-container">`; R1.2 had correctly added `ref="contentContainerRef"` to that element for ResizeObserver authority. The failure point was the brittle source-string locator, not product behavior;
+- root-cause prevention commit `0894907f513ac8690bb58b1429c4d0ac8397efdc` changed the test to locate the stable `class="content-container"` invariant and explicitly assert the banner exists before checking structural order. No production behavior was weakened or bypassed;
+- PR #387 exact-head CI #1383 / run `32165931615`: **SUCCESS**;
+- Frontend contracts + build: SUCCESS;
+- Python tests: SUCCESS;
+- Worker security/deployment tests: SUCCESS;
+- protected `main` remains unchanged and rollback is limited to the UX feature branch/commits.
+
+NOW/NEXT/BACKLOG/REJECT after R1.2:
+
+- NOW: UX-R1.3 responsive navigation;
+- NEXT: UX-R1.4 Holdings + Records work surfaces;
+- BACKLOG: page-specific visual refinements that are not required by the current adaptive authority;
+- REJECT: duplicate TradeForm, navigation router, persistence state, or page-specific breakpoint exceptions as a substitute for the shared adaptive architecture.
 
 ### UX-R1.3 — Responsive navigation
 
-- compact primary destinations + `更多` presentation;
-- preserve `activeView`, URL, localStorage, pending badges, and current-view state;
-- no second routing authority.
+Status: **PRIMARY ACTIVE**
+
+- implement compact primary destinations + `更多` presentation;
+- preserve the existing `views` / `activeView` / URL / localStorage authority rather than creating a router or parallel selected state;
+- preserve pending-dividend attention in the compact presentation;
+- use actual main-workspace inline size where possible for presentation switching instead of another browser-width-only exception;
+- verify keyboard/focus/current-view semantics and that hidden presentation variants are not focusable.
 
 ### UX-R1.4 — Holdings + Records work surfaces
 
@@ -229,11 +270,12 @@ Also verify light/dark themes, trade surface open/closed/editing, long labels/no
 ### Immediate next actions
 
 1. Treat `main@97e2a7a582334518a18732237a0c686baaa547e0` + current PR #387 head as the working baseline; refresh before any merge.
-2. Implement UX-R1.2 only; do not start R1.3 page/navigation work in the same implementation batch.
-3. Preserve exactly one mounted/canonical `TradeForm` and one edit setup path.
-4. Define one transaction-surface state machine for dock/drawer/mobile-sheet presentation; do not infer mode from isolated page CSS.
-5. Add deterministic contracts for create/edit state retention, Escape/backdrop/focus restoration/scroll lock where practical.
-6. Run exact-head CI before marking R1.2 complete, then update this handoff and advance to R1.3.
+2. Implement UX-R1.3 only; do not mix R1.4 Holdings/Records layout work into the same implementation batch.
+3. Keep `activeView` as the only selected-destination state and retain the current URL query/localStorage watch contract.
+4. Reuse the single `views` catalog; compact navigation may group/present destinations but must not duplicate route/business authority.
+5. Prefer `main-workspace` container authority for compact-vs-full navigation presentation; do not add a scatter of page-specific viewport thresholds.
+6. Add deterministic contracts for compact destination grouping, pending-dividend badge, current-view indication, focus/keyboard behavior, and no persistence/router duplication.
+7. Run exact-head CI before marking R1.3 complete, update this handoff, then advance to R1.4.
 
 ---
 
