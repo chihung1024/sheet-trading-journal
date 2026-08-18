@@ -65,28 +65,21 @@ export function planProductionTestRecordReconciliation(rows, { requireChanges = 
   return { recognized, counts, ownerCount: ownerStats.size };
 }
 
-export function buildExactDeleteSql(record) {
-  const kind = classifyProductionTestRecord(record);
-  if (!kind) throw new Error('Refusing to build delete SQL for an unowned record');
-  const id = Number(record.id);
-  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Owned production test record id is invalid');
-  const owner = normalizeOwner(record.user_id);
+export function buildAtomicDeleteSql(records) {
+  if (!Array.isArray(records) || records.length === 0) {
+    throw new Error('Atomic production test-record delete requires at least one owned record');
+  }
+  const normalized = records.map((record) => normalizeOwnedRecord(record));
+  const owners = [...new Set(normalized.map((record) => record.user_id))];
+  const exactSet = normalized.map((record) => `(${buildExactPredicate(record)})`).join(' OR ');
+  const ownerSet = owners.map(sqlString).join(', ');
+  const expected = normalized.length;
 
-  const predicates = [
-    `id = ${id}`,
-    `user_id = ${sqlString(owner)}`,
-    `tag = ${sqlString(record.tag)}`,
-    "txn_date = '2026-08-13'",
-    "symbol = 'AAPL'",
-    "txn_type = 'BUY'",
-    `qty = ${kind === 'legacy_browser' ? '1' : '0.0001'}`,
-    'price = 1',
-    'COALESCE(fee, 0) = 0',
-    'COALESCE(tax, 0) = 0',
-  ];
-  if (kind === 'api_smoke') predicates.push(`note = ${sqlString(record.note)}`);
-
-  return `DELETE FROM records WHERE ${predicates.join(' AND ')}; SELECT changes() AS changed;`;
+  return `DELETE FROM records
+    WHERE (${exactSet})
+      AND (SELECT COUNT(*) FROM records WHERE user_id IN (${ownerSet})) = ${expected}
+      AND (SELECT COUNT(*) FROM records WHERE (${exactSet})) = ${expected};
+    SELECT changes() AS changed;`;
 }
 
 export function executeProductionTestRecordReconciliation({
@@ -115,15 +108,15 @@ export function executeProductionTestRecordReconciliation({
     verifiedByOwner.set(owner, ownerPlan.recognized);
   }
 
+  const verifiedRecords = [...verifiedByOwner.values()].flat();
   let changed = 0;
-  for (const records of verifiedByOwner.values()) {
-    for (const record of records) {
-      const result = runWrangler(buildExactDeleteSql(record));
-      const rowChanged = parseScalar(result, 'changed');
-      if (rowChanged !== 1) {
-        throw new Error(`Production test-record mutation cardinality mismatch for ${record.kind}: changed=${rowChanged}`);
-      }
-      changed += rowChanged;
+  if (verifiedRecords.length > 0) {
+    const mutation = runWrangler(buildAtomicDeleteSql(verifiedRecords));
+    changed = parseScalar(mutation, 'changed');
+    if (changed !== verifiedRecords.length) {
+      throw new Error(
+        `Production test-record atomic mutation rejected or changed unexpected cardinality: expected=${verifiedRecords.length} changed=${changed}`,
+      );
     }
   }
 
@@ -153,6 +146,7 @@ export function executeProductionTestRecordReconciliation({
       owned_smoke_tag_prefix: OWNED_SMOKE_TAG_PREFIX,
       exact_payload_validation_required: true,
       dedicated_tenant_purity_required: true,
+      atomic_all_tenant_mutation_guard: true,
       unrecognized_candidate_fails_closed_before_mutation: true,
       candidate_limit: MAX_CANDIDATE_RECORDS,
       tenant_identity_recorded: false,
@@ -184,6 +178,31 @@ function queryCandidates(runWrangler) {
 function queryOwnerRows(runWrangler, owner) {
   const sql = `SELECT ${CANDIDATE_COLUMNS.join(', ')} FROM records WHERE user_id = ${sqlString(normalizeOwner(owner))} ORDER BY id;`;
   return parseRows(runWrangler(sql));
+}
+
+function normalizeOwnedRecord(record) {
+  const kind = classifyProductionTestRecord(record);
+  if (!kind) throw new Error('Refusing to build delete SQL for an unowned record');
+  const id = Number(record.id);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Owned production test record id is invalid');
+  return { ...record, id, user_id: normalizeOwner(record.user_id), kind };
+}
+
+function buildExactPredicate(record) {
+  const predicates = [
+    `id = ${record.id}`,
+    `user_id = ${sqlString(record.user_id)}`,
+    `tag = ${sqlString(record.tag)}`,
+    "txn_date = '2026-08-13'",
+    "symbol = 'AAPL'",
+    "txn_type = 'BUY'",
+    `qty = ${record.kind === 'legacy_browser' ? '1' : '0.0001'}`,
+    'price = 1',
+    'COALESCE(fee, 0) = 0',
+    'COALESCE(tax, 0) = 0',
+  ];
+  if (record.kind === 'api_smoke') predicates.push(`note = ${sqlString(record.note)}`);
+  return predicates.join(' AND ');
 }
 
 function sameRecordIds(left, right) {
