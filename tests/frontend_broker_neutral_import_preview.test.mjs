@@ -198,14 +198,21 @@ test('malformed CSV, post-quote junk, file-size evidence and row caps fail close
   );
 });
 
-test('preview implementation is structurally zero-write and sits beside existing transaction data actions', () => {
+test('preview service remains zero-write while the UI exposes execution only after explicit full-preview confirmation', () => {
   assert.doesNotMatch(serviceSource, /\bfetch\s*\(/);
   assert.doesNotMatch(serviceSource, /\/api\//);
   assert.doesNotMatch(serviceSource, /\b(?:POST|PUT|PATCH|DELETE)\b/);
-  assert.doesNotMatch(componentSource, /createRecordFromIntent|createIbkrRecord|authStore|CONFIG\.API_BASE_URL/);
-  assert.match(componentSource, /writes_allowed = false/);
-  assert.match(componentSource, /零寫入預覽/);
-  assert.doesNotMatch(componentSource, /確認匯入|執行匯入|開始匯入/);
+
+  assert.match(componentSource, /prepareCanonicalTradeImport/);
+  assert.match(componentSource, /createBrokerNeutralRecord/);
+  assert.match(componentSource, /runRecordImportBatch/);
+  assert.match(componentSource, /preview\.value\?\.status === 'ready'/);
+  assert.match(componentSource, /preview\.value\?\.counts\?\.blocked === 0/);
+  assert.match(componentSource, /來源設定檔/);
+  assert.match(componentSource, /window\.confirm\(confirmation\)/);
+  assert.match(componentSource, /確認匯入/);
+  assert.match(componentSource, /不執行部分匯入/);
+  assert.doesNotMatch(componentSource, /\/api\/records/);
 
   assert.match(recordListSource, /<IbkrTradeImport \/>[\s\S]*<JournalBackupButton \/>/);
   assert.match(journalActionsSource, /<BrokerNeutralImportPreview \/>[\s\S]*class="backup-button"[\s\S]*<JournalRestoreButton \/>/);
