@@ -8,32 +8,68 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  diagnose-update-3317:
-    name: Diagnostic Update Portfolio Data 3317
+  verify-update-3317-fix:
+    name: Verify Update Portfolio Data 3317 fix
     if: ${{ github.event_name == 'pull_request' && github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 8
     steps:
-      - name: Resolve Update Portfolio Data run 3317
+      - name: Dispatch merged main and require production success
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: 7642ace742eef34e1ab408c56384c3226f0a984e
         run: |
           set -euo pipefail
-          response="$(curl --silent --show-error --fail-with-body \
-            -H 'Accept: application/vnd.github+json' \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/update.yml/runs?per_page=100")"
-          match="$(printf '%s' "$response" | jq -c '.workflow_runs[] | select(.run_number == 3317) | {id,name,run_number,event,status,conclusion,head_sha,created_at,updated_at,jobs_url,html_url}')"
-          test -n "$match"
-          printf '%s\n' "$match"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          headers=(
+            -H 'Accept: application/vnd.github+json'
+            -H "Authorization: Bearer $GH_TOKEN"
+            -H 'X-GitHub-Api-Version: 2022-11-28'
+          )
+
+          current_main="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/branches/main" | jq -r '.commit.sha')"
+          test "$current_main" = "$EXPECTED_MAIN_SHA"
+
+          before="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
+          before_number="$(printf '%s' "$before" | jq '[.workflow_runs[].run_number] | max // 0')"
+
+          payload='{"ref":"main","inputs":{"custom_benchmark":"0050.TW","target_user_id":"","calculation_job_id":"","transaction_integrity_audit_only":"false"}}'
+          curl --silent --show-error --fail-with-body "${headers[@]}" \
+            -X POST "$api/actions/workflows/update.yml/dispatches" \
+            -H 'Content-Type: application/json' \
+            --data "$payload" >/dev/null
+
+          run_id=''
+          for _ in $(seq 1 24); do
+            response="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
+            run_id="$(printf '%s' "$response" | jq -r --arg sha "$EXPECTED_MAIN_SHA" --argjson before "$before_number" '.workflow_runs[] | select(.head_sha == $sha and .run_number > $before) | .id' | head -n1)"
+            if [[ -n "$run_id" && "$run_id" != "null" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          test -n "$run_id"
+
+          conclusion=''
+          for _ in $(seq 1 72); do
+            run="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/runs/$run_id")"
+            status="$(printf '%s' "$run" | jq -r '.status')"
+            conclusion="$(printf '%s' "$run" | jq -r '.conclusion // empty')"
+            if [[ "$status" == "completed" ]]; then
+              printf '%s\n' "$(printf '%s' "$run" | jq -c '{id,name,run_number,event,status,conclusion,head_sha,created_at,updated_at,html_url}')"
+              break
+            fi
+            sleep 5
+          done
+
+          test "$conclusion" = 'success'
 
   python-tests:
     name: Python tests
