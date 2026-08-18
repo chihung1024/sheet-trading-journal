@@ -3,10 +3,11 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote `main` / open PR / exact-head CI / deployment/runtime truth overrides this snapshot.
 >
 > Stable closeout evidence lives under `docs/engineering/`; this file is a concise live handoff, not a history dump.
+> Current P0 RCA: `docs/engineering/update-portfolio-3317-systemic-rca.md`.
 
 Last updated: **2026-08-18 Asia/Taipei**
 
-Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, R3.2A–R3.2F, and R3.3A are closed at their reviewed engineering boundaries. R2.6B cash-inclusive whole-account Daily P&L is merged and CI-reviewed, but fresh production financial-snapshot evidence is still pending and must not be inferred. R3.3A Import Reconciliation Receipt merged as PR #365 at `main@26c74af8429f3d17380c278f53828008d01fee1e` after exact-head CI #1238 and frozen review PASS. The single Primary Active Batch is R3.3B — Safe Ambiguous Import Retry.**
+Current line: **R3.3B remains open but is temporarily PAUSED. The single Primary Active Batch is P0 — Update Portfolio Data #3317 systemic production-correctness closeout. `main@f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0` contains the merged XIRR safety-domain repair (#373). PR #376 is the unmerged symbol/date-agnostic market-data recovery refactor; exact-head CI #1349 is green across Frontend, 658 Python tests + branch-coverage governance, and Worker/D1/security. Merged-main production success is mandatory before P0 closes.**
 
 ---
 
@@ -29,7 +30,7 @@ Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, R3.
 
 At this handoff snapshot:
 
-- protected frontend/engine `main`: `26c74af8429f3d17380c278f53828008d01fee1e` (`feat: add shared import reconciliation receipt (#365)`);
+- protected `main` at the current P0 boundary: `f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0` (PR #373 XIRR safety-domain repair); PR #376 remains deliberately unmerged pending frozen closeout and production verification;
 - PR #365 R3.3A merged from frozen exact head `65dc2fea6c9a3c392f30fd5ed34ddd6711f91cd2`;
 - PR #365 exact-head CI #1238: **SUCCESS** across Frontend security contracts/build, Python tests/coverage, and Worker security/deployment/D1 baseline;
 - PR #365 frozen independent review: **PASS / BLOCKER 0 / FOLLOW-UP 0**;
@@ -179,7 +180,7 @@ Status: **CLOSED / MERGED** — PR #365, `main@26c74af8429f3d17380c278f53828008d
 
 ---
 
-## 5. Primary Active Batch
+## 5. Paused Product Batch — resume after P0 closeout
 
 ### Phase
 
@@ -189,7 +190,7 @@ Status: **CLOSED / MERGED** — PR #365, `main@26c74af8429f3d17380c278f53828008d
 
 `R3.3B — Safe Ambiguous Import Retry`
 
-Status: **ACTIVE / CONTRACT-FIRST**
+Status: **PAUSED / CONTRACT PRESERVED**
 
 ### Primary Goal
 
