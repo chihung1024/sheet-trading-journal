@@ -1,0 +1,26 @@
+name: Observe production idempotency smoke status
+
+on:
+  pull_request:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  observe:
+    if: ${{ github.head_ref == 'diagnostic/observe-idempotency-cleanup' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Print latest canonical smoke run and jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/production-record-idempotency-smoke.yml/runs?event=workflow_dispatch&branch=main&per_page=5" > /tmp/runs.json
+          jq -r '.workflow_runs[] | "RUN id=\(.id) number=\(.run_number) status=\(.status) conclusion=\(.conclusion // "pending") created=\(.created_at) head=\(.head_sha)"' /tmp/runs.json
+          latest="$(jq -r '.workflow_runs[0].id // empty' /tmp/runs.json)"
+          test -n "$latest"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$latest/jobs?filter=all&per_page=100" > /tmp/jobs.json
+          jq -r '.jobs[] | "JOB id=\(.id) name=\(.name) status=\(.status) conclusion=\(.conclusion // "pending")"' /tmp/jobs.json
