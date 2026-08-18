@@ -14,7 +14,7 @@ import {
 } from '../tools/production_test_record_contract.mjs';
 import {
   __test,
-  buildExactDeleteSql,
+  buildAtomicDeleteSql,
   executeProductionTestRecordReconciliation,
   planProductionTestRecordReconciliation,
 } from '../tools/reconcile_production_test_records.mjs';
@@ -128,23 +128,24 @@ test('planner rejects missing tenant identity and enforces a bounded candidate s
   assert.throws(() => planProductionTestRecordReconciliation(rows), /candidate row count/);
 });
 
-test('exact delete SQL is tenant, record-id, and payload guarded and refuses unowned records', () => {
-  const legacySql = buildExactDeleteSql(LEGACY);
-  assert.match(legacySql, /id = 1/);
-  assert.match(legacySql, /user_id = 'production-test@example\.test'/);
-  assert.match(legacySql, /NOW1A-IDEMPOTENCY-TEST-20260813/);
-  assert.match(legacySql, /qty = 1/);
-  assert.doesNotMatch(legacySql, /note =/);
-
-  const smokeSql = buildExactDeleteSql(SMOKE_KEYED);
-  assert.match(smokeSql, /id = 3/);
-  assert.match(smokeSql, /user_id = 'production-test@example\.test'/);
-  assert.match(smokeSql, /qty = 0\.0001/);
-  assert.match(smokeSql, /automated production idempotency keyed replay smoke/);
-  assert.throws(() => buildExactDeleteSql({ ...LEGACY, tag: 'DO-NOT-DELETE' }), /unowned record/);
+test('atomic delete SQL is tenant, record-id, payload, and whole-tenant cardinality guarded', () => {
+  const sql = buildAtomicDeleteSql([LEGACY, SMOKE_KEYED]);
+  assert.match(sql, /id = 1/);
+  assert.match(sql, /id = 3/);
+  assert.match(sql, /user_id = 'production-test@example\.test'/);
+  assert.match(sql, /NOW1A-IDEMPOTENCY-TEST-20260813/);
+  assert.match(sql, /automated production idempotency keyed replay smoke/);
+  assert.match(sql, /SELECT COUNT\(\*\) FROM records WHERE user_id IN \('production-test@example\.test'\)\) = 2/);
+  assert.match(sql, /SELECT COUNT\(\*\) FROM records WHERE \(/);
+  assert.match(sql, /\) = 2;/);
+  assert.throws(() => buildAtomicDeleteSql([]), /requires at least one owned record/);
+  assert.throws(
+    () => buildAtomicDeleteSql([{ ...LEGACY, tag: 'DO-NOT-DELETE' }]),
+    /unowned record/,
+  );
 });
 
-test('reconciler removes only a pure dedicated synthetic tenant and emits sanitized aggregate evidence', async () => {
+test('reconciler atomically removes only a pure dedicated synthetic tenant and emits sanitized aggregate evidence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'production-test-reconcile-'));
   const outputPath = join(directory, 'evidence.json');
   const calls = [];
@@ -160,7 +161,7 @@ test('reconciler removes only a pure dedicated synthetic tenant and emits saniti
       ownerQueries += 1;
       return ownerQueries === 1 ? wrangler([LEGACY, SMOKE_KEYED]) : wrangler([]);
     }
-    if (sql.startsWith('DELETE ')) return wrangler([{ changed: 1 }]);
+    if (sql.startsWith('DELETE ')) return wrangler([{ changed: 2 }]);
     throw new Error(`unexpected SQL: ${sql}`);
   };
 
@@ -180,7 +181,7 @@ test('reconciler removes only a pure dedicated synthetic tenant and emits saniti
       target_rows_after: 0,
       test_tenant_records_remaining: 0,
     });
-    assert.equal(calls.filter((sql) => sql.startsWith('DELETE ')).length, 2);
+    assert.equal(calls.filter((sql) => sql.startsWith('DELETE ')).length, 1);
     const persisted = await readFile(outputPath, 'utf8');
     assert.equal(persisted.includes(OWNER), false);
     assert.equal(persisted.includes('"user_id"'), false);
@@ -232,8 +233,10 @@ test('reconciler refuses all mutation if the dedicated tenant changes between di
   assert.equal(calls.some((sql) => sql.startsWith('DELETE ')), false);
 });
 
-test('reconciler fails when an exact-row delete does not mutate exactly one row', () => {
+test('reconciler fails closed with no partial delete when atomic purity guard rejects mutation', () => {
+  const calls = [];
   const fakeRunWrangler = (sql) => {
+    calls.push(sql);
     if (isGlobalCandidateQuery(sql)) return wrangler([LEGACY]);
     if (isOwnerQuery(sql)) return wrangler([LEGACY]);
     if (sql.startsWith('DELETE ')) return wrangler([{ changed: 0 }]);
@@ -246,11 +249,12 @@ test('reconciler fails when an exact-row delete does not mutate exactly one row'
       requireChanges: true,
       outputPath: '/tmp/should-not-exist-production-reconcile.json',
     }),
-    /mutation cardinality mismatch/,
+    /atomic mutation rejected or changed unexpected cardinality/,
   );
+  assert.equal(calls.filter((sql) => sql.startsWith('DELETE ')).length, 1);
 });
 
-test('reconciler fails if a dedicated synthetic tenant is not empty after deletion', () => {
+test('reconciler fails if a dedicated synthetic tenant is not empty after atomic deletion', () => {
   let ownerQueries = 0;
   const fakeRunWrangler = (sql) => {
     if (isGlobalCandidateQuery(sql)) return wrangler([LEGACY]);
