@@ -121,7 +121,7 @@ test('receipt presentation exposes statuses and sync warnings without errors, en
 test('canonical, mapped, and IBKR result surfaces mount the same shared receipt component', () => {
   for (const source of receiptSurfaceSources) {
     assert.match(source, /import ImportReconciliationReceipt from ['"]\.\/ImportReconciliationReceipt\.vue['"]/);
-    assert.match(source, /<ImportReconciliationReceipt\s+:result="result"\s*\/>/);
+    assert.match(source, /<ImportReconciliationReceipt\b(?=[^>]*\s:result="result")[^>]*\/>/);
   }
 });
 
