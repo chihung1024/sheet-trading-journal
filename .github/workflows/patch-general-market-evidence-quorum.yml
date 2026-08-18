@@ -1,4 +1,4 @@
-name: Apply general market evidence quorum refactor
+name: Migrate general market evidence quorum contract
 
 on:
   push:
@@ -11,210 +11,57 @@ permissions:
 jobs:
   patch:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: fix/market-data-row-recovery-composition
           persist-credentials: true
           fetch-depth: 1
-      - name: Generalize semantic evidence quorum
+      - name: Replace obsolete fail-fast contract
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          from textwrap import dedent, indent
 
-          path = Path('journal_engine/clients/semantic_market_data.py')
+          path = Path('tests/test_semantic_market_data_classifier.py')
           text = path.read_text(encoding='utf-8')
-
-          old_doc = '''1. A persistent invalid zero-action provider row may be reconstructed from fresh raw
-             regular-session evidence from the same Yahoo/yfinance provider for the exact affected
-             date. The normal gate requires complete 1h/15m daily OHLC/adjusted-close consensus.
-             Only when those two valid representations disagree is raw 5m evidence fetched as a
-             tie-breaker; exactly one primary candidate must match it before a unique 2-of-3 full
-             price candidate is accepted. There is no temporal retry or tolerance widening.
-             Completely empty keepna buckets are ignored only when they carry no contradictory
-             non-zero volume. Intraday evidence replaces price fields only; original daily volume
-             and corporate actions remain authoritative.
-          '''
-          new_doc = '''1. A persistent invalid zero-action provider row may be reconstructed from fresh raw
-             regular-session evidence from the same Yahoo/yfinance provider for the exact affected
-             date. Recovery uses an ordered set of multiple intraday granularities and requires a
-             unique semantic quorum of complete daily OHLC/adjusted-close candidates. Granularities
-             are fetched lazily until the quorum is proven or can no longer be reached; an invalid,
-             unavailable, or disagreeing representation is evidence against that representation,
-             not a ticker-specific exception. There is no temporal retry, tolerance widening, or
-             symbol/date branching. Completely empty keepna buckets are ignored only when they
-             carry no contradictory non-zero volume. Intraday evidence replaces price fields only;
-             original daily volume and corporate actions remain authoritative.
-          '''
-          if old_doc not in text:
-              raise RuntimeError('semantic recovery doc contract not found')
-          text = text.replace(old_doc, new_doc, 1)
-
-          old_constants = '_INTRADAY_TIEBREAKER_INTERVAL = "5m"\n'
-          new_constants = '_SEMANTIC_INTRADAY_INTERVALS = INTRADAY_EVIDENCE_INTERVALS + ("5m",)\n_SEMANTIC_INTRADAY_QUORUM = 2\n'
-          if old_constants not in text:
-              raise RuntimeError('tie-breaker constant not found')
-          text = text.replace(old_constants, new_constants, 1)
-
-          marker = '\n\n    @classmethod\n    def _dividend_action_only_signature'
-          if marker not in text:
-              raise RuntimeError('classifier insertion marker not found')
-          helper = indent(dedent('''
-          def _resolve_intraday_price_quorum(self, observation, event_date: pd.Timestamp):
-              """Resolve a unique price candidate from ordered multi-granularity evidence.
-
-              Every interval is governed by the same semantic candidate validator. Invalid or
-              unavailable representations may be outvoted only when the remaining representations
-              establish the configured quorum. Ambiguous qualified candidates remain fail-closed.
-              """
-              intervals = _SEMANTIC_INTRADAY_INTERVALS
-              quorum = _SEMANTIC_INTRADAY_QUORUM
-              if quorum < 2 or quorum > len(intervals):
-                  return None, (), ()
-
-              candidates: list[tuple[str, dict[str, float]]] = []
-              attempted: list[str] = []
-              for interval in intervals:
-                  attempted.append(interval)
-                  try:
-                      intraday = observation.fetch(interval)
-                  except YahooIntradayEvidenceError as exc:
-                      logger.warning(
-                          "exact-date intraday evidence unavailable for %s interval=%s: %s",
-                          event_date.strftime("%Y-%m-%d"),
-                          interval,
-                          exc,
-                      )
-                  else:
-                      candidate = self._complete_intraday_price_candidate(intraday, event_date)
-                      if candidate is None:
-                          logger.warning(
-                              "exact-date intraday representation invalid for %s interval=%s",
-                              event_date.strftime("%Y-%m-%d"),
-                              interval,
-                          )
-                      else:
-                          candidates.append((interval, candidate[0]))
-
-                  qualified: list[tuple[str, dict[str, float], tuple[str, ...]]] = []
-                  for candidate_interval, candidate_values in candidates:
-                      supporters = tuple(
-                          other_interval
-                          for other_interval, other_values in candidates
-                          if self._intraday_price_candidates_agree(candidate_values, other_values)
-                      )
-                      if len(supporters) >= quorum:
-                          qualified.append((candidate_interval, candidate_values, supporters))
-
-                  if qualified:
-                      anchor = qualified[0][1]
-                      if not all(
-                          self._intraday_price_candidates_agree(anchor, candidate_values)
-                          for _interval, candidate_values, _supporters in qualified[1:]
-                      ):
-                          logger.warning(
-                              "exact-date intraday evidence produced multiple incompatible quorum candidates for %s",
-                              event_date.strftime("%Y-%m-%d"),
-                          )
-                          return None, (), tuple(attempted)
-                      agreeing = tuple(
-                          candidate_interval
-                          for candidate_interval, candidate_values in candidates
-                          if self._intraday_price_candidates_agree(anchor, candidate_values)
-                      )
-                      return anchor, agreeing, tuple(attempted)
-
-                  remaining = len(intervals) - len(attempted)
-                  best_support = max(
-                      (
-                          sum(
-                              1
-                              for _other_interval, other_values in candidates
-                              if self._intraday_price_candidates_agree(candidate_values, other_values)
-                          )
-                          for _candidate_interval, candidate_values in candidates
-                      ),
-                      default=0,
-                  )
-                  if best_support + remaining < quorum:
-                      break
-
-              return None, (), tuple(attempted)
-          '''), '    ')
-          text = text.replace(marker, '\n\n' + helper.rstrip() + marker, 1)
-
-          old_session = '                    intervals=INTRADAY_EVIDENCE_INTERVALS + (_INTRADAY_TIEBREAKER_INTERVAL,),\n'
-          if old_session not in text:
-              raise RuntimeError('old evidence session interval contract not found')
-          text = text.replace(
-              old_session,
-              '                    intervals=_SEMANTIC_INTRADAY_INTERVALS,\n',
-              1,
-          )
-
-          block_start = text.index('            consensus: dict[str, float] | None = None\n')
-          block_end_marker = '            staged[event_date] = consensus\n'
-          block_end = text.index(block_end_marker, block_start) + len(block_end_marker)
-          new_block = indent(dedent('''
-          consensus: dict[str, float] | None = None
-          agreeing_intervals: tuple[str, ...] = ()
-          attempted_intervals: tuple[str, ...] = ()
-          try:
-              with evidence_session.observation(event_date) as observation:
-                  consensus, agreeing_intervals, attempted_intervals = (
-                      self._resolve_intraday_price_quorum(observation, event_date)
-                  )
-          except YahooIntradayEvidenceError as exc:
-              logger.warning(
-                  "[%s] exact-date fresh Yahoo intraday observation failed for %s: %s",
-                  symbol,
-                  event_date.strftime("%Y-%m-%d"),
-                  exc,
-              )
-              return frame, ()
-
-          if consensus is None:
-              logger.warning(
-                  "[%s] exact-date intraday evidence did not establish a unique quorum for %s: attempted=%s",
-                  symbol,
-                  event_date.strftime("%Y-%m-%d"),
-                  ",".join(attempted_intervals),
-              )
-              return frame, ()
-          logger.warning(
-              "[%s] exact-date intraday evidence quorum accepted for %s: agreeing=%s attempted=%s",
-              symbol,
-              event_date.strftime("%Y-%m-%d"),
-              ",".join(agreeing_intervals),
-              ",".join(attempted_intervals),
-          )
-          staged[event_date] = consensus
-          '''), '            ')
-          text = text[:block_start] + new_block + text[block_end:]
-
-          text = text.replace(
-              '"same-provider raw 1h/15m regular-session observations with 5m tie-breaker when required"',
-              '"same-provider raw regular-session multi-granularity quorum evidence"',
-          )
-          text = text.replace(
-              'persistent invalid daily row(s) recovered from cross-validated exact-date same-provider raw 1h/15m evidence',
-              'persistent invalid daily row(s) recovered from exact-date same-provider multi-granularity quorum evidence',
-          )
-
-          forbidden = ('_INTRADAY_TIEBREAKER_INTERVAL', 'tie-breaker', '2-of-3')
-          for token in forbidden:
-              if token in text:
-                  raise RuntimeError(f'targeted evidence contract remains: {token}')
-
-          path.write_text(text, encoding='utf-8')
+          old = '''def test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_query():
+              client = SemanticMarketDataClient()
+              frame = _prepared_partial_row()
+              with patch(
+                  "journal_engine.clients.semantic_market_data.yf.Ticker",
+                  return_value=_Ticker(pd.DataFrame()),
+              ) as ticker:
+                  result, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
+          
+              assert result is frame
+              assert dates == ()
+              assert ticker.call_count == 1
+          '''.replace('\n              ', '\n')
+          new = '''def test_exact_date_intraday_recovery_exhausts_quorum_when_all_representations_invalid():
+              client = SemanticMarketDataClient()
+              frame = _prepared_partial_row()
+              with patch(
+                  "journal_engine.clients.semantic_market_data.yf.Ticker",
+                  return_value=_Ticker(pd.DataFrame()),
+              ) as ticker:
+                  result, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
+          
+              assert result is frame
+              assert dates == ()
+              assert ticker.call_count == 3
+          '''.replace('\n              ', '\n')
+          if old not in text:
+              raise RuntimeError('obsolete fail-fast test contract not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
-          python -m compileall -q journal_engine/clients/semantic_market_data.py
+          python -m compileall -q journal_engine tests/test_semantic_market_data_classifier.py tests/test_semantic_market_data_stabilization.py
+          python -m pip install --disable-pip-version-check -q -r requirements-dev.txt
+          python -m pytest -q tests/test_semantic_market_data_classifier.py tests/test_semantic_market_data_stabilization.py
           git diff --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add journal_engine/clients/semantic_market_data.py
-          git commit -m 'refactor: generalize market evidence quorum recovery'
+          git add tests/test_semantic_market_data_classifier.py
+          git commit -m 'test: replace interval fail-fast with quorum exhaustion contract'
           git push origin HEAD:fix/market-data-row-recovery-composition
