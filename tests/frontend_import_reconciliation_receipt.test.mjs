@@ -3,10 +3,15 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 import { buildImportReconciliationReceipt } from '../src/services/importReconciliationReceipt.js';
-import { runRecordImportBatch } from '../src/services/recordImportBatch.js';
+import { __test as batchTest, runRecordImportBatch } from '../src/services/recordImportBatch.js';
 
 const batchSource = fs.readFileSync(new URL('../src/services/recordImportBatch.js', import.meta.url), 'utf8');
 const receiptSource = fs.readFileSync(new URL('../src/services/importReconciliationReceipt.js', import.meta.url), 'utf8');
+const receiptSurfaceSources = [
+  fs.readFileSync(new URL('../src/components/BrokerNeutralImportPreview.vue', import.meta.url), 'utf8'),
+  fs.readFileSync(new URL('../src/components/BrokerNeutralColumnMapping.vue', import.meta.url), 'utf8'),
+  fs.readFileSync(new URL('../src/components/IbkrTradeImport.vue', import.meta.url), 'utf8'),
+];
 
 const entries = [
   { rowNumber: 2, idempotencyKey: 'secret-key-a', record: { symbol: 'AAPL', note: 'private-a' } },
@@ -43,6 +48,13 @@ test('successful batch retains one non-financial immutable receipt item for ever
 
   const serialized = JSON.stringify(result.items);
   assert.doesNotMatch(serialized, /secret-key|AAPL|MSFT|NVDA|private-/);
+});
+
+test('broker aggregate source row is reduced to a safe receipt reference', () => {
+  assert.deepEqual(
+    batchTest.sourceReferenceForEntry({ source: { firstRowNumber: 17, accountId: 'U1234567' } }, 4),
+    { kind: 'source_row', value: 17 },
+  );
 });
 
 test('explicit partial failure records the rejected attempt and fabricates no suffix outcomes', async () => {
@@ -104,6 +116,13 @@ test('receipt presentation exposes statuses and sync warnings without errors, en
 
   const serialized = JSON.stringify(receipt);
   assert.doesNotMatch(serialized, /secret-key|AAPL|MSFT|NVDA|private-|readback unavailable|local cleanup/);
+});
+
+test('canonical, mapped, and IBKR result surfaces mount the same shared receipt component', () => {
+  for (const source of receiptSurfaceSources) {
+    assert.match(source, /import ImportReconciliationReceipt from ['"]\.\/ImportReconciliationReceipt\.vue['"]/);
+    assert.match(source, /<ImportReconciliationReceipt\s+:result="result"\s*\/>/);
+  }
 });
 
 test('receipt code remains memory-only presentation with no persistence or API path', () => {
