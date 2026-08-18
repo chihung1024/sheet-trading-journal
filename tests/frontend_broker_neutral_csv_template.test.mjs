@@ -45,7 +45,16 @@ test('template download remains local-only inside the compact CSV tools entry', 
   assert.match(buttonSource, /CSV 工具/);
   assert.match(buttonSource, /下載 Canonical CSV 空白範本/);
   assert.match(buttonSource, /BrokerNeutralColumnMapping/);
-  assert.doesNotMatch(buttonSource, /authStore|CONFIG\.API_BASE_URL|createRecordFromIntent|確認匯入|執行匯入/);
+
+  // The wrapper may describe the child mapping flow, but it must not itself own
+  // authentication, durable record creation, or another modal execution surface.
+  assert.doesNotMatch(
+    buttonSource,
+    /authStore|CONFIG\.API_BASE_URL|createRecordFromIntent|createBrokerNeutralRecord|runRecordImportBatch/,
+  );
+  assert.match(buttonSource, /role="group"/);
+  assert.doesNotMatch(buttonSource, /role="dialog"|aria-modal=/);
+
   assert.match(actionsSource, /<BrokerNeutralImportPreview \/>\s*<BrokerNeutralCsvTemplateButton \/>/);
   assert.match(actionsSource, /aria-label="交易資料匯入、備份與還原"/);
 });
