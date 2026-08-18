@@ -151,13 +151,14 @@ test('reliability banner consumes backend provenance and read-specific status', 
 test('app keeps the reliability banner persistent across content tabs', async () => {
   const source = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8');
   const headerEnd = source.indexOf('</header>');
-  const contentStart = source.indexOf('<div class="content-container">');
+  const contentContainerClass = source.indexOf('class="content-container"');
   const banner = source.indexOf('<DataReliabilityBanner />');
 
   assert.match(source, /import DataReliabilityBanner from '\.\/components\/DataReliabilityBanner\.vue'/);
   assert.notEqual(headerEnd, -1);
-  assert.notEqual(contentStart, -1);
-  assert.equal(headerEnd < banner && banner < contentStart, true);
+  assert.notEqual(contentContainerClass, -1);
+  assert.notEqual(banner, -1);
+  assert.equal(headerEnd < banner && banner < contentContainerClass, true);
 });
 
 test('DividendManager uses published dividend provenance and a non-celebratory empty state', async () => {
