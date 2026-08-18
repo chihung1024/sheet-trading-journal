@@ -3,11 +3,19 @@
 > FIRST READ: `AI_PROJECT_PLAYBOOK.md` → `README.md` → this file → fresh GitHub remote truth. Remote `main` / open PR / exact-head CI / deployment/runtime truth overrides this snapshot.
 >
 > Stable closeout evidence lives under `docs/engineering/`; this file is a concise live handoff, not a history dump.
-> Update Portfolio Data #3317 RCA: `docs/engineering/update-portfolio-3317-systemic-rca.md`.
 
-Last updated: **2026-08-18 Asia/Taipei**
+Last updated: **2026-08-19 Asia/Taipei**
 
-Current line: **P0 — Update Portfolio Data #3317 is CLOSED with production proof. The single Primary Active Batch returns to R3.3B — Safe Ambiguous Import Retry. Protected `main@ae418ca2eb2efa73190395e9a7951c4badbeba20` contains the final systemic market-data/XIRR remediation and protected production synthetic-record reconciliation.**
+Current line: **Primary Active Batch is UX-R1 — Adaptive Workspace & Responsive Interaction. R3.3B Safe Ambiguous Import Retry is explicitly DEFERRED, preserved in Draft PR #367 and `docs/engineering/R3_3B_SAFE_AMBIGUOUS_IMPORT_RETRY_DEFERRED_2026-08-19.md`. Do not resume or merge #367 until UX-R1 closes or the user explicitly reprioritizes it.**
+
+Planning baseline before this handoff update: `main@44c62993706c083fd23fb7d1200adf217471efd4`. Always refresh remote truth at session start.
+
+Key planning documents:
+
+- UX-R1 plan: `docs/engineering/UX_R1_ADAPTIVE_WORKSPACE_PLAN_2026-08-19.md`
+- deferred R3.3B handoff: `docs/engineering/R3_3B_SAFE_AMBIGUOUS_IMPORT_RETRY_DEFERRED_2026-08-19.md`
+- Update Portfolio Data #3317 RCA: `docs/engineering/update-portfolio-3317-systemic-rca.md`
+- prior desktop visibility closeout: `docs/engineering/DESKTOP_VISIBILITY_D4_D5_CLOSEOUT_2026-08-17.md`
 
 ---
 
@@ -15,108 +23,40 @@ Current line: **P0 — Update Portfolio Data #3317 is CLOSED with production pro
 
 1. Product functionality and UX are highest priority.
 2. Keep one Primary Active Batch; technical work exists only to enable product correctness, safety, maintainability, or UX.
-3. Debug from evidence/root cause, check same-class impact, and add regression prevention; do not patch individual symbols, dates, users, or specimens when a general invariant can be fixed.
+3. Debug from evidence/root cause, check same-class impact, and add regression prevention; do not patch individual symbols, dates, users, pages, or specimens when a general invariant can be fixed.
 4. Financial/data correctness is fail-closed. Browser convenience state never becomes a second accounting, FX, tax, recovery, market-data, or transaction-identity authority.
 5. Important work uses Draft PR → exact-head CI → frozen review → expected-head merge → authoritative post-main verification where available.
 6. Prefer deterministic automation. **AI 管流程，不管帳**.
 7. Never infer cash, currency, chronology, lots, tax, broker intent, transaction identity, or other financial facts absent from authoritative data.
 8. Closed batches remain closed unless new material evidence appears.
 9. Prefer direct user utility over optional methodology expansion.
-10. Public repo evidence must not unnecessarily record personal financial values, credentials, backup contents, broker file contents, tenant identities, or record IDs.
+10. Public repo evidence must not unnecessarily record personal financial values, credentials, backup contents, broker file contents, tenant identities, record IDs, or private production screenshots.
+11. For UX work, fix layout/composition authority before shrinking text, hiding business facts, or adding page-specific exceptions.
+12. A phase transition is a hard handoff boundary: close the current phase, persist exact repo truth, then continue in a new conversation/session.
 
 ---
 
-## 1. Current authoritative state
+## 1. Current authoritative product state
 
-At this handoff snapshot:
-
-- protected `main`: `ae418ca2eb2efa73190395e9a7951c4badbeba20`;
-- PR #382 (`feat: add protected production synthetic-record reconciliation`) merged from frozen exact head `bfe30022cda9b4bb7d14706f77e50aa8314359a2`;
-- PR #382 exact-head CI #1371: **SUCCESS** across Frontend, Python + coverage governance, and Worker/D1/security;
-- frozen review for #382: **BLOCKER 0**;
-- Production Test Record Reconciliation run #1 / run ID `32156834629`: **SUCCESS** on merged `main@ae418ca2...`;
-- reconciliation evidence: **before=1, tenants=1, changed=1, after=0, tenant records remaining=0**;
-- post-cleanup Update Portfolio Data #3332 / run ID `32157227218`: **SUCCESS** on merged `main@ae418ca2...`;
-- #3332 fetched **264 transactions**, processed **2 real users**, downloaded **58 market symbols**, uploaded both portfolio snapshots, final **success 2 / failure 0**;
-- `DELETE /api/records` remains **user-only**; the cleanup architecture did not expand Worker authorization;
-- the authenticated production idempotency smoke still requires Google OAuth secrets that are not currently configured in the `production` environment, but synthetic-test-data lifecycle cleanup no longer depends on that optional smoke path;
-- R3.3A Import Reconciliation Receipt remains **CLOSED / MERGED** as PR #365;
-- R3.3B Safe Ambiguous Import Retry is now the single Primary Active Batch.
-
-### Stable market-data / performance authority after #3317
-
-```text
-Yahoo freshness transport
-→ structurally valid intraday representations
-→ unique multi-granularity price quorum
-→ row-level authority composition
-→ canonical market-data validator
-→ portfolio calculation
-```
-
-- no ticker/date/security-specific recovery branches;
-- no widened price tolerance, alternate-provider substitution, guessed price, or unbounded retry;
-- zero-action malformed price rows use same-provider intraday quorum;
-- dividend-only rows use their existing stable action valuation authority;
-- unsupported action rows remain fail-closed;
-- intraday evidence never invents Volume or corporate actions;
-- XIRR calculation and upload validation share the same supported safety domain; out-of-domain solver results become explicit `undefined`, not clipped values.
-
-### Stable production synthetic-data lifecycle
-
-```text
-shared exact ownership contract
-→ candidate discovery
-→ whole-tenant purity verification
-→ frozen record/owner/payload snapshot
-→ reviewer-protected production D1 identity gate
-→ one atomic cardinality-guarded mutation
-→ sanitized zero-residual evidence
-```
-
-Any forged smoke-looking row, mixed real tenant data, duplicate legacy marker, invalid owner, snapshot drift, or last-moment tenant mutation fails closed.
-
----
-
-## 2. P0 closeout — Update Portfolio Data #3317
+### P0 — Update Portfolio Data #3317
 
 Status: **CLOSED / PRODUCTION VERIFIED**
 
-The incident was not a single-symbol bug. The systemic chain was:
+Systemic market-data, row-level recovery composition, XIRR safety-domain, and production synthetic-record lifecycle work are complete. Final production proof before this planning change:
 
-1. Yahoo/yfinance latest daily rows could contain NaN selected prices or internally impossible OHLC while other fields remained populated.
-2. `repair=True` and optional SciPy were not a sufficient trusted authority.
-3. Raw intraday reconstruction removed dependence on malformed daily price anchors.
-4. Sparse fully-empty intraday buckets required explicit zero-volume semantics.
-5. yfinance historical caching proved that identical retries were not necessarily fresh observations, so freshness transport was separated from price semantics.
-6. Fixed-pair interval logic was replaced by a generic unique multi-granularity quorum.
-7. Whole-frame recovery was replaced by row-level authority composition so independent malformed row classes cannot suppress each other.
-8. XIRR calculation and validation were unified under one supported safety domain.
-9. A legacy production synthetic test record exposed a separate lifecycle gap; shared ownership plus reviewer-protected atomic D1 reconciliation now handles this class without weakening user-delete authorization.
+- Production Test Record Reconciliation: one exact-owned legacy synthetic row removed atomically; zero residual tenant rows;
+- Update Portfolio Data #3332 / run ID `32157227218`: SUCCESS;
+- 264 transactions processed across 2 real users;
+- 58 market symbols downloaded;
+- both portfolio snapshots uploaded;
+- final success 2 / failure 0;
+- `DELETE /api/records` remains user-only.
 
-Key merges:
+Do not reopen #3317 for isolated upstream noise unless new evidence disproves its generic invariants.
 
-- #369 → `7642ace742eef34e1ab408c56384c3226f0a984e`
-- #370 → `533b076e4beba34b72549f5bb39b9588bb14724f`
-- #371 → `e89cf39463c69e83ffa1237554ac7d94aafaa44d`
-- #372 → `e73aee8840b950d22bce0a58cbed316459cb53bc`
-- #373 → `f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0`
-- #376 → `0537d73e0674f09a9b3f671f15caa089a75273c7`
-- #382 → `ae418ca2eb2efa73190395e9a7951c4badbeba20`
+### Stable product boundaries
 
-Final gates:
-
-- exact-head CI #1371: **SUCCESS**;
-- Production Test Record Reconciliation #1 / `32156834629`: **SUCCESS**, one exact-owned legacy row removed atomically, zero residual tenant rows;
-- Update Portfolio Data #3332 / `32157227218`: **SUCCESS**, 264 records / 2 users / 58 symbols / snapshots uploaded / 2 success / 0 failure.
-
-Do not reopen #3317 for isolated upstream market-data noise unless new evidence disproves one of the generic invariants above. Full RCA remains in `docs/engineering/update-portfolio-3317-systemic-rca.md`.
-
----
-
-## 3. Stable product boundaries
-
-### Transaction mutation
+Transaction mutation:
 
 ```text
 explicit durable intent
@@ -127,29 +67,7 @@ explicit durable intent
 → browser presentation
 ```
 
-### Cash and account value
-
-- explicit cash events are authoritative;
-- cash completeness is fail-closed;
-- whole-account value is published only when securities + cash evidence is complete;
-- ambiguous/missing cash or FX evidence never gets guessed.
-
-### Backup / restore
-
-```text
-authenticated durable reads
-→ versioned backup
-→ strict restore preview
-→ empty-target confirmation
-→ one idempotent restore intent
-→ atomic Worker restore
-→ authoritative readback
-→ normal recalculation
-```
-
-Still rejected: merge restore, replace-all, silent delete, importing derived snapshots, fresh idempotency identity on ambiguous retry, or destructive smoke against a populated real account.
-
-### Broker-neutral import
+Broker-neutral import:
 
 ```text
 explicit source semantics
@@ -161,84 +79,175 @@ explicit source semantics
 → shared batch outcome / readback / recalculation
 ```
 
-Import receipt/retry state is never accounting, duplicate, or transaction-identity authority.
+Cash/account value, dividend, backup/restore, FX, accounting, and transaction identity remain governed by their existing authoritative contracts. UX-R1 must not create parallel authorities.
+
+---
+
+## 2. Primary Active Batch — UX-R1 Adaptive Workspace & Responsive Interaction
+
+Phase: `UX-R1 — Adaptive Workspace & Responsive Interaction`
+
+Status: **PRIMARY ACTIVE / IMPLEMENTATION NEXT**
+
+### Primary goal
+
+> Make the application adapt to actual available workspace so Overview, Charts, Holdings, Records, Dividends, Cash, Groups, and Trade entry remain readable, interactive, and efficient on desktop, tablet, and mobile without shrinking core typography or changing financial/business authority.
+
+The production UI review identified common architectural pressure rather than page-specific cosmetic bugs:
+
+- persistent desktop transaction rail consumes analysis/management width even when trade entry is not the user's primary task;
+- component presentation is governed by fragmented viewport breakpoints instead of actual available container width;
+- compact navigation relies on a long horizontally scrollable destination row;
+- desktop density and touch ergonomics currently share too much control sizing authority;
+- high-frequency Holdings/Records workspaces need priority-based reflow rather than independent breakpoint patches;
+- Charts/Groups/Dividends can waste or lose useful workspace depending on whether the transaction rail is visible.
+
+No private portfolio screenshot or actual financial value should be committed as UX evidence.
+
+### UX-R1 architecture direction
+
+1. Keep viewport media queries for true app-shell transitions only.
+2. Introduce component/container-width authority for workspace-dependent presentation.
+3. Keep one canonical `TradeForm`; expose it as docked rail, drawer, or mobile sheet depending on usable space.
+4. Keep one `activeView` navigation authority; mobile/desktop may present it differently.
+5. Preserve semantic typography tokens; do not solve density by making financial text smaller.
+6. Add touch-specific interaction density without inflating desktop work surfaces.
+7. Reuse existing Holdings/Records desktop-table and mobile-card projections; improve the switching/composition authority instead of duplicating data logic.
+8. Treat accessibility, keyboard navigation, zoom/reflow, focus management, and mobile safe-area behavior as product requirements, not post-polish.
+
+### Implementation batches
+
+#### UX-R1.1 — Adaptive layout foundation
+
+- map all current runtime/media breakpoint authorities;
+- define shared app-shell/touch-density/container tokens;
+- create named container boundaries where useful;
+- remove only proven redundant breakpoint duplication;
+- add deterministic layout-contract coverage where feasible.
+
+#### UX-R1.2 — Adaptive transaction surface
+
+- dock only when sufficient workspace remains;
+- desktop/tablet drawer when docking would harm the active workspace;
+- mobile sheet for compact layouts;
+- preserve one `TradeForm` state/mutation authority;
+- edit-from-history must reopen the correct surface;
+- verify Escape, backdrop, focus, scroll locking, and unsaved in-memory form behavior.
+
+#### UX-R1.3 — Responsive navigation
+
+- compact primary destinations + `更多` presentation;
+- preserve `activeView`, URL, localStorage, pending badges, and current-view state;
+- no second routing authority.
+
+#### UX-R1.4 — Holdings + Records work surfaces
+
+- container-driven table/card/detail presentation;
+- Holdings concentration summary/detail composition;
+- Records primary search/filter vs secondary import/backup/CSV utilities;
+- maintain all existing mutation/import/export authority.
+
+#### UX-R1.5 — Overview + Charts
+
+- preserve information hierarchy;
+- use reclaimed workspace;
+- viewport/container-aware chart height;
+- reduce avoidable dead zones and first-screen displacement without removing KPI/business content.
+
+#### UX-R1.6 — Dividends + Cash + Groups
+
+- task-oriented adaptive layouts;
+- workspace-first Group management;
+- sticky changed-count/save/action feedback where useful;
+- no mutation semantics change.
+
+#### UX-R1.7 — Accessibility / interaction verification
+
+- keyboard/focus/escape behavior;
+- practical mobile touch targets;
+- no hover-only required action;
+- 200% zoom/narrow reflow;
+- reduced motion;
+- mobile safe-area and sticky action verification.
+
+#### UX-R1.8 — Production visual verification + closeout
+
+- exact-head CI;
+- frozen review BLOCKER 0;
+- expected-head merge;
+- Pages/deployment truth where appropriate;
+- representative desktop/tablet/mobile width verification;
+- stable closeout documentation without private financial values.
+
+### Required width matrix
+
+At minimum verify representative widths around:
+
+`320 / 360 / 390 / 430 / 600 / 768 / 820 / 1024 / 1280 / 1440 / 1680 / 2048 CSS px`.
+
+Also verify light/dark themes, trade surface open/closed/editing, long labels/notes, empty/small/large data sets, pending dividend attention, Records filter states, Groups large record sets, keyboard-only interaction, and browser zoom/reflow.
+
+### Immediate next actions
+
+1. Refresh current `main`, open PRs, exact-head CI, Pages/deployment truth.
+2. Read `AI_PROJECT_PLAYBOOK.md`, `README.md`, this file, UX-R1 plan, and D4–D5 closeout.
+3. Trace `App.vue`, `style.css`, `styles/product-consistency.css`, and primary page component breakpoint/layout authorities.
+4. Produce one breakpoint/container authority map before editing CSS.
+5. Implement UX-R1.1 first; do not begin with isolated page styling patches.
+6. Keep business/data/mutation code unchanged unless source tracing proves a necessary UX-enabling correction.
+
+---
+
+## 3. Deferred Batch — R3.3B Safe Ambiguous Import Retry
+
+Status: **DEFERRED / PRESERVED / DO NOT MERGE YET**
+
+Stable handoff: `docs/engineering/R3_3B_SAFE_AMBIGUOUS_IMPORT_RETRY_DEFERRED_2026-08-19.md`
+
+Remote state at deferral:
+
+- PR #367: OPEN / DRAFT / not merged;
+- branch: `feat/r3-3b-safe-ambiguous-import-retry`;
+- head: `6eb1a86ea08b6a732b082b1e102915fe842102c2`;
+- original base: `e4edf84e3a60e4c63343ff5b54659def9ec950b9`;
+- 14 commits / 8 changed files;
+- CI #1255 / run ID `32111867887`: failure in Frontend security contract tests; Python and Worker suites succeeded.
+
+R3.3B product intent and safety contract are **not cancelled**. They are frozen for future resumption. Do not hard-merge/rebase the old branch when resumed. First compare it to then-current `main`, re-trace stable-key reproduction for Canonical/mapped/IBKR, classify the old Frontend failure under current contracts, then choose transplant vs clean reimplementation.
+
+While UX-R1 is active:
+
+- do not merge #367;
+- do not partially absorb R3.3B mutation behavior into UX work;
+- UI changes around import controls may improve presentation only;
+- if UX-R1 touches a file also changed by #367, document the overlap for future resumption instead of preserving old code assumptions.
 
 ---
 
 ## 4. Closed portability checkpoints
 
-- R3.2A Canonical Trade CSV v1 Preview — PR #355 — **CLOSED**
-- R3.2B Canonical CSV Template — PR #356 — **CLOSED**
-- R3.2C Safe Canonical CSV Execution — PR #358 — **CLOSED**
-- R3.2D Explicit Broker Column Mapping Preview — PR #360 — **CLOSED**
-- R3.2E Safe Mapped Broker CSV Execution — PR #361 — **CLOSED**
-- R3.2F Saved Mapping Presets — PR #363 — **CLOSED**
-- R3.3A Import Reconciliation Receipt — PR #365 — **CLOSED**
+- R3.2A Canonical Trade CSV v1 Preview — PR #355 — CLOSED
+- R3.2B Canonical CSV Template — PR #356 — CLOSED
+- R3.2C Safe Canonical CSV Execution — PR #358 — CLOSED
+- R3.2D Explicit Broker Column Mapping Preview — PR #360 — CLOSED
+- R3.2E Safe Mapped Broker CSV Execution — PR #361 — CLOSED
+- R3.2F Saved Mapping Presets — PR #363 — CLOSED
+- R3.3A Import Reconciliation Receipt — PR #365 — CLOSED
 
-R3.3A guarantees a memory-only ordered receipt of `created`, `replayed`, `rejected`, and `ambiguous` outcomes without persisting broker contents, idempotency keys, account IDs, full notes, or internal error payloads.
-
----
-
-## 5. Primary Active Batch — R3.3B Safe Ambiguous Import Retry
-
-Phase: `R3 — Portability / Automation`
-
-Status: **ACTIVE / CONTRACT PRESERVED**
-
-### Primary Goal
-
-> When an import stops on an ambiguous server response, let the user safely retry the exact same still-open in-memory source with one explicit action, replaying already-confirmed entries through the existing stable idempotency contract instead of forcing manual file re-selection.
-
-### Working contract
-
-1. Retry is offered only for `status === 'partial_failure'` with `failure.outcomeAmbiguous === true`.
-2. Do not offer retry for committed/replayed results, sync-only warnings, or explicit rejection.
-3. Retry reuses the exact current in-memory source/profile/mapping inputs and existing preparer/writer; never reconstruct transactions from receipt rows.
-4. Retry starts the whole exact batch from the beginning. Already-confirmed entries must replay through the same stable idempotency keys; the ambiguous item is re-resolved and later entries may continue.
-5. Never generate a fresh identity for an ambiguous entry and never use economic-field similarity as duplicate authority.
-6. Canonical/mapped retry requires the existing source-profile/readiness contract; mapped retry requires unchanged current mapping.
-7. IBKR retry is disabled when the profile is edited but not revalidated (`profileDirty`).
-8. Shared receipt UX may expose the retry action, but each parent importer remains responsible for proving the exact source is still in memory and eligible.
-9. Explicit user action is required. No timed/background automatic mutation loop.
-10. No Worker/D1/schema/accounting/FX/idempotency change unless current-main tracing proves the existing stable-key reproduction contract is insufficient.
-
-### In scope
-
-- one shared ambiguous-retry eligibility policy;
-- consistent retry UX across Canonical, mapped, and IBKR imports;
-- reuse existing preparation + durable batch execution paths;
-- regression tests for ambiguity-only visibility, unchanged-source gating, stable-key reuse, profile/mapping dirtiness, and no retry for sync warnings/explicit rejection;
-- full Frontend/Python/Worker CI because shared import code is security-sensitive;
-- frozen review → expected-head merge → stable checkpoint.
-
-### Out of scope
-
-- retrying explicit rejection without user correction;
-- automatic retry loops;
-- storing broker source/receipt for future sessions;
-- reconstructing mutation payloads from receipt rows;
-- receipt export/download;
-- new broker adapters;
-- fuzzy/AI mapping inference;
-- unrelated Worker/D1/accounting/FX refactor.
-
-### Immediate next actions
-
-1. Refresh PR #367 and its branch against current `main` remote truth.
-2. Re-trace exact source → stable-key reproduction for Canonical, mapped, and IBKR under current code; do not rely on pre-P0 assumptions.
-3. Reproduce the last CI failure from exact remote head and classify whether it is production logic, test contract, or main-drift integration.
-4. Implement only the smallest general contract needed after the trace.
-5. Run full exact-head CI, frozen review, expected-head merge, then product-level verification.
+R3.3A memory-only receipts remain convenience/reconciliation state, not transaction/accounting authority.
 
 ---
 
-## 6. Fresh-session startup
+## 5. Fresh-session startup
 
-1. Read `AI_PROJECT_PLAYBOOK.md`, `README.md`, this file.
-2. Refresh protected `main`, open PRs, exact-head CI, and deployment/runtime truth.
-3. Treat #3317 as closed unless new material evidence disproves its generic recovery invariants.
-4. Confirm PR #365 remains merged; do not reopen R3.3A without new material evidence.
-5. Keep R3.3B as the single Primary Active Batch.
-6. Before any retry mutation work, verify Canonical/mapped/IBKR exact source → stable-key reproduction from current `main`.
-7. Preserve exact-head CI / frozen-review / expected-head merge discipline.
-8. Do not change `AI_PROJECT_PLAYBOOK.md` for feature-specific retry decisions unless a truly project-wide rule changes.
+1. Read `AI_PROJECT_PLAYBOOK.md`.
+2. Read `README.md`.
+3. Read this file.
+4. Read `docs/engineering/UX_R1_ADAPTIVE_WORKSPACE_PLAN_2026-08-19.md`.
+5. Read `docs/engineering/DESKTOP_VISIBILITY_D4_D5_CLOSEOUT_2026-08-17.md`.
+6. Refresh protected `main`, open PRs, exact-head CI, and Pages/deployment truth.
+7. Confirm #367 remains Draft/deferred; read its deferred handoff only if UX work overlaps its files.
+8. Keep UX-R1 as the single Primary Active Batch.
+9. Start with systemic layout/breakpoint authority mapping, then UX-R1.1 foundation.
+10. Use Draft PR → exact-head CI → frozen review → expected-head merge → production/Pages verification.
+11. Complete UX-R1 and persist closeout before opening another development phase.
