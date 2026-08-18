@@ -13,6 +13,10 @@ const serviceSource = fs.readFileSync(
   new URL('../src/services/brokerNeutralColumnMapping.js', import.meta.url),
   'utf8',
 );
+const mappedExecutionSource = fs.readFileSync(
+  new URL('../src/services/brokerNeutralMappedImportExecution.js', import.meta.url),
+  'utf8',
+);
 const mappingComponentSource = fs.readFileSync(
   new URL('../src/components/BrokerNeutralColumnMapping.vue', import.meta.url),
   'utf8',
@@ -183,18 +187,30 @@ test('quoted commas, escaped quotes, multiline cells, and CRLF stay deterministi
   assert.equal(table.rows[0].values[6], 'first, line\r\nsecond says "done"');
 });
 
-test('mapping service and UI are structurally zero-write and reuse the existing toolbar slot', () => {
+test('mapping parser remains zero-write while execution delegates only to the reviewed durable writer', () => {
   assert.doesNotMatch(serviceSource, /\bfetch\s*\(|\/api\/|\b(?:POST|PUT|PATCH|DELETE)\b/);
   assert.match(serviceSource, /buildCanonicalTradeCsvPreview/);
   assert.match(serviceSource, /writes_allowed:\s*false/);
 
-  assert.doesNotMatch(mappingComponentSource, /useAuthStore|usePortfolioStore|createBrokerNeutralRecord|runRecordImportBatch|CONFIG\.API_BASE_URL/);
-  assert.doesNotMatch(mappingComponentSource, /確認匯入|執行匯入|\/api\//);
+  assert.doesNotMatch(mappedExecutionSource, /\bfetch\s*\(|\/api\//);
+  assert.match(mappedExecutionSource, /buildMappedCanonicalTradePreview/);
+  assert.match(mappedExecutionSource, /buildCanonicalImportRecord/);
+  assert.match(mappedExecutionSource, /sourceText/);
+  assert.match(mappedExecutionSource, /mappingContract/);
+  assert.match(mappedExecutionSource, /sourceRecordNumber/);
+
+  assert.match(mappingComponentSource, /prepareMappedBrokerImport/);
+  assert.match(mappingComponentSource, /createBrokerNeutralRecord/);
+  assert.match(mappingComponentSource, /runRecordImportBatch/);
+  assert.match(mappingComponentSource, /確認匯入/);
+  assert.match(mappingComponentSource, /sourceProfile/);
   assert.match(mappingComponentSource, /建立零寫入預覽/);
   assert.match(mappingComponentSource, /系統不猜日期格式、BUY\/SELL、幣別、正負號或重複交易/);
+  assert.doesNotMatch(mappingComponentSource, /fetch\s*\(['"]\/api\//);
 
   assert.match(toolsComponentSource, /CSV 工具/);
   assert.match(toolsComponentSource, /BrokerNeutralColumnMapping/);
   assert.match(toolsComponentSource, /下載 Canonical CSV 空白範本/);
+  assert.match(toolsComponentSource, /共用同一 durable record-create/);
   assert.match(journalActionsSource, /<BrokerNeutralCsvTemplateButton \/>/);
 });
