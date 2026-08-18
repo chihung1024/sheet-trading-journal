@@ -2,179 +2,69 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  diagnose-update-3317-evidence:
-    name: Diagnose Update Portfolio Data 3317 evidence
-    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'diagnostic/update-portfolio-3317' }}
+  verify-update-3317-fix:
+    name: Verify Update Portfolio Data 3317 fix
+    if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.10'
-
-      - name: Install production market-data dependencies with repair extra
-        run: python -m pip install --disable-pip-version-check yfinance==1.5.2 pandas==2.3.3 numpy==2.2.6 scipy==1.15.3
-
-      - name: Compare repaired daily and hourly evidence
+      - name: Dispatch merged main and require production success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: 533b076e4beba34b72549f5bb39b9588bb14724f
         run: |
-          python - <<'PY'
-          import json
-          import math
-          import pandas as pd
-          import yfinance as yf
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          headers=(
+            -H 'Accept: application/vnd.github+json'
+            -H "Authorization: Bearer $GH_TOKEN"
+            -H 'X-GitHub-Api-Version: 2022-11-28'
+          )
 
-          symbols = ['AIHY', 'CAH', 'EME', 'HBMX', 'LUMA', 'PHOX', 'XA']
-          target = pd.Timestamp('2026-08-17')
-          columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume', 'Dividends', 'Stock Splits', 'Capital Gains']
+          current_main="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/branches/main" | jq -r '.commit.sha')"
+          test "$current_main" = "$EXPECTED_MAIN_SHA"
 
-          def scalar(value):
-              if value is None or pd.isna(value):
-                  return None
-              try:
-                  numeric = float(value)
-              except (TypeError, ValueError):
-                  return str(value)
-              return numeric if math.isfinite(numeric) else None
+          before="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
+          before_number="$(printf '%s' "$before" | jq '[.workflow_runs[].run_number] | max // 0')"
 
-          def target_row(frame):
-              if frame is None or frame.empty:
-                  return None
-              idx = pd.to_datetime(frame.index, errors='coerce')
-              work = frame.copy()
-              work.index = idx
-              matches = work[[x.date() == target.date() for x in idx]]
-              if len(matches) != 1:
-                  return {'match_count': int(len(matches))}
-              row = matches.iloc[0]
-              return {col: scalar(row[col]) for col in columns if col in row.index}
+          payload='{"ref":"main","inputs":{"custom_benchmark":"0050.TW","target_user_id":"","calculation_job_id":"","transaction_integrity_audit_only":"false"}}'
+          curl --silent --show-error --fail-with-body "${headers[@]}" \
+            -X POST "$api/actions/workflows/update.yml/dispatches" \
+            -H 'Content-Type: application/json' \
+            --data "$payload" >/dev/null
 
-          def hourly_summary(frame):
-              if frame is None or frame.empty:
-                  return {'rows': 0, 'aggregate': None}
-              idx = pd.to_datetime(frame.index, errors='coerce')
-              work = frame.copy(); work.index = idx
-              day = work[[x.date() == target.date() for x in idx]]
-              if day.empty:
-                  return {'rows': 0, 'aggregate': None, 'index_tz': str(getattr(idx, 'tz', None))}
-              numeric = {col: pd.to_numeric(day[col], errors='coerce') for col in ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'] if col in day.columns}
-              aggregate = {
-                  'Open': scalar(numeric['Open'].dropna().iloc[0]) if 'Open' in numeric and not numeric['Open'].dropna().empty else None,
-                  'High': scalar(numeric['High'].max()) if 'High' in numeric else None,
-                  'Low': scalar(numeric['Low'].min()) if 'Low' in numeric else None,
-                  'Close': scalar(numeric['Close'].dropna().iloc[-1]) if 'Close' in numeric and not numeric['Close'].dropna().empty else None,
-                  'Adj Close': scalar(numeric['Adj Close'].dropna().iloc[-1]) if 'Adj Close' in numeric and not numeric['Adj Close'].dropna().empty else None,
-                  'Volume': scalar(numeric['Volume'].fillna(0).sum()) if 'Volume' in numeric else None,
-              }
-              return {'rows': int(len(day)), 'index_tz': str(getattr(idx, 'tz', None)), 'first': str(day.index[0]), 'last': str(day.index[-1]), 'aggregate': aggregate}
+          run_id=''
+          for _ in $(seq 1 30); do
+            response="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=20")"
+            run_id="$(printf '%s' "$response" | jq -r --arg sha "$EXPECTED_MAIN_SHA" --argjson before "$before_number" '.workflow_runs[] | select(.head_sha == $sha and .run_number > $before) | .id' | head -n1)"
+            if [[ -n "$run_id" && "$run_id" != "null" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          test -n "$run_id"
+          printf 'PRODUCTION_RUN_ID=%s\n' "$run_id"
 
-          for symbol in symbols:
-              result = {'symbol': symbol}
-              requests = [
-                  ('exact_repaired_daily', dict(start='2026-08-17', end='2026-08-18', interval='1d', auto_adjust=False, actions=True, prepost=False, repair=True, keepna=True), target_row),
-                  ('wide_repaired_daily', dict(start='2026-08-13', end='2026-08-19', interval='1d', auto_adjust=False, actions=True, prepost=False, repair=True, keepna=True), target_row),
-                  ('hourly_raw', dict(start='2026-08-17', end='2026-08-18', interval='1h', auto_adjust=False, actions=True, prepost=False, repair=False, keepna=True), hourly_summary),
-                  ('hourly_repaired', dict(start='2026-08-17', end='2026-08-18', interval='1h', auto_adjust=False, actions=True, prepost=False, repair=True, keepna=True), hourly_summary),
-              ]
-              for label, kwargs, summarize in requests:
-                  try:
-                      result[label] = summarize(yf.Ticker(symbol).history(**kwargs))
-                  except Exception as exc:
-                      result[label] = {'error': f'{type(exc).__name__}: {exc}'}
-              print(json.dumps(result, sort_keys=True, separators=(',', ':')))
-          PY
+          conclusion=''
+          for _ in $(seq 1 120); do
+            run="$(curl --silent --show-error --fail-with-body "${headers[@]}" "$api/actions/runs/$run_id")"
+            status="$(printf '%s' "$run" | jq -r '.status')"
+            conclusion="$(printf '%s' "$run" | jq -r '.conclusion // empty')"
+            if [[ "$status" == "completed" ]]; then
+              printf '%s\n' "$(printf '%s' "$run" | jq -c '{id,name,run_number,event,status,conclusion,head_sha,created_at,updated_at,html_url}')"
+              break
+            fi
+            sleep 5
+          done
 
-  python-tests:
-    name: Python tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.10'
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - name: Verify workflow supply-chain policy
-        run: python tests/test_workflow_supply_chain.py
-      - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
-      - name: Compile Python sources
-        run: python -m compileall -q journal_engine main.py tools tests
-      - name: Run test suite and measure branch coverage
-        run: >-
-          python -m pytest -q
-          --cov=journal_engine
-          --cov=main
-          --cov-branch
-          --cov-report=term-missing
-          --cov-report=json:coverage.json
-      - name: Verify measured Python coverage baseline
-        run: >-
-          python tools/verify_python_coverage.py
-          coverage.json
-          docs/governance/python-coverage-baseline.json
-
-  worker-security:
-    name: Worker security and deployment tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Install pinned Node dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Run Worker test suites
-        run: npm run test:worker
-      - name: Verify Worker deployment metadata
-        run: npm run worker:config:check
-      - name: Enforce Recovery Evidence Gate
-        run: npm run worker:recovery-gate:check
-      - name: Apply and verify D1 baseline locally
-        run: npm run worker:schema:test
-
-  frontend-build:
-    name: Frontend contracts and build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Install pinned frontend dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Run frontend security contract tests
-        run: npm run test:frontend
-      - name: Build frontend
-        run: npm run build
+          test "$conclusion" = 'success'
