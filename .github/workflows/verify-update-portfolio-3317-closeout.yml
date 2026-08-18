@@ -1,0 +1,56 @@
+name: Verify Update Portfolio Data 3317 closeout
+
+on:
+  pull_request:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  verify-production:
+    if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317-closeout' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Verify merged main and dispatch production update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN: 0537d73e0674f09a9b3f671f15caa089a75273c7
+        run: |
+          set -euo pipefail
+          actual_main="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          test "$actual_main" = "$EXPECTED_MAIN"
+
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq -nc '{ref:"main",inputs:{custom_benchmark:"0050.TW"}}' \
+            | gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/dispatches" --input -
+
+          run_id=''
+          for _ in $(seq 1 120); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/runs?event=workflow_dispatch&branch=main&per_page=30" > /tmp/runs.json
+            run_id="$(jq -r --arg sha "$EXPECTED_MAIN" --arg started "$started" \
+              '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $started)] | sort_by(.created_at) | last | .id // empty' \
+              /tmp/runs.json)"
+            if [ -n "$run_id" ]; then
+              break
+            fi
+            sleep 5
+          done
+          test -n "$run_id"
+
+          echo "PRODUCTION_RUN_ID=$run_id"
+          for _ in $(seq 1 240); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > /tmp/run.json
+            status="$(jq -r .status /tmp/run.json)"
+            conclusion="$(jq -r '.conclusion // empty' /tmp/run.json)"
+            run_number="$(jq -r .run_number /tmp/run.json)"
+            echo "PRODUCTION_RUN_NUMBER=$run_number STATUS=$status CONCLUSION=${conclusion:-pending}"
+            if [ "$status" = completed ]; then
+              test "$conclusion" = success
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Production Update Portfolio Data did not complete within verifier bound.' >&2
+          exit 1
