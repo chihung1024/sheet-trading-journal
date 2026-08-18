@@ -111,7 +111,7 @@
       <div ref="contentContainerRef" class="content-container">
         <!-- Middle: 主內容（依選單切換） -->
         <main class="main-column">
-          <!-- Desktop + Mobile: 功能切換（頂端 tabs） -->
+          <!-- Full navigation remains the desktop/tablet presentation. -->
           <div class="mobile-tabs" aria-label="功能切換">
             <button
               v-for="v in views"
@@ -130,6 +130,13 @@
               </span>
             </button>
           </div>
+
+          <CompactNavigation
+            :views="views"
+            :active-view="activeView"
+            :pending-dividends-count="pendingDividendsCount"
+            @navigate="activeView = $event"
+          />
 
           <!-- 總覽 -->
           <OverviewPage
@@ -249,6 +256,7 @@ import { isSnapshotVerificationCurrent } from './services/snapshotVerification.j
 
 import LoginOverlay from './components/LoginOverlay.vue';
 import DataReliabilityBanner from './components/DataReliabilityBanner.vue';
+import CompactNavigation from './components/CompactNavigation.vue';
 import OverviewPage from './components/OverviewPage.vue';
 import PerformanceChart from './components/PerformanceChart.vue';
 import TradeForm from './components/TradeForm.vue';
