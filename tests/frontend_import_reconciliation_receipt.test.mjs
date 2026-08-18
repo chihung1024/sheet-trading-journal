@@ -14,9 +14,9 @@ const entries = [
   { idempotencyKey: 'secret-key-c', record: { symbol: 'NVDA', note: 'private-c' } },
 ];
 
-const run = async (createRecord, { refreshError = null, updateError = null } = {}) => runRecordImportBatch(entries, {
+const run = async (createRecord, { readbackError = null, updateError = null } = {}) => runRecordImportBatch(entries, {
   createRecord,
-  async refreshRecords() { if (refreshError) throw refreshError; },
+  async refreshRecords() { if (readbackError) throw readbackError; },
   async requestUpdate() { if (updateError) throw updateError; },
 });
 
@@ -85,6 +85,7 @@ test('receipt presentation exposes statuses and sync warnings without errors, en
     { readbackError: new Error('readback unavailable') },
   );
 
+  assert.equal(result.sync.readbackError?.message, 'readback unavailable');
   const receipt = buildImportReconciliationReceipt(result);
   assert.equal(receipt.receipt_version, 1);
   assert.deepEqual(receipt.rows.map(row => row.label), [
