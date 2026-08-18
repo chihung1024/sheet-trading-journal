@@ -5,10 +5,10 @@ valuation field contains NaN. This adapter preserves that behavior for ambiguous
 malformed market data while allowing two evidence-based recovery paths:
 
 1. A persistent invalid provider row may be re-requested from the same provider for
-   the exact affected calendar date. Recovery is accepted only when two fresh narrow
-   daily requests reproduce the same complete OHLC/volume observation and preserve the
-   original modeled corporate-action semantics. No price is synthesized or carried
-   forward by this path.
+   the exact affected calendar date using yfinance's bounded ``repair=True`` path.
+   Recovery is accepted only when two fresh repaired daily requests reproduce the same
+   complete OHLC/volume observation and preserve the original modeled corporate-action
+   semantics. No price is synthesized or carried forward by this path.
 2. If exact-date recovery is unavailable, a proven pure positive cash-dividend-only row
    may use the existing explicit ``asof_carry_forward`` effective valuation contract.
 
@@ -217,9 +217,24 @@ class SemanticMarketDataClient(MarketDataClient):
             for _attempt in range(_NARROW_RECOVERY_ATTEMPTS):
                 try:
                     ticker_obj = yf.Ticker(symbol)
-                    narrow = ticker_obj.history(start=event_date, end=event_date + pd.Timedelta(days=1), interval="1d", auto_adjust=False, actions=True, prepost=True)
+                    # The broad downloader has already reproduced the malformed daily
+                    # row twice. At this secondary recovery boundary, ask the same
+                    # Yahoo/yfinance provider to repair the exact-date daily bar from
+                    # its finer-grained regular-session evidence. We still require two
+                    # fresh repaired observations to be complete, action-identical, and
+                    # bit-for-bit stable before accepting any value.
+                    narrow = ticker_obj.history(
+                        start=event_date,
+                        end=event_date + pd.Timedelta(days=1),
+                        interval="1d",
+                        auto_adjust=False,
+                        actions=True,
+                        prepost=False,
+                        repair=True,
+                        keepna=True,
+                    )
                 except Exception as exc:
-                    logger.warning("[%s] exact-date daily recovery request failed for %s: %s", symbol, event_date.strftime("%Y-%m-%d"), exc)
+                    logger.warning("[%s] exact-date repaired daily recovery request failed for %s: %s", symbol, event_date.strftime("%Y-%m-%d"), exc)
                     return frame, ()
                 candidate = self._complete_narrow_daily_candidate(narrow, event_date)
                 if candidate is None:
@@ -227,11 +242,11 @@ class SemanticMarketDataClient(MarketDataClient):
                 values, signature = candidate
                 candidate_actions = (values["Dividends"], values["Stock Splits"], values.get("Capital Gains", 0.0))
                 if candidate_actions != original_actions:
-                    logger.warning("[%s] exact-date daily recovery action mismatch for %s; fail closed", symbol, event_date.strftime("%Y-%m-%d"))
+                    logger.warning("[%s] exact-date repaired daily recovery action mismatch for %s; fail closed", symbol, event_date.strftime("%Y-%m-%d"))
                     return frame, ()
                 candidates.append((values, signature))
             if len(candidates) != _NARROW_RECOVERY_ATTEMPTS or len({signature for _values, signature in candidates}) != 1:
-                logger.warning("[%s] exact-date daily recovery was not stable for %s; fail closed", symbol, event_date.strftime("%Y-%m-%d"))
+                logger.warning("[%s] exact-date repaired daily recovery was not stable for %s; fail closed", symbol, event_date.strftime("%Y-%m-%d"))
                 return frame, ()
             staged[event_date] = candidates[-1][0]
         work = normalized_frame.copy(deep=True)
@@ -249,7 +264,7 @@ class SemanticMarketDataClient(MarketDataClient):
             return frame, ()
         metadata = dict(rebuilt.attrs.get("price_provenance") or {})
         reason = str(metadata.get("selection_reason") or "").strip()
-        metadata["selection_reason"] = (f"{reason}; persistent invalid daily row recovered by two exact-date same-provider daily observations").strip("; ")
+        metadata["selection_reason"] = (f"{reason}; persistent invalid daily row recovered by two exact-date same-provider repaired daily observations").strip("; ")
         rebuilt.attrs["price_provenance"] = metadata
         return rebuilt, tuple(sorted(staged))
 
@@ -295,7 +310,7 @@ class SemanticMarketDataClient(MarketDataClient):
                 metadata = dict(recovered.attrs.get("price_provenance") or {})
                 if metadata:
                     self.price_metadata_by_symbol[symbol] = metadata
-                logger.warning("[%s] persistent invalid daily row(s) recovered from exact-date same-provider evidence: dates=%s count=%s", symbol, ",".join(date.strftime("%Y-%m-%d") for date in recovered_dates), len(recovered_dates))
+                logger.warning("[%s] persistent invalid daily row(s) recovered from exact-date same-provider repaired evidence: dates=%s count=%s", symbol, ",".join(date.strftime("%Y-%m-%d") for date in recovered_dates), len(recovered_dates))
                 continue
             with self._semantic_attempt_lock:
                 attempts = list(self._invalid_attempt_evidence.get(str(symbol), ()))
