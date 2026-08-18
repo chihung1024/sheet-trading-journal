@@ -1,4 +1,4 @@
-name: Record systemic portfolio update recovery handoff
+name: Update concise portfolio recovery handoff
 
 on:
   pull_request:
@@ -17,7 +17,7 @@ jobs:
           ref: fix/market-data-row-recovery-composition
           persist-credentials: true
           fetch-depth: 1
-      - name: Update live handoff truth
+      - name: Update concise live truth
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -26,73 +26,47 @@ jobs:
           path = Path('to_do_update_list.md')
           text = path.read_text(encoding='utf-8')
 
-          old_current = '''Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, R3.2A–R3.2F, and R3.3A are closed at their reviewed engineering boundaries. R2.6B cash-inclusive whole-account Daily P&L is merged and CI-reviewed, but fresh production financial-snapshot evidence is still pending and must not be inferred. R3.3A Import Reconciliation Receipt merged as PR #365 at `main@26c74af8429f3d17380c278f53828008d01fee1e` after exact-head CI #1238 and frozen review PASS. The single Primary Active Batch is R3.3B — Safe Ambiguous Import Retry.**'''
-          new_current = '''Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, R3.2A–R3.2F, and R3.3A are closed at their reviewed engineering boundaries. R3.3B remains open but is temporarily PAUSED. The single Primary Active Batch is P0 — Update Portfolio Data #3317 systemic production-correctness closeout. `main@f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0` contains the merged XIRR safety-domain repair (#373). PR #376 is the unmerged systemic market-data recovery refactor; exact-head CI #1349 is green across Frontend, Python + branch-coverage governance, and Worker/D1/security. Production success from merged main is still required before P0 is closed.**'''
-          if old_current not in text:
-              raise RuntimeError('current-line handoff marker not found')
-          text = text.replace(old_current, new_current, 1)
+          old = "Current line: **R1, R2.1–R2.6A, R3.1A–R3.1C, Desktop Visibility D1–D5, R3.2A–R3.2F, and R3.3A are closed at their reviewed engineering boundaries. R2.6B cash-inclusive whole-account Daily P&L is merged and CI-reviewed, but fresh production financial-snapshot evidence is still pending and must not be inferred. R3.3A Import Reconciliation Receipt merged as PR #365 at `main@26c74af8429f3d17380c278f53828008d01fee1e` after exact-head CI #1238 and frozen review PASS. The single Primary Active Batch is R3.3B — Safe Ambiguous Import Retry.**"
+          new = "Current line: **R3.3B remains open but is temporarily PAUSED. The single Primary Active Batch is P0 — Update Portfolio Data #3317 systemic production-correctness closeout. `main@f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0` contains the merged XIRR safety-domain repair (#373). PR #376 is the unmerged symbol/date-agnostic market-data recovery refactor; exact-head CI #1349 is green across Frontend, 658 Python tests + branch-coverage governance, and Worker/D1/security. Merged-main production success is mandatory before P0 closes.**"
+          if old not in text:
+              raise RuntimeError('current-line marker not found')
+          text = text.replace(old, new, 1)
 
-          old_main = '- protected frontend/engine `main`: `26c74af8429f3d17380c278f53828008d01fee1e` (`feat: add shared import reconciliation receipt (#365)`);'
-          new_main = '- protected `main` at the current P0 recovery boundary: `f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0` (PR #373 XIRR safety-domain repair merged); PR #376 remains deliberately unmerged until exact-head review/merge gates complete;'
-          if old_main not in text:
-              raise RuntimeError('authoritative main marker not found')
-          text = text.replace(old_main, new_main, 1)
+          old = '- protected frontend/engine `main`: `26c74af8429f3d17380c278f53828008d01fee1e` (`feat: add shared import reconciliation receipt (#365)`);'
+          new = '- protected `main` at the current P0 boundary: `f7bd7b7dc2e0ae28673fca11bae88f72d138c2f0` (PR #373 XIRR safety-domain repair); PR #376 remains deliberately unmerged pending frozen closeout and production verification;'
+          if old not in text:
+              raise RuntimeError('main-truth marker not found')
+          text = text.replace(old, new, 1)
 
-          marker = '\n---\n\n## 0. Operating doctrine\n'
-          incident = '''
----
+          if '## 5. Primary Active Batch\n' not in text:
+              raise RuntimeError('R3.3B heading marker not found')
+          text = text.replace(
+              '## 5. Primary Active Batch\n',
+              '## 5. Paused Product Batch — resume after P0 closeout\n',
+              1,
+          )
+          if 'Status: **ACTIVE / CONTRACT-FIRST**' not in text:
+              raise RuntimeError('R3.3B status marker not found')
+          text = text.replace(
+              'Status: **ACTIVE / CONTRACT-FIRST**',
+              'Status: **PAUSED / CONTRACT PRESERVED**',
+              1,
+          )
 
-## P0. Primary Active Batch — Update Portfolio Data #3317 systemic production correctness
-
-Status: **ACTIVE / EXACT-HEAD CI GREEN / FROZEN CLOSEOUT IN PROGRESS**
-
-### Root-cause chain
-
-- **Symptom:** production portfolio updates repeatedly failed closed on malformed/NaN Yahoo daily rows; later runs exposed extreme XIRR output and mixed malformed-row recovery interactions.
-- **Failure Point:** recovery and metric safety decisions were split across layers: repeated historical yfinance calls could replay cache, whole-frame market-data classifiers let unrelated invalid row types block one another, interval disagreement handling encoded a fixed sequence, and XIRR range authority existed only at upload validation.
-- **Contributing Factors:** upstream daily OHLC/Close corruption, sparse zero-volume intraday buckets, historical-response caching, cross-granularity representation drift, and legacy production test-tenant evidence amplified those architectural gaps.
-- **Root Cause:** recovery was modeled around attempts/frames/particular representation order rather than explicit evidence authorities and composable semantic invariants.
-- **Systemic Cause:** freshness transport, market-price evidence, corporate-action valuation, and performance-metric safety boundaries were not sufficiently separated, so valid independent recovery authorities could either block each other or depend on retry timing.
-
-### Systemic remediation already merged before PR #376
-
-1. Historical Yahoo freshness is explicit and fail-closed rather than assuming an identical retry is fresh.
-2. Intraday evidence uses raw regular-session data; all-empty zero-volume buckets may be ignored, contradictory/partial bars remain invalid.
-3. XIRR calculation and upload validation now share the supported safety domain; out-of-domain finite solver output becomes machine-readable `undefined`, never a fabricated/clamped return.
-
-### PR #376 architecture — symbol/date agnostic
-
-1. Invalid daily rows are classified independently instead of assigning one recovery type to an entire symbol frame.
-2. Zero-action malformed price rows use only same-provider, exact-date, regular-session intraday price evidence.
-3. Stable pure positive dividend-only rows retain the existing two-observation `asof_carry_forward` authority; intraday evidence never invents corporate actions or Volume.
-4. The two authorities compose per row, so one recoverable row type cannot suppress another; unsupported rows remain visible to the final fail-closed validator.
-5. Intraday recovery is an ordered multi-granularity quorum, not a ticker/date patch or fixed tie-break rule. Each representation uses the same full OHLC/Adj Close structural validator.
-6. Invalid, unavailable, or disagreeing representations may be outvoted only by a unique configured quorum. Fetching stops when quorum is proven or mathematically impossible.
-7. Non-transitive tolerance ambiguity is explicitly fail-closed; no tolerance widening, alternate provider, guessed price, symbol/date exception, accounting/FX change, or validator relaxation.
-8. Freshness transport remains separate from semantic quorum policy and cannot become a second financial authority.
-
-### Verification state
-
-- PR #376 latest reviewed work branch: `fix/market-data-row-recovery-composition`;
-- exact-head CI #1349: **SUCCESS** across Frontend contracts/build, 658 Python tests + branch-coverage governance, and Worker security/deployment/D1 baseline;
-- frozen architecture review: review threads 0; production diff contains no symbol/date special-case rule;
-- merge and merged-main production `Update Portfolio Data` success remain mandatory closeout gates;
-- R3.3B resumes only after this P0 batch is closed.
-'''
-          if marker not in text:
-              raise RuntimeError('operating-doctrine insertion marker not found')
-          text = text.replace(marker, incident + '\n---\n\n## 0. Operating doctrine\n', 1)
-
-          text = text.replace('## 5. Primary Active Batch\n', '## 5. Paused Product Batch — resume after P0 closeout\n', 1)
-          text = text.replace('Status: **ACTIVE / CONTRACT-FIRST**', 'Status: **PAUSED / CONTRACT PRESERVED**', 1)
+          anchor = '> Stable closeout evidence lives under `docs/engineering/`; this file is a concise live handoff, not a history dump.\n'
+          note = '> Current P0 RCA: `docs/engineering/update-portfolio-3317-systemic-rca.md`.\n'
+          if anchor not in text:
+              raise RuntimeError('handoff evidence anchor not found')
+          if note not in text:
+              text = text.replace(anchor, anchor + note, 1)
 
           path.write_text(text, encoding='utf-8')
           PY
           git diff --check
-          grep -F 'P0. Primary Active Batch — Update Portfolio Data #3317' to_do_update_list.md
-          grep -F 'R3.3B remains open but is temporarily PAUSED' to_do_update_list.md
+          grep -F 'P0 — Update Portfolio Data #3317 systemic production-correctness closeout' to_do_update_list.md
+          grep -F 'PAUSED / CONTRACT PRESERVED' to_do_update_list.md
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add to_do_update_list.md
-          git commit -m 'docs: record systemic portfolio update recovery authority'
+          git commit -m 'docs: update live portfolio recovery handoff'
           git push origin HEAD:fix/market-data-row-recovery-composition
