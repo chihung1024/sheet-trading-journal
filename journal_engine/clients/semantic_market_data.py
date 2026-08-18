@@ -159,9 +159,9 @@ class SemanticMarketDataClient(MarketDataClient):
             "Adj Close": valid_bars[-1][1]["Adj Close"],
         }
         # Aggregate validity is already guaranteed by the validated constituent
-# bars: max(High)/min(Low) necessarily contain the first Open and last
-# Close, and the last bar already proved Close == Adj Close.
-return values, tuple(bar_signature)
+        # bars: max(High)/min(Low) necessarily contain the first Open and last
+        # Close, and the last bar already proved Close == Adj Close.
+        return values, tuple(bar_signature)
 
     @staticmethod
     def _intraday_price_candidates_agree(
