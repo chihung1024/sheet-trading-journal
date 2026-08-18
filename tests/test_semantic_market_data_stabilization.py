@@ -27,12 +27,12 @@ def _partial_daily_frame():
     )
 
 
-def _intraday(close):
+def _intraday(*, close=102.25, open_price=101.0):
     return pd.DataFrame(
         {
-            "Open": [101.0, 102.0],
+            "Open": [open_price, 102.0],
             "High": [103.0, 103.5],
-            "Low": [100.0, 101.0],
+            "Low": [99.0, 101.0],
             "Close": [102.0, close],
             "Adj Close": [102.0, close],
             "Volume": [600.0, 600.0],
@@ -45,89 +45,87 @@ def _intraday(close):
 
 
 class _Ticker:
-    def __init__(self, frames):
-        self._frames = iter(frames)
+    def __init__(self, frame):
+        self.frame = frame
         self.calls = []
 
     def history(self, **kwargs):
         self.calls.append(dict(kwargs))
-        return next(self._frames).copy(deep=True)
+        return self.frame.copy(deep=True)
 
 
-def _recover(one_hour_frames, fifteen_minute_frames):
+def _recover(one_hour_frame, fifteen_minute_frame, five_minute_frame=None):
     client = SemanticMarketDataClient()
     frame = _partial_daily_frame()
-    one_hour = _Ticker(one_hour_frames)
-    fifteen_minute = _Ticker(fifteen_minute_frames)
-    clients = iter((one_hour, fifteen_minute))
+    tickers = [_Ticker(one_hour_frame), _Ticker(fifteen_minute_frame)]
+    if five_minute_frame is not None:
+        tickers.append(_Ticker(five_minute_frame))
+    clients = iter(tickers)
     with patch(
         "journal_engine.clients.semantic_market_data.yf.Ticker",
         side_effect=lambda _symbol: next(clients),
-    ) as ticker, patch("journal_engine.clients.semantic_market_data.time.sleep") as sleep:
+    ) as ticker:
         recovered, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
-    return recovered, dates, ticker, sleep, one_hour, fifteen_minute
+    return recovered, dates, ticker, tickers
 
 
-def test_first_round_consensus_requires_no_reobservation():
-    stable = _intraday(102.25)
-    recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover([stable], [stable])
+def test_primary_cross_granularity_consensus_needs_no_tiebreaker():
+    stable = _intraday()
+    recovered, dates, ticker, tickers = _recover(stable, stable)
 
     assert dates == (pd.Timestamp("2026-08-11"),)
     assert ticker.call_count == 2
-    assert len(one_hour.calls) == 1
-    assert len(fifteen_minute.calls) == 1
-    sleep.assert_not_called()
+    assert [len(item.calls) for item in tickers] == [1, 1]
+    assert [item.calls[0]["interval"] for item in tickers] == ["1h", "15m"]
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.25
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
 
 
-def test_transient_disagreement_can_converge_after_one_fresh_reobservation():
-    stale = _intraday(102.25)
-    current = _intraday(102.50)
-    recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover(
-        [stale, current],
-        [current, current],
-    )
+def test_5m_tiebreaker_can_confirm_first_primary_full_ohlc_candidate():
+    first = _intraday(open_price=101.0)
+    second = _intraday(open_price=100.5)
+    tie_breaker = _intraday(open_price=101.0)
+    recovered, dates, ticker, tickers = _recover(first, second, tie_breaker)
 
     assert dates == (pd.Timestamp("2026-08-11"),)
-    assert ticker.call_count == 2
-    assert len(one_hour.calls) == 2
-    assert len(fifteen_minute.calls) == 2
-    sleep.assert_called_once_with(1.0)
-    assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.50
+    assert ticker.call_count == 3
+    assert [item.calls[0]["interval"] for item in tickers] == ["1h", "15m", "5m"]
+    assert recovered.loc[pd.Timestamp("2026-08-11"), "Open"] == 101.0
+    assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.25
     assert PortfolioValidator.validate_price_data("AAA", recovered) is True
 
 
-def test_persistent_cross_granularity_disagreement_remains_fail_closed():
-    first = _intraday(102.25)
-    second = _intraday(102.50)
-    recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover(
-        [first, first],
-        [second, second],
-    )
+def test_5m_tiebreaker_can_confirm_second_primary_full_ohlc_candidate():
+    first = _intraday(open_price=101.0)
+    second = _intraday(open_price=100.5)
+    tie_breaker = _intraday(open_price=100.5)
+    recovered, dates, ticker, _tickers = _recover(first, second, tie_breaker)
+
+    assert dates == (pd.Timestamp("2026-08-11"),)
+    assert ticker.call_count == 3
+    assert recovered.loc[pd.Timestamp("2026-08-11"), "Open"] == 100.5
+    assert PortfolioValidator.validate_price_data("AAA", recovered) is True
+
+
+def test_three_way_cross_granularity_disagreement_remains_fail_closed():
+    first = _intraday(open_price=101.0)
+    second = _intraday(open_price=100.5)
+    third = _intraday(open_price=100.0)
+    recovered, dates, ticker, _tickers = _recover(first, second, third)
 
     assert dates == ()
-    assert ticker.call_count == 2
-    assert len(one_hour.calls) == 2
-    assert len(fifteen_minute.calls) == 2
-    sleep.assert_called_once_with(1.0)
+    assert ticker.call_count == 3
     assert recovered["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", recovered) is False
 
 
-def test_second_round_third_value_is_not_accepted_as_convergence():
-    first = _intraday(102.25)
-    second = _intraday(102.50)
-    third = _intraday(102.75)
-    recovered, dates, ticker, sleep, one_hour, fifteen_minute = _recover(
-        [first, third],
-        [second, third],
-    )
+def test_invalid_5m_tiebreaker_remains_fail_closed():
+    first = _intraday(open_price=101.0)
+    second = _intraday(open_price=100.5)
+    invalid = pd.DataFrame()
+    recovered, dates, ticker, _tickers = _recover(first, second, invalid)
 
     assert dates == ()
-    assert ticker.call_count == 2
-    assert len(one_hour.calls) == 2
-    assert len(fifteen_minute.calls) == 2
-    sleep.assert_called_once_with(1.0)
+    assert ticker.call_count == 3
     assert recovered["Close_Adjusted"].isna().sum() == 1
     assert PortfolioValidator.validate_price_data("AAA", recovered) is False
