@@ -1,4 +1,4 @@
-name: Apply row-composed market-data recovery refactor
+name: Apply row-composed market-data recovery source refactor
 
 on:
   pull_request:
@@ -17,154 +17,165 @@ jobs:
           ref: fix/market-data-row-recovery-composition
           persist-credentials: true
           fetch-depth: 1
-      - name: Apply semantic recovery refactor and regression tests
+      - name: Refactor semantic recovery source
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          from textwrap import dedent, indent
 
           path = Path('journal_engine/clients/semantic_market_data.py')
           text = path.read_text(encoding='utf-8')
 
-          text = text.replace(
-              '''1. A persistent invalid zero-action provider row may be reconstructed from two
-             independent raw regular-session granularities (1h and 15m) from the same
-             Yahoo/yfinance provider for the exact affected calendar date. Each granularity must
-             contain multiple structurally valid price bars and both must reconstruct the same
-             daily OHLC/adjusted-close observation. If the two representations transiently
-             disagree, one bounded fresh cross-granularity re-observation is allowed. Freshness
-             itself is owned by :class:`YahooIntradayEvidenceSession`, which explicitly bypasses
-             yfinance's historical-response LRU without changing market query semantics. Each
-             granularity is fetched and validated lazily inside the same freshness boundary, so
-             invalid 1h evidence prevents an unnecessary 15m request. The second observation is
-             accepted only when both fresh representations converge to a value already observed
-             in the first round. Persistent disagreement remains fail-closed. Completely empty
-             keepna buckets are ignored only when they carry no contradictory non-zero volume;
-             partially populated or contradictory bars remain fail-closed. Only price fields are
-             replaced; the original daily volume and corporate-action evidence stay authoritative.
-          2. If exact-date intraday recovery is unavailable, a proven pure positive
-             cash-dividend-only row may use the existing explicit ``asof_carry_forward`` effective
-             valuation contract.
-          ''',
-              '''1. A persistent invalid zero-action provider row may be reconstructed from fresh
-             same-provider regular-session intraday evidence for the exact affected calendar date.
-             The normal gate requires complete 1h/15m daily OHLC consensus. Only when those two
-             valid representations disagree is a raw 5m tie-breaker fetched; exactly one primary
-             candidate must match it before a 2-of-3 consensus is accepted. There is no temporal
-             retry or tolerance widening. Completely empty keepna buckets are ignored only when
-             they carry no contradictory non-zero volume; partially populated or contradictory
-             bars remain fail-closed. Only price fields are replaced; original daily volume and
-             corporate-action evidence stay authoritative.
+          doc_start = text.index('1. A persistent invalid zero-action provider row')
+          doc_end = text.index('\nEverything else remains fail-closed.', doc_start)
+          new_doc = '''1. A persistent invalid zero-action provider row may be reconstructed from fresh
+          same-provider regular-session intraday evidence for the exact affected calendar date.
+          The normal gate requires complete 1h/15m daily OHLC consensus. Only when those two
+          valid representations disagree is a raw 5m tie-breaker fetched; exactly one primary
+          candidate must match it before a 2-of-3 consensus is accepted. There is no temporal
+          retry or tolerance widening. Completely empty keepna buckets are ignored only when
+          they carry no contradictory non-zero volume; partially populated or contradictory
+          bars remain fail-closed. Only price fields are replaced; original daily volume and
+          corporate-action evidence stay authoritative.
           2. Invalid rows are classified independently. A proven pure positive cash-dividend-only
-             event row may use the existing explicit ``asof_carry_forward`` effective valuation
-             contract even when another row for the same symbol independently needs intraday price
-             recovery. Unsupported action rows remain fail-closed.
-          ''',
-          )
-          text = text.replace('import threading\nimport time\n', 'import threading\n')
-          text = text.replace(
-              '_MAX_INTRADAY_OBSERVATION_ROUNDS = 2\n_INTRADAY_REOBSERVATION_DELAY_SECONDS = 1.0\n',
-              '_INTRADAY_TIEBREAKER_INTERVAL = "5m"\n',
-          )
+          event row may use the existing explicit ``asof_carry_forward`` effective valuation
+          contract even when another row for the same symbol independently needs intraday price
+          recovery. Unsupported action rows remain fail-closed.
+          '''
+          text = text[:doc_start] + new_doc + text[doc_end:]
+          text = text.replace('import threading\nimport time\n', 'import threading\n', 1)
+          old_constants = '_MAX_INTRADAY_OBSERVATION_ROUNDS = 2\n_INTRADAY_REOBSERVATION_DELAY_SECONDS = 1.0\n'
+          if old_constants not in text:
+              raise RuntimeError('old temporal recovery constants not found')
+          text = text.replace(old_constants, '_INTRADAY_TIEBREAKER_INTERVAL = "5m"\n', 1)
 
           start = text.index('    @classmethod\n    def _pure_action_only_signature')
           end = text.index('    def _prepare_data', start)
-          replacement = '''    @classmethod
-              def _dividend_action_only_signature(cls, frame: pd.DataFrame):
-                  """Return individually eligible dividend-only invalid rows.
+          new_classifier = indent(dedent('''
+          @classmethod
+          def _dividend_action_only_signature(cls, frame: pd.DataFrame):
+              """Return individually eligible dividend-only invalid rows.
 
-                  Other malformed rows are deliberately ignored here so a zero-action price
-                  failure on another date cannot suppress stable corporate-action evidence.
-                  Unsupported rows are never normalized by this signature and remain fail-closed.
-                  """
-                  if frame is None or frame.empty or "Close_Adjusted" not in frame.columns:
+              Other malformed rows are deliberately ignored here so a zero-action price
+              failure on another date cannot suppress stable corporate-action evidence.
+              Unsupported rows are never normalized by this signature and remain fail-closed.
+              """
+              if frame is None or frame.empty or "Close_Adjusted" not in frame.columns:
+                  return None
+              selected = pd.to_numeric(frame["Close_Adjusted"], errors="coerce")
+              invalid = frame.loc[selected.isna()]
+              if invalid.empty:
+                  return ()
+              required = _RAW_PRICE_COLUMNS + ("Volume",) + _REQUIRED_ACTION_COLUMNS + ("Split_Factor",)
+              if any(column not in frame.columns for column in required):
+                  return None
+              signature = []
+              for raw_date, row in invalid.iterrows():
+                  if any(not pd.isna(row[column]) for column in _RAW_PRICE_COLUMNS):
+                      continue
+                  volume = row["Volume"]
+                  if not pd.isna(volume):
+                      numeric_volume = cls._finite_number(volume)
+                      if numeric_volume is None or numeric_volume != 0.0:
+                          continue
+                  dividend = cls._finite_number(row["Dividends"])
+                  split = cls._finite_number(row["Stock Splits"])
+                  split_factor = cls._finite_number(row["Split_Factor"])
+                  if dividend is None or dividend <= 0.0:
+                      continue
+                  if split is None or split != 0.0:
+                      continue
+                  if split_factor is None or split_factor <= 0.0:
+                      continue
+                  capital_gain = 0.0
+                  if "Capital Gains" in frame.columns and not pd.isna(row["Capital Gains"]):
+                      capital_gain = cls._finite_number(row["Capital Gains"])
+                      if capital_gain is None:
+                          continue
+                  if capital_gain != 0.0:
+                      continue
+                  event_date = cls._normalize_date(raw_date)
+                  if event_date is None:
                       return None
-                  selected = pd.to_numeric(frame["Close_Adjusted"], errors="coerce")
-                  invalid = frame.loc[selected.isna()]
-                  if invalid.empty:
-                      return ()
-                  required = _RAW_PRICE_COLUMNS + ("Volume",) + _REQUIRED_ACTION_COLUMNS + ("Split_Factor",)
-                  if any(column not in frame.columns for column in required):
-                      return None
-                  signature = []
-                  for raw_date, row in invalid.iterrows():
-                      if any(not pd.isna(row[column]) for column in _RAW_PRICE_COLUMNS):
-                          continue
-                      volume = row["Volume"]
-                      if not pd.isna(volume):
-                          numeric_volume = cls._finite_number(volume)
-                          if numeric_volume is None or numeric_volume != 0.0:
-                              continue
-                      dividend = cls._finite_number(row["Dividends"])
-                      split = cls._finite_number(row["Stock Splits"])
-                      split_factor = cls._finite_number(row["Split_Factor"])
-                      if dividend is None or dividend <= 0.0:
-                          continue
-                      if split is None or split != 0.0:
-                          continue
-                      if split_factor is None or split_factor <= 0.0:
-                          continue
-                      capital_gain = 0.0
-                      if "Capital Gains" in frame.columns and not pd.isna(row["Capital Gains"]):
-                          capital_gain = cls._finite_number(row["Capital Gains"])
-                          if capital_gain is None:
-                              continue
-                      if capital_gain != 0.0:
-                          continue
-                      event_date = cls._normalize_date(raw_date)
-                      if event_date is None:
-                          return None
-                      signature.append((event_date, dividend, split, split_factor))
-                  return tuple(signature)
+                  signature.append((event_date, dividend, split, split_factor))
+              return tuple(signature)
 
-          '''
-          replacement = replacement.replace('\n              ', '\n          ')
-          text = text[:start] + replacement + text[end:]
+          '''), '    ')
+          text = text[:start] + new_classifier + text[end:]
+          text = text.replace('self._pure_action_only_signature(prepared)', 'self._dividend_action_only_signature(prepared)')
+          text = text.replace('cls._pure_action_only_signature(frame)', 'cls._dividend_action_only_signature(frame)')
+
+          old_action_gate = '            if original_actions != (0.0, 0.0, 0.0):\n                return frame, ()\n'
+          if old_action_gate not in text:
+              raise RuntimeError('old whole-frame action gate not found')
           text = text.replace(
-              '"signature": self._pure_action_only_signature(prepared),',
-              '"signature": self._dividend_action_only_signature(prepared),',
-          )
-          text = text.replace(
-              'current_signature = cls._pure_action_only_signature(frame)',
-              'current_signature = cls._dividend_action_only_signature(frame)',
-          )
-          text = text.replace(
-              '            if original_actions != (0.0, 0.0, 0.0):\n                return frame, ()\n',
+              old_action_gate,
               '            if original_actions is None:\n                return frame, ()\n            if original_actions != (0.0, 0.0, 0.0):\n                continue\n',
+              1,
           )
+          old_session = '                    intervals=INTRADAY_EVIDENCE_INTERVALS,\n'
+          if old_session not in text:
+              raise RuntimeError('intraday session interval contract not found')
           text = text.replace(
-              '                    intervals=INTRADAY_EVIDENCE_INTERVALS,',
-              '                    intervals=INTRADAY_EVIDENCE_INTERVALS + (_INTRADAY_TIEBREAKER_INTERVAL,),',
+              old_session,
+              '                    intervals=INTRADAY_EVIDENCE_INTERVALS + (_INTRADAY_TIEBREAKER_INTERVAL,),\n',
+              1,
           )
 
           block_start = text.index('            prior_disagreement:')
-          block_end_marker = '            staged[event_date] = consensus\n'
-          block_end = text.index(block_end_marker, block_start) + len(block_end_marker)
-          consensus_block = '''            consensus: dict[str, float] | None = None
-              try:
-                  with evidence_session.observation(event_date) as observation:
-                      candidates: dict[str, dict[str, float]] = {}
-                      for interval in INTRADAY_EVIDENCE_INTERVALS:
-                          intraday = observation.fetch(interval)
-                          candidate = self._complete_intraday_price_candidate(intraday, event_date)
-                          if candidate is None:
-                              logger.warning(
-                                  "[%s] exact-date raw intraday evidence invalid for %s interval=%s; fail closed",
-                                  symbol,
-                                  event_date.strftime("%Y-%m-%d"),
-                                  interval,
-                              )
-                              return frame, ()
-                          candidates[interval] = candidate[0]
-
-                      first_interval, second_interval = INTRADAY_EVIDENCE_INTERVALS
-                      first = candidates[first_interval]
-                      second = candidates[second_interval]
-                      if self._intraday_price_candidates_agree(first, second):
-                          consensus = first
-                      else:
+          marker = '            staged[event_date] = consensus\n'
+          block_end = text.index(marker, block_start) + len(marker)
+          new_consensus = indent(dedent('''
+          consensus: dict[str, float] | None = None
+          try:
+              with evidence_session.observation(event_date) as observation:
+                  candidates: dict[str, dict[str, float]] = {}
+                  for interval in INTRADAY_EVIDENCE_INTERVALS:
+                      intraday = observation.fetch(interval)
+                      candidate = self._complete_intraday_price_candidate(intraday, event_date)
+                      if candidate is None:
                           logger.warning(
-                              "[%s] exact-date raw intraday primary granularities disagree for %s (%s=%s vs %s=%s); requesting %s tie-breaker",
+                              "[%s] exact-date raw intraday evidence invalid for %s interval=%s; fail closed",
+                              symbol,
+                              event_date.strftime("%Y-%m-%d"),
+                              interval,
+                          )
+                          return frame, ()
+                      candidates[interval] = candidate[0]
+
+                  first_interval, second_interval = INTRADAY_EVIDENCE_INTERVALS
+                  first = candidates[first_interval]
+                  second = candidates[second_interval]
+                  if self._intraday_price_candidates_agree(first, second):
+                      consensus = first
+                  else:
+                      logger.warning(
+                          "[%s] exact-date raw intraday primary granularities disagree for %s (%s=%s vs %s=%s); requesting %s tie-breaker",
+                          symbol,
+                          event_date.strftime("%Y-%m-%d"),
+                          first_interval,
+                          first,
+                          second_interval,
+                          second,
+                          _INTRADAY_TIEBREAKER_INTERVAL,
+                      )
+                      intraday = observation.fetch(_INTRADAY_TIEBREAKER_INTERVAL)
+                      candidate = self._complete_intraday_price_candidate(intraday, event_date)
+                      if candidate is None:
+                          logger.warning(
+                              "[%s] exact-date raw intraday tie-breaker invalid for %s interval=%s; fail closed",
+                              symbol,
+                              event_date.strftime("%Y-%m-%d"),
+                              _INTRADAY_TIEBREAKER_INTERVAL,
+                          )
+                          return frame, ()
+                      tie_breaker = candidate[0]
+                      matches_first = self._intraday_price_candidates_agree(tie_breaker, first)
+                      matches_second = self._intraday_price_candidates_agree(tie_breaker, second)
+                      if matches_first == matches_second:
+                          logger.warning(
+                              "[%s] exact-date raw intraday evidence has no unique 2-of-3 consensus for %s (%s=%s, %s=%s, %s=%s); fail closed",
                               symbol,
                               event_date.strftime("%Y-%m-%d"),
                               first_interval,
@@ -172,60 +183,37 @@ jobs:
                               second_interval,
                               second,
                               _INTRADAY_TIEBREAKER_INTERVAL,
+                              tie_breaker,
                           )
-                          intraday = observation.fetch(_INTRADAY_TIEBREAKER_INTERVAL)
-                          candidate = self._complete_intraday_price_candidate(intraday, event_date)
-                          if candidate is None:
-                              logger.warning(
-                                  "[%s] exact-date raw intraday tie-breaker invalid for %s interval=%s; fail closed",
-                                  symbol,
-                                  event_date.strftime("%Y-%m-%d"),
-                                  _INTRADAY_TIEBREAKER_INTERVAL,
-                              )
-                              return frame, ()
-                          tie_breaker = candidate[0]
-                          matches_first = self._intraday_price_candidates_agree(tie_breaker, first)
-                          matches_second = self._intraday_price_candidates_agree(tie_breaker, second)
-                          if matches_first == matches_second:
-                              logger.warning(
-                                  "[%s] exact-date raw intraday evidence has no unique 2-of-3 consensus for %s (%s=%s, %s=%s, %s=%s); fail closed",
-                                  symbol,
-                                  event_date.strftime("%Y-%m-%d"),
-                                  first_interval,
-                                  first,
-                                  second_interval,
-                                  second,
-                                  _INTRADAY_TIEBREAKER_INTERVAL,
-                                  tie_breaker,
-                              )
-                              return frame, ()
-                          consensus = first if matches_first else second
-                          logger.warning(
-                              "[%s] exact-date raw intraday disagreement resolved by %s 2-of-3 consensus for %s: consensus=%s",
-                              symbol,
-                              _INTRADAY_TIEBREAKER_INTERVAL,
-                              event_date.strftime("%Y-%m-%d"),
-                              consensus,
-                          )
-              except YahooIntradayEvidenceError as exc:
-                  logger.warning(
-                      "[%s] exact-date fresh Yahoo intraday observation failed for %s: %s",
-                      symbol,
-                      event_date.strftime("%Y-%m-%d"),
-                      exc,
-                  )
-                  return frame, ()
+                          return frame, ()
+                      consensus = first if matches_first else second
+                      logger.warning(
+                          "[%s] exact-date raw intraday disagreement resolved by %s 2-of-3 consensus for %s: consensus=%s",
+                          symbol,
+                          _INTRADAY_TIEBREAKER_INTERVAL,
+                          event_date.strftime("%Y-%m-%d"),
+                          consensus,
+                      )
+          except YahooIntradayEvidenceError as exc:
+              logger.warning(
+                  "[%s] exact-date fresh Yahoo intraday observation failed for %s: %s",
+                  symbol,
+                  event_date.strftime("%Y-%m-%d"),
+                  exc,
+              )
+              return frame, ()
 
-              if consensus is None:
-                  return frame, ()
-              staged[event_date] = consensus
-          '''
-          consensus_block = consensus_block.replace('\n              ', '\n          ')
-          text = text[:block_start] + consensus_block + text[block_end:]
+          if consensus is None:
+              return frame, ()
+          staged[event_date] = consensus
+          '''), '            ')
+          text = text[:block_start] + new_consensus + text[block_end:]
 
-          text = text.replace(
-              '        rebuilt = super()._prepare_data(symbol, work)\n        if self._selected_price_contains_nan(rebuilt):\n            return frame, ()\n',
-              '''        rebuilt = super()._prepare_data(symbol, work)
+          old_rebuilt = '        rebuilt = super()._prepare_data(symbol, work)\n        if self._selected_price_contains_nan(rebuilt):\n            return frame, ()\n'
+          if old_rebuilt not in text:
+              raise RuntimeError('old all-or-nothing rebuilt gate not found')
+          new_rebuilt = dedent('''
+                  rebuilt = super()._prepare_data(symbol, work)
                   rebuilt_selected = pd.to_numeric(rebuilt["Close_Adjusted"], errors="coerce")
                   for event_date in staged:
                       if event_date not in rebuilt_selected.index:
@@ -236,291 +224,33 @@ jobs:
                       numeric_value = self._finite_number(rebuilt_value)
                       if numeric_value is None or numeric_value <= 0.0:
                           return frame, ()
-          '''.replace('\n                  ', '\n        '),
-          )
+          ''')
+          text = text.replace(old_rebuilt, new_rebuilt, 1)
+
           text = text.replace(
               '"same-provider raw 1h/15m regular-session observations"',
               '"same-provider raw 1h/15m regular-session observations with 5m tie-breaker when required"',
+              1,
           )
-          old_continue = '''                logger.warning(
-                      "[%s] persistent invalid daily row(s) recovered from cross-validated exact-date same-provider raw 1h/15m evidence: dates=%s count=%s",
-                      symbol,
-                      ",".join(date.strftime("%Y-%m-%d") for date in recovered_dates),
-                      len(recovered_dates),
-                  )
-                  continue
-          '''.replace('\n                  ', '\n                ')
-          new_continue = old_continue.replace('                continue\n', '                frame = recovered\n')
-          if old_continue not in text:
-              raise RuntimeError('download recovery continue block not found')
-          text = text.replace(old_continue, new_continue, 1)
+          continue_gate = '                continue\n\n            with self._semantic_attempt_lock:'
+          if continue_gate not in text:
+              raise RuntimeError('post-intraday composition gate not found')
+          text = text.replace(
+              continue_gate,
+              '                frame = recovered\n\n            with self._semantic_attempt_lock:',
+              1,
+          )
 
           if '_pure_action_only_signature' in text:
-              raise RuntimeError('old whole-frame action-only classifier remains')
+              raise RuntimeError('old whole-frame action classifier remains')
           if 'time.sleep' in text or '_MAX_INTRADAY_OBSERVATION_ROUNDS' in text:
               raise RuntimeError('old temporal re-observation contract remains')
           path.write_text(text, encoding='utf-8')
           PY
-
-          cat > tests/test_semantic_market_data_stabilization.py <<'PY'
-          from unittest.mock import patch
-
-          import pandas as pd
-
-          from journal_engine.clients.semantic_market_data import SemanticMarketDataClient
-          from journal_engine.core.validator import PortfolioValidator
-
-
-          def _partial_daily_frame():
-              return pd.DataFrame(
-                  {
-                      "Open": [100.0, 101.0],
-                      "High": [102.0, 103.0],
-                      "Low": [99.0, 100.0],
-                      "Close": [101.0, float("nan")],
-                      "Adj Close": [101.0, float("nan")],
-                      "Close_Adjusted": [101.0, float("nan")],
-                      "Close_Raw": [101.0, float("nan")],
-                      "Volume": [1000.0, 1200.0],
-                      "Dividends": [0.0, 0.0],
-                      "Stock Splits": [0.0, 0.0],
-                      "Capital Gains": [0.0, 0.0],
-                      "Split_Factor": [1.0, 1.0],
-                      "Dividend_Adj_Factor": [1.0, 1.0],
-                  },
-                  index=pd.to_datetime(["2026-08-10", "2026-08-11"]),
-              )
-
-
-          def _intraday(*, close=102.25, open_price=101.0):
-              return pd.DataFrame(
-                  {
-                      "Open": [open_price, 102.0],
-                      "High": [103.0, 103.5],
-                      "Low": [99.0, 101.0],
-                      "Close": [102.0, close],
-                      "Adj Close": [102.0, close],
-                      "Volume": [600.0, 600.0],
-                  },
-                  index=pd.DatetimeIndex(
-                      ["2026-08-11 09:30:00", "2026-08-11 10:30:00"],
-                      tz="America/New_York",
-                  ),
-              )
-
-
-          class _Ticker:
-              def __init__(self, frame):
-                  self.frame = frame
-                  self.calls = []
-
-              def history(self, **kwargs):
-                  self.calls.append(dict(kwargs))
-                  return self.frame.copy(deep=True)
-
-
-          def _recover(one_hour_frame, fifteen_minute_frame, five_minute_frame=None):
-              client = SemanticMarketDataClient()
-              frame = _partial_daily_frame()
-              tickers = [_Ticker(one_hour_frame), _Ticker(fifteen_minute_frame)]
-              if five_minute_frame is not None:
-                  tickers.append(_Ticker(five_minute_frame))
-              clients = iter(tickers)
-              with patch(
-                  "journal_engine.clients.semantic_market_data.yf.Ticker",
-                  side_effect=lambda _symbol: next(clients),
-              ) as ticker:
-                  recovered, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
-              return recovered, dates, ticker, tickers
-
-
-          def test_primary_cross_granularity_consensus_needs_no_tiebreaker():
-              stable = _intraday()
-              recovered, dates, ticker, tickers = _recover(stable, stable)
-
-              assert dates == (pd.Timestamp("2026-08-11"),)
-              assert ticker.call_count == 2
-              assert [len(item.calls) for item in tickers] == [1, 1]
-              assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.25
-              assert PortfolioValidator.validate_price_data("AAA", recovered) is True
-
-
-          def test_5m_tiebreaker_can_confirm_first_primary_full_ohlc_candidate():
-              first = _intraday(open_price=101.0)
-              second = _intraday(open_price=100.5)
-              tie_breaker = _intraday(open_price=101.0)
-              recovered, dates, ticker, tickers = _recover(first, second, tie_breaker)
-
-              assert dates == (pd.Timestamp("2026-08-11"),)
-              assert ticker.call_count == 3
-              assert [item.calls[0]["interval"] for item in tickers] == ["1h", "15m", "5m"]
-              assert recovered.loc[pd.Timestamp("2026-08-11"), "Open"] == 101.0
-              assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.25
-              assert PortfolioValidator.validate_price_data("AAA", recovered) is True
-
-
-          def test_5m_tiebreaker_can_confirm_second_primary_full_ohlc_candidate():
-              first = _intraday(open_price=101.0)
-              second = _intraday(open_price=100.5)
-              tie_breaker = _intraday(open_price=100.5)
-              recovered, dates, ticker, _tickers = _recover(first, second, tie_breaker)
-
-              assert dates == (pd.Timestamp("2026-08-11"),)
-              assert ticker.call_count == 3
-              assert recovered.loc[pd.Timestamp("2026-08-11"), "Open"] == 100.5
-              assert PortfolioValidator.validate_price_data("AAA", recovered) is True
-
-
-          def test_three_way_cross_granularity_disagreement_remains_fail_closed():
-              first = _intraday(open_price=101.0)
-              second = _intraday(open_price=100.5)
-              third = _intraday(open_price=100.0)
-              recovered, dates, ticker, _tickers = _recover(first, second, third)
-
-              assert dates == ()
-              assert ticker.call_count == 3
-              assert recovered["Close_Adjusted"].isna().sum() == 1
-              assert PortfolioValidator.validate_price_data("AAA", recovered) is False
-          PY
-
-          cat > tests/test_semantic_market_data_recovery_composition.py <<'PY'
-          from collections import defaultdict
-          from unittest.mock import patch
-
-          import pandas as pd
-
-          from journal_engine.clients.semantic_market_data import SemanticMarketDataClient
-          from journal_engine.core.validator import PortfolioValidator
-
-
-          def _mixed_daily(*, dividend=1.25):
-              frame = pd.DataFrame(
-                  {
-                      "Open": [99.0, float("nan"), 102.0],
-                      "High": [101.0, float("nan"), 104.0],
-                      "Low": [98.0, float("nan"), 101.0],
-                      "Close": [100.0, float("nan"), float("nan")],
-                      "Adj Close": [100.0, float("nan"), float("nan")],
-                      "Volume": [1000.0, 0.0, 5000.0],
-                      "Dividends": [0.0, dividend, 0.0],
-                      "Stock Splits": [0.0, 0.0, 0.0],
-                      "Capital Gains": [0.0, 0.0, 0.0],
-                  },
-                  index=pd.to_datetime(["2026-08-10", "2026-08-11", "2026-08-12"]),
-              )
-              return frame
-
-
-          def _spy_daily():
-              return pd.DataFrame(
-                  {
-                      "Open": [500.0, 501.0],
-                      "High": [502.0, 503.0],
-                      "Low": [499.0, 500.0],
-                      "Close": [501.0, 502.0],
-                      "Adj Close": [501.0, 502.0],
-                      "Volume": [1000.0, 1000.0],
-                      "Dividends": [0.0, 0.0],
-                      "Stock Splits": [0.0, 0.0],
-                      "Capital Gains": [0.0, 0.0],
-                  },
-                  index=pd.to_datetime(["2026-08-11", "2026-08-12"]),
-              )
-
-
-          def _intraday():
-              return pd.DataFrame(
-                  {
-                      "Open": [102.0, 102.5],
-                      "High": [103.5, 104.0],
-                      "Low": [101.0, 102.0],
-                      "Close": [102.5, 103.0],
-                      "Adj Close": [102.5, 103.0],
-                      "Volume": [2500.0, 2500.0],
-                  },
-                  index=pd.DatetimeIndex(
-                      ["2026-08-12 09:30:00", "2026-08-12 10:30:00"],
-                      tz="America/New_York",
-                  ),
-              )
-
-
-          class _Ticker:
-              def __init__(self, daily, intraday=None):
-                  self.daily = daily
-                  self.intraday = intraday
-                  self.calls = []
-
-              def history(self, **kwargs):
-                  self.calls.append(dict(kwargs))
-                  if kwargs.get("period") == "1d":
-                      return pd.DataFrame()
-                  if kwargs.get("interval") in ("1h", "15m", "5m"):
-                      return pd.DataFrame() if self.intraday is None else self.intraday.copy(deep=True)
-                  return self.daily.copy(deep=True)
-
-
-          def _download(first_daily, second_daily):
-              client = SemanticMarketDataClient()
-              calls = defaultdict(int)
-              spy = _spy_daily()
-              intraday = _intraday()
-
-              def ticker_factory(symbol):
-                  call_index = calls[symbol]
-                  calls[symbol] += 1
-                  if symbol != "AAA":
-                      return _Ticker(spy)
-                  if call_index == 0:
-                      return _Ticker(first_daily)
-                  if call_index == 1:
-                      return _Ticker(second_daily)
-                  return _Ticker(second_daily, intraday)
-
-              with patch.object(client, "_download_currency_fx", return_value=None), patch(
-                  "journal_engine.clients.market_data.yf.Ticker",
-                  side_effect=ticker_factory,
-              ), patch(
-                  "journal_engine.clients.semantic_market_data.yf.Ticker",
-                  side_effect=ticker_factory,
-              ), patch("journal_engine.clients.market_data.time.sleep"):
-                  market_data, _ = client.download_data(["AAA"], pd.Timestamp("2026-05-02"))
-              return client, market_data["AAA"], calls
-
-
-          def test_mixed_dividend_event_and_zero_action_price_gap_recover_independently():
-              client, frame, calls = _download(_mixed_daily(), _mixed_daily())
-              action_date = pd.Timestamp("2026-08-11")
-              price_date = pd.Timestamp("2026-08-12")
-
-              assert calls["AAA"] == 4
-              assert frame.loc[action_date, "Close_Adjusted"] == 100.0
-              assert pd.isna(frame.loc[action_date, "Close"])
-              assert frame.loc[action_date, "Dividends"] == 1.25
-              assert frame.loc[action_date, "Valuation_Source"] == "asof_carry_forward"
-              assert frame.loc[action_date, "Valuation_Source_Date"] == "2026-08-10"
-              assert frame.loc[price_date, "Close"] == 103.0
-              assert frame.loc[price_date, "Close_Adjusted"] == 103.0
-              assert frame.loc[price_date, "Dividends"] == 0.0
-              assert client.get_dividend("AAA", action_date) == 1.25
-              assert PortfolioValidator.validate_price_data("AAA", frame) is True
-
-
-          def test_mixed_recovery_does_not_normalize_unstable_dividend_evidence():
-              _client, frame, _calls = _download(_mixed_daily(dividend=1.25), _mixed_daily(dividend=1.30))
-              action_date = pd.Timestamp("2026-08-11")
-              price_date = pd.Timestamp("2026-08-12")
-
-              assert pd.isna(frame.loc[action_date, "Close_Adjusted"])
-              assert frame.loc[action_date, "Dividends"] == 1.30
-              assert frame.loc[price_date, "Close_Adjusted"] == 103.0
-              assert PortfolioValidator.validate_price_data("AAA", frame) is False
-          PY
-
-          python -m compileall -q journal_engine tests
+          python -m compileall -q journal_engine/clients/semantic_market_data.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add journal_engine/clients/semantic_market_data.py tests/test_semantic_market_data_stabilization.py tests/test_semantic_market_data_recovery_composition.py
+          git add journal_engine/clients/semantic_market_data.py
           git diff --cached --check
           git commit -m 'fix: compose row-level market data recovery evidence'
           git push origin HEAD:fix/market-data-row-recovery-composition
