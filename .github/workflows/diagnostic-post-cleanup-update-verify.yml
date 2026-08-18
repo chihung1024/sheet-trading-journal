@@ -1,0 +1,58 @@
+name: Verify post-cleanup Update Portfolio Data
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: diagnostic-post-cleanup-update-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event.pull_request.head.ref == 'diagnostic/post-cleanup-update-verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Dispatch and verify merged-main Update Portfolio Data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN: ae418ca2eb2efa73190395e9a7951c4badbeba20
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_main="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          test "$actual_main" = "$EXPECTED_MAIN"
+
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq -nc '{ref:"main",inputs:{custom_benchmark:"0050.TW"}}' \
+            | gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/dispatches" --input -
+
+          run_id=''
+          for _ in $(seq 1 90); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/runs?event=workflow_dispatch&branch=main&per_page=30" > /tmp/update-runs.json
+            run_id="$(jq -r --arg sha "$EXPECTED_MAIN" --arg started "$started" '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $started)] | sort_by(.created_at) | last | .id // empty' /tmp/update-runs.json)"
+            if [ -n "$run_id" ]; then break; fi
+            sleep 2
+          done
+          test -n "$run_id"
+          echo "POST_CLEANUP_UPDATE_RUN_ID=$run_id"
+
+          for _ in $(seq 1 360); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > /tmp/update-run.json
+            status="$(jq -r .status /tmp/update-run.json)"
+            conclusion="$(jq -r '.conclusion // empty' /tmp/update-run.json)"
+            run_number="$(jq -r .run_number /tmp/update-run.json)"
+            echo "POST_CLEANUP_UPDATE_RUN_NUMBER=$run_number STATUS=$status CONCLUSION=${conclusion:-pending}"
+            if [ "$status" = completed ]; then
+              test "$conclusion" = success
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Post-cleanup Update Portfolio Data did not complete within verifier bound.' >&2
+          exit 1
