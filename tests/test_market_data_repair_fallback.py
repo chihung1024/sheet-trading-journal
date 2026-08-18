@@ -54,8 +54,11 @@ def _intraday_history(final_close=101.75, *, opening=100.0, include_empty_bucket
     }
     if include_empty_bucket:
         timestamps.insert(1, "2026-08-11 10:00:00")
-        for values in rows.values():
-            values.insert(1, float("nan"))
+        for column in ("Open", "High", "Low", "Close", "Adj Close"):
+            rows[column].insert(1, float("nan"))
+        # This mirrors the real Yahoo keepna representation observed for AIHY/PHOX:
+        # a no-trade bucket has no price fields and explicit zero volume.
+        rows["Volume"].insert(1, 0.0)
     return pd.DataFrame(
         rows,
         index=pd.DatetimeIndex(timestamps, tz="America/New_York"),
@@ -177,7 +180,7 @@ def test_cross_granularity_intraday_observations_must_agree():
     assert PortfolioValidator.validate_price_data("AAA", frame) is False
 
 
-def test_intraday_recovery_ignores_fully_empty_keepna_buckets():
+def test_intraday_recovery_ignores_fully_empty_zero_volume_keepna_buckets():
     client = SemanticMarketDataClient()
     malformed = _malformed_history(impossible_ohlc=True)
     sparse = _intraday_history(include_empty_bucket=True)
@@ -192,6 +195,30 @@ def test_intraday_recovery_ignores_fully_empty_keepna_buckets():
 
     assert frame.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 101.75
     assert PortfolioValidator.validate_price_data("AAA", frame) is True
+
+
+def test_intraday_recovery_rejects_price_empty_bucket_with_nonzero_volume():
+    client = SemanticMarketDataClient()
+    malformed = _malformed_history(impossible_ohlc=True)
+    contradictory = _intraday_history(include_empty_bucket=True)
+    empty_timestamp = pd.Timestamp("2026-08-11 10:00:00", tz="America/New_York")
+    contradictory.loc[empty_timestamp, "Volume"] = 100.0
+    spy = _valid_history(500.0)
+    calls = defaultdict(int)
+
+    def ticker_factory(symbol):
+        calls[symbol] += 1
+        if symbol == "AAA":
+            return IntradayRecoveryTicker(malformed, contradictory)
+        return StaticTicker(spy)
+
+    frame = _download(client, ticker_factory)["AAA"]
+
+    # First secondary granularity is already contradictory, so the second must not
+    # be queried and the original invalid daily row remains fail-closed.
+    assert calls["AAA"] == 3
+    assert frame["Close_Adjusted"].isna().sum() == 1
+    assert PortfolioValidator.validate_price_data("AAA", frame) is False
 
 
 def test_intraday_recovery_never_overrides_nonzero_daily_actions():
