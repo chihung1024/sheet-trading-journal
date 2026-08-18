@@ -72,6 +72,69 @@
                 </div>
               </section>
 
+              <section class="preset-panel" aria-labelledby="mapping-preset-title">
+                <div class="section-heading">
+                  <div>
+                    <h3 id="mapping-preset-title">已儲存的欄位對應</h3>
+                    <p>Preset 只記住欄名與 mapping；不保存 CSV、交易資料或匯入來源設定檔。</p>
+                  </div>
+                </div>
+
+                <p v-if="!signedOwner" class="preset-note">
+                  登入後可將目前 mapping 儲存在這個瀏覽器；手動欄位對應與預覽不受影響。
+                </p>
+                <p v-if="presetCorrupted" class="preset-warning" role="status">
+                  舊的 mapping preset 無法安全讀取，已忽略；手動 mapping 不受影響。下一次明確儲存會建立新的有效 preset。
+                </p>
+
+                <div v-if="signedOwner && exactPresets.length" class="preset-row">
+                  <label for="mapping-preset-select">符合目前來源欄位</label>
+                  <select
+                    id="mapping-preset-select"
+                    v-model="selectedPresetKey"
+                    :disabled="importing"
+                  >
+                    <option value="">選擇已儲存 preset</option>
+                    <option v-for="preset in exactPresets" :key="preset.label_key" :value="preset.label_key">
+                      {{ preset.label }}
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    :disabled="!selectedPresetKey || importing"
+                    @click="applySelectedPreset"
+                  >套用</button>
+                  <button
+                    type="button"
+                    class="btn-secondary danger-text"
+                    :disabled="!selectedPresetKey || importing"
+                    @click="deleteSelectedPreset"
+                  >刪除</button>
+                </div>
+                <p v-else-if="signedOwner" class="preset-note">目前這組來源欄位沒有已儲存 preset。</p>
+
+                <div v-if="signedOwner" class="preset-row save-row">
+                  <label for="mapping-preset-label">Preset 名稱</label>
+                  <input
+                    id="mapping-preset-label"
+                    v-model="presetLabel"
+                    type="text"
+                    maxlength="48"
+                    autocomplete="off"
+                    :disabled="importing"
+                    placeholder="例如：富途成交明細 v1"
+                  >
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    :disabled="!mappingReady || !presetLabel.trim() || importing"
+                    @click="saveCurrentPreset"
+                  >儲存目前對應</button>
+                </div>
+                <p v-if="presetFeedback" class="preset-feedback" role="status">{{ presetFeedback }}</p>
+              </section>
+
               <section class="mapping-panel">
                 <div class="section-heading">
                   <div>
@@ -268,7 +331,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { CONFIG } from '../config.js';
 import { useToast } from '../composables/useToast';
 import { useAuthStore } from '../stores/auth';
@@ -284,6 +347,11 @@ import {
   buildMappedCanonicalTradePreview,
   parseBrokerSourceCsv,
 } from '../services/brokerNeutralColumnMapping.js';
+import {
+  deleteBrokerMappingPreset,
+  listBrokerMappingPresets,
+  saveBrokerMappingPreset,
+} from '../services/brokerNeutralMappingPresets.js';
 import { prepareMappedBrokerImport } from '../services/brokerNeutralMappedImportExecution.js';
 import { createBrokerNeutralRecord } from '../services/brokerNeutralRecordCreate.js';
 import { runRecordImportBatch } from '../services/recordImportBatch.js';
@@ -305,12 +373,27 @@ const sourceProfile = ref('');
 const errorMessage = ref('');
 const result = ref(null);
 const progress = ref({ current: 0, total: 0 });
+const presetLabel = ref('');
+const selectedPresetKey = ref('');
+const exactPresets = ref([]);
+const presetCorrupted = ref(false);
+const presetFeedback = ref('');
 const canonicalFields = CANONICAL_HEADERS;
 const requiredFieldSet = new Set(REQUIRED_CANONICAL_HEADERS);
 const constantFieldSet = new Set(CONSTANT_MAPPING_FIELDS);
 const mappingState = reactive(Object.fromEntries(
   CANONICAL_HEADERS.map(field => [field, { sourceHeader: '', constant: '' }]),
 ));
+
+const signedOwner = computed(() => authStore.user?.email || '');
+
+const resetPresetState = () => {
+  presetLabel.value = '';
+  selectedPresetKey.value = '';
+  exactPresets.value = [];
+  presetCorrupted.value = false;
+  presetFeedback.value = '';
+};
 
 const resetMapping = () => {
   for (const field of CANONICAL_HEADERS) {
@@ -393,6 +476,75 @@ const resultMessage = computed(() => {
   return base;
 });
 
+const refreshExactPresets = () => {
+  exactPresets.value = [];
+  selectedPresetKey.value = '';
+  presetCorrupted.value = false;
+  if (!sourceTable.value || !signedOwner.value) return;
+  try {
+    const state = listBrokerMappingPresets(window.localStorage, signedOwner.value, {
+      sourceHeaders: sourceTable.value.headers,
+    });
+    exactPresets.value = state.presets;
+    presetCorrupted.value = state.corrupted;
+  } catch (error) {
+    presetFeedback.value = error?.message || '無法讀取 mapping preset；可繼續手動對應。';
+  }
+};
+
+const applyPreset = (preset) => {
+  if (!preset || importing.value) return;
+  resetMapping();
+  for (const field of CANONICAL_HEADERS) {
+    const entry = preset.mapping[field];
+    if (!entry) continue;
+    if (entry.mode === MAPPING_SOURCE_MODE.COLUMN) mappingState[field].sourceHeader = entry.source_header;
+    if (entry.mode === MAPPING_SOURCE_MODE.CONSTANT) mappingState[field].constant = entry.value;
+  }
+  selectedPresetKey.value = preset.label_key;
+  presetLabel.value = preset.label;
+  presetFeedback.value = `已套用「${preset.label}」；請重新建立 Canonical 預覽。`;
+};
+
+const applySelectedPreset = () => {
+  const preset = exactPresets.value.find(item => item.label_key === selectedPresetKey.value);
+  if (preset) applyPreset(preset);
+};
+
+const saveCurrentPreset = () => {
+  if (!signedOwner.value || !sourceTable.value || !mappingReady.value || !presetLabel.value.trim()) return;
+  try {
+    const saved = saveBrokerMappingPreset(window.localStorage, signedOwner.value, {
+      label: presetLabel.value,
+      sourceHeaders: sourceTable.value.headers,
+      mapping: mappingObject.value,
+    });
+    refreshExactPresets();
+    selectedPresetKey.value = saved.preset.label_key;
+    presetLabel.value = saved.preset.label;
+    presetCorrupted.value = false;
+    presetFeedback.value = saved.recovered_from_corruption
+      ? `已忽略損壞的舊 preset，並儲存新的「${saved.preset.label}」。`
+      : `已儲存「${saved.preset.label}」。`;
+  } catch (error) {
+    presetFeedback.value = error?.message || 'Mapping preset 儲存失敗。';
+  }
+};
+
+const deleteSelectedPreset = () => {
+  const preset = exactPresets.value.find(item => item.label_key === selectedPresetKey.value);
+  if (!preset || !signedOwner.value || importing.value) return;
+  if (!window.confirm(`刪除 mapping preset「${preset.label}」？`)) return;
+  try {
+    deleteBrokerMappingPreset(window.localStorage, signedOwner.value, preset.label);
+    if (presetLabel.value === preset.label) presetLabel.value = '';
+    refreshExactPresets();
+    presetFeedback.value = `已刪除「${preset.label}」。`;
+  } catch (error) {
+    presetFeedback.value = error?.message || 'Mapping preset 刪除失敗。';
+  }
+};
+
 const chooseFile = () => {
   if (importing.value) return;
   open.value = true;
@@ -409,14 +561,22 @@ const invalidateMappedPreview = () => {
   result.value = null;
 };
 
+const markMappingEdited = () => {
+  selectedPresetKey.value = '';
+  presetFeedback.value = presetLabel.value
+    ? '目前 mapping 已修改；如需保留請儲存 preset。'
+    : '';
+  invalidateMappedPreview();
+};
+
 const handleColumnSelection = (field) => {
   if (mappingState[field].sourceHeader) mappingState[field].constant = '';
-  invalidateMappedPreview();
+  markMappingEdited();
 };
 
 const handleConstantInput = (field) => {
   if (mappingState[field].constant) mappingState[field].sourceHeader = '';
-  invalidateMappedPreview();
+  markMappingEdited();
 };
 
 const handleFileChange = async (event) => {
@@ -434,6 +594,7 @@ const handleFileChange = async (event) => {
   sourceProfile.value = '';
   progress.value = { current: 0, total: 0 };
   resetMapping();
+  resetPresetState();
 
   if (file.size > MAX_CANONICAL_CSV_BYTES) {
     reading.value = false;
@@ -447,6 +608,7 @@ const handleFileChange = async (event) => {
     sourceText.value = text;
     sourceTable.value = table;
     applyExactHeaderDefaults();
+    refreshExactPresets();
   } catch (error) {
     errorMessage.value = error?.message || '來源 CSV 無法安全解析。';
   } finally {
@@ -493,7 +655,7 @@ const confirmImport = async () => {
   ].join('\n');
   if (!window.confirm(confirmation)) return;
 
-  const owner = authStore.user?.email || '';
+  const owner = signedOwner.value;
   if (!owner || !authStore.token) {
     addToast('請先登入再執行欄位對應匯入', 'error');
     return;
@@ -553,6 +715,11 @@ const confirmImport = async () => {
     importing.value = false;
   }
 };
+
+watch(signedOwner, () => {
+  presetFeedback.value = '';
+  refreshExactPresets();
+});
 
 const constantPlaceholder = (field) => {
   if (field === 'currency') return '例：USD';
@@ -631,6 +798,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .state-panel,
 .error-panel,
 .source-panel,
+.preset-panel,
 .mapping-panel,
 .mapped-preview,
 .mapped-status-panel,
@@ -645,10 +813,34 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .state-panel { text-align: center; color: var(--text-muted); }
 .error-panel { display: grid; gap: 4px; border-color: var(--danger, #dc2626); background: rgb(220 38 38 / 7%); }
 .source-panel,
+.preset-panel,
 .mapping-panel,
 .mapped-preview,
 .source-profile-card { display: grid; gap: 12px; }
-.section-heading p { margin-top: 3px; color: var(--text-muted); }
+.section-heading p,
+.preset-note,
+.preset-feedback { margin: 0; color: var(--text-muted); }
+.preset-warning { margin: 0; color: var(--warning, #d97706); }
+.preset-feedback { font-weight: 600; }
+.preset-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(220px, 1.3fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.preset-row select,
+.preset-row input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-card, #fff);
+  color: inherit;
+  font: inherit;
+}
+.save-row { grid-template-columns: minmax(150px, 0.7fr) minmax(220px, 1.3fr) auto; }
+.danger-text { color: var(--danger, #dc2626); }
 .source-header-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .source-header-list code { padding: 4px 7px; border-radius: 6px; background: var(--bg-secondary); }
 .mapping-grid { display: grid; grid-template-columns: minmax(170px, 0.8fr) minmax(220px, 1.2fr) minmax(220px, 1fr); gap: 10px; align-items: center; }
@@ -705,7 +897,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .mapping-overlay { padding: 0; align-items: end; }
   .mapping-dialog { width: 100%; max-height: 95vh; border-radius: 14px 14px 0 0; }
   .mapping-grid-header { display: none; }
-  .mapping-grid { grid-template-columns: 1fr; gap: 6px; }
+  .mapping-grid,
+  .preset-row,
+  .save-row { grid-template-columns: 1fr; gap: 6px; }
   .mapping-row { padding: 10px 0; }
   .preview-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .preview-actions,
