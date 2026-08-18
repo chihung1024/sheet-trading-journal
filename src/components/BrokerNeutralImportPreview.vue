@@ -196,6 +196,7 @@
               <strong>{{ resultTitle }}</strong>
               <span>{{ resultMessage }}</span>
             </div>
+            <ImportReconciliationReceipt :result="result" />
           </div>
 
           <footer class="dialog-footer">
@@ -239,6 +240,7 @@ import { CONFIG } from '../config.js';
 import { useToast } from '../composables/useToast';
 import { useAuthStore } from '../stores/auth';
 import { usePortfolioStore } from '../stores/portfolio';
+import ImportReconciliationReceipt from './ImportReconciliationReceipt.vue';
 import {
   MAX_CANONICAL_CSV_BYTES,
   OPTIONAL_CANONICAL_HEADERS,
