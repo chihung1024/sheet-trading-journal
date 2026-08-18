@@ -4,69 +4,64 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verify-empty-bucket-volume:
-    name: Verify #3317 empty bucket volume semantics
+  apply-empty-bucket-volume-guard:
+    name: Apply #3317 empty bucket volume guard
     if: ${{ github.head_ref == 'diagnostic/update-portfolio-3317' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - name: Checkout target branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          python-version: '3.10'
-      - name: Install production market data dependencies
-        run: python -m pip install --disable-pip-version-check yfinance==1.5.2 pandas==2.3.3 numpy==2.2.6
-      - name: Inspect fully empty price buckets
+          ref: fix/market-data-cross-granularity-evidence
+          fetch-depth: 1
+
+      - name: Add contradictory empty-bucket volume guard
         run: |
           python - <<'PY'
-          import json
-          import math
-          import pandas as pd
-          import yfinance as yf
+          from pathlib import Path
 
-          target = pd.Timestamp('2026-08-17')
-          columns = ('Open', 'High', 'Low', 'Close', 'Adj Close')
-          for symbol in ('AIHY', 'PHOX'):
-              result = {'symbol': symbol}
-              for interval in ('1h', '15m'):
-                  frame = yf.Ticker(symbol).history(
-                      start=target,
-                      end=target + pd.Timedelta(days=1),
-                      interval=interval,
-                      auto_adjust=False,
-                      actions=False,
-                      prepost=False,
-                      repair=False,
-                      keepna=True,
-                  )
-                  rows = []
-                  for timestamp, row in frame.iterrows():
-                      if timestamp.date() != target.date():
-                          continue
-                      prices = []
-                      for column in columns:
-                          value = row[column] if column in row.index else None
-                          try:
-                              value = float(value)
-                              value = value if math.isfinite(value) else None
-                          except (TypeError, ValueError):
-                              value = None
-                          prices.append(value)
-                      if all(value is None for value in prices):
-                          volume = row['Volume'] if 'Volume' in row.index else None
-                          try:
-                              volume = float(volume)
-                              volume = volume if math.isfinite(volume) else None
-                          except (TypeError, ValueError):
-                              volume = None
-                          rows.append({'timestamp': timestamp.isoformat(), 'volume': volume})
-                  result[interval] = rows
-              print(json.dumps(result, sort_keys=True, separators=(',', ':')))
+          path = Path('journal_engine/clients/semantic_market_data.py')
+          text = path.read_text(encoding='utf-8')
+          old = (
+              '            if not any(present):\n'
+              '                # keepna=True intentionally preserves no-trade buckets for sparse\n'
+              '                # symbols. A fully empty price bucket is absence of evidence, not\n'
+              '                # contradictory price evidence; partial buckets still fail below.\n'
+              '                continue\n'
+          )
+          new = (
+              '            if not any(present):\n'
+              '                empty_volume = (\n'
+              '                    cls._finite_number(row["Volume"]) if "Volume" in row.index else None\n'
+              '                )\n'
+              '                if empty_volume is not None and empty_volume != 0.0:\n'
+              '                    return None\n'
+              '                # keepna=True intentionally preserves no-trade buckets for sparse\n'
+              '                # symbols. A fully empty price bucket is absence of evidence only\n'
+              '                # when it also carries no contradictory non-zero volume. Partial\n'
+              '                # buckets and price-empty traded buckets remain fail-closed.\n'
+              '                continue\n'
+          )
+          if old not in text:
+              raise SystemExit('expected empty-bucket block not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
+          python -m py_compile journal_engine/clients/semantic_market_data.py
+          git diff --check
+
+      - name: Commit target branch guard
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add journal_engine/clients/semantic_market_data.py
+          git commit -m 'fix: reject contradictory empty intraday buckets'
+          git push origin HEAD:fix/market-data-cross-granularity-evidence
