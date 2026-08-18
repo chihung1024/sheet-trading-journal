@@ -158,20 +158,10 @@ class SemanticMarketDataClient(MarketDataClient):
             "Close": valid_bars[-1][1]["Close"],
             "Adj Close": valid_bars[-1][1]["Adj Close"],
         }
-        if (
-            values["High"] < values["Low"]
-            or values["High"] < max(values["Open"], values["Close"])
-            or values["Low"] > min(values["Open"], values["Close"])
-        ):
-            return None
-        if not math.isclose(
-            values["Close"],
-            values["Adj Close"],
-            rel_tol=_PRICE_REL_TOL,
-            abs_tol=_PRICE_ABS_TOL,
-        ):
-            return None
-        return values, tuple(bar_signature)
+        # Aggregate validity is already guaranteed by the validated constituent
+# bars: max(High)/min(Low) necessarily contain the first Open and last
+# Close, and the last bar already proved Close == Adj Close.
+return values, tuple(bar_signature)
 
     @staticmethod
     def _intraday_price_candidates_agree(

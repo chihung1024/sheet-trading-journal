@@ -467,3 +467,18 @@ def test_exact_date_intraday_recovery_preserves_existing_market_provenance_colum
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Valuation_Source"] == "market"
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Valuation_Source_Date"] == "2026-08-11"
     assert recovered.loc[pd.Timestamp("2026-08-11"), "Close_Adjusted"] == 102.0
+
+
+
+def test_exact_date_intraday_recovery_rejects_invalid_granularity_before_second_query():
+    client = SemanticMarketDataClient()
+    frame = _prepared_partial_row()
+    with patch(
+        "journal_engine.clients.semantic_market_data.yf.Ticker",
+        return_value=_Ticker(pd.DataFrame()),
+    ) as ticker:
+        result, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
+
+    assert result is frame
+    assert dates == ()
+    assert ticker.call_count == 1
