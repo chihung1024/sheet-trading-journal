@@ -61,9 +61,8 @@ def test_action_signature_accepts_absent_optional_capital_gain():
 
 def test_intraday_candidate_rejects_nonpositive_adjusted_close():
     event_date = pd.Timestamp("2026-08-11")
-    original = _partial_frame().iloc[-1]
     assert SemanticMarketDataClient._complete_intraday_price_candidate(
-        _intraday(adj_close=0.0), event_date, original
+        _intraday(adj_close=0.0), event_date
     ) is None
 
 

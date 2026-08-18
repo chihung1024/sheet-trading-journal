@@ -4,11 +4,12 @@ The underlying :class:`MarketDataClient` intentionally fails closed when its sel
 valuation field contains NaN. This adapter preserves that behavior for ambiguous or
 malformed market data while allowing two evidence-based recovery paths:
 
-1. A persistent invalid zero-action provider row may be reconstructed from two fresh,
-   identical raw 1-hour regular-session observations from the same Yahoo/yfinance
-   provider for the exact affected calendar date. The intraday sequence must be
-   complete enough to contain multiple structurally valid bars, reproduce the original
-   daily open, and remain identical across both observations. Only price fields are
+1. A persistent invalid zero-action provider row may be reconstructed from two
+   independent raw regular-session granularities (1h and 15m) from the same
+   Yahoo/yfinance provider for the exact affected calendar date. Each granularity must
+   contain multiple structurally valid price bars and both must reconstruct the same
+   daily OHLC/adjusted-close observation. Completely empty keepna buckets are ignored;
+   partially populated or contradictory bars remain fail-closed. Only price fields are
    replaced; the original daily volume and corporate-action evidence stay authoritative.
 2. If exact-date intraday recovery is unavailable, a proven pure positive
    cash-dividend-only row may use the existing explicit ``asof_carry_forward`` effective
@@ -34,7 +35,7 @@ from .market_data import VALUATION_SOURCE_COLUMN, VALUATION_SOURCE_DATE_COLUMN, 
 logger = logging.getLogger(__name__)
 _RAW_PRICE_COLUMNS = ("Open", "High", "Low", "Close", "Adj Close")
 _REQUIRED_ACTION_COLUMNS = ("Dividends", "Stock Splits")
-_NARROW_RECOVERY_ATTEMPTS = 2
+_INTRADAY_RECOVERY_INTERVALS = ("1h", "15m")
 _MAX_NARROW_RECOVERY_ROWS = 5
 _MIN_INTRADAY_BARS = 2
 _PRICE_REL_TOL = 1e-7
@@ -84,42 +85,10 @@ class SemanticMarketDataClient(MarketDataClient):
         return dividend, split, capital_gain
 
     @classmethod
-    def _intraday_candidate_matches_original(cls, values: dict[str, float], original_row: pd.Series) -> bool:
-        """Require independent daily evidence to anchor an intraday reconstruction."""
-        original_open = cls._finite_number(original_row.get("Open"))
-        if original_open is None or original_open <= 0.0:
-            return False
-        if not math.isclose(values["Open"], original_open, rel_tol=_PRICE_REL_TOL, abs_tol=_PRICE_ABS_TOL):
-            return False
-
-        original_volume = cls._finite_number(original_row.get("Volume"))
-        if original_volume is None or original_volume < 0.0:
-            return False
-
-        for column in ("High", "Low"):
-            original = cls._finite_number(original_row.get(column))
-            if original is None:
-                continue
-            tolerance = max(_PRICE_ABS_TOL, abs(original) * _PRICE_REL_TOL)
-            if original < values["Low"] - tolerance or original > values["High"] + tolerance:
-                return False
-
-        for column in ("Close", "Adj Close"):
-            original = cls._finite_number(original_row.get(column))
-            if original is None:
-                continue
-            if column not in values:
-                return False
-            if not math.isclose(values[column], original, rel_tol=_PRICE_REL_TOL, abs_tol=_PRICE_ABS_TOL):
-                return False
-        return True
-
-    @classmethod
     def _complete_intraday_price_candidate(
         cls,
         frame: pd.DataFrame,
         expected_date: pd.Timestamp,
-        original_row: pd.Series,
     ):
         if frame is None or frame.empty:
             return None
@@ -134,27 +103,46 @@ class SemanticMarketDataClient(MarketDataClient):
 
         expected_day = expected_date.date()
         day = work.loc[[timestamp.date() == expected_day for timestamp in work.index]]
-        if len(day) < _MIN_INTRADAY_BARS:
-            return None
-
         required_columns = ("Open", "High", "Low", "Close", "Adj Close")
         if any(column not in day.columns for column in required_columns):
             return None
 
+        valid_bars: list[tuple[pd.Timestamp, dict[str, float]]] = []
         bar_signature = []
         for timestamp, row in day.iterrows():
-            bar_values: dict[str, float] = {}
-            for column in required_columns:
-                value = cls._finite_number(row[column])
-                if value is None or value <= 0.0:
+            observed = {column: cls._finite_number(row[column]) for column in required_columns}
+            present = tuple(value is not None for value in observed.values())
+            if not any(present):
+                empty_volume = (
+                    cls._finite_number(row["Volume"]) if "Volume" in row.index else None
+                )
+                if empty_volume is not None and empty_volume != 0.0:
                     return None
-                bar_values[column] = value
+                # keepna=True intentionally preserves no-trade buckets for sparse
+                # symbols. A fully empty price bucket is absence of evidence only
+                # when it also carries no contradictory non-zero volume. Partial
+                # buckets and price-empty traded buckets remain fail-closed.
+                continue
+            if not all(present):
+                return None
+
+            bar_values = {column: float(value) for column, value in observed.items()}
+            if any(value <= 0.0 for value in bar_values.values()):
+                return None
             if (
                 bar_values["High"] < bar_values["Low"]
                 or bar_values["High"] < max(bar_values["Open"], bar_values["Close"])
                 or bar_values["Low"] > min(bar_values["Open"], bar_values["Close"])
             ):
                 return None
+            if not math.isclose(
+                bar_values["Close"],
+                bar_values["Adj Close"],
+                rel_tol=_PRICE_REL_TOL,
+                abs_tol=_PRICE_ABS_TOL,
+            ):
+                return None
+            valid_bars.append((timestamp, bar_values))
             bar_signature.append(
                 (
                     timestamp.isoformat(),
@@ -166,24 +154,38 @@ class SemanticMarketDataClient(MarketDataClient):
                 )
             )
 
+        if len(valid_bars) < _MIN_INTRADAY_BARS:
+            return None
+
         values = {
-            "Open": cls._finite_number(day.iloc[0]["Open"]),
-            "High": cls._finite_number(pd.to_numeric(day["High"], errors="coerce").max()),
-            "Low": cls._finite_number(pd.to_numeric(day["Low"], errors="coerce").min()),
-            "Close": cls._finite_number(day.iloc[-1]["Close"]),
-            "Adj Close": cls._finite_number(day.iloc[-1]["Adj Close"]),
+            "Open": valid_bars[0][1]["Open"],
+            "High": max(bar[1]["High"] for bar in valid_bars),
+            "Low": min(bar[1]["Low"] for bar in valid_bars),
+            "Close": valid_bars[-1][1]["Close"],
+            "Adj Close": valid_bars[-1][1]["Adj Close"],
         }
-        if any(value is None or value <= 0.0 for value in values.values()):
-            return None
-        if (
-            values["High"] < values["Low"]
-            or values["High"] < max(values["Open"], values["Close"])
-            or values["Low"] > min(values["Open"], values["Close"])
-        ):
-            return None
-        if not cls._intraday_candidate_matches_original(values, original_row):
-            return None
+        # Aggregate validity is already guaranteed by the validated constituent
+        # bars: max(High)/min(Low) necessarily contain the first Open and last
+        # Close, and the last bar already proved Close == Adj Close.
         return values, tuple(bar_signature)
+
+    @staticmethod
+    def _intraday_price_candidates_agree(
+        first: dict[str, float],
+        second: dict[str, float],
+    ) -> bool:
+        required_columns = ("Open", "High", "Low", "Close", "Adj Close")
+        if any(column not in first or column not in second for column in required_columns):
+            return False
+        return all(
+            math.isclose(
+                first[column],
+                second[column],
+                rel_tol=_PRICE_REL_TOL,
+                abs_tol=_PRICE_ABS_TOL,
+            )
+            for column in required_columns
+        )
 
     @classmethod
     def _pure_action_only_signature(cls, frame: pd.DataFrame):
@@ -284,18 +286,21 @@ class SemanticMarketDataClient(MarketDataClient):
                 return frame, ()
             original_row = original_rows.iloc[0]
             original_actions = self._action_signature_from_row(original_row)
-            # Intraday action fields are not an accounting authority. Only a proven
-            # zero-action daily row may use this price-only reconstruction path.
+            # Intraday price evidence is never a corporate-action authority. Only a
+            # proven zero-action daily row may enter this price-only recovery path.
             if original_actions != (0.0, 0.0, 0.0):
                 return frame, ()
+            original_volume = self._finite_number(original_row.get("Volume"))
+            if original_volume is None or original_volume < 0.0:
+                return frame, ()
 
-            candidates = []
-            for _attempt in range(_NARROW_RECOVERY_ATTEMPTS):
+            candidates: dict[str, dict[str, float]] = {}
+            for interval in _INTRADAY_RECOVERY_INTERVALS:
                 try:
                     intraday = yf.Ticker(symbol).history(
                         start=event_date,
                         end=event_date + pd.Timedelta(days=1),
-                        interval="1h",
+                        interval=interval,
                         auto_adjust=False,
                         actions=False,
                         prepost=False,
@@ -304,28 +309,37 @@ class SemanticMarketDataClient(MarketDataClient):
                     )
                 except Exception as exc:
                     logger.warning(
-                        "[%s] exact-date raw intraday recovery request failed for %s: %s",
+                        "[%s] exact-date raw intraday recovery request failed for %s interval=%s: %s",
                         symbol,
                         event_date.strftime("%Y-%m-%d"),
+                        interval,
                         exc,
                     )
                     return frame, ()
-                candidate = self._complete_intraday_price_candidate(intraday, event_date, original_row)
+                candidate = self._complete_intraday_price_candidate(intraday, event_date)
                 if candidate is None:
+                    logger.warning(
+                        "[%s] exact-date raw intraday evidence invalid for %s interval=%s; fail closed",
+                        symbol,
+                        event_date.strftime("%Y-%m-%d"),
+                        interval,
+                    )
                     return frame, ()
-                candidates.append(candidate)
+                candidates[interval] = candidate[0]
 
-            if (
-                len(candidates) != _NARROW_RECOVERY_ATTEMPTS
-                or len({signature for _values, signature in candidates}) != 1
-            ):
+            first_interval, second_interval = _INTRADAY_RECOVERY_INTERVALS
+            first = candidates[first_interval]
+            second = candidates[second_interval]
+            if not self._intraday_price_candidates_agree(first, second):
                 logger.warning(
-                    "[%s] exact-date raw intraday recovery was not stable for %s; fail closed",
+                    "[%s] exact-date raw intraday granularities disagree for %s (%s vs %s); fail closed",
                     symbol,
                     event_date.strftime("%Y-%m-%d"),
+                    first_interval,
+                    second_interval,
                 )
                 return frame, ()
-            staged[event_date] = candidates[-1][0]
+            staged[event_date] = first
 
         work = normalized_frame.copy(deep=True)
         for event_date, values in staged.items():
@@ -342,8 +356,8 @@ class SemanticMarketDataClient(MarketDataClient):
         metadata = dict(rebuilt.attrs.get("price_provenance") or {})
         reason = str(metadata.get("selection_reason") or "").strip()
         metadata["selection_reason"] = (
-            f"{reason}; persistent invalid daily row recovered by two exact-date "
-            "same-provider raw 1h regular-session observations"
+            f"{reason}; persistent invalid daily row recovered by cross-validated exact-date "
+            "same-provider raw 1h/15m regular-session observations"
         ).strip("; ")
         rebuilt.attrs["price_provenance"] = metadata
         return rebuilt, tuple(sorted(staged))
@@ -403,7 +417,7 @@ class SemanticMarketDataClient(MarketDataClient):
                 if metadata:
                     self.price_metadata_by_symbol[symbol] = metadata
                 logger.warning(
-                    "[%s] persistent invalid daily row(s) recovered from exact-date same-provider raw 1h evidence: dates=%s count=%s",
+                    "[%s] persistent invalid daily row(s) recovered from cross-validated exact-date same-provider raw 1h/15m evidence: dates=%s count=%s",
                     symbol,
                     ",".join(date.strftime("%Y-%m-%d") for date in recovered_dates),
                     len(recovered_dates),

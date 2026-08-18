@@ -86,7 +86,7 @@ class FakeTicker:
     def history(self, **kwargs):
         if kwargs.get("period") == "1d":
             return pd.DataFrame()
-        if kwargs.get("interval") == "1h":
+        if kwargs.get("interval") in ("1h", "15m"):
             if self.intraday_frame is None:
                 return pd.DataFrame()
             return self.intraday_frame.copy(deep=True)
@@ -124,7 +124,6 @@ def test_persistent_dividend_action_only_row_becomes_explicit_asof_effective_val
     frame = market_data["AAA"]
     event_date = pd.Timestamp("2026-08-11")
 
-    # Non-zero daily actions bypass price-only intraday recovery entirely.
     assert calls["AAA"] == 2
     assert calls["SPY"] == 1
     sleep.assert_called_once()
@@ -142,7 +141,7 @@ def test_persistent_dividend_action_only_row_becomes_explicit_asof_effective_val
     assert identity.synthetic_row_counts == {"asof_carry_forward": 1}
 
 
-def test_persistent_partial_price_bar_recovers_only_from_two_identical_raw_intraday_observations():
+def test_persistent_partial_price_bar_recovers_from_cross_granularity_intraday_consensus():
     client = SemanticMarketDataClient()
     malformed = _history(partial_price=True)
     intraday = _intraday_history(close=101.75)
@@ -168,7 +167,7 @@ def test_persistent_partial_price_bar_recovers_only_from_two_identical_raw_intra
     assert frame.loc[event_date, "Dividends"] == 0.0
     assert frame.loc[event_date, "Stock Splits"] == 0.0
     assert PortfolioValidator.validate_price_data("AAA", frame) is True
-    assert "raw 1h regular-session" in client.price_metadata_by_symbol["AAA"]["selection_reason"]
+    assert "raw 1h/15m regular-session" in client.price_metadata_by_symbol["AAA"]["selection_reason"]
     identity = build_market_inputs_identity({"AAA": frame}, required_symbols=["AAA"])
     assert identity.synthetic_row_counts == {}
 
@@ -195,7 +194,7 @@ def test_exact_date_intraday_recovery_is_general_for_nonterminal_historical_gap(
     assert PortfolioValidator.validate_price_data("AAA", frame) is True
 
 
-def test_exact_date_intraday_recovery_rejects_two_disagreeing_provider_observations():
+def test_exact_date_intraday_recovery_rejects_disagreeing_granularities():
     client = SemanticMarketDataClient()
     malformed = _history(partial_price=True)
     first = _intraday_history(close=101.75)

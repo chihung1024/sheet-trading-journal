@@ -15,53 +15,56 @@ def _values():
     }
 
 
-def _original(**overrides):
-    values = {
-        "Open": 101.0,
-        "High": 103.0,
-        "Low": 100.0,
-        "Close": float("nan"),
-        "Adj Close": float("nan"),
-        "Volume": 1200.0,
-    }
-    values.update(overrides)
-    return pd.Series(values)
-
-
-def test_intraday_anchor_rejects_absent_nonpositive_open_and_negative_volume():
-    values = _values()
-    assert SemanticMarketDataClient._intraday_candidate_matches_original(
-        values, _original(Open=float("nan"))
-    ) is False
-    assert SemanticMarketDataClient._intraday_candidate_matches_original(
-        values, _original(Open=0.0)
-    ) is False
-    assert SemanticMarketDataClient._intraday_candidate_matches_original(
-        values, _original(Volume=-1.0)
-    ) is False
-
-
-def test_intraday_anchor_allows_missing_optional_price_anchors_but_checks_finite_close():
-    values = _values()
-    unanchored = _original(
-        High=float("nan"),
-        Low=float("nan"),
-        Close=float("nan"),
-        **{"Adj Close": float("nan")},
+def _prepared_recovery_frame(*, volume=1200.0):
+    return pd.DataFrame(
+        {
+            "Open": [100.0, 101.0],
+            "High": [102.0, 103.0],
+            "Low": [99.0, 100.0],
+            "Close": [101.0, float("nan")],
+            "Adj Close": [101.0, float("nan")],
+            "Close_Adjusted": [101.0, float("nan")],
+            "Volume": [1000.0, volume],
+            "Dividends": [0.0, 0.0],
+            "Stock Splits": [0.0, 0.0],
+            "Capital Gains": [0.0, 0.0],
+            "Split_Factor": [1.0, 1.0],
+        },
+        index=pd.to_datetime(["2026-08-10", "2026-08-11"]),
     )
-    assert SemanticMarketDataClient._intraday_candidate_matches_original(values, unanchored) is True
-
-    matching = _original(Close=102.0, **{"Adj Close": 102.0})
-    assert SemanticMarketDataClient._intraday_candidate_matches_original(values, matching) is True
-
-    missing_close = dict(values)
-    missing_close.pop("Close")
-    assert SemanticMarketDataClient._intraday_candidate_matches_original(
-        missing_close, _original(Close=102.0)
-    ) is False
 
 
-def test_intraday_candidate_rejects_nonfinite_bar_value_before_aggregation():
+def test_cross_granularity_agreement_requires_all_price_fields_and_tight_match():
+    values = _values()
+    assert SemanticMarketDataClient._intraday_price_candidates_agree(values, dict(values)) is True
+
+    near = dict(values)
+    near["Close"] += 1e-8
+    assert SemanticMarketDataClient._intraday_price_candidates_agree(values, near) is True
+
+    missing = dict(values)
+    missing.pop("Close")
+    assert SemanticMarketDataClient._intraday_price_candidates_agree(values, missing) is False
+
+    changed = dict(values)
+    changed["Close"] = 102.01
+    assert SemanticMarketDataClient._intraday_price_candidates_agree(values, changed) is False
+
+
+def test_intraday_recovery_rejects_invalid_daily_volume_before_provider_request():
+    client = SemanticMarketDataClient()
+    # Daily volume remains part of the authoritative daily evidence boundary even
+    # when the price fields are reconstructed from independent intraday granularities.
+    for volume in (-1.0, float("nan")):
+        frame = _prepared_recovery_frame(volume=volume)
+        with patch("journal_engine.clients.semantic_market_data.yf.Ticker") as ticker:
+            recovered, dates = client._recover_with_exact_date_intraday_evidence("AAA", frame)
+        assert recovered is frame
+        assert dates == ()
+        ticker.assert_not_called()
+
+
+def test_intraday_candidate_rejects_partial_nonfinite_bar_before_aggregation():
     frame = pd.DataFrame(
         {
             "Open": [101.0, float("nan")],
@@ -78,7 +81,6 @@ def test_intraday_candidate_rejects_nonfinite_bar_value_before_aggregation():
     assert SemanticMarketDataClient._complete_intraday_price_candidate(
         frame,
         pd.Timestamp("2026-08-11"),
-        _original(),
     ) is None
 
 
