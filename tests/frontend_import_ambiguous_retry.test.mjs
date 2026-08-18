@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -16,6 +17,15 @@ const entries = Object.freeze([
   Object.freeze({ idempotencyKey: 'stable-key-0000001' }),
   Object.freeze({ idempotencyKey: 'stable-key-0000002' }),
 ]);
+
+const receiptComponentSource = fs.readFileSync(
+  new URL('../src/components/ImportReconciliationReceipt.vue', import.meta.url),
+  'utf8',
+);
+const canonicalComponentSource = fs.readFileSync(
+  new URL('../src/components/BrokerNeutralImportPreview.vue', import.meta.url),
+  'utf8',
+);
 
 test('retry candidate is limited to ambiguous partial failures', () => {
   assert.equal(isAmbiguousImportRetryCandidate(ambiguousResult), true);
@@ -113,4 +123,19 @@ test('gate result never exposes entry keys or reconciliation error messages', as
 
   const serialized = JSON.stringify(gate);
   assert.doesNotMatch(serialized, /stable-key|private internal message/);
+});
+
+test('shared receipt emits retry only behind the ambiguous retry candidate gate', () => {
+  assert.match(receiptComponentSource, /isAmbiguousImportRetryCandidate\(props\.result\)/);
+  assert.match(receiptComponentSource, /props\.retryAvailable/);
+  assert.match(receiptComponentSource, /emit\('retry'\)/);
+});
+
+test('canonical UI invalidates result on profile edit and reconciles before stable-key replay', () => {
+  assert.match(canonicalComponentSource, /@input="invalidateImportResult"/);
+  assert.match(canonicalComponentSource, /:retry-available="canRetryAmbiguous"/);
+  assert.match(canonicalComponentSource, /@retry="retryAmbiguousImport"/);
+  assert.match(canonicalComponentSource, /prepareAmbiguousImportRetry\(priorResult/);
+  assert.match(canonicalComponentSource, /reconcile:\s*\(\) => portfolioStore\.fetchAll\(\)/);
+  assert.match(canonicalComponentSource, /await executePreparedImport\(prepared, owner\)/);
 });
