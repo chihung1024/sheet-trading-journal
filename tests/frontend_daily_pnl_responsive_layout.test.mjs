@@ -27,6 +27,6 @@ test('layout optimization remains presentation-only and preserves existing expla
 
   assert.match(source, /v-for="row in visibleRows"/);
   assert.match(source, /showAll\.value[\s\S]*?props\.explanation\.rows/);
-  assert.match(source, /顯示全部 \$\{explanation\.rows\.length\} 檔/);
+  assert.match(source, /顯示全部 \$\{explanation\.rows\.length\} 項/);
   assert.doesNotMatch(source, /fetch\(|\/api\//);
 });
