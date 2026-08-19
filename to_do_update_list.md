@@ -1,63 +1,62 @@
 # Project Execution Memory
 
-本文件是專案的持續執行記憶。
-
-原則：CURRENT 要精確；NEXT 要有順序；ROADMAP 可隨新證據調整；歷史持續壓縮。Git / PR / CI / runtime truth 高於本文件中的舊快照。
-
 Last updated: **2026-08-19 Asia/Taipei**
 
 ## CURRENT
 
-**Primary Goal**
-- 完成 UX-R1 — Adaptive Workspace & Responsive Interaction，優先改善實際使用者工作空間、響應式操作與可讀性，不改變既有財務/資料 authority。
+**Project status**
+- **DEVELOPMENT FROZEN**.
+- Product feature development has stopped at the retained current-version behavior.
+- There is no active feature roadmap, staging program, audit/evidence program or deployment-control project.
+- A minimal `Terminal Integrity` workflow remains because `main` repository rules require three status checks; it is a branch-safety constraint, not an active development program.
 
-**Current Batch**
-- UX-R1.3 — Responsive Navigation.
+**Recovery checkpoints**
+- Pre-cleanup recovery branch: `release/terminal-pre-cleanup-2026-08-19`.
+- Frozen pre-cleanup main SHA: `4377a6c92b95a9f253c4c893e944f9060f954a4f`.
+- Final terminal recovery branch is created after the cleanup PR is merged and must point to the resulting `main` SHA.
 
-**Stable State**
-- UX-R1.1 已完成，exact-head CI success。
-- UX-R1.2 已完成，exact-head CI success。
-- UX-R1.3 implementation 已存在於 PR #387；目前仍在驗證/除錯階段，尚未進入 R1.4。
+**Validation evidence**
+- Last full test-suite validation baseline: `00becc3157d5be65076a6adadd50fc8e0b4fb93b`.
+- CI run #1406 passed Python runtime tests, Worker runtime tests, Worker production contract verification, local D1 migration/schema verification, frontend runtime tests and the production frontend build.
+- The full tests/dev harness was then removed. The retained thin `Terminal Integrity` workflow only enforces the three status contexts required by repository rules: Python compile integrity, Worker parse/production-contract integrity and frontend production build integrity.
 
-**Branch / PR / HEAD**
-- Branch: `feat/ux-r1-adaptive-workspace`
-- PR: #387 — OPEN / DRAFT
-- Head: `e1e73ee57abfeed07974f50943211e6d067253d1`
+**Closed active development**
+- PR #387 — closed without merge; UX-R1.3–R1.8 are not active work.
+- Issue #97 — closed `not planned`; staging Worker/D1 development is not active work.
 
-**Verified**
-- PR #387 remote body：R1.1、R1.2 complete；R1.3 active；R1.4–R1.8 sequential。
-- Current exact-head CI #1393 / run `32207671772`: FAILURE。
-- 目前 CI failure 是需要解決的 active engineering work，不是 project blocker。
+**Retained product boundary**
+- Preserve current Overview, Charts, Holdings, Records, Dividends, Cash and Groups behavior.
+- Preserve manual transaction create/edit/delete, Records search/filter/pagination/refresh, IBKR Import, broker-neutral CSV/template/mapping import, Backup JSON and Journal Restore as currently exposed by the retained UI.
+- Preserve authentication, portfolio calculation/update callbacks, PWA behavior and all financial/data/security fail-closed runtime paths required by those capabilities.
 
-**Blocker**
-- NONE.
+**Terminal runtime**
+- Frontend: `src/`, `public/`, `index.html`, Vite build policy.
+- Worker/API: `worker-entry.js`, `worker.js`, `worker-dividend-event.js`, `worker-journal-restore.js`.
+- D1 rebuild authority: migrations `0001` through `0006`.
+- Calculations: `main.py`, `journal_engine/`, `tools/run_portfolio_update.py`.
+- Hosted runtime workflow: `.github/workflows/update.yml`.
+- Repository-rule safety workflow: `.github/workflows/ci.yml` (`Terminal Integrity`).
+- Emergency recovery helpers: retained production environment/Worker/D1 identity and Wrangler rendering tools.
+- Production-test reconciliation helpers remain as a safety exception until live D1 synthetic/test-row state can be reverified with private Cloudflare credentials.
 
-**Exact Next Action**
-- 取得 PR #387 current failed job 的 raw execution evidence，確認 R1.3 precise failing assertion；依 First-Principles Debug trace 到 broken invariant / Root Cause，再做 minimum correct fix、targeted regression 與 relevant CI verification。不要依 job/check 名稱猜 Root Cause，也不要重做整個 UX-R1 preflight。
+## TERMINAL CLEANUP
 
-## NEXT
+- [x] Freeze exact pre-cleanup main SHA and create recovery branch.
+- [x] Close active UX PR #387 without merge and staging Issue #97 as not planned.
+- [x] Remove staging/development/audit/evidence/deployment-control infrastructure with no retained runtime caller.
+- [x] Remove historical Worker copies, engineering docs, E2E/staging assets and redundant offline export utilities.
+- [x] Freeze frontend deployment policy to production and disable non-main Pages deployment in source.
+- [x] Preserve broker-neutral import and Journal Restore after reachability proved they are live product features.
+- [x] Complete full runtime/build/schema validation before removing the full validation harness.
+- [x] Remove the test suite, pytest/dev requirements and test-only schema tooling.
+- [x] Replace the large CI harness with the smallest workflow that satisfies mandatory `main` status checks.
+- [ ] Merge terminal-cleanup PR to `main`.
+- [ ] Create `release/terminal-final-2026-08-19` at the merged terminal `main` SHA.
 
-1. [ ] UX-R1.4 — Holdings + Records adaptive work surfaces；依 current product-surface decision保留主要搜尋/篩選/分頁/refresh/Backup JSON，已退出 normal product surface 的 import/restore UI 不再投入 responsive polish。
-2. [ ] UX-R1.5 — Overview + Charts workspace adaptation。
-3. [ ] UX-R1.6 — Dividends + Cash + Groups adaptive layouts。
-4. [ ] UX-R1.7 — accessibility / keyboard / zoom / reflow / reduced-motion / safe-area verification。
-5. [ ] UX-R1.8 — exact-head validation、review、merge、Pages/deployment verification、closeout。
+## EXTERNAL ACCOUNT CLEANUP STILL REQUIRES LIVE ACCOUNT AUTHORITY
 
-## ROADMAP
+Repository cleanup must not be confused with private account cleanup. GitHub account settings, Cloudflare account resources and Google OAuth console state must be inventoried from their authoritative private consoles/connectors before deletion. Never infer their existence from historical repository files.
 
-### Near Term
-- 完成 UX-R1，不平行開另一條正式 implementation 主線。
-- UX-R1 結束後，依最新產品使用價值、correctness evidence 與 current repository truth 選擇下一個 Primary Goal。
+## FUTURE RESTART
 
-### Later
-- 持續優先改善直接產品功能與 UX；只有實際阻塞產品、安全、資料/財務正確性或維護能力的技術工作才提升優先級。
-
-### Candidates
-- 舊 R3.3B Safe Ambiguous Import Retry 不再是 active/deferred roadmap；PR #367 已 CLOSED / NOT MERGED / NOT PLANNED。只有新證據或 Owner 明確重新排序時才重新評估。
-
-## DURABLE DECISIONS / RISKS
-
-- UX-R1 是 presentation/workspace phase：不得建立第二套 accounting/data/mutation authority；`TradeForm`、`activeView`、現有 record/holding projections 與 financial/data fail-closed semantics 仍維持單一 authority。
-- Records 正常產品介面保留核心查找/篩選/分頁/refresh 與 **Backup JSON download**；IBKR/Canonical/mapped import UI、CSV template/mapping/receipt-retry entry points、Journal Restore UI 目前退出/凍結 normal product surface。既有 imported records 必須仍可讀/可 export；restore backend/migration/tests 暫保留 maintenance-only。
-- `to_do_update_list.md` 不保存完整歷史、每次 tool call、每個 hypothesis 或 CI 流水帳；這些由 Git / PR / Actions / durable engineering docs 保存。
-- 工作完成或狀態 materially 改變時，更新 CURRENT，將近期工作滑動前移並重新排序 NEXT / ROADMAP；不要 append 成 Project Diary。
+There is no active NEXT batch. If development resumes, start from `AI_PROJECT_PLAYBOOK.md`, compare the then-live production state to the terminal-final checkpoint, and add only the minimum development infrastructure required by the new goal.

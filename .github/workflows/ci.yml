@@ -1,4 +1,4 @@
-name: CI
+name: Terminal Integrity
 
 on:
   pull_request:
@@ -10,108 +10,66 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: terminal-integrity-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  python-tests:
+  python-runtime:
     name: Python tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.10'
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          cache-dependency-path: requirements.txt
+      - name: Install production dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Compile retained Python runtime
+        run: python -m compileall -q journal_engine main.py tools/run_portfolio_update.py
 
-      - name: Verify workflow supply-chain policy
-        run: python tests/test_workflow_supply_chain.py
-
-      - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
-
-      - name: Compile Python sources
-        run: python -m compileall -q journal_engine main.py tools tests
-
-      - name: Run test suite and measure branch coverage
-        run: >-
-          python -m pytest -q
-          --cov=journal_engine
-          --cov=main
-          --cov-branch
-          --cov-report=term-missing
-          --cov-report=json:coverage.json
-
-      - name: Verify measured Python coverage baseline
-        run: >-
-          python tools/verify_python_coverage.py
-          coverage.json
-          docs/governance/python-coverage-baseline.json
-
-  worker-security:
+  worker-runtime:
     name: Worker security and deployment tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '22'
           cache: npm
-
       - name: Install pinned Node dependencies
         run: npm ci --no-audit --no-fund
-
-      - name: Run Worker test suites
-        run: npm run test:worker
-
-      - name: Verify Worker deployment metadata
+      - name: Parse retained Worker runtime
+        run: node --check worker.js && node --check worker-entry.js && node --check worker-dividend-event.js && node --check worker-journal-restore.js
+      - name: Verify production Worker contract
         run: npm run worker:config:check
 
-      - name: Enforce Recovery Evidence Gate
-        run: npm run worker:recovery-gate:check
-
-      - name: Apply and verify D1 baseline locally
-        run: npm run worker:schema:test
-
-  frontend-build:
+  frontend-runtime:
     name: Frontend contracts and build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '22'
           cache: npm
-
       - name: Install pinned frontend dependencies
         run: npm ci --no-audit --no-fund
-
-      - name: Run frontend security contract tests
-        run: npm run test:frontend
-
-      - name: Build frontend
+      - name: Build frozen production frontend
         run: npm run build

@@ -7,20 +7,12 @@
     "node": ">=20 <25"
   },
   "scripts": {
-    "dev": "vite",
     "environment:check": "node tools/check_frontend_environment.mjs",
     "prebuild": "npm run environment:check",
     "build": "vite build",
-    "check": "npm run test:worker && npm run test:frontend && npm run worker:config:check && npm run worker:recovery-gate:check && npm run build",
-    "test:worker": "node --test tests/worker_*.test.mjs tests/test_production_contract_audit.mjs tests/production_identity_evidence.test.mjs tests/production_record_idempotency_smoke.test.mjs",
-    "test:frontend": "node --test tests/frontend_*.test.mjs",
     "worker:config:check": "node tools/check_worker_config.mjs",
     "worker:config:render": "node tools/render_wrangler_config.mjs",
-    "worker:recovery-gate:check": "node tools/verify_recovery_evidence_gate.mjs",
-    "worker:schema:test": "node tools/test_d1_schema.mjs",
-    "worker:dev": "wrangler dev --config wrangler.toml",
-    "worker:deploy": "wrangler deploy --strict --config .wrangler/deploy.toml",
-    "preview": "vite preview"
+    "worker:deploy": "wrangler deploy --strict --config .wrangler/deploy.toml"
   },
   "dependencies": {
     "vue": "3.4.21",

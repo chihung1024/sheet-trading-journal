@@ -29,7 +29,6 @@ if (!COMMIT_RE.test(sourceCommit)) {
 
 const contract = JSON.parse(await readFile(contractPath, "utf8"));
 const production = contract?.production;
-const staging = contract?.staging;
 if (!production || typeof production !== "object" || Array.isArray(production)) {
   throw new Error("Production deployment environment contract is missing");
 }
@@ -41,19 +40,12 @@ if (!Array.isArray(production.google_client_ids) || production.google_client_ids
 }
 const expectedAllowedOrigins = production.frontend_origins.join(",");
 const expectedGoogleClientId = String(production.google_client_ids[0] || "").trim();
-const expectedStagingD1Name = String(staging?.d1_database_name || "").trim();
 const productionD1Status = String(production.d1_identity_status || "").trim();
 if (!GOOGLE_CLIENT_ID_RE.test(expectedGoogleClientId)) {
   throw new Error("Reviewed production Google OAuth client ID is invalid");
 }
-if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(expectedStagingD1Name)) {
-  throw new Error("Reviewed staging D1 database name is missing or invalid");
-}
 if (!new Set(["unverified", "verified"]).has(productionD1Status)) {
   throw new Error("production.d1_identity_status must be unverified or verified");
-}
-if (databaseName === expectedStagingD1Name) {
-  throw new Error("Refusing to render production config with the reviewed staging D1 database name");
 }
 
 if (productionD1Status === "verified") {
