@@ -19,6 +19,7 @@ This repository is retained as the production source and restart capsule for the
 - Portfolio calculations: `main.py` + `journal_engine/`.
 - Hosted calculation runner: `tools/run_portfolio_update.py`.
 - Scheduled/user-triggered calculation workflow: `.github/workflows/update.yml`.
+- Repository-rule gate: `.github/workflows/ci.yml` (`Terminal Integrity`). It remains only because `main` requires three status contexts; it is not a development test program.
 
 ## Retained normal user capabilities
 
@@ -59,9 +60,10 @@ Any additional GitHub/Cloudflare/Google secret or environment value must have a 
 
 ## Terminal validation evidence
 
-- Last full validation baseline before deleting the development harness: `00becc3157d5be65076a6adadd50fc8e0b4fb93b`.
+- Last full test-suite validation baseline: `00becc3157d5be65076a6adadd50fc8e0b4fb93b`.
 - CI #1406 passed Python runtime tests, Worker runtime tests, production Worker contract verification, local D1 migrations/schema verification, frontend runtime tests and production frontend build.
-- The subsequent terminal strip removes only tests/CI/test-only tooling and development scripts; it does not intentionally alter production runtime source.
+- The large test/CI harness was then removed.
+- The retained `Terminal Integrity` workflow is deliberately thin: Python compile integrity, Worker parse + production contract integrity and frontend production build. Its three job names are retained because repository rules require those status contexts on `main`.
 
 ## Emergency reconstruction
 
@@ -75,4 +77,4 @@ Any additional GitHub/Cloudflare/Google secret or environment value must have a 
 
 ## Future restart rule
 
-If development resumes, compare then-current production state with the terminal-final checkpoint. Create tests/CI/staging infrastructure only when required by the new work; do not restore historical governance, staging, audit, evidence or diagnostic systems wholesale.
+If development resumes, compare then-current production state with the terminal-final checkpoint. Create tests/staging infrastructure only when required by the new work; do not restore historical governance, staging, audit, evidence or diagnostic systems wholesale.
