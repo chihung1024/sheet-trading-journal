@@ -1,9 +1,10 @@
 # AI_PROJECT_EXECUTION_LOCK.md
 
-# AI 持續執行鐵律 — Owner-Locked Amendment V1.0
+# AI 持續執行鐵律 — Owner-Locked Amendment V1.1
 
 Status: **LOCKED / ACTIVE**  
 Owner authorization: **2026-08-19**  
+V1.1 special approval: **2026-08-19 — Default-Branch Governance Authority / Discovery Gate**  
 Scope: ChatGPT / Codex / AI Agents / Sub-Agents / Review Agents / automated coding workflows working on this Repository.
 
 ---
@@ -19,6 +20,142 @@ Scope: ChatGPT / Codex / AI Agents / Sub-Agents / Review Agents / automated codi
 若一般流程規範與本文件衝突，在 Repository 工程治理範圍內，採 **較嚴格且能維持持續執行** 的規則。
 
 平台 / 系統安全規則與使用者當下明確指令仍具有更高優先權。
+
+---
+
+# 0A. Default-Branch Governance Authority / Discovery Gate — 治理來源固定於 remote default branch
+
+本 Gate 解決以下系統性失效：
+
+```text
+Locked governance 已更新於 remote default branch
+→ active feature branch / old PR branch 尚未包含該檔案或仍是舊版本
+→ Agent 只讀 current branch
+→ 誤判 locked governance 不存在 / 未更新
+→ 回到舊執行行為
+```
+
+因此，任何 Agent 在判斷本 Repository 的 execution governance 時，必須遵守以下七項鐵律。
+
+## 0A.1 Governance Source of Truth
+
+Repository governance 的權威來源固定為 **最新 remote default branch**；本 Repository 目前 remote default branch 為 `main`。
+
+在執行 feature branch、PR branch、worktree、舊 branch 或 detached commit 的工作前，必須先從 authoritative repository metadata 確認 remote default branch，並從該 remote default branch 取得最新：
+
+1. `AGENTS.md`
+2. `AI_PROJECT_EXECUTION_LOCK.md`
+
+不得以 current branch 上的同名檔案是否存在、是否較舊，作為 governance authority 判斷依據。
+
+```text
+Governance authority = latest remote default branch
+Work authority       = current active branch / PR / exact-head remote truth
+```
+
+## 0A.2 Mandatory Discovery Order
+
+新 Session / Conversation / Agent takeover 或需要 governance freshness reconciliation 時，順序固定為：
+
+```text
+Resolve repository identity
+→ Resolve authoritative remote default branch
+→ Fetch latest remote default-branch AGENTS.md
+→ Fetch latest remote default-branch AI_PROJECT_EXECUTION_LOCK.md
+→ Apply locked governance
+→ Read active-branch README / to_do / code / relevant docs
+→ Reconcile active PR / CI / deployment remote truth
+→ Resume exact current work
+```
+
+不得先以 active feature branch 的文件缺失推論「沒有 locked rule」。
+
+## 0A.3 Feature-Branch Absence Is Not Exemption
+
+如果 active feature branch / PR branch：
+
+- 沒有 `AGENTS.md`；
+- 沒有 `AI_PROJECT_EXECUTION_LOCK.md`；
+- 只有較舊版本；
+- 與 remote default branch diverged；
+
+一律 **不構成豁免**。
+
+必須直接跨 branch 讀取 remote default branch 的 authoritative governance。
+
+```text
+404 on feature branch
+≠ no governance
+
+404 / stale copy on feature branch
+→ fetch remote default branch
+→ apply authoritative locked governance
+```
+
+## 0A.4 Policy Freshness Gate
+
+以下情況必須重新確認 remote default-branch governance freshness：
+
+- 新 Session；
+- 新 Conversation；
+- 新 Agent / Sub-Agent / Model takeover；
+- durable work chain 從其他執行環境恢復；
+- 使用者要求「繼續／持續執行」，且自上次 governance read 後 remote default-branch head 已改變；
+- 無法證明目前載入的 governance 仍對應 current remote default-branch head。
+
+Freshness check 應保持最小化：
+
+```text
+check default-branch head
+→ unchanged: resume current work
+→ changed / unknown: refetch locked governance
+→ resume current work
+```
+
+這只是 governance reconciliation，**不是重新建立 Master Plan，也不是重新從頭 preflight 的理由**。
+
+## 0A.5 Existing Branch Does Not Need Governance Sync
+
+為了讀取 locked governance：
+
+- 不要求 merge `main`；
+- 不要求 rebase `main`；
+- 不要求 cherry-pick governance commit；
+- 不要求把 governance files 複製進 active feature branch；
+- 不得為了 policy discovery 擾動 feature branch history。
+
+直接跨 branch 讀取 authoritative remote default-branch governance 即可。
+
+是否同步 `main` 到 feature branch，只能依正常 Git / dependency / conflict / product implementation 需求決定，不能因 governance discovery 本身而執行。
+
+## 0A.6 Fail-Safe / Blocker Rule
+
+只要現有 GitHub connector / API / repository tool 可以讀取 remote default branch，Agent 就不得以：
+
+- current branch 沒有檔案；
+- local checkout 太舊；
+- PR branch 尚未同步；
+- 舊 Conversation 沒看過新規則；
+
+作為跳過 locked governance 的理由。
+
+只有在已完成合理 evidence collection 與替代路徑嘗試後，仍 **無法解析或讀取 authoritative remote default branch governance**，才可依 `Blocker Quality Gate` 分類為 genuine tool / permission / external blocker。
+
+## 0A.7 Existing Locks Remain Fully Effective
+
+本 Gate 只修正 governance discovery / source-of-truth，不弱化任何既有規則。
+
+以下全部維持：
+
+- Continuous Execution Rule；
+- Final Response Gate；
+- No Human Continue Button；
+- Resume, Do Not Restart；
+- Root Cause / Scope / Verification discipline；
+- OWNER-LOCKED CHANGE GATE；
+- Governance Change Isolation。
+
+未來若要修改、弱化、刪除、繞過、改名、取代或重新解釋本 `0A` Gate，與修改本文件其他 Protected Locked Rules 相同，**必須再次取得 Repository Owner 對具體 proposed change 的新一輪特別同意**。
 
 ---
 
@@ -142,13 +279,14 @@ AI 做一小段
 
 # 4. Resume, Do Not Restart — 新回合不得無限重頭開始
 
-新的 Conversation / Agent / Model 接手時，第一次 takeover 必須依既有規範完成必要 preflight：
+新的 Conversation / Agent / Model 接手時，第一次 takeover 必須依既有規範完成必要 preflight，而且 **governance 必須先依 `0A Default-Branch Governance Authority / Discovery Gate` 從最新 remote default branch 取得**：
 
-1. `AI_PROJECT_EXECUTION_LOCK.md`
-2. `AI_PROJECT_PLAYBOOK.md`
-3. `README.md`
-4. `to_do_update_list.md`
-5. GitHub remote truth / current PR / CI / deployment truth（依工作適用性）
+1. remote default-branch `AGENTS.md`
+2. remote default-branch `AI_PROJECT_EXECUTION_LOCK.md`
+3. `AI_PROJECT_PLAYBOOK.md`
+4. `README.md`
+5. `to_do_update_list.md`
+6. GitHub remote truth / current PR / CI / deployment truth（依工作適用性）
 
 完成 takeover 後，應鎖定：
 
@@ -268,7 +406,7 @@ Actual blocker（若有）
 以下項目構成 **Protected Locked Rules**：
 
 1. 本文件 `AI_PROJECT_EXECUTION_LOCK.md` 的全部規則。
-2. `AGENTS.md` 中要求優先讀取本文件、承認本文件 lock status、以及 Special Approval Gate 的條款。
+2. `AGENTS.md` 中要求優先從 remote default branch 讀取本文件、承認本文件 lock status、以及 Special Approval Gate 的條款。
 3. Repository 內任何其他文件中，用來實質承接、引用、保障上述規則效力的條款。
 
 「修改」不只包含直接 edit，也包含：
@@ -331,6 +469,14 @@ Why Existing Rule Is Insufficient
 
 未直接修改本文件，但在其他文件加入與本文件衝突、削弱或繞過的規則，視同修改 Protected Locked Rules，一樣需要 Special Approval。
 
+### Approved Amendment Record — V1.1
+
+Owner special approval source: user message dated **2026-08-19 Asia/Taipei**:
+
+> `特別同意將 AI_PROJECT_EXECUTION_LOCK V1.0 依上述 7 點升級，建立 Default-Branch Governance Authority / Discovery Gate。`
+
+Authorized scope is limited to the seven approved discovery/source-of-truth rules embodied in section `0A` and the minimum corresponding entry-point references required in `AGENTS.md` / section `4` / Protected Locked Rules wording.
+
 ---
 
 # 9. Governance Change Isolation
@@ -349,6 +495,15 @@ Why Existing Rule Is Insufficient
 # 10. Enforcement Summary
 
 對任何 AI：
+
+```text
+Starting or resuming repository work?
+YES
+↓
+Resolve remote default branch.
+Load authoritative locked governance from that branch first.
+Then resume the active branch / PR.
+```
 
 ```text
 Work remains executable?
@@ -378,6 +533,8 @@ Only then may write.
 
 核心鐵律：
 
+> **治理先從最新 remote default branch 載入；feature branch 缺檔不代表沒有規則。**
+>
 > **不要把「下一步」當成果。**
 >
 > **不要把使用者當 Continue 按鈕。**
