@@ -25,14 +25,18 @@
 
 新 Session / Conversation / Agent takeover，以及使用者要求「繼續」但無法證明已載入 current remote default-branch governance 時，必須先做最小 governance freshness check；若 default-branch head 未變則直接 resume，若已變或 freshness unknown，重新取得 locked governance 後立即 resume。不得把 freshness check 變成重新建立 Master Plan 或新的停止點。
 
+若目前工作缺少關鍵 evidence，必須依 `AI_PROJECT_EXECUTION_LOCK.md` 的 `Evidence & Hard Blocker Gate` 執行：先定義 missing evidence、檢查與嘗試合理且直接相關的 available tool / connector / API / repository / runtime evidence paths，再判斷是否構成 genuine Hard Blocker。UI / workflow / job / check label 或 summary 只能作為導航線索，不能單獨冒充 precise failure、failing assertion 或 Root Cause 證據。只要仍有尚未嘗試、合理且可能成功的直接相關 evidence path，就不得以 Hard Blocker 為由送出 final response。
+
 以下條款本身亦屬 Protected Locked Rules：
 
 - 必須優先從最新 remote default branch 讀取 `AGENTS.md` 與 `AI_PROJECT_EXECUTION_LOCK.md`。
 - Feature branch 缺檔、舊檔或 diverged 不得被解讀為 locked governance 不存在。
-- 必須遵守 `AI_PROJECT_EXECUTION_LOCK.md` 的 Default-Branch Governance Authority / Discovery Gate、Continuous Execution、Final Response Gate、Resume-Do-Not-Restart 規則。
+- 必須遵守 `AI_PROJECT_EXECUTION_LOCK.md` 的 Default-Branch Governance Authority / Discovery Gate、Evidence & Hard Blocker Gate、Continuous Execution、Final Response Gate、Resume-Do-Not-Restart 規則。
+- 未取得證據不得被直接等同於證據無法取得；Hard Blocker 必須先完成合理、直接相關、available evidence paths 的必要查證並形成可審計 Blocker Proof。
+- UI / workflow / job / check label 或 summary 不得單獨被當作 raw execution evidence、precise failure 或 Root Cause 證明。
 - 不得把使用者當作每個 Task 之間的 Continue 按鈕。
 - 不得以其他 policy / refactor / cleanup / new model / new session / old branch 繞過該文件。
-- 修改、刪除、改名、搬移、弱化、取代本 entry-point、Default-Branch Governance Authority / Discovery Gate 或該 locked amendment，必須依 `AI_PROJECT_EXECUTION_LOCK.md` 的 **OWNER SPECIAL APPROVAL** 流程，重新取得 owner 對具體 proposed change 的特別同意。
+- 修改、刪除、改名、搬移、弱化、取代本 entry-point、Default-Branch Governance Authority / Discovery Gate、Evidence & Hard Blocker Gate 或該 locked amendment，必須依 `AI_PROJECT_EXECUTION_LOCK.md` 的 **OWNER SPECIAL APPROVAL** 流程，重新取得 owner 對具體 proposed change 的特別同意。
 
 一般開發授權、`繼續`、`同意`、PR/merge 授權或「給你所有權限」均不等於修改 Locked Rules 的 Special Approval。
 
