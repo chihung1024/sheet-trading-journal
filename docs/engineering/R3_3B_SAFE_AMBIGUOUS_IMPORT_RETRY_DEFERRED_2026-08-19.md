@@ -1,94 +1,81 @@
-# R3.3B — Safe Ambiguous Import Retry — Deferred Handoff
+# R3.3B — Safe Ambiguous Import Retry — Historical Handoff
 
-Status: **DEFERRED / PRESERVED FOR RESUMPTION**
+Status: **SUPERSEDED / CLOSED / NOT PLANNED / NOT MERGED**
 
-Deferred on: **2026-08-19 Asia/Taipei**
+This file is retained only as historical evidence of the earlier Deferred state.
 
-Reason: the user explicitly reprioritized the next development phase to **UX-R1 — Adaptive Workspace & Responsive Interaction**. R3.3B is not cancelled. Its current implementation branch and product contract are preserved so a future AI session can recover the work from repository truth without relying on chat history.
+The current product decision is:
 
-## Remote state at deferral
+`docs/engineering/PRODUCT_SURFACE_CONVERGENCE_AND_UX_PRIORITY_DECISION_2026-08-19.md`
 
-Planning baseline `main`:
+That newer decision supersedes every instruction below that previously treated R3.3B as work intended for automatic future resumption.
 
-- `44c62993706c083fd23fb7d1200adf217471efd4`
+## Final current status
 
-Existing R3.3B PR:
+- PR #367: **CLOSED**;
+- merged: **NO**;
+- branch retained: `feat/r3-3b-safe-ambiguous-import-retry`;
+- recorded head: `6eb1a86ea08b6a732b082b1e102915fe842102c2`;
+- original base: `e4edf84e3a60e4c63343ff5b54659def9ec950b9`;
+- 14 commits / 8 changed files / approximately +766 / -117 at closure;
+- last exact-head CI before product retirement: run `32111867887`, Frontend security contracts failed while Python and Worker suites succeeded.
 
-- PR: **#367 — `feat: add safe ambiguous import retry`**
-- state: **OPEN / DRAFT / NOT MERGED**
-- branch: `feat/r3-3b-safe-ambiguous-import-retry`
-- head at deferral: `6eb1a86ea08b6a732b082b1e102915fe842102c2`
-- original base recorded by GitHub: `e4edf84e3a60e4c63343ff5b54659def9ec950b9`
-- commits: 14
-- changed files: 8
-- additions/deletions at deferral: +766 / -117
+R3.3B must not be implicitly revived, rebased, transplanted, merged, or treated as a pending obligation.
 
-Last exact-head CI at deferral:
+Future import-retry work requires a fresh explicit product decision, fresh current-main architecture tracing, and a new correctness/security review.
 
-- CI #1255 / run ID `32111867887`: **FAILURE**
-- Frontend contracts and build: **FAILURE** at `Run frontend security contract tests`
-- Python tests: **SUCCESS**
-- Worker security and deployment tests: **SUCCESS**
+---
 
-The Frontend failure has **not** been treated as a reason to patch or weaken security contracts. Root-cause classification is intentionally left for the future resumption session against then-current `main`.
+## Historical context
 
-## Product goal
+R3.3B originally attempted to let a user explicitly retry the exact same in-memory import source after an ambiguous server response while preserving stable idempotency and avoiding duplicate transaction creation.
 
-When an import stops on an ambiguous server response, allow one explicit user-triggered retry of the exact same source that is still held in memory, preserving the existing stable idempotency/recovery authority and avoiding manual file re-selection.
+The preserved historical safety contract was:
 
-## Preserved product contract
+1. retry only for a partial failure with an ambiguous outcome;
+2. never retry committed/replayed results or explicit rejection as though they were ambiguous;
+3. reuse the exact current source/profile/mapping and stable identity;
+4. never reconstruct mutation payloads from receipt rows;
+5. replay the batch from the beginning with the same idempotency keys;
+6. never use economic-field similarity as duplicate authority;
+7. no background/timed mutation retry loop;
+8. no Worker/D1/schema/accounting/FX change merely to support retry;
+9. receipt/retry state remains convenience/recovery presentation state, not accounting authority.
 
-1. Retry is offered only for `status === 'partial_failure'` with `failure.outcomeAmbiguous === true`.
-2. No ambiguous retry for committed/replayed results, sync-only warnings, or explicit rejection.
-3. Retry reuses the exact current in-memory source/profile/mapping and existing preparer/writer.
-4. Never reconstruct mutation payloads from receipt rows.
-5. Retry begins the exact batch from the beginning; already-confirmed items replay through the same stable idempotency keys.
-6. The ambiguous item must reuse the same identity and be re-resolved; no fresh identity is permitted.
-7. Never use economic-field similarity as duplicate authority.
-8. Canonical/mapped retry must satisfy the existing source-profile/readiness contract.
-9. Mapped retry requires the current mapping to remain unchanged.
-10. IBKR retry is disabled while its profile is edited but not revalidated (`profileDirty`).
-11. The retry action must be explicit user intent; no background/timed automatic mutation loop.
-12. No Worker/D1/schema/accounting/FX/idempotency change unless a future current-main trace proves the existing stable-key reproduction contract insufficient.
-13. Receipt/retry state remains convenience/recovery presentation state, never accounting or transaction-identity authority.
+Historical intended implementation batches were:
 
-## Original intended implementation batches
+1. shared ambiguity-retry eligibility/reconciliation gate;
+2. receipt retry action + Canonical integration;
+3. mapped CSV + IBKR integration;
+4. exact-head CI + frozen review + expected-head merge.
 
-1. Shared ambiguity-retry eligibility/reconciliation gate + focused tests.
-2. Shared receipt retry action + Canonical integration.
-3. Mapped CSV + IBKR integration after deterministic stable-key evidence remains valid.
-4. Full exact-head CI → frozen review → expected-head merge.
+These batches are **not current backlog commitments**.
 
-## Important resumption rule
+---
 
-**Do not hard-merge or blindly rebase PR #367 when work resumes.**
+## Current product boundary that replaced this work
 
-The branch was created against a substantially older `main`, and `main` has continued to evolve through production-correctness and UX phases. A future AI must first treat remote `main` as source of truth and perform an overlap/invariant audit.
+### Retained
 
-Required resumption sequence:
+- manual transaction creation/edit/delete;
+- generic record-create intent / idempotency / ambiguity recovery / authoritative readback;
+- historical imported-record readability;
+- Backup JSON export.
 
-1. Refresh current protected `main`, PR #367 metadata/head, open PRs, exact-head CI, and deployment truth.
-2. Re-read `AI_PROJECT_PLAYBOOK.md`, `README.md`, `to_do_update_list.md`, this file, and current import architecture.
-3. Compare PR #367 changed files/commits against all changes since its original base.
-4. Re-trace Canonical, mapped CSV, and IBKR source → preparation → stable identity/idempotency key → durable writer → mutation outcome → receipt/readback using current code.
-5. Reproduce CI #1255's Frontend security-contract failure only if still relevant; classify root cause as production logic, obsolete test contract, or main-drift integration.
-6. Choose deliberately between:
-   - transplanting only still-valid generic changes onto fresh current `main`, or
-   - cleanly reimplementing R3.3B against current contracts.
-7. Never preserve old code merely to retain branch history.
-8. Run complete exact-head CI and frozen review before merge.
+### Product-retired / frozen
 
-## Out of scope when resumed
+- IBKR Import;
+- Canonical CSV Import;
+- mapped/broker-neutral import;
+- mapping presets;
+- CSV import template UX;
+- import receipt/retry UX;
+- this R3.3B retry work.
 
-- retrying explicit rejection without user correction;
-- automatic/background retry loops;
-- persisting broker source or full receipt for future sessions;
-- receipt-derived mutations;
-- fuzzy duplicate matching;
-- receipt export/download unless separately prioritized;
-- new broker adapters;
-- unrelated Worker/D1/accounting/FX refactor.
+### Journal Restore
 
-## Relationship to UX-R1
+- normal UI retired;
+- backend/migration/tests maintenance-only for now;
+- no backend purge inside UX-R1.
 
-While UX-R1 is Primary Active, PR #367 should remain a Draft/deferred reference and must not be merged. UX-R1 may change layout/presentation around import controls, but should not silently absorb or partially implement R3.3B mutation behavior. When UX-R1 closes, re-evaluate product priority and resume R3.3B only from fresh remote truth.
+The current primary implementation phase is UX-R1 Adaptive Workspace & Responsive Interaction. A future AI must read `to_do_update_list.md` and the newer product decision before using this historical file.
