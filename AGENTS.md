@@ -10,6 +10,8 @@
 
 Product / UX 與 Correctness / Data Integrity / Security / Financial Safety 優先；必要技術工作其次；optional cleanup / refactor / process 最後。
 
+Governance 只以最新 remote default branch 的 `AGENTS.md` 為準；feature/PR branch copy 可能過期，不需要只為讀規則而 merge/rebase。
+
 新 Session：`AGENTS.md → to_do_update_list.md → relevant code/docs → current truth → work`。
 
 同一工作鏈直接 resume，不因新回合、新模型或「繼續」而重新研究整個 Repository。
