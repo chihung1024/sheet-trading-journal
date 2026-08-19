@@ -12,7 +12,12 @@ test('responsive navigation remains a presentation of the single App activeView 
   assert.match(appSource, /<CompactNavigation[\s\S]*:views="views"[\s\S]*:active-view="activeView"[\s\S]*@navigate="activeView = \$event"/);
   assert.match(appSource, /watch\(activeView,[\s\S]*persistView\(v\)[\s\S]*setUrlView\(v\)/);
 
-  assert.doesNotMatch(navSource, /localStorage|sessionStorage|history\.|location\.|URLSearchParams|router/i);
+  // Guard executable persistence/routing authority, not explanatory comments that
+  // intentionally name the App-owned URL/localStorage contract.
+  assert.doesNotMatch(
+    navSource,
+    /\b(?:localStorage|sessionStorage)\.(?:getItem|setItem|removeItem|clear)\s*\(|\bhistory\.(?:pushState|replaceState)\s*\(|\blocation\.(?:assign|replace)\s*\(|\bURLSearchParams\s*\(|\b(?:useRouter|useRoute)\s*\(|\brouter\.(?:push|replace)\s*\(/i,
+  );
   assert.match(navSource, /defineEmits\(\['navigate'\]\)/);
   assert.match(navSource, /emit\('navigate', viewKey\)/);
 });
