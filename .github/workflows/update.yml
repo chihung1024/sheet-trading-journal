@@ -2,40 +2,27 @@ name: Update Portfolio Data
 
 on:
   schedule:
-    # Cron 使用 UTC；右側標註為台灣時間（UTC+8）。
-    - cron: '0 23 * * *'     # 07:00 - 晨間更新（雙市場收盤價）
-    - cron: '15 1 * * 1-5'  # 09:15 - 台股開盤後（週一至週五）
-    - cron: '0 6 * * 1-5'   # 14:00 - 台股收盤後（週一至週五）
-    - cron: '0 15 * * 1-5'  # 23:00 - 美股開盤後（週一至週五）
+    # Cron uses UTC; comments show Taiwan time (UTC+8).
+    - cron: '0 23 * * *'     # 07:00 - morning refresh
+    - cron: '15 1 * * 1-5'  # 09:15 - Taiwan market open
+    - cron: '0 6 * * 1-5'   # 14:00 - Taiwan market close
+    - cron: '0 15 * * 1-5'  # 23:00 - US market open
   workflow_dispatch:
     inputs:
       custom_benchmark:
-        description: '自訂基準標的代碼 (例如: QQQ, TQQQ, 0050.TW)'
+        description: 'Custom benchmark ticker (for example QQQ, TQQQ, 0050.TW)'
         required: false
         default: 'SPY'
-        type: string
-      target_user_id:
-        description: 'Gate C audit-only target email; normal calculations must not use this input'
-        required: false
-        default: ''
         type: string
       calculation_job_id:
         description: 'Worker-issued opaque calculation job ID'
         required: false
         default: ''
         type: string
-      transaction_integrity_audit_only:
-        description: 'Gate C 唯讀交易完整性稽核（不計算、不上傳快照）'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
 
-# 同一 repository 只允許一個 portfolio update / read-only audit 執行，避免與上傳流程重疊。
-# cancel-in-progress=false 保留正在執行的 run；queue=max 讓後續觸發保留在同一序列化佇列，
-# 避免平台預設 single pending slot 以較新的 pending run 取代較舊的 lifecycle job。
 concurrency:
   group: portfolio-update
   cancel-in-progress: false
@@ -52,20 +39,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Reject audit mode calculation callbacks
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only == 'true' && github.event.inputs.calculation_job_id != '' }}
-        run: |
-          echo 'Gate C audit mode cannot be attached to a calculation job.' >&2
-          exit 1
-
-      - name: Reject legacy normal calculation targeting
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only != 'true' && github.event.inputs.target_user_id != '' && github.event.inputs.calculation_job_id == '' }}
-        run: |
-          echo 'Normal hosted calculations cannot target a tenant by email. Use a Worker-issued calculation_job_id.' >&2
-          exit 1
-
       - name: Mark calculation job running
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only != 'true' && github.event.inputs.calculation_job_id != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.calculation_job_id != '' }}
         env:
           API_KEY: ${{ secrets.API_KEY }}
           JOB_ID: ${{ github.event.inputs.calculation_job_id }}
@@ -96,16 +71,8 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
-      - name: Run transaction integrity read-only audit
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only == 'true' }}
-        env:
-          API_KEY: ${{ secrets.API_KEY }}
-          TARGET_USER_ID: ${{ github.event.inputs.target_user_id || '' }}
-        run: python tools/audit_transaction_integrity.py
-
       - name: Run calculation and upload to API
         id: calculation
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.transaction_integrity_audit_only != 'true' }}
         continue-on-error: true
         env:
           API_KEY: ${{ secrets.API_KEY }}
@@ -114,7 +81,7 @@ jobs:
         run: python tools/run_portfolio_update.py
 
       - name: Report calculation job result
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && github.event.inputs.transaction_integrity_audit_only != 'true' && github.event.inputs.calculation_job_id != '' }}
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && github.event.inputs.calculation_job_id != '' }}
         env:
           API_KEY: ${{ secrets.API_KEY }}
           JOB_ID: ${{ github.event.inputs.calculation_job_id }}
@@ -131,9 +98,7 @@ jobs:
             case "$JOB_ERROR_CODE" in
               CONFIGURATION_FAILED|RECORDS_API_FAILED|SETTINGS_API_FAILED|RECORD_VALIDATION_FAILED|MARKET_DATA_FAILED|CALCULATION_FAILED|RECONCILIATION_FAILED|SNAPSHOT_VALIDATION_FAILED|SNAPSHOT_UPLOAD_FAILED|MULTIPLE_USER_FAILURES|UNKNOWN_CALCULATION_FAILED)
                 ;;
-              *)
-                JOB_ERROR_CODE="CALCULATION_FAILED"
-                ;;
+              *) JOB_ERROR_CODE="CALCULATION_FAILED" ;;
             esac
           fi
           payload="$(jq -cn \
@@ -150,5 +115,5 @@ jobs:
             --data "$payload" >/dev/null
 
       - name: Fail workflow when calculation failed
-        if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.transaction_integrity_audit_only != 'true') && steps.calculation.outcome != 'success' }}
+        if: ${{ always() && steps.calculation.outcome != 'success' }}
         run: exit 1
