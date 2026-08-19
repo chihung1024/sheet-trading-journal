@@ -13,8 +13,7 @@ const CONTRACT = JSON.parse(
 );
 const TOKEN = '__TRADING_JOURNAL_API_ORIGIN__';
 const PRODUCTION_API = CONTRACT.production.api_origins[0];
-const STAGING_API = CONTRACT.staging.api_origin;
-const STAGING_CLIENT_ID = '123456789012-staging-csp-test.apps.googleusercontent.com';
+const PRODUCTION_CLIENT_ID = CONTRACT.production.google_client_ids[0];
 const DEPLOYMENT_KEYS = [
   'CF_PAGES',
   'CF_PAGES_BRANCH',
@@ -75,21 +74,19 @@ async function buildFrontend(overrides = {}) {
   }
 }
 
-function assertEnvironmentCsp({ html, headers }, { allowedApi, forbiddenApi }) {
+function assertProductionCsp({ html, headers }) {
   const metaPolicy = extractMetaCsp(html);
   const headerPolicy = extractHeaderCsp(headers);
   const metaConnect = connectSources(metaPolicy);
   const headerConnect = connectSources(headerPolicy);
 
-  assert.ok(metaConnect.has(allowedApi), `meta CSP must allow ${allowedApi}`);
-  assert.ok(headerConnect.has(allowedApi), `header CSP must allow ${allowedApi}`);
-  assert.ok(!metaConnect.has(forbiddenApi), `meta CSP must not allow ${forbiddenApi}`);
-  assert.ok(!headerConnect.has(forbiddenApi), `header CSP must not allow ${forbiddenApi}`);
+  assert.ok(metaConnect.has(PRODUCTION_API), `meta CSP must allow ${PRODUCTION_API}`);
+  assert.ok(headerConnect.has(PRODUCTION_API), `header CSP must allow ${PRODUCTION_API}`);
   assert.doesNotMatch(html, new RegExp(TOKEN));
   assert.doesNotMatch(headers, new RegExp(TOKEN));
 }
 
-test('source CSP surfaces use one API-origin token instead of hardcoded environment identities', async () => {
+test('source CSP surfaces use one API-origin token instead of a hardcoded production identity', async () => {
   const [indexHtml, headers] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../public/_headers', import.meta.url), 'utf8'),
@@ -98,39 +95,29 @@ test('source CSP surfaces use one API-origin token instead of hardcoded environm
   for (const [label, source] of [['index.html', indexHtml], ['public/_headers', headers]]) {
     assert.equal(source.split(TOKEN).length - 1, 1, `${label} must contain the CSP API token exactly once`);
     assert.doesNotMatch(source, new RegExp(PRODUCTION_API.replaceAll('.', '\\.')));
-    assert.doesNotMatch(source, new RegExp(STAGING_API.replaceAll('.', '\\.')));
   }
 
-  // PR-10D3A intentionally does not perform the later CSP hardening batch.
   assert.match(indexHtml, /'unsafe-inline'/);
   assert.match(indexHtml, /'unsafe-eval'/);
   assert.match(headers, /'unsafe-inline'/);
   assert.match(headers, /'unsafe-eval'/);
 });
 
-test('production-compatible build renders production API into both enforced CSP surfaces', async () => {
+test('production-compatible build renders the reviewed production API into both enforced CSP surfaces', async () => {
   const output = await buildFrontend();
-  assertEnvironmentCsp(output, {
-    allowedApi: PRODUCTION_API,
-    forbiddenApi: STAGING_API,
-  });
+  assertProductionCsp(output);
 });
 
-test('fixed staging build renders staging API into both enforced CSP surfaces', async () => {
+test('explicit production build renders the same reviewed production API', async () => {
   const output = await buildFrontend({
-    CF_PAGES: '1',
-    CF_PAGES_BRANCH: CONTRACT.staging.pages_branch,
-    VITE_DEPLOY_ENV: 'staging',
-    VITE_API_URL: STAGING_API,
-    VITE_GOOGLE_CLIENT_ID: STAGING_CLIENT_ID,
+    VITE_DEPLOY_ENV: 'production',
+    VITE_API_URL: PRODUCTION_API,
+    VITE_GOOGLE_CLIENT_ID: PRODUCTION_CLIENT_ID,
   });
-  assertEnvironmentCsp(output, {
-    allowedApi: STAGING_API,
-    forbiddenApi: PRODUCTION_API,
-  });
+  assertProductionCsp(output);
 });
 
-test('CSP fix remains wired into Vite and does not bypass the existing environment validator', async () => {
+test('CSP wiring keeps non-main Pages builds fail-closed after staging retirement', async () => {
   const viteConfig = await readFile(new URL('../vite.config.js', import.meta.url), 'utf8');
   assert.match(viteConfig, /createFrontendCspPlugin/);
   assert.match(viteConfig, /validateFrontendEnvironment\(process\.env\)/);
@@ -145,9 +132,9 @@ test('CSP fix remains wired into Vite and does not bypass the existing environme
       env: cleanEnvironment({
         CF_PAGES: '1',
         CF_PAGES_BRANCH: 'feature/arbitrary-preview',
-        VITE_DEPLOY_ENV: 'staging',
-        VITE_API_URL: STAGING_API,
-        VITE_GOOGLE_CLIENT_ID: STAGING_CLIENT_ID,
+        VITE_DEPLOY_ENV: 'production',
+        VITE_API_URL: PRODUCTION_API,
+        VITE_GOOGLE_CLIENT_ID: PRODUCTION_CLIENT_ID,
       }),
       encoding: 'utf8',
       timeout: 120_000,
@@ -155,6 +142,6 @@ test('CSP fix remains wired into Vite and does not bypass the existing environme
   );
   await rm(previewOutput, { recursive: true, force: true });
 
-  assert.notEqual(result.status, 0, 'arbitrary Pages preview build must remain fail-closed');
-  assert.match(`${result.stdout}\n${result.stderr}`, /disabled except for the fixed staging branch/);
+  assert.notEqual(result.status, 0, 'non-main Pages build must remain fail-closed');
+  assert.match(`${result.stdout}\n${result.stderr}`, /non-main builds are disabled/);
 });
