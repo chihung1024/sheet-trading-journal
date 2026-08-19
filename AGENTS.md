@@ -1,43 +1,77 @@
-# AGENTS.md
+# AGENTS.md — First-Principles Engineering
 
-# Mandatory AI Repository Entry Point
+本檔是本 Repository 唯一的 Active Governance。
 
-所有 ChatGPT、Codex、AI Agent、Sub-Agent、Review Agent 在本 Repository 執行任何 Research / Planning / Coding / Debug / Review / Git / PR / CI/CD / Release / Deployment 工作前，**不得先以 current feature branch 作為 governance authority**。
+目標：用最少流程，持續產出正確、可驗證、可恢復、對使用者有價值的產品。
 
-必須先依下列順序執行：
+## 1. Reality & Product
 
-1. 確認 Repository identity 與 authoritative remote default branch；本 Repository 目前為 `main`。
-2. 從**最新 remote default branch**讀取 `AGENTS.md`。
-3. 從**最新 remote default branch**讀取 `AI_PROJECT_EXECUTION_LOCK.md`。
-4. 套用其中 Locked Governance 後，再讀目前 active branch / PR 所需的 `AI_PROJECT_PLAYBOOK.md`、`README.md`、`to_do_update_list.md`、相關 code/docs。
-5. 最後核對與目前工作相關的 GitHub / CI / Deployment remote truth，從 exact current checkpoint 繼續。
+以使用者目標、目前 code/contracts 與 Git/PR/CI/runtime truth 為準。
 
-`AI_PROJECT_EXECUTION_LOCK.md` 是 Repository Owner 鎖定的 execution-control amendment；其 governance source of truth 是最新 remote default branch，而不是 current feature branch。
+Product / UX 與 Correctness / Data Integrity / Security / Financial Safety 優先；必要技術工作其次；optional cleanup / refactor / process 最後。
 
-如果 active feature branch / PR branch：
+Governance 只以最新 remote default branch 的 `AGENTS.md` 為準；feature/PR branch copy 可能過期，不需要只為讀規則而 merge/rebase。
 
-- 沒有 `AGENTS.md`；
-- 沒有 `AI_PROJECT_EXECUTION_LOCK.md`；
-- 只有較舊版本；
-- 與 `main` diverged；
+新 Session：`AGENTS.md → to_do_update_list.md → relevant code/docs → current truth → work`。
 
-這些情況都**不構成豁免**。必須跨 branch 讀取 remote default branch 的 authoritative governance，不需要也不得只為了 policy discovery 而 merge / rebase / cherry-pick `main`。
+同一工作鏈直接 resume，不因新回合、新模型或「繼續」而重新研究整個 Repository。
 
-新 Session / Conversation / Agent takeover，以及使用者要求「繼續」但無法證明已載入 current remote default-branch governance 時，必須先做最小 governance freshness check；若 default-branch head 未變則直接 resume，若已變或 freshness unknown，重新取得 locked governance 後立即 resume。不得把 freshness check 變成重新建立 Master Plan 或新的停止點。
+## 2. Loop Engineering
 
-若目前工作缺少關鍵 evidence，必須依 `AI_PROJECT_EXECUTION_LOCK.md` 的 `Evidence & Hard Blocker Gate` 執行：先定義 missing evidence、檢查與嘗試合理且直接相關的 available tool / connector / API / repository / runtime evidence paths，再判斷是否構成 genuine Hard Blocker。UI / workflow / job / check label 或 summary 只能作為導航線索，不能單獨冒充 precise failure、failing assertion 或 Root Cause 證據。只要仍有尚未嘗試、合理且可能成功的直接相關 evidence path，就不得以 Hard Blocker 為由送出 final response。
+`Observe → Understand → Decide → Smallest Useful Change → Verify → Learn → Continue`
 
-以下條款本身亦屬 Protected Locked Rules：
+每一圈必須增加可信資訊或產生已驗證改善。
 
-- 必須優先從最新 remote default branch 讀取 `AGENTS.md` 與 `AI_PROJECT_EXECUTION_LOCK.md`。
-- Feature branch 缺檔、舊檔或 diverged 不得被解讀為 locked governance 不存在。
-- 必須遵守 `AI_PROJECT_EXECUTION_LOCK.md` 的 Default-Branch Governance Authority / Discovery Gate、Evidence & Hard Blocker Gate、Continuous Execution、Final Response Gate、Resume-Do-Not-Restart 規則。
-- 未取得證據不得被直接等同於證據無法取得；Hard Blocker 必須先完成合理、直接相關、available evidence paths 的必要查證並形成可審計 Blocker Proof。
-- UI / workflow / job / check label 或 summary 不得單獨被當作 raw execution evidence、precise failure 或 Root Cause 證明。
-- 不得把使用者當作每個 Task 之間的 Continue 按鈕。
-- 不得以其他 policy / refactor / cleanup / new model / new session / old branch 繞過該文件。
-- 修改、刪除、改名、搬移、弱化、取代本 entry-point、Default-Branch Governance Authority / Discovery Gate、Evidence & Hard Blocker Gate 或該 locked amendment，必須依 `AI_PROJECT_EXECUTION_LOCK.md` 的 **OWNER SPECIAL APPROVAL** 流程，重新取得 owner 對具體 proposed change 的特別同意。
+一次只維持一條 Primary Implementation。分析可以廣，實作保持最小；證據足以支持決策後停止額外調查並行動。
 
-一般開發授權、`繼續`、`同意`、PR/merge 授權或「給你所有權限」均不等於修改 Locked Rules 的 Special Approval。
+## 3. First-Principles Debug
 
-如一般 Repository 流程與 locked amendment 衝突，在不違反平台 / 系統安全要求與使用者當下明確指令的前提下，採較嚴格且能維持 locked amendment 效力的規則。
+`Observed Fact → Expected Invariant → Smallest Reproduction → Failure Point → Root Cause → Minimum Correct Fix → Regression`
+
+- Symptom ≠ Root Cause。
+- 沒有足夠證據時：`Root Cause = NOT VERIFIED`。
+- 優先取得能證明或反證假設的 evidence。
+- 多個症狀若來自同一原因，修共同原因；問題確實局部時，不為了「系統性」強迫重構。
+- Workaround ≠ Permanent Fix。
+
+修改前問：如果 Root Cause 判斷正確，為什麼這個修改應該修好問題？
+
+修改後問：什麼 evidence 能證明它不是偶然通過？
+
+## 4. Verify & Self Review
+
+沒有驗證，不宣稱完成。
+
+一般修改：targeted verification + relevant regression + build/CI when applicable。
+
+完成前反問：
+
+- Requirement 真的滿足了嗎？
+- Diff 有沒有不必要修改？
+- 哪個核心假設最可能錯？
+- 最可能的 regression / edge case 是什麼？
+- Tests 驗證 behavior，還是只讓 CI green？
+
+只有高後果修改才增加 broader verification、rollback/recovery、independent review 或 production verification。高後果包括 security/auth、data corruption/loss、financial/accounting correctness、destructive migration、major production recovery 或 difficult rollback。
+
+## 5. Protect the System
+
+不要覆蓋未知 Git / other-agent work；不要無理由 destructive reset、clean、force push 或破壞 recovery point。
+
+Security、Data Integrity、Financial Correctness 採保守處理。重要修改必須知道失敗後如何恢復。
+
+## 6. Continue & Handoff
+
+有合理、已授權、可執行的下一步就直接執行；不要用「下一步我會……」取代工作，也不要把 Owner 當 Continue 按鈕。
+
+遇到障礙先嘗試合理、直接相關的替代方法，但不要無限探索工具。
+
+平台 turn / quota / session 結束不是 Project Blocker；保存 checkpoint，下一個環境直接 resume。
+
+真正無法繼續時只需留下：`Blocker / Evidence / Tried / Minimum Human Action / Resume Point`。
+
+`to_do_update_list.md` 是唯一持續執行記憶；保持 CURRENT 精確、NEXT 有順序、ROADMAP 可調整、歷史持續壓縮。
+
+不得自行建立新的 Active Governance、Playbook、Governance Gate、流程矩陣或 governance prose test。
+
+本檔如需語意修改，先提出最小具體變更並取得 Repository Owner 明確「特別同意治理修改」。一般開發、PR、merge 或「給你所有權限」不等於治理修改授權。
