@@ -5,24 +5,28 @@ Last updated: **2026-08-19 Asia/Taipei**
 ## CURRENT
 
 **Project status**
-- **DEVELOPMENT FROZEN**.
+- **DEVELOPMENT FROZEN / TERMINAL CLEANUP COMPLETE**.
 - Product feature development has stopped at the retained current-version behavior.
 - There is no active feature roadmap, staging program, audit/evidence program or deployment-control project.
-- A minimal `Terminal Integrity` workflow remains because `main` repository rules require three status checks; it is a branch-safety constraint, not an active development program.
+- A minimal `Terminal Integrity` workflow remains because `main` repository rules require three exact status checks; it is a branch-safety constraint, not an active development program.
 
 **Recovery checkpoints**
 - Pre-cleanup recovery branch: `release/terminal-pre-cleanup-2026-08-19`.
 - Frozen pre-cleanup main SHA: `4377a6c92b95a9f253c4c893e944f9060f954a4f`.
-- Final terminal recovery branch is created after the cleanup PR is merged and must point to the resulting `main` SHA.
+- Terminal cleanup PR #392 merged at `9ddb5547bcba7f6622772d89d3cb1b41b11859b5`.
+- Final terminal recovery branch: `release/terminal-final-2026-08-19`. After this closeout is merged it must be fast-forwarded to the final `main` SHA and then left unchanged.
 
 **Validation evidence**
 - Last full test-suite validation baseline: `00becc3157d5be65076a6adadd50fc8e0b4fb93b`.
 - CI run #1406 passed Python runtime tests, Worker runtime tests, Worker production contract verification, local D1 migration/schema verification, frontend runtime tests and the production frontend build.
-- The full tests/dev harness was then removed. The retained thin `Terminal Integrity` workflow only enforces the three status contexts required by repository rules: Python compile integrity, Worker parse/production-contract integrity and frontend production build integrity.
+- The full tests/dev harness was then removed.
+- Terminal Integrity run #1409 passed the exact `main-protection-v5` status contexts required for merge: `Python tests`, `Worker security and deployment tests`, and `Frontend contracts and build`.
+- The retained thin `Terminal Integrity` workflow now enforces those same required contexts using Python compile integrity, Worker parse/production-contract integrity and frontend production build integrity.
 
 **Closed active development**
 - PR #387 — closed without merge; UX-R1.3–R1.8 are not active work.
 - Issue #97 — closed `not planned`; staging Worker/D1 development is not active work.
+- PR #392 — merged; repository terminal cleanup is complete.
 
 **Retained product boundary**
 - Preserve current Overview, Charts, Holdings, Records, Dividends, Cash and Groups behavior.
@@ -50,8 +54,8 @@ Last updated: **2026-08-19 Asia/Taipei**
 - [x] Complete full runtime/build/schema validation before removing the full validation harness.
 - [x] Remove the test suite, pytest/dev requirements and test-only schema tooling.
 - [x] Replace the large CI harness with the smallest workflow that satisfies mandatory `main` status checks.
-- [ ] Merge terminal-cleanup PR to `main`.
-- [ ] Create `release/terminal-final-2026-08-19` at the merged terminal `main` SHA.
+- [x] Merge terminal-cleanup PR #392 to `main` through the protected-main rule path.
+- [x] Create `release/terminal-final-2026-08-19`; fast-forward it once to this final closeout `main`, then freeze it.
 
 ## EXTERNAL ACCOUNT CLEANUP STILL REQUIRES LIVE ACCOUNT AUTHORITY
 
