@@ -1,10 +1,11 @@
 # AI_PROJECT_EXECUTION_LOCK.md
 
-# AI 持續執行鐵律 — Owner-Locked Amendment V1.1
+# AI 持續執行鐵律 — Owner-Locked Amendment V1.1.1
 
 Status: **LOCKED / ACTIVE**  
 Owner authorization: **2026-08-19**  
 V1.1 special approval: **2026-08-19 — Default-Branch Governance Authority / Discovery Gate**  
+V1.1.1 special approval: **2026-08-19 — Evidence & Hard Blocker Gate**  
 Scope: ChatGPT / Codex / AI Agents / Sub-Agents / Review Agents / automated coding workflows working on this Repository.
 
 ---
@@ -159,6 +160,113 @@ check default-branch head
 
 ---
 
+# 0B. Evidence & Hard Blocker Gate — 未取得證據不等於證據無法取得
+
+本 Gate 解決以下系統性失效：
+
+```text
+第一條 evidence path 失敗或回傳不完整
+→ Agent 將「尚未取得 evidence」誤判為「evidence 無法取得」
+→ 過早宣告 Hard Blocker
+→ 用 final response 停止
+→ 使用者再次成為 Continue / Tool Discovery 按鈕
+```
+
+核心原則：
+
+> **「尚未取得證據」不等於「證據無法取得」；只有後者在完成合理工具能力與替代路徑查證後，才有資格構成 Hard Blocker。**
+
+## 0B.1 Blocker Exhaustion — 先確認合理可用路徑，再宣告阻塞
+
+當目前 Task 缺少關鍵 evidence 時，Agent 必須先：
+
+1. 明確指出缺少的 evidence 是什麼；
+2. 檢查目前已提供 / 可 discovery 的工具能力中，哪些路徑與該 evidence **直接相關且合理可能成功**；
+3. 依風險與成本嘗試這些合理、直接相關、目前可用的路徑；
+4. 記錄每條已嘗試路徑的 exact result / error；
+5. 確認不存在仍未嘗試、合理且可能取得該 evidence 的可用路徑後，才可考慮 Hard Blocker。
+
+只要仍存在一條尚未嘗試、合理且直接相關的 available tool / connector / API / repository / runtime evidence path：
+
+```text
+Hard Blocker = FALSE
+Final Response Gate = CLOSED
+```
+
+不得因第一條工具呼叫失敗、摘要資訊不足、目前 schema 未載入、或尚未做 capability discovery，就宣告「工具拿不到」。
+
+## 0B.2 Evidence Hierarchy — Label / Summary 只能導航，不能冒充原始證據
+
+以下資訊可用於定位問題，但**不得單獨作為 precise failure、failing assertion、Failure Point 或 Root Cause 的證據**：
+
+- UI label
+- workflow name
+- job name
+- check name
+- step title
+- category / badge
+- summary / high-level status
+- 其他未包含原始執行內容的顯示名稱
+
+需要判定精確失敗內容時，應優先取得可直接支持結論的 raw / structured execution evidence，例如：
+
+- test output
+- assertion body
+- expected / actual
+- stack trace
+- stderr / stdout
+- runtime / application log
+- structured API response
+- artifact 內容
+- source / contract / test trace
+
+若目前只有 label / summary，正確分類是：
+
+```text
+Failure category / navigation clue = AVAILABLE
+Precise failing evidence           = NOT VERIFIED
+Root Cause                         = NOT VERIFIED
+```
+
+不得把 job / check / workflow 名稱直接映射成同名 test suite 已失敗，或以名稱相似性代替 raw evidence。
+
+## 0B.3 Blocker Proof — Hard Blocker 必須可審計
+
+任何 Hard Tool / Permission / External Blocker 在允許 final response 前，至少必須留下：
+
+```text
+Missing Evidence
+Attempted Path 1 → exact result / error
+Attempted Path 2 → exact result / error（如適用）
+Relevant Available Tool Capabilities Checked
+Remaining Reasonable Paths
+Why Remaining Paths Cannot Resolve The Missing Evidence
+Why AI / Existing Tools Cannot Continue
+Minimum Owner / Human Action Required（如適用）
+Exact Resume Checkpoint
+```
+
+若 `Remaining Reasonable Paths` 仍存在尚未嘗試且合理可能成功的項目，則 Blocker Proof 不成立。
+
+「沒有在目前回應中看到 raw log」、「第一個 connector action 沒回 stderr」、「目前只有 summary」、「我還不知道哪個 function 能取到」本身都不是 Hard Blocker 證明。
+
+## 0B.4 Narrow Execution — 不得把 Blocker Exhaustion 變成無限工具探索
+
+`Blocker Exhaustion` 的要求是窮盡 **reasonable, directly relevant, available paths**，不是窮盡所有 imaginable paths。
+
+因此：
+
+- 不需要研究與缺失 evidence 無直接關係的第三方平台；
+- 不需要因為存在理論上的遠端替代方案而無限延長 investigation；
+- 一旦取得足以支持下一個 Root Cause / implementation decision 的 authoritative evidence，就應停止工具探索並回到主線；
+- 若所有合理、直接相關、目前可用的路徑都已有 exact failure evidence，才可收斂為 genuine Hard Blocker。
+
+此 Gate 強化的是 evidence discipline 與 blocker quality，不授權擴大 Primary Goal、跨越 Scope Lock、執行高風險 workaround，或繞過既有 Security / Data Integrity / Review Gate。
+
+未來若要修改、弱化、刪除、繞過、改名、取代或重新解釋本 `0B` Gate，與修改本文件其他 Protected Locked Rules 相同，**必須再次取得 Repository Owner 對具體 proposed change 的新一輪特別同意**。
+
+---
+
 # 1. Continuous Execution Rule — 持續執行為預設
 
 當使用者已授權一個 Primary Goal、Phase、Batch 或明確要求「繼續／持續開發」時：
@@ -225,7 +333,9 @@ AI 必須知道：
 
 ## C. Hard Tool / Permission / External Blocker
 
-已經有證據證明目前工具、權限或外部系統使工作無法繼續，且已嘗試合理替代路徑仍不能完成。
+已依 `0B Evidence & Hard Blocker Gate` 明確定義 missing evidence、完成合理且直接相關的可用工具能力查證與替代路徑嘗試，並以可審計 Blocker Proof 證明目前工具、權限或外部系統確實使工作無法繼續。
+
+只要仍存在尚未嘗試、合理且可能成功的 available evidence path，就不符合本停止條件。
 
 ## D. User Explicitly Requests Stop / Pause / Status-Only
 
@@ -317,24 +427,32 @@ Next Executable Action
 
 # 5. Blocker Quality Gate — 要求使用者介入前的最低證據
 
+在套用本 Gate 前，必須先滿足 `0B Evidence & Hard Blocker Gate`。若合理、直接相關且目前可用的 evidence path 尚未完成必要嘗試，不得進入 Human Action / Hard Blocker 停止流程。
+
 若要停止並要求使用者處理，必須一次說清楚：
 
 ```text
 1. Blocker 是什麼
-2. Evidence 是什麼
-3. 已嘗試哪些替代方法
-4. 為何 AI / 現有工具確實無法自行完成
-5. 使用者最少需要做什麼
-6. 在哪個畫面 / 系統操作
-7. 每一步按什麼 / 輸入什麼
-8. 完成後應回報什麼可驗證結果
-9. AI 收到結果後會從哪個 exact checkpoint 繼續
+2. Missing Evidence 是什麼
+3. Evidence 是什麼
+4. 已嘗試哪些合理、直接相關的替代方法，以及各自 exact result / error
+5. 已檢查哪些 relevant available tool capabilities
+6. 為何剩餘合理路徑無法解決 missing evidence
+7. 為何 AI / 現有工具確實無法自行完成
+8. 使用者最少需要做什麼
+9. 在哪個畫面 / 系統操作
+10. 每一步按什麼 / 輸入什麼
+11. 完成後應回報什麼可驗證結果
+12. AI 收到結果後會從哪個 exact checkpoint 繼續
 ```
 
 以下理由本身不足以要求使用者介入：
 
 - 「我不確定」但尚未查證
 - 「可能需要登入」但尚未嘗試可用 connector / API / alternate path
+- 「第一條 evidence path 沒有回完整內容」
+- 「目前只有 UI / workflow / job / check summary」
+- 「我還不知道哪個 tool function 可以取得 raw evidence」但尚未做相關 capability discovery
 - 「下一步比較適合你做」
 - 「需要你確認我可以繼續」但該權限早已授予
 - 「我先停在這裡」
@@ -477,6 +595,22 @@ Owner special approval source: user message dated **2026-08-19 Asia/Taipei**:
 
 Authorized scope is limited to the seven approved discovery/source-of-truth rules embodied in section `0A` and the minimum corresponding entry-point references required in `AGENTS.md` / section `4` / Protected Locked Rules wording.
 
+### Approved Amendment Record — V1.1.1
+
+Owner special approval source: user message dated **2026-08-19 Asia/Taipei**, sent in direct response to the immediately preceding concrete proposal for the minimal `Evidence & Hard Blocker Gate` amendment:
+
+> `請修改，給你權限`
+
+This authorization is specific to the proposed V1.1.1 governance patch that adds:
+
+1. `Blocker Exhaustion` for reasonable, directly relevant, available evidence paths;
+2. `Evidence Hierarchy` preventing UI / workflow / job / check labels from being treated as raw failure or Root Cause proof;
+3. auditable `Blocker Proof` before Hard Blocker / human intervention may stop execution;
+4. the narrow-execution safeguard that prevents blocker exhaustion from becoming unlimited tool exploration;
+5. the minimum corresponding references in Final Response Gate, Blocker Quality Gate, Enforcement Summary, and `AGENTS.md`.
+
+This approval does not authorize unrelated governance rewrites, feature changes, CI weakening, or runtime changes.
+
 ---
 
 # 9. Governance Change Isolation
@@ -514,12 +648,23 @@ Do not final merely to describe the next action.
 ```
 
 ```text
-Need user intervention?
+Missing critical evidence?
 YES
 ↓
-Prove the blocker first.
-Give exact minimal steps.
-Resume from exact checkpoint afterward.
+Define the missing evidence.
+Check relevant available tool capabilities.
+Exhaust reasonable, directly relevant, available evidence paths.
+Treat labels / summaries as navigation clues, not raw proof.
+Return to Root Cause execution once evidence is sufficient.
+```
+
+```text
+Need user intervention or want to declare Hard Blocker?
+YES
+↓
+Produce auditable Blocker Proof first.
+If any reasonable directly relevant available path remains untried, Hard Blocker = FALSE.
+Only a proven blocker may open the Final Response Gate.
 ```
 
 ```text
@@ -534,6 +679,12 @@ Only then may write.
 核心鐵律：
 
 > **治理先從最新 remote default branch 載入；feature branch 缺檔不代表沒有規則。**
+>
+> **未取得證據，不等於證據無法取得。**
+>
+> **UI / workflow / job / check label 只能導航，不能冒充 raw failure evidence。**
+>
+> **合理且直接相關的可用 evidence path 尚未嘗試完之前，不得宣告 Hard Blocker。**
 >
 > **不要把「下一步」當成果。**
 >
