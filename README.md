@@ -12,15 +12,22 @@ The current application includes:
 - overview, charts and holdings;
 - transaction create/edit/delete and Records search/filter/pagination;
 - the currently exposed IBKR trade import flow;
-- Backup JSON export;
+- Backup JSON export plus the currently exposed broker-neutral CSV and Journal Restore flows;
 - dividends, cash and strategy groups;
 - manual and scheduled portfolio recalculation;
 - PWA/service-worker behavior and runtime integrity/self-recovery required by those flows.
 
+Current portfolio terminology is intentionally precise:
+
+- 持倉市值（Securities Market Value；目前不含未建模的現金部位）
+- 未實現報酬率（Unrealized Return；未實現損益 ÷ 目前持倉成本）
+
+Do not reinterpret `total_value` as cash-inclusive NAV unless the financial model itself is deliberately changed and revalidated.
+
 ## Runtime
 
 - Frontend: Vue 3, Pinia, Vite (`src/`, `public/`, `index.html`).
-- Worker/API: Cloudflare Worker (`worker-entry.js`, `worker.js`, retained Worker modules).
+- Worker/API: Cloudflare Worker (`worker-entry.js`, `worker.js`, retained Worker modules including current Journal Restore handling).
 - Data: Cloudflare D1 through Worker binding `DB`.
 - Calculation engine: `main.py` and `journal_engine/`.
 - Hosted calculation runner: `tools/run_portfolio_update.py`.

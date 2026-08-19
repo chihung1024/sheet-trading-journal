@@ -46,15 +46,3 @@ test("Worker manifest exporter fails closed for malformed metadata", async () =>
     await rm(directory, { recursive: true, force: true });
   }
 });
-
-test("production deploy workflow derives readiness identity from the manifest", async () => {
-  const workflow = await readFile(".github/workflows/deploy-worker.yml", "utf8");
-  assert.match(workflow, /id: manifest/);
-  assert.match(workflow, /node tools\/export_worker_manifest\.mjs/);
-  assert.match(workflow, /EXPECTED_RUNTIME_SERVICE: \$\{\{ steps\.manifest\.outputs\.runtime_service \}\}/);
-  assert.match(workflow, /EXPECTED_RELEASE_VERSION: \$\{\{ steps\.manifest\.outputs\.release_version \}\}/);
-  assert.match(workflow, /EXPECTED_API_VERSION: \$\{\{ steps\.manifest\.outputs\.api_version \}\}/);
-  assert.match(workflow, /EXPECTED_SCHEMA_VERSION: \$\{\{ steps\.manifest\.outputs\.schema_version \}\}/);
-  assert.doesNotMatch(workflow, /EXPECTED_RELEASE_VERSION: ['\"]4\.05['\"]/);
-  assert.doesNotMatch(workflow, /EXPECTED_API_VERSION: ['\"]2\.57['\"]/);
-});

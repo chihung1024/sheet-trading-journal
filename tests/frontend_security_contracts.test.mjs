@@ -4,14 +4,42 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const STORAGE_BASELINE_PATH = path.join(ROOT, 'docs', 'governance', 'browser-storage-baseline.json');
-const RISK_REGISTER_PATH = path.join(ROOT, 'docs', 'governance', 'risk-register.json');
 const DEPLOYMENT_CONTRACT_PATH = path.join(ROOT, 'config', 'deployment-environments.json');
 const DEPLOYMENT_CONTRACT = JSON.parse(fs.readFileSync(DEPLOYMENT_CONTRACT_PATH, 'utf8'));
 const PRODUCTION_WORKER_URL = DEPLOYMENT_CONTRACT.production.api_origins[0];
 const CSP_API_ORIGIN_TOKEN = '__TRADING_JOURNAL_API_ORIGIN__';
+
+// Terminal runtime contract. This inventory intentionally lives with the test instead
+// of active-development governance documents. These browser values are non-authoritative;
+// server/D1 state remains authoritative for financial data.
+const STORAGE_BASELINE = {
+  keys: [
+    { key: 'automatic_recalculation_clean.v1', owner_paths: ['src/services/automaticRecalculationState.js', 'src/services/projectStorage.js'] },
+    { key: 'automatic_recalculation_coverage.v1.', owner_paths: ['src/services/automaticRecalculationState.js', 'src/services/projectStorage.js'] },
+    { key: 'automatic_recalculation_dirty.v1', owner_paths: ['src/services/automaticRecalculationState.js', 'src/services/projectStorage.js', 'src/stores/portfolio.js'] },
+    { key: 'broker_mapping_presets.v1.', owner_paths: ['src/services/brokerNeutralMappingPresets.js', 'src/services/projectStorage.js'] },
+    { key: 'cached_records', owner_paths: ['src/services/projectStorage.js'] },
+    { key: 'calculation_failure_recovery.v1', owner_paths: ['src/services/calculationFailureRecovery.js', 'src/services/projectStorage.js'] },
+    { key: 'confirmed_dividend_keys', owner_paths: ['src/components/DividendManager.vue', 'src/services/projectStorage.js'] },
+    { key: 'email', owner_paths: ['src/stores/auth.js', 'src/services/projectStorage.js'] },
+    { key: 'name', owner_paths: ['src/stores/auth.js', 'src/services/projectStorage.js'] },
+    { key: 'pending_calculation_request', owner_paths: ['src/services/calculationJobState.js', 'src/services/projectStorage.js', 'src/stores/portfolio.js'] },
+    { key: 'pending_calculation_request.v2.', owner_paths: ['src/services/calculationJobState.js', 'src/services/projectStorage.js', 'src/stores/portfolio.js'] },
+    { key: 'pending_cash_create.v1.', owner_paths: ['src/services/cashCreateIntent.js', 'src/services/projectStorage.js'] },
+    { key: 'pending_journal_restore.v1.', owner_paths: ['src/services/journalRestoreIntent.js', 'src/services/projectStorage.js'] },
+    { key: 'pending_record_create.v1.', owner_paths: ['src/services/recordCreateIntent.js', 'src/services/projectStorage.js'] },
+    { key: 'record_mutation_barrier.v1', owner_paths: ['src/services/recordCreateIntent.js', 'src/services/projectStorage.js'] },
+    { key: 'sheet_trading_journal.activeView', owner_paths: ['src/App.vue'] },
+    { key: 'sheet_trading_journal.calculation_poll_claim.', owner_paths: ['src/services/calculationJobPollClaim.js'] },
+    { key: 'sheet_trading_journal.market_refresh_leader.', owner_paths: ['src/services/marketRefreshLeadership.js'] },
+    { key: 'sheet_trading_journal.market_refresh_pause.', owner_paths: ['src/services/marketRefreshLeadership.js'] },
+    { key: 'theme', owner_paths: ['src/composables/useDarkMode.js', 'index.html'] },
+    { key: 'token', owner_paths: ['src/stores/auth.js', 'src/services/projectStorage.js'] },
+    { key: 'user_benchmark', owner_paths: ['src/stores/portfolio.js', 'src/services/projectStorage.js'] },
+  ],
+  known_global_clear: { count: 0, owner_path: null },
+};
 
 function walkFiles(directory) {
   const files = [];
@@ -49,22 +77,16 @@ function discoverStorageKeys() {
   return [...keys].sort();
 }
 
-test('browser persistence matches the reviewed inventory exactly', () => {
-  const baseline = JSON.parse(read(STORAGE_BASELINE_PATH));
-  const expected = baseline.keys.map((entry) => entry.key).sort();
+test('browser persistence matches the terminal inventory exactly', () => {
+  const expected = STORAGE_BASELINE.keys.map((entry) => entry.key).sort();
   const discovered = discoverStorageKeys();
 
   assert.deepEqual(discovered, expected);
   assert.equal(new Set(expected).size, expected.length, 'Storage keys must be unique');
-  assert.ok(baseline.keys.every((entry) => entry.authoritative === false));
 
-  const riskIds = new Set(JSON.parse(read(RISK_REGISTER_PATH)).risks.map((risk) => risk.id));
-  for (const entry of baseline.keys) {
-    assert.ok(entry.key && entry.classification && entry.target_batch && entry.planned_action);
+  for (const entry of STORAGE_BASELINE.keys) {
+    assert.ok(entry.key);
     assert.ok(Array.isArray(entry.owner_paths) && entry.owner_paths.length > 0);
-    assert.ok(Array.isArray(entry.risk_ids));
-    for (const riskId of entry.risk_ids) assert.ok(riskIds.has(riskId), `Unknown risk ${riskId}`);
-
     const ownerText = entry.owner_paths
       .map((ownerPath) => read(path.join(ROOT, ownerPath)))
       .join('\n');
@@ -72,8 +94,7 @@ test('browser persistence matches the reviewed inventory exactly', () => {
   }
 });
 
-test('global localStorage clearing matches the reviewed debt baseline', () => {
-  const baseline = JSON.parse(read(STORAGE_BASELINE_PATH));
+test('global localStorage clearing remains absent', () => {
   const owners = [];
 
   for (const filePath of browserFiles) {
@@ -82,13 +103,9 @@ test('global localStorage clearing matches the reviewed debt baseline', () => {
     for (let index = 0; index < count; index += 1) owners.push(relative(filePath));
   }
 
-  assert.equal(owners.length, baseline.known_global_clear.count);
-  if (baseline.known_global_clear.count === 0) {
-    assert.deepEqual(owners, []);
-    assert.equal(baseline.known_global_clear.owner_path, null);
-  } else {
-    assert.deepEqual([...new Set(owners)], [baseline.known_global_clear.owner_path]);
-  }
+  assert.equal(owners.length, STORAGE_BASELINE.known_global_clear.count);
+  assert.deepEqual(owners, []);
+  assert.equal(STORAGE_BASELINE.known_global_clear.owner_path, null);
 });
 
 test('full transaction records are not written to browser storage', () => {
