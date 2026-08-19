@@ -2,9 +2,6 @@
   "schema_version": 1,
   "main_branch": "main",
   "allowed_deploy_environments": [
-    "development",
-    "test",
-    "staging",
     "production"
   ],
   "production": {
@@ -21,24 +18,5 @@
     "d1_identity_status": "verified",
     "d1_database_name": "journal-db",
     "d1_database_id_sha256": "dd4bbbbedc4fc1329eec01ae5dff9677df9fc4e703ef6e9ebecb9da04cb390c3"
-  },
-  "staging": {
-    "pages_branch": "staging",
-    "frontend_origin": "https://staging.sheet-trading-journal.pages.dev",
-    "api_origin": "https://journal-backend-staging.chired.workers.dev",
-    "deploy_environment": "staging",
-    "d1_database_name": "trading-journal-staging"
-  },
-  "non_production": {
-    "allowed_deploy_environments": [
-      "staging"
-    ],
-    "require_explicit_api_origin": true,
-    "require_explicit_google_client_id": true,
-    "require_https": true,
-    "forbid_localhost": true,
-    "forbid_production_api_origins": true,
-    "forbid_production_google_client_ids": true,
-    "allow_arbitrary_pages_branches": false
   }
 }

@@ -27,13 +27,8 @@ function normalizeHttpOrigin(rawValue, label) {
 }
 
 export function resolveFrontendCspApiOrigin(source = process.env) {
-  const environment = validateFrontendEnvironment(source);
+  validateFrontendEnvironment(source);
   const explicitApiUrl = readValue(source, 'VITE_API_URL');
-
-  if (environment.context === 'pages-staging' || environment.context === 'staging') {
-    return DEPLOYMENT_CONTRACT.staging.api_origin;
-  }
-
   const productionFallback = DEPLOYMENT_CONTRACT.production.api_origins[0];
   return normalizeHttpOrigin(
     explicitApiUrl || productionFallback,
