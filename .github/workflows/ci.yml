@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   python-runtime:
-    name: Python runtime tests
+    name: Python tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -35,7 +35,7 @@ jobs:
         run: python -m compileall -q journal_engine main.py tools/run_portfolio_update.py
 
   worker-runtime:
-    name: Worker runtime tests
+    name: Worker security and deployment tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -56,7 +56,7 @@ jobs:
         run: npm run worker:config:check
 
   frontend-runtime:
-    name: Frontend runtime tests and build
+    name: Frontend contracts and build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
