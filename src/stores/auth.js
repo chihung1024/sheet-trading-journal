@@ -42,7 +42,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   const login = async (googleCredential, { signal = null } = {}) => {
     try {
-      console.log('🔄 正在驗證 Google 憑證...');
       const authenticated = await exchangeGoogleCredential(googleCredential, {
         apiBaseUrl: CONFIG.API_BASE_URL,
         signal,
@@ -56,7 +55,6 @@ export const useAuthStore = defineStore('auth', () => {
         email: persisted.user.email,
       };
 
-      console.log('✅ 登入成功，認證狀態已保存');
       return true;
     } catch (error) {
       console.error('❌ 登入過程出錯:', error);
@@ -96,7 +94,6 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (change.kind === AUTH_STORAGE_EVENT_KIND.SIGNED_OUT) {
       clearInMemoryAuthState();
-      console.log('✅ 已同步其他分頁的登出狀態');
       return;
     }
 
@@ -114,13 +111,11 @@ export const useAuthStore = defineStore('auth', () => {
         email: change.email,
         picture: typeof change.claims?.picture === 'string' ? change.claims.picture : user.value.picture,
       };
-      console.log('✅ 已同步其他分頁更新的認證 Token');
       return;
     }
 
     if (change.kind === AUTH_STORAGE_EVENT_KIND.SESSION_CHANGED) {
       clearInMemoryAuthState();
-      console.log('🔄 偵測到其他分頁切換登入工作階段，重新載入以重建租戶資料');
       globalThis.location?.reload?.();
     }
   };
@@ -144,7 +139,6 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (error) {
       console.warn('⚠️ 部分本機專案狀態清除失敗:', error);
     }
-    console.log('✅ 已登出');
     location.reload();
   };
 
@@ -180,7 +174,6 @@ export const useAuthStore = defineStore('auth', () => {
         picture: typeof claims.picture === 'string' ? claims.picture : '',
       };
 
-      console.log('✅ 已從 localStorage 恢復認證狀態');
       return true;
     } catch (error) {
       console.warn('⚠️ 儲存的認證狀態無效，將清除:', error);

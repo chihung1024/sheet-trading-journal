@@ -16,7 +16,6 @@ const STATIC_ASSETS = [
 
 // 1. 安裝階段：預先快取核心檔案
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing new version...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
@@ -29,7 +28,6 @@ self.addEventListener('install', (event) => {
 
 // 2. 激活階段：清理舊快取
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating & cleaning old caches...');
   const currentCaches = [CACHE_NAME, RUNTIME_CACHE, FONT_CACHE];
   
   event.waitUntil(
@@ -37,7 +35,6 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (!currentCaches.includes(cacheName)) {
-            console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })

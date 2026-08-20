@@ -162,14 +162,12 @@ export function useMarketHoursRefresh() {
                 running: isRunning.value,
             })
         ) {
-            console.log('⏸️ [盤中刷新] 目前條件不允許刷新，跳過此次更新');
             return false;
         }
 
         if (automatic) {
             const claimed = await leadership?.claimAutomaticAction(INTERVAL_MS);
             if (!claimed) {
-                console.log('🔗 [盤中刷新] 其他分頁或共享暫停狀態已阻止本次自動刷新');
                 return false;
             }
 
@@ -188,7 +186,6 @@ export function useMarketHoursRefresh() {
         isRunning.value = true;
         lastTriggerTime.value = new Date();
         const market = currentMarket.value === 'TW' ? '台股' : '美股';
-        console.log(`🚀 [盤中刷新] ${market}盤中，觸發 triggerUpdate...`);
 
         let timeoutId = null;
         try {
@@ -197,7 +194,6 @@ export function useMarketHoursRefresh() {
             });
             const updatePromise = portfolioStore.triggerUpdate();
             await Promise.race([updatePromise, timeoutPromise]);
-            console.log('✅ [盤中刷新] triggerUpdate 完成');
             return true;
         } catch (error) {
             if (error?.message === 'TIMEOUT') {
@@ -221,7 +217,6 @@ export function useMarketHoursRefresh() {
         }
         if (refreshTimer) return true;
 
-        console.log(`📈 [盤中刷新] 本分頁取得${currentMarket.value === 'TW' ? '台股' : '美股'}自動刷新 leadership`);
         updateNextTriggerTime();
         startCountdown();
 
@@ -329,7 +324,6 @@ export function useMarketHoursRefresh() {
 
     const startMarketRefresh = () => {
         if (!checkTimer) {
-            console.log('✨ [盤中刷新] 系統已啟動，每分鐘檢查自動刷新資格');
             checkTimer = setInterval(() => {
                 void syncLeadership();
             }, 60 * 1000);
@@ -380,7 +374,6 @@ export function useMarketHoursRefresh() {
             checkTimer = null;
         }
         stopLeadership();
-        console.log('🚦 [盤中刷新] 系統已關閉');
     };
 
     const handleVisibilityChange = () => {
@@ -392,7 +385,6 @@ export function useMarketHoursRefresh() {
     };
 
     const manualTrigger = () => {
-        console.log('🔧 [盤中刷新] 手動觸發更新');
         void triggerRefresh({ automatic: false });
     };
 

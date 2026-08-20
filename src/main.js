@@ -90,4 +90,3 @@ installDataReadSelfRecovery({
 // 3. 掛載 Vue 應用程式
 app.mount('#app');
 
-console.log('🚀 Trading Journal PRO (UI Optimized) 已啟動');

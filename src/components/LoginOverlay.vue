@@ -79,7 +79,6 @@ const handleCredentialResponse = async (response) => {
     return;
   }
 
-  console.log('🔐 收到 Google 憑證');
   try {
     await authStore.login(credential);
   } catch (err) {
@@ -93,7 +92,6 @@ const handleCredentialResponse = async (response) => {
   // Authentication has already succeeded. A subsequent portfolio-load failure is
   // a data/connectivity problem and must not be relabeled as a login failure.
   // Normal unmount after the token is set must not cancel the accepted login flow.
-  console.log('🎉 登入成功，開始載入數據...');
   try {
     await portfolioStore.fetchAll();
   } catch (err) {
@@ -130,7 +128,6 @@ const initGoogleSignIn = () => {
     });
 
     isGoogleInitialized = true;
-    console.log('✅ Google 登入按鈕已渲染');
     return true;
   } catch (err) {
     if (isActive) {
