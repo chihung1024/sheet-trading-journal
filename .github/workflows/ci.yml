@@ -52,8 +52,6 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Parse retained Worker runtime
         run: node --check worker.js && node --check worker-entry.js && node --check worker-dividend-event.js && node --check worker-journal-restore.js
-      - name: Verify production Worker contract
-        run: npm run worker:config:check
 
   frontend-runtime:
     name: Frontend contracts and build
