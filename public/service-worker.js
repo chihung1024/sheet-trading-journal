@@ -10,18 +10,11 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    try {
-      const cacheNames = await caches.keys();
-      await Promise.allSettled(
-        cacheNames.map((cacheName) => caches.delete(cacheName))
-      );
-    } finally {
-      try {
-        await self.clients.claim();
-      } catch {
-        // A failed claim must not prevent registration removal.
-      }
-      await self.registration.unregister();
-    }
+    const cacheNames = await caches.keys().catch(() => []);
+    await Promise.all(
+      cacheNames.map((cacheName) => caches.delete(cacheName).catch(() => false))
+    );
+    await self.clients.claim().catch(() => false);
+    await self.registration.unregister().catch(() => false);
   })());
 });
