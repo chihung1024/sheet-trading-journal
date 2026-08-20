@@ -16,7 +16,7 @@ keep_vars = false
 binding = "CF_VERSION_METADATA"
 
 [secrets]
-required = ["API_SECRET"]
+required = ["API_SECRET", "GITHUB_TOKEN"]
 
 [vars]
 SOURCE_COMMIT = "development"
