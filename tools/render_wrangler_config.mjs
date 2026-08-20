@@ -73,7 +73,11 @@ requireExact(config, 'main = "worker-entry.js"', "production Worker entry point"
 requireExact(config, "workers_dev = true", "production workers.dev endpoint");
 requireExact(config, "preview_urls = false", "disabled Worker preview URLs");
 requireExact(config, "keep_vars = false", "Wrangler source-of-truth variable policy");
-requireExact(config, 'required = ["API_SECRET"]', "required production API secret declaration");
+requireExact(
+  config,
+  'required = ["API_SECRET", "GITHUB_TOKEN"]',
+  "required production API secret declarations",
+);
 requireExact(
   config,
   `ALLOWED_ORIGINS = "${expectedAllowedOrigins}"`,
