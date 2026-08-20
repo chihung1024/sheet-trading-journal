@@ -21,7 +21,6 @@ const DEFAULT_GOOGLE_CLIENT_ID =
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://sheet-trading-journal.pages.dev",
-  "https://chihung1024.github.io",
 ];
 
 const CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];

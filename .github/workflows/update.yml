@@ -1,9 +1,6 @@
 name: Update Portfolio Data
 
 on:
-  push:
-    branches:
-      - main
   schedule:
     # Cron uses UTC; comments show Taiwan time (UTC+8).
     - cron: '0 23 * * *'     # 07:00 - morning refresh
@@ -25,8 +22,6 @@ on:
 
 permissions:
   contents: read
-  pages: read
-  statuses: write
 
 concurrency:
   group: portfolio-update
@@ -34,26 +29,7 @@ concurrency:
   queue: max
 
 jobs:
-  pages-terminal-audit:
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Read authoritative GitHub Pages configuration
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          repo="$GITHUB_REPOSITORY"
-          gh api "repos/$repo/pages" > /tmp/pages.json
-          cat /tmp/pages.json | jq '{html_url,status,build_type,source,cname,https_enforced}'
-          source_desc="$(jq -r '"branch=" + (.source.branch // "none") + " path=" + (.source.path // "none") + " build=" + (.build_type // "unknown")' /tmp/pages.json)"
-          url_desc="$(jq -r '(.html_url // "none") + " status=" + (.status // "unknown")' /tmp/pages.json)"
-          gh api -X POST "repos/$repo/statuses/$GITHUB_SHA" -f state=success -f context='Pages terminal audit/source' -f description="$source_desc" >/dev/null
-          gh api -X POST "repos/$repo/statuses/$GITHUB_SHA" -f state=success -f context='Pages terminal audit/url' -f description="$url_desc" >/dev/null
-
   run-and-upload:
-    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

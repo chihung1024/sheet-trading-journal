@@ -1,8 +1,9 @@
-# Runtime dependencies pinned to the versions validated by the latest successful
-# production workflow run on 2026-08-05.
+# Runtime dependencies pinned for the frozen Python 3.10 calculation environment.
 requests==2.34.2
 pandas==2.3.3
 numpy==2.2.6
 yfinance==1.5.2
 pydantic==2.13.4
 pyxirr==0.10.8
+# Directly imported by the calculation engine; yfinance 1.5.2 requires pytz>=2022.5.
+pytz==2025.2

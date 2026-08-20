@@ -12,8 +12,7 @@
       "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com"
     ],
     "frontend_origins": [
-      "https://sheet-trading-journal.pages.dev",
-      "https://chihung1024.github.io"
+      "https://sheet-trading-journal.pages.dev"
     ],
     "d1_identity_status": "verified",
     "d1_database_name": "journal-db",
