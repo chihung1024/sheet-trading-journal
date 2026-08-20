@@ -46,11 +46,13 @@ jobs:
           set -euo pipefail
           repo="$GITHUB_REPOSITORY"
           gh api "repos/$repo/pages" > /tmp/pages.json
-          cat /tmp/pages.json | jq '{html_url,status,build_type,source,cname,https_enforced}'
-          source_desc="$(jq -r '"branch=" + (.source.branch // "none") + " path=" + (.source.path // "none") + " build=" + (.build_type // "unknown")' /tmp/pages.json)"
-          url_desc="$(jq -r '(.html_url // "none") + " status=" + (.status // "unknown")' /tmp/pages.json)"
-          gh api -X POST "repos/$repo/statuses/$GITHUB_SHA" -f state=success -f context='Pages terminal audit/source' -f description="$source_desc" >/dev/null
-          gh api -X POST "repos/$repo/statuses/$GITHUB_SHA" -f state=success -f context='Pages terminal audit/url' -f description="$url_desc" >/dev/null
+          branch="$(jq -r '.source.branch // "none"' /tmp/pages.json)"
+          path="$(jq -r '.source.path // "none"' /tmp/pages.json)"
+          build="$(jq -r '.build_type // "unknown"' /tmp/pages.json)"
+          url="$(jq -r '.html_url // "none"' /tmp/pages.json)"
+          status="$(jq -r '.status // "unknown"' /tmp/pages.json)"
+          gh api -X POST "repos/$repo/statuses/$GITHUB_SHA" -f state=success -f context="Pages source=$branch:$path build=$build" -f description='Authoritative GitHub Pages source' >/dev/null
+          gh api -X POST "repos/$repo/statuses/$GITHUB_SHA" -f state=success -f context="Pages url=$url status=$status" -f description='Authoritative GitHub Pages endpoint' >/dev/null
 
   run-and-upload:
     if: ${{ github.event_name != 'push' }}
