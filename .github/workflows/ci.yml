@@ -7,46 +7,14 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: terminal-integrity-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  sync-lockfile:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chore/remove-unused-date-fns-2026-08-20' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout dependency-cleanup branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: chore/remove-unused-date-fns-2026-08-20
-          fetch-depth: 0
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '22'
-      - name: Synchronize package lock
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Restore terminal CI and commit lockfile
-        run: |
-          set -euo pipefail
-          git fetch origin main --depth=1
-          git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
-          git add package-lock.json .github/workflows/ci.yml
-          if git diff --cached --quiet; then
-            echo 'No lockfile synchronization required'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'chore: sync package lock'
-          git push origin HEAD:chore/remove-unused-date-fns-2026-08-20
-
   python-runtime:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'chore/remove-unused-date-fns-2026-08-20' }}
     name: Python tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -67,7 +35,6 @@ jobs:
         run: python -m compileall -q journal_engine main.py tools/run_portfolio_update.py
 
   worker-runtime:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'chore/remove-unused-date-fns-2026-08-20' }}
     name: Worker security and deployment tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -89,7 +56,6 @@ jobs:
         run: npm run worker:config:check
 
   frontend-runtime:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'chore/remove-unused-date-fns-2026-08-20' }}
     name: Frontend contracts and build
     runs-on: ubuntu-latest
     timeout-minutes: 10
