@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: portfolio-update
@@ -90,6 +91,28 @@ jobs:
           if (evidence?.result?.test_tenant_records_remaining !== 0) process.exit(1);
           console.log(`D1 synthetic-record purity passed; removed=${evidence.result.mutation_changes}`);
           NODE
+
+      - name: Publish auditable D1 terminal-purity status
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          state=failure
+          description='Production D1 purity check failed or lacked authority'
+          if [[ -f production-test-record-reconciliation.json ]] && node - <<'NODE'
+          const evidence = JSON.parse(require('node:fs').readFileSync('production-test-record-reconciliation.json', 'utf8'));
+          process.exit(evidence?.status === 'passed' && evidence?.result?.target_rows_after === 0 && evidence?.result?.test_tenant_records_remaining === 0 ? 0 : 1);
+          NODE
+          then
+            state=success
+            description='Production D1 exact synthetic records are clean'
+          fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$state" \
+            -f context='D1 terminal purity' \
+            -f description="$description" >/dev/null
+          [[ "$state" == success ]]
 
   run-and-upload:
     if: ${{ github.event_name != 'push' }}
