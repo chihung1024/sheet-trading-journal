@@ -1,12 +1,14 @@
 name: Update Portfolio Data
 
 on:
+  push:
+    branches:
+      - main
   schedule:
-    # Cron uses UTC; comments show Taiwan time (UTC+8).
-    - cron: '0 23 * * *'     # 07:00 - morning refresh
-    - cron: '15 1 * * 1-5'  # 09:15 - Taiwan market open
-    - cron: '0 6 * * 1-5'   # 14:00 - Taiwan market close
-    - cron: '0 15 * * 1-5'  # 23:00 - US market open
+    - cron: '0 23 * * *'
+    - cron: '15 1 * * 1-5'
+    - cron: '0 6 * * 1-5'
+    - cron: '0 15 * * 1-5'
   workflow_dispatch:
     inputs:
       custom_benchmark:
@@ -21,6 +23,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: read
 
 concurrency:
@@ -29,10 +32,73 @@ concurrency:
   queue: max
 
 jobs:
-  run-and-upload:
+  actions-history-gc:
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    steps:
+      - name: Purge completed workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          for pass in 1 2 3; do
+            gh api --paginate "repos/$repo/actions/runs?status=completed&per_page=100" \
+              --jq '.workflow_runs[].id' > /tmp/run-ids.txt
+            count="$(wc -l < /tmp/run-ids.txt | tr -d ' ')"
+            echo "pass=$pass completed_runs=$count"
+            [ "$count" = "0" ] && break
+            while IFS= read -r run_id; do
+              [ -n "$run_id" ] || continue
+              code="$(curl -sS -o /tmp/delete-run.out -w '%{http_code}' \
+                -X DELETE \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H 'Accept: application/vnd.github+json' \
+                -H 'X-GitHub-Api-Version: 2022-11-28' \
+                "https://api.github.com/repos/$repo/actions/runs/$run_id")"
+              case "$code" in
+                204|404) ;;
+                *) cat /tmp/delete-run.out >&2; echo "run deletion failed: id=$run_id http=$code" >&2; exit 1 ;;
+              esac
+            done < /tmp/run-ids.txt
+          done
 
+      - name: Purge artifacts and caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          gh api --paginate "repos/$repo/actions/artifacts?per_page=100" --jq '.artifacts[].id' > /tmp/artifact-ids.txt
+          while IFS= read -r artifact_id; do
+            [ -n "$artifact_id" ] || continue
+            gh api -X DELETE "repos/$repo/actions/artifacts/$artifact_id" >/dev/null 2>&1 || true
+          done < /tmp/artifact-ids.txt
+          gh api --paginate "repos/$repo/actions/caches?per_page=100" --jq '.actions_caches[].id' > /tmp/cache-ids.txt
+          while IFS= read -r cache_id; do
+            [ -n "$cache_id" ] || continue
+            gh api -X DELETE "repos/$repo/actions/caches/$cache_id" >/dev/null 2>&1 || true
+          done < /tmp/cache-ids.txt
+
+      - name: Verify history storage is empty
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          completed="$(gh api "repos/$repo/actions/runs?status=completed&per_page=1" --jq '.total_count')"
+          artifacts="$(gh api "repos/$repo/actions/artifacts?per_page=1" --jq '.total_count')"
+          caches="$(gh api "repos/$repo/actions/caches?per_page=1" --jq '.total_count')"
+          echo "completed_runs=$completed artifacts=$artifacts caches=$caches"
+          [ "$completed" = "0" ]
+          [ "$artifacts" = "0" ]
+          [ "$caches" = "0" ]
+
+  run-and-upload:
+    if: ${{ github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -49,17 +115,8 @@ jobs:
           WORKER_BASE_URL: https://journal-backend.chired.workers.dev
         run: |
           set -euo pipefail
-          payload="$(jq -cn \
-            --arg job_id "$JOB_ID" \
-            --arg status running \
-            --arg run_id "$GITHUB_RUN_ID_VALUE" \
-            --argjson run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" \
-            '{job_id:$job_id,status:$status,github_run_id:$run_id,github_run_attempt:$run_attempt}')"
-          curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors \
-            -X POST "$WORKER_BASE_URL/api/calculation-jobs/status" \
-            -H "X-API-KEY: $API_KEY" \
-            -H 'Content-Type: application/json' \
-            --data "$payload" >/dev/null
+          payload="$(jq -cn --arg job_id "$JOB_ID" --arg status running --arg run_id "$GITHUB_RUN_ID_VALUE" --argjson run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" '{job_id:$job_id,status:$status,github_run_id:$run_id,github_run_attempt:$run_attempt}')"
+          curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors -X POST "$WORKER_BASE_URL/api/calculation-jobs/status" -H "X-API-KEY: $API_KEY" -H 'Content-Type: application/json' --data "$payload" >/dev/null
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -92,27 +149,14 @@ jobs:
           WORKER_BASE_URL: https://journal-backend.chired.workers.dev
         run: |
           set -euo pipefail
-          if [[ "$JOB_STATUS" == "succeeded" ]]; then
-            JOB_ERROR_CODE=""
-          else
+          if [[ "$JOB_STATUS" == "succeeded" ]]; then JOB_ERROR_CODE=""; else
             case "$JOB_ERROR_CODE" in
-              CONFIGURATION_FAILED|RECORDS_API_FAILED|SETTINGS_API_FAILED|RECORD_VALIDATION_FAILED|MARKET_DATA_FAILED|CALCULATION_FAILED|RECONCILIATION_FAILED|SNAPSHOT_VALIDATION_FAILED|SNAPSHOT_UPLOAD_FAILED|MULTIPLE_USER_FAILURES|UNKNOWN_CALCULATION_FAILED)
-                ;;
+              CONFIGURATION_FAILED|RECORDS_API_FAILED|SETTINGS_API_FAILED|RECORD_VALIDATION_FAILED|MARKET_DATA_FAILED|CALCULATION_FAILED|RECONCILIATION_FAILED|SNAPSHOT_VALIDATION_FAILED|SNAPSHOT_UPLOAD_FAILED|MULTIPLE_USER_FAILURES|UNKNOWN_CALCULATION_FAILED) ;;
               *) JOB_ERROR_CODE="CALCULATION_FAILED" ;;
             esac
           fi
-          payload="$(jq -cn \
-            --arg job_id "$JOB_ID" \
-            --arg status "$JOB_STATUS" \
-            --arg error_code "$JOB_ERROR_CODE" \
-            --arg run_id "$GITHUB_RUN_ID_VALUE" \
-            --argjson run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" \
-            '{job_id:$job_id,status:$status,error_code:$error_code,github_run_id:$run_id,github_run_attempt:$run_attempt}')"
-          curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors \
-            -X POST "$WORKER_BASE_URL/api/calculation-jobs/status" \
-            -H "X-API-KEY: $API_KEY" \
-            -H 'Content-Type: application/json' \
-            --data "$payload" >/dev/null
+          payload="$(jq -cn --arg job_id "$JOB_ID" --arg status "$JOB_STATUS" --arg error_code "$JOB_ERROR_CODE" --arg run_id "$GITHUB_RUN_ID_VALUE" --argjson run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" '{job_id:$job_id,status:$status,error_code:$error_code,github_run_id:$run_id,github_run_attempt:$run_attempt}')"
+          curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors -X POST "$WORKER_BASE_URL/api/calculation-jobs/status" -H "X-API-KEY: $API_KEY" -H 'Content-Type: application/json' --data "$payload" >/dev/null
 
       - name: Fail workflow when calculation failed
         if: ${{ always() && steps.calculation.outcome != 'success' }}
