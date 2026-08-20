@@ -13,9 +13,9 @@
     "worker:deploy": "wrangler deploy --strict --config .wrangler/deploy.toml"
   },
   "dependencies": {
-    "vue": "3.4.21",
+    "chart.js": "4.4.1",
     "pinia": "2.1.7",
-    "chart.js": "4.4.1"
+    "vue": "3.4.21"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "5.0.4",
