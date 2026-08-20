@@ -16,22 +16,12 @@ const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;
 const GITHUB_API_VERSION = "2026-03-10";
 const REQUIRED_SCHEMA_VERSION = 3;
 const SOURCE_COMMIT_FALLBACK = "development";
-const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings", "calculation_jobs", "cash_events"];
-const PUBLIC_ROUTE_METHODS = Object.freeze({
-  "/api/health": new Set(["GET"]),
-  "/api/version": new Set(["GET"]),
-});
-
 const DEFAULT_GOOGLE_CLIENT_ID =
   "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://sheet-trading-journal.pages.dev",
   "https://chihung1024.github.io",
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
 ];
 
 const CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];
@@ -119,17 +109,6 @@ export default {
           return withCors(methodNotAllowed(requestId), request, env);
         }
         return withCors(await handleAuth(request, env, requestId), request, env);
-      }
-
-      const publicMethods = PUBLIC_ROUTE_METHODS[url.pathname];
-      if (publicMethods) {
-        if (!publicMethods.has(request.method)) {
-          return withCors(methodNotAllowed(requestId), request, env);
-        }
-        const response = url.pathname === "/api/health"
-          ? await handleHealth(env, requestId)
-          : handleVersion(env, requestId);
-        return withCors(response, request, env);
       }
 
       const calculationJobMatch = request.method === "GET"
@@ -220,67 +199,6 @@ export default {
     }
   },
 };
-
-function handleVersion(env, requestId) {
-  const metadata = getBuildMetadata(env);
-  return jsonResponse({
-    success: true,
-    status: "ok",
-    request_id: requestId,
-    ...metadata,
-  });
-}
-
-async function handleHealth(env, requestId) {
-  const metadata = getBuildMetadata(env);
-  const checks = { database: "unavailable", schema: "unknown" };
-  let schemaVersion = null;
-
-  try {
-    if (!env.DB || typeof env.DB.prepare !== "function") {
-      throw new Error("D1BindingUnavailable");
-    }
-
-    const placeholders = CORE_DATA_TABLES.map(() => "?").join(", ");
-    const tableResult = await env.DB.prepare(
-      `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders})`,
-    ).bind(...CORE_DATA_TABLES).all();
-    const tableNames = new Set(
-      (Array.isArray(tableResult?.results) ? tableResult.results : [])
-        .map((row) => String(row?.name || "")),
-    );
-    checks.database = CORE_DATA_TABLES.every((name) => tableNames.has(name))
-      ? "ok"
-      : "degraded";
-
-    const schemaRow = await env.DB.prepare(
-      "SELECT schema_version FROM schema_metadata WHERE id = 1",
-    ).first();
-    schemaVersion = Number(schemaRow?.schema_version);
-    checks.schema = Number.isInteger(schemaVersion)
-      && schemaVersion >= REQUIRED_SCHEMA_VERSION
-      ? "ok"
-      : "degraded";
-  } catch (error) {
-    console.warn(`[request_id=${requestId}] Health check degraded`, safeErrorName(error));
-    checks.database = checks.database === "ok" ? "ok" : "unavailable";
-    checks.schema = "unavailable";
-  }
-
-  const healthy = checks.database === "ok" && checks.schema === "ok";
-  return jsonResponse(
-    {
-      success: healthy,
-      status: healthy ? "ok" : "degraded",
-      request_id: requestId,
-      ...metadata,
-      required_schema_version: REQUIRED_SCHEMA_VERSION,
-      observed_schema_version: Number.isInteger(schemaVersion) ? schemaVersion : null,
-      checks,
-    },
-    healthy ? 200 : 503,
-  );
-}
 
 function getBuildMetadata(env = {}) {
   const runtime = isPlainObject(env.CF_VERSION_METADATA)
@@ -1959,16 +1877,7 @@ function getAllowedOrigins(env) {
 }
 
 function isOriginAllowed(origin, env) {
-  if (getAllowedOrigins(env).has(origin)) return true;
-  try {
-    const parsed = new URL(origin);
-    return (
-      parsed.protocol === "https:" &&
-      parsed.hostname.endsWith(".sheet-trading-journal.pages.dev")
-    );
-  } catch {
-    return false;
-  }
+  return getAllowedOrigins(env).has(origin);
 }
 
 function mergeVary(current, value) {
@@ -2547,7 +2456,6 @@ export const __test = {
   REQUIRED_SCHEMA_VERSION,
   authorize,
   getBuildMetadata,
-  handleHealth,
   buildGitHubDispatchRequest,
   handleGitHubTrigger,
   handleGetCalculationJob,

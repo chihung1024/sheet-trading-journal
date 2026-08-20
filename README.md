@@ -27,7 +27,7 @@ Do not reinterpret `total_value` as cash-inclusive NAV unless the financial mode
 ## Runtime
 
 - Frontend: Vue 3, Pinia, Vite (`src/`, `public/`, `index.html`).
-- Worker/API: Cloudflare Worker (`worker-entry.js`, `worker.js` and retained Worker modules).
+- Worker/API: Cloudflare Worker (`worker-entry.js`, `worker.js` and retained Worker modules); no public health/version diagnostic routes are retained.
 - Data: Cloudflare D1 through Worker binding `DB`.
 - Calculation engine: `main.py` and `journal_engine/`.
 - Hosted calculation runner: `tools/run_portfolio_update.py`.
