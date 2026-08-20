@@ -8,7 +8,6 @@
   },
   "scripts": {
     "build": "vite build",
-    "worker:config:check": "node tools/check_worker_config.mjs",
     "worker:config:render": "node tools/render_wrangler_config.mjs",
     "worker:deploy": "wrangler deploy --strict --config .wrangler/deploy.toml"
   },
