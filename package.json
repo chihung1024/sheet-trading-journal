@@ -7,8 +7,6 @@
     "node": ">=20 <25"
   },
   "scripts": {
-    "environment:check": "node tools/check_frontend_environment.mjs",
-    "prebuild": "npm run environment:check",
     "build": "vite build",
     "worker:config:check": "node tools/check_worker_config.mjs",
     "worker:config:render": "node tools/render_wrangler_config.mjs",

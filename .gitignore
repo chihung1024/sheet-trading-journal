@@ -2,11 +2,6 @@
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-.coverage
-coverage.json
-coverage.xml
-htmlcov/
 .venv/
 venv/
 
@@ -24,7 +19,6 @@ dist/
 # Environment and credentials
 .env
 .env.*
-!.env.example
 
 # IDE / OS
 .vscode/
