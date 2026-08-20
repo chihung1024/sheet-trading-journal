@@ -39,7 +39,7 @@ Do not reinterpret `total_value` as cash-inclusive NAV unless the financial mode
 
 The canonical frontend is `https://sheet-trading-journal.pages.dev`; the API is `https://journal-backend.chired.workers.dev`. The retired GitHub Pages host is not a supported frontend or API origin. GitHub Actions runs on Ubuntu and Cloudflare Workers run in Cloudflare's service runtime; those are production infrastructure dependencies, not alternate user operating-system targets, and remain while the service is online. Live Cloudflare, D1 and Google OAuth state is authoritative over repository documentation.
 
-The PWA manifest and service-worker files are retained as frozen legacy artifacts so existing browser registrations can be retired safely in a future maintenance window. They do not define a supported install, offline, or update contract for this frozen version. Any later removal must first deploy and verify a self-retiring worker that unregisters existing registrations and clears its caches.
+Historical browser-registration compatibility: `public/service-worker.js` remains at `/service-worker.js` as a minimal retirement tombstone for registrations created by earlier releases. On install/activation it skips waiting, clears this origin's Cache Storage, claims clients, and unregisters itself; it has no fetch handler or application behavior. The manifest, PWA install metadata, and `usePWA` integration are removed. This tombstone is not a supported PWA, installation, offline, or update contract. Keep the URL through the terminal deployment that verifies old registrations have retired; remove it only after that deployment and verification.
 
 ## Data safety
 
