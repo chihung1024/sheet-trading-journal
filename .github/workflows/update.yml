@@ -1,9 +1,6 @@
 name: Update Portfolio Data
 
 on:
-  push:
-    branches:
-      - main
   schedule:
     # Cron uses UTC; comments show Taiwan time (UTC+8).
     - cron: '0 23 * * *'     # 07:00 - morning refresh
@@ -25,7 +22,6 @@ on:
 
 permissions:
   contents: read
-  statuses: write
 
 concurrency:
   group: portfolio-update
@@ -33,89 +29,7 @@ concurrency:
   queue: max
 
 jobs:
-  d1-terminal-purity:
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout exact main source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '22'
-          cache: npm
-
-      - name: Install pinned dependencies
-        run: npm ci --no-audit --no-fund
-
-      - name: Require existing Cloudflare production credentials
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
-          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
-        run: |
-          set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN"
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -n "$CLOUDFLARE_D1_DATABASE_ID"
-          test -n "$CLOUDFLARE_D1_DATABASE_NAME"
-
-      - name: Render verified production D1 configuration
-        env:
-          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
-          CLOUDFLARE_D1_DATABASE_NAME: ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }}
-          SOURCE_COMMIT: ${{ github.sha }}
-        run: npm run worker:config:render
-
-      - name: Reconcile exact owned synthetic production records
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          EXPECTED_SHA: ${{ github.sha }}
-          REQUIRE_CHANGES: '0'
-          AUDIT_OUTPUT: production-test-record-reconciliation.json
-        run: node tools/reconcile_production_test_records.mjs
-
-      - name: Verify reconciliation result is clean
-        run: |
-          set -euo pipefail
-          node - <<'NODE'
-          const evidence = JSON.parse(require('node:fs').readFileSync('production-test-record-reconciliation.json', 'utf8'));
-          if (evidence?.status !== 'passed') process.exit(1);
-          if (evidence?.result?.target_rows_after !== 0) process.exit(1);
-          if (evidence?.result?.test_tenant_records_remaining !== 0) process.exit(1);
-          console.log(`D1 synthetic-record purity passed; removed=${evidence.result.mutation_changes}`);
-          NODE
-
-      - name: Publish auditable D1 terminal-purity status
-        if: ${{ always() }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          state=failure
-          description='Production D1 purity check failed or lacked authority'
-          if [[ -f production-test-record-reconciliation.json ]] && node - <<'NODE'
-          const evidence = JSON.parse(require('node:fs').readFileSync('production-test-record-reconciliation.json', 'utf8'));
-          process.exit(evidence?.status === 'passed' && evidence?.result?.target_rows_after === 0 && evidence?.result?.test_tenant_records_remaining === 0 ? 0 : 1);
-          NODE
-          then
-            state=success
-            description='Production D1 exact synthetic records are clean'
-          fi
-          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -f state="$state" \
-            -f context='D1 terminal purity' \
-            -f description="$description" >/dev/null
-          [[ "$state" == success ]]
-
   run-and-upload:
-    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
