@@ -1,11 +1,8 @@
 # Canonical Cloudflare Worker deployment configuration.
 #
-# The all-zero D1 UUID is intentionally safe for local development only.
+# The all-zero D1 UUID is intentionally safe for local source only.
 # Production deployment MUST run `npm run worker:config:render`, which refuses
-# the sentinel and writes `.wrangler/deploy.toml` from protected CI variables.
-#
-# Production non-secret bindings are deliberately tracked here because Wrangler
-# treats its config as source of truth and removes dashboard vars by default.
+# the sentinel and writes `.wrangler/deploy.toml` from protected deployment values.
 # Secrets remain protected in Cloudflare and are declared as required below.
 
 name = "journal-backend"
@@ -15,10 +12,6 @@ workers_dev = true
 preview_urls = false
 keep_vars = false
 
-[observability]
-enabled = true
-head_sampling_rate = 0.1
-
 [version_metadata]
 binding = "CF_VERSION_METADATA"
 
@@ -26,11 +19,7 @@ binding = "CF_VERSION_METADATA"
 required = ["API_SECRET"]
 
 [vars]
-RELEASE_VERSION = "4.12"
-API_VERSION = "2.65"
-SCHEMA_VERSION = "3"
 SOURCE_COMMIT = "development"
-DEPLOYMENT_ENVIRONMENT = "production"
 ALLOWED_ORIGINS = "https://sheet-trading-journal.pages.dev,https://chihung1024.github.io"
 GOOGLE_CLIENT_ID = "951186116587-0ehsmkvlu3uivduc7kjn1jpp9ga7810i.apps.googleusercontent.com"
 

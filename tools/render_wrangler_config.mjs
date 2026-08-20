@@ -8,7 +8,6 @@ const SHA256_RE = /^[0-9a-f]{64}$/i;
 const COMMIT_RE = /^[0-9a-f]{40}$/i;
 const GOOGLE_CLIENT_ID_RE = /^\d+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i;
 const EXPECTED_SERVICE = "journal-backend";
-const EXPECTED_DEPLOYMENT_ENVIRONMENT = "production";
 
 const sourcePath = resolve(process.env.WRANGLER_TEMPLATE || "wrangler.toml");
 const outputPath = resolve(process.env.WRANGLER_OUTPUT || ".wrangler/deploy.toml");
@@ -75,11 +74,6 @@ requireExact(config, "workers_dev = true", "production workers.dev endpoint");
 requireExact(config, "preview_urls = false", "disabled Worker preview URLs");
 requireExact(config, "keep_vars = false", "Wrangler source-of-truth variable policy");
 requireExact(config, 'required = ["API_SECRET"]', "required production API secret declaration");
-requireExact(
-  config,
-  `DEPLOYMENT_ENVIRONMENT = "${EXPECTED_DEPLOYMENT_ENVIRONMENT}"`,
-  "production environment identity",
-);
 requireExact(
   config,
   `ALLOWED_ORIGINS = "${expectedAllowedOrigins}"`,
