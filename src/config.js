@@ -8,6 +8,4 @@ export const CONFIG = {
 
 // 調試信息 (開發模式下顯示)
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
-  console.log('📋 應用配置已載入');
-  console.log('  ✅ API URL:', CONFIG.API_BASE_URL);
 }
