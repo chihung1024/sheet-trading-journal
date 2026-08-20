@@ -7,127 +7,14 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: terminal-integrity-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  worker-purity-patch:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chore/worker-terminal-purity-2026-08-20' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout worker-purity branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: chore/worker-terminal-purity-2026-08-20
-          fetch-depth: 0
-      - name: Remove ops-only Worker surface
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('worker.js')
-          text = path.read_text()
-
-          constants = '''const CORE_DATA_TABLES = ["records", "portfolio_snapshots", "user_settings", "calculation_jobs", "cash_events"];
-          const PUBLIC_ROUTE_METHODS = Object.freeze({
-            "/api/health": new Set(["GET"]),
-            "/api/version": new Set(["GET"]),
-          });
-
-          '''
-          if constants not in text:
-              raise SystemExit('expected public-route constants not found')
-          text = text.replace(constants, '', 1)
-
-          route = '''      const publicMethods = PUBLIC_ROUTE_METHODS[url.pathname];
-                if (publicMethods) {
-                  if (!publicMethods.has(request.method)) {
-                    return withCors(methodNotAllowed(requestId), request, env);
-                  }
-                  const response = url.pathname === "/api/health"
-                    ? await handleHealth(env, requestId)
-                    : handleVersion(env, requestId);
-                  return withCors(response, request, env);
-                }
-
-          '''
-          if route not in text:
-              raise SystemExit('expected public-route dispatch block not found')
-          text = text.replace(route, '', 1)
-
-          start = text.find('function handleVersion(env, requestId) {')
-          end = text.find('function getBuildMetadata(env = {}) {', start)
-          if start < 0 or end < 0:
-              raise SystemExit('expected health/version function range not found')
-          text = text[:start] + text[end:]
-
-          if '  handleHealth,\n' not in text:
-              raise SystemExit('expected handleHealth test export not found')
-          text = text.replace('  handleHealth,\n', '', 1)
-
-          for origin in (
-              '  "http://localhost:3000",\n',
-              '  "http://127.0.0.1:3000",\n',
-              '  "http://localhost:5173",\n',
-              '  "http://127.0.0.1:5173",\n',
-          ):
-              if origin not in text:
-                  raise SystemExit(f'expected frozen dev origin not found: {origin.strip()}')
-              text = text.replace(origin, '', 1)
-
-          old_origin_check = '''function isOriginAllowed(origin, env) {
-            if (getAllowedOrigins(env).has(origin)) return true;
-            try {
-              const parsed = new URL(origin);
-              return (
-                parsed.protocol === "https:" &&
-                parsed.hostname.endsWith(".sheet-trading-journal.pages.dev")
-              );
-            } catch {
-              return false;
-            }
-          }
-          '''
-          new_origin_check = '''function isOriginAllowed(origin, env) {
-            return getAllowedOrigins(env).has(origin);
-          }
-          '''
-          if old_origin_check not in text:
-              raise SystemExit('expected preview-origin fallback not found')
-          text = text.replace(old_origin_check, new_origin_check, 1)
-
-          path.write_text(text)
-          PY
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '22'
-      - name: Install pinned Node dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Validate patched Worker
-        run: |
-          node --check worker.js
-          node --check worker-entry.js
-          node --check worker-dividend-event.js
-          node --check worker-journal-restore.js
-          npm run worker:config:check
-      - name: Restore terminal CI and commit Worker cleanup
-        run: |
-          set -euo pipefail
-          git fetch origin main --depth=1
-          git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
-          git add worker.js .github/workflows/ci.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'chore: remove ops-only Worker surface'
-          git push origin HEAD:chore/worker-terminal-purity-2026-08-20
-
   python-runtime:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'chore/worker-terminal-purity-2026-08-20' }}
     name: Python tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -148,7 +35,6 @@ jobs:
         run: python -m compileall -q journal_engine main.py tools/run_portfolio_update.py
 
   worker-runtime:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'chore/worker-terminal-purity-2026-08-20' }}
     name: Worker security and deployment tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -170,7 +56,6 @@ jobs:
         run: npm run worker:config:check
 
   frontend-runtime:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'chore/worker-terminal-purity-2026-08-20' }}
     name: Frontend contracts and build
     runs-on: ubuntu-latest
     timeout-minutes: 10
