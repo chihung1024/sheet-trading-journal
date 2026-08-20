@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#3b82f6" />
     <meta name="description" content="Trading Journal PRO - 專業級美股交易日誌與績效分析系統" />
 
     <title>Trading Journal PRO</title>
@@ -19,16 +18,9 @@
                    img-src 'self' data:;
                    connect-src 'self' __TRADING_JOURNAL_API_ORIGIN__ https://accounts.google.com/gsi/;
                    frame-src https://accounts.google.com/gsi/;
-                   worker-src 'self' blob:;
-                   manifest-src 'self';">
+                   worker-src 'self' blob:;">
 
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-
-    <link rel="manifest" href="/manifest.json">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Journal">
 
     <script>
       (function() {

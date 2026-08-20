@@ -223,7 +223,6 @@ import { useAuthStore } from './stores/auth';
 import { usePortfolioStore } from './stores/portfolio';
 import { useToast } from './composables/useToast';
 import { useDarkMode } from './composables/useDarkMode';
-import { usePWA } from './composables/usePWA';
 import { useMarketHoursRefresh } from './composables/useMarketHoursRefresh';
 import { useTokenRefresh } from './composables/useTokenRefresh';
 import { buildDataSyncPresentation } from './services/dataSyncPresentation.js';
@@ -249,7 +248,6 @@ const portfolioStore = usePortfolioStore();
 const tradeFormRef = ref(null);
 const { toasts, removeToast, addToast } = useToast();
 const { isDark, toggleTheme } = useDarkMode();
-const { needRefresh, updateServiceWorker } = usePWA();
 
 // 導覽 tabs
 const views = [
