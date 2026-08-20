@@ -4,15 +4,24 @@
  * This URL remains available only long enough to retire registrations from
  * earlier releases. It deliberately has no fetch handler and no app logic.
  */
-self.addEventListener('install', () => {
-  self.skipWaiting();
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    const cacheNames = await caches.keys();
-    await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
-    await self.clients.claim();
-    await self.registration.unregister();
+    try {
+      const cacheNames = await caches.keys();
+      await Promise.allSettled(
+        cacheNames.map((cacheName) => caches.delete(cacheName))
+      );
+    } finally {
+      try {
+        await self.clients.claim();
+      } catch {
+        // A failed claim must not prevent registration removal.
+      }
+      await self.registration.unregister();
+    }
   })());
 });
