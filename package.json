@@ -9,7 +9,7 @@
   "scripts": {
     "build": "vite build",
     "worker:config:render": "node tools/render_wrangler_config.mjs",
-    "worker:deploy": "wrangler deploy --strict --config .wrangler/deploy.toml"
+    "worker:deploy": "npm run worker:config:render && wrangler deploy --strict --config .wrangler/deploy.toml"
   },
   "dependencies": {
     "chart.js": "4.4.1",
