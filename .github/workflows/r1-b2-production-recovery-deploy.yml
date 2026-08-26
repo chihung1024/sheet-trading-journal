@@ -25,7 +25,23 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 2
           persist-credentials: false
+
+      - name: Verify one-shot activation ancestry
+        shell: bash
+        env:
+          EXPECTED_PARENT_SHA: 591b8dc3c10dca6850bf0b6514a0857fcc5ac607
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          parent_count="$(git rev-list --parents -n 1 HEAD | awk '{print NF-1}')"
+          test "$parent_count" = "2"
+          first_parent="$(git rev-parse HEAD^1)"
+          if [ "$first_parent" != "$EXPECTED_PARENT_SHA" ]; then
+            echo "Refusing production activation from unexpected main parent: $first_parent" >&2
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
