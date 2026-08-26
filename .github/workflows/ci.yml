@@ -51,7 +51,9 @@ jobs:
       - name: Install pinned Node dependencies
         run: npm ci --no-audit --no-fund
       - name: Parse retained Worker runtime
-        run: node --check worker.js && node --check worker-entry.js && node --check worker-dividend-event.js && node --check worker-journal-restore.js
+        run: node --check worker.js && node --check worker-entry.js && node --check worker-dividend-event.js && node --check worker-journal-restore.js && node --check worker-calculation-dispatch-recovery.js
+      - name: Run calculation dispatch recovery regression
+        run: node --test tests/worker_calculation_dispatch_recovery.test.mjs
 
   frontend-runtime:
     name: Frontend contracts and build
