@@ -16,6 +16,7 @@
     ],
     "d1_identity_status": "verified",
     "d1_database_name": "journal-db",
+    "d1_database_id": "fbef989c-dede-4f94-8907-6a2134cdf372",
     "d1_database_id_sha256": "dd4bbbbedc4fc1329eec01ae5dff9677df9fc4e703ef6e9ebecb9da04cb390c3"
   }
 }
