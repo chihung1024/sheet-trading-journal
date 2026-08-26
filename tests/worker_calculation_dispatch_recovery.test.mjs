@@ -29,8 +29,10 @@ function statusRequest({ apiKey = 'test-secret', status = 'running', runId = RUN
 function createRecoveryDb({
   errorCode = 'GITHUB_DISPATCH_TIMEOUT',
   hasOtherActive = false,
+  hasNewerJob = false,
 } = {}) {
   const row = {
+    id: 10,
     public_id: JOB_ID,
     status: 'failed',
     github_run_id: null,
@@ -56,7 +58,8 @@ function createRecoveryDb({
                 && row.status === 'failed'
                 && isRecoverableDispatchErrorCode(row.error_code)
                 && row.github_run_id === null
-                && !hasOtherActive;
+                && !hasOtherActive
+                && !hasNewerJob;
               if (!eligible) return { meta: { changes: 0 } };
 
               row.status = 'running';
@@ -105,8 +108,8 @@ test('positive GitHub running callback recovers a timeout-terminalized job', asy
   assert.match(fixture.preparedSql, /GITHUB_DISPATCH_TIMEOUT/);
   assert.match(fixture.preparedSql, /GITHUB_DISPATCH_FAILED/);
   assert.match(fixture.preparedSql, /github_run_id IS NULL/);
-  assert.match(fixture.preparedSql, /NOT EXISTS/);
   assert.match(fixture.preparedSql, /active\.status IN \('queued', 'running'\)/);
+  assert.match(fixture.preparedSql, /newer\.id > calculation_jobs\.id/);
 });
 
 test('explicit GitHub rejection is not recoverable by a later callback', async () => {
@@ -124,6 +127,19 @@ test('explicit GitHub rejection is not recoverable by a later callback', async (
 
 test('late ambiguous callback cannot create a second active calculation', async () => {
   const fixture = createRecoveryDb({ hasOtherActive: true });
+  const recovered = await tryRecoverAmbiguousCalculationCallback(
+    statusRequest(),
+    { DB: fixture.db, API_SECRET: 'test-secret' },
+    { canonicalTest },
+  );
+
+  assert.equal(recovered, false);
+  assert.equal(fixture.row.status, 'failed');
+  assert.equal(fixture.row.github_run_id, null);
+});
+
+test('a newer same-benchmark intent supersedes the delayed callback', async () => {
+  const fixture = createRecoveryDb({ hasNewerJob: true });
   const recovered = await tryRecoverAmbiguousCalculationCallback(
     statusRequest(),
     { DB: fixture.db, API_SECRET: 'test-secret' },
