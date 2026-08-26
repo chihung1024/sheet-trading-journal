@@ -39,28 +39,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Mark calculation job running
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.calculation_job_id != '' }}
-        env:
-          API_KEY: ${{ secrets.API_KEY }}
-          JOB_ID: ${{ github.event.inputs.calculation_job_id }}
-          GITHUB_RUN_ID_VALUE: ${{ github.run_id }}
-          GITHUB_RUN_ATTEMPT_VALUE: ${{ github.run_attempt }}
-          WORKER_BASE_URL: https://journal-backend.chired.workers.dev
-        run: |
-          set -euo pipefail
-          payload="$(jq -cn \
-            --arg job_id "$JOB_ID" \
-            --arg status running \
-            --arg run_id "$GITHUB_RUN_ID_VALUE" \
-            --argjson run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" \
-            '{job_id:$job_id,status:$status,github_run_id:$run_id,github_run_attempt:$run_attempt}')"
-          curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors \
-            -X POST "$WORKER_BASE_URL/api/calculation-jobs/status" \
-            -H "X-API-KEY: $API_KEY" \
-            -H 'Content-Type: application/json' \
-            --data "$payload" >/dev/null
-
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:

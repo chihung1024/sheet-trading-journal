@@ -1,7 +1,6 @@
 import canonicalWorker, { __test as canonicalTest } from './worker.js';
 import { tryHandleDividendEventCreate } from './worker-dividend-event.js';
 import { tryHandleJournalRestore } from './worker-journal-restore.js';
-import { tryRecoverAmbiguousCalculationCallback } from './worker-calculation-dispatch-recovery.js';
 
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
 const IDEMPOTENT_RECORD_CREATE_PATH = '/api/records/idempotent';
@@ -40,7 +39,6 @@ export default {
     if (dividendResponse) return dividendResponse;
 
     const routedRequest = routeRecordCreateRequest(request);
-    await tryRecoverAmbiguousCalculationCallback(routedRequest, env, { canonicalTest });
     return canonicalWorker.fetch(routedRequest, env, ctx);
   },
 };

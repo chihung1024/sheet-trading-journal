@@ -199,7 +199,7 @@ class CloudflareClient:
         return events
 
     def resolve_calculation_job_context(self, calculation_job_id: str) -> Tuple[str, str]:
-        """Resolve the owner and durable benchmark for one running opaque job."""
+        """Resolve the owner and durable benchmark for one accepted opaque job."""
         job_id = str(calculation_job_id or "").strip()
         if not job_id:
             raise CloudflareAPIError("calculation job context lookup requires a job id")
@@ -237,7 +237,7 @@ class CloudflareClient:
             raise CloudflareAPIError("calculation job context API returned an invalid benchmark")
 
         status = str(job.get("status") or "").strip().lower()
-        if status != "running":
+        if status not in {"queued", "running"}:
             raise CloudflareAPIError(
                 f"calculation job context is not runnable [status={status or 'missing'}]"
             )

@@ -3,255 +3,114 @@
 ## Project Status
 
 - Mode: **DEVELOPMENT FROZEN / production defect recovery**.
-- Primary Goal: restore reliable web `立即更新` portfolio recalculation without weakening idempotency, data integrity, or lifecycle correctness.
-- Current main: `540d8ac38927ef8a93540e270635d00b45632f7e`.
-- Root-cause fix PR: **#424 MERGED**.
-- Production activation PR: **#425 MERGED**.
-- Active Batch: **R1-B2 — production activation / smoke**.
-- Current state: **BLOCKED BEFORE PRODUCTION MUTATION — protected Cloudflare deployment credentials are absent from GitHub Actions**.
+- Primary Goal: schedule, manual GitHub dispatch, and web `立即更新` must reach the same portfolio calculation engine without trigger-specific lifecycle prerequisites.
+- Main before this batch: `ce4e4a709ee87abad9838e49a57b7f0c34a53b49`.
+- Active branch: `fix/unify-calculation-pipeline-20260826`.
+- Active PR: **#429 — Unify calculation execution across trigger paths**.
+- Active Batch: **R1-B3 — trigger-invariant calculation path**.
+- D1 schema/data migration: **NONE**.
 
-## Stable State
+## First-Principles Invariant
 
-Terminal release `terminal-final-2026-08-21` at `28bea37098beceeba6ddae958f180833d26c71db` remains the last recorded production deployment checkpoint. R1-B1 was merged to `main` at `591b8dc3c10dca6850bf0b6514a0857fcc5ac607`; main Terminal Integrity #1477 passed. R1-B2 activation control was merged as `540d8ac38927ef8a93540e270635d00b45632f7e`; main Terminal Integrity #1480 passed.
+Required:
 
-Production deployment run #1 (`32948075702`) failed at the explicit protected-input preflight before config rendering, Wrangler dry-run, Worker deploy, or any D1 operation. Logs show all four required protected values were empty: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1_DATABASE_ID`, and `CLOUDFLARE_D1_DATABASE_NAME`. Therefore **no production code or data was mutated by R1-B2** and the production rollback/stable state is unchanged.
+`any trigger -> resolve trusted calculation context -> run_portfolio_update.py -> upload snapshot -> report optional lifecycle/result metadata`
 
-Production D1 remains authoritative.
+Forbidden:
 
-## Architecture Notes
+`web trigger -> lifecycle/status checkpoint -> only then run calculation`
 
-Web update path:
+Trigger source may select trusted target context, but control-plane lifecycle metadata must not determine whether the calculation engine is allowed to run.
 
-`Browser -> POST /api/trigger-update -> Worker calculation_jobs -> GitHub workflow_dispatch update.yml -> workflow running callback -> Python calculation/upload -> terminal callback -> browser polling`.
+## Root Cause
 
-Manual GitHub Action with empty `calculation_job_id` bypasses the calculation-job callback lifecycle and therefore is not an equivalent validation of the web path.
-
-The terminal Worker uses `worker-entry.js` as the controlled entry layer in front of canonical `worker.js`. R1-B1 added one narrowly scoped recovery module at that boundary without changing financial calculations or the D1 schema.
-
-Production deployment primitives retained after terminal cleanup:
-- `wrangler.toml` production template;
-- `tools/render_wrangler_config.mjs` with reviewed production origin/OAuth/D1 authority checks;
-- `npm run worker:deploy` using `.wrangler/deploy.toml`.
-
-Historical persistent deployment-control workflows were intentionally removed during terminal cleanup. R1-B2 therefore uses a bounded one-shot workflow and removes it after successful production activation. The workflow remains temporarily present while the credential blocker is unresolved because the failed exact activation run can be safely re-run after protected values are restored.
-
-## Master Plan
-
-### Phase R1 — web update production defect recovery
-
-#### Batch R1-B1 — root-cause correction
-
-Objective: allow an ambiguous Worker -> GitHub dispatch failure to recover only when the real GitHub workflow supplies positive `running` callback evidence.
-
-Status: **DONE / MERGED**.
-
-Delivered:
-- `worker-calculation-dispatch-recovery.js`;
-- minimal `worker-entry.js` integration;
-- focused deterministic regression;
-- CI wiring;
-- independent review pass with no remaining BLOCKER;
-- merge commit `591b8dc3c10dca6850bf0b6514a0857fcc5ac607`;
-- main Terminal Integrity #1477 PASS.
-
-#### Batch R1-B2 — production activation / smoke
-
-Objective: deploy the exact R1-B1 merged Worker source using the minimum retained production deployment primitives, verify live source identity, then perform one normal web update smoke.
-
-In scope:
-- one-shot production Worker deployment workflow;
-- exact reviewed merge deployment only;
-- existing production D1 binding validation through the retained renderer;
-- Wrangler dry-run and deploy;
-- post-deploy public Worker header/source identity verification;
-- remove the one-shot workflow after activation;
-- one normal authenticated web `立即更新` smoke.
-
-Out of scope:
-- D1 migrations or data rewrites;
-- frontend deployment or redesign;
-- financial logic changes;
-- generalized deployment framework restoration;
-- staging recreation;
-- snapshot-upload HTTP 500 RCA unless it blocks the smoke.
-
-Allowed investigation: retained production deployment configuration, GitHub Actions production environment/credentials, Cloudflare Worker deploy result, and the exact web-update lifecycle.
-
-Expansion trigger: production deploy cannot execute with retained protected credentials, deployment changes the wrong Worker/D1 identity, or web smoke produces a new blocker unrelated to the repaired dispatch ambiguity.
-
-Acceptance:
-1. exact reviewed activation source is deployed to `journal-backend`;
-2. no D1 migration runs in this batch;
-3. public Worker response reports exact deployed source SHA and retained API/release/schema versions;
-4. one normal web `立即更新` produces one calculation lifecycle and no prior first-callback 409/stuck condition;
-5. temporary deployment workflow is removed after activation;
-6. handoff records the final production state and rollback point.
-
-## Current Phase / Batch
-
-- Phase: R1
-- Current Batch: **R1-B2**
-- State: **BLOCKED ON EXTERNAL PROTECTED DEPLOYMENT CREDENTIALS**.
-- Primary Active Batch remains R1-B2; do not open a new development line.
-
-## Root Cause Log
-
-### RC-2026-08-26-01 — web update callback conflict
+### RC-2026-08-26-01 — web-only pre-calculation lifecycle gate
 
 Evidence:
-- multiple web-dispatched `Update Portfolio Data` runs failed at `Mark calculation job running` with Worker HTTP 409 before Python started;
-- the same failed workflows subsequently reported terminal `failed` callback successfully;
-- manual Action succeeded with empty `CALCULATION_JOB_ID`, bypassing the failing lifecycle;
-- Worker dispatch had a 5-second timeout and terminalized ambiguous dispatch outcomes.
+- schedule/manual runs with empty `calculation_job_id` skipped `Mark calculation job running` and reached Python;
+- web runs #3383/#3385/#3386 executed that callback first, received HTTP 409, and skipped Python;
+- manual run #3390 succeeded through the same Python calculation/upload path;
+- canonical Worker also imposed a 5-second dispatch abort, allowing a locally failed D1 job to diverge from an upstream GitHub workflow that had actually been accepted.
 
-Root cause: Worker treated an ambiguous GitHub dispatch transport outcome as definitive failure. If GitHub accepted the dispatch despite response timeout/loss, the later positive workflow callback collided with the prematurely terminalized D1 job.
+Root cause: the web trigger had a control-plane checkpoint that schedule/manual triggers did not have. The calculation engine was not the failing component.
 
-Systemic cause: positive GitHub callback evidence had no controlled way to reconcile a job terminalized solely by an ambiguous dispatch transport failure.
+## R1-B3 Implementation
 
-Status: **FIX MERGED; production activation/smoke pending**.
+- `.github/workflows/update.yml`
+  - removed `Mark calculation job running`;
+  - every trigger reaches `Run calculation and upload to API` before lifecycle result reporting.
+- `worker.js`
+  - removed the application-imposed 5-second GitHub dispatch abort;
+  - allows trusted terminal evidence to settle `queued -> succeeded/failed`; `queued -> running` remains valid for backward compatibility.
+- `journal_engine/clients/api_client.py`
+  - trusted opaque calculation context accepts both `queued` and `running` jobs;
+  - terminal `succeeded/failed` jobs remain non-runnable.
+- `worker-entry.js`
+  - removed dispatch-recovery interception.
+- deleted `worker-calculation-dispatch-recovery.js` and its regression test.
+- added `tests/worker_calculation_trigger_invariant.test.mjs`.
+- added `tests/test_calculation_job_context.py`.
+- CI now tests both the trigger invariant and queued trusted calculation context.
 
-### RC-2026-08-26-02 — production activation cannot authenticate to Cloudflare
+## Adversarial Review Finding
 
-Reproduce:
-- merge PR #425 with explicit `[r1-b2-deploy]` marker;
-- one-shot production deployment workflow starts on exact merge SHA `540d8ac38927ef8a93540e270635d00b45632f7e`;
-- checkout, reviewed-parent ancestry verification, Node setup, and dependency install all pass;
-- protected deployment input verification fails.
+Initial R1-B3 candidate had one blocker: `CloudflareClient.resolve_calculation_job_context()` still required `status == running`. Removing the workflow's `running` callback without changing that requirement would have moved the failure from GitHub lifecycle reporting into Python context resolution.
 
-Evidence:
-- deployment run `32948075702`, job `98113081035`;
-- Action environment shows all four deployment values empty;
-- first explicit error: `Missing required protected production value: CLOUDFLARE_API_TOKEN`;
-- render, dry-run, deploy, and live verification steps are all skipped.
+Resolution:
+- change trusted context acceptance to `status in {queued, running}`;
+- retain rejection of terminal jobs;
+- add executable regression for queued/running acceptance and terminal rejection.
 
-Failure Point: GitHub Actions protected deployment input preflight.
+This is part of the root correction, not a bypass: the newly created durable queued job is already the trusted execution intent. No second lifecycle transition is required to authorize the same calculation.
 
-Contributing Factor: terminal freeze/cleanup removed persistent deployment-control infrastructure and the current GitHub Actions environment no longer exposes the historical Cloudflare deployment credentials.
+## Verification
 
-Root Cause: the current connected execution boundary has no authorized Cloudflare deployment credentials. This is an external credential/authority prerequisite, not an application-code defect.
+- deterministic canonical Worker patch application: PASS (`node --check`).
+- temporary patch workflows removed from final PR tree.
+- PR #429 initial exact-head Terminal Integrity #1487: PASS.
+- adversarial review blocker identified and corrected.
+- updated exact-head Terminal Integrity #1492 on `743601a1e987cbb236775e2999f4168447589d22`: PASS, including:
+  - Worker syntax;
+  - trigger-invariant calculation regression;
+  - Python compile;
+  - queued calculation-context regression;
+  - frozen frontend build.
+- final documentation-only head requires one last exact-head CI before merge.
+- production deployment / authenticated web smoke: pending.
 
-Impact: R1-B1 production activation cannot proceed; no Cloudflare Worker or D1 mutation occurred.
+## Acceptance
 
-Permanent Resolution for this batch: restore only the four required protected deployment values in GitHub Actions, then re-run the exact failed deployment job. Do not restore the retired deployment framework and do not commit credentials.
+1. no `Mark calculation job running` pre-calculation step exists.
+2. every trigger reaches the same Python calculation step first.
+3. web job target/benchmark context is valid while durable job state is `queued`.
+4. canonical dispatch has no synthetic 5-second abort.
+5. queued web jobs can settle directly from terminal calculation evidence.
+6. old dispatch-recovery shim is absent.
+7. all focused regressions and retained build/compile gates pass.
+8. after deployment, one web `立即更新` reaches Python and settles cleanly without the historical first-callback 409.
 
-Status: **CONFIRMED / BLOCKING R1-B2**.
+## Decisions / Rejected Expansion
 
-## Decision Log
+- LOCKED: calculation execution is primary; lifecycle metadata is secondary.
+- LOCKED: `calculation_job_id` remains only trusted target/benchmark context and terminal result correlation.
+- REJECT: retain the old callback-recovery shim after removing its structural failure mode.
+- REJECT: timeout-only tuning as the permanent solution.
+- REJECT: age-only deletion/expiry as evidence that an upstream workflow is dead.
+- OUT: financial calculation changes, D1 schema changes, UI redesign, generalized deployment framework work.
+- BACKLOG: transient snapshot upload HTTP 500 only if it recurs and blocks final smoke.
 
-### D-2026-08-26-01
+## Stable / Production State
 
-Decision: reject timeout-only extension and age-only queued expiry as permanent fixes.
-
-Reason: timeout tuning changes probability, not mutation certainty; elapsed age cannot prove a GitHub run is dead.
-
-Status: LOCKED.
-
-### D-2026-08-26-02
-
-Decision: use the existing system-authenticated GitHub `running` callback itself as the minimum exact dispatch-success evidence. No additional GitHub run-list API, new status enum, or D1 migration is required.
-
-Status: IMPLEMENTED / LOCKED.
-
-### D-2026-08-26-03
-
-Decision: production activation uses a temporary one-shot GitHub Actions workflow instead of restoring the retired deployment framework.
-
-Reason: terminal cleanup intentionally removed persistent deployment-control infrastructure, while the retained Wrangler template, renderer, D1 authority contract, and deploy command are sufficient for this bounded production defect recovery.
-
-Status: ACTIVE for R1-B2 only.
-
-### D-2026-08-26-04
-
-Decision: do not bypass, hardcode, guess, or reconstruct missing Cloudflare credentials from public metadata.
-
-Reason: deployment credentials are a security/production authority boundary. The repository intentionally stores only the production D1 ID fingerprint, not the raw database ID, and GitHub/Cloudflare secret values must remain outside source control.
-
-Resolution: user restores the required protected values through GitHub/Cloudflare UI; after that the existing exact deployment run is re-run and execution continues without code changes.
-
-Status: LOCKED.
-
-## Change Log
-
-- 2026-08-26: created R1-B1 recovery branch from frozen main checkpoint.
-- 2026-08-26: created `AI_PROJECT_PLAYBOOK.md` and this handoff because both were absent from terminal tree.
-- 2026-08-26: added dispatch-ambiguity recovery, focused regression, and CI invocation.
-- 2026-08-26: PR #424 exact-head CI #1476 passed and independent review completed with no remaining BLOCKER.
-- 2026-08-26: PR #424 merged as `591b8dc3c10dca6850bf0b6514a0857fcc5ac607`; main Terminal Integrity #1477 passed.
-- 2026-08-26: started R1-B2.
-- 2026-08-26: PR #425 added temporary exact-merge production activation workflow; final PR head `db312189bf126acb5931a42987bdfec0d5f1d1e0`; Terminal Integrity #1479 PASS; independent review pass recorded with no BLOCKER.
-- 2026-08-26: PR #425 merged as `540d8ac38927ef8a93540e270635d00b45632f7e`; main Terminal Integrity #1480 PASS.
-- 2026-08-26: production deployment run `32948075702` failed before any remote mutation because all required Cloudflare deployment protected values were absent.
-
-## Known Issues
-
-- Production has not yet been verified on the R1-B1 recovery source; web update remains user-visible NOT VERIFIED until R1-B2 deployment/smoke.
-- GitHub Actions currently lacks the four protected Cloudflare deployment values required for exact Worker activation.
-- Separate transient portfolio snapshot upload HTTP 500 remains BACKLOG unless it recurs and blocks the final smoke.
-
-## Technical Debt
-
-None promoted into the active batch. The missing production credentials are an operational prerequisite, not technical debt and must not trigger architecture expansion.
-
-## Deferred / Rejected Candidates
-
-- BACKLOG: investigate transient snapshot upload HTTP 500 if it recurs.
-- REJECT: simply increase GitHub dispatch timeout as the full fix.
-- REJECT: expire queued jobs based only on elapsed age.
-- REJECT: broad refactor of the canonical calculation-job state machine.
-- REJECT: restore the retired long-lived production/staging deployment framework.
-- REJECT: run D1 migrations during R1-B2 when the defect fix has no schema change.
-- REJECT: hardcode or commit Cloudflare account/database/token values.
-- REJECT: weaken the production deployment preflight to make the Action pass without credentials.
-
-## Risks
-
-- Production deployment must bind the reviewed `journal-db`; the retained renderer verifies name and hashed D1 ID authority before deploy.
-- Missing Cloudflare credentials currently block deployment before any mutation, which is the intended fail-closed behavior.
-- A protected GitHub `production` environment may require manual reviewer approval after credentials are restored; do not bypass it.
-- Rollback source remains `terminal-final-2026-08-21` / `28bea37098beceeba6ddae958f180833d26c71db` until the new production source is verified.
+- Terminal historical checkpoint: `terminal-final-2026-08-21` / `28bea37098beceeba6ddae958f180833d26c71db`.
+- User reported Cloudflare deployment completed earlier in this recovery sequence; that deployment predates R1-B3 and therefore does not contain the current trigger-invariant Worker correction.
+- Production D1 remains authoritative.
 
 ## Next Actions
 
-1. **USER ACTION REQUIRED:** restore the four protected production values used by the GitHub Actions `production` environment:
-   - `CLOUDFLARE_API_TOKEN`;
-   - `CLOUDFLARE_ACCOUNT_ID`;
-   - `CLOUDFLARE_D1_DATABASE_ID` for production `journal-db`;
-   - `CLOUDFLARE_D1_DATABASE_NAME` = `journal-db`.
-2. Do not paste secret/token values into chat or source control. Report only that all four values have been saved.
-3. Re-run failed deployment run `32948075702` / job `98113081035` on exact source `540d8ac38927ef8a93540e270635d00b45632f7e`.
-4. Verify dry-run, deploy, and exact live source/API/release/schema checks all PASS.
-5. Delete the temporary deployment workflow in a cleanup PR.
-6. Perform one authenticated web `立即更新` smoke and inspect the corresponding `Update Portfolio Data` workflow lifecycle.
-7. If smoke passes, create the final stable recovery checkpoint, mark `OPTIMIZED FOR CURRENT REQUIREMENTS`, and stop.
-
-## Batch Completion Record
-
-### R1-B1
-
-Status: **DONE / MERGED**.
-
-- Root Cause: confirmed and corrected.
-- Code: COMPLETE.
-- Regression: PASS.
-- PR: #424 merged.
-- Main CI: #1477 PASS.
-- Deployment: belongs to R1-B2.
-- Rollback: `28bea37098beceeba6ddae958f180833d26c71db`.
-
-### R1-B2
-
-Status: **BLOCKED BEFORE PRODUCTION MUTATION**.
-
-- Scope: one-shot exact-source Worker activation + live identity verification + web smoke + cleanup.
-- Activation PR: #425 merged.
-- Activation source: `540d8ac38927ef8a93540e270635d00b45632f7e`.
-- PR CI: #1479 PASS.
-- Main CI: #1480 PASS.
-- Deployment run: `32948075702` FAILURE at credential preflight.
-- D1 migration: NONE / not executed.
-- Worker deploy: NOT EXECUTED.
-- Production data mutation: NONE.
-- Live source verification: NOT EXECUTED.
-- Production web smoke: NOT VERIFIED.
-- Blocker: missing protected Cloudflare deployment values.
-- Rollback: terminal production checkpoint remains unchanged.
+1. wait for final exact-head PR #429 Terminal Integrity PASS.
+2. record no-blocker review and merge #429 with expected head SHA.
+3. verify main Terminal Integrity PASS.
+4. deploy the merged R1-B3 Worker source to Cloudflare using the user's established deployment path; no D1 migration.
+5. perform one authenticated web `立即更新` smoke.
+6. verify GitHub workflow executes Python calculation, then terminal result reporting, with no web-only pre-calculation 409.
+7. remove the temporary R1-B2 production deployment workflow, update this handoff, create final recovery checkpoint, and stop.
