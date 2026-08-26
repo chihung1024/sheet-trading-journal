@@ -1,0 +1,69 @@
+name: R1 B3 Apply Canonical Worker Patch
+
+on:
+  push:
+    branches:
+      - fix/unify-calculation-pipeline-20260826
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/unify-calculation-pipeline-20260826
+
+      - name: Apply exact canonical Worker changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('worker.js')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  'const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;\n',
+                  '',
+              ),
+              (
+                  '      body: JSON.stringify({ ref: GITHUB_DISPATCH.ref, inputs }),\n'
+                  '      signal: AbortSignal.timeout(GITHUB_DISPATCH_TIMEOUT_MS),\n',
+                  '      body: JSON.stringify({ ref: GITHUB_DISPATCH.ref, inputs }),\n',
+              ),
+              (
+                  '  if (currentStatus === "queued") return nextStatus === "running" || nextStatus === "failed";\n',
+                  '  if (currentStatus === "queued") {\n'
+                  '    return nextStatus === "running" || nextStatus === "succeeded" || nextStatus === "failed";\n'
+                  '  }\n',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one canonical match, found {count}: {old!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          node --check worker.js
+          git diff --check
+
+      - name: Commit canonical Worker patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add worker.js
+          git commit -m 'fix: remove web-only calculation gate assumptions'
+          git push origin HEAD:fix/unify-calculation-pipeline-20260826
