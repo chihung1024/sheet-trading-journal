@@ -4,13 +4,13 @@
 
 - Mode: **DEVELOPMENT FROZEN / production defect recovery**.
 - Primary Goal: restore reliable web `立即更新` portfolio recalculation without weakening idempotency, data integrity, or lifecycle correctness.
-- Working branch: `fix/web-update-dispatch-recovery-20260826`.
-- Baseline main: `28bea37098beceeba6ddae958f180833d26c71db`.
-- Pull request: **#424**.
+- Current recovery branch: `ops/r1-b2-production-recovery-deploy-20260826`.
+- Current main: `591b8dc3c10dca6850bf0b6514a0857fcc5ac607`.
+- Root-cause fix PR: **#424 MERGED**.
 
 ## Stable State
 
-Terminal release `terminal-final-2026-08-21` remains the last known production checkpoint. Manual/scheduled calculation can execute independently of the web calculation-job callback path. Production D1 remains authoritative. No production deployment has been performed by this recovery branch.
+Terminal release `terminal-final-2026-08-21` at `28bea37098beceeba6ddae958f180833d26c71db` remains the last recorded production deployment checkpoint. R1-B1 was merged to `main` at `591b8dc3c10dca6850bf0b6514a0857fcc5ac607`; main Terminal Integrity run #1477 passed. Production D1 remains authoritative. The R1-B1 source has not yet been verified as deployed to Cloudflare.
 
 ## Architecture Notes
 
@@ -20,7 +20,14 @@ Web update path:
 
 Manual GitHub Action with empty `calculation_job_id` bypasses the calculation-job callback lifecycle and therefore is not an equivalent validation of the web path.
 
-The terminal Worker already uses `worker-entry.js` as the controlled entry layer in front of the canonical `worker.js`. R1-B1 adds one narrowly scoped recovery module at that existing boundary; it does not redesign the canonical calculation engine or data model.
+The terminal Worker uses `worker-entry.js` as the controlled entry layer in front of canonical `worker.js`. R1-B1 added one narrowly scoped recovery module at that boundary without changing financial calculations or the D1 schema.
+
+Production deployment primitives retained after terminal cleanup:
+- `wrangler.toml` production template;
+- `tools/render_wrangler_config.mjs` with reviewed production origin/OAuth/D1 authority checks;
+- `npm run worker:deploy` using `.wrangler/deploy.toml`.
+
+Historical persistent deployment-control workflows were intentionally removed during terminal cleanup. R1-B2 therefore uses a bounded one-shot workflow and removes it after production activation.
 
 ## Master Plan
 
@@ -30,61 +37,71 @@ The terminal Worker already uses `worker-entry.js` as the controlled entry layer
 
 Objective: allow an ambiguous Worker -> GitHub dispatch failure to recover only when the real GitHub workflow supplies positive `running` callback evidence.
 
-In scope:
+Status: **DONE / MERGED**.
+
+Delivered:
 - `worker-calculation-dispatch-recovery.js`;
 - minimal `worker-entry.js` integration;
-- one focused deterministic regression file;
-- CI wiring for that regression;
-- this handoff/playbook.
-
-Out of scope:
-- financial calculations;
-- records/cash/dividend behavior;
-- D1 schema changes;
-- frontend redesign;
-- timeout-only tuning;
-- age-only queued expiry;
-- snapshot-upload transient HTTP 500 RCA;
-- generalized workflow/deployment framework.
-
-Allowed investigation: current Worker/job state machine, update workflow, frontend recovery semantics, recent Actions evidence, and existing terminal deployment constraints.
-
-Expansion trigger: only new evidence showing the defect cannot be corrected inside the dispatch/callback lifecycle or a data-integrity/security blocker.
-
-Acceptance:
-1. trusted positive GitHub `running` callback can recover only `GITHUB_DISPATCH_TIMEOUT` / `GITHUB_DISPATCH_FAILED` jobs with no bound run ID;
-2. explicit GitHub rejection remains terminal;
-3. a delayed callback is blocked if another same-user/same-benchmark job is already active;
-4. Worker syntax, frontend build, Python compile, and exact-head CI pass;
-5. independent review has zero BLOCKER;
-6. production web smoke reaches terminal success/failure and does not remain stuck.
+- focused deterministic regression;
+- CI wiring;
+- independent review with no remaining BLOCKER;
+- merge commit `591b8dc3c10dca6850bf0b6514a0857fcc5ac607`;
+- main Terminal Integrity #1477 PASS.
 
 #### Batch R1-B2 — production activation / smoke
 
-Only after B1 merge. Verify a valid deployment path exists, deploy exact merged Worker source, then perform one normal web update and verify Worker/GitHub/browser terminal lifecycle. Do not recreate broad retired infrastructure merely to deploy this fix.
+Objective: deploy the exact R1-B1 merged Worker source using the minimum retained production deployment primitives, verify live source identity, then perform one normal web update smoke.
+
+In scope:
+- one-shot production Worker deployment workflow;
+- exact merged-SHA deployment only;
+- existing production D1 binding validation through the retained renderer;
+- Wrangler dry-run and deploy;
+- post-deploy public Worker header/source identity verification;
+- remove the one-shot workflow after activation;
+- one normal authenticated web `立即更新` smoke.
+
+Out of scope:
+- D1 migrations or data rewrites;
+- frontend deployment or redesign;
+- financial logic changes;
+- generalized deployment framework restoration;
+- staging recreation;
+- snapshot-upload HTTP 500 RCA unless it blocks the smoke.
+
+Allowed investigation: retained production deployment configuration, GitHub Actions production environment/credentials, Cloudflare Worker deploy result, and the exact web-update lifecycle.
+
+Expansion trigger: production deploy cannot execute with retained protected credentials, deployment changes the wrong Worker/D1 identity, or web smoke produces a new blocker unrelated to the repaired dispatch ambiguity.
+
+Acceptance:
+1. exact merged source is deployed to `journal-backend`;
+2. no D1 migration runs in this batch;
+3. public Worker response reports exact deployed source SHA and retained API/release/schema versions;
+4. one normal web `立即更新` produces one calculation lifecycle and no prior first-callback 409/stuck condition;
+5. temporary deployment workflow is removed after activation;
+6. handoff records the final production state and rollback point.
 
 ## Current Phase / Batch
 
 - Phase: R1
-- Current Batch: R1-B1
-- State: **IMPLEMENTED / FINAL REVIEW IN PROGRESS**.
+- Current Batch: **R1-B2**
+- State: **IN PROGRESS — production activation workflow prepared**.
 
 ## Root Cause Log
 
 ### RC-2026-08-26-01 — web update callback conflict
 
 Evidence:
-- multiple web-dispatched `Update Portfolio Data` runs fail at `Mark calculation job running` with Worker HTTP 409 before Python starts;
-- the same failed workflows subsequently report their terminal `failed` callback successfully, which rules against a different already-bound GitHub run ID as the 409 cause;
-- manual Action succeeds with empty `CALCULATION_JOB_ID`, proving the calculation engine can run while bypassing the failing lifecycle;
-- Worker dispatch has a 5-second timeout;
-- Worker catch path labels the situation ambiguous but calls `failQueuedDispatch`, making the job terminal before a delayed positive callback can advance it.
+- multiple web-dispatched `Update Portfolio Data` runs failed at `Mark calculation job running` with Worker HTTP 409 before Python started;
+- the same failed workflows subsequently reported terminal `failed` callback successfully;
+- manual Action succeeded with empty `CALCULATION_JOB_ID`, bypassing the failing lifecycle;
+- Worker dispatch had a 5-second timeout and terminalized ambiguous dispatch outcomes.
 
-Root cause: Worker treats an ambiguous GitHub dispatch transport outcome as definitive failure. If GitHub accepted the dispatch despite response timeout/loss, the later positive workflow callback collides with the prematurely terminalized D1 job.
+Root cause: Worker treated an ambiguous GitHub dispatch transport outcome as definitive failure. If GitHub accepted the dispatch despite response timeout/loss, the later positive workflow callback collided with the prematurely terminalized D1 job.
 
 Systemic cause: positive GitHub callback evidence had no controlled way to reconcile a job terminalized solely by an ambiguous dispatch transport failure.
 
-Status: **CONFIRMED BY CODE + REPEATED ACTION EVIDENCE; production D1 row inspection remains unavailable from current connected tools.**
+Status: **FIX MERGED; production activation/smoke pending**.
 
 ## Decision Log
 
@@ -92,40 +109,44 @@ Status: **CONFIRMED BY CODE + REPEATED ACTION EVIDENCE; production D1 row inspec
 
 Decision: reject timeout-only extension and age-only queued expiry as permanent fixes.
 
-Reason: timeout tuning changes probability, not mutation certainty; elapsed age cannot prove a GitHub run is dead. Historical project decisions already rejected age-only orphan guessing.
+Reason: timeout tuning changes probability, not mutation certainty; elapsed age cannot prove a GitHub run is dead.
 
-Reopen condition: only if GitHub platform behavior removes the trusted callback evidence or a new production failure disproves the current lifecycle diagnosis.
+Status: LOCKED.
 
 ### D-2026-08-26-02
 
 Decision: use the existing system-authenticated GitHub `running` callback itself as the minimum exact dispatch-success evidence. No additional GitHub run-list API, new status enum, or D1 migration is required.
 
-The recovery is allowed only when:
-- current row is `failed`;
-- `error_code` is `GITHUB_DISPATCH_TIMEOUT` or `GITHUB_DISPATCH_FAILED`;
-- `github_run_id` is still NULL;
-- callback supplies a valid GitHub run ID;
-- no other same-user/same-benchmark row is `queued` or `running`.
+Status: IMPLEMENTED / LOCKED.
 
-This is an evidence-based state repair, not age-based guessing. If any condition fails, canonical fail-closed behavior remains unchanged.
+### D-2026-08-26-03
+
+Decision: production activation uses a temporary one-shot GitHub Actions workflow instead of restoring the retired deployment framework.
+
+Reason: terminal cleanup intentionally removed persistent deployment-control infrastructure, while the retained Wrangler template, renderer, D1 authority contract, and deploy command are sufficient for this bounded production defect recovery. The one-shot workflow runs only on a merge commit carrying the explicit `[r1-b2-deploy]` marker and is removed after activation.
+
+Trade-off: if the protected `production` environment requires manual approval, the deployment will wait rather than bypass that protection.
+
+Status: ACTIVE for R1-B2 only.
 
 ## Change Log
 
-- 2026-08-26: created recovery branch from frozen `main` checkpoint.
+- 2026-08-26: created R1-B1 recovery branch from frozen main checkpoint.
 - 2026-08-26: created `AI_PROJECT_PLAYBOOK.md` and this handoff because both were absent from terminal tree.
-- 2026-08-26: added `worker-calculation-dispatch-recovery.js` and integrated it at `worker-entry.js` before the canonical status handler.
-- 2026-08-26: added focused Node regression and CI invocation.
-- 2026-08-26: PR #424 opened from exact frozen baseline.
-- 2026-08-26: Terminal Integrity run #1473 passed all three jobs on implementation head `4ddb1d6906db331e7cbe8a6fe1e51c46d465d581`: Worker recovery regression PASS, Worker syntax PASS, frontend build PASS, Python compile PASS.
+- 2026-08-26: added dispatch-ambiguity recovery, focused regression, and CI invocation.
+- 2026-08-26: PR #424 exact-head CI #1476 passed and independent review completed with no remaining BLOCKER.
+- 2026-08-26: PR #424 merged as `591b8dc3c10dca6850bf0b6514a0857fcc5ac607`; main Terminal Integrity #1477 passed.
+- 2026-08-26: started R1-B2 branch `ops/r1-b2-production-recovery-deploy-20260826`.
+- 2026-08-26: added temporary `.github/workflows/r1-b2-production-recovery-deploy.yml` using only retained production deploy primitives, with no D1 migration step.
 
 ## Known Issues
 
-- Production has not yet received this recovery code; user-visible web update remains unverified until R1-B2 deployment/smoke.
-- A separate transient portfolio snapshot upload HTTP 500 has been observed in manual/scheduled execution; later retry succeeded.
+- Production has not yet been verified on the R1-B1 source; web update remains user-visible NOT VERIFIED until R1-B2 deployment/smoke.
+- Separate transient portfolio snapshot upload HTTP 500 remains BACKLOG unless it recurs and blocks the smoke.
 
 ## Technical Debt
 
-None promoted into the active batch beyond the root-cause lifecycle gap.
+None promoted into the active batch beyond production activation required for the merged defect correction.
 
 ## Deferred / Rejected Candidates
 
@@ -133,36 +154,48 @@ None promoted into the active batch beyond the root-cause lifecycle gap.
 - REJECT: simply increase GitHub dispatch timeout as the full fix.
 - REJECT: expire queued jobs based only on elapsed age.
 - REJECT: broad refactor of the canonical calculation-job state machine.
-- REJECT: add GitHub run-list reconciliation/API polling when the existing trusted callback already supplies the required positive evidence.
+- REJECT: restore the retired long-lived production/staging deployment framework.
+- REJECT: run D1 migrations during R1-B2 when the defect fix has no schema change.
 
 ## Risks
 
-- Incorrect recovery could duplicate a calculation run or suppress a legitimate run.
-- The implementation prevents that class by using one conditional D1 UPDATE with `NOT EXISTS` for any other same-user/same-benchmark active job.
-- A conflicting pre-bound GitHub run ID cannot be overwritten because recovery requires `github_run_id IS NULL`.
-- Production activation is not yet available through the current retained repository workflows; deployment capability must be verified in R1-B2 rather than silently rebuilding retired infrastructure.
+- Production deployment must bind the reviewed `journal-db`; the retained renderer verifies name and hashed D1 ID authority before deploy.
+- The temporary workflow depends on existing protected GitHub production secrets; missing secrets fail before deployment.
+- A protected GitHub `production` environment may require manual reviewer approval; do not bypass it.
+- Rollback source remains `terminal-final-2026-08-21` / `28bea37098beceeba6ddae958f180833d26c71db` until the new production source is verified.
 
 ## Next Actions
 
-1. Complete independent review of exact PR #424 head; fix only BLOCKER findings.
-2. Confirm final-head CI after this handoff-only commit.
-3. Merge with expected-head SHA if review and CI remain clean.
-4. Start R1-B2: verify the minimum valid production deployment path.
-5. Deploy exact merged source and run one normal web update smoke.
-6. Stop when the web flow reaches terminal success/failure without the prior callback 409/stuck lifecycle.
+1. Open and review the R1-B2 one-shot deployment PR.
+2. Run exact-head Terminal Integrity; fix only BLOCKER findings.
+3. Merge with explicit `[r1-b2-deploy]` marker to trigger the bounded production deploy.
+4. Verify deployment Action reaches success and exact source identity matches the merged SHA.
+5. Delete the one-shot deployment workflow in a cleanup PR.
+6. Perform one authenticated web `立即更新` smoke and inspect the corresponding Update Portfolio Data workflow lifecycle.
+7. If smoke passes, mark `OPTIMIZED FOR CURRENT REQUIREMENTS` and stop.
 
 ## Batch Completion Record
 
-R1-B1: **IMPLEMENTED; MERGE PENDING**.
+### R1-B1
 
-- Scope: narrow Worker callback lifecycle recovery + required handoff/test/CI only.
-- Files Changed: `.github/workflows/ci.yml`, `AI_PROJECT_PLAYBOOK.md`, `to_do_update_list.md`, `worker-calculation-dispatch-recovery.js`, `worker-entry.js`, `tests/worker_calculation_dispatch_recovery.test.mjs`.
-- Root Cause: documented and addressed with positive-evidence recovery.
-- Implementation: COMPLETE on PR branch.
-- Verification: implementation-head CI #1473 PASS; final handoff head re-verification pending.
-- Regression: targeted Node test PASS on CI #1473.
-- Commit: implementation head `4ddb1d6906db331e7cbe8a6fe1e51c46d465d581`; this handoff update advances the PR head.
-- PR: #424 open.
-- Release/Deployment: NOT STARTED; belongs to R1-B2 after merge.
-- Rollback: branch base `28bea37098beceeba6ddae958f180833d26c71db` / terminal release.
-- Follow-up: final review -> expected-head merge -> production activation/smoke.
+Status: **DONE / MERGED**.
+
+- Root Cause: confirmed and corrected.
+- Code: COMPLETE.
+- Regression: PASS.
+- PR: #424 merged.
+- Main CI: #1477 PASS.
+- Deployment: belongs to R1-B2.
+- Rollback: `28bea37098beceeba6ddae958f180833d26c71db`.
+
+### R1-B2
+
+Status: **IN PROGRESS**.
+
+- Scope: one-shot exact-SHA Worker activation + live identity verification + web smoke + cleanup.
+- Files Changed so far: `.github/workflows/r1-b2-production-recovery-deploy.yml`, `to_do_update_list.md`.
+- D1 migration: NONE / prohibited by scope.
+- Verification: NOT YET RUN on branch.
+- Deployment: NOT YET EXECUTED.
+- Production web smoke: NOT VERIFIED.
+- Rollback: terminal production checkpoint remains available.
