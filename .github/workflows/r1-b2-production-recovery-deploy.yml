@@ -1,4 +1,4 @@
-name: R1 B2 Production Recovery Deploy
+name: R1 Final Production Recovery Deploy
 
 on:
   push:
@@ -9,13 +9,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: r1-b2-production-recovery-deploy
+  group: r1-final-production-recovery-deploy
   cancel-in-progress: false
 
 jobs:
   deploy-worker:
     name: Deploy exact recovery Worker
-    if: contains(github.event.head_commit.message, '[r1-b2-deploy]')
+    if: contains(github.event.head_commit.message, '[r1-final-deploy]')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -31,7 +31,7 @@ jobs:
       - name: Verify one-shot activation ancestry
         shell: bash
         env:
-          EXPECTED_PARENT_SHA: 591b8dc3c10dca6850bf0b6514a0857fcc5ac607
+          EXPECTED_PARENT_SHA: a300939f105b2a9e93ac1a363ddc3018066b2edb
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
@@ -94,8 +94,8 @@ jobs:
           WORKER_URL: https://journal-backend.chired.workers.dev/api/portfolio
         run: |
           set -euo pipefail
-          headers="$RUNNER_TEMP/r1-b2-worker-headers.txt"
-          body="$RUNNER_TEMP/r1-b2-worker-body.json"
+          headers="$RUNNER_TEMP/r1-final-worker-headers.txt"
+          body="$RUNNER_TEMP/r1-final-worker-body.json"
 
           header_value() {
             local key="$1"
