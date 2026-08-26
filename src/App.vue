@@ -69,9 +69,8 @@
             type="button"
             class="action-trigger-btn"
             @click="handleTriggerUpdate"
-            :disabled="portfolioStore.isPolling"
-            :title="portfolioStore.isPolling ? '資料更新中' : '立即更新資料'"
-            :aria-label="portfolioStore.isPolling ? '資料更新中' : '立即更新資料'"
+            :title="portfolioStore.isPolling ? '確認目前更新狀態' : '立即更新資料'"
+            :aria-label="portfolioStore.isPolling ? '確認目前更新狀態' : '立即更新資料'"
           >
             <span>🔄</span>
             <span class="desktop-only">立即更新</span>
@@ -396,10 +395,6 @@ const onTradeSubmitted = () => {
 };
 
 const handleTriggerUpdate = async () => {
-  if (portfolioStore.isPolling) {
-    addToast('⌛ 資料正在更新，請稍候...', 'info');
-    return;
-  }
   try {
     await portfolioStore.triggerUpdate();
   } catch (error) {
