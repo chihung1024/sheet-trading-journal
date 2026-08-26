@@ -69,6 +69,13 @@ export async function tryRecoverAmbiguousCalculationCallback(
             AND active.public_id <> calculation_jobs.public_id
             AND active.status IN ('queued', 'running')
         )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM calculation_jobs AS newer
+          WHERE newer.user_id = calculation_jobs.user_id
+            AND newer.benchmark = calculation_jobs.benchmark
+            AND newer.id > calculation_jobs.id
+        )
     `);
     const result = await statement
       .bind(githubRunId, githubRunAttempt, githubRunAttempt, jobId)
