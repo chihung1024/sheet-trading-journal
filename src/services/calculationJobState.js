@@ -1,9 +1,10 @@
 import { PENDING_CALCULATION_V2_STORAGE_PREFIX } from './projectStorage.js';
 
 export const CALCULATION_REQUEST_STORAGE_KEY = 'pending_calculation_request';
-// Pre-E1c-B live generations without the lifecycle marker keep the historical
-// expiry rule so previously abandoned browser state is not resurrected.
-export const CALCULATION_REQUEST_TTL_MS = 15 * 60 * 1000;
+// Browser recovery state must never become an authority that can lock the UI
+// indefinitely. Keep it bounded to the same 20-minute budget used by job polling;
+// the Worker/D1 calculation job remains authoritative after this window.
+export const CALCULATION_REQUEST_TTL_MS = 20 * 60 * 1000;
 export const CALCULATION_REQUEST_V2_VERSION = 2;
 
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._~-]{16,128}$/;
@@ -37,7 +38,7 @@ export function validatePendingCalculationRequest(value, owner, options = {}) {
   if (!expectedOwner || normalizeCalculationOwner(value.owner) !== expectedOwner) return null;
   if (typeof value.key !== 'string' || !IDEMPOTENCY_KEY_RE.test(value.key)) return null;
   if (!Number.isFinite(value.createdAt) || value.createdAt <= 0 || value.createdAt > now + 60_000) return null;
-  if (value.lifecyclePersistent !== true && now - value.createdAt >= CALCULATION_REQUEST_TTL_MS) return null;
+  if (now - value.createdAt >= CALCULATION_REQUEST_TTL_MS) return null;
   if (value.jobId !== null && (typeof value.jobId !== 'string' || !JOB_ID_RE.test(value.jobId))) return null;
 
   const normalizedBenchmark = value.benchmark === undefined || value.benchmark === null
