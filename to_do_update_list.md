@@ -3,105 +3,59 @@
 ## Project Status
 
 - Mode: **DEVELOPMENT FROZEN / production defect recovery**.
-- Primary Goal: schedule, manual GitHub dispatch, and web `立即更新` must reach the same portfolio calculation engine without trigger-specific lifecycle prerequisites.
-- Current verified main before cleanup: `538c77b5daa3f432ad06874f2b6322502379a7a2`.
-- Active branch: `chore/remove-temporary-deploy-20260826`.
-- Active Batch: **R1-B4 — remove temporary deployment infrastructure and finish production verification**.
+- Primary invariant: schedule, manual GitHub dispatch, and web `立即更新` must reach the same portfolio calculation engine without trigger-specific lifecycle prerequisites.
+- Current main before this final checkpoint: `e7dc38c07240dd970edea2587b2f37211099442e`.
 - D1 schema/data migration: **NONE**.
 
-## First-Principles Invariant
+## Root Correction
 
-Required execution path:
+PR #429 removed the structural web-only pre-calculation gate:
 
-`any trigger -> resolve trusted calculation context -> run_portfolio_update.py -> upload snapshot -> report optional lifecycle/result metadata`
+`any trigger -> trusted calculation context -> run_portfolio_update.py -> snapshot upload -> optional lifecycle/result reporting`
 
-Forbidden execution path:
+The old web-only `Mark calculation job running` prerequisite is gone. Trusted queued jobs are valid calculation context; terminal jobs remain non-runnable. The application-imposed five-second GitHub dispatch abort and the old dispatch-recovery shim are also gone.
 
-`web trigger -> lifecycle/status checkpoint -> only then run calculation`
+## Browser-Native Deployment Contract
 
-Trigger source may select trusted target context, but lifecycle metadata cannot gate the calculation engine.
+The user operates this project through browser-based GitHub and Cloudflare only; no local clone or terminal is assumed.
 
-## Root Correction Completed
+PR #432 (`e7dc38c07240dd970edea2587b2f37211099442e`) made the retained Worker deployment source self-sufficient for Cloudflare Workers Builds:
 
-PR #429 merged as `a300939f105b2a9e93ac1a363ddc3018066b2edb` and removed the structural web-only failure path:
+- production D1 identity is the reviewed existing `journal-db` UUID `fbef989c-dede-4f94-8907-6a2134cdf372` plus its existing SHA-256 fingerprint;
+- `tools/render_wrangler_config.mjs` accepts Cloudflare `WORKERS_CI_COMMIT_SHA` provenance;
+- `npm run worker:deploy` renders the reviewed production config immediately before `wrangler deploy`;
+- CI validates that Cloudflare-Builds-style rendering resolves exactly to `journal-db`, the reviewed UUID, and the exact commit SHA;
+- no GitHub Cloudflare secrets or GitHub deployment workflow are retained.
 
-- `.github/workflows/update.yml`
-  - removed `Mark calculation job running` before Python;
-  - all trigger types reach `Run calculation and upload to API` first.
-- `worker.js`
-  - removed the application-imposed five-second GitHub dispatch abort;
-  - allows durable `queued` jobs to settle directly to `succeeded` or `failed` from terminal calculation evidence.
-- `journal_engine/clients/api_client.py`
-  - trusted calculation context accepts `queued` and `running`;
-  - terminal jobs remain non-runnable.
-- removed `worker-calculation-dispatch-recovery.js` and its runtime interception.
-- added trigger-invariant Worker regression and queued-context Python regression.
+Cloudflare `journal-backend` is now connected to `chihung1024/sheet-trading-journal` through Workers Builds with production branch `main`. The intended production deploy command is:
 
-PR #429 exact-head Terminal Integrity #1493 PASS. Main Terminal Integrity #1494 PASS.
+`npm run worker:deploy`
 
-## Deployment Decision
+Build command is intentionally empty; non-production builds are disabled; build variables/secrets remain empty. Existing Worker runtime secrets remain Cloudflare-managed.
 
-The temporary GitHub Actions deployment workflow was an execution aid, not part of the application architecture.
+## Verification to Date
 
-A final attempt was made through PR #430 / main `538c77b5daa3f432ad06874f2b6322502379a7a2`. Main Terminal Integrity #1496 PASS. Production deployment run `32960197133` failed closed before config rendering or Worker deployment because all four GitHub `production` environment values were absent:
+- PR #429 exact-head and main Terminal Integrity: PASS.
+- temporary GitHub production deployment workflow removed by PR #431.
+- PR #432 exact-head Terminal Integrity #1499: PASS.
+- main Terminal Integrity #1500 on `e7dc38c07240dd970edea2587b2f37211099442e`: PASS.
+- Cloudflare Pages automatic deployment is active on `main` and has already deployed the current frontend line.
+- Cloudflare Workers Builds connection for `journal-backend` has been saved; Cloudflare reports that the next `main` push will start the first build.
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_D1_DATABASE_ID`
-- `CLOUDFLARE_D1_DATABASE_NAME`
+## Final Acceptance
 
-No Worker or D1 mutation occurred in that failed run.
+1. merge this documentation checkpoint after exact-head CI PASS; that meaningful `main` push is intentionally the first Cloudflare Workers Builds production trigger.
+2. confirm Cloudflare `journal-backend` build/deploy succeeds from the resulting exact `main` SHA.
+3. perform one authenticated web `立即更新`.
+4. confirm the corresponding `Update Portfolio Data` workflow reaches Python calculation and snapshot upload before terminal lifecycle reporting, with no historical pre-calculation HTTP 409.
+5. confirm browser polling settles to success or a real calculation/upload failure and does not remain indefinitely blocked.
+6. if the smoke passes, record the exact deployed Worker source SHA as the final recovery checkpoint and stop.
 
-First-principles decision: **do not create permanent GitHub deployment credentials or infrastructure solely to finish this frozen-project recovery**. Use the user's already-established Cloudflare-authenticated local deployment path for one exact deploy, then stop.
+## Rejected Expansion
 
-## R1-B4 Cleanup
-
-- delete `.github/workflows/r1-b2-production-recovery-deploy.yml`;
-- do not replace it with another deployment framework;
-- retain existing production renderer and `npm run worker:deploy` only;
-- no application code, financial logic, frontend, Worker behavior, or D1 changes in this cleanup batch.
-
-## Local Production Deploy Contract
-
-Deploy the exact post-cleanup main with the existing retained tools:
-
-1. checkout/pull exact latest `main`;
-2. authenticate with `npx wrangler login` if needed;
-3. provide the production `journal-db` UUID only in the local environment;
-4. set `CLOUDFLARE_D1_DATABASE_NAME=journal-db` and `SOURCE_COMMIT=$(git rev-parse HEAD)`;
-5. run `npm run worker:config:render`;
-6. run `npx wrangler deploy --dry-run --strict --config .wrangler/deploy.toml`;
-7. run `npm run worker:deploy`;
-8. verify the public Worker reports the exact deployed source SHA with API `2.65`, release `4.12`, schema `3`.
-
-Do not hard-code the production D1 UUID into tracked files and do not bypass the renderer's identity checks.
-
-## Acceptance
-
-1. temporary deployment workflow is absent from final main.
-2. CI remains PASS after cleanup.
-3. exact post-cleanup main is deployed to Cloudflare through the retained local Wrangler path.
-4. one authenticated web `立即更新` creates/joins one calculation job and the corresponding `Update Portfolio Data` workflow reaches Python calculation before lifecycle terminal reporting.
-5. no historical web-only pre-calculation HTTP 409 occurs.
-6. terminal job state settles cleanly to success or a real calculation/upload failure; browser does not remain indefinitely blocked.
-7. after smoke PASS, create one stable recovery checkpoint and stop.
-
-## Out of Scope / Rejected Expansion
-
-- OUT: generalized CI/CD reconstruction.
-- OUT: Cloudflare credentials stored in GitHub solely for this one frozen-project recovery.
-- OUT: D1 schema/data migration.
-- OUT: financial calculation changes.
-- OUT: UI redesign.
-- REJECT: reintroducing lifecycle recovery shims for the removed structural failure mode.
-- REJECT: timeout-only tuning as a permanent solution.
-- BACKLOG: transient snapshot upload HTTP 500 only if it recurs and blocks final smoke.
-
-## Next Actions
-
-1. open cleanup PR from `chore/remove-temporary-deploy-20260826`.
-2. require exact-head Terminal Integrity PASS and no-blocker review.
-3. merge cleanup PR with expected head SHA and verify main CI PASS.
-4. deploy exact latest main once through local Wrangler authentication.
-5. perform one authenticated web `立即更新` smoke and inspect the corresponding workflow through terminal result.
-6. if smoke passes, create final stable recovery checkpoint and stop.
+- no local-terminal deployment requirement;
+- no GitHub Cloudflare credentials solely for this frozen project;
+- no replacement GitHub deployment workflow;
+- no D1 migration or financial calculation change;
+- no lifecycle workaround for the removed structural failure mode;
+- no dummy deployment commit: this handoff/checkpoint update is the intentional meaningful first Workers Builds trigger.
