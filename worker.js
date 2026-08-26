@@ -12,7 +12,6 @@ const GITHUB_DISPATCH = Object.freeze({
   workflow: "update.yml",
   ref: "main",
 });
-const GITHUB_DISPATCH_TIMEOUT_MS = 5_000;
 const GITHUB_API_VERSION = "2026-03-10";
 const REQUIRED_SCHEMA_VERSION = 3;
 const SOURCE_COMMIT_FALLBACK = "development";
@@ -1462,7 +1461,9 @@ function canTransitionCalculationJob(currentStatus, nextStatus) {
   }
   if (currentStatus === nextStatus) return true;
   if (CALCULATION_JOB_TERMINAL_STATUSES.has(currentStatus)) return false;
-  if (currentStatus === "queued") return nextStatus === "running" || nextStatus === "failed";
+  if (currentStatus === "queued") {
+    return nextStatus === "running" || nextStatus === "succeeded" || nextStatus === "failed";
+  }
   if (currentStatus === "running") return nextStatus === "succeeded" || nextStatus === "failed";
   return false;
 }
@@ -1741,7 +1742,6 @@ function buildGitHubDispatchRequest({ token, benchmark, jobId }) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ ref: GITHUB_DISPATCH.ref, inputs }),
-      signal: AbortSignal.timeout(GITHUB_DISPATCH_TIMEOUT_MS),
     },
   };
 }
